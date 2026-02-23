@@ -8,25 +8,26 @@ const mongoose = require('mongoose');
 // Globals Plugins
 mongoose.plugin(require('./plugins/tenant.plugin'));
 
-const { port, mongoUri, corsOrigin, rateLimitGlobalMax, rateLimitAuthMax, rateLimitEnabled } = require('./config/config');
+const { port, corsOrigin, rateLimitGlobalMax, rateLimitAuthMax, rateLimitEnabled } = require('./config/config');
 const { connectDB } = require('./config/database');
 const logger = require('./utils/logger');
-const { errorHandler } = require('./middleware/error.middleware');
+const { errorHandler, AppError } = require('./middleware/error.middleware');
 const { checkDbAuth } = require('./middleware/auth.middleware');
 const shipmentRoutes = require('./routes/shipment.routes');
 const authRoutes = require('./routes/auth.routes');
-const authController = require('./controllers/auth.controller');
 const userRoutes = require('./routes/user.routes');
 const seedDemoData = require('./services/seedDemoData');
 
 // Initialize Express app
 const app = express();
+let server;
+let reconnectPromise = null;
 
 // RAW REQUEST LOGGER (Pre-everything)
 app.use((req, res, next) => {
   if (process.env.NODE_ENV === 'development') {
     const rawMsg = `[RAW_REQUEST] ${req.method} ${req.originalUrl || req.url} - CT: ${req.headers['content-type']}`;
-    console.log(rawMsg);
+    logger.debug(rawMsg);
   }
   next();
 });
@@ -39,7 +40,7 @@ process.on('uncaughtException', (err) => {
   process.exit(1);
 });
 
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason) => {
   const fs = require('fs');
   const path = require('path');
   fs.appendFileSync(path.join(__dirname, '../fatal_error.log'), `[UNHANDLED_REJECTION] ${new Date().toISOString()}\n${reason?.stack || reason}\n\n`);
@@ -57,9 +58,6 @@ const corsOptions = {
 
     const allowedOrigins = corsOrigin.split(',').map(o => o.trim().replace(/\/$/, ''));
     const cleanOrigin = origin.replace(/\/$/, '');
-
-    // DEBUG: Log CORS details
-    // logger.debug(`CORS Check: Origin=${origin}, Clean=${cleanOrigin}, Env=${process.env.NODE_ENV}`);
 
     // In development, allow any localhost origin
     if (process.env.NODE_ENV === 'development' && cleanOrigin.startsWith('http://localhost')) {
@@ -110,17 +108,6 @@ if (rateLimitEnabled) {
   logger.info('Rate limiting is disabled');
 }
 
-// Health Check
-app.get('/health', (req, res) => {
-  const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-  res.status(200).json({
-    status: 'ok',
-    timestamp: new Date(),
-    uptime: process.uptime(),
-    database: dbStatus
-  });
-});
-
 app.use('/uploads', express.static('uploads'));
 
 // Body parser middleware
@@ -139,23 +126,29 @@ app.use((req, res, next) => {
 });
 
 // Database connection check middleware
-app.use((req, res, next) => {
-  if (mongoose.connection.readyState !== 1) {
-    logger.warn('MongoDB not connected, attempting to reconnect...');
-    connectDB()
-      .then(() => {
-        logger.info('MongoDB reconnected successfully');
-        next();
-      })
-      .catch(err => {
-        logger.error('Failed to reconnect to MongoDB:', err);
-        res.status(500).json({
-          success: false,
-          error: 'Database connection error. Please try again later.'
-        });
-      });
-  } else {
-    next();
+app.use(async (req, res, next) => {
+  if (mongoose.connection.readyState === 1) {
+    return next();
+  }
+
+  logger.warn('MongoDB not connected, attempting to reconnect...');
+
+  if (!reconnectPromise) {
+    reconnectPromise = connectDB().finally(() => {
+      reconnectPromise = null;
+    });
+  }
+
+  try {
+    await reconnectPromise;
+    logger.info('MongoDB reconnected successfully');
+    return next();
+  } catch (err) {
+    logger.error('Failed to reconnect to MongoDB:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Database connection error. Please try again later.'
+    });
   }
 });
 
@@ -164,7 +157,6 @@ const geocodeRoutes = require('./routes/geocode.routes');
 const receiverRoutes = require('./routes/receiver.routes');
 const pickupRoutes = require('./routes/pickup.routes');
 const externalRoutes = require('./routes/external.routes');
-
 const apiRoutes = require('./routes/api.routes');
 const financeRoutes = require('./routes/finance.routes');
 const organizationRoutes = require('./routes/organization.routes');
@@ -186,10 +178,11 @@ app.get('/health', (req, res) => {
   const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
   res.status(200).json({
     status: 'ok',
+    timestamp: new Date(),
+    uptime: process.uptime(),
     database: dbStatus
   });
 });
-
 
 // Root route
 app.get('/', (req, res) => {
@@ -202,8 +195,6 @@ app.get('/', (req, res) => {
   });
 });
 
-const { AppError } = require('./middleware/error.middleware');
-
 // Handle undefined routes
 app.all('*', (req, res, next) => {
   next(new AppError(`Can't find ${req.originalUrl} on this server!`, 404));
@@ -212,7 +203,6 @@ app.all('*', (req, res, next) => {
 // Error handling middleware
 app.use(errorHandler);
 
-
 // Start server
 const startServer = async () => {
   try {
@@ -220,7 +210,6 @@ const startServer = async () => {
     await connectDB();
 
     // Run seed in development to populate In-Memory DB
-    console.log('DEBUG: NODE_ENV is', process.env.NODE_ENV);
     if (process.env.NODE_ENV === 'development') {
       logger.info('Running startup dataseeding...');
       await seedDemoData();
@@ -230,7 +219,6 @@ const startServer = async () => {
     server = app.listen(port, () => {
       logger.info(`Server running in ${process.env.NODE_ENV} mode on port ${port}`);
     });
-    console.log('Called app.listen');
 
     server.on('error', (error) => {
       if (error.code === 'EADDRINUSE') {
@@ -260,7 +248,6 @@ const startServer = async () => {
     // Handle process termination
     process.on('SIGTERM', gracefulShutdown);
     process.on('SIGINT', gracefulShutdown);
-
   } catch (error) {
     logger.error('Failed to start server:', error);
     process.exit(1);
