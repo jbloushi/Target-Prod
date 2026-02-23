@@ -147,7 +147,7 @@ const AppRoutes = () => {
           <Route path="fleets" element={<InConstructionPage title="Fleet Management" description="Vehicle tracking and maintenance logs." />} />
           <Route path="drivers" element={<InConstructionPage title="Driver Management" description="Manage driver profiles and assignments." />} />
           <Route path="finance" element={
-            <ProtectedRoute allowedRoles={['admin', 'staff', 'client', 'manager', 'accounting', 'org_manager', 'org_agent']}>
+            <ProtectedRoute allowedRoles={['admin', 'staff', 'manager', 'accounting']}>
               <FinancePage />
             </ProtectedRoute>
           } />

@@ -11,7 +11,8 @@
     "seed": "node scripts/run-seed.js",
     "create-user": "node scripts/create-user.js",
     "create-users": "node scripts/batch-create-users.js",
-    "create-default-users": "node scripts/batch-create-users.js scripts/users.example.json"
+    "create-default-users": "node scripts/batch-create-users.js scripts/users.example.json",
+    "audit:e2e:lifecycle": "node scripts/e2e-role-lifecycle-audit.js"
   },
   "keywords": [],
   "author": "",

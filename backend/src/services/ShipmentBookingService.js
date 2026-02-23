@@ -101,7 +101,7 @@ class ShipmentBookingService {
             freshShipment.organization = organizationId;
 
             attempt.status = 'succeeded';
-            attempt.carrierShipmentId = carrierResult.trackingNumber;
+            attempt.carrierShipmentId = carrierResult.carrierShipmentId || carrierResult.trackingNumber;
             attempt.updatedAt = new Date();
 
             // Document Processing: Move base64 to File Storage
@@ -109,6 +109,11 @@ class ShipmentBookingService {
                 const doc = await CarrierDocumentService.uploadDocument('label', carrierResult.labelUrl, 'pdf', freshShipment.trackingNumber);
                 freshShipment.documents.push(doc);
                 freshShipment.labelUrl = doc.url;
+            }
+            if (carrierResult.awbUrl) {
+                const doc = await CarrierDocumentService.uploadDocument('awb', carrierResult.awbUrl, 'pdf', freshShipment.trackingNumber);
+                freshShipment.documents.push(doc);
+                freshShipment.awbUrl = doc.url;
             }
             if (carrierResult.invoiceUrl) {
                 const doc = await CarrierDocumentService.uploadDocument('invoice', carrierResult.invoiceUrl, 'pdf', freshShipment.trackingNumber);

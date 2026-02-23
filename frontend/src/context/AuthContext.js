@@ -38,7 +38,7 @@ export const AuthProvider = ({ children }) => {
             setUser(data.user);
             return data.user;
         } catch (err) {
-            const message = err.response?.data?.details || err.response?.data?.message || err.response?.data?.error;
+            const message = err.response?.data?.details || err.response?.data?.message || err.response?.data?.error || err.message;
             setError(typeof message === 'string' ? message : 'Login failed');
             throw err;
         } finally {
@@ -58,7 +58,7 @@ export const AuthProvider = ({ children }) => {
             setUser(data.user);
             return data.user;
         } catch (err) {
-            const message = err.response?.data?.details || err.response?.data?.message || err.response?.data?.error;
+            const message = err.response?.data?.details || err.response?.data?.message || err.response?.data?.error || err.message;
             setError(typeof message === 'string' ? message : 'Signup failed');
             throw err;
         } finally {
