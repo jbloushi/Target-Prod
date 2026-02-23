@@ -1,0 +1,9 @@
+.env
+.DS_Store
+node_modules
+logs
+
+# Production user files (may contain sensitive credentials)
+scripts/*users.json
+scripts/production-*.json
+!scripts/users.example.json

@@ -1,0 +1,54 @@
+:root {
+  /* Surfaces */
+  --bg-primary: #0a0e1a;
+  --bg-secondary: #141929;
+  --bg-tertiary: #1a2035;
+  --border-color: #2a3347;
+
+  /* Accents */
+  --accent-primary: #00d9b8;
+  --accent-secondary: #9d4edd;
+  --accent-warning: #ffa726;
+  --accent-error: #ef5350;
+  --accent-info: #42a5f5;
+
+  /* Text */
+  --text-primary: #e8eaf0;
+  --text-secondary: #9ca3af;
+
+  /* Spacing */
+  --sidebar-width: 180px;
+  --border-radius-base: 8px;
+  --border-radius-card: 12px;
+
+  /* Transitions */
+  --transition-base: all 0.2s ease;
+}
+
+/* Base Reset & Typography */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'DM Sans', sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Outfit', sans-serif;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+button {
+  font-family: 'DM Sans', sans-serif;
+}

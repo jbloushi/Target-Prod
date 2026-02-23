@@ -1,0 +1,22 @@
+{
+    "DHL DGR": {
+        "Standard": {
+            "Full Business Shipment (DAP)": {
+                "sender": {
+                    "company": "Target Logistics Hub KW", "contactPerson": "Ahmed Al-Sabah", "phone": "90001234", "countryCode": "KW", "city": "KUWAIT"
+                },
+                "receiver": {
+                    "company": "Global Retailers Inc", "contactPerson": "Sarah Jenkins", "phone": "2025550123", "countryCode": "US", "city": "New York"
+                },
+                "parcels": [{ "description": "Precision Tools", "weight": 14.2, "length": 50, "width": 40, "height": 30, "quantity": 1 }],
+                "incoterm": "DAP"
+            }
+        },
+        "DG": {
+            "Dry Ice (UN1845)": {
+                "dangerousGoods": { "contains": true, "code": "1845", "serviceCode": "HC", "dryIceWeight": 1.0 },
+                "parcels": [{ "description": "Insulated box", "weight": 3, "length": 30, "width": 25, "height": 20, "quantity": 1 }]
+            }
+        }
+    }
+}

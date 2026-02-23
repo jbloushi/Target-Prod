@@ -1,0 +1,105 @@
+/**
+ * Frontend RBAC Capabilities
+ * 
+ * Mirror of backend/src/middleware/rbac.policy.js
+ * Keep in sync with the backend!
+ */
+
+export const CAPABILITIES = Object.freeze({
+    MANAGE_USERS: 'MANAGE_USERS',
+    MANAGE_ORGS: 'MANAGE_ORGS',
+    MANAGE_PRICING: 'MANAGE_PRICING',
+    MANAGE_CARRIERS: 'MANAGE_CARRIERS',
+    VIEW_COST_DATA: 'VIEW_COST_DATA',
+    VIEW_FINANCE: 'VIEW_FINANCE',
+    MANAGE_PAYMENTS: 'MANAGE_PAYMENTS',
+    REVERSE_PAYMENTS: 'REVERSE_PAYMENTS',
+    VIEW_ALL_SHIPMENTS: 'VIEW_ALL_SHIPMENTS',
+    APPROVE_SHIPMENTS: 'APPROVE_SHIPMENTS',
+    BOOK_CARRIERS: 'BOOK_CARRIERS',
+    VIEW_DOCUMENTS: 'VIEW_DOCUMENTS',
+    CREATE_SHIPMENTS: 'CREATE_SHIPMENTS',
+    VIEW_OWN_SHIPMENTS: 'VIEW_OWN_SHIPMENTS',
+    DRIVER_OPS: 'DRIVER_OPS',
+});
+
+const ROLE_CAPABILITIES = Object.freeze({
+    admin: [
+        CAPABILITIES.MANAGE_USERS,
+        CAPABILITIES.MANAGE_ORGS,
+        CAPABILITIES.MANAGE_PRICING,
+        CAPABILITIES.MANAGE_CARRIERS,
+        CAPABILITIES.VIEW_COST_DATA,
+        CAPABILITIES.VIEW_FINANCE,
+        CAPABILITIES.MANAGE_PAYMENTS,
+        CAPABILITIES.REVERSE_PAYMENTS,
+        CAPABILITIES.VIEW_ALL_SHIPMENTS,
+        CAPABILITIES.APPROVE_SHIPMENTS,
+        CAPABILITIES.BOOK_CARRIERS,
+        CAPABILITIES.VIEW_DOCUMENTS,
+        CAPABILITIES.CREATE_SHIPMENTS,
+        CAPABILITIES.VIEW_OWN_SHIPMENTS,
+    ],
+    accounting: [
+        CAPABILITIES.VIEW_FINANCE,
+        CAPABILITIES.MANAGE_PAYMENTS,
+        CAPABILITIES.REVERSE_PAYMENTS,
+        CAPABILITIES.VIEW_ALL_SHIPMENTS,
+        CAPABILITIES.VIEW_OWN_SHIPMENTS,
+    ],
+    manager: [
+        CAPABILITIES.VIEW_FINANCE,
+        CAPABILITIES.VIEW_ALL_SHIPMENTS,
+        CAPABILITIES.APPROVE_SHIPMENTS,
+        CAPABILITIES.BOOK_CARRIERS,
+        CAPABILITIES.VIEW_DOCUMENTS,
+        CAPABILITIES.CREATE_SHIPMENTS,
+        CAPABILITIES.VIEW_OWN_SHIPMENTS,
+    ],
+    staff: [
+        CAPABILITIES.VIEW_FINANCE,
+        CAPABILITIES.VIEW_ALL_SHIPMENTS,
+        CAPABILITIES.APPROVE_SHIPMENTS,
+        CAPABILITIES.BOOK_CARRIERS,
+        CAPABILITIES.VIEW_DOCUMENTS,
+        CAPABILITIES.CREATE_SHIPMENTS,
+        CAPABILITIES.VIEW_OWN_SHIPMENTS,
+    ],
+    driver: [
+        CAPABILITIES.DRIVER_OPS,
+        CAPABILITIES.VIEW_OWN_SHIPMENTS,
+    ],
+    org_manager: [
+        CAPABILITIES.CREATE_SHIPMENTS,
+        CAPABILITIES.VIEW_OWN_SHIPMENTS,
+    ],
+    org_agent: [
+        CAPABILITIES.CREATE_SHIPMENTS,
+        CAPABILITIES.VIEW_OWN_SHIPMENTS,
+    ],
+    client: [
+        CAPABILITIES.CREATE_SHIPMENTS,
+        CAPABILITIES.VIEW_OWN_SHIPMENTS,
+    ],
+});
+
+/**
+ * Get capabilities for a role
+ * @param {string} role
+ * @returns {string[]}
+ */
+export function getCapabilitiesForRole(role) {
+    return ROLE_CAPABILITIES[role] || [];
+}
+
+/**
+ * Check if a role has a specific capability
+ * @param {string} role
+ * @param {string} capability
+ * @returns {boolean}
+ */
+export function hasCapability(role, capability) {
+    const caps = ROLE_CAPABILITIES[role];
+    if (!caps) return false;
+    return caps.includes(capability);
+}

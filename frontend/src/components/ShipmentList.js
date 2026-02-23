@@ -1,0 +1,506 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import styled, { keyframes } from 'styled-components';
+import { useNavigate } from 'react-router-dom';
+import { shipmentService } from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { useShipments } from '../utils/useShipments';
+import { TableWrapper, Table, Thead, Tbody, Tr, Th, Td, Button, Input, StatusPill } from '../ui';
+import { generateWaybillPDF } from '../utils/pdfGenerator';
+
+import { Menu, MenuItem, Divider, ListItemIcon, ListItemText } from '@mui/material';
+import DescriptionIcon from '@mui/icons-material/Description';
+import ReceiptIcon from '@mui/icons-material/Receipt';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import DeleteIcon from '@mui/icons-material/Delete';
+import LocalShippingIcon from '@mui/icons-material/LocalShipping';
+import AddIcon from '@mui/icons-material/Add';
+import SearchOffIcon from '@mui/icons-material/SearchOff';
+
+// --- Animations ---
+const shimmer = keyframes`
+  0% { background-position: -468px 0; }
+  100% { background-position: 468px 0; }
+`;
+
+// --- Styled Components ---
+
+const SkeletonBox = styled.div`
+  height: ${props => props.$height || '20px'};
+  width: ${props => props.$width || '100%'};
+  border-radius: 4px;
+  background: #1a2035;
+  background-image: linear-gradient(to right, #1a2035 0%, #2a3347 20%, #1a2035 40%, #1a2035 100%);
+  background-repeat: no-repeat;
+  background-size: 800px 104px;
+  animation: ${shimmer} 1.5s linear infinite forwards;
+`;
+
+const Toolbar = styled.div`
+  padding: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+`;
+
+const ResultsMeta = styled.div`
+  font-size: 13px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+`;
+
+const EmptyStateContainer = styled.div`
+  padding: 80px 24px;
+  text-align: center;
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  
+  svg {
+    font-size: 64px;
+    opacity: 0.2;
+    margin-bottom: 8px;
+  }
+`;
+
+const CounterGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+`;
+
+const CounterCard = styled.button`
+  background: var(--bg-secondary);
+  border: 1px solid ${props => props.$active ? props.$color : 'var(--border-color)'};
+  padding: 18px 20px;
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
+  display: grid;
+  gap: 6px;
+
+  &:hover {
+    transform: translateY(-2px);
+    border-color: ${props => props.$color};
+    box-shadow: 0 4px 20px -5px ${props => `${props.$color}33`};
+  }
+`;
+
+const CounterLabel = styled.span`
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+`;
+
+const CounterValue = styled.span`
+  font-family: 'Outfit', sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+`;
+
+const PaginationContainer = styled.div`
+  padding: 16px;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  background: var(--bg-secondary);
+  border-radius: 0 0 16px 16px;
+`;
+
+const PageBtn = styled.button`
+  background: ${props => props.$active ? 'var(--accent-primary)' : 'transparent'};
+  color: ${props => props.$active ? '#0a0e1a' : 'var(--text-secondary)'};
+  border: 1px solid ${props => props.$active ? 'var(--accent-primary)' : 'var(--border-color)'};
+  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-weight: 600;
+
+  &:hover:not(:disabled) {
+    border-color: var(--accent-primary);
+    color: ${props => props.$active ? '#0a0e1a' : 'var(--accent-primary)'};
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+`;
+
+const ACTIVE_STATUSES = ['created', 'in_transit', 'out_for_delivery'];
+const PENDING_STATUSES = ['draft', 'pending', 'updated', 'ready_for_pickup', 'picked_up'];
+
+const STATUS_GROUP_MAP = {
+  all: undefined,
+  pending: PENDING_STATUSES,
+  active: ACTIVE_STATUSES,
+  delivered: ['delivered']
+};
+
+const DEBOUNCE_MS = 350;
+
+const ShipmentList = () => {
+  const navigate = useNavigate();
+  const { isAuthenticated, user } = useAuth();
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState('all');
+  const [page, setPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
+
+  // Menu State
+  const [menuAnchorEl, setMenuAnchorEl] = useState(null);
+  const [activeShipment, setActiveShipment] = useState(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery.trim());
+      setPage(1); // Reset page on search
+    }, DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Data Fetching via SWR
+  const statusIn = STATUS_GROUP_MAP[viewMode];
+  const { shipments, pagination, loading, mutate } = useShipments({
+    page,
+    limit: ITEMS_PER_PAGE,
+    statusIn,
+    q: debouncedSearchQuery
+  });
+
+  const totalPages = Math.max(pagination.pages || 1, 1);
+  const hasFilters = Boolean(searchQuery) || viewMode !== 'all';
+
+  const getVisiblePages = () => {
+    const maxVisiblePages = 7;
+    if (totalPages <= maxVisiblePages) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+
+    const start = Math.max(1, page - 3);
+    const end = Math.min(totalPages, start + maxVisiblePages - 1);
+    const adjustedStart = Math.max(1, end - maxVisiblePages + 1);
+
+    return Array.from({ length: end - adjustedStart + 1 }, (_, i) => adjustedStart + i);
+  };
+
+  const visiblePages = getVisiblePages();
+  const counters = [
+    { id: 'all', label: 'All', count: viewMode === 'all' ? pagination.total : '—', color: '#00d9b8' },
+    { id: 'pending', label: 'Pending', count: viewMode === 'pending' ? pagination.total : '—', color: '#fbbf24' },
+    { id: 'active', label: 'In Transit (Active)', count: viewMode === 'active' ? pagination.total : '—', color: '#34d399' },
+    { id: 'delivered', label: 'Delivered', count: viewMode === 'delivered' ? pagination.total : '—', color: '#38bdf8' },
+  ];
+
+  // Handlers
+  const handleMenuOpen = (event, shipment) => {
+    event.stopPropagation();
+    setMenuAnchorEl(event.currentTarget);
+    setActiveShipment(shipment);
+  };
+
+  const handleMenuClose = () => {
+    setMenuAnchorEl(null);
+    setActiveShipment(null);
+  };
+
+  const handleDownloadLabel = async () => {
+    if (activeShipment) {
+      await generateWaybillPDF(activeShipment);
+    }
+    handleMenuClose();
+  };
+
+  const handleOpenPdf = (url) => {
+    if (!url) return;
+    if (url.startsWith('data:')) {
+      try {
+        const arr = url.split(',');
+        const mime = arr[0].match(/:(.*?);/)[1];
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        const blobUrl = URL.createObjectURL(blob);
+        window.open(blobUrl, '_blank');
+      } catch (e) {
+        console.error('Error opening PDF data URI:', e);
+        window.open(url, '_blank');
+      }
+    } else {
+      window.open(url, '_blank');
+    }
+    handleMenuClose();
+  };
+
+  const handleDelete = async () => {
+    if (!activeShipment) return;
+    if (window.confirm("Delete this shipment?")) {
+      await shipmentService.deleteShipment(activeShipment.trackingNumber);
+      mutate(); // Refresh SWR
+    }
+    handleMenuClose();
+  };
+
+  const handleApproveEdit = () => {
+    if (activeShipment) {
+      navigate(`/shipment/${activeShipment.trackingNumber}?action=approve`);
+    }
+    handleMenuClose();
+  };
+
+  const renderSkeleton = () => (
+    Array.from({ length: 5 }).map((_, i) => (
+      <Tr key={`skel-${i}`}>
+        <Td><SkeletonBox $width="120px" /><SkeletonBox $width="60px" style={{marginTop: '4px'}} /></Td>
+        <Td><SkeletonBox $width="140px" /></Td>
+        <Td><SkeletonBox $width="100px" /><SkeletonBox $width="80px" style={{marginTop: '4px'}} /></Td>
+        <Td><SkeletonBox $width="70px" $height="24px" /></Td>
+        <Td><SkeletonBox $width="80px" /></Td>
+        <Td style={{ textAlign: 'right' }}><SkeletonBox $width="60px" $height="32px" style={{marginLeft: 'auto'}} /></Td>
+      </Tr>
+    ))
+  );
+
+  return (
+    <div>
+      <CounterGrid>
+        {counters.map(counter => (
+          <CounterCard
+            key={counter.id}
+            type="button"
+            $active={viewMode === counter.id}
+            $color={counter.color}
+            onClick={() => { setViewMode(counter.id); setPage(1); }}
+          >
+            <CounterLabel>{counter.label}</CounterLabel>
+            <CounterValue>{counter.count}</CounterValue>
+          </CounterCard>
+        ))}
+      </CounterGrid>
+
+      {/* List Container */}
+      <div style={{ borderRadius: '16px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
+        {/* Search Bar */}
+        <Toolbar>
+          <div style={{ flex: 1, maxWidth: '400px' }}>
+            <Input
+              placeholder="Search by tracking number..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <ResultsMeta>
+            <span>
+              {loading ? 'Fetching...' : `Showing ${shipments.length} of ${pagination.total}`}
+            </span>
+            {hasFilters && (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setSearchQuery('');
+                  setViewMode('all');
+                  setPage(1);
+                }}
+                style={{ padding: '6px 12px', fontSize: '12px' }}
+              >
+                Clear filters
+              </Button>
+            )}
+          </ResultsMeta>
+        </Toolbar>
+
+        <TableWrapper style={{ border: 'none', borderRadius: 0 }}>
+          <Table>
+            <Thead>
+              <Tr>
+                <Th>Tracking Info</Th>
+                <Th>Route</Th>
+                <Th>Customer</Th>
+                <Th>Status</Th>
+                <Th>Est. Delivery</Th>
+                <Th style={{ textAlign: 'right' }}>Actions</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {loading ? renderSkeleton() : shipments.map(shipment => (
+                <Tr
+                  key={shipment._id}
+                  onClick={() => navigate(`/shipment/${shipment.trackingNumber}`)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <Td>
+                    <div style={{ fontWeight: '700', color: 'var(--text-primary)' }}>{shipment.trackingNumber}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{shipment.serviceCode || 'Standard'}</div>
+                  </Td>
+                  <Td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontWeight: '600' }}>{shipment.origin?.city}</span>
+                      <span style={{ color: 'var(--text-secondary)' }}>→</span>
+                      <span style={{ fontWeight: '600' }}>{shipment.destination?.city}</span>
+                    </div>
+                  </Td>
+                  <Td>
+                    <div>{shipment.customer?.name}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{shipment.customer?.phone}</div>
+                  </Td>
+                  <Td><StatusPill status={shipment.status} /></Td>
+                  <Td>{shipment.estimatedDelivery ? new Date(shipment.estimatedDelivery).toLocaleDateString() : '—'}</Td>
+                  <Td style={{ textAlign: 'right' }}>
+                    <Button
+                      variant="secondary"
+                      onClick={(e) => handleMenuOpen(e, shipment)}
+                      style={{ padding: '6px 12px', fontSize: '13px' }}
+                    >
+                      Actions
+                    </Button>
+                  </Td>
+                </Tr>
+              ))}
+              {!loading && shipments.length === 0 && (
+                <Tr>
+                  <Td colSpan="6" style={{ padding: 0 }}>
+                    <EmptyStateContainer>
+                      <SearchOffIcon />
+                      <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '18px' }}>No shipments found</div>
+                      <div style={{ maxWidth: '300px', marginBottom: '16px' }}>We couldn't find any shipments matching your current filters or search criteria.</div>
+                      <div style={{ display: 'flex', gap: '12px' }}>
+                        {hasFilters ? (
+                           <Button
+                            variant="secondary"
+                            onClick={() => {
+                              setSearchQuery('');
+                              setViewMode('all');
+                              setPage(1);
+                            }}
+                          >
+                            Clear search
+                          </Button>
+                        ) : (
+                          <Button onClick={() => navigate('/create')}>
+                            <AddIcon style={{fontSize: '18px', marginRight: '4px'}} /> Create First Shipment
+                          </Button>
+                        )}
+                      </div>
+                    </EmptyStateContainer>
+                  </Td>
+                </Tr>
+              )}
+            </Tbody>
+          </Table>
+        </TableWrapper>
+
+        {/* Mui Menu for Actions */}
+        <Menu
+          anchorEl={menuAnchorEl}
+          open={Boolean(menuAnchorEl)}
+          onClose={handleMenuClose}
+          PaperProps={{
+            style: {
+              background: 'var(--bg-tertiary)',
+              border: '1px solid var(--border-color)',
+              color: 'var(--text-primary)',
+              minWidth: '180px'
+            }
+          }}
+        >
+          <MenuItem onClick={handleDownloadLabel}>
+            <ListItemIcon><DescriptionIcon fontSize="small" sx={{ color: 'var(--text-secondary)' }} /></ListItemIcon>
+            <ListItemText>Label</ListItemText>
+          </MenuItem>
+
+          {activeShipment && (user?.role === 'admin' || user?.role === 'staff') && (
+            <div>
+              <Divider sx={{ my: 0.5, borderColor: 'var(--border-color)', opacity: 0.5 }} />
+              <div style={{ padding: '4px 16px', fontSize: '10px', color: 'var(--text-secondary)', textAlign: 'center', opacity: 0.7 }}>
+                {activeShipment.carrier?.toUpperCase() || 'CARRIER'}
+              </div>
+
+              <MenuItem
+                disabled={!activeShipment.labelUrl}
+                onClick={() => handleOpenPdf(activeShipment.labelUrl)}
+              >
+                <ListItemIcon><LocalShippingIcon fontSize="small" sx={{ color: 'var(--text-secondary)' }} /></ListItemIcon>
+                <ListItemText>AWB / Label</ListItemText>
+              </MenuItem>
+              <MenuItem
+                disabled={!activeShipment.invoiceUrl}
+                onClick={() => handleOpenPdf(activeShipment.invoiceUrl)}
+              >
+                <ListItemIcon><ReceiptIcon fontSize="small" sx={{ color: 'var(--text-secondary)' }} /></ListItemIcon>
+                <ListItemText>Invoice</ListItemText>
+              </MenuItem>
+              {['pending', 'draft', 'updated', 'ready_for_pickup', 'picked_up'].includes(activeShipment.status) && (
+                <MenuItem onClick={handleApproveEdit}>
+                  <ListItemIcon><CheckCircleIcon fontSize="small" sx={{ color: 'var(--text-secondary)' }} /></ListItemIcon>
+                  <ListItemText>Approve / Edit</ListItemText>
+                </MenuItem>
+              )}
+            </div>
+          )}
+
+          {activeShipment && ['pending', 'draft'].includes(activeShipment.status) && (
+            <div>
+              <Divider sx={{ my: 0.5, borderColor: 'var(--border-color)', opacity: 0.5 }} />
+              <MenuItem onClick={handleDelete} sx={{ color: 'var(--accent-error)' }}>
+                <ListItemIcon><DeleteIcon fontSize="small" sx={{ color: 'var(--accent-error)' }} /></ListItemIcon>
+                <ListItemText>Delete</ListItemText>
+              </MenuItem>
+            </div>
+          )}
+        </Menu>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <PaginationContainer>
+            <PageBtn disabled={page === 1} onClick={() => setPage(1)}>«</PageBtn>
+            <PageBtn disabled={page === 1} onClick={() => setPage(p => p - 1)}>&lt;</PageBtn>
+            {visiblePages[0] > 1 && (
+              <>
+                <PageBtn onClick={() => setPage(1)}>1</PageBtn>
+                {visiblePages[0] > 2 && <span style={{ padding: '0 6px', color: 'var(--text-secondary)' }}>…</span>}
+              </>
+            )}
+            {visiblePages.map(p => (
+              <PageBtn key={p} $active={p === page} onClick={() => setPage(p)}>{p}</PageBtn>
+            ))}
+            {visiblePages[visiblePages.length - 1] < totalPages && (
+              <>
+                {visiblePages[visiblePages.length - 1] < totalPages - 1 && <span style={{ padding: '0 6px', color: 'var(--text-secondary)' }}>…</span>}
+                <PageBtn onClick={() => setPage(totalPages)}>{totalPages}</PageBtn>
+              </>
+            )}
+            <PageBtn disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>&gt;</PageBtn>
+            <PageBtn disabled={page === totalPages} onClick={() => setPage(totalPages)}>»</PageBtn>
+          </PaginationContainer>
+        )}
+      </div>
+
+
+    </div>
+  );
+};
+
+export default ShipmentList;
