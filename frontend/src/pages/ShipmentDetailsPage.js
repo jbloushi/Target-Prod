@@ -399,18 +399,21 @@ const ShipmentDetailsPage = () => {
 
 
     // Capability and Status Checks
-    const isStaff = user?.role === 'admin' || user?.role === 'staff';
-    const isClient = user?.role === 'client';
-    const approvalStatuses = ['pending', 'draft', 'updated', 'ready_for_pickup', 'picked_up'];
-    const clientEditableStatuses = ['draft', 'pending', 'updated'];
-    const canApprove = (isStaff || user?.role === 'admin') && shipment && approvalStatuses.includes(shipment.status);
-    const canEdit = isClient && shipment && clientEditableStatuses.includes(shipment.status);
+    const role = user?.role;
+    const isStaff = role === 'admin' || role === 'staff';
+    const isOrgClient = ['client', 'org_manager', 'org_agent'].includes(role);
 
-    const canEditSection = (section) => {
-        if (!shipment) return false;
-        if (isStaff) return true;
-        return clientEditableStatuses.includes(shipment.status);
-    };
+    const approvalStatuses = ['pending', 'draft', 'updated', 'ready_for_pickup', 'picked_up'];
+    const staffEditableStatuses = ['draft', 'pending', 'updated', 'ready_for_pickup', 'picked_up', 'exception'];
+    const clientEditableStatuses = ['draft', 'pending', 'updated', 'ready_for_pickup', 'exception'];
+
+    const canApprove = isStaff && shipment && approvalStatuses.includes(shipment.status);
+    const canEdit = shipment && (
+        (isStaff && staffEditableStatuses.includes(shipment.status)) ||
+        (isOrgClient && clientEditableStatuses.includes(shipment.status))
+    );
+
+    const canEditSection = () => canEdit;
 
     useEffect(() => {
         const params = new URLSearchParams(location.search);
