@@ -1,7 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import styled from 'styled-components';
-// axios import removed
-import { useAuth } from '../../context/AuthContext';
 import { Select, Input, AddressPanel } from '../../ui';
 import Toggle from '../../ui/components/Toggle';
 
@@ -55,12 +53,10 @@ const ShipmentSetup = ({
     plannedDate, setPlannedDate,
     pickupRequired, setPickupRequired,
     errors,
-    isStaff, isAdmin, clients, selectedClient, onClientChange,
+    isStaff, clients, selectedClient, onClientChange,
     availableCarriers, selectedCarrier, onCarrierChange,
     requiredFields = { sender: [], receiver: [] }
 }) => {
-    const { user } = useAuth();
-
     // Inject saved addresses into sender/receiver state for the panel to use
     // Note: Ideally we pass 'savedAddresses' as a separate prop to AddressPanel
     // but AddressPanel expects values object. We can pass it via values.savedAddresses
@@ -85,9 +81,8 @@ const ShipmentSetup = ({
                         label="Create Shipment For (Client)"
                         value={selectedClient || ''}
                         onChange={(e) => onClientChange(e.target.value)}
-                        disabled={!isAdmin && isStaff}
                     >
-                        <option value="">Myself (Staff/Admin)</option>
+                        <option value="">Myself (Current User)</option>
                         {clients && clients.map((client) => (
                             <option key={client._id} value={client._id}>
                                 {client.name} {client.organization ? `(${client.organization.name})` : ''} - {client.email}
