@@ -320,6 +320,29 @@ const FinancePage = () => {
 
     const isFirstOrgLoad = useRef(true);
 
+    const getDefaultOrgSelection = useCallback((orgs = []) => {
+        if (user?.role === 'admin') {
+            return 'none';
+        }
+
+        if (user?.organization?._id) {
+            return user.organization._id;
+        }
+
+        return orgs[0]?._id || '';
+    }, [user?.role, user?.organization?._id]);
+
+
+    useEffect(() => {
+        if (selectedOrgId !== 'none') return;
+        if (user?.role === 'admin') return;
+
+        const fallbackOrgId = getDefaultOrgSelection(organizations);
+        if (fallbackOrgId && fallbackOrgId !== 'none') {
+            setSelectedOrgId(fallbackOrgId);
+        }
+    }, [selectedOrgId, user?.role, organizations, getDefaultOrgSelection]);
+
     useEffect(() => {
         const loadOrganizations = async () => {
             if (can('VIEW_FINANCE')) {
@@ -328,7 +351,10 @@ const FinancePage = () => {
                     const orgs = response.data || [];
                     setOrganizations(orgs);
                     if (isFirstOrgLoad.current && !selectedOrgId) {
-                        setSelectedOrgId('none');
+                        const initialOrgId = getDefaultOrgSelection(orgs);
+                        if (initialOrgId) {
+                            setSelectedOrgId(initialOrgId);
+                        }
                         isFirstOrgLoad.current = false;
                     }
                 } catch (error) {
@@ -521,9 +547,11 @@ const FinancePage = () => {
                                         value={selectedOrgId}
                                         onChange={(e) => setSelectedOrgId(e.target.value)}
                                     >
-                                        <option value="none" style={{ fontWeight: 'bold', color: 'var(--accent-primary)' }}>
-                                            Solo Shippers (Unorganized)
-                                        </option>
+                                        {user?.role === 'admin' && (
+                                            <option value="none" style={{ fontWeight: 'bold', color: 'var(--accent-primary)' }}>
+                                                Solo Shippers (Unorganized)
+                                            </option>
+                                        )}
                                         {organizations.map((org) => (
                                             <option key={org._id} value={org._id}>{org.name}</option>
                                         ))}

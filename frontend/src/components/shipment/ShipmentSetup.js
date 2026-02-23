@@ -1,7 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import styled from 'styled-components';
-// axios import removed
-import { useAuth } from '../../context/AuthContext';
 import { Select, Input, AddressPanel } from '../../ui';
 import Toggle from '../../ui/components/Toggle';
 
@@ -48,6 +46,23 @@ const StaffControls = styled.div`
   }
 `;
 
+const HelperText = styled.p`
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+`;
+
+const ContextBanner = styled.div`
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border-radius: var(--border-radius-base);
+  border: 1px solid var(--border-color);
+  background: rgba(59, 130, 246, 0.08);
+  color: var(--text-primary);
+  font-size: 13px;
+`;
+
 const ShipmentSetup = ({
     sender, setSender,
     receiver, setReceiver,
@@ -55,12 +70,10 @@ const ShipmentSetup = ({
     plannedDate, setPlannedDate,
     pickupRequired, setPickupRequired,
     errors,
-    isStaff, isAdmin, clients, selectedClient, onClientChange,
+    isStaff, clients, selectedClient, onClientChange,
     availableCarriers, selectedCarrier, onCarrierChange,
     requiredFields = { sender: [], receiver: [] }
 }) => {
-    const { user } = useAuth();
-
     // Inject saved addresses into sender/receiver state for the panel to use
     // Note: Ideally we pass 'savedAddresses' as a separate prop to AddressPanel
     // but AddressPanel expects values object. We can pass it via values.savedAddresses
@@ -78,22 +91,32 @@ const ShipmentSetup = ({
                 timeEstimate="5-8 min"
             /> */}
 
+            <ContextBanner>
+                {isStaff
+                    ? 'Staff mode: you can create for yourself or select a client to apply their profile and pricing policy.'
+                    : 'Client mode: shipment will be created under your account and organization.'}
+            </ContextBanner>
+
             {/* Staff Only Controls */}
             {isStaff && (
                 <StaffControls>
-                    <Select
-                        label="Create Shipment For (Client)"
-                        value={selectedClient || ''}
-                        onChange={(e) => onClientChange(e.target.value)}
-                        disabled={!isAdmin && isStaff}
-                    >
-                        <option value="">Myself (Staff/Admin)</option>
-                        {clients && clients.map((client) => (
-                            <option key={client._id} value={client._id}>
-                                {client.name} {client.organization ? `(${client.organization.name})` : ''} - {client.email}
-                            </option>
-                        ))}
-                    </Select>
+                    <div>
+                        <Select
+                            label="Create Shipment For (Client)"
+                            value={selectedClient || ''}
+                            onChange={(e) => onClientChange(e.target.value)}
+                        >
+                            <option value="">Myself (Current User)</option>
+                            {clients && clients.map((client) => (
+                                <option key={client._id} value={client._id}>
+                                    {client.name} {client.organization ? `(${client.organization.name})` : ''} - {client.email}
+                                </option>
+                            ))}
+                        </Select>
+                        <HelperText>
+                            Selecting a client autofills sender details and applies that client&apos;s pricing policy.
+                        </HelperText>
+                    </div>
 
                     <Select
                         label="Carrier Adapter"
