@@ -32,7 +32,7 @@ const ShipmentContent = ({
 
     const updateParcel = (index, field, val) => {
         const newParcels = [...parcels];
-        newParcels[index][field] = val;
+        newParcels[index] = { ...newParcels[index], [field]: val };
         setParcels(newParcels);
     };
 
