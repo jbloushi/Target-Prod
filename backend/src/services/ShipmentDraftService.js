@@ -82,6 +82,25 @@ class ShipmentDraftService {
         logger.debug(`ShipmentDraftService: Draft created with Tracking ${trackingNumber}, Org: ${shipmentData.organization}`);
         await shipment.save();
 
+        // 5. Accounting: Record Initial Snapshot (0-amount audit trail)
+        if (shipment.organization && snapshot.totalPrice > 0) {
+            const financeLedgerService = require('./financeLedger.service');
+            await financeLedgerService.createLedgerEntry(shipment.organization, {
+                sourceRepo: 'Shipment',
+                sourceId: shipment._id,
+                amount: 0,
+                entryType: 'DEBIT',
+                category: 'SHIPMENT_CHARGE',
+                description: `Initial Pre-booking Snapshot: ${trackingNumber} (Price: ${snapshot.totalPrice})`,
+                reference: trackingNumber,
+                createdBy: user?._id,
+                metadata: {
+                    event: 'DRAFT_CREATION',
+                    price: snapshot.totalPrice.toString()
+                }
+            });
+        }
+
         return shipment;
     }
 

@@ -10,6 +10,8 @@ import { useAuth } from '../../context/AuthContext';
 
 
 
+
+
 const Layout = () => {
   const { isAuthenticated, user } = useAuth();
   const location = useLocation();
@@ -43,7 +45,9 @@ const Layout = () => {
           flexGrow: 1,
           display: 'flex',
           flexDirection: 'column',
-          minWidth: 0 // Flexbox overflow fix
+          minWidth: 0, // Flexbox overflow fix
+          overflow: 'visible',
+          position: 'relative'
         }}>
           <Header />
 

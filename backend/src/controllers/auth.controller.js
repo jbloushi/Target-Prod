@@ -157,10 +157,6 @@ exports.protect = async (req, res, next) => {
 
 exports.generateApiKey = async (req, res) => {
     try {
-        if (req.user.role !== 'admin') {
-            return res.status(403).json({ success: false, error: 'Only admins can generate API keys' });
-        }
-
         const user = await User.findById(req.user.id);
         if (!user) {
             return res.status(404).json({ success: false, error: 'User not found' });

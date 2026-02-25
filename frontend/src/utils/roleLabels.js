@@ -1,7 +1,6 @@
 export const ROLE_LABELS = {
   admin: 'Platform Admin',
   staff: 'Platform Staff',
-  client: 'Organization Agent',
   driver: 'Driver',
   accounting: 'Accounting',
   manager: 'Manager',

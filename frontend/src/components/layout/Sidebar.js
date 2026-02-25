@@ -54,22 +54,22 @@ const Sidebar = () => {
 
     const menuItems = [
         { text: 'Dashboard', icon: <HomeIcon />, path: '/dashboard' },
-        { text: 'Analytics', icon: <AssessmentIcon />, path: '/analytics', disabled: true, tooltip: 'Coming Soon' },
-        { text: 'Calendar', icon: <CalendarMonthIcon />, path: '/calendar', disabled: true, tooltip: 'Coming Soon' },
+        { text: 'Analytics', icon: <AssessmentIcon />, path: '/analytics', adminAccountingOnly: true },
+        { text: 'Calendar', icon: <CalendarMonthIcon />, path: '/calendar', adminAccountingOnly: true },
         { text: 'Shipments', icon: <LocalShippingIcon />, path: '/shipments' },
         { text: 'Tracking', icon: <MapIcon />, path: '/tracking' },
-        { text: 'Warehouse', icon: <WarehouseIcon />, path: '/warehouse', disabled: true, tooltip: 'Coming Soon' },
-        { text: 'Fleets', icon: <DirectionsBusIcon />, path: '/fleets', disabled: true, tooltip: 'Coming Soon' },
+        { text: 'Warehouse', icon: <WarehouseIcon />, path: '/warehouse', adminAccountingOnly: true },
+        { text: 'Fleets', icon: <DirectionsBusIcon />, path: '/fleets', adminAccountingOnly: true },
         { text: 'User Management', icon: <PersonIcon />, path: '/admin/users', adminOnly: true },
         { text: 'Organizations', icon: <BusinessIcon />, path: '/admin/organizations', staffOnly: true },
         { text: 'Address Book', icon: <MenuBookIcon />, path: '/address-book', restricted: true },
-        { text: 'Drivers', icon: <PersonIcon />, path: '/drivers', disabled: true, restricted: true, tooltip: 'Coming Soon' },
+        { text: 'Drivers', icon: <PersonIcon />, path: '/drivers', adminAccountingOnly: true, restricted: true },
         { text: 'Finance & Credits', icon: <AccountBalanceWalletIcon />, path: '/finance', financeOnly: true },
     ];
 
     const utilityItems = [
-        { text: 'Message', icon: <MessageIcon />, path: '/messages', disabled: true, tooltip: 'Coming Soon' },
-        { text: 'Notification', icon: <NotificationsIcon />, path: '/notifications', disabled: true, tooltip: 'Coming Soon' },
+        { text: 'Message', icon: <MessageIcon />, path: '/messages', adminAccountingOnly: true },
+        { text: 'Notification', icon: <NotificationsIcon />, path: '/notifications', adminAccountingOnly: true },
         { text: 'Settings', icon: <SettingsIcon />, path: '/settings' },
     ];
 
@@ -126,9 +126,14 @@ const Sidebar = () => {
             <Box sx={{ overflow: 'auto', mt: 2, px: 2 }}>
                 <List>
                     {menuItems.map((item) => {
-                        // Basic role check
+                        // Role-based visibility and access
+                        const isAdmin = user?.role === 'admin';
+                        const isAccounting = user?.role === 'accounting';
+                        const isAdminOrAccounting = isAdmin || isAccounting;
+
+                        if (item.adminAccountingOnly && !isAdminOrAccounting) return null;
                         if (item.restricted && user?.role === 'driver') return null;
-                        if (item.adminOnly && user?.role !== 'admin') return null;
+                        if (item.adminOnly && !isAdmin) return null;
                         if (item.staffOnly && !['admin', 'staff', 'manager'].includes(user?.role)) return null;
                         if (item.financeOnly && !['admin', 'staff', 'accounting', 'manager'].includes(user?.role)) return null;
 
@@ -253,36 +258,45 @@ const Sidebar = () => {
                 <Divider sx={{ my: 2, opacity: 0.1 }} />
 
                 <List>
-                    {utilityItems.map((item) => (
-                        <ListItem key={item.text} disablePadding sx={{ mb: 1 }}>
-                            <Tooltip title={item.tooltip || ''} placement="right" arrow>
-                                <ListItemButton
-                                    component={item.disabled ? 'div' : NavLink}
-                                    to={item.disabled ? undefined : item.path}
-                                    selected={location.pathname === item.path}
-                                    disabled={item.disabled}
-                                    sx={{
-                                        borderRadius: 3,
-                                        color: 'text.secondary',
-                                        justifyContent: collapsed ? 'center' : 'flex-start',
-                                        '&.active': {
-                                            backgroundColor: theme.palette.primary.main, // Or a secondary color
-                                            color: theme.palette.primary.contrastText,
-                                        },
-                                    }}
-                                >
-                                    <ListItemIcon sx={{ minWidth: collapsed ? 'auto' : 40, color: 'inherit' }}>
-                                        {item.icon}
-                                    </ListItemIcon>
-                                    <ListItemText
-                                        primary={item.text}
-                                        sx={textStyles}
-                                        primaryTypographyProps={{ fontSize: '0.9rem', fontWeight: 500 }}
-                                    />
-                                </ListItemButton>
-                            </Tooltip>
-                        </ListItem>
-                    ))}
+                    {utilityItems.map((item) => {
+                        // Role-based visibility
+                        const isAdmin = user?.role === 'admin';
+                        const isAccounting = user?.role === 'accounting';
+                        const isAdminOrAccounting = isAdmin || isAccounting;
+
+                        if (item.adminAccountingOnly && !isAdminOrAccounting) return null;
+
+                        return (
+                            <ListItem key={item.text} disablePadding sx={{ mb: 1 }}>
+                                <Tooltip title={item.tooltip || ''} placement="right" arrow>
+                                    <ListItemButton
+                                        component={item.disabled ? 'div' : NavLink}
+                                        to={item.disabled ? undefined : item.path}
+                                        selected={location.pathname === item.path}
+                                        disabled={item.disabled}
+                                        sx={{
+                                            borderRadius: 3,
+                                            color: 'text.secondary',
+                                            justifyContent: collapsed ? 'center' : 'flex-start',
+                                            '&.active': {
+                                                backgroundColor: theme.palette.primary.main,
+                                                color: theme.palette.primary.contrastText,
+                                            },
+                                        }}
+                                    >
+                                        <ListItemIcon sx={{ minWidth: collapsed ? 'auto' : 40, color: 'inherit' }}>
+                                            {item.icon}
+                                        </ListItemIcon>
+                                        <ListItemText
+                                            primary={item.text}
+                                            sx={textStyles}
+                                            primaryTypographyProps={{ fontSize: '0.9rem', fontWeight: 500 }}
+                                        />
+                                    </ListItemButton>
+                                </Tooltip>
+                            </ListItem>
+                        );
+                    })}
                 </List>
             </Box>
         </Drawer>

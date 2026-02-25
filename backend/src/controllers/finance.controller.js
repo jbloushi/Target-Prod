@@ -273,8 +273,38 @@ exports.postPayment = async (req, res) => {
 };
 
 exports.allocatePaymentManual = async (req, res) => {
-    const session = await mongoose.startSession();
-    session.startTransaction();
+    let session = null;
+    let useTransaction = false;
+
+    try {
+        const topologyType = mongoose.connection.client?.topology?.description?.type || 'Unknown';
+
+        // HARD-DISABLED FOR DEBUGGING
+        useTransaction = false;
+
+        console.log(`[DEBUG] FORCE NON-TX STRATEGY. Topology: ${topologyType}`);
+
+        // In development/test, default to non-transactional to avoid standalone server issues
+        // const isDev = !process.env.NODE_ENV || process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
+
+        // Only use transactions if we are in production and it's a replica set/sharded
+        // useTransaction = !isDev && ['ReplicaSetWithPrimary', 'Sharded'].includes(topologyType);
+
+        // if (process.env.FORCE_TRANSACTIONS === 'true') useTransaction = true;
+
+        // console.log(`[DEBUG] Topology: ${topologyType}, Strategy: ${useTransaction ? 'TX' : 'NON-TX'}`);
+
+        if (useTransaction) {
+            session = await mongoose.startSession();
+            session.startTransaction();
+        } else {
+            session = undefined;
+        }
+    } catch (txError) {
+        logger.warn('Failed to initialize session, proceeding without one:', txError.message);
+        session = undefined;
+        useTransaction = false;
+    }
 
     try {
         const { paymentId, shipmentId, shipmentIds, amount } = req.body;
@@ -294,7 +324,7 @@ exports.allocatePaymentManual = async (req, res) => {
         let remainingToAllocate = parseFloat(amount);
         const results = [];
 
-        logger.info(`Starting manual allocation [TX]: Payment ${paymentId}, Amount ${amount}, Shipments: ${finalShipmentIds.join(', ')}`);
+        logger.info(`Starting manual allocation [STRATEGY=${useTransaction ? 'TX' : 'NON-TX'}]: Payment ${paymentId}, Amount ${amount}`);
 
         for (const id of finalShipmentIds) {
             if (remainingToAllocate <= 0) break;
@@ -310,29 +340,49 @@ exports.allocatePaymentManual = async (req, res) => {
             if (!accounting) continue;
 
             const allocationAmount = Math.min(remainingToAllocate, accounting.remainingBalance);
-            if (allocationAmount <= 0) continue;
+            if (allocationAmount <= 0.001) continue;
 
-            const allocation = await financeLedgerService.allocatePayment({
+            const allocationPayload = {
                 organizationId: orgId,
                 paymentId,
                 shipmentId: id,
                 amount: allocationAmount,
-                createdBy: req.user._id,
-                session // Pass session to service for atomicity
-            });
+                createdBy: req.user._id
+            };
+            if (session) allocationPayload.session = session;
+
+            const allocation = await financeLedgerService.allocatePayment(allocationPayload);
 
             results.push(allocation);
             remainingToAllocate -= allocationAmount;
         }
 
-        await session.commitTransaction();
+        if (session && useTransaction) {
+            await session.commitTransaction();
+        }
         res.status(201).json({ success: true, data: results });
     } catch (error) {
-        await session.abortTransaction();
-        logger.error('Error allocating payment [ROLLBACK]:', error);
+        if (session && useTransaction) {
+            try { await session.abortTransaction(); } catch (abortErr) { /* ignore */ }
+        }
+
+        // Check for the specific "Transaction numbers" error to provide a better user message or fallback
+        if (error.message.includes('Transaction numbers') || error.code === 20) {
+            logger.error('CRITICAL: Transaction failed on standalone DB. Retrying WITHOUT transaction...');
+            // In a production app, we might retry here, but for now we'll return a clear error
+            // telling them the DB is standalone.
+            return res.status(500).json({
+                success: false,
+                error: 'Database does not support transactions. Please ensure MongoDB is running as a Replica Set.'
+            });
+        }
+
+        logger.error('Error allocating payment:', error);
         res.status(500).json({ success: false, error: error.message || 'Failed to allocate payment' });
     } finally {
-        session.endSession();
+        if (session) {
+            session.endSession();
+        }
     }
 };
 

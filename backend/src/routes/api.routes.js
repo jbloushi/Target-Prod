@@ -8,7 +8,11 @@ router.use(validateApiKey);
 
 // Shipment Routes
 router.post('/shipments', apiController.createShipment);
+router.put('/shipments/:number', apiController.updateShipment);
 router.get('/tracking/:number', apiController.trackShipment);
+
+// Quote Routes
+router.post('/quotes', apiController.getQuotation);
 
 // Address Management Routes
 router.get('/addresses', apiController.getAddresses);

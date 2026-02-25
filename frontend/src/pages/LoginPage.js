@@ -231,7 +231,7 @@ const LoginPage = () => {
                                     Quick Login (Dev Only)
                                 </div>
                                 <QuickLoginGrid>
-                                    {['admin', 'staff', 'client', 'driver'].map((role) => (
+                                    {['admin', 'staff', 'org_manager', 'org_agent', 'driver'].map((role) => (
                                         <Button
                                             key={role}
                                             variant="secondary"

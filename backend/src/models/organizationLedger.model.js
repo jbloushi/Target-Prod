@@ -10,7 +10,7 @@ const organizationLedgerSchema = new mongoose.Schema({
     // Consolidation of references for better traceability
     sourceRepo: {
         type: String,
-        enum: ['Shipment', 'Payment', 'Adjustment', 'Reversal'],
+        enum: ['Shipment', 'Payment', 'Organization', 'Adjustment', 'Reversal'],
         required: true
     },
     sourceId: {

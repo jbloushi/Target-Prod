@@ -16,6 +16,13 @@ const normalizeApiUrl = (raw) => {
 
 const API_URL = normalizeApiUrl(process.env.REACT_APP_API_URL);
 
+// Derived from API_URL, removing the /api suffix if it exists
+export const BACKEND_URL = API_URL.endsWith('/api')
+  ? API_URL.slice(0, -4)
+  : API_URL;
+
+export { API_URL };
+
 const api = axios.create({
   baseURL: API_URL,
   headers: {

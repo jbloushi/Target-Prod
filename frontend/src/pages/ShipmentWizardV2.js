@@ -357,8 +357,8 @@ const AUTOFILL_SCENARIOS = {
 const WizardHeader = ({ activeStep, totalSteps, estimatedTime, onDevMenuClick, isStaff, isAdmin, title, steps }) => (
     <Box
         position="sticky"
-        top={0}
-        zIndex={1100}
+        top="70px"
+        zIndex={500}
         bgcolor="#0a0e1a"
         borderBottom="1px solid #2a3347"
         py={3}
@@ -469,7 +469,7 @@ const ShipmentWizardV2 = () => {
     const { trackingNumber: editTrackingNumber } = useParams();
     const isEditMode = Boolean(editTrackingNumber);
     const { enqueueSnackbar } = useSnackbar();
-    const { user, refreshUser, can } = useAuth();
+    const { isAuthenticated, user, isStaff, isAdmin, isAccountant, refreshUser, can } = useAuth();
 
     const [activeStep, setActiveStep] = useState(0);
     const [loading, setLoading] = useState(false);
@@ -556,7 +556,8 @@ const ShipmentWizardV2 = () => {
     };
 
     // Staff/Admin Features
-    const { isStaff, isAdmin, isAccountant } = useAuth();
+    // Staff/Admin Features (already destructured above)
+
 
     // Determine if Approval Step should be shown
     // Must be in edit mode, user must have approval/booking capability,
@@ -840,9 +841,8 @@ const ShipmentWizardV2 = () => {
                         serviceName: quote.serviceName,
                         serviceCode: quote.serviceCode,
                         totalPrice: quote.totalPrice,
-                        basePrice: quote.carrierCost || quote.basePrice || quote.carrierRate,
+                        basePrice: quote.basePrice,
                         markupLabel: quote.markupLabel,
-                        rawPrice: quote.carrierCost || quote.carrierRate || quote.rawPrice,
                         markupAmount: quote.markupAmount,
                         currency: quote.currency,
                         deliveryDate: quote.deliveryDate
@@ -1111,6 +1111,12 @@ const ShipmentWizardV2 = () => {
         let isValid = true;
 
         if (step === 0) {
+            // Staff must select a client
+            if (isStaff && !selectedClient) {
+                newErrors.client = 'You must select a client to create a shipment on their behalf';
+                isValid = false;
+            }
+
             // Sender basic
             if (!sender.contactPerson) newErrors.senderContact = 'Contact Person required';
             if (!sender.phone) newErrors.senderPhone = 'Phone number required';
@@ -1265,8 +1271,8 @@ const ShipmentWizardV2 = () => {
                 packagingType,
                 exportReason,
                 remarks: invoiceRemarks,
-                // Assign to selected client if staff
-                userId: selectedClient || user._id,
+                // Assign to selected client if staff, otherwise to self (client/org_agent)
+                userId: isStaff ? selectedClient : (user._id),
                 // Pass new fields
                 gstPaid,
                 payerOfVat,
@@ -1459,13 +1465,13 @@ const ShipmentWizardV2 = () => {
         rf.receiver.forEach(field => {
             if (isFieldMissing(receiver, field)) {
                 const label = field.charAt(0).toUpperCase() + field.slice(1).replace(/([A-Z])/g, ' $1');
-                missingFields.push(`Receiver ${label}`);
+                missingFields.push(`Consignee ${label}`);
             }
         });
 
         // Styles
         const SectionHeader = ({ icon, title, onEdit }) => (
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} sx={{ color: 'primary.main' }}>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={1} sx={{ color: 'primary.main' }}>
                 <Box display="flex" alignItems="center" gap={1}>
                     {icon}
                     <Typography variant="h6" fontWeight="bold">{title}</Typography>
@@ -1499,7 +1505,7 @@ const ShipmentWizardV2 = () => {
                     <Box mt={1}>
                         <Typography variant="subtitle1" fontWeight="bold">{data.company}</Typography>
                         <Typography variant="body2">{data.contact}</Typography>
-                        <Divider sx={{ my: 1.5 }} />
+                        <Divider sx={{ my: 1 }} />
                         <Box display="flex" alignItems="center" gap={1} mb={0.5}>
                             <DescriptionIcon fontSize="small" color="action" />
                             <Typography variant="body2">{data.building} {data.street}</Typography>
@@ -1511,7 +1517,7 @@ const ShipmentWizardV2 = () => {
                         <Box display="flex" alignItems="center" gap={1}>
                             <Typography variant="body2" fontWeight="bold">{data.country}</Typography>
                         </Box>
-                        <Divider sx={{ my: 1.5 }} />
+                        <Divider sx={{ my: 1 }} />
                         <Typography variant="caption" display="block">Phone: {data.phone}</Typography>
                         <Typography variant="caption" display="block">Email: {data.email}</Typography>
                         <Typography variant="caption" display="block" color="primary">Ref: {data.reference}</Typography>
@@ -1534,10 +1540,10 @@ const ShipmentWizardV2 = () => {
                             />
                             <Grid container spacing={3}>
                                 <Grid item xs={12} md={6}>
-                                    <AddressCard title="FROM (SHIPPER)" data={s} />
+                                    <AddressCard title="SHIPPER (FROM)" data={s} />
                                 </Grid>
                                 <Grid item xs={12} md={6}>
-                                    <AddressCard title="TO (RECEIVER)" data={r} />
+                                    <AddressCard title="CONSIGNEE (TO)" data={r} />
                                 </Grid>
                             </Grid>
                         </Box>
@@ -1677,8 +1683,8 @@ const ShipmentWizardV2 = () => {
                                     <Typography variant="body2" fontWeight="bold">{optionalServicesTotal.toFixed(3)} KD</Typography>
                                 </Box>
 
-                                {/* Admin Markup Analysis - Accountant/Admin Only */}
-                                {(isAccountant || isAdmin) && selectedClient && (
+                                {/* Admin Markup Analysis - Staff/Admin Only */}
+                                {(isAdmin || isStaff || isAccountant) && selectedClient && (
                                     <Box mt={2} pt={2} borderTop={1} borderColor="rgba(255,255,255,0.2)">
                                         <Typography variant="overline" sx={{ opacity: 0.8, display: 'block', mb: 1 }}>
                                             ADMIN MARKUP ANALYSIS
@@ -1704,23 +1710,13 @@ const ShipmentWizardV2 = () => {
                                             );
                                         })()}
 
-                                        {/* Dynamic Markup Calculation Failsafe */}
+                                        {/* Standardized Markup Analysis */}
                                         {(() => {
                                             const client = clients.find(c => c._id === selectedClient);
-                                            // Backend Logic: User Markup overrides Organization Markup
                                             const config = client?.markup || client?.organization?.markup || { type: 'DEFAULT', value: 15 };
 
-                                            // Failsafe: if rawPrice is missing/zero, derive it
-                                            const clientTotal = estimatedShipmentTotal - optionalServicesTotal;
-                                            let base = selectedService.rawPrice ? Number(selectedService.rawPrice) : 0;
-                                            let addon = selectedService.markupAmount ? Number(selectedService.markupAmount) : (clientTotal - base);
-
-                                            // Only if base is suspiciously 0, try to reverse-engineer (simple cases only)
-                                            if (base <= 0.001 && clientTotal > 0) {
-                                                if (config.type === 'FLAT') base = clientTotal - (Number(config.value || config.flatValue || 0));
-                                                else if (config.type === 'PERCENTAGE') base = clientTotal / (1 + (Number(config.value || config.percentageValue || 0) / 100));
-                                                // Combined is harder to reverse reliably without one known var
-                                            }
+                                            const base = Number(selectedService.basePrice || 0);
+                                            const addon = Number(selectedService.markupAmount || 0);
 
                                             // Formatting Helper
                                             const fmt = (n) => Number(n || 0).toFixed(3);
@@ -1731,9 +1727,9 @@ const ShipmentWizardV2 = () => {
                                                         <Typography variant="caption">Calculation:</Typography>
                                                         <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
                                                             {config.type === 'FLAT' && `${fmt(base)} + (Flat ${config.value || config.flatValue})`}
-                                                            {config.type === 'PERCENTAGE' && `${fmt(base)} + (${fmt(base)} × ${config.value || config.percentageValue}%)`}
+                                                            {(config.type === 'PERCENTAGE' || config.type === 'DEFAULT') && `${fmt(base)} + (${fmt(base)} × ${config.value || config.percentageValue || 15}%)`}
                                                             {config.type === 'COMBINED' && `(${fmt(base)} × ${config.percentageValue}%) + ${config.flatValue}`}
-                                                            {!['FLAT', 'PERCENTAGE', 'COMBINED'].includes(config.type) && `${fmt(base)} + ${fmt(addon)}`}
+                                                            {!['FLAT', 'PERCENTAGE', 'COMBINED', 'DEFAULT'].includes(config.type) && `${fmt(base)} + ${fmt(addon)}`}
                                                         </Typography>
                                                     </Box>
 

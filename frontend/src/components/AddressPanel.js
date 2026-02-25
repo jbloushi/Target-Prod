@@ -62,7 +62,7 @@ const AddressPanel = ({
     const [savedAddresses, setSavedAddresses] = React.useState([]);
 
     const isSender = type === 'sender';
-    const title = titleOverride || (isSender ? 'SHIPPER (From)' : 'RECEIVER (To)');
+    const title = titleOverride || (isSender ? 'SHIPPER (From)' : 'CONSIGNEE (To)');
     const icon = isSender ? <LocalShippingIcon /> : <PersonIcon />;
     const color = isSender ? 'primary.main' : 'secondary.main';
 
@@ -153,7 +153,7 @@ const AddressPanel = ({
                 </Box>
                 <Box>
                     {onCopy && (
-                        <Tooltip title="Copy to Receiver">
+                        <Tooltip title="Copy to Consignee">
                             <IconButton onClick={onCopy} size="small">
                                 <ContentCopyIcon fontSize="small" />
                             </IconButton>
@@ -349,7 +349,7 @@ const AddressPanel = ({
                         <TextField
                             fullWidth
                             required={isFieldRequired('reference')}
-                            label={isSender ? "Shipper Reference" : "Receiver Reference"}
+                            label={isSender ? "Shipper Reference" : "Consignee Reference"}
                             value={value.reference || ''}
                             onChange={(e) => updateField('reference', e.target.value)}
                             disabled={disabled}
@@ -362,7 +362,7 @@ const AddressPanel = ({
                     <Grid item xs={6}>
                         <TextField
                             fullWidth
-                            label={isSender ? "Sender VAT Number" : "Receiver VAT Number"}
+                            label={isSender ? "Shipper VAT Number" : "Consignee VAT Number"}
                             value={value.vatNumber || ''}
                             onChange={(e) => updateField('vatNumber', e.target.value)}
                             disabled={disabled}

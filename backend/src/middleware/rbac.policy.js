@@ -27,6 +27,7 @@ const CAPABILITIES = Object.freeze({
     // Shared
     CREATE_SHIPMENTS: 'CREATE_SHIPMENTS',
     VIEW_OWN_SHIPMENTS: 'VIEW_OWN_SHIPMENTS',
+    GENERATE_API_KEY: 'GENERATE_API_KEY',
 
     // Driver
     DRIVER_OPS: 'DRIVER_OPS',
@@ -61,6 +62,10 @@ const ROLE_CAPABILITIES = Object.freeze({
         CAPABILITIES.MANAGE_PAYMENTS,
         CAPABILITIES.REVERSE_PAYMENTS,
         CAPABILITIES.VIEW_ALL_SHIPMENTS,
+        CAPABILITIES.APPROVE_SHIPMENTS,
+        CAPABILITIES.BOOK_CARRIERS,
+        CAPABILITIES.VIEW_DOCUMENTS,
+        CAPABILITIES.CREATE_SHIPMENTS,
         CAPABILITIES.VIEW_OWN_SHIPMENTS,
     ],
 
@@ -86,35 +91,32 @@ const ROLE_CAPABILITIES = Object.freeze({
 
     driver: [
         CAPABILITIES.DRIVER_OPS,
+        CAPABILITIES.VIEW_ALL_SHIPMENTS,
         CAPABILITIES.VIEW_OWN_SHIPMENTS,
     ],
 
     org_manager: [
         CAPABILITIES.CREATE_SHIPMENTS,
         CAPABILITIES.VIEW_OWN_SHIPMENTS,
+        CAPABILITIES.GENERATE_API_KEY,
     ],
 
     org_agent: [
         CAPABILITIES.CREATE_SHIPMENTS,
         CAPABILITIES.VIEW_OWN_SHIPMENTS,
-    ],
-
-    // Legacy role — treated same as org_agent
-    client: [
-        CAPABILITIES.CREATE_SHIPMENTS,
-        CAPABILITIES.VIEW_OWN_SHIPMENTS,
+        CAPABILITIES.GENERATE_API_KEY,
     ],
 });
 
 /**
  * Roles that can see data across all organizations (platform-level visibility).
  */
-const PLATFORM_ROLES = Object.freeze(['admin', 'accounting', 'manager', 'staff']);
+const PLATFORM_ROLES = Object.freeze(['admin', 'accounting', 'manager', 'staff', 'driver']);
 
 /**
  * Roles scoped to their own organization's data.
  */
-const ORG_ROLES = Object.freeze(['org_manager', 'org_agent', 'client']);
+const ORG_ROLES = Object.freeze(['org_manager', 'org_agent']);
 
 /**
  * Check if a role has a specific capability.

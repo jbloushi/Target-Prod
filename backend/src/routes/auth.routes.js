@@ -6,7 +6,7 @@ const { authorize } = require('../middleware/authorize.middleware');
 router.post('/signup', authController.signup);
 router.post('/login', authController.login);
 router.post('/request-otp', authController.requestOtp);
-router.post('/api-key', authController.protect, authorize('MANAGE_CARRIERS'), authController.generateApiKey);
+router.post('/api-key', authController.protect, authorize('GENERATE_API_KEY'), authController.generateApiKey);
 
 // Staff management
 router.get('/users', authController.protect, authorize('VIEW_ALL_SHIPMENTS'), authController.getAllUsers);

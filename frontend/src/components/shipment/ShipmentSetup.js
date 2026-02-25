@@ -82,12 +82,11 @@ const ShipmentSetup = ({
             {isStaff && (
                 <StaffControls>
                     <Select
-                        label="Create Shipment For (Client)"
+                        label="Create Shipment For (Organization)"
                         value={selectedClient || ''}
                         onChange={(e) => onClientChange(e.target.value)}
-                        disabled={!isAdmin && isStaff}
                     >
-                        <option value="">Myself (Staff/Admin)</option>
+                        <option value="">Select an Organization...</option>
                         {clients && clients.map((client) => (
                             <option key={client._id} value={client._id}>
                                 {client.name} {client.organization ? `(${client.organization.name})` : ''} - {client.email}

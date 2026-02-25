@@ -57,10 +57,14 @@ exports.getQuotes = async (req, res) => {
             }));
             const estimatedShipmentCost = Number(calculation.finalPrice.toFixed(3));
             return {
-                ...quote, totalPrice: estimatedShipmentCost, estimatedShipmentCost, optionalServices,
-                currency: quote.currency || 'KWD', pricingPolicySource: policySource,
-                carrierCost: ['admin', 'accounting', 'staff'].includes(req.user.role) ? basePrice : undefined,
-                markupAmount: ['admin', 'accounting', 'staff'].includes(req.user.role) ? calculation.markupAmount : undefined
+                ...quote,
+                totalPrice: estimatedShipmentCost,
+                estimatedShipmentCost,
+                optionalServices,
+                currency: quote.currency || 'KWD',
+                pricingPolicySource: policySource,
+                basePrice: basePrice, // Always expose for calculation breakdown
+                markupAmount: calculation.markupAmount // Always expose for calculation breakdown
             };
         });
 

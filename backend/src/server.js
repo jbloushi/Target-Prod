@@ -110,18 +110,6 @@ if (rateLimitEnabled) {
   logger.info('Rate limiting is disabled');
 }
 
-// Health Check
-app.get('/health', (req, res) => {
-  const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-  res.status(200).json({
-    status: 'ok',
-    timestamp: new Date(),
-    uptime: process.uptime(),
-    database: dbStatus
-  });
-});
-
-app.use('/uploads', express.static('uploads'));
 
 // Body parser middleware
 app.use(express.json({ limit: '10kb' }));
@@ -220,19 +208,18 @@ const startServer = async () => {
     await connectDB();
 
     // Run seed in development to populate In-Memory DB
-    console.log('DEBUG: NODE_ENV is', process.env.NODE_ENV);
     if (process.env.NODE_ENV === 'development') {
-      logger.info('Running startup dataseeding...');
-      await seedDemoData();
+      console.log('Running startup dataseeding...');
+      seedDemoData().catch(err => console.error('Seeding failed:', err));
     }
 
     // Start Express server
-    server = app.listen(port, () => {
+    const serverInstance = app.listen(port, () => {
       logger.info(`Server running in ${process.env.NODE_ENV} mode on port ${port}`);
     });
     console.log('Called app.listen');
 
-    server.on('error', (error) => {
+    serverInstance.on('error', (error) => {
       if (error.code === 'EADDRINUSE') {
         logger.error(`Port ${port} is already in use. Please stop other processes.`);
         process.exit(1);
@@ -244,7 +231,7 @@ const startServer = async () => {
     // Handle server shutdown
     const gracefulShutdown = async () => {
       logger.info('Shutting down server...');
-      server.close(async () => {
+      serverInstance.close(async () => {
         logger.info('Express server closed');
         try {
           await mongoose.connection.close();

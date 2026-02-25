@@ -147,7 +147,7 @@ router.get(
   shipmentController.getShipmentRouteDistance
 );
 
-// Generate Shipment Label
+// Generate Shipment Label (Internal/HTML)
 router.get(
   '/:trackingNumber/label',
   [
@@ -155,6 +155,17 @@ router.get(
     validate
   ],
   shipmentController.generateLabel
+);
+
+// Serve Shipment Document (Secure/Hosted PDF)
+router.get(
+  '/:trackingNumber/documents/:filename',
+  [
+    param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
+    param('filename').isString().notEmpty().withMessage('Valid filename is required'),
+    validate
+  ],
+  shipmentController.serveDocument
 );
 
 // Update shipment location manually

@@ -235,7 +235,7 @@ const shipmentSchema = new mongoose.Schema({
     expiresAt: Date,
     policySource: {
       type: String,
-      enum: ['org_default', 'org_carrier', 'agent_default', 'agent_carrier', 'system_fallback'],
+      enum: ['org_default', 'org_carrier', 'agent_default', 'agent_carrier', 'user_default', 'platform_default', 'system_fallback'],
       default: 'org_default'
     },
     rulesVersion: { type: String, default: 'v1' }

@@ -112,7 +112,7 @@ const ShipmentBilling = ({
                                 label="Incoterm (Who pays duties?)"
                                 onChange={(e) => setIncoterm(e.target.value)}
                             >
-                                <MenuItem value="DAP">DAP (Receiver pays duties)</MenuItem>
+                                <MenuItem value="DAP">DAP (Consignee pays duties)</MenuItem>
                                 <MenuItem value="DDP">DDP (Shipper pays duties)</MenuItem>
                                 <MenuItem value="EXW">EXW (Ex Works)</MenuItem>
                             </Select>
@@ -126,7 +126,7 @@ const ShipmentBilling = ({
                                 label="Payer of VAT/GST"
                                 onChange={(e) => setPayerOfVat(e.target.value)}
                             >
-                                <MenuItem value="receiver">Receiver</MenuItem>
+                                <MenuItem value="receiver">Consignee</MenuItem>
                                 <MenuItem value="shipper">Shipper</MenuItem>
                             </Select>
                         </FormControl>

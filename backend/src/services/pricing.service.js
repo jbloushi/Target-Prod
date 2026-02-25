@@ -130,19 +130,24 @@ class PricingService {
             if (m.type && (m.percentageValue || m.flatValue || m.formula)) return { markup: m, source: 'agent_default' };
         }
 
-        // 3. Org Carrier Override
+        // 3. User/Client Markup (Legacy/Direct)
+        if (user?.markup && user.markup.type && (user.markup.percentageValue || user.markup.flatValue || user.markup.value)) {
+            return { markup: user.markup, source: 'user_default' };
+        }
+
+        // 4. Org Carrier Override
         if (organization?.markup?.byCarrier?.[carrierCode]) {
             const m = organization.markup.byCarrier[carrierCode];
             if (m.type && (m.percentageValue || m.flatValue)) return { markup: m, source: 'org_carrier' };
         }
 
-        // 4. Org Default
+        // 5. Org Default
         if (organization?.markup) return { markup: organization.markup, source: 'org_default' };
 
-        // 5. System Default Fallback
+        // 6. System Default Fallback
         return {
             markup: { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 },
-            source: 'system_fallback'
+            source: 'platform_default'
         };
     }
 

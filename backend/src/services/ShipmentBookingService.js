@@ -176,7 +176,7 @@ class ShipmentBookingService {
 
         const selectedQuote = quotes.find((q) => q.serviceCode === shipment.serviceCode) || quotes[0];
         const { markup, source } = PricingService.resolveMarkup(payingUser, organization, carrierCode);
-        
+
         const snapshot = PricingService.createSnapshot(
             Number(selectedQuote.totalPrice || 0),
             markup,

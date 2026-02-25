@@ -102,7 +102,7 @@ const AdminUsersPage = () => {
 
         // Init Form Data
         const initialData = user ? { ...user } : {
-            role: 'client',
+            role: 'org_agent',
             carrierConfig: { preferredCarrier: 'DGR', traderType: 'business' },
             markup: { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 }
         };
@@ -199,7 +199,6 @@ const AdminUsersPage = () => {
                         onChange={(e) => setRoleFilter(e.target.value)}
                     >
                         <option value="">All Roles</option>
-                        <option value="client">Organization Agent</option>
                         <option value="staff">Platform Staff</option>
                         <option value="admin">Platform Admin</option>
                         <option value="driver">Driver</option>
@@ -314,15 +313,14 @@ const AdminUsersPage = () => {
                             <Input label="Email *" type="email" value={formData.email || ''} onChange={e => updateField('email', e.target.value)} />
                             <Input label="Phone" value={formData.phone || ''} onChange={e => updateField('phone', e.target.value)} />
 
-                            <Select label="Role" value={formData.role || 'client'} onChange={e => updateField('role', e.target.value)}>
-                                <option value="client">Client</option>
+                            <Select label="Role" value={formData.role || 'org_agent'} onChange={e => updateField('role', e.target.value)}>
                                 <option value="staff">Staff</option>
                                 <option value="admin">Admin</option>
                                 <option value="driver">Driver</option>
-                        <option value="manager">Manager</option>
-                        <option value="accounting">Accounting</option>
-                        <option value="org_manager">Organization Manager</option>
-                        <option value="org_agent">Organization Agent</option>
+                                <option value="manager">Manager</option>
+                                <option value="accounting">Accounting</option>
+                                <option value="org_manager">Organization Manager</option>
+                                <option value="org_agent">Organization Agent</option>
                             </Select>
 
                             {!editingUser && (

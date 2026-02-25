@@ -186,7 +186,7 @@ const GoogleAddressInput = ({
         try {
             let addressData;
 
-            if (selectedOption.prediction?.toPlace) {
+            if (selectedOption.prediction && typeof selectedOption.prediction.toPlace === 'function') {
                 const place = selectedOption.prediction.toPlace();
                 await place.fetchFields({
                     fields: ['formattedAddress', 'location', 'addressComponents']
@@ -204,7 +204,10 @@ const GoogleAddressInput = ({
                     validationStatus: 'CONFIRMED'
                 };
             } else {
+                // Fallback for older API or AutocompleteService predictions
                 const results = await getGeocode({ address: selectedOption.description });
+                if (!results || results.length === 0) throw new Error('No geocode results found');
+
                 const { lat, lng } = await getLatLng(results[0]);
                 const mapped = mapPlaceComponentsToAddress(results[0]?.address_components || []);
 

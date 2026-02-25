@@ -234,11 +234,11 @@ const Header = () => {
             open={Boolean(anchorElUser)}
             onClose={handleCloseUserMenu}
           >
-            <MenuItem component={RouterLink} to="/settings" onClick={handleCloseUserMenu}>
+            <MenuItem component={RouterLink} to="/profile" onClick={handleCloseUserMenu}>
               <ListItemIcon>
-                <SettingsIcon fontSize="small" />
+                <PersonIcon fontSize="small" />
               </ListItemIcon>
-              <Typography textAlign="center">Settings</Typography>
+              <Typography textAlign="center">Profile</Typography>
             </MenuItem>
             <Divider />
             <MenuItem onClick={() => { handleCloseUserMenu(); logout(); }}>

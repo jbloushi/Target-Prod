@@ -51,6 +51,7 @@ exports.getShipmentStats = async (req, res) => {
 
         const result = {
             total: 0,
+            drafts: 0,
             pending: 0,
             pickedUp: 0,
             inTransit: 0,
@@ -61,7 +62,8 @@ exports.getShipmentStats = async (req, res) => {
 
         stats.forEach(s => {
             result.total += s.count;
-            if (['pending', 'ready_for_pickup', 'draft', 'updated'].includes(s._id)) result.pending += s.count;
+            if (s._id === 'draft') result.drafts += s.count;
+            else if (['pending', 'ready_for_pickup', 'updated'].includes(s._id)) result.pending += s.count;
             else if (s._id === 'picked_up') result.pickedUp += s.count;
             else if (['in_transit', 'out_for_delivery'].includes(s._id)) result.inTransit += s.count;
             else if (s._id === 'delivered') result.delivered += s.count;
@@ -177,8 +179,8 @@ exports.getAllShipments = async (req, res) => {
         const canViewDocs = hasCapability(req.user.role, 'VIEW_DOCUMENTS');
         const summaryView = summary === 'true' || summary === '1' || summary === true;
         const summaryFields = canViewDocs
-            ? '_id trackingNumber status createdAt estimatedDelivery serviceCode origin.city destination.city customer.name customer.phone labelUrl invoiceUrl carrier dhlConfirmed paid totalPaid remainingBalance pricingSnapshot.totalPrice price'
-            : '_id trackingNumber status createdAt estimatedDelivery serviceCode origin.city destination.city customer.name customer.phone carrier dhlConfirmed paid totalPaid remainingBalance pricingSnapshot.totalPrice price';
+            ? '_id trackingNumber status createdAt estimatedDelivery serviceCode origin.city destination.city customer.name customer.phone labelUrl invoiceUrl carrier dhlConfirmed paid totalPaid remainingBalance pricingSnapshot.totalPrice price organization user'
+            : '_id trackingNumber status createdAt estimatedDelivery serviceCode origin.city destination.city customer.name customer.phone carrier dhlConfirmed paid totalPaid remainingBalance pricingSnapshot.totalPrice price organization user';
         const projection = summaryView ? summaryFields : '-__v -history -bookingAttempts -documents';
 
         const countPromise = Object.keys(query).length === 0
@@ -189,7 +191,7 @@ exports.getAllShipments = async (req, res) => {
         let totalCount;
         try {
             const shipmentQuery = Shipment.find(query).sort(sortOptions).skip(skip).limit(limitValue).select(projection).lean();
-            if (!summaryView) shipmentQuery.populate('user', 'name email role organization');
+            shipmentQuery.populate('user', 'name email role organization').populate('organization', 'name');
             [shipments, totalCount] = await Promise.all([shipmentQuery, countPromise]);
         } catch (fetchError) {
             if (fetchError.name === 'MongoNetworkError' || fetchError.name === 'MongoTimeoutError' || (fetchError.message && fetchError.message.includes('connection'))) {
@@ -276,15 +278,14 @@ exports.updateShipment = async (req, res) => {
         const allowedFields = ['destination', 'origin', 'items', 'parcels', 'incoterm', 'currency', 'dangerousGoods', 'serviceCode', 'currentLocation', 'price', 'markup', 'pickupRequest', 'customer', 'status', 'allowPublicLocationUpdate', 'allowPublicInfoUpdate'];
 
         // --- Dynamic Re-rating & Ledger Adjustment Logic ---
-        // Check for critical changes on BOOKED shipments
+        // Check for critical changes
         const isBooked = shipment.dhlConfirmed === true;
-        const needsRerating = isBooked && hasCriticalChanges(shipment.toObject(), updates);
+        const criticalChanges = hasCriticalChanges(shipment.toObject(), updates);
 
-        if (needsRerating) {
-            logger.info(`Critical changes detected for booked shipment ${trackingNumber}. Initiating Re-rating.`);
+        if (criticalChanges) {
+            logger.info(`Critical changes detected for shipment ${trackingNumber} (Booked: ${isBooked}). Initiating Re-rating.`);
             try {
                 // 1. Merge updates into a temporary object to get the "New State" for rating
-                // We don't save yet.
                 const tempShipment = shipment.toObject();
                 Object.keys(updates).forEach(key => { if (allowedFields.includes(key)) tempShipment[key] = updates[key]; });
 
@@ -311,9 +312,9 @@ exports.updateShipment = async (req, res) => {
                 const PricingService = require('../services/pricing.service');
                 const targetUser = await User.findById(shipment.user).populate('organization');
                 const organization = targetUser.organization;
-                const carrierCode = (tempShipment.carrier || 'DGR').toUpperCase();
+                const carrierCode = (tempShipment.carrier || tempShipment.carrierCode || 'DGR').toUpperCase();
 
-                // Re-resolve markup (policy might have changed, or we just use existing rule)
+                // Re-resolve markup
                 const { markup, source } = PricingService.resolveMarkup(targetUser, organization, carrierCode);
 
                 // Create New Snapshot
@@ -325,8 +326,7 @@ exports.updateShipment = async (req, res) => {
                     source
                 );
 
-                // Add Optional Services (assuming they persist or are in updates)
-                // If updates.specialServices exists, use that, else use existing
+                // Add Optional Services
                 const optionalServices = shipment.pricingSnapshot?.optionalServices || [];
                 const { Decimal } = require('decimal.js');
                 const optionalServicesTotal = optionalServices.reduce((sum, service) => {
@@ -338,40 +338,61 @@ exports.updateShipment = async (req, res) => {
                 snapshot.estimatedShipmentCost = Number(new Decimal(snapshot.totalPrice).toFixed(3));
                 snapshot.totalPrice = Number(new Decimal(snapshot.totalPrice).plus(optionalServicesTotal).toFixed(3));
 
-                // 4. Calculate Ledger Adjustment
+                // 4. Ledger Recording
                 const oldPrice = shipment.price || 0;
                 const newPrice = snapshot.totalPrice;
                 const diff = new Decimal(newPrice).minus(oldPrice);
 
-                if (!diff.isZero()) {
-                    const adjustmentType = diff.isPositive() ? 'DEBIT' : 'CREDIT';
-                    const absAmount = diff.abs().toNumber();
+                const financeLedgerService = require('../services/financeLedger.service');
 
-                    // Record Adjustment
-                    const financeLedgerService = require('../services/financeLedger.service');
+                if (isBooked) {
+                    // Adjust existing ledger entry if booked
+                    if (!diff.isZero()) {
+                        const adjustmentType = diff.isPositive() ? 'DEBIT' : 'CREDIT';
+                        const absAmount = diff.abs().toNumber();
+
+                        await financeLedgerService.createLedgerEntry(shipment.organization, {
+                            sourceRepo: 'Shipment',
+                            sourceId: shipment._id,
+                            amount: absAmount,
+                            entryType: adjustmentType,
+                            category: 'ADJUSTMENT',
+                            description: `Shipment Update Adjustment: ${trackingNumber} (Price changed from ${oldPrice} to ${newPrice})`,
+                            reference: trackingNumber,
+                            createdBy: user._id
+                        });
+                    }
+                } else {
+                    // PRE-BOOKING SNAPSHOT RECORDING (as requested)
+                    // Create a 0-amount audit entry to record the "Snapshot" event
                     await financeLedgerService.createLedgerEntry(shipment.organization, {
                         sourceRepo: 'Shipment',
                         sourceId: shipment._id,
-                        amount: absAmount,
-                        entryType: adjustmentType,
-                        category: 'ADJUSTMENT', // Ensure this category is handled or just use SHIPMENT_CHARGE
-                        description: `Shipment Update Adjustment: ${trackingNumber} (Price changed from ${oldPrice} to ${newPrice})`,
+                        amount: 0,
+                        entryType: 'DEBIT',
+                        category: 'SHIPMENT_CHARGE',
+                        description: `Pre-booking Snapshot: ${trackingNumber} (Price recalculated from ${oldPrice} to ${newPrice})`,
                         reference: trackingNumber,
-                        createdBy: user._id
-                    });
-
-                    // Update Shipment Financials
-                    shipment.price = newPrice;
-                    shipment.pricingSnapshot = snapshot;
-
-                    // Log to history
-                    shipment.history.push({
-                        status: 'updated',
-                        description: `Shipment re-rated due to edits. Price adjusted by ${diff.toFixed(3)} ${snapshot.currency}.`,
-                        timestamp: new Date(),
-                        location: shipment.currentLocation
+                        createdBy: user._id,
+                        metadata: {
+                            oldPrice: String(oldPrice),
+                            newPrice: String(newPrice),
+                            event: 'PRE_BOOKING_EDIT'
+                        }
                     });
                 }
+
+                // Update Shipment Financials
+                shipment.price = newPrice;
+                shipment.pricingSnapshot = snapshot;
+
+                // Log to history
+                shipment.history.push({
+                    status: 'updated',
+                    description: `Shipment re-rated due to edits. Price ${isBooked ? 'adjusted' : 'updated'} to ${newPrice} ${snapshot.currency}.`,
+                    timestamp: new Date(),
+                    location: shipment.currentLocation
+                });
 
             } catch (pricingError) {
                 logger.error('Re-rating failed during update:', pricingError);

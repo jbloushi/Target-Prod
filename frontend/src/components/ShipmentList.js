@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { shipmentService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useShipments } from '../utils/useShipments';
+import { useShipmentStats } from '../utils/useShipmentStats';
 import { TableWrapper, Table, Thead, Tbody, Tr, Th, Td, Button, Input, StatusPill } from '../ui';
 import { generateWaybillPDF } from '../utils/pdfGenerator';
 
@@ -149,16 +150,17 @@ const PENDING_STATUSES = ['draft', 'pending', 'updated', 'ready_for_pickup', 'pi
 
 const STATUS_GROUP_MAP = {
   all: undefined,
-  pending: PENDING_STATUSES,
-  active: ACTIVE_STATUSES,
-  delivered: ['delivered']
+  drafts: ['draft'],
+  pending: ['pending', 'updated', 'ready_for_pickup'],
+  active: ['created', 'picked_up', 'in_transit', 'out_for_delivery'],
+  delivered: ['delivered', 'completed']
 };
 
 const DEBOUNCE_MS = 350;
 
 const ShipmentList = () => {
   const navigate = useNavigate();
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, isStaff } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
@@ -187,6 +189,8 @@ const ShipmentList = () => {
     q: debouncedSearchQuery
   });
 
+  const { stats, loading: statsLoading } = useShipmentStats();
+
   const totalPages = Math.max(pagination.pages || 1, 1);
   const hasFilters = Boolean(searchQuery) || viewMode !== 'all';
 
@@ -204,12 +208,8 @@ const ShipmentList = () => {
   };
 
   const visiblePages = getVisiblePages();
-  const counters = [
-    { id: 'all', label: 'All', count: viewMode === 'all' ? pagination.total : '—', color: '#00d9b8' },
-    { id: 'pending', label: 'Pending', count: viewMode === 'pending' ? pagination.total : '—', color: '#fbbf24' },
-    { id: 'active', label: 'In Transit (Active)', count: viewMode === 'active' ? pagination.total : '—', color: '#34d399' },
-    { id: 'delivered', label: 'Delivered', count: viewMode === 'delivered' ? pagination.total : '—', color: '#38bdf8' },
-  ];
+  // The 'counters' array is not used for rendering the CounterGrid directly.
+  // The CounterGrid is rendered with hardcoded CounterCard components below.
 
   // Handlers
   const handleMenuOpen = (event, shipment) => {
@@ -274,12 +274,15 @@ const ShipmentList = () => {
   const renderSkeleton = () => (
     Array.from({ length: 5 }).map((_, i) => (
       <Tr key={`skel-${i}`}>
-        <Td><SkeletonBox $width="120px" /><SkeletonBox $width="60px" style={{marginTop: '4px'}} /></Td>
+        <Td><SkeletonBox $width="120px" /><SkeletonBox $width="60px" style={{ marginTop: '4px' }} /></Td>
+        <Td><SkeletonBox $width="100px" /></Td>
+        <Td><SkeletonBox $width="100px" /></Td>
         <Td><SkeletonBox $width="140px" /></Td>
-        <Td><SkeletonBox $width="100px" /><SkeletonBox $width="80px" style={{marginTop: '4px'}} /></Td>
+        <Td><SkeletonBox $width="100px" /><SkeletonBox $width="80px" style={{ marginTop: '4px' }} /></Td>
         <Td><SkeletonBox $width="70px" $height="24px" /></Td>
         <Td><SkeletonBox $width="80px" /></Td>
-        <Td style={{ textAlign: 'right' }}><SkeletonBox $width="60px" $height="32px" style={{marginLeft: 'auto'}} /></Td>
+        <Td><SkeletonBox $width="80px" /></Td>
+        <Td style={{ textAlign: 'right' }}><SkeletonBox $width="60px" $height="32px" style={{ marginLeft: 'auto' }} /></Td>
       </Tr>
     ))
   );
@@ -287,18 +290,46 @@ const ShipmentList = () => {
   return (
     <div>
       <CounterGrid>
-        {counters.map(counter => (
-          <CounterCard
-            key={counter.id}
-            type="button"
-            $active={viewMode === counter.id}
-            $color={counter.color}
-            onClick={() => { setViewMode(counter.id); setPage(1); }}
-          >
-            <CounterLabel>{counter.label}</CounterLabel>
-            <CounterValue>{counter.count}</CounterValue>
-          </CounterCard>
-        ))}
+        <CounterCard
+          $active={viewMode === 'all'}
+          $color="var(--accent-primary)"
+          onClick={() => { setViewMode('all'); setPage(1); }}
+        >
+          <CounterLabel>All Shipments</CounterLabel>
+          <CounterValue>{stats.total || 0}</CounterValue>
+        </CounterCard>
+        <CounterCard
+          $active={viewMode === 'drafts'}
+          $color="#ffa726"
+          onClick={() => { setViewMode('drafts'); setPage(1); }}
+        >
+          <CounterLabel>Drafts</CounterLabel>
+          <CounterValue>{stats.drafts || 0}</CounterValue>
+        </CounterCard>
+        <CounterCard
+          $active={viewMode === 'pending'}
+          $color="#00d9b8"
+          onClick={() => { setViewMode('pending'); setPage(1); }}
+        >
+          <CounterLabel>Pending Action</CounterLabel>
+          <CounterValue>{stats.pending || 0}</CounterValue>
+        </CounterCard>
+        <CounterCard
+          $active={viewMode === 'active'}
+          $color="#2196f3"
+          onClick={() => { setViewMode('active'); setPage(1); }}
+        >
+          <CounterLabel>In Transit</CounterLabel>
+          <CounterValue>{stats.inTransit || 0}</CounterValue>
+        </CounterCard>
+        <CounterCard
+          $active={viewMode === 'delivered'}
+          $color="#4caf50"
+          onClick={() => { setViewMode('delivered'); setPage(1); }}
+        >
+          <CounterLabel>Completed</CounterLabel>
+          <CounterValue>{stats.delivered || 0}</CounterValue>
+        </CounterCard>
       </CounterGrid>
 
       {/* List Container */}
@@ -337,10 +368,13 @@ const ShipmentList = () => {
             <Thead>
               <Tr>
                 <Th>Tracking Info</Th>
+                <Th>Organization</Th>
+                <Th>Created By</Th>
                 <Th>Route</Th>
                 <Th>Customer</Th>
-                <Th>Status</Th>
-                <Th>Est. Delivery</Th>
+                <Th style={{ verticalAlign: 'middle' }}>Status</Th>
+                <Th>Created</Th>
+                <Th>Est. Deliv</Th>
                 <Th style={{ textAlign: 'right' }}>Actions</Th>
               </Tr>
             </Thead>
@@ -356,6 +390,12 @@ const ShipmentList = () => {
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{shipment.serviceCode || 'Standard'}</div>
                   </Td>
                   <Td>
+                    <div style={{ color: 'var(--accent-primary)', fontWeight: '600' }}>{shipment.organization?.name || 'Personal'}</div>
+                  </Td>
+                  <Td>
+                    <div style={{ fontSize: '13px' }}>{shipment.user?.name || 'System'}</div>
+                  </Td>
+                  <Td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ fontWeight: '600' }}>{shipment.origin?.city}</span>
                       <span style={{ color: 'var(--text-secondary)' }}>→</span>
@@ -366,8 +406,16 @@ const ShipmentList = () => {
                     <div>{shipment.customer?.name}</div>
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{shipment.customer?.phone}</div>
                   </Td>
-                  <Td><StatusPill status={shipment.status} /></Td>
-                  <Td>{shipment.estimatedDelivery ? new Date(shipment.estimatedDelivery).toLocaleDateString() : '—'}</Td>
+                  <Td style={{ verticalAlign: 'middle' }}><StatusPill status={shipment.status} /></Td>
+                  <Td style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{shipment.createdAt ? new Date(shipment.createdAt).toLocaleDateString() : '—'}</Td>
+                  <Td style={{ fontSize: '13px' }}>
+                    {shipment.estimatedDelivery ? (
+                      (() => {
+                        const days = Math.ceil((new Date(shipment.estimatedDelivery) - new Date()) / (1000 * 60 * 60 * 24));
+                        return days > 0 ? `~${days} Days` : 'Today';
+                      })()
+                    ) : '~Days'}
+                  </Td>
                   <Td style={{ textAlign: 'right' }}>
                     <Button
                       variant="secondary"
@@ -381,14 +429,14 @@ const ShipmentList = () => {
               ))}
               {!loading && shipments.length === 0 && (
                 <Tr>
-                  <Td colSpan="6" style={{ padding: 0 }}>
+                  <Td colSpan="9" style={{ padding: 0 }}>
                     <EmptyStateContainer>
                       <SearchOffIcon />
                       <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '18px' }}>No shipments found</div>
                       <div style={{ maxWidth: '300px', marginBottom: '16px' }}>We couldn't find any shipments matching your current filters or search criteria.</div>
                       <div style={{ display: 'flex', gap: '12px' }}>
                         {hasFilters ? (
-                           <Button
+                          <Button
                             variant="secondary"
                             onClick={() => {
                               setSearchQuery('');
@@ -400,7 +448,7 @@ const ShipmentList = () => {
                           </Button>
                         ) : (
                           <Button onClick={() => navigate('/create')}>
-                            <AddIcon style={{fontSize: '18px', marginRight: '4px'}} /> Create First Shipment
+                            <AddIcon style={{ fontSize: '18px', marginRight: '4px' }} /> Create First Shipment
                           </Button>
                         )}
                       </div>
@@ -431,7 +479,7 @@ const ShipmentList = () => {
             <ListItemText>Label</ListItemText>
           </MenuItem>
 
-          {activeShipment && (user?.role === 'admin' || user?.role === 'staff') && (
+          {activeShipment && isStaff && (
             <div>
               <Divider sx={{ my: 0.5, borderColor: 'var(--border-color)', opacity: 0.5 }} />
               <div style={{ padding: '4px 16px', fontSize: '10px', color: 'var(--text-secondary)', textAlign: 'center', opacity: 0.7 }}>

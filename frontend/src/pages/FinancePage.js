@@ -828,7 +828,7 @@ const FinancePage = () => {
                                     {loading ? (
                                         <Tr><Td colSpan={5} style={{ textAlign: 'center' }}><Loader /></Td></Tr>
                                     ) : ledger.length > 0 ? ledger.map((entry) => (
-                                        <Tr key={entry._id} style={{ height: '40px' }}> {/* Compact Rows */}
+                                        <Tr key={entry._id} style={{ height: '40px' }}>
                                             <Td>
                                                 <div style={{ fontWeight: '500' }}>{format(new Date(entry.createdAt), 'MMM dd, yyyy')}</div>
                                                 <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{format(new Date(entry.createdAt), 'HH:mm')}</div>

@@ -202,7 +202,7 @@ class DgrAdapter extends CarrierAdapter {
                 const tomorrowStart = new Date(now);
                 tomorrowStart.setDate(tomorrowStart.getDate() + 1);
                 tomorrowStart.setHours(0, 0, 0, 0);
-                
+
                 let dateObj = shipment.shipmentDate ? new Date(shipment.shipmentDate) : getTomorrow();
                 if (isNaN(dateObj.getTime()) || dateObj < tomorrowStart) dateObj = getTomorrow();
 
@@ -240,26 +240,37 @@ class DgrAdapter extends CarrierAdapter {
 
     /**
      * Extracts precise total price from DHL Product structure.
-     * @business_rule Priority: detailedPriceBreakdown (BILLC) -> PRD breakdown item -> global totalPrice.
+     * @business_rule Priority: totalPrice Array (BILLC) -> detailedPriceBreakdown (BILLC) -> first available price.
      */
     extractTotalPrice(product) {
+        // 1. Try totalPrice array (it contains the summarized total)
+        if (Array.isArray(product.totalPrice)) {
+            const billc = product.totalPrice.find(p => p.currencyType === 'BILLC') || product.totalPrice[0];
+            if (billc && billc.price != null) return Number(Number(billc.price).toFixed(3));
+        }
+
+        // 2. Fallback to detailedPriceBreakdown if totalPrice array missed
         if (Array.isArray(product.detailedPriceBreakdown)) {
             const billc = product.detailedPriceBreakdown.find(b => b.currencyType === 'BILLC') || product.detailedPriceBreakdown[0];
+            if (billc && billc.price != null) return Number(Number(billc.price).toFixed(3));
+
+            // If the group doesn't have a sum, try to find a PRD item or the first item
             if (billc && Array.isArray(billc.breakdown)) {
-                const prd = billc.breakdown.find(item => item.typeCode === 'PRD');
-                if (prd && prd.price != null) return Number(prd.price.toFixed(3));
-                if (billc.price != null) return Number(billc.price.toFixed(3));
+                const prd = billc.breakdown.find(item => item.typeCode === 'PRD') || billc.breakdown[0];
+                if (prd && prd.price != null) return Number(Number(prd.price).toFixed(3));
             }
         }
+
+        // 3. Last resort: if totalPrice is somehow a number
         if (typeof product.totalPrice === 'number') return Number(product.totalPrice.toFixed(3));
+
         return 0;
     }
 
     extractCurrency(product, fallbackCurrency) {
         if (Array.isArray(product.totalPrice)) {
-            const entry = product.totalPrice.find(p => p.priceCurrency) || product.totalPrice[0];
+            const entry = product.totalPrice.find(p => p.currencyType === 'BILLC') || product.totalPrice[0];
             if (entry?.priceCurrency) return entry.priceCurrency;
-            if (entry?.currencyType && entry.currencyType.length === 3 && entry.currencyType !== 'BILLC') return entry.currencyType;
         }
         return product.priceCurrency || fallbackCurrency;
     }
@@ -312,6 +323,7 @@ class DgrAdapter extends CarrierAdapter {
      */
     async createShipment(shipmentData, serviceCode) {
         const shipment = normalizeShipment(shipmentData);
+        if (serviceCode) shipment.serviceCode = serviceCode;
         const activeConfig = await this._getResolvedConfig(shipment);
         const { buildDgrShipmentPayload } = require('../services/dgr-payload-builder');
         const CarrierLog = require('../models/CarrierLog');

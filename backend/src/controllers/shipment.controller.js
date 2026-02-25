@@ -60,4 +60,5 @@ module.exports = {
   generateLabel: ops.generateLabel,
   pickupShipment: ops.pickupShipment,
   processWarehouseScan: ops.processWarehouseScan,
+  serveDocument: ops.serveDocument,
 };

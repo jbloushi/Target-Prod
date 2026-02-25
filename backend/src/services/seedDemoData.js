@@ -62,21 +62,19 @@ const seedDemoData = async () => {
             console.log(`Created Internal Organization: ${internalOrgName}`);
         }
 
-        // 2. Create Client Organization
-        const clientOrgName = 'Elite Electronics';
-        let clientOrg = await Organization.findOne({ name: clientOrgName });
+        // 2. Create External Organization
+        const extOrgName = 'Elite Electronics Group';
+        let extOrg = await Organization.findOne({ name: extOrgName });
 
-        if (!clientOrg) {
-            clientOrg = await Organization.create({
-                name: clientOrgName,
-                type: 'client',
+        if (!extOrg) {
+            extOrg = await Organization.create({
+                name: extOrgName,
+                type: 'client', // Internal type stays 'client' in model but label is Organization
                 creditLimit: 10000,
                 currency: 'KWD',
-                currency: 'KWD',
-                // markup: { type: 'PERCENTAGE', percentageValue: 20 }, // Removed as per request
                 addresses: [{
-                    label: 'Warehouse A',
-                    company: 'Elite Electronics Co',
+                    label: 'Main Warehouse',
+                    company: 'Elite Electronics Group W.L.L.',
                     contactPerson: 'Sarah Ahmed',
                     streetLines: ['Sharq Industrial, Block 1'],
                     city: 'Kuwait City',
@@ -85,16 +83,16 @@ const seedDemoData = async () => {
                     isDefault: true
                 }]
             });
-            console.log(`Created Client Organization: ${clientOrgName}`);
+            console.log(`Created External Organization: ${extOrgName}`);
         }
 
-        // Seed Balance for Client Org
+        // Seed Balance for External Org
         const seedBalance = 5000;
-        const existingBalance = await financeLedgerService.getOrganizationBalance(clientOrg._id);
+        const existingBalance = await financeLedgerService.getOrganizationBalance(extOrg._id);
         if (existingBalance === 0) {
-            await financeLedgerService.createLedgerEntry(clientOrg._id, {
-                sourceRepo: 'Adjustment',
-                sourceId: clientOrg._id,
+            await financeLedgerService.createLedgerEntry(extOrg._id, {
+                sourceRepo: 'Organization',
+                sourceId: extOrg._id,
                 amount: seedBalance,
                 entryType: 'CREDIT',
                 category: 'ADJUSTMENT',
@@ -111,12 +109,12 @@ const seedDemoData = async () => {
             { name: 'Lead Accountant', email: 'accounting@demo.com', role: 'accounting', password: 'password123', organization: internalOrg._id },
             { name: 'Delivery Driver', email: 'driver@demo.com', role: 'driver', password: 'password123', organization: internalOrg._id },
 
-            // Organization Users (Client Org)
-            { name: 'Org Manager', email: 'orgmanager@demo.com', role: 'org_manager', password: 'password123', organization: clientOrg._id },
-            { name: 'Org Agent', email: 'orgagent@demo.com', role: 'org_agent', password: 'password123', organization: clientOrg._id },
+            // Organization Agents (External Org)
+            { name: 'Org Manager', email: 'orgmanager@demo.com', role: 'org_manager', password: 'password123', organization: extOrg._id },
+            { name: 'Lead Agent', email: 'orgagent@demo.com', role: 'org_agent', password: 'password123', organization: extOrg._id },
             {
-                name: 'Legacy Client', email: 'client@demo.com', role: 'client', password: 'password123', organization: clientOrg._id,
-                markup: { type: 'FLAT', flatValue: 5 } // Added Flat 5 as requested
+                name: 'Field Agent', email: 'agent@demo.com', role: 'org_agent', password: 'password123', organization: extOrg._id,
+                markup: { type: 'FLAT', flatValue: 5 }
             }
         ];
 
@@ -136,15 +134,15 @@ const seedDemoData = async () => {
             }
 
             // Reference the org correctly
-            const org = u.organization.toString() === internalOrg._id.toString() ? internalOrg : clientOrg;
+            const org = u.organization.toString() === internalOrg._id.toString() ? internalOrg : extOrg;
             if (!org.members.includes(existing._id)) {
                 org.members.push(existing._id);
             }
 
-            if (u.role === 'client' || u.role === 'org_manager') targetClientUser = existing;
+            if (u.role === 'org_agent' || u.role === 'org_manager') targetClientUser = existing;
         }
         await internalOrg.save();
-        await clientOrg.save();
+        await extOrg.save();
 
         // 3. Generate Random Shipments
         if (targetClientUser) {
@@ -170,7 +168,7 @@ const seedDemoData = async () => {
                     shipmentsToCreate.push({
                         trackingNumber: tn,
                         user: targetClientUser._id,
-                        organization: clientOrg._id,
+                        organization: extOrg._id,
                         status: status,
                         serviceCode: Math.random() > 0.5 ? 'EXPRESS' : 'STANDARD',
                         carrier: 'DGR',

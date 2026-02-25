@@ -7,6 +7,8 @@ const Shipment = require('../models/shipment.model');
 const PickupRequest = require('../models/pickupRequest.model');
 const pickupController = require('./pickup.controller');
 const logger = require('../utils/logger');
+const path = require('path');
+const fs = require('fs');
 
 exports.updateShipmentStatus = async (req, res) => {
     try {
@@ -183,5 +185,39 @@ exports.processWarehouseScan = async (req, res) => {
     } catch (error) {
         logger.error('Error in processWarehouseScan:', error);
         res.status(500).json({ success: false, error: 'Failed to process warehouse scan' });
+    }
+};
+
+exports.serveDocument = async (req, res) => {
+    try {
+        const { trackingNumber, filename } = req.params;
+        const { user } = req;
+
+        // 1. Find the shipment and verify access
+        const shipment = await Shipment.findOne({ trackingNumber });
+        if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
+
+        // Security check: Admin/Staff can see all. Org members can see their own.
+        const isStaff = ['admin', 'staff', 'manager', 'accounting'].includes(user.role);
+        const isMember = user.organization && shipment.organization && user.organization.toString() === shipment.organization.toString();
+
+        if (!isStaff && !isMember) {
+            return res.status(403).json({ success: false, error: 'Unauthorized to view documents for this shipment' });
+        }
+
+        // 2. Resolve the file path
+        const filePath = path.join(process.cwd(), 'uploads', 'documents', filename);
+
+        // 3. Check if file exists
+        if (!fs.existsSync(filePath)) {
+            logger.error(`Document not found: ${filePath}`);
+            return res.status(404).json({ success: false, error: 'Document file not found' });
+        }
+
+        // 4. Serve the file
+        res.sendFile(filePath);
+    } catch (error) {
+        logger.error('Error serving document:', error);
+        res.status(500).json({ success: false, error: 'Failed to serve document' });
     }
 };

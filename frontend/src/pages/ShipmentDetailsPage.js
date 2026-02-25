@@ -32,11 +32,13 @@ import CancelOutlinedIcon from '@mui/icons-material/CancelOutlined';
 import UpdateIcon from '@mui/icons-material/Update';
 import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import ShareIcon from '@mui/icons-material/Share';
 import TrackingTimeline from '../components/TrackingTimeline';
 import AddressPanel from '../components/AddressPanel';
 import ShipmentContent from '../components/shipment/ShipmentContent';
 import ShipmentBilling from '../components/shipment/ShipmentBilling';
-import { financeService, shipmentService, userService } from '../services/api';
+import { financeService, shipmentService, userService, BACKEND_URL } from '../services/api';
 import api from '../services/api'; // Use the default api instance for generic get requests
 import { generateWaybillPDF } from '../utils/pdfGenerator';
 
@@ -611,7 +613,8 @@ const ShipmentDetailsPage = () => {
     const handleOpenPdf = async (pdfData) => {
         if (!pdfData) return;
         try {
-            if (pdfData.startsWith('data:application/pdf;base64,')) {
+            // Handle base64 data
+            if (typeof pdfData === 'string' && pdfData.startsWith('data:application/pdf;base64,')) {
                 const base64Str = pdfData.split(',')[1];
                 const byteCharacters = atob(base64Str);
                 const byteNumbers = new Array(byteCharacters.length);
@@ -622,21 +625,54 @@ const ShipmentDetailsPage = () => {
                 const blob = new Blob([byteArray], { type: 'application/pdf' });
                 const blobUrl = URL.createObjectURL(blob);
                 window.open(blobUrl, '_blank');
-            } else if (pdfData.startsWith('/api/') || pdfData.startsWith('http')) {
-                // If it's a relative API path, use our axios instance to fetch it with auth headers
-                if (pdfData.startsWith('/api/')) {
-                    const response = await api.get(pdfData, { responseType: 'blob' });
-                    const blob = new Blob([response.data], { type: 'application/pdf' });
-                    const blobUrl = URL.createObjectURL(blob);
-                    window.open(blobUrl, '_blank');
-                } else {
-                    window.open(pdfData, '_blank');
-                }
-            } else {
-                window.open(pdfData, '_blank');
+                return;
             }
+
+            // Handle relative upload paths (Convert to secure backend API call)
+            if (typeof pdfData === 'string' && pdfData.startsWith('/uploads/documents/')) {
+                const filename = pdfData.split('/').pop();
+                const secureUrl = `/shipments/${shipment.trackingNumber}/documents/${filename}`;
+
+                try {
+                    const response = await api.get(secureUrl, { responseType: 'blob' });
+                    const blob = response.data;
+                    const blobUrl = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+                    window.open(blobUrl, '_blank');
+                } catch (err) {
+                    console.error('Failed to load secure document:', err);
+                    enqueueSnackbar('Failed to load secure document', { variant: 'error' });
+                }
+                return;
+            }
+
+            // Handle API endpoints (detect if they return HTML or PDF)
+            if (typeof pdfData === 'string' && pdfData.startsWith('/api/')) {
+                const response = await api.get(pdfData, { responseType: 'blob' });
+                const blob = response.data;
+                const contentType = response.headers['content-type'];
+
+                if (contentType && contentType.includes('text/html')) {
+                    // It's an HTML label, not a PDF
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        const htmlContent = reader.result;
+                        const newTab = window.open();
+                        newTab.document.write(htmlContent);
+                        newTab.document.close();
+                    };
+                    reader.readAsText(blob);
+                } else {
+                    // It's a PDF blob
+                    const blobUrl = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+                    window.open(blobUrl, '_blank');
+                }
+                return;
+            }
+
+            // Fallback for absolute URLs or other strings
+            window.open(pdfData, '_blank');
         } catch (error) {
-            console.error('Failed to open PDF:', error);
+            console.error('Failed to open document:', error);
             enqueueSnackbar('Failed to load document', { variant: 'error' });
         }
     };
@@ -698,6 +734,13 @@ const ShipmentDetailsPage = () => {
         || resolveCoordinates(receiver)
         || resolveCoordinates(sender);
 
+    const publicTrackingUrl = `${window.location.origin}/track/${shipment.trackingNumber}`;
+
+    const handleCopyTrackingLink = () => {
+        navigator.clipboard.writeText(publicTrackingUrl);
+        enqueueSnackbar('Tracking link copied to clipboard!', { variant: 'success' });
+    };
+
     return (
         <div style={{ paddingBottom: '40px' }}>
             <PageHeader
@@ -750,17 +793,66 @@ const ShipmentDetailsPage = () => {
             />
 
             <HeroSection>
-                <TrackingId>
-                    {shipment.trackingNumber}
-                    <StatusPill status={shipment.status} />
-                </TrackingId>
-                <ShipmentMeta>
-                    <span>Created: <strong>{new Date(shipment.createdAt).toLocaleDateString()}</strong></span>
-                    <span>Owner: <strong>{shipment.user?.name || 'Unknown'}</strong></span>
-                </ShipmentMeta>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '20px' }}>
+                    <div>
+                        <TrackingId>
+                            {shipment.trackingNumber}
+                            <StatusPill status={shipment.status} />
+                        </TrackingId>
+                        <ShipmentMeta>
+                            <span>Created: <strong>{new Date(shipment.createdAt).toLocaleDateString()}</strong></span>
+                            <span>Owner: <strong>{shipment.user?.name || 'Unknown'}</strong></span>
+                            <span>Type: <strong>{shipment.type?.toUpperCase() || 'PACKAGE'}</strong></span>
+                            <span>Carrier: <strong>{carrierCode}</strong></span>
+                        </ShipmentMeta>
+                    </div>
+
+                    <Box sx={{
+                        background: 'rgba(255,255,255,0.03)',
+                        p: 2,
+                        borderRadius: '12px',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        minWidth: { xs: '100%', sm: '320px' },
+                        backdropFilter: 'blur(10px)'
+                    }}>
+                        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                            <ShareIcon sx={{ fontSize: 16, color: '#00d9b8' }} />
+                            <Typography variant="caption" sx={{ color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                Shareable Tracking Link
+                            </Typography>
+                        </Stack>
+                        <Stack direction="row" alignItems="center" spacing={1}>
+                            <Box sx={{
+                                flex: 1,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                fontSize: '12px',
+                                color: 'var(--text-primary)',
+                                background: 'rgba(0,0,0,0.2)',
+                                p: '8px 12px',
+                                borderRadius: '6px',
+                                border: '1px solid rgba(255,255,255,0.05)',
+                                fontFamily: 'monospace'
+                            }}>
+                                {publicTrackingUrl}
+                            </Box>
+                            <MuiIconButton
+                                size="small"
+                                onClick={handleCopyTrackingLink}
+                                sx={{
+                                    color: '#00d9b8',
+                                    bgcolor: 'rgba(0,217,184,0.1)',
+                                    '&:hover': { bgcolor: 'rgba(0,217,184,0.2)' },
+                                    borderRadius: '6px'
+                                }}
+                            >
+                                <ContentCopyIcon fontSize="small" />
+                            </MuiIconButton>
+                        </Stack>
+                    </Box>
+                </div>
             </HeroSection>
-
-
 
             <ContentGrid>
                 <MainColumn>
@@ -774,7 +866,7 @@ const ShipmentDetailsPage = () => {
                                         <circle cx="12" cy="12" r="10"></circle>
                                         <circle cx="12" cy="12" r="3"></circle>
                                     </svg>
-                                    Origin (Sender)
+                                    Shipper (From)
                                 </div>
                                 {canEditSection('sender') && (
                                     <MuiIconButton size="small" onClick={() => handleOpenEdit('sender')} sx={{ color: '#00d9b8', p: 0.5 }}>
@@ -822,7 +914,7 @@ const ShipmentDetailsPage = () => {
                                         <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
                                         <circle cx="12" cy="10" r="3"></circle>
                                     </svg>
-                                    Destination (Receiver)
+                                    Consignee (To)
                                 </div>
                                 {canEditSection('receiver') && (
                                     <MuiIconButton size="small" onClick={() => handleOpenEdit('receiver')} sx={{ color: '#00d9b8', p: 0.5 }}>
@@ -1174,7 +1266,7 @@ const ShipmentDetailsPage = () => {
                                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                                 </svg>
-                                ACCOUNTING SUMMARY
+                                FINANCIAL SUMMARY
                             </div>
                         </CardHeader>
                         <Table style={{ marginTop: '16px' }}>
@@ -1319,7 +1411,7 @@ const ShipmentDetailsPage = () => {
                             <>
                                 {editSection === 'sender' && (
                                     <AddressPanel
-                                        title="Sender Details"
+                                        title="Shipper Details"
                                         type="sender"
                                         value={editDraft.sender}
                                         onChange={(val) => setEditDraft({ ...editDraft, sender: val })}
@@ -1331,7 +1423,7 @@ const ShipmentDetailsPage = () => {
 
                                 {editSection === 'receiver' && (
                                     <AddressPanel
-                                        title="Receiver Details"
+                                        title="Consignee Details"
                                         type="receiver"
                                         value={editDraft.receiver}
                                         onChange={(val) => setEditDraft({ ...editDraft, receiver: val })}

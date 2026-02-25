@@ -6,3 +6,16 @@ node_modules/
 dist/
 build/
 coverage/
+
+# Diagnostic scripts & outputs
+audit_*.js
+capture_*.js
+debug_*.js
+login_debug.html
+ui_audit.png
+ui_source*.html
+visual-audit.js
+vps_check.sh
+resolve_conflict.sh
+user_walkthrough.js
+*.log
