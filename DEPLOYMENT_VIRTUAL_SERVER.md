@@ -22,11 +22,11 @@ git commit -m "chore: initial production-ready commit"
 # Rename branch to main
 git branch -M main
 
-# Add your private repo as origin (replace with your repo URL)
-git remote add origin https://github.com/your-username/your-private-repo.git
+# Add your private repo as origin
+git remote add origin https://github.com/jbloushi/Target-Prod.git
 
 # Push to GitHub
-git push -u origin main
+git push origin main --force
 ```
 
 ---
@@ -36,12 +36,12 @@ Log in to your VPS via SSH and run these bundled commands:
 
 ### Create Project Directory and Clone
 ```bash
-# Create directory
-mkdir -p /www/wwwroot/3pl-logistics
-cd /www/wwwroot/3pl-logistics
+# Create directory (Aligned with deploy.sh)
+mkdir -p /www/wwwroot/3pl.mawthook.io
+cd /www/wwwroot/3pl.mawthook.io
 
 # Clone repo (you'll need a GitHub PAT if it's private)
-git clone https://github.com/your-username/your-private-repo.git .
+git clone https://github.com/jbloushi/Target-Prod.git .
 ```
 
 ### Setup Environment
@@ -67,8 +67,8 @@ chmod +x deploy.sh
 ### Web Site Setup
 1. Go to **Website > Add site**.
 2. Enter your domain (e.g., `3pl.yourdomain.com`).
-3. Set **Site Category** to `Static` (we will use Nginx as a reverse proxy).
-4. Set **Root Directory** to `/www/wwwroot/3pl-logistics/site` (where the frontend build goes).
+3. Set **Site Category** to `Static`
+4. Set **Root Directory** to `/www/wwwroot/3pl.mawthook.io/site` (where the frontend build goes).
 
 ### Reverse Proxy for Backend
 1. Click on your site in aaPanel.
