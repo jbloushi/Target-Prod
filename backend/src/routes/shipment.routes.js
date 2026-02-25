@@ -41,15 +41,23 @@ router.patch(
 // Protect all routes after this middleware
 router.use(authController.protect);
 
-// Get all shipments
-router.get('/stats', shipmentController.getShipmentStats);
+// Static/Fixed routes MUST come before parameterized routes (/:trackingNumber)
+router.get('/stats', (req, res, next) => {
+  logger.info(`[DEBUG] Routing to getShipmentStats. Query: ${JSON.stringify(req.query)}`);
+  next();
+}, shipmentController.getShipmentStats);
+
+router.get('/carriers', (req, res, next) => {
+  logger.info(`[DEBUG] Routing to getAvailableCarriers`);
+  next();
+}, shipmentController.getAvailableCarriers);
+
+// Get all shipments (Standard list)
 router.get('/', shipmentController.getAllShipments);
 
 // Get rate quotes
 router.post('/quote', shipmentController.getQuotes);
 
-// Get available carriers
-router.get('/carriers', shipmentController.getAvailableCarriers);
 
 // Get shipments near a location
 router.get(

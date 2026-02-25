@@ -835,7 +835,11 @@ const ShipmentWizardV2 = () => {
                 if (response.success && response.data && response.data.length > 0) {
                     const quote = response.data.find(q => q.serviceCode === 'P') || response.data[0];
 
-                    console.log('SELECTED_QUOTE_SERVICES:', quote.optionalServices); // DEBUG
+                    console.log(`[DEBUG] Selected Quote (${quote.serviceCode}):`, {
+                        totalPrice: quote.totalPrice,
+                        optionalServicesDefined: !!quote.optionalServices,
+                        optionalServicesCount: quote.optionalServices?.length || 0
+                    });
 
                     setSelectedService({
                         serviceName: quote.serviceName,
@@ -848,1284 +852,1288 @@ const ShipmentWizardV2 = () => {
                         deliveryDate: quote.deliveryDate
                     });
                     setAvailableOptionalServices(quote.optionalServices || []);
-                    // Fix: Do NOT reset selected services here, or we lose selections on re-quote
-                    // setSelectedOptionalServiceCodes([]); 
+                } else {
+                    console.warn('[DEBUG] No quotes returned or success=false:', response);
                 }
+
+                // Fix: Do NOT reset selected services here, or we lose selections on re-quote
+                // setSelectedOptionalServiceCodes([]); 
+            }
             } catch (err) {
-                console.error('Quote fetch error', err);
-                enqueueSnackbar('Failed to calculate latest rates', { variant: 'warning' });
-            } finally {
-                setLoading(false);
-            }
-        }, 600);
-
-        return () => clearTimeout(timer);
-    }, [activeStep, sender, receiver, parcels, items, selectedCarrier, selectedClient, user, enqueueSnackbar, shipperAccount, shipmentType]);
-
-
-    // Handle Client Selection (Autofill)
-    const handleClientChange = (clientId) => {
-        setSelectedClient(clientId);
-        const client = clients.find(c => c._id === clientId);
-        if (client) {
-            const config = client.carrierConfig || {};
-            const defaultAddress = client.addresses?.find(a => a.isDefault) || {};
-
-            // Priority: Default Address (Shipper Profile) -> Client Basic -> Config
-            setSender(prev => ({
-                ...prev,
-                // Identity
-                company: defaultAddress.company || client.company || client.organization?.name || prev.company,
-                contactPerson: defaultAddress.contactPerson || client.name,
-                email: defaultAddress.email || client.email,
-                phone: defaultAddress.phone || client.phone,
-                phoneCountryCode: defaultAddress.phoneCountryCode || prev.phoneCountryCode,
-
-                // Address (only if default exists)
-                streetLines: defaultAddress.streetLines || (defaultAddress.street ? [defaultAddress.street] : []) || prev.streetLines,
-                buildingName: defaultAddress.buildingName || prev.buildingName,
-                unitNumber: defaultAddress.unitNumber || prev.unitNumber,
-                landmark: defaultAddress.landmark || prev.landmark,
-                city: defaultAddress.city || prev.city,
-                state: defaultAddress.state || prev.state,
-                postalCode: defaultAddress.postalCode || prev.postalCode,
-                countryCode: defaultAddress.countryCode || prev.countryCode,
-
-                // Compliance
-                vatNumber: defaultAddress.vatNumber || config.vatNo || prev.vatNumber,
-                eoriNumber: defaultAddress.eoriNumber || config.eori || prev.eoriNumber,
-                taxId: defaultAddress.taxId || config.taxId || prev.taxId,
-                traderType: defaultAddress.traderType || config.traderType || 'business',
-                reference: defaultAddress.reference || config.defaultReference || prev.reference
-            }));
-
-            enqueueSnackbar(`Autofilled details for ${client.name}`, { variant: 'info' });
-        }
-    };
-
-    // --- Approval Logic ---
-    const handleFetchBookingOptions = async () => {
-        setApprovalLoading(true);
-        try {
-            const options = await shipmentService.getBookingOptions(editTrackingNumber, selectedCarrier);
-            if (options && options.length > 0) {
-                setBookingOptions(options);
-                // Auto-select the first option or the one matching current service code if possible
-                const match = options.find(o => o.serviceCode === selectedService.serviceCode) || options[0];
-                setSelectedBookingOption(match);
-                setAvailableOptionalServices(match.optionalServices || []);
-            } else {
-                enqueueSnackbar('No booking options available for this shipment.', { variant: 'warning' });
-            }
-        } catch (error) {
-            console.error('Failed to fetch booking options:', error);
-            enqueueSnackbar('Failed to fetch booking options', { variant: 'error' });
-        } finally {
-            setApprovalLoading(false);
-        }
-    };
-
-    // Trigger fetch when entering Approval step
-    useEffect(() => {
-        // Approval step index is steps.length - 2 (since Success is last)
-        // e.g. Setup(0), Content(1), Billing(2), Review(3), Approval(4), Success(5)
-        const approvalIndex = steps.indexOf('Approval');
-        if (activeStep === approvalIndex && showApprovalStep) {
-            handleFetchBookingOptions();
-        }
-    }, [activeStep, showApprovalStep, steps, editTrackingNumber, selectedCarrier]);
-
-
-    const handleApproveAndBook = async () => {
-        if (!selectedBookingOption) return;
-        setLoading(true);
-        try {
-            await shipmentService.bookShipment(editTrackingNumber, selectedCarrier, selectedOptionalServiceCodes);
-            enqueueSnackbar('Shipment approved and booked successfully', { variant: 'success' });
-            // Navigate to details page (or Success step?) - UX choice: Success step seems appropriate or direct redirect.
-            // Let's redirect to details page as explicitly requested in plan for "manual verification point 4" logic
-            // But wait, the wizard usually ends with Success step. Let's go to Success step.
-            setActiveStep(steps.indexOf('Success'));
-        } catch (error) {
-            console.error('Booking failed:', error);
-            enqueueSnackbar(error.message || 'Booking failed', { variant: 'error' });
+            console.error('Quote fetch error', err);
+            enqueueSnackbar('Failed to calculate latest rates', { variant: 'warning' });
         } finally {
             setLoading(false);
         }
-    };
+    }, 600);
 
-    // Totals Calculation
-    const totals = useMemo(() => {
-        const parcelTotals = parcels.reduce((acc, p) => {
-            const qty = Number(p.quantity) || 1;
-            const volPerUnit = (p.length * p.width * p.height) / VOLUME_FACTOR;
-            acc.pieces += qty;
-            acc.actualWeight += Number(p.weight || 0) * qty;
-            acc.volumetricWeight += volPerUnit * qty;
-            return acc;
-        }, { pieces: 0, actualWeight: 0, volumetricWeight: 0 });
+    return () => clearTimeout(timer);
+}, [activeStep, sender, receiver, parcels, items, selectedCarrier, selectedClient, user, enqueueSnackbar, shipperAccount, shipmentType]);
 
-        const itemTotals = items.reduce((acc, i) => {
-            const qty = Number(i.quantity) || 1;
-            acc.declaredValue += Number(i.declaredValue || 0) * qty;
-            return acc;
-        }, { declaredValue: 0 });
 
-        return { ...parcelTotals, ...itemTotals };
-    }, [parcels, items]);
+// Handle Client Selection (Autofill)
+const handleClientChange = (clientId) => {
+    setSelectedClient(clientId);
+    const client = clients.find(c => c._id === clientId);
+    if (client) {
+        const config = client.carrierConfig || {};
+        const defaultAddress = client.addresses?.find(a => a.isDefault) || {};
 
-    const billableWeight = Math.max(totals.actualWeight, totals.volumetricWeight);
+        // Priority: Default Address (Shipper Profile) -> Client Basic -> Config
+        setSender(prev => ({
+            ...prev,
+            // Identity
+            company: defaultAddress.company || client.company || client.organization?.name || prev.company,
+            contactPerson: defaultAddress.contactPerson || client.name,
+            email: defaultAddress.email || client.email,
+            phone: defaultAddress.phone || client.phone,
+            phoneCountryCode: defaultAddress.phoneCountryCode || prev.phoneCountryCode,
 
-    const selectedOptionalServices = useMemo(() => {
-        const selectedCodes = new Set(selectedOptionalServiceCodes);
-        return availableOptionalServices.filter((service) => selectedCodes.has(service.serviceCode));
-    }, [availableOptionalServices, selectedOptionalServiceCodes]);
+            // Address (only if default exists)
+            streetLines: defaultAddress.streetLines || (defaultAddress.street ? [defaultAddress.street] : []) || prev.streetLines,
+            buildingName: defaultAddress.buildingName || prev.buildingName,
+            unitNumber: defaultAddress.unitNumber || prev.unitNumber,
+            landmark: defaultAddress.landmark || prev.landmark,
+            city: defaultAddress.city || prev.city,
+            state: defaultAddress.state || prev.state,
+            postalCode: defaultAddress.postalCode || prev.postalCode,
+            countryCode: defaultAddress.countryCode || prev.countryCode,
 
-    const optionalServicesTotal = useMemo(() => {
-        return selectedOptionalServices.reduce((sum, service) => sum + Number(service.totalPrice || 0), 0);
-    }, [selectedOptionalServices]);
+            // Compliance
+            vatNumber: defaultAddress.vatNumber || config.vatNo || prev.vatNumber,
+            eoriNumber: defaultAddress.eoriNumber || config.eori || prev.eoriNumber,
+            taxId: defaultAddress.taxId || config.taxId || prev.taxId,
+            traderType: defaultAddress.traderType || config.traderType || 'business',
+            reference: defaultAddress.reference || config.defaultReference || prev.reference
+        }));
 
-    const estimatedShipmentCost = Number(selectedService.totalPrice || 0);
-    const estimatedShipmentTotal = Number((estimatedShipmentCost + optionalServicesTotal).toFixed(3));
+        enqueueSnackbar(`Autofilled details for ${client.name}`, { variant: 'info' });
+    }
+};
 
-    const toggleOptionalService = (serviceCode) => {
-        setSelectedOptionalServiceCodes((prev) => (
-            prev.includes(serviceCode)
-                ? prev.filter((code) => code !== serviceCode)
-                : [...prev, serviceCode]
-        ));
-    };
-
-    const loadScenario = (scenario, name) => {
-        if (scenario) {
-            setSender({
-                ...initialAddress,
-                ...scenario.sender,
-                streetLines: scenario.sender.streetLines || [scenario.sender.street || '']
-            });
-            setReceiver({
-                ...initialAddress,
-                ...scenario.receiver,
-                streetLines: scenario.receiver.streetLines || [scenario.receiver.street || '']
-            });
-            if (scenario.parcels) {
-                setParcels(scenario.parcels);
-                // Auto-generate items from parcels for consistency in Autofill
-                setItems(scenario.parcels.map(p => ({
-                    description: p.description,
-                    quantity: p.quantity,
-                    weight: (p.weight / p.quantity) || 1, // Unit weight
-                    declaredValue: (p.declaredValue / p.quantity) || 1, // Unit value
-                    hsCode: p.hsCode || '',
-                    countryOfOrigin: p.countryOfOrigin || (scenario.sender && scenario.sender.countryCode) || 'KW',
-                    currency: 'KWD'
-                })));
-                setExpandedParcel(0);
-            }
-            if (scenario.dangerousGoods) {
-                setDangerousGoods(scenario.dangerousGoods);
-            } else {
-                setDangerousGoods({ contains: false });
-            }
-            if (scenario.invoiceRemarks) {
-                setInvoiceRemarks(scenario.invoiceRemarks);
-            } else {
-                setInvoiceRemarks('');
-            }
-            // Load new config fields
-            if (scenario.gstPaid !== undefined) setGstPaid(scenario.gstPaid);
-            if (scenario.payerOfVat) setPayerOfVat(scenario.payerOfVat);
-            if (scenario.palletCount !== undefined) setPalletCount(scenario.palletCount);
-            if (scenario.packageMarks) setPackageMarks(scenario.packageMarks);
-            if (scenario.shipmentType) setShipmentType(scenario.shipmentType);
-            if (scenario.incoterm) setIncoterm(scenario.incoterm);
-
-            setDevMenuAnchor(null);
-            enqueueSnackbar(`Loaded Scenario: ${name}`, { variant: 'success' });
+// --- Approval Logic ---
+const handleFetchBookingOptions = async () => {
+    setApprovalLoading(true);
+    try {
+        const options = await shipmentService.getBookingOptions(editTrackingNumber, selectedCarrier);
+        if (options && options.length > 0) {
+            setBookingOptions(options);
+            // Auto-select the first option or the one matching current service code if possible
+            const match = options.find(o => o.serviceCode === selectedService.serviceCode) || options[0];
+            setSelectedBookingOption(match);
+            setAvailableOptionalServices(match.optionalServices || []);
+        } else {
+            enqueueSnackbar('No booking options available for this shipment.', { variant: 'warning' });
         }
-    };
+    } catch (error) {
+        console.error('Failed to fetch booking options:', error);
+        enqueueSnackbar('Failed to fetch booking options', { variant: 'error' });
+    } finally {
+        setApprovalLoading(false);
+    }
+};
 
-    const renderDevMenu = () => (
-        <Menu
-            anchorEl={devMenuAnchor}
-            open={Boolean(devMenuAnchor)}
-            onClose={handleDevMenuClose}
-            PaperProps={{
-                style: {
-                    backgroundColor: '#1a2035',
-                    color: '#fff',
-                    border: '1px solid #2a3347',
-                    maxHeight: 400
-                },
-            }}
-        >
-            {Object.keys(AUTOFILL_SCENARIOS).map((carrier) => (
-                <div key={carrier}>
-                    <MenuItem disabled sx={{ opacity: 1, fontWeight: 'bold', color: '#00d9b8', fontSize: '0.8rem', mt: 1 }}>
-                        {carrier}
-                    </MenuItem>
-                    {Object.keys(AUTOFILL_SCENARIOS[carrier]).map((category) => (
-                        <div key={category}>
-                            <MenuItem disabled sx={{ opacity: 0.8, fontSize: '0.75rem', pl: 3, color: '#94a3b8' }}>
-                                {category}
+// Trigger fetch when entering Approval step
+useEffect(() => {
+    // Approval step index is steps.length - 2 (since Success is last)
+    // e.g. Setup(0), Content(1), Billing(2), Review(3), Approval(4), Success(5)
+    const approvalIndex = steps.indexOf('Approval');
+    if (activeStep === approvalIndex && showApprovalStep) {
+        handleFetchBookingOptions();
+    }
+}, [activeStep, showApprovalStep, steps, editTrackingNumber, selectedCarrier]);
+
+
+const handleApproveAndBook = async () => {
+    if (!selectedBookingOption) return;
+    setLoading(true);
+    try {
+        await shipmentService.bookShipment(editTrackingNumber, selectedCarrier, selectedOptionalServiceCodes);
+        enqueueSnackbar('Shipment approved and booked successfully', { variant: 'success' });
+        // Navigate to details page (or Success step?) - UX choice: Success step seems appropriate or direct redirect.
+        // Let's redirect to details page as explicitly requested in plan for "manual verification point 4" logic
+        // But wait, the wizard usually ends with Success step. Let's go to Success step.
+        setActiveStep(steps.indexOf('Success'));
+    } catch (error) {
+        console.error('Booking failed:', error);
+        enqueueSnackbar(error.message || 'Booking failed', { variant: 'error' });
+    } finally {
+        setLoading(false);
+    }
+};
+
+// Totals Calculation
+const totals = useMemo(() => {
+    const parcelTotals = parcels.reduce((acc, p) => {
+        const qty = Number(p.quantity) || 1;
+        const volPerUnit = (p.length * p.width * p.height) / VOLUME_FACTOR;
+        acc.pieces += qty;
+        acc.actualWeight += Number(p.weight || 0) * qty;
+        acc.volumetricWeight += volPerUnit * qty;
+        return acc;
+    }, { pieces: 0, actualWeight: 0, volumetricWeight: 0 });
+
+    const itemTotals = items.reduce((acc, i) => {
+        const qty = Number(i.quantity) || 1;
+        acc.declaredValue += Number(i.declaredValue || 0) * qty;
+        return acc;
+    }, { declaredValue: 0 });
+
+    return { ...parcelTotals, ...itemTotals };
+}, [parcels, items]);
+
+const billableWeight = Math.max(totals.actualWeight, totals.volumetricWeight);
+
+const selectedOptionalServices = useMemo(() => {
+    const selectedCodes = new Set(selectedOptionalServiceCodes);
+    return availableOptionalServices.filter((service) => selectedCodes.has(service.serviceCode));
+}, [availableOptionalServices, selectedOptionalServiceCodes]);
+
+const optionalServicesTotal = useMemo(() => {
+    return selectedOptionalServices.reduce((sum, service) => sum + Number(service.totalPrice || 0), 0);
+}, [selectedOptionalServices]);
+
+const estimatedShipmentCost = Number(selectedService.totalPrice || 0);
+const estimatedShipmentTotal = Number((estimatedShipmentCost + optionalServicesTotal).toFixed(3));
+
+const toggleOptionalService = (serviceCode) => {
+    setSelectedOptionalServiceCodes((prev) => (
+        prev.includes(serviceCode)
+            ? prev.filter((code) => code !== serviceCode)
+            : [...prev, serviceCode]
+    ));
+};
+
+const loadScenario = (scenario, name) => {
+    if (scenario) {
+        setSender({
+            ...initialAddress,
+            ...scenario.sender,
+            streetLines: scenario.sender.streetLines || [scenario.sender.street || '']
+        });
+        setReceiver({
+            ...initialAddress,
+            ...scenario.receiver,
+            streetLines: scenario.receiver.streetLines || [scenario.receiver.street || '']
+        });
+        if (scenario.parcels) {
+            setParcels(scenario.parcels);
+            // Auto-generate items from parcels for consistency in Autofill
+            setItems(scenario.parcels.map(p => ({
+                description: p.description,
+                quantity: p.quantity,
+                weight: (p.weight / p.quantity) || 1, // Unit weight
+                declaredValue: (p.declaredValue / p.quantity) || 1, // Unit value
+                hsCode: p.hsCode || '',
+                countryOfOrigin: p.countryOfOrigin || (scenario.sender && scenario.sender.countryCode) || 'KW',
+                currency: 'KWD'
+            })));
+            setExpandedParcel(0);
+        }
+        if (scenario.dangerousGoods) {
+            setDangerousGoods(scenario.dangerousGoods);
+        } else {
+            setDangerousGoods({ contains: false });
+        }
+        if (scenario.invoiceRemarks) {
+            setInvoiceRemarks(scenario.invoiceRemarks);
+        } else {
+            setInvoiceRemarks('');
+        }
+        // Load new config fields
+        if (scenario.gstPaid !== undefined) setGstPaid(scenario.gstPaid);
+        if (scenario.payerOfVat) setPayerOfVat(scenario.payerOfVat);
+        if (scenario.palletCount !== undefined) setPalletCount(scenario.palletCount);
+        if (scenario.packageMarks) setPackageMarks(scenario.packageMarks);
+        if (scenario.shipmentType) setShipmentType(scenario.shipmentType);
+        if (scenario.incoterm) setIncoterm(scenario.incoterm);
+
+        setDevMenuAnchor(null);
+        enqueueSnackbar(`Loaded Scenario: ${name}`, { variant: 'success' });
+    }
+};
+
+const renderDevMenu = () => (
+    <Menu
+        anchorEl={devMenuAnchor}
+        open={Boolean(devMenuAnchor)}
+        onClose={handleDevMenuClose}
+        PaperProps={{
+            style: {
+                backgroundColor: '#1a2035',
+                color: '#fff',
+                border: '1px solid #2a3347',
+                maxHeight: 400
+            },
+        }}
+    >
+        {Object.keys(AUTOFILL_SCENARIOS).map((carrier) => (
+            <div key={carrier}>
+                <MenuItem disabled sx={{ opacity: 1, fontWeight: 'bold', color: '#00d9b8', fontSize: '0.8rem', mt: 1 }}>
+                    {carrier}
+                </MenuItem>
+                {Object.keys(AUTOFILL_SCENARIOS[carrier]).map((category) => (
+                    <div key={category}>
+                        <MenuItem disabled sx={{ opacity: 0.8, fontSize: '0.75rem', pl: 3, color: '#94a3b8' }}>
+                            {category}
+                        </MenuItem>
+                        {Object.keys(AUTOFILL_SCENARIOS[carrier][category]).map((scenarioName) => (
+                            <MenuItem
+                                key={scenarioName}
+                                onClick={() => loadScenario(AUTOFILL_SCENARIOS[carrier][category][scenarioName], scenarioName)}
+                                sx={{ pl: 4, fontSize: '0.9rem' }}
+                            >
+                                {scenarioName}
                             </MenuItem>
-                            {Object.keys(AUTOFILL_SCENARIOS[carrier][category]).map((scenarioName) => (
-                                <MenuItem
-                                    key={scenarioName}
-                                    onClick={() => loadScenario(AUTOFILL_SCENARIOS[carrier][category][scenarioName], scenarioName)}
-                                    sx={{ pl: 4, fontSize: '0.9rem' }}
-                                >
-                                    {scenarioName}
-                                </MenuItem>
-                            ))}
-                        </div>
-                    ))}
-                    <Divider sx={{ my: 1, borderColor: 'rgba(255,255,255,0.1)' }} />
-                </div>
-            ))}
-        </Menu>
-    );
+                        ))}
+                    </div>
+                ))}
+                <Divider sx={{ my: 1, borderColor: 'rgba(255,255,255,0.1)' }} />
+            </div>
+        ))}
+    </Menu>
+);
 
-    const updateParcel = (index, field, val) => {
-        const newParcels = [...parcels];
-        newParcels[index][field] = val;
-        setParcels(newParcels);
-    };
+const updateParcel = (index, field, val) => {
+    const newParcels = [...parcels];
+    newParcels[index][field] = val;
+    setParcels(newParcels);
+};
 
-    const removeParcel = (index) => {
-        if (parcels.length > 1) {
-            setParcels(parcels.filter((_, i) => i !== index));
-        }
-    };
+const removeParcel = (index) => {
+    if (parcels.length > 1) {
+        setParcels(parcels.filter((_, i) => i !== index));
+    }
+};
 
-    const handleNext = () => {
-        if (!validateStep(activeStep)) return;
-        setActiveStep((prev) => prev + 1);
-        window.scrollTo(0, 0);
-    };
+const handleNext = () => {
+    if (!validateStep(activeStep)) return;
+    setActiveStep((prev) => prev + 1);
+    window.scrollTo(0, 0);
+};
 
-    const handleBack = () => setActiveStep((prev) => prev - 1);
+const handleBack = () => setActiveStep((prev) => prev - 1);
 
-    const validateStep = (step) => {
-        const newErrors = {};
-        let isValid = true;
+const validateStep = (step) => {
+    const newErrors = {};
+    let isValid = true;
 
-        if (step === 0) {
-            // Staff must select a client
-            if (isStaff && !selectedClient) {
-                newErrors.client = 'You must select a client to create a shipment on their behalf';
-                isValid = false;
-            }
-
-            // Sender basic
-            if (!sender.contactPerson) newErrors.senderContact = 'Contact Person required';
-            if (!sender.phone) newErrors.senderPhone = 'Phone number required';
-            if (!sender.email) newErrors.senderEmail = 'Email required';
-            if (!sender.city) newErrors.senderCity = 'City required';
-            if (!sender.countryCode) newErrors.senderCountry = 'Country required';
-            if (!sender.postalCode) newErrors.senderPostal = 'Postal Code required';
-            // if (!sender.streetLines?.[0] && !sender.formattedAddress) newErrors.senderStreet = 'Street address required';
-
-            // Carrier-specific sender requirements
-            if (selectedCarrierProfile.requiresShipperReference && !sender.reference) {
-                newErrors.senderReference = `Shipper Reference required for ${selectedCarrier}`;
-            }
-
-            // Receiver basic
-            if (!receiver.contactPerson) newErrors.receiverContact = 'Contact Person required';
-            if (!receiver.phone) newErrors.receiverPhone = 'Phone number required';
-            if (!receiver.email) newErrors.receiverEmail = 'Email required';
-            if (!receiver.city) newErrors.receiverCity = 'City required';
-            if (!receiver.countryCode) newErrors.receiverCountry = 'Country required';
-            if (!receiver.postalCode) newErrors.receiverPostal = 'Postal Code required';
-            // if (!receiver.streetLines?.[0] && !receiver.formattedAddress) newErrors.receiverStreet = 'Street address required';
-
-            // Carrier-specific receiver requirements
-            // if (!receiver.vatNumber) newErrors.receiverVat = 'Receiver VAT number required (DGR)';
-            if (selectedCarrierProfile.requiresReceiverReference && !receiver.reference) {
-                newErrors.receiverReference = `Receiver Reference required (${selectedCarrier})`;
-            }
+    if (step === 0) {
+        // Staff must select a client
+        if (isStaff && !selectedClient) {
+            newErrors.client = 'You must select a client to create a shipment on their behalf';
+            isValid = false;
         }
 
-        if (step === 1) {
-            // 1. Validate Parcels
-            if (parcels.length === 0) {
-                enqueueSnackbar('At least one parcel is required', { variant: 'error' });
+        // Sender basic
+        if (!sender.contactPerson) newErrors.senderContact = 'Contact Person required';
+        if (!sender.phone) newErrors.senderPhone = 'Phone number required';
+        if (!sender.email) newErrors.senderEmail = 'Email required';
+        if (!sender.city) newErrors.senderCity = 'City required';
+        if (!sender.countryCode) newErrors.senderCountry = 'Country required';
+        if (!sender.postalCode) newErrors.senderPostal = 'Postal Code required';
+        // if (!sender.streetLines?.[0] && !sender.formattedAddress) newErrors.senderStreet = 'Street address required';
+
+        // Carrier-specific sender requirements
+        if (selectedCarrierProfile.requiresShipperReference && !sender.reference) {
+            newErrors.senderReference = `Shipper Reference required for ${selectedCarrier}`;
+        }
+
+        // Receiver basic
+        if (!receiver.contactPerson) newErrors.receiverContact = 'Contact Person required';
+        if (!receiver.phone) newErrors.receiverPhone = 'Phone number required';
+        if (!receiver.email) newErrors.receiverEmail = 'Email required';
+        if (!receiver.city) newErrors.receiverCity = 'City required';
+        if (!receiver.countryCode) newErrors.receiverCountry = 'Country required';
+        if (!receiver.postalCode) newErrors.receiverPostal = 'Postal Code required';
+        // if (!receiver.streetLines?.[0] && !receiver.formattedAddress) newErrors.receiverStreet = 'Street address required';
+
+        // Carrier-specific receiver requirements
+        // if (!receiver.vatNumber) newErrors.receiverVat = 'Receiver VAT number required (DGR)';
+        if (selectedCarrierProfile.requiresReceiverReference && !receiver.reference) {
+            newErrors.receiverReference = `Receiver Reference required (${selectedCarrier})`;
+        }
+    }
+
+    if (step === 1) {
+        // 1. Validate Parcels
+        if (parcels.length === 0) {
+            enqueueSnackbar('At least one parcel is required', { variant: 'error' });
+            return false;
+        }
+        parcels.forEach((p, i) => {
+            if (!p.description) newErrors[`parcel${i}desc`] = 'Description required';
+            if (!p.weight || p.weight <= 0) newErrors[`parcel${i}weight`] = 'Valid weight required';
+            if (!p.length || p.length <= 0) newErrors[`parcel${i}length`] = 'L required';
+            if (!p.width || p.width <= 0) newErrors[`parcel${i}width`] = 'W required';
+            if (!p.height || p.height <= 0) newErrors[`parcel${i}height`] = 'H required';
+        });
+
+        // 2. Validate Items (only if Package)
+        if (shipmentType !== 'documents') {
+            if (items.length === 0) {
+                enqueueSnackbar('At least one item is required for packages', { variant: 'error' });
                 return false;
             }
-            parcels.forEach((p, i) => {
-                if (!p.description) newErrors[`parcel${i}desc`] = 'Description required';
-                if (!p.weight || p.weight <= 0) newErrors[`parcel${i}weight`] = 'Valid weight required';
-                if (!p.length || p.length <= 0) newErrors[`parcel${i}length`] = 'L required';
-                if (!p.width || p.width <= 0) newErrors[`parcel${i}width`] = 'W required';
-                if (!p.height || p.height <= 0) newErrors[`parcel${i}height`] = 'H required';
+            items.forEach((item, i) => {
+                if (!item.description) newErrors[`item${i}desc`] = 'Description required';
+                if (!item.quantity || item.quantity <= 0) newErrors[`item${i}qty`] = 'Qty required';
+                if (!item.declaredValue || item.declaredValue <= 0) newErrors[`item${i}val`] = 'Value required';
+                if (!item.weight || item.weight <= 0) newErrors[`item${i}wgt`] = 'Weight required';
+                if (!item.hsCode) newErrors[`item${i}hs`] = 'HS Code required';
+                if (!item.countryOfOrigin) newErrors[`item${i}origin`] = 'Origin required';
+                if (item.hsCode && !HS_CODE_REGEX.test(item.hsCode)) newErrors[`item${i}hs`] = 'HS code format invalid';
+                if (item.countryOfOrigin && !ISO_COUNTRY_REGEX.test(String(item.countryOfOrigin).toUpperCase())) newErrors[`item${i}origin`] = 'Origin must be ISO-2 code (e.g. KW)';
             });
 
-            // 2. Validate Items (only if Package)
-            if (shipmentType !== 'documents') {
-                if (items.length === 0) {
-                    enqueueSnackbar('At least one item is required for packages', { variant: 'error' });
-                    return false;
+            if (selectedCarrierProfile.supportsDangerousGoods && dangerousGoods.contains) {
+                if ((dangerousGoods.properShippingName || '').length > FIELD_LIMITS.properShippingName) {
+                    newErrors.dgProperName = `DG proper shipping name max ${FIELD_LIMITS.properShippingName} chars`;
                 }
-                items.forEach((item, i) => {
-                    if (!item.description) newErrors[`item${i}desc`] = 'Description required';
-                    if (!item.quantity || item.quantity <= 0) newErrors[`item${i}qty`] = 'Qty required';
-                    if (!item.declaredValue || item.declaredValue <= 0) newErrors[`item${i}val`] = 'Value required';
-                    if (!item.weight || item.weight <= 0) newErrors[`item${i}wgt`] = 'Weight required';
-                    if (!item.hsCode) newErrors[`item${i}hs`] = 'HS Code required';
-                    if (!item.countryOfOrigin) newErrors[`item${i}origin`] = 'Origin required';
-                    if (item.hsCode && !HS_CODE_REGEX.test(item.hsCode)) newErrors[`item${i}hs`] = 'HS code format invalid';
-                    if (item.countryOfOrigin && !ISO_COUNTRY_REGEX.test(String(item.countryOfOrigin).toUpperCase())) newErrors[`item${i}origin`] = 'Origin must be ISO-2 code (e.g. KW)';
-                });
-
-                if (selectedCarrierProfile.supportsDangerousGoods && dangerousGoods.contains) {
-                    if ((dangerousGoods.properShippingName || '').length > FIELD_LIMITS.properShippingName) {
-                        newErrors.dgProperName = `DG proper shipping name max ${FIELD_LIMITS.properShippingName} chars`;
-                    }
-                    if ((dangerousGoods.customDescription || '').length > FIELD_LIMITS.dgMarksInstructions) {
-                        newErrors.dgMarks = `DG marks/instructions max ${FIELD_LIMITS.dgMarksInstructions} chars`;
-                    }
-                }
-
-                // Validate Currency Consistency
-                const currencies = new Set(items.map(i => i.currency || 'USD'));
-                if (currencies.size > 1) {
-                    newErrors['currencyConsistency'] = `All items must have the same currency. Found: ${Array.from(currencies).join(', ')}`;
-                    enqueueSnackbar('All items must have the same currency.', { variant: 'error' });
-                    isValid = false;
+                if ((dangerousGoods.customDescription || '').length > FIELD_LIMITS.dgMarksInstructions) {
+                    newErrors.dgMarks = `DG marks/instructions max ${FIELD_LIMITS.dgMarksInstructions} chars`;
                 }
             }
-        }
 
-        if (step === 2) {
-            // Billing & Docs Validation
-            if (!incoterm) newErrors.incoterm = 'Incoterm required';
-
-            // Export Reason is mandatory for Goods (Package), optional for Documents
-            if (shipmentType !== 'documents' && !exportReason) {
-                newErrors.exportReason = 'Reason for Export required for Goods';
+            // Validate Currency Consistency
+            const currencies = new Set(items.map(i => i.currency || 'USD'));
+            if (currencies.size > 1) {
+                newErrors['currencyConsistency'] = `All items must have the same currency. Found: ${Array.from(currencies).join(', ')}`;
+                enqueueSnackbar('All items must have the same currency.', { variant: 'error' });
+                isValid = false;
             }
+        }
+    }
 
-            if ((invoiceRemarks || '').length > FIELD_LIMITS.invoiceRemarks) newErrors.invoiceRemarks = `Invoice remarks max ${FIELD_LIMITS.invoiceRemarks} chars`;
-            if ((packageMarks || '').length > FIELD_LIMITS.packageMarks) newErrors.packageMarks = `Package marks max ${FIELD_LIMITS.packageMarks} chars`;
+    if (step === 2) {
+        // Billing & Docs Validation
+        if (!incoterm) newErrors.incoterm = 'Incoterm required';
+
+        // Export Reason is mandatory for Goods (Package), optional for Documents
+        if (shipmentType !== 'documents' && !exportReason) {
+            newErrors.exportReason = 'Reason for Export required for Goods';
         }
 
-        if (Object.keys(newErrors).length > 0) {
-            setErrors(newErrors);
-            const firstError = Object.values(newErrors)[0];
-            enqueueSnackbar(`Missing Information: ${firstError}`, { variant: 'error' });
-            isValid = false;
-        } else {
-            setErrors({});
-        }
+        if ((invoiceRemarks || '').length > FIELD_LIMITS.invoiceRemarks) newErrors.invoiceRemarks = `Invoice remarks max ${FIELD_LIMITS.invoiceRemarks} chars`;
+        if ((packageMarks || '').length > FIELD_LIMITS.packageMarks) newErrors.packageMarks = `Package marks max ${FIELD_LIMITS.packageMarks} chars`;
+    }
 
-        return isValid;
-    };
+    if (Object.keys(newErrors).length > 0) {
+        setErrors(newErrors);
+        const firstError = Object.values(newErrors)[0];
+        enqueueSnackbar(`Missing Information: ${firstError}`, { variant: 'error' });
+        isValid = false;
+    } else {
+        setErrors({});
+    }
 
-    const [createdShipment, setCreatedShipment] = useState(null);
+    return isValid;
+};
 
-    const handleSubmit = async () => {
-        setLoading(true);
-        try {
-            const payload = {
-                parcels: parcels.map(p => ({
-                    ...p,
-                    dimensions: {
-                        length: Number(p.length) || 10,
-                        width: Number(p.width) || 10,
-                        height: Number(p.height) || 10
-                    },
-                    weight: Number(p.weight)
-                })),
-                items: items.map(i => ({
-                    ...i,
-                    quantity: Number(i.quantity),
-                    declaredValue: Number(i.declaredValue),
-                    weight: Number(i.weight),
-                    currency: i.currency || currency // Fallback to global currency if missing
-                })),
-                serviceCode: selectedService.serviceCode,
-                carrierCode: selectedCarrier,
-                status: 'ready_for_pickup',
-                skipCarrierCreation: true,
-                price: estimatedShipmentTotal,
-                costPrice: selectedService.rawPrice, // Pass raw cost if available (Admin/Staff)
-                optionalServices: selectedOptionalServices,
-                optionalServicesTotal,
-                estimatedShipmentCost,
-                currency: currency, // Dynamic currency
-                incoterm: incoterm, // Dynamic incoterm
-                dangerousGoods: dangerousGoods, // Dynamic DG
-                totals,
-                customer: {
-                    name: sender.contactPerson,
-                    email: sender.email,
-                    phone: sender.phone,
-                    vatNo: sender.vatNumber,
-                    eori: sender.eoriNumber,
-                    taxId: sender.taxId,
-                    traderType: sender.traderType
+const [createdShipment, setCreatedShipment] = useState(null);
+
+const handleSubmit = async () => {
+    setLoading(true);
+    try {
+        const payload = {
+            parcels: parcels.map(p => ({
+                ...p,
+                dimensions: {
+                    length: Number(p.length) || 10,
+                    width: Number(p.width) || 10,
+                    height: Number(p.height) || 10
                 },
-                shipmentType,
-                plannedDate,
-                packagingType,
-                exportReason,
-                remarks: invoiceRemarks,
-                // Assign to selected client if staff, otherwise to self (client/org_agent)
-                userId: isStaff ? selectedClient : (user._id),
-                // Pass new fields
-                gstPaid,
-                payerOfVat,
-                packageMarks,
-                receiverReference: receiver.reference,
-                shipperAccount, // Pass override account
-                labelSettings: {
-                    format: labelFormat,
-                    signatureName,
-                    signatureTitle
-                },
-                // Explicitly pass Tax/EORI into objects to be sure
-                sender: { ...sender, vatNumber: sender.vatNumber, eoriNumber: sender.eoriNumber, taxId: sender.taxId },
-                receiver: { ...receiver, vatNumber: receiver.vatNumber, eoriNumber: receiver.eoriNumber, taxId: receiver.taxId }
-            };
-
-            let response;
-            if (isEditMode) {
-                response = await shipmentService.updateShipmentDetails(editTrackingNumber, payload);
-            } else {
-                response = await shipmentService.createShipment(payload);
-            }
-
-            if (response.success || response.data) {
-                if (!isEditMode) setCreatedShipment(response.data);
-                await refreshUser(); // Update balance in Header
-
-                // If we are in edit mode, check if we need to show Approval next
-                if (isEditMode && showApprovalStep) {
-                    // Go to Approval step
-                    setActiveStep(steps.indexOf('Approval'));
-                } else if (isEditMode) {
-                    // No approval needed/allowed, just done.
-                    enqueueSnackbar(`Shipment ${editTrackingNumber} updated successfully`, { variant: 'success' });
-                    navigate(`/shipment/${editTrackingNumber}`);
-                } else {
-                    // Create mode -> Success
-                    setActiveStep(steps.indexOf('Success'));
-                    // Clear draft (only in create mode)
-                    if (user) localStorage.removeItem(`shipment_draft_${user._id}`);
-                    enqueueSnackbar('Shipment created and scheduled for pickup', { variant: 'success' });
-                }
-            }
-        } catch (error) {
-            console.error('Submission Failed:', error);
-            enqueueSnackbar(error.message || 'Submission Failed', { variant: 'error' });
-        } finally {
-            setLoading(false);
-        }
-    };
-
-
-
-
-
-    const renderParcels = () => {
-        return (
-            <Box>
-                <DangerousGoodsPanel
-                    dangerousGoods={dangerousGoods}
-                    setDangerousGoods={setDangerousGoods}
-                />
-
-                <Box mb={3}>
-                    <FormControl fullWidth>
-                        <InputLabel>Packaging Type</InputLabel>
-                        <Select value={packagingType} label="Packaging Type" onChange={(e) => setPackagingType(e.target.value)}>
-                            <MenuItem value="user">My Own Packaging</MenuItem>
-                            <MenuItem value="CP">Custom Packaging</MenuItem>
-                            <MenuItem value="EE">DGR Express Envelope</MenuItem>
-                            <MenuItem value="OD">Other DGR Packaging</MenuItem>
-                        </Select>
-                    </FormControl>
-                </Box>
-                {
-                    parcels.map((parcel, index) => (
-                        <ParcelCard
-                            key={index}
-                            parcel={parcel} index={index}
-                            expanded={expandedParcel === index}
-                            onToggle={() => setExpandedParcel(expandedParcel === index ? -1 : index)}
-                            onChange={(field, val) => updateParcel(index, field, val)}
-                            onRemove={() => removeParcel(index)}
-                            errors={errors}
-                        />
-                    ))
-                }
-                <Box mb={10}>
-                    <Button startIcon={<AddIcon />} onClick={() => setParcels([...parcels, { description: '', weight: '', length: '', width: '', height: '', quantity: 1, declaredValue: '' }])}>
-                        Add Another Parcel
-                    </Button>
-                </Box>
-
-                {/* Sticky Summary Bar */}
-                <Paper
-                    elevation={4}
-                    sx={{
-                        position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)',
-                        bgcolor: 'grey.900', color: 'white', p: 2, borderRadius: 4, zIndex: 1200,
-                        display: 'flex', gap: 4, boxShadow: '0 8px 32px rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)'
-                    }}
-                >
-                    <Box textAlign="center"><Typography variant="caption" sx={{ opacity: 0.6 }}>PCS</Typography><Typography variant="body1" fontWeight="bold">{totals.pieces}</Typography></Box>
-                    <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
-                    <Box textAlign="center"><Typography variant="caption" sx={{ opacity: 0.6 }}>ACTUAL</Typography><Typography variant="body1" fontWeight="bold">{totals.actualWeight.toFixed(2)}</Typography></Box>
-                    <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
-                    <Box textAlign="center"><Typography variant="caption" sx={{ opacity: 0.6 }}>VOLUMETRIC</Typography><Typography variant="body1" fontWeight="bold">{totals.volumetricWeight.toFixed(2)}</Typography></Box>
-                    <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
-                    <Box textAlign="center" sx={{ bgcolor: 'primary.main', px: 2, py: 0.5, borderRadius: 2 }}>
-                        <Typography variant="caption" sx={{ opacity: 0.9 }}>BILLABLE</Typography>
-                        <Typography variant="body1" fontWeight="bold">{billableWeight.toFixed(2)} KG</Typography>
-                    </Box>
-                </Paper>
-            </Box >
-        );
-    };
-
-    const updateItem = (index, field, val) => {
-        const newItems = [...items];
-        newItems[index][field] = val;
-        setItems(newItems);
-    };
-
-    const removeItem = (index) => {
-        if (items.length > 1) {
-            setItems(items.filter((_, i) => i !== index));
-        }
-    };
-
-    const renderContent = () => (
-        <ShipmentContent
-            parcels={parcels} setParcels={setParcels}
-            items={items} setItems={setItems}
-            dangerousGoods={dangerousGoods} setDangerousGoods={setDangerousGoods}
-            packagingType={packagingType} setPackagingType={setPackagingType}
-            shipmentType={shipmentType}
-            errors={errors}
-            showDangerousGoods={selectedCarrierProfile.supportsDangerousGoods}
-            packagingOptions={selectedCarrierProfile.packagingOptions}
-        />
-    );
-    const renderBilling = () => (
-        <ShipmentBilling
-            exportReason={exportReason} setExportReason={setExportReason}
-            invoiceRemarks={invoiceRemarks} setInvoiceRemarks={setInvoiceRemarks}
-            incoterm={incoterm} setIncoterm={setIncoterm}
-            gstPaid={gstPaid} setGstPaid={setGstPaid}
-            payerOfVat={payerOfVat} setPayerOfVat={setPayerOfVat}
-            shipperAccount={shipperAccount} setShipperAccount={setShipperAccount}
-            labelFormat={labelFormat} setLabelFormat={setLabelFormat}
-            signatureName={signatureName} setSignatureName={setSignatureName}
-            signatureTitle={signatureTitle} setSignatureTitle={setSignatureTitle}
-            palletCount={palletCount} setPalletCount={setPalletCount}
-            packageMarks={packageMarks} setPackageMarks={setPackageMarks}
-            availableOptionalServices={availableOptionalServices}
-            selectedOptionalServiceCodes={selectedOptionalServiceCodes}
-            onToggleOptionalService={toggleOptionalService}
-            estimatedShipmentCost={estimatedShipmentCost}
-            optionalServicesTotal={optionalServicesTotal}
-            estimatedShipmentTotal={estimatedShipmentTotal}
-            errors={errors}
-        />
-    );
-
-
-
-    const renderReview = () => {
-        const s = formatPartyAddress(sender);
-        const r = formatPartyAddress(receiver);
-
-        // Compliance Logic
-        const missingFields = [];
-        const rf = selectedCarrierProfile.requiredFields || { sender: [], receiver: [] };
-
-        // Helper to check if a field is missing in the party object
-        const isFieldMissing = (party, field) => {
-            if (field === 'streetLines') return !(party.streetLines || []).filter(Boolean).length;
-            return !party[field] || (typeof party[field] === 'string' && party[field].trim() === '');
+                weight: Number(p.weight)
+            })),
+            items: items.map(i => ({
+                ...i,
+                quantity: Number(i.quantity),
+                declaredValue: Number(i.declaredValue),
+                weight: Number(i.weight),
+                currency: i.currency || currency // Fallback to global currency if missing
+            })),
+            serviceCode: selectedService.serviceCode,
+            carrierCode: selectedCarrier,
+            status: 'ready_for_pickup',
+            skipCarrierCreation: true,
+            price: estimatedShipmentTotal,
+            costPrice: selectedService.rawPrice, // Pass raw cost if available (Admin/Staff)
+            optionalServices: selectedOptionalServices,
+            optionalServicesTotal,
+            estimatedShipmentCost,
+            currency: currency, // Dynamic currency
+            incoterm: incoterm, // Dynamic incoterm
+            dangerousGoods: dangerousGoods, // Dynamic DG
+            totals,
+            customer: {
+                name: sender.contactPerson,
+                email: sender.email,
+                phone: sender.phone,
+                vatNo: sender.vatNumber,
+                eori: sender.eoriNumber,
+                taxId: sender.taxId,
+                traderType: sender.traderType
+            },
+            shipmentType,
+            plannedDate,
+            packagingType,
+            exportReason,
+            remarks: invoiceRemarks,
+            // Assign to selected client if staff, otherwise to self (client/org_agent)
+            userId: isStaff ? selectedClient : (user._id),
+            // Pass new fields
+            gstPaid,
+            payerOfVat,
+            packageMarks,
+            receiverReference: receiver.reference,
+            shipperAccount, // Pass override account
+            labelSettings: {
+                format: labelFormat,
+                signatureName,
+                signatureTitle
+            },
+            // Explicitly pass Tax/EORI into objects to be sure
+            sender: { ...sender, vatNumber: sender.vatNumber, eoriNumber: sender.eoriNumber, taxId: sender.taxId },
+            receiver: { ...receiver, vatNumber: receiver.vatNumber, eoriNumber: receiver.eoriNumber, taxId: receiver.taxId }
         };
 
-        // Check Sender
-        rf.sender.forEach(field => {
-            if (isFieldMissing(sender, field)) {
-                const label = field.charAt(0).toUpperCase() + field.slice(1).replace(/([A-Z])/g, ' $1');
-                missingFields.push(`Shipper ${label}`);
-            }
-        });
+        let response;
+        if (isEditMode) {
+            response = await shipmentService.updateShipmentDetails(editTrackingNumber, payload);
+        } else {
+            response = await shipmentService.createShipment(payload);
+        }
 
-        // Check Receiver
-        rf.receiver.forEach(field => {
-            if (isFieldMissing(receiver, field)) {
-                const label = field.charAt(0).toUpperCase() + field.slice(1).replace(/([A-Z])/g, ' $1');
-                missingFields.push(`Consignee ${label}`);
-            }
-        });
+        if (response.success || response.data) {
+            if (!isEditMode) setCreatedShipment(response.data);
+            await refreshUser(); // Update balance in Header
 
-        // Styles
-        const SectionHeader = ({ icon, title, onEdit }) => (
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={1} sx={{ color: 'primary.main' }}>
-                <Box display="flex" alignItems="center" gap={1}>
-                    {icon}
-                    <Typography variant="h6" fontWeight="bold">{title}</Typography>
-                </Box>
-                {onEdit && (
-                    <Button
-                        size="small"
-                        startIcon={<EditIcon />}
-                        onClick={onEdit}
-                        sx={{ color: 'primary.main', textTransform: 'none', fontWeight: 600 }}
-                    >
-                        Change
-                    </Button>
-                )}
+            // If we are in edit mode, check if we need to show Approval next
+            if (isEditMode && showApprovalStep) {
+                // Go to Approval step
+                setActiveStep(steps.indexOf('Approval'));
+            } else if (isEditMode) {
+                // No approval needed/allowed, just done.
+                enqueueSnackbar(`Shipment ${editTrackingNumber} updated successfully`, { variant: 'success' });
+                navigate(`/shipment/${editTrackingNumber}`);
+            } else {
+                // Create mode -> Success
+                setActiveStep(steps.indexOf('Success'));
+                // Clear draft (only in create mode)
+                if (user) localStorage.removeItem(`shipment_draft_${user._id}`);
+                enqueueSnackbar('Shipment created and scheduled for pickup', { variant: 'success' });
+            }
+        }
+    } catch (error) {
+        console.error('Submission Failed:', error);
+        enqueueSnackbar(error.message || 'Submission Failed', { variant: 'error' });
+    } finally {
+        setLoading(false);
+    }
+};
+
+
+
+
+
+const renderParcels = () => {
+    return (
+        <Box>
+            <DangerousGoodsPanel
+                dangerousGoods={dangerousGoods}
+                setDangerousGoods={setDangerousGoods}
+            />
+
+            <Box mb={3}>
+                <FormControl fullWidth>
+                    <InputLabel>Packaging Type</InputLabel>
+                    <Select value={packagingType} label="Packaging Type" onChange={(e) => setPackagingType(e.target.value)}>
+                        <MenuItem value="user">My Own Packaging</MenuItem>
+                        <MenuItem value="CP">Custom Packaging</MenuItem>
+                        <MenuItem value="EE">DGR Express Envelope</MenuItem>
+                        <MenuItem value="OD">Other DGR Packaging</MenuItem>
+                    </Select>
+                </FormControl>
             </Box>
-        );
+            {
+                parcels.map((parcel, index) => (
+                    <ParcelCard
+                        key={index}
+                        parcel={parcel} index={index}
+                        expanded={expandedParcel === index}
+                        onToggle={() => setExpandedParcel(expandedParcel === index ? -1 : index)}
+                        onChange={(field, val) => updateParcel(index, field, val)}
+                        onRemove={() => removeParcel(index)}
+                        errors={errors}
+                    />
+                ))
+            }
+            <Box mb={10}>
+                <Button startIcon={<AddIcon />} onClick={() => setParcels([...parcels, { description: '', weight: '', length: '', width: '', height: '', quantity: 1, declaredValue: '' }])}>
+                    Add Another Parcel
+                </Button>
+            </Box>
 
-        const AddressCard = ({ title, data, onEdit }) => (
-            <Card variant="outlined" sx={{ height: '100%', bgcolor: 'background.paper', borderRadius: 2, position: 'relative' }}>
-                <CardContent>
-                    <Box display="flex" justifyContent="space-between" alignItems="flex-start">
-                        <Typography variant="overline" color="text.secondary" fontWeight="bold">{title}</Typography>
-                        {onEdit && (
-                            <Tooltip title="Edit these details">
-                                <IconButton size="small" onClick={onEdit} sx={{ color: 'text.secondary' }}>
-                                    <EditIcon fontSize="small" />
-                                </IconButton>
-                            </Tooltip>
-                        )}
-                    </Box>
-                    <Box mt={1}>
-                        <Typography variant="subtitle1" fontWeight="bold">{data.company}</Typography>
-                        <Typography variant="body2">{data.contact}</Typography>
-                        <Divider sx={{ my: 1 }} />
-                        <Box display="flex" alignItems="center" gap={1} mb={0.5}>
-                            <DescriptionIcon fontSize="small" color="action" />
-                            <Typography variant="body2">{data.building} {data.street}</Typography>
-                        </Box>
-                        <Box display="flex" alignItems="center" gap={1} mb={0.5}>
-                            <VerifiedIcon fontSize="small" color="action" />
-                            <Typography variant="body2">{data.city}, {data.state} {data.postalCode}</Typography>
-                        </Box>
-                        <Box display="flex" alignItems="center" gap={1}>
-                            <Typography variant="body2" fontWeight="bold">{data.country}</Typography>
-                        </Box>
-                        <Divider sx={{ my: 1 }} />
-                        <Typography variant="caption" display="block">Phone: {data.phone}</Typography>
-                        <Typography variant="caption" display="block">Email: {data.email}</Typography>
-                        <Typography variant="caption" display="block" color="primary">Ref: {data.reference}</Typography>
-                    </Box>
-                </CardContent>
-            </Card>
-        );
+            {/* Sticky Summary Bar */}
+            <Paper
+                elevation={4}
+                sx={{
+                    position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)',
+                    bgcolor: 'grey.900', color: 'white', p: 2, borderRadius: 4, zIndex: 1200,
+                    display: 'flex', gap: 4, boxShadow: '0 8px 32px rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)'
+                }}
+            >
+                <Box textAlign="center"><Typography variant="caption" sx={{ opacity: 0.6 }}>PCS</Typography><Typography variant="body1" fontWeight="bold">{totals.pieces}</Typography></Box>
+                <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
+                <Box textAlign="center"><Typography variant="caption" sx={{ opacity: 0.6 }}>ACTUAL</Typography><Typography variant="body1" fontWeight="bold">{totals.actualWeight.toFixed(2)}</Typography></Box>
+                <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
+                <Box textAlign="center"><Typography variant="caption" sx={{ opacity: 0.6 }}>VOLUMETRIC</Typography><Typography variant="body1" fontWeight="bold">{totals.volumetricWeight.toFixed(2)}</Typography></Box>
+                <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
+                <Box textAlign="center" sx={{ bgcolor: 'primary.main', px: 2, py: 0.5, borderRadius: 2 }}>
+                    <Typography variant="caption" sx={{ opacity: 0.9 }}>BILLABLE</Typography>
+                    <Typography variant="body1" fontWeight="bold">{billableWeight.toFixed(2)} KG</Typography>
+                </Box>
+            </Paper>
+        </Box >
+    );
+};
 
-        return (
-            <Grid container spacing={4}>
-                {/* Left: Detailed Review */}
-                <Grid item xs={12} lg={8}>
-                    <Stack spacing={4}>
+const updateItem = (index, field, val) => {
+    const newItems = [...items];
+    newItems[index][field] = val;
+    setItems(newItems);
+};
 
-                        {/* 1. Route Details */}
-                        <Box>
-                            <SectionHeader
-                                icon={<LocalShippingIcon />}
-                                title="Route & Parties"
-                            />
-                            <Grid container spacing={3}>
-                                <Grid item xs={12} md={6}>
-                                    <AddressCard title="SHIPPER (FROM)" data={s} />
-                                </Grid>
-                                <Grid item xs={12} md={6}>
-                                    <AddressCard title="CONSIGNEE (TO)" data={r} />
-                                </Grid>
-                            </Grid>
-                        </Box>
+const removeItem = (index) => {
+    if (items.length > 1) {
+        setItems(items.filter((_, i) => i !== index));
+    }
+};
 
-                        <Divider sx={{ my: 1, borderColor: 'rgba(255,255,255,0.05)' }} />
-
-                        {/* 2. Shipment Content */}
-                        <Box>
-                            <SectionHeader
-                                icon={<DescriptionIcon />}
-                                title="Content & Packages"
-                            />
-                            <Card variant="outlined" sx={{ borderRadius: 2 }}>
-                                <CardContent>
-                                    <Grid container spacing={2} alignItems="center" mb={2}>
-                                        <Grid item>
-                                            <Chip icon={<DescriptionIcon />} label={`${totals.pieces} Pieces`} />
-                                        </Grid>
-                                        <Grid item>
-                                            <Chip icon={<CalculateIcon />} label={`${totals.actualWeight.toFixed(2)} KG Actual`} />
-                                        </Grid>
-                                        <Grid item>
-                                            <Chip icon={<WarningIcon />} label={`${totals.volumetricWeight.toFixed(2)} KG Volumetric`} variant="outlined" />
-                                        </Grid>
-                                        <Grid item xs />
-                                        <Grid item>
-                                            <Typography variant="h6" color="primary.main">
-                                                {currency} {totals.declaredValue.toFixed(2)}
-                                            </Typography>
-                                            <Typography variant="caption" display="block" textAlign="right">Total Declared Value</Typography>
-                                        </Grid>
-                                    </Grid>
-
-                                    <TableContainer component={Paper} elevation={0} variant="outlined">
-                                        <Table size="small">
-                                            <TableHead sx={{ bgcolor: 'action.hover' }}>
-                                                <TableRow>
-                                                    <TableCell>Description</TableCell>
-                                                    <TableCell>Dimensions (cm)</TableCell>
-                                                    <TableCell width={100}>Weight</TableCell>
-                                                    <TableCell width={80}>Qty</TableCell>
-                                                </TableRow>
-                                            </TableHead>
-                                            <TableBody>
-                                                {parcels.map((p, i) => (
-                                                    <TableRow key={i}>
-                                                        <TableCell>
-                                                            <Typography variant="body2" fontWeight="bold">Parcel {i + 1}</Typography>
-                                                            <Typography variant="caption">{p.description}</Typography>
-                                                        </TableCell>
-                                                        <TableCell>{p.length} x {p.width} x {p.height}</TableCell>
-                                                        <TableCell>{p.weight} kg</TableCell>
-                                                        <TableCell>x{p.quantity}</TableCell>
-                                                    </TableRow>
-                                                ))}
-                                            </TableBody>
-                                        </Table>
-                                    </TableContainer>
-                                </CardContent>
-                            </Card>
-                        </Box>
-                    </Stack>
-                </Grid>
-
-                {/* Right: Confirmation Sidebar */}
-                <Grid item xs={12} lg={4}>
-                    <Stack spacing={2} position="sticky" top={100}>
-
-                        {/* Admin/Staff: Client Info Header */}
-                        {(isAdmin || isStaff) && selectedClient && (
-                            <Paper sx={{ p: 2, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
-                                <Typography variant="overline" color="text.secondary" display="block" lineHeight={1}>SHIPMENT FOR</Typography>
-
-                                {/* Organization (Big) */}
-                                <Typography variant="h6" fontWeight="bold" sx={{ mt: 1, lineHeight: 1.2 }}>
-                                    {clients.find(c => c._id === selectedClient)?.organization?.name || 'No Organization'}
-                                </Typography>
-
-                                {/* Agent Name (Small) */}
-                                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                                    {clients.find(c => c._id === selectedClient)?.name || 'Unknown Agent'}
-                                </Typography>
-
-                                <Divider sx={{ my: 1 }} />
-
-                                {/* Carrier */}
-                                <Box display="flex" justifyContent="space-between" alignItems="center">
-                                    <Typography variant="caption" color="text.secondary">Carrier</Typography>
-                                    <Typography variant="caption" fontWeight="bold">
-                                        {selectedCarrier === 'DHL' ? 'DHL Express' : selectedCarrier}
-                                    </Typography>
-                                </Box>
-                            </Paper>
-                        )}
-
-                        {/* Cost Summary Card */}
-                        <Card sx={{ bgcolor: 'primary.main', color: 'primary.contrastText', borderRadius: 2 }}>
-                            <CardContent>
-                                <Box display="flex" justifyContent="space-between" alignItems="center">
-                                    <Typography variant="overline" sx={{ opacity: 0.8 }}>ESTIMATED SHIPMENT TOTAL</Typography>
-                                </Box>
-                                <Box display="flex" alignItems="baseline" gap={1}>
-                                    <Typography variant="h3" fontWeight="bold">{estimatedShipmentTotal.toFixed(3)}</Typography>
-                                    <Typography variant="subtitle1">KD</Typography>
-                                </Box>
-
-                                <Divider sx={{ borderColor: 'rgba(255,255,255,0.2)', my: 2 }} />
-
-                                <Box display="flex" justifyContent="space-between" mb={0.5}>
-                                    <Typography variant="body2">Billable Weight</Typography>
-                                    <Typography variant="body2" fontWeight="bold">{billableWeight.toFixed(2)} KG</Typography>
-                                </Box>
-
-                                <Box display="flex" justifyContent="space-between" mb={1.5}>
-                                    <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                        Incoterm
-                                        <IconButton size="small" onClick={() => setActiveStep(2)} sx={{ p: 0, color: 'inherit', opacity: 0.7 }}>
-                                            <EditIcon sx={{ fontSize: 12 }} />
-                                        </IconButton>
-                                    </Typography>
-                                    <Typography variant="body2" fontWeight="bold">{incoterm}</Typography>
-                                </Box>
-
-                                <Box display="flex" justifyContent="space-between" mb={0.5}>
-                                    <Typography variant="body2">Service</Typography>
-                                    <Typography variant="body2" fontWeight="bold" sx={{ maxWidth: '60%', textAlign: 'right' }}>
-                                        {selectedService.serviceName}
-                                    </Typography>
-                                </Box>
-
-                                <Box display="flex" justifyContent="space-between" mb={0.5}>
-                                    <Typography variant="body2">Shipment Cost</Typography>
-                                    <Typography variant="body2" fontWeight="bold">{estimatedShipmentCost.toFixed(3)} KD</Typography>
-                                </Box>
-                                <Box display="flex" justifyContent="space-between" mb={1.5}>
-                                    <Typography variant="body2">Optional Services</Typography>
-                                    <Typography variant="body2" fontWeight="bold">{optionalServicesTotal.toFixed(3)} KD</Typography>
-                                </Box>
-
-                                {/* Admin Markup Analysis - Staff/Admin Only */}
-                                {(isAdmin || isStaff || isAccountant) && selectedClient && (
-                                    <Box mt={2} pt={2} borderTop={1} borderColor="rgba(255,255,255,0.2)">
-                                        <Typography variant="overline" sx={{ opacity: 0.8, display: 'block', mb: 1 }}>
-                                            ADMIN MARKUP ANALYSIS
-                                        </Typography>
-
-                                        {/* Client Markup Config */}
-                                        {(() => {
-                                            const client = clients.find(c => c._id === selectedClient);
-                                            // Backend Logic: User Markup > Organization Markup
-                                            const markup = client?.markup || client?.organization?.markup;
-                                            return markup ? (
-                                                <Box display="flex" justifyContent="space-between" mb={0.5}>
-                                                    <Typography variant="caption">Rule:</Typography>
-                                                    <Typography variant="caption" fontWeight="bold">
-                                                        {markup.type} ({markup.value || markup.percentageValue || markup.flatValue || 0})
-                                                    </Typography>
-                                                </Box>
-                                            ) : (
-                                                <Box display="flex" justifyContent="space-between" mb={0.5}>
-                                                    <Typography variant="caption">Rule:</Typography>
-                                                    <Typography variant="caption" fontWeight="bold" color="warning.light">Not Configured (Default 15%)</Typography>
-                                                </Box>
-                                            );
-                                        })()}
-
-                                        {/* Standardized Markup Analysis */}
-                                        {(() => {
-                                            const client = clients.find(c => c._id === selectedClient);
-                                            const config = client?.markup || client?.organization?.markup || { type: 'DEFAULT', value: 15 };
-
-                                            const base = Number(selectedService.basePrice || 0);
-                                            const addon = Number(selectedService.markupAmount || 0);
-
-                                            // Formatting Helper
-                                            const fmt = (n) => Number(n || 0).toFixed(3);
-
-                                            return (
-                                                <>
-                                                    <Box display="flex" justifyContent="space-between" mb={0.5} sx={{ opacity: 0.8 }}>
-                                                        <Typography variant="caption">Calculation:</Typography>
-                                                        <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                                                            {config.type === 'FLAT' && `${fmt(base)} + (Flat ${config.value || config.flatValue})`}
-                                                            {(config.type === 'PERCENTAGE' || config.type === 'DEFAULT') && `${fmt(base)} + (${fmt(base)} × ${config.value || config.percentageValue || 15}%)`}
-                                                            {config.type === 'COMBINED' && `(${fmt(base)} × ${config.percentageValue}%) + ${config.flatValue}`}
-                                                            {!['FLAT', 'PERCENTAGE', 'COMBINED', 'DEFAULT'].includes(config.type) && `${fmt(base)} + ${fmt(addon)}`}
-                                                        </Typography>
-                                                    </Box>
-
-                                                    <Box display="flex" justifyContent="space-between" sx={{ color: '#fff', bgcolor: 'rgba(255,255,255,0.1)', px: 1, py: 0.5, borderRadius: 1, mt: 1 }}>
-                                                        <Typography variant="caption" fontWeight="bold">Add-on:</Typography>
-                                                        <Typography variant="caption" fontWeight="bold">{fmt(addon)} KD</Typography>
-                                                    </Box>
-                                                </>
-                                            );
-                                        })()}
-                                    </Box>
-                                )}
+const renderContent = () => (
+    <ShipmentContent
+        parcels={parcels} setParcels={setParcels}
+        items={items} setItems={setItems}
+        dangerousGoods={dangerousGoods} setDangerousGoods={setDangerousGoods}
+        packagingType={packagingType} setPackagingType={setPackagingType}
+        shipmentType={shipmentType}
+        errors={errors}
+        showDangerousGoods={selectedCarrierProfile.supportsDangerousGoods}
+        packagingOptions={selectedCarrierProfile.packagingOptions}
+    />
+);
+const renderBilling = () => (
+    <ShipmentBilling
+        exportReason={exportReason} setExportReason={setExportReason}
+        invoiceRemarks={invoiceRemarks} setInvoiceRemarks={setInvoiceRemarks}
+        incoterm={incoterm} setIncoterm={setIncoterm}
+        gstPaid={gstPaid} setGstPaid={setGstPaid}
+        payerOfVat={payerOfVat} setPayerOfVat={setPayerOfVat}
+        shipperAccount={shipperAccount} setShipperAccount={setShipperAccount}
+        labelFormat={labelFormat} setLabelFormat={setLabelFormat}
+        signatureName={signatureName} setSignatureName={setSignatureName}
+        signatureTitle={signatureTitle} setSignatureTitle={setSignatureTitle}
+        palletCount={palletCount} setPalletCount={setPalletCount}
+        packageMarks={packageMarks} setPackageMarks={setPackageMarks}
+        availableOptionalServices={availableOptionalServices}
+        selectedOptionalServiceCodes={selectedOptionalServiceCodes}
+        onToggleOptionalService={toggleOptionalService}
+        estimatedShipmentCost={estimatedShipmentCost}
+        optionalServicesTotal={optionalServicesTotal}
+        estimatedShipmentTotal={estimatedShipmentTotal}
+        errors={errors}
+    />
+);
 
 
-                                {availableOptionalServices.some(s => selectedOptionalServiceCodes.includes(s.serviceCode) && Number(s.totalPrice || 0) > 0) && (
-                                    <Box mb={1.5} mt={2}>
-                                        <Typography variant="caption" sx={{ opacity: 0.85, display: 'block', mb: 0.5 }}>
-                                            Selected Services (Paid)
-                                        </Typography>
-                                        <List dense disablePadding>
-                                            {availableOptionalServices
-                                                .filter(s => selectedOptionalServiceCodes.includes(s.serviceCode) && Number(s.totalPrice || 0) > 0)
-                                                .map((service) => (
-                                                    <ListItem
-                                                        key={service.serviceCode}
-                                                        dense
-                                                        disableGutters
-                                                        sx={{ py: 0.3 }}
-                                                    >
-                                                        <ListItemIcon sx={{ minWidth: 28 }}>
-                                                            <CheckCircleIcon sx={{ fontSize: 18, color: '#fff' }} />
-                                                        </ListItemIcon>
-                                                        <ListItemText
-                                                            primaryTypographyProps={{ variant: 'caption', color: 'inherit' }}
-                                                            secondaryTypographyProps={{ variant: 'caption', color: 'rgba(255,255,255,0.7)' }}
-                                                            primary={service.serviceName}
-                                                            secondary={`${Number(service.totalPrice).toFixed(3)} KD`}
-                                                        />
-                                                    </ListItem>
-                                                ))}
-                                        </List>
-                                    </Box>
-                                )}
-                            </CardContent>
-                        </Card>
 
-                        {/* Compliance Card */}
-                        <Card variant="outlined" sx={{
-                            borderRadius: 2,
-                            borderColor: missingFields.length > 0 ? 'error.main' : 'success.main',
-                            borderWidth: 2
-                        }}>
-                            <CardContent>
-                                <Typography variant="subtitle2" gutterBottom fontWeight="bold" color={missingFields.length > 0 ? 'error.main' : 'success.main'}>
-                                    {missingFields.length > 0 ? 'Action Required' : 'Ready to Book'}
-                                </Typography>
+const renderReview = () => {
+    const s = formatPartyAddress(sender);
+    const r = formatPartyAddress(receiver);
 
-                                <Stack spacing={1}>
-                                    {missingFields.length > 0 ? (
-                                        missingFields.map((f, i) => (
-                                            <Alert severity="error" icon={<ErrorOutlineIcon fontSize="inherit" />} key={i} sx={{ py: 0 }}>
-                                                {f} Missing
-                                            </Alert>
-                                        ))
-                                    ) : (
-                                        <Alert severity="success" icon={<CheckCircleIcon fontSize="inherit" />} sx={{ py: 0 }}>
-                                            All Data Validated
-                                        </Alert>
-                                    )}
+    // Compliance Logic
+    const missingFields = [];
+    const rf = selectedCarrierProfile.requiredFields || { sender: [], receiver: [] };
 
-                                    <Divider sx={{ my: 1 }} />
-
-                                    <Box display="flex" justifyContent="space-between" alignItems="center">
-                                        <AuditItem label="Address Valid" valid={sender.countryCode && receiver.countryCode} />
-                                        <AuditItem label="Customs Data" valid={items.every(i => i.hsCode)} />
-                                        <AuditItem label="DG Checked" valid={true} />
-                                    </Box>
-                                </Stack>
-                            </CardContent>
-                        </Card>
-
-                        <Alert severity="info" variant="outlined" sx={{ alignItems: 'center' }}>
-                            <Typography variant="caption">
-                                By finalizing, you confirm all details are correct. Changes may incur fees.
-                            </Typography>
-                        </Alert>
-
-                        {/* Credit Balance Warning */}
-                        {user && (
-                            <Card variant="outlined" sx={{
-                                borderRadius: 2,
-                                bgcolor: availableCredit < estimatedShipmentTotal ? 'error.lighter' : 'success.lighter',
-                                borderColor: availableCredit < estimatedShipmentTotal ? 'error.main' : 'success.main',
-                                p: 1
-                            }}>
-                                <Box display="flex" alignItems="center" gap={1}>
-                                    <AccountBalanceWalletIcon color={availableCredit < estimatedShipmentTotal ? 'error' : 'success'} />
-                                    <Box>
-                                        <Typography variant="caption" display="block" fontWeight="bold">
-                                            Available Credit: {availableCredit.toFixed(3)} KD
-                                        </Typography>
-                                        {availableCredit < estimatedShipmentTotal && (
-                                            <Typography variant="caption" color="error.main" fontWeight="bold">
-                                                Insufficient balance. Please top up.
-                                            </Typography>
-                                        )}
-                                    </Box>
-                                </Box>
-                            </Card>
-                        )}
-                    </Stack>
-                </Grid>
-            </Grid>
-        );
+    // Helper to check if a field is missing in the party object
+    const isFieldMissing = (party, field) => {
+        if (field === 'streetLines') return !(party.streetLines || []).filter(Boolean).length;
+        return !party[field] || (typeof party[field] === 'string' && party[field].trim() === '');
     };
 
-    const renderApprovalStep = () => (
-        <Box>
-            <Typography variant="h6" gutterBottom sx={{ color: '#fff', mb: 3 }}>
-                Approve & Book Shipment
-            </Typography>
+    // Check Sender
+    rf.sender.forEach(field => {
+        if (isFieldMissing(sender, field)) {
+            const label = field.charAt(0).toUpperCase() + field.slice(1).replace(/([A-Z])/g, ' $1');
+            missingFields.push(`Shipper ${label}`);
+        }
+    });
 
-            {/* Context Info */}
-            <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', mb: 3, p: 2 }}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                    Current Selection
-                </Typography>
-                <Grid container spacing={2}>
-                    <Grid item xs={12} md={6}>
-                        <DataRow label="Carrier" value={selectedCarrier} />
-                        <DataRow label="Service" value={selectedService.serviceName} />
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                        <DataRow label="Total Value" value={`${totals.declaredValue} ${currency}`} />
-                        <DataRow label="Est. Cost" value={`${estimatedShipmentTotal} ${currency}`} />
-                    </Grid>
-                </Grid>
-            </Card>
+    // Check Receiver
+    rf.receiver.forEach(field => {
+        if (isFieldMissing(receiver, field)) {
+            const label = field.charAt(0).toUpperCase() + field.slice(1).replace(/([A-Z])/g, ' $1');
+            missingFields.push(`Consignee ${label}`);
+        }
+    });
 
-            <Typography variant="subtitle1" sx={{ color: '#00d9b8', mb: 2 }}>
-                Select Booking Service
-            </Typography>
-
-            {approvalLoading ? (
-                <Box display="flex" justifyContent="center" p={4}>
-                    <CircularProgress size={40} sx={{ color: '#00d9b8' }} />
-                </Box>
-            ) : (
-                <RadioGroup
-                    value={selectedBookingOption?.serviceCode || ''}
-                    onChange={(e) => {
-                        const service = bookingOptions.find(o => o.serviceCode === e.target.value);
-                        setSelectedBookingOption(service);
-                        setAvailableOptionalServices(service?.optionalServices || []);
-                    }}
-                >
-                    <List disablePadding>
-                        {bookingOptions.map((option) => {
-                            const isSelected = selectedBookingOption?.serviceCode === option.serviceCode;
-                            return (
-                                <ListItem
-                                    key={option.serviceCode}
-                                    sx={{
-                                        border: isSelected ? '1px solid #00d9b8' : '1px solid rgba(255,255,255,0.1)',
-                                        borderRadius: 2,
-                                        mb: 2,
-                                        bgcolor: isSelected ? 'rgba(0, 217, 184, 0.05)' : 'transparent',
-                                        transition: 'all 0.2s',
-                                        cursor: 'pointer'
-                                    }}
-                                    onClick={() => setSelectedBookingOption(option)}
-                                >
-                                    <FormControlLabel
-                                        value={option.serviceCode}
-                                        control={<Radio sx={{ color: isSelected ? '#00d9b8' : 'rgba(255,255,255,0.3)', '&.Mui-checked': { color: '#00d9b8' } }} />}
-                                        label=""
-                                        sx={{ mr: 2, my: 0 }}
-                                    />
-                                    <ListItemText
-                                        primary={
-                                            <Box display="flex" alignItems="center" gap={1}>
-                                                <Typography variant="subtitle1" fontWeight={600} color="#fff">
-                                                    {option.serviceName}
-                                                </Typography>
-                                                {isSelected && <Chip label="Selected" size="small" sx={{ bgcolor: '#00d9b8', color: '#000', fontWeight: 'bold', height: 20 }} />}
-                                            </Box>
-                                        }
-                                        secondary={
-                                            <Typography variant="body2" color="text.secondary">
-                                                Delivery: {new Date(option.deliveryDate).toLocaleDateString()}
-                                            </Typography>
-                                        }
-                                    />
-                                    <ListItemSecondaryAction>
-                                        <Typography variant="h6" color="#00d9b8" fontWeight="bold">
-                                            {Number(option.totalPrice).toFixed(3)} {option.currency}
-                                        </Typography>
-                                    </ListItemSecondaryAction>
-                                </ListItem>
-                            );
-                        })}
-                        {bookingOptions.length === 0 && !approvalLoading && (
-                            <Typography variant="body2" color="text.secondary" align="center" py={4}>
-                                No booking options found. Please check shipment details.
-                            </Typography>
-                        )}
-                    </List>
-                </RadioGroup>
-            )}
-
-            <Box display="flex" justifyContent="flex-end" gap={2} mt={4}>
-                <Button
-                    variant="outlined"
-                    onClick={handleBack}
-                    sx={{ borderColor: 'rgba(255,255,255,0.2)', color: '#fff' }}
-                >
-                    Back
-                </Button>
-                <Button
-                    variant="contained"
-                    onClick={handleApproveAndBook}
-                    disabled={loading || approvalLoading || !selectedBookingOption}
-                    startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <LocalShippingIcon />}
-                    sx={{
-                        bgcolor: '#00d9b8',
-                        color: '#000',
-                        fontWeight: 'bold',
-                        px: 4,
-                        '&:hover': { bgcolor: '#00bfa3' }
-                    }}
-                >
-                    {loading ? 'Processing...' : 'Approve & Book'}
-                </Button>
+    // Styles
+    const SectionHeader = ({ icon, title, onEdit }) => (
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={1} sx={{ color: 'primary.main' }}>
+            <Box display="flex" alignItems="center" gap={1}>
+                {icon}
+                <Typography variant="h6" fontWeight="bold">{title}</Typography>
             </Box>
+            {onEdit && (
+                <Button
+                    size="small"
+                    startIcon={<EditIcon />}
+                    onClick={onEdit}
+                    sx={{ color: 'primary.main', textTransform: 'none', fontWeight: 600 }}
+                >
+                    Change
+                </Button>
+            )}
         </Box>
     );
 
-    const AuditItem = ({ label, valid }) => (
-        <Tooltip title={valid ? "Passed" : "Failed"}>
-            <Box display="flex" alignItems="center" gap={0.5} sx={{ opacity: valid ? 1 : 0.5 }}>
-                {valid ? <CheckCircleIcon color="success" sx={{ fontSize: 16 }} /> : <ErrorOutlineIcon color="error" sx={{ fontSize: 16 }} />}
-                <Typography variant="caption">{label}</Typography>
-            </Box>
-        </Tooltip>
+    const AddressCard = ({ title, data, onEdit }) => (
+        <Card variant="outlined" sx={{ height: '100%', bgcolor: 'background.paper', borderRadius: 2, position: 'relative' }}>
+            <CardContent>
+                <Box display="flex" justifyContent="space-between" alignItems="flex-start">
+                    <Typography variant="overline" color="text.secondary" fontWeight="bold">{title}</Typography>
+                    {onEdit && (
+                        <Tooltip title="Edit these details">
+                            <IconButton size="small" onClick={onEdit} sx={{ color: 'text.secondary' }}>
+                                <EditIcon fontSize="small" />
+                            </IconButton>
+                        </Tooltip>
+                    )}
+                </Box>
+                <Box mt={1}>
+                    <Typography variant="subtitle1" fontWeight="bold">{data.company}</Typography>
+                    <Typography variant="body2">{data.contact}</Typography>
+                    <Divider sx={{ my: 1 }} />
+                    <Box display="flex" alignItems="center" gap={1} mb={0.5}>
+                        <DescriptionIcon fontSize="small" color="action" />
+                        <Typography variant="body2">{data.building} {data.street}</Typography>
+                    </Box>
+                    <Box display="flex" alignItems="center" gap={1} mb={0.5}>
+                        <VerifiedIcon fontSize="small" color="action" />
+                        <Typography variant="body2">{data.city}, {data.state} {data.postalCode}</Typography>
+                    </Box>
+                    <Box display="flex" alignItems="center" gap={1}>
+                        <Typography variant="body2" fontWeight="bold">{data.country}</Typography>
+                    </Box>
+                    <Divider sx={{ my: 1 }} />
+                    <Typography variant="caption" display="block">Phone: {data.phone}</Typography>
+                    <Typography variant="caption" display="block">Email: {data.email}</Typography>
+                    <Typography variant="caption" display="block" color="primary">Ref: {data.reference}</Typography>
+                </Box>
+            </CardContent>
+        </Card>
     );
-
-    if (activeStep === 4) {
-        return (
-            <Container maxWidth="sm" sx={{ py: 8, textAlign: 'center' }}>
-                <Zoom in><CheckCircleIcon color="success" sx={{ fontSize: 80, mb: 2 }} /></Zoom>
-                <Typography variant="h4" gutterBottom>Shipment Created!</Typography>
-                <Typography variant="subtitle1" color="primary" fontWeight="bold" gutterBottom>
-                    Status: Ready For Pickup (Pending Approval)
-                </Typography>
-                <Typography color="text.secondary" paragraph>
-                    The internal record has been created. Please download the System Label for the driver.
-                    Carrier booking will occur after staff approval.
-                </Typography>
-                <Stack direction="row" spacing={2} justifyContent="center" mt={4}>
-                    <Button
-                        variant="contained"
-                        size="large"
-                        onClick={() => generateWaybillPDF(createdShipment || { sender, receiver, parcels, totals, _id: 'PENDING' })}
-                        startIcon={<DescriptionIcon />}
-                    >
-                        Download System Label
-                    </Button>
-                    <Button variant="outlined" size="large" onClick={() => navigate('/dashboard')}>Go to Dashboard</Button>
-                </Stack>
-            </Container>
-        );
-    }
 
     return (
-        <ThemeProvider theme={darkFormTheme}>
-            <Box sx={{ minHeight: '100vh', bgcolor: '#0a0e1a', pb: 8 }}>
-                <WizardHeader
-                    activeStep={activeStep}
-                    totalSteps={steps.length}
-                    estimatedTime="5-8 min"
-                    onDevMenuClick={handleDevMenuOpen}
-                    isStaff={isStaff}
-                    isAdmin={isAdmin}
-                    title={isEditMode ? `Edit Shipment — ${editTrackingNumber}` : 'Create New Shipment'}
-                    steps={steps}
-                />
+        <Grid container spacing={4}>
+            {/* Left: Detailed Review */}
+            <Grid item xs={12} lg={8}>
+                <Stack spacing={4}>
 
-                {loading && !editLoaded && isEditMode && (
-                    <Box sx={{
-                        position: 'fixed', top: 120, left: 0, right: 0, bottom: 0,
-                        bgcolor: 'rgba(10, 14, 26, 0.8)', zIndex: 1000,
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center'
+                    {/* 1. Route Details */}
+                    <Box>
+                        <SectionHeader
+                            icon={<LocalShippingIcon />}
+                            title="Route & Parties"
+                        />
+                        <Grid container spacing={3}>
+                            <Grid item xs={12} md={6}>
+                                <AddressCard title="SHIPPER (FROM)" data={s} />
+                            </Grid>
+                            <Grid item xs={12} md={6}>
+                                <AddressCard title="CONSIGNEE (TO)" data={r} />
+                            </Grid>
+                        </Grid>
+                    </Box>
+
+                    <Divider sx={{ my: 1, borderColor: 'rgba(255,255,255,0.05)' }} />
+
+                    {/* 2. Shipment Content */}
+                    <Box>
+                        <SectionHeader
+                            icon={<DescriptionIcon />}
+                            title="Content & Packages"
+                        />
+                        <Card variant="outlined" sx={{ borderRadius: 2 }}>
+                            <CardContent>
+                                <Grid container spacing={2} alignItems="center" mb={2}>
+                                    <Grid item>
+                                        <Chip icon={<DescriptionIcon />} label={`${totals.pieces} Pieces`} />
+                                    </Grid>
+                                    <Grid item>
+                                        <Chip icon={<CalculateIcon />} label={`${totals.actualWeight.toFixed(2)} KG Actual`} />
+                                    </Grid>
+                                    <Grid item>
+                                        <Chip icon={<WarningIcon />} label={`${totals.volumetricWeight.toFixed(2)} KG Volumetric`} variant="outlined" />
+                                    </Grid>
+                                    <Grid item xs />
+                                    <Grid item>
+                                        <Typography variant="h6" color="primary.main">
+                                            {currency} {totals.declaredValue.toFixed(2)}
+                                        </Typography>
+                                        <Typography variant="caption" display="block" textAlign="right">Total Declared Value</Typography>
+                                    </Grid>
+                                </Grid>
+
+                                <TableContainer component={Paper} elevation={0} variant="outlined">
+                                    <Table size="small">
+                                        <TableHead sx={{ bgcolor: 'action.hover' }}>
+                                            <TableRow>
+                                                <TableCell>Description</TableCell>
+                                                <TableCell>Dimensions (cm)</TableCell>
+                                                <TableCell width={100}>Weight</TableCell>
+                                                <TableCell width={80}>Qty</TableCell>
+                                            </TableRow>
+                                        </TableHead>
+                                        <TableBody>
+                                            {parcels.map((p, i) => (
+                                                <TableRow key={i}>
+                                                    <TableCell>
+                                                        <Typography variant="body2" fontWeight="bold">Parcel {i + 1}</Typography>
+                                                        <Typography variant="caption">{p.description}</Typography>
+                                                    </TableCell>
+                                                    <TableCell>{p.length} x {p.width} x {p.height}</TableCell>
+                                                    <TableCell>{p.weight} kg</TableCell>
+                                                    <TableCell>x{p.quantity}</TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </TableContainer>
+                            </CardContent>
+                        </Card>
+                    </Box>
+                </Stack>
+            </Grid>
+
+            {/* Right: Confirmation Sidebar */}
+            <Grid item xs={12} lg={4}>
+                <Stack spacing={2} position="sticky" top={100}>
+
+                    {/* Admin/Staff: Client Info Header */}
+                    {(isAdmin || isStaff) && selectedClient && (
+                        <Paper sx={{ p: 2, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
+                            <Typography variant="overline" color="text.secondary" display="block" lineHeight={1}>SHIPMENT FOR</Typography>
+
+                            {/* Organization (Big) */}
+                            <Typography variant="h6" fontWeight="bold" sx={{ mt: 1, lineHeight: 1.2 }}>
+                                {clients.find(c => c._id === selectedClient)?.organization?.name || 'No Organization'}
+                            </Typography>
+
+                            {/* Agent Name (Small) */}
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                {clients.find(c => c._id === selectedClient)?.name || 'Unknown Agent'}
+                            </Typography>
+
+                            <Divider sx={{ my: 1 }} />
+
+                            {/* Carrier */}
+                            <Box display="flex" justifyContent="space-between" alignItems="center">
+                                <Typography variant="caption" color="text.secondary">Carrier</Typography>
+                                <Typography variant="caption" fontWeight="bold">
+                                    {selectedCarrier === 'DHL' ? 'DHL Express' : selectedCarrier}
+                                </Typography>
+                            </Box>
+                        </Paper>
+                    )}
+
+                    {/* Cost Summary Card */}
+                    <Card sx={{ bgcolor: 'primary.main', color: 'primary.contrastText', borderRadius: 2 }}>
+                        <CardContent>
+                            <Box display="flex" justifyContent="space-between" alignItems="center">
+                                <Typography variant="overline" sx={{ opacity: 0.8 }}>ESTIMATED SHIPMENT TOTAL</Typography>
+                            </Box>
+                            <Box display="flex" alignItems="baseline" gap={1}>
+                                <Typography variant="h3" fontWeight="bold">{estimatedShipmentTotal.toFixed(3)}</Typography>
+                                <Typography variant="subtitle1">KD</Typography>
+                            </Box>
+
+                            <Divider sx={{ borderColor: 'rgba(255,255,255,0.2)', my: 2 }} />
+
+                            <Box display="flex" justifyContent="space-between" mb={0.5}>
+                                <Typography variant="body2">Billable Weight</Typography>
+                                <Typography variant="body2" fontWeight="bold">{billableWeight.toFixed(2)} KG</Typography>
+                            </Box>
+
+                            <Box display="flex" justifyContent="space-between" mb={1.5}>
+                                <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                    Incoterm
+                                    <IconButton size="small" onClick={() => setActiveStep(2)} sx={{ p: 0, color: 'inherit', opacity: 0.7 }}>
+                                        <EditIcon sx={{ fontSize: 12 }} />
+                                    </IconButton>
+                                </Typography>
+                                <Typography variant="body2" fontWeight="bold">{incoterm}</Typography>
+                            </Box>
+
+                            <Box display="flex" justifyContent="space-between" mb={0.5}>
+                                <Typography variant="body2">Service</Typography>
+                                <Typography variant="body2" fontWeight="bold" sx={{ maxWidth: '60%', textAlign: 'right' }}>
+                                    {selectedService.serviceName}
+                                </Typography>
+                            </Box>
+
+                            <Box display="flex" justifyContent="space-between" mb={0.5}>
+                                <Typography variant="body2">Shipment Cost</Typography>
+                                <Typography variant="body2" fontWeight="bold">{estimatedShipmentCost.toFixed(3)} KD</Typography>
+                            </Box>
+                            <Box display="flex" justifyContent="space-between" mb={1.5}>
+                                <Typography variant="body2">Optional Services</Typography>
+                                <Typography variant="body2" fontWeight="bold">{optionalServicesTotal.toFixed(3)} KD</Typography>
+                            </Box>
+
+                            {/* Admin Markup Analysis - Staff/Admin Only */}
+                            {(isAdmin || isStaff || isAccountant) && selectedClient && (
+                                <Box mt={2} pt={2} borderTop={1} borderColor="rgba(255,255,255,0.2)">
+                                    <Typography variant="overline" sx={{ opacity: 0.8, display: 'block', mb: 1 }}>
+                                        ADMIN MARKUP ANALYSIS
+                                    </Typography>
+
+                                    {/* Client Markup Config */}
+                                    {(() => {
+                                        const client = clients.find(c => c._id === selectedClient);
+                                        // Backend Logic: User Markup > Organization Markup
+                                        const markup = client?.markup || client?.organization?.markup;
+                                        return markup ? (
+                                            <Box display="flex" justifyContent="space-between" mb={0.5}>
+                                                <Typography variant="caption">Rule:</Typography>
+                                                <Typography variant="caption" fontWeight="bold">
+                                                    {markup.type} ({markup.value || markup.percentageValue || markup.flatValue || 0})
+                                                </Typography>
+                                            </Box>
+                                        ) : (
+                                            <Box display="flex" justifyContent="space-between" mb={0.5}>
+                                                <Typography variant="caption">Rule:</Typography>
+                                                <Typography variant="caption" fontWeight="bold" color="warning.light">Not Configured (Default 15%)</Typography>
+                                            </Box>
+                                        );
+                                    })()}
+
+                                    {/* Standardized Markup Analysis */}
+                                    {(() => {
+                                        const client = clients.find(c => c._id === selectedClient);
+                                        const config = client?.markup || client?.organization?.markup || { type: 'DEFAULT', value: 15 };
+
+                                        const base = Number(selectedService.basePrice || 0);
+                                        const addon = Number(selectedService.markupAmount || 0);
+
+                                        // Formatting Helper
+                                        const fmt = (n) => Number(n || 0).toFixed(3);
+
+                                        return (
+                                            <>
+                                                <Box display="flex" justifyContent="space-between" mb={0.5} sx={{ opacity: 0.8 }}>
+                                                    <Typography variant="caption">Calculation:</Typography>
+                                                    <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                                                        {config.type === 'FLAT' && `${fmt(base)} + (Flat ${config.value || config.flatValue})`}
+                                                        {(config.type === 'PERCENTAGE' || config.type === 'DEFAULT') && `${fmt(base)} + (${fmt(base)} × ${config.value || config.percentageValue || 15}%)`}
+                                                        {config.type === 'COMBINED' && `(${fmt(base)} × ${config.percentageValue}%) + ${config.flatValue}`}
+                                                        {!['FLAT', 'PERCENTAGE', 'COMBINED', 'DEFAULT'].includes(config.type) && `${fmt(base)} + ${fmt(addon)}`}
+                                                    </Typography>
+                                                </Box>
+
+                                                <Box display="flex" justifyContent="space-between" sx={{ color: '#fff', bgcolor: 'rgba(255,255,255,0.1)', px: 1, py: 0.5, borderRadius: 1, mt: 1 }}>
+                                                    <Typography variant="caption" fontWeight="bold">Add-on:</Typography>
+                                                    <Typography variant="caption" fontWeight="bold">{fmt(addon)} KD</Typography>
+                                                </Box>
+                                            </>
+                                        );
+                                    })()}
+                                </Box>
+                            )}
+
+
+                            {availableOptionalServices.some(s => selectedOptionalServiceCodes.includes(s.serviceCode) && Number(s.totalPrice || 0) > 0) && (
+                                <Box mb={1.5} mt={2}>
+                                    <Typography variant="caption" sx={{ opacity: 0.85, display: 'block', mb: 0.5 }}>
+                                        Selected Services (Paid)
+                                    </Typography>
+                                    <List dense disablePadding>
+                                        {availableOptionalServices
+                                            .filter(s => selectedOptionalServiceCodes.includes(s.serviceCode) && Number(s.totalPrice || 0) > 0)
+                                            .map((service) => (
+                                                <ListItem
+                                                    key={service.serviceCode}
+                                                    dense
+                                                    disableGutters
+                                                    sx={{ py: 0.3 }}
+                                                >
+                                                    <ListItemIcon sx={{ minWidth: 28 }}>
+                                                        <CheckCircleIcon sx={{ fontSize: 18, color: '#fff' }} />
+                                                    </ListItemIcon>
+                                                    <ListItemText
+                                                        primaryTypographyProps={{ variant: 'caption', color: 'inherit' }}
+                                                        secondaryTypographyProps={{ variant: 'caption', color: 'rgba(255,255,255,0.7)' }}
+                                                        primary={service.serviceName}
+                                                        secondary={`${Number(service.totalPrice).toFixed(3)} KD`}
+                                                    />
+                                                </ListItem>
+                                            ))}
+                                    </List>
+                                </Box>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    {/* Compliance Card */}
+                    <Card variant="outlined" sx={{
+                        borderRadius: 2,
+                        borderColor: missingFields.length > 0 ? 'error.main' : 'success.main',
+                        borderWidth: 2
                     }}>
-                        <CircularProgress size={60} sx={{ color: '#00d9b8', mb: 2 }} />
-                        <Typography variant="h6" color="#fff" sx={{ fontFamily: 'Outfit' }}>Loading Shipment Data...</Typography>
-                    </Box>
-                )}
+                        <CardContent>
+                            <Typography variant="subtitle2" gutterBottom fontWeight="bold" color={missingFields.length > 0 ? 'error.main' : 'success.main'}>
+                                {missingFields.length > 0 ? 'Action Required' : 'Ready to Book'}
+                            </Typography>
 
-                {renderDevMenu()}
+                            <Stack spacing={1}>
+                                {missingFields.length > 0 ? (
+                                    missingFields.map((f, i) => (
+                                        <Alert severity="error" icon={<ErrorOutlineIcon fontSize="inherit" />} key={i} sx={{ py: 0 }}>
+                                            {f} Missing
+                                        </Alert>
+                                    ))
+                                ) : (
+                                    <Alert severity="success" icon={<CheckCircleIcon fontSize="inherit" />} sx={{ py: 0 }}>
+                                        All Data Validated
+                                    </Alert>
+                                )}
 
-                <Container maxWidth="lg">
-                    <Fade in key={activeStep}>
-                        <Box>
-                            {activeStep === 0 && (
-                                <Box>
-                                    <ShipmentSetup
-                                        sender={sender} setSender={setSender}
-                                        receiver={receiver} setReceiver={setReceiver}
-                                        pickupRequired={pickupRequired} setPickupRequired={setPickupRequired}
-                                        errors={errors}
-                                        isStaff={isStaff} clients={clients}
-                                        selectedClient={selectedClient} onClientChange={handleClientChange}
-                                        isAdmin={isAdmin}
-                                        availableCarriers={availableCarriers}
-                                        selectedCarrier={selectedCarrier}
-                                        onCarrierChange={handleCarrierChange}
-                                        requiredFields={selectedCarrierProfile.requiredFields}
-                                    />
+                                <Divider sx={{ my: 1 }} />
+
+                                <Box display="flex" justifyContent="space-between" alignItems="center">
+                                    <AuditItem label="Address Valid" valid={sender.countryCode && receiver.countryCode} />
+                                    <AuditItem label="Customs Data" valid={items.every(i => i.hsCode)} />
+                                    <AuditItem label="DG Checked" valid={true} />
                                 </Box>
-                            )}
-                            {activeStep === 1 && (
-                                <Box>
-                                    <ShipmentContent
-                                        parcels={parcels} setParcels={setParcels}
-                                        items={items} setItems={setItems}
-                                        shipmentType={shipmentType} setShipmentType={setShipmentType}
-                                        updateParcel={updateParcel} removeParcel={removeParcel}
-                                        expandedParcel={expandedParcel} setExpandedParcel={setExpandedParcel}
-                                        dangerousGoods={dangerousGoods} setDangerousGoods={setDangerousGoods}
-                                        addParcel={() => setParcels([...parcels, { description: '', weight: '', length: '', width: '', height: '', quantity: 1 }])}
-                                        addItem={() => setItems([...items, { description: '', quantity: 1, declaredValue: '', weight: '' }])}
-                                        removeItem={(i) => setItems(items.filter((_, idx) => idx !== i))}
-                                        updateItem={(i, f, v) => { const n = [...items]; n[i][f] = v; setItems(n); }}
-                                        errors={errors} packagingType={packagingType} setPackagingType={setPackagingType}
-                                        showDangerousGoods={selectedCarrierProfile.supportsDangerousGoods}
-                                        packagingOptions={selectedCarrierProfile.packagingOptions}
-                                    />
-                                </Box>
-                            )}
-                            {activeStep === 2 && (
-                                <Box>
-                                    <ShipmentBilling
-                                        exportReason={exportReason} setExportReason={setExportReason}
-                                        invoiceRemarks={invoiceRemarks} setInvoiceRemarks={setInvoiceRemarks}
-                                        incoterm={incoterm} setIncoterm={setIncoterm}
-                                        gstPaid={gstPaid} setGstPaid={setGstPaid}
-                                        payerOfVat={payerOfVat} setPayerOfVat={setPayerOfVat}
-                                        shipperAccount={shipperAccount} setShipperAccount={setShipperAccount}
-                                        labelFormat={labelFormat} setLabelFormat={setLabelFormat}
-                                        signatureName={signatureName} setSignatureName={setSignatureName}
-                                        signatureTitle={signatureTitle} setSignatureTitle={setSignatureTitle}
-                                        palletCount={palletCount} setPalletCount={setPalletCount}
-                                        packageMarks={packageMarks} setPackageMarks={setPackageMarks}
-                                        availableOptionalServices={availableOptionalServices}
-                                        selectedOptionalServiceCodes={selectedOptionalServiceCodes}
-                                        onToggleOptionalService={toggleOptionalService}
-                                        estimatedShipmentCost={estimatedShipmentCost}
-                                        optionalServicesTotal={optionalServicesTotal}
-                                        estimatedShipmentTotal={estimatedShipmentTotal}
-                                        errors={errors}
-                                    />
-                                </Box>
-                            )}
-                            {activeStep === 3 && renderReview()}
-                            {steps[activeStep] === 'Approval' && renderApprovalStep()}
-                        </Box>
-                    </Fade>
+                            </Stack>
+                        </CardContent>
+                    </Card>
 
-                    <Box display={steps[activeStep] === 'Approval' ? 'none' : 'flex'} justifyContent="space-between" mt={4} pt={4} borderTop="1px solid rgba(255,255,255,0.1)">
-                        <Button
-                            disabled={activeStep === 0}
-                            onClick={handleBack}
-                            startIcon={<ArrowBackIcon />}
-                            sx={{ color: 'text.secondary' }}
-                        >
-                            Back
-                        </Button>
-                        <Button
-                            variant="contained" size="large" onClick={activeStep === 3 ? handleSubmit : handleNext}
-                            endIcon={loading ? <CircularProgress size={20} color="inherit" /> : <ArrowForwardIcon />}
-                            disabled={loading || (activeStep === 3 && user && !isAdmin && !isStaff && availableCredit < estimatedShipmentTotal)}
+                    <Alert severity="info" variant="outlined" sx={{ alignItems: 'center' }}>
+                        <Typography variant="caption">
+                            By finalizing, you confirm all details are correct. Changes may incur fees.
+                        </Typography>
+                    </Alert>
 
-                            sx={{
-                                borderRadius: 50,
-                                px: 4,
-                                boxShadow: '0 4px 14px rgba(0, 217, 184, 0.4)',
-                                fontWeight: 700
-                            }}
-                        >
-                            {activeStep === 3 ? (showApprovalStep ? 'Proceed to Approval' : (isEditMode ? 'Update Request' : 'Finalize & Book')) : 'Continue'}
-                        </Button>
-                    </Box>
-                </Container>
-            </Box>
-        </ThemeProvider>
+                    {/* Credit Balance Warning */}
+                    {user && (
+                        <Card variant="outlined" sx={{
+                            borderRadius: 2,
+                            bgcolor: availableCredit < estimatedShipmentTotal ? 'error.lighter' : 'success.lighter',
+                            borderColor: availableCredit < estimatedShipmentTotal ? 'error.main' : 'success.main',
+                            p: 1
+                        }}>
+                            <Box display="flex" alignItems="center" gap={1}>
+                                <AccountBalanceWalletIcon color={availableCredit < estimatedShipmentTotal ? 'error' : 'success'} />
+                                <Box>
+                                    <Typography variant="caption" display="block" fontWeight="bold">
+                                        Available Credit: {availableCredit.toFixed(3)} KD
+                                    </Typography>
+                                    {availableCredit < estimatedShipmentTotal && (
+                                        <Typography variant="caption" color="error.main" fontWeight="bold">
+                                            Insufficient balance. Please top up.
+                                        </Typography>
+                                    )}
+                                </Box>
+                            </Box>
+                        </Card>
+                    )}
+                </Stack>
+            </Grid>
+        </Grid>
     );
+};
+
+const renderApprovalStep = () => (
+    <Box>
+        <Typography variant="h6" gutterBottom sx={{ color: '#fff', mb: 3 }}>
+            Approve & Book Shipment
+        </Typography>
+
+        {/* Context Info */}
+        <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', mb: 3, p: 2 }}>
+            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                Current Selection
+            </Typography>
+            <Grid container spacing={2}>
+                <Grid item xs={12} md={6}>
+                    <DataRow label="Carrier" value={selectedCarrier} />
+                    <DataRow label="Service" value={selectedService.serviceName} />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                    <DataRow label="Total Value" value={`${totals.declaredValue} ${currency}`} />
+                    <DataRow label="Est. Cost" value={`${estimatedShipmentTotal} ${currency}`} />
+                </Grid>
+            </Grid>
+        </Card>
+
+        <Typography variant="subtitle1" sx={{ color: '#00d9b8', mb: 2 }}>
+            Select Booking Service
+        </Typography>
+
+        {approvalLoading ? (
+            <Box display="flex" justifyContent="center" p={4}>
+                <CircularProgress size={40} sx={{ color: '#00d9b8' }} />
+            </Box>
+        ) : (
+            <RadioGroup
+                value={selectedBookingOption?.serviceCode || ''}
+                onChange={(e) => {
+                    const service = bookingOptions.find(o => o.serviceCode === e.target.value);
+                    setSelectedBookingOption(service);
+                    setAvailableOptionalServices(service?.optionalServices || []);
+                }}
+            >
+                <List disablePadding>
+                    {bookingOptions.map((option) => {
+                        const isSelected = selectedBookingOption?.serviceCode === option.serviceCode;
+                        return (
+                            <ListItem
+                                key={option.serviceCode}
+                                sx={{
+                                    border: isSelected ? '1px solid #00d9b8' : '1px solid rgba(255,255,255,0.1)',
+                                    borderRadius: 2,
+                                    mb: 2,
+                                    bgcolor: isSelected ? 'rgba(0, 217, 184, 0.05)' : 'transparent',
+                                    transition: 'all 0.2s',
+                                    cursor: 'pointer'
+                                }}
+                                onClick={() => setSelectedBookingOption(option)}
+                            >
+                                <FormControlLabel
+                                    value={option.serviceCode}
+                                    control={<Radio sx={{ color: isSelected ? '#00d9b8' : 'rgba(255,255,255,0.3)', '&.Mui-checked': { color: '#00d9b8' } }} />}
+                                    label=""
+                                    sx={{ mr: 2, my: 0 }}
+                                />
+                                <ListItemText
+                                    primary={
+                                        <Box display="flex" alignItems="center" gap={1}>
+                                            <Typography variant="subtitle1" fontWeight={600} color="#fff">
+                                                {option.serviceName}
+                                            </Typography>
+                                            {isSelected && <Chip label="Selected" size="small" sx={{ bgcolor: '#00d9b8', color: '#000', fontWeight: 'bold', height: 20 }} />}
+                                        </Box>
+                                    }
+                                    secondary={
+                                        <Typography variant="body2" color="text.secondary">
+                                            Delivery: {new Date(option.deliveryDate).toLocaleDateString()}
+                                        </Typography>
+                                    }
+                                />
+                                <ListItemSecondaryAction>
+                                    <Typography variant="h6" color="#00d9b8" fontWeight="bold">
+                                        {Number(option.totalPrice).toFixed(3)} {option.currency}
+                                    </Typography>
+                                </ListItemSecondaryAction>
+                            </ListItem>
+                        );
+                    })}
+                    {bookingOptions.length === 0 && !approvalLoading && (
+                        <Typography variant="body2" color="text.secondary" align="center" py={4}>
+                            No booking options found. Please check shipment details.
+                        </Typography>
+                    )}
+                </List>
+            </RadioGroup>
+        )}
+
+        <Box display="flex" justifyContent="flex-end" gap={2} mt={4}>
+            <Button
+                variant="outlined"
+                onClick={handleBack}
+                sx={{ borderColor: 'rgba(255,255,255,0.2)', color: '#fff' }}
+            >
+                Back
+            </Button>
+            <Button
+                variant="contained"
+                onClick={handleApproveAndBook}
+                disabled={loading || approvalLoading || !selectedBookingOption}
+                startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <LocalShippingIcon />}
+                sx={{
+                    bgcolor: '#00d9b8',
+                    color: '#000',
+                    fontWeight: 'bold',
+                    px: 4,
+                    '&:hover': { bgcolor: '#00bfa3' }
+                }}
+            >
+                {loading ? 'Processing...' : 'Approve & Book'}
+            </Button>
+        </Box>
+    </Box>
+);
+
+const AuditItem = ({ label, valid }) => (
+    <Tooltip title={valid ? "Passed" : "Failed"}>
+        <Box display="flex" alignItems="center" gap={0.5} sx={{ opacity: valid ? 1 : 0.5 }}>
+            {valid ? <CheckCircleIcon color="success" sx={{ fontSize: 16 }} /> : <ErrorOutlineIcon color="error" sx={{ fontSize: 16 }} />}
+            <Typography variant="caption">{label}</Typography>
+        </Box>
+    </Tooltip>
+);
+
+if (activeStep === 4) {
+    return (
+        <Container maxWidth="sm" sx={{ py: 8, textAlign: 'center' }}>
+            <Zoom in><CheckCircleIcon color="success" sx={{ fontSize: 80, mb: 2 }} /></Zoom>
+            <Typography variant="h4" gutterBottom>Shipment Created!</Typography>
+            <Typography variant="subtitle1" color="primary" fontWeight="bold" gutterBottom>
+                Status: Ready For Pickup (Pending Approval)
+            </Typography>
+            <Typography color="text.secondary" paragraph>
+                The internal record has been created. Please download the System Label for the driver.
+                Carrier booking will occur after staff approval.
+            </Typography>
+            <Stack direction="row" spacing={2} justifyContent="center" mt={4}>
+                <Button
+                    variant="contained"
+                    size="large"
+                    onClick={() => generateWaybillPDF(createdShipment || { sender, receiver, parcels, totals, _id: 'PENDING' })}
+                    startIcon={<DescriptionIcon />}
+                >
+                    Download System Label
+                </Button>
+                <Button variant="outlined" size="large" onClick={() => navigate('/dashboard')}>Go to Dashboard</Button>
+            </Stack>
+        </Container>
+    );
+}
+
+return (
+    <ThemeProvider theme={darkFormTheme}>
+        <Box sx={{ minHeight: '100vh', bgcolor: '#0a0e1a', pb: 8 }}>
+            <WizardHeader
+                activeStep={activeStep}
+                totalSteps={steps.length}
+                estimatedTime="5-8 min"
+                onDevMenuClick={handleDevMenuOpen}
+                isStaff={isStaff}
+                isAdmin={isAdmin}
+                title={isEditMode ? `Edit Shipment — ${editTrackingNumber}` : 'Create New Shipment'}
+                steps={steps}
+            />
+
+            {loading && !editLoaded && isEditMode && (
+                <Box sx={{
+                    position: 'fixed', top: 120, left: 0, right: 0, bottom: 0,
+                    bgcolor: 'rgba(10, 14, 26, 0.8)', zIndex: 1000,
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center'
+                }}>
+                    <CircularProgress size={60} sx={{ color: '#00d9b8', mb: 2 }} />
+                    <Typography variant="h6" color="#fff" sx={{ fontFamily: 'Outfit' }}>Loading Shipment Data...</Typography>
+                </Box>
+            )}
+
+            {renderDevMenu()}
+
+            <Container maxWidth="lg">
+                <Fade in key={activeStep}>
+                    <Box>
+                        {activeStep === 0 && (
+                            <Box>
+                                <ShipmentSetup
+                                    sender={sender} setSender={setSender}
+                                    receiver={receiver} setReceiver={setReceiver}
+                                    pickupRequired={pickupRequired} setPickupRequired={setPickupRequired}
+                                    errors={errors}
+                                    isStaff={isStaff} clients={clients}
+                                    selectedClient={selectedClient} onClientChange={handleClientChange}
+                                    isAdmin={isAdmin}
+                                    availableCarriers={availableCarriers}
+                                    selectedCarrier={selectedCarrier}
+                                    onCarrierChange={handleCarrierChange}
+                                    requiredFields={selectedCarrierProfile.requiredFields}
+                                />
+                            </Box>
+                        )}
+                        {activeStep === 1 && (
+                            <Box>
+                                <ShipmentContent
+                                    parcels={parcels} setParcels={setParcels}
+                                    items={items} setItems={setItems}
+                                    shipmentType={shipmentType} setShipmentType={setShipmentType}
+                                    updateParcel={updateParcel} removeParcel={removeParcel}
+                                    expandedParcel={expandedParcel} setExpandedParcel={setExpandedParcel}
+                                    dangerousGoods={dangerousGoods} setDangerousGoods={setDangerousGoods}
+                                    addParcel={() => setParcels([...parcels, { description: '', weight: '', length: '', width: '', height: '', quantity: 1 }])}
+                                    addItem={() => setItems([...items, { description: '', quantity: 1, declaredValue: '', weight: '' }])}
+                                    removeItem={(i) => setItems(items.filter((_, idx) => idx !== i))}
+                                    updateItem={(i, f, v) => { const n = [...items]; n[i][f] = v; setItems(n); }}
+                                    errors={errors} packagingType={packagingType} setPackagingType={setPackagingType}
+                                    showDangerousGoods={selectedCarrierProfile.supportsDangerousGoods}
+                                    packagingOptions={selectedCarrierProfile.packagingOptions}
+                                />
+                            </Box>
+                        )}
+                        {activeStep === 2 && (
+                            <Box>
+                                <ShipmentBilling
+                                    exportReason={exportReason} setExportReason={setExportReason}
+                                    invoiceRemarks={invoiceRemarks} setInvoiceRemarks={setInvoiceRemarks}
+                                    incoterm={incoterm} setIncoterm={setIncoterm}
+                                    gstPaid={gstPaid} setGstPaid={setGstPaid}
+                                    payerOfVat={payerOfVat} setPayerOfVat={setPayerOfVat}
+                                    shipperAccount={shipperAccount} setShipperAccount={setShipperAccount}
+                                    labelFormat={labelFormat} setLabelFormat={setLabelFormat}
+                                    signatureName={signatureName} setSignatureName={setSignatureName}
+                                    signatureTitle={signatureTitle} setSignatureTitle={setSignatureTitle}
+                                    palletCount={palletCount} setPalletCount={setPalletCount}
+                                    packageMarks={packageMarks} setPackageMarks={setPackageMarks}
+                                    availableOptionalServices={availableOptionalServices}
+                                    selectedOptionalServiceCodes={selectedOptionalServiceCodes}
+                                    onToggleOptionalService={toggleOptionalService}
+                                    estimatedShipmentCost={estimatedShipmentCost}
+                                    optionalServicesTotal={optionalServicesTotal}
+                                    estimatedShipmentTotal={estimatedShipmentTotal}
+                                    errors={errors}
+                                />
+                            </Box>
+                        )}
+                        {activeStep === 3 && renderReview()}
+                        {steps[activeStep] === 'Approval' && renderApprovalStep()}
+                    </Box>
+                </Fade>
+
+                <Box display={steps[activeStep] === 'Approval' ? 'none' : 'flex'} justifyContent="space-between" mt={4} pt={4} borderTop="1px solid rgba(255,255,255,0.1)">
+                    <Button
+                        disabled={activeStep === 0}
+                        onClick={handleBack}
+                        startIcon={<ArrowBackIcon />}
+                        sx={{ color: 'text.secondary' }}
+                    >
+                        Back
+                    </Button>
+                    <Button
+                        variant="contained" size="large" onClick={activeStep === 3 ? handleSubmit : handleNext}
+                        endIcon={loading ? <CircularProgress size={20} color="inherit" /> : <ArrowForwardIcon />}
+                        disabled={loading || (activeStep === 3 && user && !isAdmin && !isStaff && availableCredit < estimatedShipmentTotal)}
+
+                        sx={{
+                            borderRadius: 50,
+                            px: 4,
+                            boxShadow: '0 4px 14px rgba(0, 217, 184, 0.4)',
+                            fontWeight: 700
+                        }}
+                    >
+                        {activeStep === 3 ? (showApprovalStep ? 'Proceed to Approval' : (isEditMode ? 'Update Request' : 'Finalize & Book')) : 'Continue'}
+                    </Button>
+                </Box>
+            </Container>
+        </Box>
+    </ThemeProvider>
+);
 };
 
 export default ShipmentWizardV2;

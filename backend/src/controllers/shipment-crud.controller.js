@@ -13,8 +13,10 @@ const { syncCarrierTrackingHistory, hasCriticalChanges } = require('./shipment.h
 
 // Create a new shipment
 exports.getShipmentStats = async (req, res) => {
+    logger.info(`[DEBUG] Controller getShipmentStats execution started for organization: ${req.query.organization || 'all'}`);
     try {
         const { organization } = req.query;
+
         const query = {};
 
         if (organization) {
