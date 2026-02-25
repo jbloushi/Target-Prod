@@ -16,15 +16,16 @@ const ParcelCard = ({ parcel, index, onChange, onRemove, expanded, onToggle, err
     const pHgt = Number(parcel.height || parcel.dimensions?.height || 0);
 
     const updateDim = (field, val) => {
-        // Update both nested (for compatibility) and top-level (for validation)
-        onChange(field, Number(val));
-
-        // Also keep dimensions object in sync if it exists or is expected by some parts
-        onChange('dimensions', {
-            ...parcel.dimensions,
-            length: field === 'length' ? Number(val) : pLen,
-            width: field === 'width' ? Number(val) : pWid,
-            height: field === 'height' ? Number(val) : pHgt,
+        const numVal = Number(val);
+        // Use object-based bulk update to ensure all fields are updated atomically
+        onChange({
+            [field]: numVal,
+            dimensions: {
+                ...parcel.dimensions,
+                length: field === 'length' ? numVal : pLen,
+                width: field === 'width' ? numVal : pWid,
+                height: field === 'height' ? numVal : pHgt,
+            }
         });
     };
 

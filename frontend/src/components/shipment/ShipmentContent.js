@@ -30,10 +30,16 @@ const ShipmentContent = ({
 }) => {
     const [expandedParcel, setExpandedParcel] = useState(0);
 
-    const updateParcel = (index, field, val) => {
-        const newParcels = [...parcels];
-        newParcels[index] = { ...newParcels[index], [field]: val };
-        setParcels(newParcels);
+    const updateParcel = (index, fieldOrUpdates, val) => {
+        setParcels(prev => {
+            const next = [...prev];
+            if (typeof fieldOrUpdates === 'object') {
+                next[index] = { ...next[index], ...fieldOrUpdates };
+            } else {
+                next[index] = { ...next[index], [fieldOrUpdates]: val };
+            }
+            return next;
+        });
     };
 
     const removeParcel = (index) => {
