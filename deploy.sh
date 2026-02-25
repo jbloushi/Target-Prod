@@ -25,7 +25,7 @@ cd $PROJECT_ROOT || { echo -e "${RED}Error: Project root $PROJECT_ROOT not found
 
 # Pull latest code
 echo -e "${BLUE}1. Pulling latest code from GitHub...${NC}"
-git pull origin master || { echo -e "${RED}Error: git pull failed${NC}"; exit 1; }
+git pull origin main || { echo -e "${RED}Error: git pull failed${NC}"; exit 1; }
 
 # Update Backend
 echo -e "${BLUE}2. Updating Backend dependencies...${NC}"
