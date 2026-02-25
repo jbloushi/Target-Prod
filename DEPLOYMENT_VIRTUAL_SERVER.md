@@ -44,20 +44,38 @@ cd /www/wwwroot/3pl.mawthook.io
 git clone https://github.com/jbloushi/Target-Prod.git .
 ```
 
-### Setup Environment
-Manually create the `.env` file in the root:
+### 1. Setup Environment (Root Directory)
 ```bash
+# Copy the production template
 cp backend/.env.production.example .env
-nano .env # Fill in your secrets (DHL, Google Maps, JWT, Mongo URI)
+
+# Edit and fill in your secrets (DHL, Google Maps, JWT, Mongo URI)
+nano .env 
 ```
 
-### Use the Deployment Script
-```bash
-# Make script executable
-chmod +x deploy.sh
+### 2. Install & Build (One-Click Bundle)
+Run this command from the root directory to install and build everything:
 
-# Run deployment (adjust paths in deploy.sh if necessary)
-./deploy.sh
+```bash
+# Make script executable and run
+chmod +x deploy.sh && ./deploy.sh
+```
+
+> [!NOTE]
+> The root directory only contains the deployment scripts. The actual code is in `backend/` and `frontend/`. If you want to run commands manually, you MUST `cd` into those folders first.
+
+### Manual Backend Setup (Optional)
+```bash
+cd backend
+npm install --production
+pm2 start ecosystem.config.js --env production
+```
+
+### Manual Frontend Setup (Optional)
+```bash
+cd frontend
+npm install
+npm run build
 ```
 
 ---
