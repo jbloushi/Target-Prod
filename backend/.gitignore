@@ -2,6 +2,10 @@
 .DS_Store
 node_modules
 logs
+uploads/
+*.log
+test-*.js
+verify-*.js
 
 # Production user files (may contain sensitive credentials)
 scripts/*users.json
