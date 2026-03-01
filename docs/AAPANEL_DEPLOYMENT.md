@@ -129,7 +129,7 @@ Enable SSL via aaPanel → SSL → Let's Encrypt.
 
 ```bash
 cd /www/wwwroot/3pl.mawthook.io/backend
-node scripts/create-default-users.js
+npm run create-default-users
 ```
 
 ---
@@ -148,12 +148,12 @@ bash /www/wwwroot/3pl.mawthook.io/deploy.sh
 cd /www/wwwroot/3pl.mawthook.io
 
 # 1. Pull latest code
-git pull origin master
+git pull origin main
 
 # 2. Update backend
 cd backend
 npm install --production
-pm2 reload target-logistics-api
+pm2 restart target-logistics-api --update-env
 
 # 3. Update frontend
 cd ../frontend
@@ -161,10 +161,36 @@ npm install
 npm run build
 rm -rf ../site/*
 cp -r build/* ../site/
-
-# 4. Reload Nginx
-systemctl reload nginx
 ```
+
+
+---
+
+## 🔄 Refresh & Update Environment
+
+If you have modified the `.env` file or need to ensure the backend is connected to the correct database:
+
+### 1. Apply `.env` Changes
+PM2 caches environment variables. To force a refresh of the `.env` file:
+```bash
+cd /www/wwwroot/3pl.mawthook.io/backend
+# Restart and inject the newest environment variables
+pm2 restart target-logistics-api --update-env
+```
+
+### 2. Verify Database Connection
+After restarting, check the health endpoint to confirm the `MONGO_URI` is correct and the DB is connected:
+```bash
+curl http://localhost:8899/api/health
+```
+Expected response: `{"status":"ok","database":"connected"}`
+
+### 3. Check Effective Environment
+To see exactly what environment variables PM2 is currently using:
+```bash
+pm2 show target-logistics-api
+```
+Look for the `env` section in the output.
 
 ---
 
