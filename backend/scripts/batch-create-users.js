@@ -44,7 +44,7 @@ const DEFAULT_USERS = [
         name: 'Default Client',
         email: 'client@demo.com',
         password: 'password123',
-        role: 'client',
+        role: 'org_agent',
         phone: '96533333333'
     },
     {
@@ -144,7 +144,7 @@ async function createUsers(users) {
                     name: userDetails.name,
                     email: email,
                     password: userDetails.password,
-                    role: userDetails.role || 'client'
+                    role: userDetails.role || 'org_agent'
                 };
 
                 if (userDetails.phone) {
@@ -152,7 +152,7 @@ async function createUsers(users) {
                 }
 
                 // Add organization for clients
-                if (userData.role === 'client' && defaultOrg) {
+                if (userData.role === 'org_agent' && defaultOrg) {
                     userData.organization = defaultOrg._id;
                     userData.carrierConfig = {
                         preferredCarrier: 'DHL',
@@ -163,7 +163,7 @@ async function createUsers(users) {
                 const newUser = await User.create(userData);
 
                 // Add to organization members
-                if (userData.role === 'client' && defaultOrg && !defaultOrg.members.includes(newUser._id)) {
+                if (userData.role === 'org_agent' && defaultOrg && !defaultOrg.members.includes(newUser._id)) {
                     defaultOrg.members.push(newUser._id);
                     await defaultOrg.save();
                 }
