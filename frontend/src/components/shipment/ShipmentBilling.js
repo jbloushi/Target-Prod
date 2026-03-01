@@ -31,6 +31,7 @@ const ShipmentBilling = ({
     estimatedShipmentCost = 0,
     optionalServicesTotal = 0,
     estimatedShipmentTotal = 0,
+    deliveryDate = null,
     errors = {}
 }) => {
     const warnings = [];
@@ -199,6 +200,21 @@ const ShipmentBilling = ({
                     <Grid item xs={12} md={8}><Typography variant="body2" fontWeight="bold">{Number(optionalServicesTotal).toFixed(3)} KD</Typography></Grid>
                     <Grid item xs={12} md={4}><Typography variant="body2">Estimated Shipment Total:</Typography></Grid>
                     <Grid item xs={12} md={8}><Typography variant="body2" color="primary" fontWeight="bold">{Number(estimatedShipmentTotal).toFixed(3)} KD</Typography></Grid>
+                    {deliveryDate && (
+                        <>
+                            <Grid item xs={12}><Divider sx={{ my: 1 }} /></Grid>
+                            <Grid item xs={12} md={4}>
+                                <Typography variant="body2" color="text.secondary">🗓 Est. Delivery:</Typography>
+                            </Grid>
+                            <Grid item xs={12} md={8}>
+                                <Typography variant="body2" fontWeight="bold" color="success.main">
+                                    {new Date(deliveryDate).toLocaleDateString('en-GB', {
+                                        weekday: 'short', day: 'numeric', month: 'short', year: 'numeric'
+                                    })}
+                                </Typography>
+                            </Grid>
+                        </>
+                    )}
                 </Grid>
             </Paper>
 

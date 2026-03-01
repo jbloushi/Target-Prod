@@ -8,7 +8,8 @@ import { useShipmentStats } from '../utils/useShipmentStats';
 import { TableWrapper, Table, Thead, Tbody, Tr, Th, Td, Button, Input, StatusPill } from '../ui';
 import { generateWaybillPDF } from '../utils/pdfGenerator';
 
-import { Menu, MenuItem, Divider, ListItemIcon, ListItemText } from '@mui/material';
+import { Menu, MenuItem, Divider, ListItemIcon, ListItemText, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions } from '@mui/material';
+
 import DescriptionIcon from '@mui/icons-material/Description';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -171,6 +172,7 @@ const ShipmentList = () => {
   // Menu State
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
   const [activeShipment, setActiveShipment] = useState(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -257,11 +259,21 @@ const ShipmentList = () => {
 
   const handleDelete = async () => {
     if (!activeShipment) return;
-    if (window.confirm("Delete this shipment?")) {
-      await shipmentService.deleteShipment(activeShipment.trackingNumber);
-      mutate(); // Refresh SWR
-    }
+    setDeleteConfirmOpen(true);
     handleMenuClose();
+  };
+
+  const handleDeleteConfirmed = async () => {
+    if (!activeShipment) return;
+    try {
+      await shipmentService.deleteShipment(activeShipment.trackingNumber);
+      mutate();
+    } catch (e) {
+      console.error('Delete failed', e);
+    } finally {
+      setDeleteConfirmOpen(false);
+      setActiveShipment(null);
+    }
   };
 
   const handleApproveEdit = () => {
@@ -546,6 +558,21 @@ const ShipmentList = () => {
         )}
       </div>
 
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)}>
+        <DialogTitle>Delete Shipment?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to permanently delete shipment <strong>{activeShipment?.trackingNumber}</strong>? This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1 }}>
+          <DialogActions>
+            <button onClick={() => setDeleteConfirmOpen(false)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer' }}>Cancel</button>
+            <button onClick={handleDeleteConfirmed} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#f44336', color: 'white', cursor: 'pointer', fontWeight: 700 }}>Delete</button>
+          </DialogActions>
+        </DialogActions>
+      </Dialog>
 
     </div>
   );

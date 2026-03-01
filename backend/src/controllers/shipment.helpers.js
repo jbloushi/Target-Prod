@@ -5,6 +5,7 @@
  */
 const CarrierFactory = require('../services/CarrierFactory');
 const logger = require('../utils/logger');
+const { normalizeStatus, isStatusAhead } = require('../constants/statusConstants');
 
 const DEFAULT_MARKUP = { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 };
 
@@ -96,10 +97,17 @@ const syncCarrierTrackingHistory = async (shipment) => {
         const fallbackPhone = shipment.origin?.phone || '0000000';
 
         let hasUpdates = false;
+        let highestCarrierStatus = null;
+
         events.forEach((event) => {
+            // Normalize the carrier status code to a platform status
+            const rawStatus = event.statusCode || tracking.status || 'transit';
+            const normalizedStatus = normalizeStatus(rawStatus);
+
             const historyEntry = {
-                status: event.statusCode || tracking.status || 'in_transit',
+                status: normalizedStatus,
                 description: event.description || 'Carrier update',
+                source: 'carrier',
                 timestamp: event.timestamp ? new Date(event.timestamp) : new Date(),
                 location: {
                     formattedAddress: event.location || 'Unknown',
@@ -114,7 +122,19 @@ const syncCarrierTrackingHistory = async (shipment) => {
                 existingKeys.add(key);
                 hasUpdates = true;
             }
+
+            // Track the highest (furthest in pipeline) carrier status
+            if (!highestCarrierStatus || isStatusAhead(highestCarrierStatus, normalizedStatus)) {
+                highestCarrierStatus = normalizedStatus;
+            }
         });
+
+        // Auto-promote shipment status if carrier is ahead
+        if (highestCarrierStatus && isStatusAhead(shipment.status, highestCarrierStatus)) {
+            logger.info(`Auto-promoting shipment ${shipment.trackingNumber} from '${shipment.status}' to '${highestCarrierStatus}' based on carrier tracking.`);
+            shipment.status = highestCarrierStatus;
+            hasUpdates = true;
+        }
 
         if (hasUpdates) {
             shipment.history.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));

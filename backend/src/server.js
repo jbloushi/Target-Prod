@@ -157,7 +157,10 @@ const apiRoutes = require('./routes/api.routes');
 const financeRoutes = require('./routes/finance.routes');
 const organizationRoutes = require('./routes/organization.routes');
 
+const shipmentPublicRoutes = require('./routes/shipment-public.routes');
+
 // Standard API Route Mounting
+app.use('/api/public/shipments', shipmentPublicRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/finance', checkDbAuth, financeRoutes);
 app.use('/api/users', checkDbAuth, userRoutes);

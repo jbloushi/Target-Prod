@@ -20,17 +20,17 @@ import AccessTimeIcon from '@mui/icons-material/AccessTime';
  */
 
 const statusConfig = {
-    'created': { icon: InventoryIcon, color: '#2196F3', label: 'Created' },
-    'pickup_scheduled': { icon: AccessTimeIcon, color: '#FF9800', label: 'Pickup Scheduled' },
-    'ready_for_pickup': { icon: InventoryIcon, color: '#FF9800', label: 'Ready for Pickup' },
-    'picked_up': { icon: LocalShippingIcon, color: '#4CAF50', label: 'Picked Up' },
-    'in_transit': { icon: FlightTakeoffIcon, color: '#9C27B0', label: 'In Transit' },
-    'out_for_delivery': { icon: LocalShippingIcon, color: '#00BCD4', label: 'Out for Delivery' },
-    'delivered': { icon: CheckCircleIcon, color: '#4CAF50', label: 'Delivered' },
-    'exception': { icon: AccessTimeIcon, color: '#F44336', label: 'Exception' },
-    'pending': { icon: AccessTimeIcon, color: '#757575', label: 'Pending' },
-    'updated': { icon: AccessTimeIcon, color: '#FF9800', label: 'Updated (Review)' },
-    'default': { icon: AccessTimeIcon, color: '#757575', label: 'Update' }
+    'created': { icon: InventoryIcon, color: '#00d9b8', label: 'Created' },
+    'pickup_scheduled': { icon: AccessTimeIcon, color: '#00d9b8', label: 'Pickup Scheduled' },
+    'ready_for_pickup': { icon: InventoryIcon, color: '#00d9b8', label: 'Ready for Pickup' },
+    'picked_up': { icon: LocalShippingIcon, color: '#00d9b8', label: 'Picked Up' },
+    'in_transit': { icon: FlightTakeoffIcon, color: '#00d9b8', label: 'In Transit' },
+    'out_for_delivery': { icon: LocalShippingIcon, color: '#00d9b8', label: 'Out for Delivery' },
+    'delivered': { icon: CheckCircleIcon, color: '#00d9b8', label: 'Delivered' },
+    'exception': { icon: AccessTimeIcon, color: '#00d9b8', label: 'Exception' },
+    'pending': { icon: AccessTimeIcon, color: '#00d9b8', label: 'Pending' },
+    'updated': { icon: AccessTimeIcon, color: '#00d9b8', label: 'Updated (Review)' },
+    'default': { icon: AccessTimeIcon, color: '#00d9b8', label: 'Update' }
 };
 
 const getStatusConfig = (status) => {
@@ -71,50 +71,45 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
 
     if (!history || history.length === 0) {
         return (
-            <Card sx={{ p: 3, borderRadius: 2 }}>
-                <Typography variant="h6" fontWeight="bold" gutterBottom>
-                    📦 Tracking History
+            <Box sx={{
+                p: 4,
+                borderRadius: '16px',
+                background: 'rgba(255,255,255,0.02)',
+                border: '1px dashed rgba(255,255,255,0.1)',
+                textAlign: 'center'
+            }}>
+                <Typography sx={{ color: 'rgba(232, 234, 240, 0.5)', fontSize: '14px' }}>
+                    No tracking events recorded yet. Check back soon for updates.
                 </Typography>
-                <Typography color="text.secondary">
-                    No tracking events yet. Check back soon for updates.
-                </Typography>
-            </Card>
+            </Box>
         );
     }
 
     return (
-        <Card sx={{ p: 3, borderRadius: 2 }}>
-            <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                📦 Tracking History
-                {currentStatus && (
-                    <Chip
-                        label={currentStatus}
-                        size="small"
-                        color={currentStatus === 'delivered' ? 'success' : 'primary'}
-                        sx={{ ml: 1 }}
-                    />
-                )}
-            </Typography>
-            <Divider sx={{ mb: 3 }} />
-
+        <Box sx={{ p: 1 }}>
             {dateKeys.map((dateKey, dateIndex) => {
                 const events = groupedEvents[dateKey];
                 const isLatestDate = dateIndex === 0;
 
                 return (
-                    <Box key={dateKey} sx={{ mb: 3 }}>
+                    <Box key={dateKey} sx={{ mb: 4 }}>
                         {/* Date Header */}
                         <Typography
                             variant="subtitle2"
-                            fontWeight="bold"
+                            fontWeight="800"
                             sx={{
-                                color: isLatestDate ? 'primary.main' : 'text.secondary',
-                                mb: 2,
+                                color: isLatestDate ? '#00d9b8' : 'rgba(232, 234, 240, 0.4)',
+                                mb: 3,
                                 textTransform: 'uppercase',
-                                letterSpacing: 1
+                                letterSpacing: '1px',
+                                fontSize: '12px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 2
                             }}
                         >
                             {dateKey}
+                            <Box sx={{ flex: 1, height: '1px', background: 'linear-gradient(to right, rgba(255,255,255,0.1), transparent)' }} />
                         </Typography>
 
                         {/* Events for this date */}
@@ -125,9 +120,9 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                                     position: 'absolute',
                                     left: 12,
                                     top: 0,
-                                    bottom: 0,
-                                    width: 2,
-                                    bgcolor: 'divider',
+                                    bottom: -20,
+                                    width: 1,
+                                    background: 'linear-gradient(to bottom, rgba(255,255,255,0.1), transparent)',
                                     zIndex: 0
                                 }}
                             />
@@ -138,13 +133,14 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                                 const IconComponent = config.icon;
                                 const { time } = formatDate(event.timestamp);
                                 const isFirst = dateIndex === 0 && eventIndex === 0;
+                                const source = event.source === 'carrier' ? 'Global Network' : 'Logistics Center';
 
                                 return (
                                     <Box
                                         key={eventIndex}
                                         sx={{
                                             position: 'relative',
-                                            pb: 2,
+                                            pb: 4,
                                             '&:last-child': { pb: 0 }
                                         }}
                                     >
@@ -152,65 +148,56 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                                         <Box
                                             sx={{
                                                 position: 'absolute',
-                                                left: -28,
+                                                left: -32,
                                                 top: 0,
-                                                width: 28,
-                                                height: 28,
+                                                width: 10,
+                                                height: 10,
                                                 borderRadius: '50%',
-                                                bgcolor: isFirst ? config.color : 'background.paper',
-                                                border: `2px solid ${config.color}`,
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                zIndex: 1
+                                                bgcolor: '#00d9b8',
+                                                border: '2px solid rgba(0,217,184,0.3)',
+                                                zIndex: 1,
+                                                boxShadow: '0 0 10px rgba(0,217,184,0.2)',
+                                                transition: 'all 0.3s ease'
                                             }}
-                                        >
-                                            <IconComponent
-                                                sx={{
-                                                    fontSize: 16,
-                                                    color: isFirst ? 'white' : config.color
-                                                }}
-                                            />
-                                        </Box>
+                                        />
 
                                         {/* Event Content */}
-                                        <Box
-                                            sx={{
-                                                bgcolor: isFirst ? 'action.hover' : 'transparent',
-                                                p: isFirst ? 2 : 1,
-                                                borderRadius: 1,
-                                                ml: 1
-                                            }}
-                                        >
-                                            <Box display="flex" justifyContent="space-between" alignItems="flex-start">
-                                                <Box>
-                                                    <Typography
-                                                        variant="body1"
-                                                        fontWeight={isFirst ? 'bold' : 'medium'}
-                                                        sx={{ color: isFirst ? config.color : 'text.primary' }}
-                                                    >
-                                                        {statusStr || config.label}
-                                                    </Typography>
-                                                    {event.description && (
-                                                        <Typography variant="body2" color="text.secondary">
-                                                            {event.description}
-                                                        </Typography>
-                                                    )}
-                                                    {(event.location?.address || event.location?.formattedAddress) && (
-                                                        <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
-                                                            <HomeIcon sx={{ fontSize: 14 }} />
-                                                            {event.location.address || event.location.formattedAddress}
-                                                        </Typography>
-                                                    )}
-                                                </Box>
+                                        <Box display="flex" justifyContent="space-between" alignItems="flex-start" sx={{ ml: 1 }}>
+                                            <Box>
                                                 <Typography
-                                                    variant="caption"
-                                                    color="text.secondary"
-                                                    sx={{ whiteSpace: 'nowrap', ml: 2 }}
+                                                    variant="body2"
+                                                    fontWeight={isFirst ? 700 : 500}
+                                                    sx={{
+                                                        color: 'rgba(232, 234, 240, 0.9)',
+                                                        fontSize: '14px'
+                                                    }}
                                                 >
-                                                    {time}
+                                                    {event.description || statusStr || config.label}
                                                 </Typography>
+
+                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 0.5 }}>
+                                                    {(event.location?.address || event.location?.formattedAddress || event.location) && (
+                                                        <Typography variant="caption" sx={{ color: 'rgba(232, 234, 240, 0.4)', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                                            {event.location.formattedAddress || event.location.address || event.location}
+                                                        </Typography>
+                                                    )}
+                                                    <Box sx={{ width: 4, height: 4, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.1)' }} />
+                                                    <Typography variant="caption" sx={{ color: isFirst ? '#00d9b8' : 'rgba(255,255,255,0.2)', fontWeight: 600 }}>
+                                                        {source}
+                                                    </Typography>
+                                                </Box>
                                             </Box>
+                                            <Typography
+                                                variant="caption"
+                                                sx={{
+                                                    color: isFirst ? '#fff' : 'rgba(232, 234, 240, 0.3)',
+                                                    whiteSpace: 'nowrap',
+                                                    ml: 2,
+                                                    fontWeight: isFirst ? 700 : 500
+                                                }}
+                                            >
+                                                {time}
+                                            </Typography>
                                         </Box>
                                     </Box>
                                 );
@@ -219,7 +206,7 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                     </Box>
                 );
             })}
-        </Card>
+        </Box>
     );
 };
 

@@ -34,6 +34,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ShareIcon from '@mui/icons-material/Share';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import TrackingTimeline from '../components/TrackingTimeline';
 import AddressPanel from '../components/AddressPanel';
 import ShipmentContent from '../components/shipment/ShipmentContent';
@@ -41,6 +42,10 @@ import ShipmentBilling from '../components/shipment/ShipmentBilling';
 import { financeService, shipmentService, userService, BACKEND_URL } from '../services/api';
 import api from '../services/api'; // Use the default api instance for generic get requests
 import { generateWaybillPDF } from '../utils/pdfGenerator';
+import {
+    STATUS_ORDER, STATUS_LABELS, PUBLIC_PROGRESS_STEPS, PUBLIC_PROGRESS_LABELS,
+    normalizeStatus, getStepIndex, getPublicStepIndex
+} from '../constants/statusConfig';
 
 // --- Constants ---
 const GOOGLE_MAPS_LIBRARIES = ['places'];
@@ -225,6 +230,44 @@ const MapWrapper = styled.div`
     height: 520px;
     width: 100%;
 `;
+
+const RouteProgressBar = ({ originCity, destCity, stepIndex }) => {
+    const total = STATUS_ORDER.length - 1;
+    const pct = Math.max(2, Math.min(98, (stepIndex / total) * 100));
+    const DOTS = 7;
+    return (
+        <Box sx={{ mt: 3, mb: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <Typography variant="caption" sx={{ fontWeight: 700, color: 'var(--text-primary)', minWidth: 80 }}>{originCity || 'Origin'}</Typography>
+                <Box sx={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', mx: 2 }}>
+                    <Box sx={{ height: 2, bgcolor: 'rgba(255,255,255,0.1)', width: '100%', position: 'absolute' }} />
+                    <Box sx={{ height: 2, bgcolor: '#00d9b8', width: `${pct}%`, position: 'absolute', transition: 'width 0.5s ease' }} />
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', position: 'relative', zIndex: 1 }}>
+                        {[...Array(DOTS)].map((_, i) => {
+                            const active = (i / (DOTS - 1)) * 100 <= pct;
+                            return (
+                                <Box
+                                    key={i}
+                                    sx={{
+                                        width: 8,
+                                        height: 8,
+                                        borderRadius: '50%',
+                                        bgcolor: active ? '#00d9b8' : '#2a2f3e',
+                                        border: '2px solid',
+                                        borderColor: active ? '#00d9b8' : 'rgba(255,255,255,0.1)',
+                                        boxShadow: active ? '0 0 10px rgba(0,217,184,0.5)' : 'none'
+                                    }}
+                                />
+                            );
+                        })}
+                    </Box>
+                    <Box sx={{ position: 'absolute', left: `${pct}%`, transform: 'translateX(-50%)', top: -20, fontSize: 16, zIndex: 2 }}>✈️</Box>
+                </Box>
+                <Typography variant="caption" sx={{ fontWeight: 700, color: 'var(--text-primary)', minWidth: 80, textAlign: 'right' }}>{destCity || 'Destination'}</Typography>
+            </Box>
+        </Box>
+    );
+};
 
 const TrackingLink = styled.a`
     color: var(--accent-primary);
@@ -794,17 +837,30 @@ const ShipmentDetailsPage = () => {
 
             <HeroSection>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '20px' }}>
-                    <div>
+                    <div style={{ flex: 1 }}>
                         <TrackingId>
                             {shipment.trackingNumber}
                             <StatusPill status={shipment.status} />
                         </TrackingId>
                         <ShipmentMeta>
                             <span>Created: <strong>{new Date(shipment.createdAt).toLocaleDateString()}</strong></span>
-                            <span>Owner: <strong>{shipment.user?.name || 'Unknown'}</strong></span>
-                            <span>Type: <strong>{shipment.type?.toUpperCase() || 'PACKAGE'}</strong></span>
-                            <span>Carrier: <strong>{carrierCode}</strong></span>
+                            <span>Type: <strong>{(shipment.shipmentType || 'package').toUpperCase()}</strong></span>
+                            {isStaff && <span>Carrier: <strong>{carrierCode}</strong></span>}
+                            <span>Total Weight: <strong>{totalWeight.toFixed(2)} KG</strong></span>
                         </ShipmentMeta>
+
+                        <RouteProgressBar
+                            originCity={sender.city}
+                            destCity={receiver.city}
+                            stepIndex={getStepIndex(shipment.status)}
+                        />
+
+                        {shipment.history && shipment.history.length > 0 && (
+                            <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1, color: 'var(--text-secondary)', fontSize: '13px' }}>
+                                <AccessTimeIcon sx={{ fontSize: 16 }} />
+                                Last Update: {new Date(shipment.history[shipment.history.length - 1].timestamp).toLocaleString()}
+                            </Box>
+                        )}
                     </div>
 
                     <Box sx={{
@@ -813,7 +869,11 @@ const ShipmentDetailsPage = () => {
                         borderRadius: '12px',
                         border: '1px solid rgba(255,255,255,0.08)',
                         minWidth: { xs: '100%', sm: '320px' },
-                        backdropFilter: 'blur(10px)'
+                        backdropFilter: 'blur(10px)',
+                        alignSelf: 'stretch',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center'
                     }}>
                         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
                             <ShareIcon sx={{ fontSize: 16, color: '#00d9b8' }} />
@@ -975,18 +1035,20 @@ const ShipmentDetailsPage = () => {
                         </CardHeader>
 
                         <DetailsGrid>
-                            <DetailItem>
-                                <DetailIcon>
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-                                        <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-                                    </svg>
-                                </DetailIcon>
-                                <DetailContent>
-                                    <DetailContentLabel>Service Type</DetailContentLabel>
-                                    <DetailContentValue>{shipment.serviceCode || 'Standard'}</DetailContentValue>
-                                </DetailContent>
-                            </DetailItem>
+                            {isStaff && (
+                                <DetailItem>
+                                    <DetailIcon>
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+                                            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+                                        </svg>
+                                    </DetailIcon>
+                                    <Box flex={1}>
+                                        <DetailContentLabel>Service Mode</DetailContentLabel>
+                                        <DetailContentValue>{shipment.serviceCode || 'Standard'}</DetailContentValue>
+                                    </Box>
+                                </DetailItem>
+                            )}
 
                             <DetailItem>
                                 <DetailIcon>

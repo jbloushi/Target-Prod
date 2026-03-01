@@ -4,6 +4,8 @@
  */
 const Shipment = require('../models/shipment.model');
 const logger = require('../utils/logger');
+const { syncCarrierTrackingHistory } = require('./shipment.helpers');
+const { normalizeStatus } = require('../constants/statusConstants');
 
 exports.getPublicShipment = async (req, res) => {
     try {
@@ -11,15 +13,69 @@ exports.getPublicShipment = async (req, res) => {
         const shipment = await Shipment.findOne({ trackingNumber });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
+        // Sync carrier tracking into the unified history (best-effort)
+        try {
+            await syncCarrierTrackingHistory(shipment);
+        } catch (err) {
+            logger.warn(`Public tracking: carrier sync failed for ${trackingNumber}: ${err.message}`);
+        }
+
+        // Re-read the shipment to get the latest history after sync
+        await shipment.reload?.() || await shipment.constructor.findOne({ trackingNumber }).then(s => {
+            if (s) {
+                shipment.history = s.history;
+                shipment.status = s.status;
+            }
+        });
+
+        // Build unified events array from the merged history
+        const events = (shipment.history || []).map(h => ({
+            source: h.source || 'platform',
+            status: normalizeStatus(typeof h.status === 'object' ? (h.status?.status || 'booked') : (h.status || 'booked')),
+            description: h.description || '',
+            timestamp: h.timestamp,
+            location: h.location?.formattedAddress || h.location?.city || ''
+        })).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
         res.status(200).json({
             success: true,
             data: {
-                trackingNumber: shipment.trackingNumber, status: shipment.status,
-                destination: { address: shipment.destination.address, formattedAddress: shipment.destination.formattedAddress, city: shipment.destination.city, coordinates: shipment.destination.coordinates, latitude: shipment.destination.latitude, longitude: shipment.destination.longitude },
-                origin: { city: shipment.origin.city, country: shipment.origin.country, formattedAddress: shipment.origin.formattedAddress, coordinates: shipment.origin.coordinates, latitude: shipment.origin.latitude, longitude: shipment.origin.longitude },
-                currentLocation: shipment.currentLocation, estimatedDelivery: shipment.estimatedDelivery,
-                history: shipment.history.map(h => ({ status: h.status, timestamp: h.timestamp, location: h.location, description: h.description })),
-                checkpoints: shipment.checkpoints,
+                trackingNumber: shipment.trackingNumber,
+                dhlTrackingNumber: shipment.dhlTrackingNumber || null,
+                status: normalizeStatus(shipment.status),
+                carrierCode: shipment.carrierCode || null,
+                serviceCode: shipment.serviceCode || null,
+                shipmentType: shipment.shipmentType || 'package',
+
+                // Route
+                origin: {
+                    city: shipment.origin?.city,
+                    countryCode: shipment.origin?.countryCode,
+                    country: shipment.origin?.country,
+                    formattedAddress: shipment.origin?.formattedAddress
+                },
+                destination: {
+                    city: shipment.destination?.city,
+                    countryCode: shipment.destination?.countryCode,
+                    country: shipment.destination?.country,
+                    formattedAddress: shipment.destination?.formattedAddress
+                },
+                currentLocation: shipment.currentLocation,
+                estimatedDelivery: shipment.estimatedDelivery,
+
+                // Shipment details
+                parcels: (shipment.parcels || []).map(p => ({
+                    weight: p.weight,
+                    dimensions: p.dimensions,
+                    description: p.description
+                })),
+                totalPieces: shipment.parcels?.length || 1,
+                createdAt: shipment.createdAt,
+
+                // Unified events (single merged timeline)
+                events,
+
+                // Public update settings
                 allowPublicLocationUpdate: shipment.allowPublicLocationUpdate || false,
                 allowPublicInfoUpdate: shipment.allowPublicInfoUpdate || false
             }

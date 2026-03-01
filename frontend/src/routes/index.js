@@ -33,7 +33,16 @@ const TermsPage = lazy(() => import('../pages/TermsPage'));
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const { isAuthenticated, loading, user } = useAuth();
 
-  if (loading) return null;
+  if (loading) return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: 16, background: 'var(--bg-primary, #0a0e1a)' }}>
+      <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="40" height="40" rx="10" fill="#00d9b8" />
+        <path d="M10 20h20M20 10v20" stroke="white" strokeWidth="3" strokeLinecap="round" />
+      </svg>
+      <div style={{ width: 32, height: 32, border: '3px solid rgba(0,217,184,0.2)', borderTopColor: '#00d9b8', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
   if (allowedRoles && !allowedRoles.includes(user?.role)) {
@@ -136,7 +145,7 @@ const AppRoutes = () => {
 
           {/* Public Routes */}
           <Route path="track" element={<PublicTrackingLandingPage />} />
-          <Route path="track/:trackingNumber" element={<PublicLocationPage />} />
+          <Route path="track/:trackingNumber" element={<PublicTrackingLandingPage />} />
           <Route path="track/:trackingNumber/location" element={<PublicLocationPage />} />
           <Route path="shipments/:trackingNumber" element={<RedirectToShipment />} />
 

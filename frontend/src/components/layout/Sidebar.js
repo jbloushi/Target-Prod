@@ -58,7 +58,7 @@ const Sidebar = () => {
         { text: 'Calendar', icon: <CalendarMonthIcon />, path: '/calendar', adminAccountingOnly: true },
         { text: 'Shipments', icon: <LocalShippingIcon />, path: '/shipments' },
         { text: 'Tracking', icon: <MapIcon />, path: '/tracking' },
-        { text: 'Warehouse', icon: <WarehouseIcon />, path: '/warehouse', adminAccountingOnly: true },
+        { text: 'Warehouse Scan', icon: <WarehouseIcon />, path: '/warehouse/scan', staffOnly: true },
         { text: 'Fleets', icon: <DirectionsBusIcon />, path: '/fleets', adminAccountingOnly: true },
         { text: 'User Management', icon: <PersonIcon />, path: '/admin/users', adminOnly: true },
         { text: 'Organizations', icon: <BusinessIcon />, path: '/admin/organizations', staffOnly: true },

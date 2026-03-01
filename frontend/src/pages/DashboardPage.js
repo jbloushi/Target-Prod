@@ -320,7 +320,7 @@ const DashboardPage = () => {
     return (
         <DashboardGrid>
             <PageHeader
-                title="Dashboard (VERIFIED V3)"
+                title="Dashboard"
                 description="Overview of your logistics operations."
                 action={
                     <Button

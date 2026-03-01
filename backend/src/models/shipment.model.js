@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const addressSchema = require('./addressSchema');
+const { SHIPMENT_STATUSES, LEGACY_STATUS_MAP } = require('../constants/statusConstants');
 
 const checkpointSchema = new mongoose.Schema({
   location: {
@@ -20,6 +21,9 @@ const checkpointSchema = new mongoose.Schema({
   },
   notes: String
 });
+
+// Accept both canonical and legacy statuses in the enum for backwards compatibility
+const ALL_ACCEPTED_STATUSES = [...SHIPMENT_STATUSES, ...Object.keys(LEGACY_STATUS_MAP)];
 
 const shipmentSchema = new mongoose.Schema({
   trackingNumber: {
@@ -43,8 +47,8 @@ const shipmentSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['draft', 'pending', 'updated', 'created', 'ready_for_pickup', 'picked_up', 'in_transit', 'out_for_delivery', 'delivered', 'exception'],
-    default: 'ready_for_pickup',
+    enum: ALL_ACCEPTED_STATUSES,
+    default: 'draft',
     required: true
   },
   estimatedDelivery: {
@@ -58,6 +62,11 @@ const shipmentSchema = new mongoose.Schema({
       required: true
     },
     description: String,
+    source: {
+      type: String,
+      enum: ['platform', 'carrier'],
+      default: 'platform'
+    },
     timestamp: {
       type: Date,
       default: Date.now

@@ -1270,6 +1270,7 @@ const ShipmentWizardV2 = () => {
                 incoterm: incoterm, // Dynamic incoterm
                 dangerousGoods: dangerousGoods, // Dynamic DG
                 totals,
+                estimatedDelivery: selectedService.deliveryDate || null, // Persist ETA from DHL quote
                 customer: {
                     name: sender.contactPerson,
                     email: sender.email,
@@ -1446,6 +1447,7 @@ const ShipmentWizardV2 = () => {
             estimatedShipmentCost={estimatedShipmentCost}
             optionalServicesTotal={optionalServicesTotal}
             estimatedShipmentTotal={estimatedShipmentTotal}
+            deliveryDate={selectedService.deliveryDate}
             errors={errors}
         />
     );
@@ -1686,6 +1688,19 @@ const ShipmentWizardV2 = () => {
                                         {selectedService.serviceName}
                                     </Typography>
                                 </Box>
+
+                                {selectedService.deliveryDate && (
+                                    <Box display="flex" justifyContent="space-between" mb={0.5}>
+                                        <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, opacity: 0.9 }}>
+                                            🗓 Est. Delivery
+                                        </Typography>
+                                        <Typography variant="body2" fontWeight="bold" sx={{ color: 'rgba(255,255,255,0.95)' }}>
+                                            {new Date(selectedService.deliveryDate).toLocaleDateString('en-GB', {
+                                                weekday: 'short', day: 'numeric', month: 'short'
+                                            })}
+                                        </Typography>
+                                    </Box>
+                                )}
 
                                 <Box display="flex" justifyContent="space-between" mb={0.5}>
                                     <Typography variant="body2">Shipment Cost</Typography>

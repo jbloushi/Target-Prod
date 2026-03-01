@@ -343,8 +343,9 @@ const buildDangerousGoodsValueAddedServices = (dg) => {
  * Builds the full DGR Shipment Payload.
  * @param {Object} order - Normalized order/shipment data
  * @param {Object} config - Configuration options (account numbers etc)
+ * @param {number} offsetDays - Days to add to the pickup date (for retry logic)
  */
-function buildDgrShipmentPayload(order, config = {}) {
+function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
     // 1. Validate (Pre-flight)
     const errors = validateShipmentForDgr(order);
     if (errors.length > 0) {
@@ -387,6 +388,11 @@ function buildDgrShipmentPayload(order, config = {}) {
         tomorrow.setDate(tomorrow.getDate() + 1);
         tomorrow.setHours(10, 0, 0, 0); // 10:00 AM
         dateObj = tomorrow;
+    }
+
+    // Apply auto-scheduling offset if any
+    if (offsetDays > 0) {
+        dateObj.setDate(dateObj.getDate() + offsetDays);
     }
 
     // Manual construction to ensure YYYY-MM-DDTHH:MM:SS GMT+03:00 format (Using +03:00 for consistency with Adapter)

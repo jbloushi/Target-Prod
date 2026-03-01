@@ -377,6 +377,8 @@ const DriverPickupPage = () => {
     const [readyShipments, setReadyShipments] = useState([]);
     const [stats, setStats] = useState({ pickedUpToday: 0 });
     const [isListOpen, setIsListOpen] = useState(false);
+    const [manualTracking, setManualTracking] = useState('');
+    const [manualLoading, setManualLoading] = useState(false);
 
     const fetchReadyShipments = async () => {
         try {
@@ -385,8 +387,16 @@ const DriverPickupPage = () => {
             if (response.success && Array.isArray(response.data)) {
                 setReadyShipments(response.data);
             }
-            // Mock stat for demo
-            setStats({ pickedUpToday: 3 });
+            // Fetch live "Picked Up Today" count for this driver
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const pickedResponse = await shipmentService.getAllShipments({
+                status: 'picked_up',
+                dateFrom: today.toISOString()
+            });
+            if (pickedResponse.success && Array.isArray(pickedResponse.data)) {
+                setStats({ pickedUpToday: pickedResponse.data.length });
+            }
         } catch (err) {
             console.error(err);
         } finally {
@@ -502,6 +512,36 @@ const DriverPickupPage = () => {
                         <span>Tap to Scan</span>
                     </BigScanButton>
                 </ScanButtonContainer>
+
+                {/* Manual Tracking Input Fallback */}
+                <div style={{ marginTop: '16px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input
+                        value={manualTracking}
+                        onChange={e => setManualTracking(e.target.value)}
+                        placeholder="Enter tracking # manually"
+                        style={{
+                            flex: 1, padding: '12px 16px', borderRadius: '12px',
+                            border: '1px solid rgba(255,255,255,0.15)',
+                            background: 'rgba(255,255,255,0.05)', color: '#e8eaf0',
+                            fontSize: '14px', outline: 'none'
+                        }}
+                        onKeyDown={e => e.key === 'Enter' && manualTracking.trim() && handleScan({ text: manualTracking.trim() })}
+                    />
+                    <button
+                        disabled={!manualTracking.trim() || manualLoading}
+                        onClick={() => {
+                            setManualLoading(true);
+                            handleScan({ text: manualTracking.trim() }).finally(() => { setManualLoading(false); setManualTracking(''); });
+                        }}
+                        style={{
+                            padding: '12px 20px', borderRadius: '12px', border: 'none',
+                            background: '#00d9b8', color: '#0a0e1a', fontWeight: 700,
+                            cursor: 'pointer', opacity: (!manualTracking.trim() || manualLoading) ? 0.5 : 1
+                        }}
+                    >
+                        {manualLoading ? '...' : '→'}
+                    </button>
+                </div>
 
                 <Button variant="ghost" onClick={() => setIsListOpen(!isListOpen)}>
                     {isListOpen ? 'Hide List' : 'View Ready List'}

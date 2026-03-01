@@ -149,42 +149,60 @@ class DgrAdapter extends CarrierAdapter {
     async getRates(shipmentData) {
         const shipment = normalizeShipment(shipmentData);
         const activeConfig = await this._getResolvedConfig(shipment);
-        const payload = this.buildRatePayload(shipment, activeConfig);
 
-        try {
-            const res = await axios.post(`${activeConfig.baseUrl}/rates`, payload, {
-                headers: this.getAuthHeader(activeConfig)
-            });
+        const maxRetries = 7;
+        let lastError = null;
 
-            if (!res.data || !res.data.products) return [];
+        for (let offsetDays = 0; offsetDays <= maxRetries; offsetDays++) {
+            const payload = this.buildRatePayload(shipment, activeConfig, offsetDays);
 
-            const products = Array.isArray(res.data?.products) ? res.data.products : [];
-            return products.map((product) => {
-                const currency = this.extractCurrency(product, shipment.currency || 'KWD');
-                return {
-                    serviceName: product.productName || product.localProductName || `DGR ${product.productCode || 'Service'}`,
-                    serviceCode: product.productCode || product.localProductCode,
-                    carrierCode: 'DGR',
-                    totalPrice: this.extractTotalPrice(product),
-                    currency,
-                    deliveryDate: product.deliveryCapabilities?.estimatedDeliveryDateAndTime,
-                    optionalServices: this.extractOptionalServices(product, currency)
-                };
-            });
-        } catch (error) {
-            const errorData = error.response?.data;
-            const message = errorData ? `DHL API Error: ${JSON.stringify(errorData)}` : error.message;
-            const err = new Error(message);
-            err.statusCode = error.response?.status || 500;
-            throw err;
+            try {
+                const res = await axios.post(`${activeConfig.baseUrl}/rates`, payload, {
+                    headers: this.getAuthHeader(activeConfig)
+                });
+
+                if (!res.data || !res.data.products) return [];
+
+                const products = Array.isArray(res.data?.products) ? res.data.products : [];
+                return products.map((product) => {
+                    const currency = this.extractCurrency(product, shipment.currency || 'KWD');
+                    return {
+                        serviceName: product.productName || product.localProductName || `DGR ${product.productCode || 'Service'}`,
+                        serviceCode: product.productCode || product.localProductCode,
+                        carrierCode: 'DGR',
+                        totalPrice: this.extractTotalPrice(product),
+                        currency,
+                        deliveryDate: product.deliveryCapabilities?.estimatedDeliveryDateAndTime,
+                        optionalServices: this.extractOptionalServices(product, currency)
+                    };
+                });
+            } catch (error) {
+                lastError = error;
+                const errorData = error.response?.data;
+                const isDateError = errorData && (
+                    (errorData.status == 404 && errorData.title === 'Product not found') ||
+                    (errorData.detail && errorData.detail.includes('996')) ||
+                    (errorData.detail && errorData.detail.includes('not available for the requested pickup date'))
+                );
+
+                if (!isDateError || offsetDays === maxRetries) {
+                    break;
+                }
+            }
         }
+
+        const errorData = lastError?.response?.data;
+        const message = errorData ? `DHL API Error: ${JSON.stringify(errorData)}` : lastError?.message || 'Unknown error';
+        const err = new Error(message);
+        err.statusCode = lastError?.response?.status || 500;
+        throw err;
     }
 
     /**
      * Builds payload for DHL Rates endpoint.
      * @business_rule plannedShippingDateAndTime is forced to 10:00 AM next day to avoid DHL '996' errors for same-day past-time requests.
      */
-    buildRatePayload(shipment, activeConfig = this.config) {
+    buildRatePayload(shipment, activeConfig = this.config, offsetDays = 0) {
         return {
             customerDetails: {
                 shipperDetails: this.buildPartyDetails(shipment.sender),
@@ -205,6 +223,10 @@ class DgrAdapter extends CarrierAdapter {
 
                 let dateObj = shipment.shipmentDate ? new Date(shipment.shipmentDate) : getTomorrow();
                 if (isNaN(dateObj.getTime()) || dateObj < tomorrowStart) dateObj = getTomorrow();
+
+                if (offsetDays > 0) {
+                    dateObj.setDate(dateObj.getDate() + offsetDays);
+                }
 
                 return `${dateObj.toISOString().split('.')[0]}+03:00`;
             })(),
@@ -329,71 +351,90 @@ class DgrAdapter extends CarrierAdapter {
         const CarrierLog = require('../models/CarrierLog');
         const startTime = Date.now();
 
-        const payload = buildDgrShipmentPayload(shipment, { accountNumber: activeConfig.accountNumber });
+        const maxRetries = 7;
+        let lastError = null;
+        let lastPayload = null;
 
-        try {
-            const res = await axios.post(`${activeConfig.baseUrl}/shipments`, payload, { headers: this.getAuthHeader(activeConfig) });
+        for (let offsetDays = 0; offsetDays <= maxRetries; offsetDays++) {
+            const payload = buildDgrShipmentPayload(shipment, { accountNumber: activeConfig.accountNumber }, offsetDays);
+            lastPayload = payload;
 
-            // Audit logging with sanitized documents to prevent DB bloat
-            const sanitized = JSON.parse(JSON.stringify(res.data));
-            if (sanitized.documents) sanitized.documents.forEach(doc => doc.content = '[BASE64_REMOVED]');
+            try {
+                const res = await axios.post(`${activeConfig.baseUrl}/shipments`, payload, { headers: this.getAuthHeader(activeConfig) });
 
-            await CarrierLog.create({
-                user: shipmentData.user,
-                shipment: shipmentData._id,
-                carrier: 'DGR',
-                endpoint: 'createShipment',
-                requestPayload: payload,
-                responsePayload: sanitized,
-                statusCode: res.status,
-                success: true,
-                durationMs: Date.now() - startTime
-            }).catch(e => console.error('CarrierLog Save Failed:', e));
+                // Audit logging with sanitized documents to prevent DB bloat
+                const sanitized = JSON.parse(JSON.stringify(res.data));
+                if (sanitized.documents) sanitized.documents.forEach(doc => doc.content = '[BASE64_REMOVED]');
 
-            let label, awb, invoice;
-            if (res.data.documents) {
-                res.data.documents.forEach(doc => {
-                    if (doc.typeCode === 'label') label = `data:application/pdf;base64,${doc.content}`;
-                    if (doc.typeCode === 'waybillDoc') awb = `data:application/pdf;base64,${doc.content}`;
-                    if (doc.typeCode === 'invoice') invoice = `data:application/pdf;base64,${doc.content}`;
-                });
+                await CarrierLog.create({
+                    user: shipmentData.user,
+                    shipment: shipmentData._id,
+                    carrier: 'DGR',
+                    endpoint: 'createShipment',
+                    requestPayload: payload,
+                    responsePayload: sanitized,
+                    statusCode: res.status,
+                    success: true,
+                    durationMs: Date.now() - startTime
+                }).catch(e => console.error('CarrierLog Save Failed:', e));
+
+                let label, awb, invoice;
+                if (res.data.documents) {
+                    res.data.documents.forEach(doc => {
+                        if (doc.typeCode === 'label') label = `data:application/pdf;base64,${doc.content}`;
+                        if (doc.typeCode === 'waybillDoc') awb = `data:application/pdf;base64,${doc.content}`;
+                        if (doc.typeCode === 'invoice') invoice = `data:application/pdf;base64,${doc.content}`;
+                    });
+                }
+
+                return {
+                    trackingNumber: res.data.shipmentTrackingNumber,
+                    labelUrl: label,
+                    awbUrl: awb,
+                    invoiceUrl: invoice,
+                    rawResponse: res.data
+                };
+            } catch (error) {
+                lastError = error;
+                const errorData = error.response?.data;
+                const isDateError = errorData && (
+                    (errorData.status == 404 && errorData.title === 'Product not found') ||
+                    (errorData.detail && errorData.detail.includes('996')) ||
+                    (errorData.detail && errorData.detail.includes('not available for the requested pickup date'))
+                );
+
+                if (!isDateError || offsetDays === maxRetries) {
+                    break;
+                }
             }
-
-            return {
-                trackingNumber: res.data.shipmentTrackingNumber,
-                labelUrl: label,
-                awbUrl: awb,
-                invoiceUrl: invoice,
-                rawResponse: res.data
-            };
-        } catch (error) {
-            const errorData = error.response?.data || error.message;
-            await CarrierLog.create({
-                user: shipmentData.user,
-                shipment: shipmentData._id,
-                carrier: 'DGR',
-                endpoint: 'createShipment',
-                requestPayload: payload,
-                responsePayload: errorData,
-                statusCode: error.response?.status || 500,
-                success: false,
-                error: JSON.stringify(errorData),
-                durationMs: Date.now() - startTime
-            }).catch(e => console.error('CarrierLog Save Failed:', e));
-
-            const providerError = new Error(`DGR Error: ${errorData.detail || JSON.stringify(errorData)}`);
-            providerError.statusCode = error.response?.status || 500;
-            providerError.isProviderError = true;
-            throw providerError;
         }
+
+        const errorData = lastError?.response?.data || lastError?.message || 'Unknown error';
+        await CarrierLog.create({
+            user: shipmentData.user,
+            shipment: shipmentData._id,
+            carrier: 'DGR',
+            endpoint: 'createShipment',
+            requestPayload: lastPayload,
+            responsePayload: errorData,
+            statusCode: lastError?.response?.status || 500,
+            success: false,
+            error: JSON.stringify(errorData),
+            durationMs: Date.now() - startTime
+        }).catch(e => console.error('CarrierLog Save Failed:', e));
+
+        const providerError = new Error(`DGR Error: ${errorData.detail || JSON.stringify(errorData)}`);
+        providerError.statusCode = lastError?.response?.status || 500;
+        providerError.isProviderError = true;
+        throw providerError;
     }
 
     /**
      * Fetches granular tracking history for a shipment.
      */
-    async getTracking(trackingNumber) {
+    async getTracking(trackingNumber, shipmentData = null) {
         try {
-            const activeConfig = await this._getResolvedConfig();
+            const activeConfig = await this._getResolvedConfig(shipmentData);
             const res = await axios.get(`${activeConfig.baseUrl}/shipments/${trackingNumber}/tracking`, {
                 headers: this.getAuthHeader(activeConfig),
                 params: { trackingView: 'all-checkpoints' }

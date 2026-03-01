@@ -9,12 +9,16 @@ const pickupController = require('./pickup.controller');
 const logger = require('../utils/logger');
 const path = require('path');
 const fs = require('fs');
+const { SHIPMENT_STATUSES } = require('../constants/statusConstants');
 
 exports.updateShipmentStatus = async (req, res) => {
     try {
         const { trackingNumber } = req.params;
         const { status, description } = req.body;
         if (!status) return res.status(400).json({ success: false, error: 'Status is required' });
+        if (!SHIPMENT_STATUSES.includes(status)) {
+            return res.status(400).json({ success: false, error: `Invalid status '${status}'. Valid: ${SHIPMENT_STATUSES.join(', ')}` });
+        }
 
         const shipment = await Shipment.findOne({ trackingNumber });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
@@ -93,7 +97,7 @@ exports.pickupShipment = async (req, res) => {
         if (shipment.status === 'picked_up' || shipment.status === 'in_transit') {
             return res.status(200).json({ success: true, data: shipment, message: 'Shipment already picked up' });
         }
-        if (!['pending', 'ready_for_pickup'].includes(shipment.status)) {
+        if (!['pending', 'booked', 'ready_for_pickup'].includes(shipment.status)) {
             return res.status(400).json({ success: false, error: `Shipment cannot be picked up (Current status: ${shipment.status})` });
         }
 
@@ -118,7 +122,7 @@ exports.processWarehouseScan = async (req, res) => {
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
         if (!['admin', 'staff'].includes(user.role)) return res.status(403).json({ success: false, error: 'Only Staff or Admin can process warehouse scans.' });
 
-        const allowedStatuses = ['picked_up', 'ready_for_pickup'];
+        const allowedStatuses = ['picked_up', 'booked', 'ready_for_pickup'];
         if (!allowedStatuses.includes(shipment.status)) {
             if (shipment.status === 'in_transit') return res.status(200).json({ success: true, message: 'Shipment already processed (In Transit)' });
             return res.status(400).json({ success: false, error: `Shipment status is ${shipment.status}. Must be 'Picked Up' or 'Ready' to process inbound.` });

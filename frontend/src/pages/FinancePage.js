@@ -10,6 +10,7 @@ import {
     Button,
     Input,
     Select,
+    Modal,
     TableWrapper,
     Table,
     Thead,
@@ -399,7 +400,14 @@ const FinancePage = () => {
         }
     };
 
+    const [fifoConfirmOpen, setFifoConfirmOpen] = useState(false);
+
     const handleAllocateFifo = async () => {
+
+    };
+
+    const handleFifoConfirmed = async () => {
+        setFifoConfirmOpen(false);
         try {
             await financeService.allocatePaymentsFifo(selectedOrgId);
             enqueueSnackbar('FIFO Allocation completed', { variant: 'success' });
@@ -408,6 +416,7 @@ const FinancePage = () => {
             enqueueSnackbar('Failed to allocate FIFO', { variant: 'error' });
         }
     };
+
 
     const handleManualAllocation = async () => {
         const selectedShipmentIds = Object.keys(selectedShipmentsMap);
@@ -482,402 +491,421 @@ const FinancePage = () => {
     const selectedCount = Object.keys(selectedShipmentsMap).length;
 
     return (
-        <div>
-            <PageHeader
-                title="Finance & Credits"
-                description="Manage your wallet, view transaction history, and track your spending."
-                action={null}
-                secondaryAction={
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                        <Button
-                            variant={activeTab === 'overview' ? 'primary' : 'secondary'}
-                            onClick={() => setActiveTab('overview')}
-                        >
-                            Overview
-                        </Button>
-                        <Button
-                            variant={activeTab === 'reports' ? 'primary' : 'secondary'}
-                            onClick={() => setActiveTab('reports')}
-                        >
-                            Reports
-                        </Button>
-                        <Button variant="outline" onClick={() => { loadFinance(); fetchShipments(); }}>
-                            Refresh
-                        </Button>
-                    </div>
-                }
-            />
+        <>
+            <div>
+                <PageHeader
+                    title="Finance & Credits"
+                    description="Manage your wallet, view transaction history, and track your spending."
+                    action={null}
+                    secondaryAction={
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <Button
+                                variant={activeTab === 'overview' ? 'primary' : 'secondary'}
+                                onClick={() => setActiveTab('overview')}
+                            >
+                                Overview
+                            </Button>
+                            <Button
+                                variant={activeTab === 'reports' ? 'primary' : 'secondary'}
+                                onClick={() => setActiveTab('reports')}
+                            >
+                                Reports
+                            </Button>
+                            <Button variant="outline" onClick={() => { loadFinance(); fetchShipments(); }}>
+                                Refresh
+                            </Button>
+                        </div>
+                    }
+                />
 
-            {activeTab === 'reports' ? (
-                <FinanceReports ledger={ledger} shipments={shipments} organizations={organizations} />
-            ) : (
-                <>
-                    {can('VIEW_FINANCE') && (
-                        <Card style={{ marginBottom: '24px' }}>
-                            <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-                                <div style={{ minWidth: '240px' }}>
-                                    <Select
-                                        label="Organization"
-                                        value={selectedOrgId}
-                                        onChange={(e) => setSelectedOrgId(e.target.value)}
-                                    >
-                                        <option value="none" style={{ fontWeight: 'bold', color: 'var(--accent-primary)' }}>
-                                            Solo Shippers (Unorganized)
-                                        </option>
-                                        {organizations.map((org) => (
-                                            <option key={org._id} value={org._id}>{org.name}</option>
-                                        ))}
-                                    </Select>
-                                </div>
-                                <Alert severity="info" style={{ margin: 0 }}>
-                                    All balances are derived from the organization ledger. Payments can remain unapplied until allocated.
-                                </Alert>
-                            </div>
-                        </Card>
-                    )}
-
-                    <StatsGrid>
-                        <StatCard $gradient>
-                            <div>
-                                <StatLabel>Outstanding Balance</StatLabel>
-                                <StatValue>
-                                    {loading ? <Loader /> : `${parseFloat(summary.balance).toFixed(3)}`} <span>KD</span>
-                                </StatValue>
-                            </div>
-                        </StatCard>
-
-                        <StatCard>
-                            <div>
-                                <StatLabel>Unapplied Cash</StatLabel>
-                                <StatValue $highlight>
-                                    {loading ? <Loader /> : `${parseFloat(summary.unappliedCash).toFixed(3)}`} <span>KD</span>
-                                </StatValue>
-                                <ItemSub style={{ marginTop: '8px' }}>Available funds for allocation</ItemSub>
-                            </div>
-                        </StatCard>
-
-
-                        <StatCard>
-                            <div>
-                                <StatLabel>Available Credit</StatLabel>
-                                <StatValue>
-                                    {loading ? <Loader /> : `${parseFloat(summary.availableCredit).toFixed(3)}`} <span>KD</span>
-                                </StatValue>
-                                <ItemSub style={{ marginTop: '8px' }}>Limit: {summary.creditLimit.toFixed(3)} KD</ItemSub>
-                            </div>
-                        </StatCard>
-
-                        <StatCard>
-                            <div>
-                                <StatLabel>Total Unpaid Shipments</StatLabel>
-                                <StatValue>
-                                    {parseFloat(summary.totalUnpaid).toFixed(3)} <span>KD</span>
-                                </StatValue>
-                            </div>
-                        </StatCard>
-
-                        <StatCard style={{ gridColumn: 'span 2' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div>
-                                    <StatLabel>Aging Buckets</StatLabel>
-                                    <StatValue style={{ fontSize: '18px', display: 'flex', gap: '16px', marginTop: '12px' }}>
-                                        <div><div style={{ fontSize: '10px', opacity: 0.7 }}>0–30</div>{summary.agingBuckets['0-30'].toFixed(3)}</div>
-                                        <div><div style={{ fontSize: '10px', opacity: 0.7 }}>31–60</div>{summary.agingBuckets['31-60'].toFixed(3)}</div>
-                                        <div><div style={{ fontSize: '10px', opacity: 0.7 }}>61–90</div>{summary.agingBuckets['61-90'].toFixed(3)}</div>
-                                        <div><div style={{ fontSize: '10px', opacity: 0.7 }}>90+</div>{summary.agingBuckets['90+'].toFixed(3)}</div>
-                                    </StatValue>
-                                </div>
-                            </div>
-                        </StatCard>
-                    </StatsGrid>
-
-                    {can('MANAGE_PAYMENTS') && (
-                        <>
-                            <Card title={`Posting Payment: ${currentOrgName}`} style={{ marginBottom: '24px' }}>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', alignItems: 'end' }}>
-                                    <Input
-                                        label="Amount (KD)"
-                                        type="number"
-                                        min="0.001"
-                                        step="0.001"
-                                        value={paymentForm.amount}
-                                        onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
-                                    />
-                                    <Input
-                                        label="Reference / Receipt #"
-                                        value={paymentForm.reference}
-                                        onChange={(e) => setPaymentForm({ ...paymentForm, reference: e.target.value })}
-                                    />
-                                    <Select
-                                        label="Method"
-                                        value={paymentForm.method}
-                                        onChange={(e) => setPaymentForm({ ...paymentForm, method: e.target.value })}
-                                    >
-                                        <option value="manual">Manual Entry</option>
-                                        <option value="bank_transfer">Bank Transfer</option>
-                                        <option value="cash">Cash</option>
-                                        <option value="knet">K-Net</option>
-                                    </Select>
-                                    <Input
-                                        label="Internal Notes"
-                                        value={paymentForm.notes}
-                                        onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
-                                    />
-                                    <div style={{ display: 'flex', gap: '8px' }}>
-                                        <Button variant="primary" onClick={handlePostPayment} disabled={!paymentForm.amount}>
-                                            Post Payment
-                                        </Button>
-                                        <Button variant="secondary" onClick={handleAllocateFifo} title="Apply available funds to oldest shipments first">
-                                            FIFO Allocate
-                                        </Button>
+                {activeTab === 'reports' ? (
+                    <FinanceReports ledger={ledger} shipments={shipments} organizations={organizations} />
+                ) : (
+                    <>
+                        {can('VIEW_FINANCE') && (
+                            <Card style={{ marginBottom: '24px' }}>
+                                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                                    <div style={{ minWidth: '240px' }}>
+                                        <Select
+                                            label="Organization"
+                                            value={selectedOrgId}
+                                            onChange={(e) => setSelectedOrgId(e.target.value)}
+                                        >
+                                            <option value="none" style={{ fontWeight: 'bold', color: 'var(--accent-primary)' }}>
+                                                Solo Shippers (Unorganized)
+                                            </option>
+                                            {organizations.map((org) => (
+                                                <option key={org._id} value={org._id}>{org.name}</option>
+                                            ))}
+                                        </Select>
                                     </div>
+                                    <Alert severity="info" style={{ margin: 0 }}>
+                                        All balances are derived from the organization ledger. Payments can remain unapplied until allocated.
+                                    </Alert>
                                 </div>
                             </Card>
+                        )}
 
-                            <h3 style={{ margin: '32px 0 16px 0', fontSize: '20px', fontWeight: 800 }}>
-                                Manual Allocation: {currentOrgName}
-                            </h3>
+                        <StatsGrid>
+                            <StatCard $gradient>
+                                <div>
+                                    <StatLabel>Outstanding Balance</StatLabel>
+                                    <StatValue>
+                                        {loading ? <Loader /> : `${parseFloat(summary.balance).toFixed(3)}`} <span>KD</span>
+                                    </StatValue>
+                                </div>
+                            </StatCard>
 
-                            <AllocationGrid>
-                                {/* LEFT: Payment Selection */}
-                                <ListCard>
-                                    <ListHeader>
-                                        <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '12px', letterSpacing: '1px' }}>
-                                            1. Select Payment
-                                        </div>
-                                    </ListHeader>
-                                    <ScrollableList>
-                                        {loading ? (
-                                            <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}><Loader /></div>
-                                        ) : payments.length > 0 ? payments.map(p => (
-                                            <ListItem
-                                                key={p._id}
-                                                $selected={selectedPaymentId === p._id}
-                                                onClick={() => setSelectedPaymentId(p._id)}
-                                            >
-                                                <ItemInfo>
-                                                    <ItemTitle>{p.reference || 'No Reference'}</ItemTitle>
-                                                    <ItemSub>
-                                                        {format(new Date(p.postedAt || p.createdAt), 'MMM dd, yyyy')} • {p.method}
-                                                    </ItemSub>
-                                                </ItemInfo>
-                                                <div style={{ textAlign: 'right' }}>
-                                                    <div style={{ fontWeight: 800, color: 'var(--accent-primary)', fontSize: '15px' }}>
-                                                        {(p.amount - (p.allocatedAmount || 0)).toFixed(3)} KD
-                                                    </div>
-                                                    <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
-                                                        Total: {p.amount.toFixed(3)} KD
-                                                    </div>
-                                                </div>
-                                            </ListItem>
-                                        )) : (
-                                            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                                                No unapplied payments found
-                                            </div>
-                                        )}
-                                    </ScrollableList>
-                                </ListCard>
+                            <StatCard>
+                                <div>
+                                    <StatLabel>Unapplied Cash</StatLabel>
+                                    <StatValue $highlight>
+                                        {loading ? <Loader /> : `${parseFloat(summary.unappliedCash).toFixed(3)}`} <span>KD</span>
+                                    </StatValue>
+                                    <ItemSub style={{ marginTop: '8px' }}>Available funds for allocation</ItemSub>
+                                </div>
+                            </StatCard>
 
-                                {/* RIGHT: Shipment Selection */}
-                                <ListCard>
-                                    <ListHeader>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '12px', letterSpacing: '1px' }}>
-                                                2. Select Shipments ({selectedCount})
-                                            </div>
-                                            <div style={{ width: '250px' }}>
-                                                <Input
-                                                    placeholder="Search tracking, name..."
-                                                    value={shipmentSearch}
-                                                    onChange={(e) => setShipmentSearch(e.target.value)}
-                                                    style={{ margin: 0 }}
-                                                />
-                                            </div>
-                                        </div>
-                                    </ListHeader>
-                                    <FilterRow>
-                                        <div style={{ flex: 1, fontSize: '12px', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
-                                            Server-side Search & Pagination Active
-                                        </div>
-                                        <div style={{ minWidth: '150px' }}>
-                                            <Select
-                                                value={statusFilter}
-                                                onChange={(e) => setStatusFilter(e.target.value)}
-                                                style={{ margin: 0, height: '38px', fontSize: '12px' }}
-                                            >
-                                                <option value="all">All Status</option>
-                                                <option value="unpaid">Unpaid Only</option>
-                                                <option value="partial">Partial Only</option>
-                                                <option value="paid">Paid Only</option>
-                                            </Select>
-                                        </div>
-                                    </FilterRow>
-                                    <ScrollableList>
-                                        {shipmentsLoading ? (
-                                            <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}><Loader /></div>
-                                        ) : shipments.length > 0 ? shipments.map(s => (
-                                            <ListItem
-                                                key={s._id}
-                                                $selected={!!selectedShipmentsMap[s._id]}
-                                                $disabled={s.paid}
-                                                onClick={() => toggleShipmentSelection(s)}
-                                            >
-                                                <ItemInfo>
-                                                    <ItemTitle>{s.trackingNumber}</ItemTitle>
-                                                    <ItemSub>
-                                                        {format(new Date(s.createdAt), 'MMM dd, yyyy')} • {s.origin?.contactPerson}
-                                                    </ItemSub>
-                                                </ItemInfo>
-                                                <div style={{ textAlign: 'right' }}>
-                                                    <div style={{ fontWeight: 800, fontSize: '15px' }}>
-                                                        {(s.paid ? 0 : (s.remainingBalance !== undefined ? s.remainingBalance : (s.pricingSnapshot?.totalPrice || s.price || 0) - (s.totalPaid || 0))).toFixed(3)} KD
-                                                    </div>
-                                                    <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
-                                                        Total: {(s.pricingSnapshot?.totalPrice || s.price || 0).toFixed(3)} KD
-                                                    </div>
-                                                    <div style={{
-                                                        fontSize: '10px',
-                                                        fontWeight: 700,
-                                                        color: s.paid ? 'var(--accent-success)' : ((s.totalPaid || 0) > 0.001 ? '#ffb300' : 'var(--text-secondary)')
-                                                    }}>
-                                                        {s.paid ? 'PAID' : ((s.totalPaid || 0) > 0.001 ? 'PARTIAL' : 'UNPAID')}
-                                                    </div>
-                                                </div>
-                                            </ListItem>
-                                        )) : (
-                                            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                                                No shipments found
-                                            </div>
-                                        )}
-                                    </ScrollableList>
 
-                                    {/* Pagination Controls */}
-                                    <PaginationFooter>
-                                        <div>
-                                            Page {shipmentPagination.page} of {shipmentPagination.pages || 1} (Total: {shipmentPagination.total})
-                                        </div>
-                                        <div>
-                                            <PageBtn
-                                                disabled={shipmentPagination.page <= 1}
-                                                onClick={() => setShipmentPagination(prev => ({ ...prev, page: prev.page - 1 }))}
-                                            >
-                                                Previous
-                                            </PageBtn>
-                                            <PageBtn
-                                                disabled={shipmentPagination.page >= shipmentPagination.pages}
-                                                onClick={() => setShipmentPagination(prev => ({ ...prev, page: prev.page + 1 }))}
-                                            >
-                                                Next
-                                            </PageBtn>
-                                        </div>
-                                    </PaginationFooter>
+                            <StatCard>
+                                <div>
+                                    <StatLabel>Available Credit</StatLabel>
+                                    <StatValue>
+                                        {loading ? <Loader /> : `${parseFloat(summary.availableCredit).toFixed(3)}`} <span>KD</span>
+                                    </StatValue>
+                                    <ItemSub style={{ marginTop: '8px' }}>Limit: {summary.creditLimit.toFixed(3)} KD</ItemSub>
+                                </div>
+                            </StatCard>
 
-                                    <AllocationFooter>
-                                        <div style={{ fontSize: '14px' }}>
-                                            {selectedPayment && (
-                                                <span>Allocating From: <strong>({(selectedPayment.amount - (selectedPayment.allocatedAmount || 0)).toFixed(3)} KD)</strong></span>
-                                            )}
-                                            {selectedShipmentsTotal > 0 && (
-                                                <span style={{ marginLeft: '16px' }}>To Pay: <strong>({selectedShipmentsTotal.toFixed(3)} KD)</strong></span>
-                                            )}
-                                        </div>
-                                        <Button
-                                            variant="primary"
-                                            onClick={handleManualAllocation}
-                                            disabled={!selectedPaymentId || selectedCount === 0 || allocationLoading}
+                            <StatCard>
+                                <div>
+                                    <StatLabel>Total Unpaid Shipments</StatLabel>
+                                    <StatValue>
+                                        {parseFloat(summary.totalUnpaid).toFixed(3)} <span>KD</span>
+                                    </StatValue>
+                                </div>
+                            </StatCard>
+
+                            <StatCard style={{ gridColumn: 'span 2' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <StatLabel>Aging Buckets</StatLabel>
+                                        <StatValue style={{ fontSize: '18px', display: 'flex', gap: '16px', marginTop: '12px' }}>
+                                            <div><div style={{ fontSize: '10px', opacity: 0.7 }}>0–30</div>{summary.agingBuckets['0-30'].toFixed(3)}</div>
+                                            <div><div style={{ fontSize: '10px', opacity: 0.7 }}>31–60</div>{summary.agingBuckets['31-60'].toFixed(3)}</div>
+                                            <div><div style={{ fontSize: '10px', opacity: 0.7 }}>61–90</div>{summary.agingBuckets['61-90'].toFixed(3)}</div>
+                                            <div><div style={{ fontSize: '10px', opacity: 0.7 }}>90+</div>{summary.agingBuckets['90+'].toFixed(3)}</div>
+                                        </StatValue>
+                                    </div>
+                                </div>
+                            </StatCard>
+                        </StatsGrid>
+
+                        {can('MANAGE_PAYMENTS') && (
+                            <>
+                                <Card title={`Posting Payment: ${currentOrgName}`} style={{ marginBottom: '24px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', alignItems: 'end' }}>
+                                        <Input
+                                            label="Amount (KD)"
+                                            type="number"
+                                            min="0.001"
+                                            step="0.001"
+                                            value={paymentForm.amount}
+                                            onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
+                                        />
+                                        <Input
+                                            label="Reference / Receipt #"
+                                            value={paymentForm.reference}
+                                            onChange={(e) => setPaymentForm({ ...paymentForm, reference: e.target.value })}
+                                        />
+                                        <Select
+                                            label="Method"
+                                            value={paymentForm.method}
+                                            onChange={(e) => setPaymentForm({ ...paymentForm, method: e.target.value })}
                                         >
-                                            {allocationLoading ? 'Allocating...' : 'Confirm Allocation'}
-                                        </Button>
-                                    </AllocationFooter>
-                                </ListCard>
-                            </AllocationGrid>
-                        </>
-                    )}
-                    <Card
-                        title={
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                                <span>Transaction History</span>
-                                <ExportButton
-                                    data={ledger.map(l => ({
-                                        Date: format(new Date(l.createdAt), 'yyyy-MM-dd HH:mm'),
-                                        Description: l.description,
-                                        Category: l.category,
-                                        Type: l.entryType,
-                                        Amount: l.amount,
-                                        BalanceAfter: l.balanceAfter,
-                                        Reference: l.reference || ''
-                                    }))}
-                                    filename={`Ledger_${currentOrgName.replace(/\s+/g, '_')}`}
-                                />
-                            </div>
-                        }
-                        style={{ marginTop: '24px' }}
-                    >
-                        <TableWrapper>
-                            <Table>
-                                <Thead>
-                                    <Tr>
-                                        <Th>Date & Time</Th>
-                                        <Th>Description</Th>
-                                        <Th>Category</Th>
-                                        <Th style={{ textAlign: 'right' }}>Amount</Th>
-                                        <Th style={{ textAlign: 'right' }}>Balance After</Th>
-                                    </Tr>
-                                </Thead>
-                                <Tbody>
-                                    {loading ? (
-                                        <Tr><Td colSpan={5} style={{ textAlign: 'center' }}><Loader /></Td></Tr>
-                                    ) : ledger.length > 0 ? ledger.map((entry) => (
-                                        <Tr key={entry._id} style={{ height: '40px' }}>
-                                            <Td>
-                                                <div style={{ fontWeight: '500' }}>{format(new Date(entry.createdAt), 'MMM dd, yyyy')}</div>
-                                                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{format(new Date(entry.createdAt), 'HH:mm')}</div>
-                                            </Td>
-                                            <Td>
-                                                {entry.description}
-                                                {entry.reference && <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Ref: {entry.reference}</div>}
-                                            </Td>
-                                            <Td>
-                                                <StatusPill status={entry.category === 'PAYMENT' ? 'success' : 'neutral'} style={{ fontSize: '11px', padding: '2px 6px' }}>
-                                                    {entry.category}
-                                                </StatusPill>
-                                            </Td>
-                                            <Td style={{ textAlign: 'right', fontWeight: 'bold', color: entry.entryType === 'CREDIT' ? 'var(--accent-success)' : 'inherit' }}>
-                                                {entry.entryType === 'CREDIT' ? '+' : '-'}{parseFloat(entry.amount).toFixed(3)}
-                                            </Td>
-                                            <Td style={{ textAlign: 'right' }}>
-                                                {parseFloat(entry.balanceAfter).toFixed(3)}
-                                            </Td>
+                                            <option value="manual">Manual Entry</option>
+                                            <option value="bank_transfer">Bank Transfer</option>
+                                            <option value="cash">Cash</option>
+                                            <option value="knet">K-Net</option>
+                                        </Select>
+                                        <Input
+                                            label="Internal Notes"
+                                            value={paymentForm.notes}
+                                            onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
+                                        />
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <Button variant="primary" onClick={handlePostPayment} disabled={!paymentForm.amount}>
+                                                Post Payment
+                                            </Button>
+                                            <Button variant="secondary" onClick={() => setFifoConfirmOpen(true)} title="Apply available funds to oldest shipments first">
+                                                FIFO Allocate
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </Card>
+
+                                <h3 style={{ margin: '32px 0 16px 0', fontSize: '20px', fontWeight: 800 }}>
+                                    Manual Allocation: {currentOrgName}
+                                </h3>
+
+                                <AllocationGrid>
+                                    {/* LEFT: Payment Selection */}
+                                    <ListCard>
+                                        <ListHeader>
+                                            <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '12px', letterSpacing: '1px' }}>
+                                                1. Select Payment
+                                            </div>
+                                        </ListHeader>
+                                        <ScrollableList>
+                                            {loading ? (
+                                                <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}><Loader /></div>
+                                            ) : payments.length > 0 ? payments.map(p => (
+                                                <ListItem
+                                                    key={p._id}
+                                                    $selected={selectedPaymentId === p._id}
+                                                    onClick={() => setSelectedPaymentId(p._id)}
+                                                >
+                                                    <ItemInfo>
+                                                        <ItemTitle>{p.reference || 'No Reference'}</ItemTitle>
+                                                        <ItemSub>
+                                                            {format(new Date(p.postedAt || p.createdAt), 'MMM dd, yyyy')} • {p.method}
+                                                        </ItemSub>
+                                                    </ItemInfo>
+                                                    <div style={{ textAlign: 'right' }}>
+                                                        <div style={{ fontWeight: 800, color: 'var(--accent-primary)', fontSize: '15px' }}>
+                                                            {(p.amount - (p.allocatedAmount || 0)).toFixed(3)} KD
+                                                        </div>
+                                                        <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                                                            Total: {p.amount.toFixed(3)} KD
+                                                        </div>
+                                                    </div>
+                                                </ListItem>
+                                            )) : (
+                                                <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                                    No unapplied payments found
+                                                </div>
+                                            )}
+                                        </ScrollableList>
+                                    </ListCard>
+
+                                    {/* RIGHT: Shipment Selection */}
+                                    <ListCard>
+                                        <ListHeader>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '12px', letterSpacing: '1px' }}>
+                                                    2. Select Shipments ({selectedCount})
+                                                </div>
+                                                <div style={{ width: '250px' }}>
+                                                    <Input
+                                                        placeholder="Search tracking, name..."
+                                                        value={shipmentSearch}
+                                                        onChange={(e) => setShipmentSearch(e.target.value)}
+                                                        style={{ margin: 0 }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </ListHeader>
+                                        <FilterRow>
+                                            <div style={{ flex: 1, fontSize: '12px', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                                                Server-side Search & Pagination Active
+                                            </div>
+                                            <div style={{ minWidth: '150px' }}>
+                                                <Select
+                                                    value={statusFilter}
+                                                    onChange={(e) => setStatusFilter(e.target.value)}
+                                                    style={{ margin: 0, height: '38px', fontSize: '12px' }}
+                                                >
+                                                    <option value="all">All Status</option>
+                                                    <option value="unpaid">Unpaid Only</option>
+                                                    <option value="partial">Partial Only</option>
+                                                    <option value="paid">Paid Only</option>
+                                                </Select>
+                                            </div>
+                                        </FilterRow>
+                                        <ScrollableList>
+                                            {shipmentsLoading ? (
+                                                <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}><Loader /></div>
+                                            ) : shipments.length > 0 ? shipments.map(s => (
+                                                <ListItem
+                                                    key={s._id}
+                                                    $selected={!!selectedShipmentsMap[s._id]}
+                                                    $disabled={s.paid}
+                                                    onClick={() => toggleShipmentSelection(s)}
+                                                >
+                                                    <ItemInfo>
+                                                        <ItemTitle>{s.trackingNumber}</ItemTitle>
+                                                        <ItemSub>
+                                                            {format(new Date(s.createdAt), 'MMM dd, yyyy')} • {s.origin?.contactPerson}
+                                                        </ItemSub>
+                                                    </ItemInfo>
+                                                    <div style={{ textAlign: 'right' }}>
+                                                        <div style={{ fontWeight: 800, fontSize: '15px' }}>
+                                                            {(s.paid ? 0 : (s.remainingBalance !== undefined ? s.remainingBalance : (s.pricingSnapshot?.totalPrice || s.price || 0) - (s.totalPaid || 0))).toFixed(3)} KD
+                                                        </div>
+                                                        <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                                                            Total: {(s.pricingSnapshot?.totalPrice || s.price || 0).toFixed(3)} KD
+                                                        </div>
+                                                        <div style={{
+                                                            fontSize: '10px',
+                                                            fontWeight: 700,
+                                                            color: s.paid ? 'var(--accent-success)' : ((s.totalPaid || 0) > 0.001 ? '#ffb300' : 'var(--text-secondary)')
+                                                        }}>
+                                                            {s.paid ? 'PAID' : ((s.totalPaid || 0) > 0.001 ? 'PARTIAL' : 'UNPAID')}
+                                                        </div>
+                                                    </div>
+                                                </ListItem>
+                                            )) : (
+                                                <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                                    No shipments found
+                                                </div>
+                                            )}
+                                        </ScrollableList>
+
+                                        {/* Pagination Controls */}
+                                        <PaginationFooter>
+                                            <div>
+                                                Page {shipmentPagination.page} of {shipmentPagination.pages || 1} (Total: {shipmentPagination.total})
+                                            </div>
+                                            <div>
+                                                <PageBtn
+                                                    disabled={shipmentPagination.page <= 1}
+                                                    onClick={() => setShipmentPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                                                >
+                                                    Previous
+                                                </PageBtn>
+                                                <PageBtn
+                                                    disabled={shipmentPagination.page >= shipmentPagination.pages}
+                                                    onClick={() => setShipmentPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                                                >
+                                                    Next
+                                                </PageBtn>
+                                            </div>
+                                        </PaginationFooter>
+
+                                        <AllocationFooter>
+                                            <div style={{ fontSize: '14px' }}>
+                                                {selectedPayment && (
+                                                    <span>Allocating From: <strong>({(selectedPayment.amount - (selectedPayment.allocatedAmount || 0)).toFixed(3)} KD)</strong></span>
+                                                )}
+                                                {selectedShipmentsTotal > 0 && (
+                                                    <span style={{ marginLeft: '16px' }}>To Pay: <strong>({selectedShipmentsTotal.toFixed(3)} KD)</strong></span>
+                                                )}
+                                            </div>
+                                            <Button
+                                                variant="primary"
+                                                onClick={handleManualAllocation}
+                                                disabled={!selectedPaymentId || selectedCount === 0 || allocationLoading}
+                                            >
+                                                {allocationLoading ? 'Allocating...' : 'Confirm Allocation'}
+                                            </Button>
+                                        </AllocationFooter>
+                                    </ListCard>
+                                </AllocationGrid>
+                            </>
+                        )}
+                        <Card
+                            title={
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                                    <span>Transaction History</span>
+                                    <ExportButton
+                                        data={ledger.map(l => ({
+                                            Date: format(new Date(l.createdAt), 'yyyy-MM-dd HH:mm'),
+                                            Description: l.description,
+                                            Category: l.category,
+                                            Type: l.entryType,
+                                            Amount: l.amount,
+                                            BalanceAfter: l.balanceAfter,
+                                            Reference: l.reference || ''
+                                        }))}
+                                        filename={`Ledger_${currentOrgName.replace(/\s+/g, '_')}`}
+                                    />
+                                </div>
+                            }
+                            style={{ marginTop: '24px' }}
+                        >
+                            <TableWrapper>
+                                <Table>
+                                    <Thead>
+                                        <Tr>
+                                            <Th>Date & Time</Th>
+                                            <Th>Description</Th>
+                                            <Th>Category</Th>
+                                            <Th style={{ textAlign: 'right' }}>Amount</Th>
+                                            <Th style={{ textAlign: 'right' }}>Balance After</Th>
                                         </Tr>
-                                    )) : (
-                                        <Tr><Td colSpan={5} style={{ textAlign: 'center', padding: '24px' }}>No transactions found</Td></Tr>
-                                    )}
-                                </Tbody>
-                            </Table>
-                        </TableWrapper>
-                        <PaginationFooter>
-                            <div>
-                                Page {pagination.page} (Total: {pagination.total})
-                            </div>
-                            <div>
-                                <PageBtn
-                                    disabled={pagination.page <= 1}
-                                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
-                                >
-                                    Previous
-                                </PageBtn>
-                                <PageBtn
-                                    disabled={ledger.length < 20}
-                                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
-                                >
-                                    Next
-                                </PageBtn>
-                            </div>
-                        </PaginationFooter>
-                    </Card>
-                </>
-            )}
-        </div>
+                                    </Thead>
+                                    <Tbody>
+                                        {loading ? (
+                                            <Tr><Td colSpan={5} style={{ textAlign: 'center' }}><Loader /></Td></Tr>
+                                        ) : ledger.length > 0 ? ledger.map((entry) => (
+                                            <Tr key={entry._id} style={{ height: '40px' }}>
+                                                <Td>
+                                                    <div style={{ fontWeight: '500' }}>{format(new Date(entry.createdAt), 'MMM dd, yyyy')}</div>
+                                                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{format(new Date(entry.createdAt), 'HH:mm')}</div>
+                                                </Td>
+                                                <Td>
+                                                    {entry.description}
+                                                    {entry.reference && <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Ref: {entry.reference}</div>}
+                                                </Td>
+                                                <Td>
+                                                    <StatusPill status={entry.category === 'PAYMENT' ? 'success' : 'neutral'} style={{ fontSize: '11px', padding: '2px 6px' }}>
+                                                        {entry.category}
+                                                    </StatusPill>
+                                                </Td>
+                                                <Td style={{ textAlign: 'right', fontWeight: 'bold', color: entry.entryType === 'CREDIT' ? 'var(--accent-success)' : 'inherit' }}>
+                                                    {entry.entryType === 'CREDIT' ? '+' : '-'}{parseFloat(entry.amount).toFixed(3)}
+                                                </Td>
+                                                <Td style={{ textAlign: 'right' }}>
+                                                    {parseFloat(entry.balanceAfter).toFixed(3)}
+                                                </Td>
+                                            </Tr>
+                                        )) : (
+                                            <Tr><Td colSpan={5} style={{ textAlign: 'center', padding: '24px' }}>No transactions found</Td></Tr>
+                                        )}
+                                    </Tbody>
+                                </Table>
+                            </TableWrapper>
+                            <PaginationFooter>
+                                <div>
+                                    Page {pagination.page} (Total: {pagination.total})
+                                </div>
+                                <div>
+                                    <PageBtn
+                                        disabled={pagination.page <= 1}
+                                        onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                                    >
+                                        Previous
+                                    </PageBtn>
+                                    <PageBtn
+                                        disabled={ledger.length < 20}
+                                        onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                                    >
+                                        Next
+                                    </PageBtn>
+                                </div>
+                            </PaginationFooter>
+                        </Card>
+                    </>
+                )}
+            </div>
+
+            {/* FIFO Allocation Confirm */}
+            <Modal
+                isOpen={fifoConfirmOpen}
+                onClose={() => setFifoConfirmOpen(false)}
+                title="Confirm FIFO Allocation"
+                footer={
+                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                        <Button variant="secondary" onClick={() => setFifoConfirmOpen(false)}>Cancel</Button>
+                        <Button variant="primary" onClick={handleFifoConfirmed}>Yes, Allocate</Button>
+                    </div>
+                }
+            >
+                <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                    This will automatically apply all available unapplied cash to the oldest unpaid shipments for <strong>{currentOrgName}</strong> (First-In, First-Out). Continue?
+                </p>
+            </Modal>
+        </>
     );
 };
 

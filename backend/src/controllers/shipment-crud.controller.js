@@ -243,8 +243,8 @@ exports.deleteShipment = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Cannot delete a shipment that has already been booked. Please void it instead.' });
         }
 
-        if (isOwner && !isAdminOrStaff && !['draft', 'ready_for_pickup'].includes(shipment.status)) {
-            return res.status(400).json({ success: false, error: `Cannot delete shipment in '${shipment.status}' status. Only Draft or Ready for Pickup.` });
+        if (isOwner && !isAdminOrStaff && !['draft', 'booked', 'ready_for_pickup'].includes(shipment.status)) {
+            return res.status(400).json({ success: false, error: `Cannot delete shipment in '${shipment.status}' status. Only Draft or Booked.` });
         }
 
         await shipment.deleteOne();
@@ -268,13 +268,13 @@ exports.updateShipment = async (req, res) => {
         const isAdminOrStaff = ['admin', 'staff'].includes(user.role);
         if (!isAdminOrStaff && !isOwner) return res.status(403).json({ success: false, error: 'Not authorized to update this shipment' });
 
-        const clientEditable = ['draft', 'pending', 'updated', 'exception', 'ready_for_pickup'];
-        const staffEditable = ['draft', 'pending', 'updated', 'ready_for_pickup', 'picked_up', 'exception'];
+        const clientEditable = ['draft', 'pending', 'updated', 'exception', 'booked', 'ready_for_pickup'];
+        const staffEditable = ['draft', 'pending', 'updated', 'booked', 'ready_for_pickup', 'picked_up', 'exception'];
         if (isOwner && !isAdminOrStaff && !clientEditable.includes(shipment.status)) {
-            return res.status(400).json({ success: false, error: `Clients can only edit shipments in Draft, Pending, Exception, or Ready for Pickup status.` });
+            return res.status(400).json({ success: false, error: `Clients can only edit shipments in Draft, Pending, Exception, or Booked status.` });
         }
         if (isAdminOrStaff && !staffEditable.includes(shipment.status)) {
-            return res.status(400).json({ success: false, error: `Staff can only edit shipments in Draft, Pending, Ready for Pickup, Picked Up, or Exception status.` });
+            return res.status(400).json({ success: false, error: `Staff can only edit shipments in Draft, Pending, Booked, Picked Up, or Exception status.` });
         }
 
         const allowedFields = ['destination', 'origin', 'items', 'parcels', 'incoterm', 'currency', 'dangerousGoods', 'serviceCode', 'currentLocation', 'price', 'markup', 'pickupRequest', 'customer', 'status', 'allowPublicLocationUpdate', 'allowPublicInfoUpdate'];
