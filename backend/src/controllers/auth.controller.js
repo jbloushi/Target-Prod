@@ -176,7 +176,7 @@ exports.generateApiKey = async (req, res) => {
 
 exports.getAllUsers = async (req, res) => {
     try {
-        const users = await User.find({ role: { $in: ['client', 'org_agent', 'org_manager'] } });
+        const users = await User.find({ role: { $in: ['org_agent', 'org_manager'] } });
         res.status(200).json({ success: true, data: users });
     } catch (error) {
         res.status(500).json({ success: false, error: 'Failed to fetch users' });
@@ -186,7 +186,7 @@ exports.getAllUsers = async (req, res) => {
 // Get clients (org agents/managers) with their addresses for staff dropdown
 exports.getClients = async (req, res) => {
     try {
-        const clients = await User.find({ role: { $in: ['client', 'org_agent', 'org_manager'] } })
+        const clients = await User.find({ role: { $in: ['org_agent', 'org_manager'] } })
             .select('name email phone addresses');
         res.status(200).json({ success: true, data: clients });
     } catch (error) {
