@@ -488,7 +488,7 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
                     addressLine3: shipperAddress.line3
                 },
                 contactInformation: {
-                    companyName: `${sender.company || sender.contactPerson} PH:${normalizePhoneForCarrier(sender.phone, senderCountryCode)}`.substring(0, 50),
+                    companyName: sender.company || sender.contactPerson,
                     fullName: sender.contactPerson,
                     phone: normalizePhoneForCarrier(sender.phone, senderCountryCode),
                     email: sender.email
@@ -506,7 +506,7 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
                     addressLine3: receiverAddress.line3
                 },
                 contactInformation: {
-                    companyName: `${receiver.company || receiver.contactPerson} PH:${normalizePhoneForCarrier(receiver.phone, receiverCountryCode)}`.substring(0, 50),
+                    companyName: receiver.company || receiver.contactPerson,
                     fullName: receiver.contactPerson,
                     phone: normalizePhoneForCarrier(receiver.phone, receiverCountryCode),
                     email: receiver.email
