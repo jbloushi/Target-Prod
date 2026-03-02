@@ -548,7 +548,8 @@ const ShipmentDetailsPage = () => {
                     parcels: editDraft.parcels,
                     items: editDraft.items,
                     dangerousGoods: editDraft.dangerousGoods,
-                    packagingType: editDraft.packagingType
+                    packagingType: editDraft.packagingType,
+                    currency: editDraft.currency
                 };
             }
             else if (editSection === 'billing') {
@@ -1503,7 +1504,16 @@ const ShipmentDetailsPage = () => {
                                         packagingType={editDraft.packagingType}
                                         setPackagingType={(val) => setEditDraft({ ...editDraft, packagingType: val })}
                                         shipmentType={editDraft.shipmentType}
+                                        currency={editDraft.currency}
+                                        setCurrency={(val) => {
+                                            setEditDraft(prev => ({
+                                                ...prev,
+                                                currency: val,
+                                                items: (prev.items || []).map(item => ({ ...item, currency: val }))
+                                            }));
+                                        }}
                                         errors={editErrors}
+                                        defaultOrigin={editDraft.sender?.countryCode || 'KW'}
                                     />
                                 )}
 

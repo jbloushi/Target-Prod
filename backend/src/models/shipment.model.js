@@ -121,6 +121,7 @@ const shipmentSchema = new mongoose.Schema({
     },
     hsCode: String,
     sku: String,
+    currency: { type: String, default: 'KWD' },
     countryOfOrigin: String
   }],
   user: {
@@ -180,6 +181,11 @@ const shipmentSchema = new mongoose.Schema({
     type: String,
     default: 'Sale'
   },
+  hsCodeType: {
+    type: String,
+    enum: ['outbound', 'inbound', 'both'],
+    default: 'outbound'
+  },
   shipmentType: {
     type: String,
     enum: ['documents', 'package'],
@@ -220,6 +226,8 @@ const shipmentSchema = new mongoose.Schema({
   palletCount: { type: Number, default: 0 },
   packageMarks: String,
   receiverReference: String,
+  senderContractNumber: { type: String, maxLength: 35 },
+  receiverContractNumber: { type: String, maxLength: 35 },
   shipperAccount: String, // Optional override
   labelSettings: {
     format: { type: String, enum: ['pdf', 'zpl'], default: 'pdf' },

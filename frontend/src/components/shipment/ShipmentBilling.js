@@ -32,6 +32,7 @@ const ShipmentBilling = ({
     optionalServicesTotal = 0,
     estimatedShipmentTotal = 0,
     deliveryDate = null,
+    currency = 'KWD',
     errors = {}
 }) => {
     const warnings = [];
@@ -175,7 +176,7 @@ const ShipmentBilling = ({
                                     </ListItemIcon>
                                     <ListItemText
                                         primary={service.serviceName}
-                                        secondary={`Code: ${service.serviceCode} · ${Number(service.totalPrice || 0) === 0 ? 'Included' : `${Number(service.totalPrice).toFixed(3)} KD`}`}
+                                        secondary={`Code: ${service.serviceCode} · ${Number(service.totalPrice || 0) === 0 ? 'Included' : `${Number(service.totalPrice).toFixed(3)} ${currency}`}`}
                                     />
                                 </ListItem>
                             );
@@ -195,11 +196,11 @@ const ShipmentBilling = ({
                 <Divider sx={{ my: 2 }} />
                 <Grid container spacing={1}>
                     <Grid item xs={12} md={4}><Typography variant="body2">Estimated Shipment Cost:</Typography></Grid>
-                    <Grid item xs={12} md={8}><Typography variant="body2" fontWeight="bold">{Number(estimatedShipmentCost).toFixed(3)} KD</Typography></Grid>
+                    <Grid item xs={12} md={8}><Typography variant="body2" fontWeight="bold">{Number(estimatedShipmentCost).toFixed(3)} {currency}</Typography></Grid>
                     <Grid item xs={12} md={4}><Typography variant="body2">Optional Services:</Typography></Grid>
-                    <Grid item xs={12} md={8}><Typography variant="body2" fontWeight="bold">{Number(optionalServicesTotal).toFixed(3)} KD</Typography></Grid>
+                    <Grid item xs={12} md={8}><Typography variant="body2" fontWeight="bold">{Number(optionalServicesTotal).toFixed(3)} {currency}</Typography></Grid>
                     <Grid item xs={12} md={4}><Typography variant="body2">Estimated Shipment Total:</Typography></Grid>
-                    <Grid item xs={12} md={8}><Typography variant="body2" color="primary" fontWeight="bold">{Number(estimatedShipmentTotal).toFixed(3)} KD</Typography></Grid>
+                    <Grid item xs={12} md={8}><Typography variant="body2" color="primary" fontWeight="bold">{Number(estimatedShipmentTotal).toFixed(3)} {currency}</Typography></Grid>
                     {deliveryDate && (
                         <>
                             <Grid item xs={12}><Divider sx={{ my: 1 }} /></Grid>

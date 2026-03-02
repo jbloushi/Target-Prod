@@ -239,6 +239,17 @@ function buildExportDeclaration(order, config = {}) {
             ? (totalParcelWeight * (qty / totalItemQty))
             : (item.grossWeight || itemNetWeight) * qty;
 
+        const hsType = order.hsCodeType || 'outbound';
+        let commodityCodes = [];
+        if (hsType === 'inbound') {
+            commodityCodes.push({ typeCode: 'inbound', value: commCode });
+        } else if (hsType === 'both') {
+            commodityCodes.push({ typeCode: 'outbound', value: commCode });
+            commodityCodes.push({ typeCode: 'inbound', value: commCode });
+        } else {
+            commodityCodes.push({ typeCode: 'outbound', value: commCode });
+        }
+
         return {
             number: idx + 1,
             description: description,
@@ -247,10 +258,8 @@ function buildExportDeclaration(order, config = {}) {
                 value: qty,
                 unitOfMeasurement: item.unitOfMeasurement || 'PCS'
             },
-            commodityCodes: [{
-                typeCode: 'outbound',
-                value: commCode
-            }],
+            commodityCodes: commodityCodes,
+            priceCurrency: order.currency || 'KWD',
             manufacturerCountry: manufacturerCountryCode,
             weight: {
                 netValue: formatWeight(totalLineNet),
@@ -283,10 +292,20 @@ function buildExportDeclaration(order, config = {}) {
                     receiver.taxId ? `Receiver TaxID: ${receiver.taxId}` : ''
                 ].filter(Boolean).join(' | ').substring(0, 300) // DGR Limit
             ],
-            customerReferences: [
-                { typeCode: 'CU', value: order.reference || order.sender?.reference },
-                { typeCode: 'ANT', value: order.receiverReference || order.receiver?.reference } // FIXED: AAO -> ANT
-            ].filter(r => r.value)
+            customerReferences: (() => {
+                const refs = [
+                    { typeCode: 'CU', value: order.reference || order.sender?.reference }
+                ];
+                if (order.senderContractNumber) {
+                    refs.push({ typeCode: 'CN', value: order.senderContractNumber.substring(0, 35) });
+                }
+                if (order.receiverContractNumber) {
+                    refs.push({ typeCode: 'ANT', value: order.receiverContractNumber.substring(0, 35) });
+                } else if (order.receiverReference || order.receiver?.reference) {
+                    refs.push({ typeCode: 'ANT', value: order.receiverReference || order.receiver?.reference });
+                }
+                return refs.filter(r => r && r.value);
+            })()
         },
         exportReason: order.exportReason || 'Sale',
         exportReasonType: order.exportReasonType || 'permanent',
@@ -333,7 +352,7 @@ const buildDangerousGoodsValueAddedServices = (dg) => {
         if (!Number.isFinite(dryIceWeight) || dryIceWeight <= 0) {
             throw new Error('DG payload requires a positive dryIceWeight for serviceCode HC.');
         }
-        dgItem.dryIceWeight = dryIceWeight;
+        dgItem.dryIceTotalNetWeight = dryIceWeight;
     }
 
     return [vas];
@@ -356,12 +375,15 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
     const senderCountryCode = normalizeCountryCode(sender.countryCode);
     const receiverCountryCode = normalizeCountryCode(receiver.countryCode);
 
-    // Calculate total declared value and validate currency consistency
-    const currencies = new Set(order.items.map(i => i.currency || 'KWD'));
-    if (currencies.size > 1) {
-        throw new Error(`DGR Invoice requires a single currency. Mixed currencies found: ${Array.from(currencies).join(', ')}`);
+    // 1. Determine the primary currency for the shipment
+    const detectedCurrency = (order.currency || 'KWD').substring(0, 3).toUpperCase();
+
+    // Normalize item currencies to match shipment currency (DGR requires consistency)
+    if (order.items && order.items.length > 0) {
+        order.items.forEach(item => {
+            item.currency = detectedCurrency;
+        });
     }
-    const detectedCurrency = currencies.values().next().value || 'KWD';
 
     const totalDeclaredValue = order.items.reduce((sum, item) => sum + (item.value * item.quantity), 0);
 
@@ -466,7 +488,7 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
                     addressLine3: shipperAddress.line3
                 },
                 contactInformation: {
-                    companyName: sender.company || sender.contactPerson,
+                    companyName: `${sender.company || sender.contactPerson} PH:${normalizePhoneForCarrier(sender.phone, senderCountryCode)}`.substring(0, 50),
                     fullName: sender.contactPerson,
                     phone: normalizePhoneForCarrier(sender.phone, senderCountryCode),
                     email: sender.email
@@ -484,7 +506,7 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
                     addressLine3: receiverAddress.line3
                 },
                 contactInformation: {
-                    companyName: receiver.company || receiver.contactPerson,
+                    companyName: `${receiver.company || receiver.contactPerson} PH:${normalizePhoneForCarrier(receiver.phone, receiverCountryCode)}`.substring(0, 50),
                     fullName: receiver.contactPerson,
                     phone: normalizePhoneForCarrier(receiver.phone, receiverCountryCode),
                     email: receiver.email
@@ -513,7 +535,7 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
             incoterm: order.incoterm || 'DAP',
             unitOfMeasurement: 'metric',
             ...((!order.isDocument && order.shipmentType !== 'documents') ? {
-                declaredValue: totalDeclaredValue || order.declaredValue || undefined,
+                declaredValue: Number(totalDeclaredValue || order.declaredValue || 1),
                 declaredValueCurrency: normalizeCur(detectedCurrency || order.currency || 'USD'),
                 exportDeclaration: exportDeclaration
             } : {})

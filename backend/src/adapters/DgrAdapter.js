@@ -410,6 +410,23 @@ class DgrAdapter extends CarrierAdapter {
         }
 
         const errorData = lastError?.response?.data || lastError?.message || 'Unknown error';
+
+        // Log detailed error to a permanent debug file for better visibility into Additional Details
+        if (process.env.NODE_ENV === 'development') {
+            try {
+                const fs = require('fs');
+                const path = require('path');
+                const logEntry = `\n--- [DGR_ERROR] ${new Date().toISOString()} ---\n` +
+                    `Status: ${lastError?.response?.status}\n` +
+                    `Payload: ${JSON.stringify(lastPayload, null, 2)}\n` +
+                    `Response: ${JSON.stringify(errorData, null, 2)}\n` +
+                    `-------------------------------------------\n`;
+                fs.appendFileSync(path.join(__dirname, '../../dgr_debug_error.log'), logEntry);
+            } catch (err) {
+                console.error('Failed to write to dgr_debug_error.log:', err);
+            }
+        }
+
         await CarrierLog.create({
             user: shipmentData.user,
             shipment: shipmentData._id,
@@ -423,7 +440,14 @@ class DgrAdapter extends CarrierAdapter {
             durationMs: Date.now() - startTime
         }).catch(e => console.error('CarrierLog Save Failed:', e));
 
-        const providerError = new Error(`DGR Error: ${errorData.detail || JSON.stringify(errorData)}`);
+        // Construct a more descriptive error message using Additional Details if available
+        let detailedMessage = errorData.detail || JSON.stringify(errorData);
+        if (errorData.additionalDetails) {
+            const extra = errorData.additionalDetails.map(d => `${d.field || 'General'}: ${d.message}`).join('; ');
+            detailedMessage += ` (Details: ${extra})`;
+        }
+
+        const providerError = new Error(`DGR Error: ${detailedMessage}`);
         providerError.statusCode = lastError?.response?.status || 500;
         providerError.isProviderError = true;
         throw providerError;

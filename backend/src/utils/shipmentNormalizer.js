@@ -32,7 +32,7 @@ function normalizeShipment(data) {
         description: item.description,
         quantity: Number(item.quantity) || 1,
         value: Number(item.declaredValue) || Number(item.value) || 10,
-        currency: item.currency || data.currency || 'USD',
+        currency: data.currency || item.currency || 'USD',
         netWeight: Number(item.weight) || 0.1,
         hsCode: item.hsCode,
         countryOfOrigin: item.countryOfOrigin,

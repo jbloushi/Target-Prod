@@ -71,7 +71,7 @@ class ShipmentDraftService {
             price: snapshot.totalPrice,
             costPrice: snapshot.carrierRate,
             markup: snapshot.markup,
-            currency: snapshot.currency,
+            currency: cleanData.currency || snapshot.currency,
 
             // Initialize empty arrays
             bookingAttempts: [],
@@ -206,19 +206,25 @@ class ShipmentDraftService {
             if (!origin.contactPerson) throw new Error('Customer/Sender details required');
         }
 
-        // Map items
-        const items = (legacyItems && legacyItems.length > 0) ? legacyItems : parcels;
+        // Map and normalize items
+        const rawItems = (legacyItems && legacyItems.length > 0) ? legacyItems : parcels;
+        const currency = data.currency || 'KWD';
+
+        const items = (rawItems || []).map(item => ({
+            ...item,
+            currency: currency // Force consistency
+        }));
 
         return {
             ...data,
             origin,
             destination,
             customer,
-            items: items || [],
+            items,
             shipmentType: data.shipmentType || 'package',
             packagingType: data.packagingType || 'user',
             incoterm: data.incoterm || 'DAP',
-            currency: data.currency || 'KWD'
+            currency
         };
     }
 }

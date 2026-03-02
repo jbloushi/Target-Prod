@@ -479,7 +479,7 @@ const ShipmentWizardV2 = () => {
     const [sender, setSender] = useState({ ...initialAddress });
     const [receiver, setReceiver] = useState({ ...initialAddress });
     const [parcels, setParcels] = useState([{ description: 'Box 1', weight: '', length: '', width: '', height: '', quantity: 1, trackingReference: '' }]);
-    const [items, setItems] = useState([{ description: '', quantity: 1, declaredValue: '', currency: 'KWD', weight: '', hsCode: '', countryOfOrigin: '', sku: '' }]);
+    const [items, setItems] = useState([{ description: '', quantity: 1, declaredValue: '', currency: 'KWD', weight: '', hsCode: '', countryOfOrigin: 'KW', sku: '' }]);
     // Step 1 Consolidated State
     const [pickupRequired, setPickupRequired] = useState(false);
     // Step 2 Content State
@@ -1662,7 +1662,7 @@ const ShipmentWizardV2 = () => {
                                 </Box>
                                 <Box display="flex" alignItems="baseline" gap={1}>
                                     <Typography variant="h3" fontWeight="bold">{estimatedShipmentTotal.toFixed(3)}</Typography>
-                                    <Typography variant="subtitle1">KD</Typography>
+                                    <Typography variant="subtitle1">{currency}</Typography>
                                 </Box>
 
                                 <Divider sx={{ borderColor: 'rgba(255,255,255,0.2)', my: 2 }} />
@@ -1704,11 +1704,11 @@ const ShipmentWizardV2 = () => {
 
                                 <Box display="flex" justifyContent="space-between" mb={0.5}>
                                     <Typography variant="body2">Shipment Cost</Typography>
-                                    <Typography variant="body2" fontWeight="bold">{estimatedShipmentCost.toFixed(3)} KD</Typography>
+                                    <Typography variant="body2" fontWeight="bold">{estimatedShipmentCost.toFixed(3)} {currency}</Typography>
                                 </Box>
                                 <Box display="flex" justifyContent="space-between" mb={1.5}>
                                     <Typography variant="body2">Optional Services</Typography>
-                                    <Typography variant="body2" fontWeight="bold">{optionalServicesTotal.toFixed(3)} KD</Typography>
+                                    <Typography variant="body2" fontWeight="bold">{optionalServicesTotal.toFixed(3)} {currency}</Typography>
                                 </Box>
 
                                 {/* Admin Markup Analysis - Staff/Admin Only */}
@@ -1763,7 +1763,7 @@ const ShipmentWizardV2 = () => {
 
                                                     <Box display="flex" justifyContent="space-between" sx={{ color: '#fff', bgcolor: 'rgba(255,255,255,0.1)', px: 1, py: 0.5, borderRadius: 1, mt: 1 }}>
                                                         <Typography variant="caption" fontWeight="bold">Add-on:</Typography>
-                                                        <Typography variant="caption" fontWeight="bold">{fmt(addon)} KD</Typography>
+                                                        <Typography variant="caption" fontWeight="bold">{fmt(addon)} {currency}</Typography>
                                                     </Box>
                                                 </>
                                             );
@@ -1794,7 +1794,7 @@ const ShipmentWizardV2 = () => {
                                                             primaryTypographyProps={{ variant: 'caption', color: 'inherit' }}
                                                             secondaryTypographyProps={{ variant: 'caption', color: 'rgba(255,255,255,0.7)' }}
                                                             primary={service.serviceName}
-                                                            secondary={`${Number(service.totalPrice).toFixed(3)} KD`}
+                                                            secondary={`${Number(service.totalPrice).toFixed(3)} ${currency}`}
                                                         />
                                                     </ListItem>
                                                 ))}
@@ -1857,7 +1857,7 @@ const ShipmentWizardV2 = () => {
                                     <AccountBalanceWalletIcon color={availableCredit < estimatedShipmentTotal ? 'error' : 'success'} />
                                     <Box>
                                         <Typography variant="caption" display="block" fontWeight="bold">
-                                            Available Credit: {availableCredit.toFixed(3)} KD
+                                            Available Credit: {availableCredit.toFixed(3)} {currency}
                                         </Typography>
                                         {availableCredit < estimatedShipmentTotal && (
                                             <Typography variant="caption" color="error.main" fontWeight="bold">
@@ -2067,6 +2067,8 @@ const ShipmentWizardV2 = () => {
                                         sender={sender} setSender={setSender}
                                         receiver={receiver} setReceiver={setReceiver}
                                         pickupRequired={pickupRequired} setPickupRequired={setPickupRequired}
+                                        shipmentType={shipmentType} setShipmentType={setShipmentType}
+                                        plannedDate={plannedDate} setPlannedDate={setPlannedDate}
                                         errors={errors}
                                         isStaff={isStaff} clients={clients}
                                         selectedClient={selectedClient} onClientChange={handleClientChange}
@@ -2088,12 +2090,19 @@ const ShipmentWizardV2 = () => {
                                         expandedParcel={expandedParcel} setExpandedParcel={setExpandedParcel}
                                         dangerousGoods={dangerousGoods} setDangerousGoods={setDangerousGoods}
                                         addParcel={() => setParcels([...parcels, { description: '', weight: '', length: '', width: '', height: '', quantity: 1 }])}
-                                        addItem={() => setItems([...items, { description: '', quantity: 1, declaredValue: '', weight: '' }])}
+                                        addItem={() => setItems([...items, { description: '', quantity: 1, declaredValue: '', currency: currency || 'KWD', weight: '', countryOfOrigin: sender.countryCode || 'KW' }])}
                                         removeItem={(i) => setItems(items.filter((_, idx) => idx !== i))}
                                         updateItem={(i, f, v) => { const n = [...items]; n[i][f] = v; setItems(n); }}
                                         errors={errors} packagingType={packagingType} setPackagingType={setPackagingType}
                                         showDangerousGoods={selectedCarrierProfile.supportsDangerousGoods}
                                         packagingOptions={selectedCarrierProfile.packagingOptions}
+                                        currency={currency}
+                                        setCurrency={(val) => {
+                                            setCurrency(val);
+                                            // Sync items currency when global currency changes
+                                            setItems(prev => prev.map(item => ({ ...item, currency: val })));
+                                        }}
+                                        defaultOrigin={sender.countryCode || 'KW'}
                                     />
                                 </Box>
                             )}
@@ -2117,6 +2126,7 @@ const ShipmentWizardV2 = () => {
                                         estimatedShipmentCost={estimatedShipmentCost}
                                         optionalServicesTotal={optionalServicesTotal}
                                         estimatedShipmentTotal={estimatedShipmentTotal}
+                                        currency={currency}
                                         errors={errors}
                                     />
                                 </Box>

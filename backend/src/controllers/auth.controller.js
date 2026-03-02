@@ -140,6 +140,7 @@ exports.protect = async (req, res, next) => {
         // Check if user still exists
         const currentUser = await User.findById(decoded.id);
         if (!currentUser) {
+            logger.warn(`Auth Failed: User ${decoded.id} no longer exists. (Likely In-Memory DB reset in developer mode). User must re-login.`);
             return res.status(401).json({ success: false, error: 'User no longer exists' });
         }
 

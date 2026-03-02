@@ -26,7 +26,10 @@ const ShipmentContent = ({
     shipmentType,
     errors = {},
     showDangerousGoods = true,
-    packagingOptions
+    packagingOptions,
+    currency,
+    setCurrency,
+    defaultOrigin = 'KW'
 }) => {
     const [expandedParcel, setExpandedParcel] = useState(0);
 
@@ -132,7 +135,23 @@ const ShipmentContent = ({
             {/* Customs Items Section */}
             {shipmentType !== 'documents' && (
                 <Paper sx={{ p: 3, mb: 3 }} variant="outlined">
-                    <Typography variant="h6" fontWeight="bold" gutterBottom>2. Customs Declaration (Items)</Typography>
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                        <Typography variant="h6" fontWeight="bold">2. Customs Declaration (Items)</Typography>
+                        <FormControl size="small" sx={{ minWidth: 150 }}>
+                            <InputLabel>Shipment Currency</InputLabel>
+                            <Select
+                                value={currency || 'KWD'}
+                                label="Shipment Currency"
+                                onChange={(e) => setCurrency(e.target.value)}
+                            >
+                                <MenuItem value="KWD">KWD - Kuwaiti Dinar</MenuItem>
+                                <MenuItem value="USD">USD - US Dollar</MenuItem>
+                                <MenuItem value="EUR">EUR - Euro</MenuItem>
+                                <MenuItem value="SAR">SAR - Saudi Riyal</MenuItem>
+                                <MenuItem value="AED">AED - UAE Dirham</MenuItem>
+                            </Select>
+                        </FormControl>
+                    </Box>
                     <Alert severity="info" sx={{ mb: 2 }}>
                         List package contents for customs. HS Code format: 1234 or 1234.56 or 1234.56.78. Origin must be ISO-2 (e.g. KW, US).
                     </Alert>
@@ -167,24 +186,13 @@ const ShipmentContent = ({
                                         error={!!errors[`item${index}qty`]}
                                     />
                                 </Grid>
-                                <Grid item xs={6} md={2}>
+                                <Grid item xs={6} md={3}>
                                     <TextField
                                         fullWidth type="number" label="Unit Value" value={item.declaredValue}
                                         onChange={(e) => updateItem(index, 'declaredValue', e.target.value)}
                                         error={!!errors[`item${index}val`]}
+                                        InputProps={{ endAdornment: <Box ml={1} color="text.secondary">{currency}</Box> }}
                                     />
-                                </Grid>
-                                <Grid item xs={6} md={2}>
-                                    <TextField
-                                        select fullWidth label="Curr" value={item.currency || 'KWD'}
-                                        onChange={(e) => updateItem(index, 'currency', e.target.value)}
-                                    >
-                                        <MenuItem value="KWD">KWD</MenuItem>
-                                        <MenuItem value="USD">USD</MenuItem>
-                                        <MenuItem value="EUR">EUR</MenuItem>
-                                        <MenuItem value="SAR">SAR</MenuItem>
-                                        <MenuItem value="AED">AED</MenuItem>
-                                    </TextField>
                                 </Grid>
                                 <Grid item xs={6} md={3}>
                                     <TextField
@@ -216,7 +224,7 @@ const ShipmentContent = ({
                         </Paper>
                     ))}
 
-                    <Button startIcon={<AddIcon />} onClick={() => setItems([...items, { description: '', quantity: 1, declaredValue: '', currency: 'KWD', weight: '', hsCode: '', countryOfOrigin: '' }])}>
+                    <Button startIcon={<AddIcon />} onClick={() => setItems([...items, { description: '', quantity: 1, declaredValue: '', currency: currency || 'KWD', weight: '', hsCode: '', countryOfOrigin: defaultOrigin || 'KW' }])}>
                         Add Another Item
                     </Button>
                 </Paper>
