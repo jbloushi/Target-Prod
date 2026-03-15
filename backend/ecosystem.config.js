@@ -14,7 +14,7 @@ module.exports = {
             script: './src/server.js',
 
             // Instances
-            instances: process.env.PM2_INSTANCES || 'max', // Use all CPU cores, or set specific number
+            instances: 2, // Fixed for VPS stability
             exec_mode: 'cluster', // Enable cluster mode for load balancing
 
             // Auto restart configuration
@@ -43,7 +43,7 @@ module.exports = {
             // Advanced options
             kill_timeout: 5000, // Time to wait for graceful shutdown
             wait_ready: true, // Wait for app.listen() before considering app ready
-            listen_timeout: 10000, // Max time to wait for ready signal
+            listen_timeout: 30000, // Increased to 30s for DB connection
 
             // Restart delay
             min_uptime: '10s', // Minimum uptime before considering successful start
