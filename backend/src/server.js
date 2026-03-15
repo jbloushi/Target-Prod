@@ -219,6 +219,12 @@ const startServer = async () => {
     // Start Express server
     const serverInstance = app.listen(port, () => {
       logger.info(`Server running in ${process.env.NODE_ENV} mode on port ${port}`);
+      
+      // Signal PM2 that the application is ready
+      if (process.send) {
+        process.send('ready');
+        console.log('Sent ready signal to PM2');
+      }
     });
     console.log('Called app.listen');
 
