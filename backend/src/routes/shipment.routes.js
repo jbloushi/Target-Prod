@@ -43,7 +43,8 @@ router.use(authController.protect);
 
 // Static/Fixed routes MUST come before parameterized routes (/:trackingNumber)
 router.get('/stats', (req, res, next) => {
-  logger.info(`[DEBUG] Routing to getShipmentStats. Query: ${JSON.stringify(req.query)}`);
+  logger.info(`[DEBUG] Shipment Stats Route Hit: ${req.method} ${req.originalUrl}`);
+  logger.info(`[DEBUG] Query Params: ${JSON.stringify(req.query)}`);
   next();
 }, shipmentController.getShipmentStats);
 

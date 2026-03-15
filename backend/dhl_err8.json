@@ -1,0 +1,7 @@
+{
+  "instance": "/expressapi/shipments",
+  "detail": "#/content/exportDeclaration/lineItems/0: extraneous key [countryOfOrigin] is not permitted",
+  "title": "Validation error",
+  "message": "Unprocessable Entity",
+  "status": "422"
+}

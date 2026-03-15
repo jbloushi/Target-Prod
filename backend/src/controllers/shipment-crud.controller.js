@@ -96,8 +96,18 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
     try {
         const { trackingNumber } = req.params;
         logger.info(`[DEBUG] getShipmentByTrackingNumber called for: ${trackingNumber}`);
+        
+        // Safety check: if trackingNumber is 'stats', the router is misconfigured
+        if (trackingNumber === 'stats') {
+            logger.warn('[CRITICAL] Router misconfiguration: stats reached getShipmentByTrackingNumber');
+            return exports.getShipmentStats(req, res);
+        }
+
         const shipment = await Shipment.findOne({ trackingNumber }).populate('user', 'name email role organization');
-        if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
+        if (!shipment) {
+            logger.warn(`Shipment not found: ${trackingNumber}`);
+            return res.status(404).json({ success: false, error: 'Shipment not found' });
+        }
 
         if (!hasCapability(req.user.role, 'VIEW_COST_DATA')) { shipment.costPrice = undefined; shipment.markup = undefined; }
         if (!hasCapability(req.user.role, 'VIEW_DOCUMENTS')) { shipment.labelUrl = undefined; shipment.invoiceUrl = undefined; shipment.awbUrl = undefined; }
