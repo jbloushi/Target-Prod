@@ -23,6 +23,7 @@ import {
     TextField,
     Chip,
     Grid,
+    Card,
     IconButton as MuiIconButton
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
@@ -53,39 +54,52 @@ const GOOGLE_MAPS_LIBRARIES = ['places'];
 // --- Styled Components ---
 
 const HeroSection = styled.div`
-    background: linear-gradient(135deg, #1e2538 0%, #1a2035 100%);
-    border-left: 4px solid var(--accent-primary);
-    border-radius: 12px;
-    padding: 32px;
-    margin-bottom: 24px;
-    box-shadow: -4px 0 20px 2px rgba(0, 217, 184, 0.15);
+    background: var(--surface-container-low, #ecf1f6);
+    border-left: 6px solid var(--primary, #0050d4);
+    border-radius: 20px;
+    padding: 40px;
+    margin-bottom: 32px;
+    box-shadow: var(--shadow-ambient, 0 12px 32px -4px rgba(42, 47, 50, 0.06));
+    position: relative;
+    overflow: hidden;
+
+    &::before {
+        content: '';
+        position: absolute;
+        top: 0; right: 0; bottom: 0; left: 0;
+        background: radial-gradient(circle at top right, rgba(0, 80, 212, 0.05), transparent 70%);
+        pointer-events: none;
+    }
 `;
 
 const TrackingId = styled.div`
-    font-family: 'Outfit', sans-serif;
-    font-size: 40px;
+    font-family: 'Manrope', sans-serif;
+    font-size: 36px;
     font-weight: 800;
-    color: var(--text-primary);
-    margin-bottom: 12px;
+    color: var(--on-surface, #2a2f32);
+    margin-bottom: 8px;
     display: flex;
     align-items: center;
     gap: 16px;
+    letter-spacing: -0.03em;
 `;
 
 const ShipmentMeta = styled.div`
     display: flex;
-    gap: 24px;
+    gap: 32px;
     font-size: 14px;
-    color: var(--text-secondary);
+    color: var(--on-surface-variant, #575c60);
+    font-weight: 500;
 
     span {
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
     }
 
     strong {
-        color: var(--text-primary);
+        color: var(--on-surface, #2a2f32);
+        font-weight: 700;
     }
 `;
 
@@ -115,30 +129,32 @@ const SidebarColumn = styled.div`
 `;
 
 const InfoCard = styled.div`
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    padding: 24px;
+    background: var(--surface-container-lowest, #ffffff);
+    border: none;
+    border-radius: 20px;
+    padding: 32px;
     height: 100%;
+    box-shadow: var(--shadow-ambient, 0 12px 32px -4px rgba(42, 47, 50, 0.06));
 `;
 
 const CardHeader = styled.div`
     display: flex;
     align-items: center;
     justify-content: space-between;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--accent-primary);
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--primary, #0050d4);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 20px;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
-    padding-bottom: 12px;
+    letter-spacing: 0.1em;
+    margin-bottom: 24px;
+    border-bottom: 1px solid rgba(169, 174, 177, 0.1);
+    padding-bottom: 16px;
+    font-family: 'Manrope', sans-serif;
 
     .header-label {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 12px;
     }
 
     svg {
@@ -155,8 +171,9 @@ const PartyName = styled.div`
 
 const PartyType = styled.div`
     font-size: 13px;
-    color: var(--text-secondary);
+    color: var(--on-surface-variant, #575c60);
     margin-bottom: 16px;
+    font-weight: 500;
 `;
 
 const DetailRow = styled.div`
@@ -182,10 +199,11 @@ const ContactInfo = styled.div`
 const MapContainer = styled.div`
     grid-column: 3;
     grid-row: 1 / 3;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
+    background: var(--surface-container-lowest, #ffffff);
+    border: none;
+    border-radius: 20px;
     overflow: hidden;
+    box-shadow: var(--shadow-ambient, 0 12px 32px -4px rgba(42, 47, 50, 0.06));
 
     @media (max-width: 1200px) {
         grid-column: 1 / -1;
@@ -194,8 +212,8 @@ const MapContainer = styled.div`
 `;
 
 const MapHeader = styled.div`
-    padding: 16px 20px;
-    background: var(--bg-tertiary);
+    padding: 16px 24px;
+    background: var(--surface-container-low, #ecf1f6);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -218,12 +236,13 @@ const LocationName = styled.div`
 const MapPlaceholder = styled.div`
     width: 100%;
     height: 520px;
-    background: linear-gradient(135deg, #1a2035 0%, #141929 100%);
+    background: var(--surface-container-lowest, #ffffff);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--text-secondary);
+    color: var(--on-surface-variant, #575c60);
     font-size: 14px;
+    font-family: 'Manrope', sans-serif;
 `;
 
 const MapWrapper = styled.div`
@@ -236,12 +255,12 @@ const RouteProgressBar = ({ originCity, destCity, stepIndex }) => {
     const pct = Math.max(2, Math.min(98, (stepIndex / total) * 100));
     const DOTS = 7;
     return (
-        <Box sx={{ mt: 3, mb: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                <Typography variant="caption" sx={{ fontWeight: 700, color: 'var(--text-primary)', minWidth: 80 }}>{originCity || 'Origin'}</Typography>
-                <Box sx={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', mx: 2 }}>
-                    <Box sx={{ height: 2, bgcolor: 'rgba(255,255,255,0.1)', width: '100%', position: 'absolute' }} />
-                    <Box sx={{ height: 2, bgcolor: '#00d9b8', width: `${pct}%`, position: 'absolute', transition: 'width 0.5s ease' }} />
+        <Box sx={{ mt: 4, mb: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <Typography variant="caption" sx={{ fontWeight: 800, color: 'var(--on-surface)', minWidth: 80, textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: 'Manrope' }}>{originCity || 'Origin'}</Typography>
+                <Box sx={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', mx: 3 }}>
+                    <Box sx={{ height: 4, bgcolor: 'rgba(0,80,212,0.1)', width: '100%', position: 'absolute', borderRadius: 2 }} />
+                    <Box sx={{ height: 4, bgcolor: 'var(--primary)', width: `${pct}%`, position: 'absolute', transition: 'width 0.8s cubic-bezier(0.4, 0, 0.2, 1)', borderRadius: 2 }} />
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', position: 'relative', zIndex: 1 }}>
                         {[...Array(DOTS)].map((_, i) => {
                             const active = (i / (DOTS - 1)) * 100 <= pct;
@@ -249,21 +268,21 @@ const RouteProgressBar = ({ originCity, destCity, stepIndex }) => {
                                 <Box
                                     key={i}
                                     sx={{
-                                        width: 8,
-                                        height: 8,
+                                        width: 12,
+                                        height: 12,
                                         borderRadius: '50%',
-                                        bgcolor: active ? '#00d9b8' : '#2a2f3e',
-                                        border: '2px solid',
-                                        borderColor: active ? '#00d9b8' : 'rgba(255,255,255,0.1)',
-                                        boxShadow: active ? '0 0 10px rgba(0,217,184,0.5)' : 'none'
+                                        bgcolor: active ? 'var(--primary)' : 'var(--surface-container-high)',
+                                        border: '3px solid #ffffff',
+                                        boxShadow: active ? '0 0 10px rgba(0,80,212,0.3)' : 'none',
+                                        transition: 'all 0.3s ease'
                                     }}
                                 />
                             );
                         })}
                     </Box>
-                    <Box sx={{ position: 'absolute', left: `${pct}%`, transform: 'translateX(-50%)', top: -20, fontSize: 16, zIndex: 2 }}>✈️</Box>
+                    <Box sx={{ position: 'absolute', left: `${pct}%`, transform: 'translateX(-50%)', top: -28, fontSize: 20, zIndex: 2, filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.1))' }}>✈️</Box>
                 </Box>
-                <Typography variant="caption" sx={{ fontWeight: 700, color: 'var(--text-primary)', minWidth: 80, textAlign: 'right' }}>{destCity || 'Destination'}</Typography>
+                <Typography variant="caption" sx={{ fontWeight: 800, color: 'var(--on-surface)', minWidth: 80, textAlign: 'right', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: 'Manrope' }}>{destCity || 'Destination'}</Typography>
             </Box>
         </Box>
     );
@@ -281,10 +300,11 @@ const TrackingLink = styled.a`
 
 const DetailsCard = styled.div`
     grid-column: 1 / 3;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    padding: 24px;
+    background: var(--surface-container-lowest, #ffffff);
+    border: none;
+    border-radius: 20px;
+    padding: 32px;
+    box-shadow: var(--shadow-ambient, 0 12px 32px -4px rgba(42, 47, 50, 0.06));
 
     @media (max-width: 1200px) {
         grid-column: 1 / -1;
@@ -308,19 +328,19 @@ const DetailItem = styled.div`
 `;
 
 const DetailIcon = styled.div`
-    width: 40px;
-    height: 40px;
-    border-radius: 8px;
-    background: rgba(0, 217, 184, 0.1);
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: rgba(0, 80, 212, 0.06);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--accent-primary);
+    color: var(--primary, #0050d4);
     flex-shrink: 0;
 
     svg {
-        width: 20px;
-        height: 20px;
+        width: 22px;
+        height: 22px;
     }
 `;
 
@@ -343,11 +363,12 @@ const DetailContentValue = styled.div`
 `;
 
 const SectionCard = styled.div`
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    padding: 24px;
-    margin-bottom: 24px;
+    background: var(--surface-container-lowest, #ffffff);
+    border: none;
+    border-radius: 20px;
+    padding: 32px;
+    margin-bottom: 32px;
+    box-shadow: var(--shadow-ambient, 0 12px 32px -4px rgba(42, 47, 50, 0.06));
 `;
 
 const SectionTitle = styled.h3`
@@ -364,18 +385,26 @@ const Table = styled.table`
     width: 100%;
     border-collapse: collapse;
     font-size: 14px;
+    font-family: 'Manrope', sans-serif;
 
     th, td {
-        padding: 12px;
+        padding: 16px;
         text-align: left;
-        border-bottom: 1px solid var(--border-color);
+        border-bottom: 1px solid rgba(169, 174, 177, 0.1);
     }
 
     th {
-        color: var(--text-secondary);
-        font-size: 12px;
+        color: var(--on-surface-variant, #575c60);
+        font-size: 11px;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.05em;
+        font-weight: 800;
+        background: var(--surface-container-low, #ecf1f6);
+    }
+
+    td {
+        color: var(--on-surface, #2a2f32);
+        font-weight: 500;
     }
 `;
 
@@ -405,6 +434,8 @@ const ShipmentDetailsPage = () => {
     const [editErrors, setEditErrors] = useState({});
     const [clients, setClients] = useState([]);
     const [availableCarriers, setAvailableCarriers] = useState([]);
+    const [availableOptionalServices, setAvailableOptionalServices] = useState([]);
+    const [selectedOptionalServiceCodes, setSelectedOptionalServiceCodes] = useState([]);
 
     const { user } = useAuth();
     const { enqueueSnackbar } = useSnackbar();
@@ -533,6 +564,31 @@ const ShipmentDetailsPage = () => {
             if (availableCarriers.length === 0) {
                 shipmentService.getAvailableCarriers().then(res => setAvailableCarriers(res.data || []));
             }
+            
+            // If editing billing, fetch quotes to get available optional services
+            if (section === 'billing' && shipment) {
+                const quotePayload = {
+                    sender: shipment.origin,
+                    receiver: shipment.destination,
+                    parcels: shipment.parcels,
+                    items: shipment.items,
+                    carrierCode: shipment.carrierCode,
+                    serviceCode: shipment.serviceCode,
+                    shipmentType: shipment.shipmentType || 'package'
+                };
+                shipmentService.getQuotes(quotePayload).then(res => {
+                    if (res.success && Array.isArray(res.data)) {
+                        const active = res.data.find(q => q.serviceCode === shipment.serviceCode) || res.data[0];
+                        if (active) {
+                            setAvailableOptionalServices(active.optionalServices || []);
+                        }
+                    }
+                }).catch(err => console.error('Failed to fetch optional services for edit:', err));
+                
+                // Initialize selected codes from shipment pricing snapshot or current state
+                const selected = (shipment.pricingSnapshot?.optionalServices || []).map(s => s.serviceCode);
+                setSelectedOptionalServiceCodes(selected);
+            }
         }
     };
 
@@ -567,7 +623,8 @@ const ShipmentDetailsPage = () => {
                     packageMarks: editDraft.packageMarks,
                     allowPublicLocationUpdate: editDraft.allowPublicLocationUpdate,
                     allowPublicInfoUpdate: editDraft.allowPublicInfoUpdate,
-                    reference: editDraft.reference
+                    reference: editDraft.reference,
+                    optionalServiceCodes: selectedOptionalServiceCodes
                 };
             }
 
@@ -598,7 +655,7 @@ const ShipmentDetailsPage = () => {
                     return;
                 }
 
-                const existingOptionalCodes = (shipment.optionalServices || []).map(s => s.serviceCode);
+                const existingOptionalCodes = (shipment.pricingSnapshot?.optionalServices || []).map(s => s.serviceCode);
 
                 await shipmentService.bookShipment(shipment.trackingNumber, carrier, existingOptionalCodes);
 
@@ -865,20 +922,20 @@ const ShipmentDetailsPage = () => {
                     </div>
 
                     <Box sx={{
-                        background: 'rgba(255,255,255,0.03)',
-                        p: 2,
-                        borderRadius: '12px',
-                        border: '1px solid rgba(255,255,255,0.08)',
+                        background: 'var(--surface-container-lowest, #ffffff)',
+                        p: 3,
+                        borderRadius: '16px',
+                        border: 'none',
                         minWidth: { xs: '100%', sm: '320px' },
-                        backdropFilter: 'blur(10px)',
+                        boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)',
                         alignSelf: 'stretch',
                         display: 'flex',
                         flexDirection: 'column',
                         justifyContent: 'center'
                     }}>
-                        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-                            <ShareIcon sx={{ fontSize: 16, color: '#00d9b8' }} />
-                            <Typography variant="caption" sx={{ color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1.5 }}>
+                            <ShareIcon sx={{ fontSize: 18, color: 'var(--primary)' }} />
+                            <Typography variant="caption" sx={{ color: 'var(--on-surface-variant)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'Manrope' }}>
                                 Shareable Tracking Link
                             </Typography>
                         </Stack>
@@ -888,13 +945,14 @@ const ShipmentDetailsPage = () => {
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap',
-                                fontSize: '12px',
-                                color: 'var(--text-primary)',
-                                background: 'rgba(0,0,0,0.2)',
-                                p: '8px 12px',
-                                borderRadius: '6px',
-                                border: '1px solid rgba(255,255,255,0.05)',
-                                fontFamily: 'monospace'
+                                fontSize: '13px',
+                                color: 'var(--on-surface)',
+                                background: 'var(--surface-container-low)',
+                                p: '10px 16px',
+                                borderRadius: '8px',
+                                border: '1px solid rgba(169, 174, 177, 0.1)',
+                                fontFamily: 'monospace',
+                                fontWeight: 600
                             }}>
                                 {publicTrackingUrl}
                             </Box>
@@ -902,10 +960,11 @@ const ShipmentDetailsPage = () => {
                                 size="small"
                                 onClick={handleCopyTrackingLink}
                                 sx={{
-                                    color: '#00d9b8',
-                                    bgcolor: 'rgba(0,217,184,0.1)',
-                                    '&:hover': { bgcolor: 'rgba(0,217,184,0.2)' },
-                                    borderRadius: '6px'
+                                    color: 'var(--primary)',
+                                    bgcolor: 'rgba(0,80,212,0.06)',
+                                    '&:hover': { bgcolor: 'rgba(0,80,212,0.12)' },
+                                    borderRadius: '8px',
+                                    p: 1.2
                                 }}
                             >
                                 <ContentCopyIcon fontSize="small" />
@@ -930,7 +989,7 @@ const ShipmentDetailsPage = () => {
                                     Shipper (From)
                                 </div>
                                 {canEditSection('sender') && (
-                                    <MuiIconButton size="small" onClick={() => handleOpenEdit('sender')} sx={{ color: '#00d9b8', p: 0.5 }}>
+                                    <MuiIconButton size="small" onClick={() => handleOpenEdit('sender')} sx={{ color: 'var(--primary)', bgcolor: 'rgba(0,80,212,0.06)', borderRadius: '8px', p: 0.8 }}>
                                         <EditIcon fontSize="small" />
                                     </MuiIconButton>
                                 )}
@@ -1063,7 +1122,7 @@ const ShipmentDetailsPage = () => {
                                     <DetailContentLabel>Parcels & Weight</DetailContentLabel>
                                     <DetailContentValue>
                                         {totalPieces} Pcs ({Number(totalWeight).toFixed(2)} KG)
-                                        {totalVolumetric ? ` / Vol: ${totalVolumetric.toFixed(2)} KG` : ''}
+                                        {totalVolumetric ? ` / Vol: ${Number(totalVolumetric).toFixed(2)} KG` : ''}
                                     </DetailContentValue>
                                 </DetailContent>
                             </DetailItem>
@@ -1340,11 +1399,11 @@ const ShipmentDetailsPage = () => {
                                 </tr>
                                 <tr>
                                     <td>Total Paid</td>
-                                    <td style={{ textAlign: 'right', color: '#00d9b8' }}>{Number(accountingSummary.totalPaid || 0).toFixed(3)} {shipment.currency || 'KWD'}</td>
+                                    <td style={{ textAlign: 'right', color: 'var(--primary)', fontWeight: '800' }}>{Number(accountingSummary.totalPaid || 0).toFixed(3)} {shipment.currency || 'KWD'}</td>
                                 </tr>
                                 <tr>
                                     <td>Remaining</td>
-                                    <td style={{ textAlign: 'right', color: accountingSummary.remainingBalance > 0 ? '#ff4d4d' : '#00d9b8' }}>
+                                    <td style={{ textAlign: 'right', color: accountingSummary.remainingBalance > 0 ? '#b31b25' : 'var(--primary)', fontWeight: '800' }}>
                                         {Number(accountingSummary.remainingBalance || 0).toFixed(3)} {shipment.currency || 'KWD'}
                                     </td>
                                 </tr>
@@ -1370,7 +1429,7 @@ const ShipmentDetailsPage = () => {
                                         Allocate Payment
                                     </div>
                                 </CardHeader>
-                                <Box sx={{ p: 1 }}>
+                                <Box sx={{ p: 0 }}>
                                     <TextField
                                         label="Payment Reference ID"
                                         value={allocationForm.paymentId}
@@ -1378,6 +1437,7 @@ const ShipmentDetailsPage = () => {
                                         fullWidth
                                         margin="normal"
                                         size="small"
+                                        sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'var(--surface-container-low)' } }}
                                     />
                                     <TextField
                                         label={`Amount (${shipment.currency || 'KWD'})`}
@@ -1387,6 +1447,7 @@ const ShipmentDetailsPage = () => {
                                         fullWidth
                                         margin="normal"
                                         size="small"
+                                        sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'var(--surface-container-low)' } }}
                                     />
                                     <Button
                                         variant="primary"
@@ -1421,9 +1482,9 @@ const ShipmentDetailsPage = () => {
                                         </thead>
                                         <tbody>
                                             {payments.map(allocation => (
-                                                <tr key={allocation._id}>
+                                                <tr key={allocation.id}>
                                                     <td>{new Date(allocation.createdAt).toLocaleDateString()}</td>
-                                                    <td>{allocation.amount.toFixed(3)}</td>
+                                                    <td>{Number(allocation.amount || 0).toFixed(3)}</td>
                                                     <td>
                                                         <StatusPill status={allocation.status} />
                                                     </td>
@@ -1456,12 +1517,12 @@ const ShipmentDetailsPage = () => {
                 open={editDrawerOpen}
                 onClose={() => setEditDrawerOpen(false)}
                 PaperProps={{
-                    sx: { width: { xs: '100%', sm: 600 }, bgcolor: '#0a0e1a', borderLeft: '1px solid rgba(255,255,255,0.1)' }
+                    sx: { width: { xs: '100%', sm: 600 }, bgcolor: '#ffffff', borderLeft: 'none', boxShadow: '-12px 0 32px rgba(0,0,0,0.05)' }
                 }}
             >
                 <Box sx={{ p: 4, height: '100%', display: 'flex', flexDirection: 'column' }}>
                     <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
-                        <Typography variant="h5" fontWeight="bold" color="#00d9b8" sx={{ fontFamily: 'Outfit', textTransform: 'uppercase' }}>
+                        <Typography variant="h5" fontWeight="800" color="var(--primary)" sx={{ fontFamily: 'Manrope', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                             Edit {editSection}
                         </Typography>
                         <MuiIconButton onClick={() => setEditDrawerOpen(false)} sx={{ color: 'text.secondary' }}>
@@ -1547,6 +1608,14 @@ const ShipmentDetailsPage = () => {
                                         setAllowPublicInfoUpdate={(val) => setEditDraft({ ...editDraft, allowPublicInfoUpdate: val })}
                                         reference={editDraft.reference}
                                         setReference={(val) => setEditDraft({ ...editDraft, reference: val })}
+                                        availableOptionalServices={availableOptionalServices}
+                                        selectedOptionalServiceCodes={selectedOptionalServiceCodes}
+                                        onToggleOptionalService={(code) => {
+                                            setSelectedOptionalServiceCodes(prev => 
+                                                prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]
+                                            );
+                                        }}
+                                        currency={editDraft.currency}
                                     />
                                 )}
                             </>
@@ -1582,13 +1651,13 @@ const ShipmentDetailsPage = () => {
                 open={approvalDrawerOpen}
                 onClose={() => setApprovalDrawerOpen(false)}
                 PaperProps={{
-                    sx: { width: { xs: '100%', sm: 450 }, bgcolor: '#0a0e1a', borderLeft: '1px solid rgba(255,255,255,0.1)' }
+                    sx: { width: { xs: '100%', sm: 450 }, bgcolor: '#ffffff', borderLeft: 'none', boxShadow: '-12px 0 32px rgba(0,0,0,0.05)' }
                 }}
             >
-                <Box sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <Box sx={{ p: 4, height: '100%', display: 'flex', flexDirection: 'column' }}>
                     <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-                        <Typography variant="h5" fontWeight="bold" color="#00d9b8" sx={{ fontFamily: 'Outfit' }}>
-                            Shipment Decision
+                        <Typography variant="h5" fontWeight="800" color="var(--primary)" sx={{ fontFamily: 'Manrope', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            Decision Center
                         </Typography>
                         <MuiIconButton onClick={() => setApprovalDrawerOpen(false)} sx={{ color: 'text.secondary' }}>
                             <CloseIcon />
@@ -1603,15 +1672,15 @@ const ShipmentDetailsPage = () => {
                     <Stack spacing={3} sx={{ flexGrow: 1 }}>
                         <Box>
                             <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 1 }}>Shipment Summary</Typography>
-                            <Box sx={{ bgcolor: 'rgba(255,255,255,0.03)', p: 2, borderRadius: 2 }}>
+                            <Box sx={{ bgcolor: 'var(--surface-container-low)', p: 3, borderRadius: '16px' }}>
                                 <Grid container spacing={2}>
                                     <Grid item xs={6}>
-                                        <Typography variant="caption" display="block" color="text.secondary">Tracking</Typography>
-                                        <Typography variant="body2" fontWeight="bold">{shipment.trackingNumber}</Typography>
+                                        <Typography variant="caption" display="block" color="text.secondary" sx={{ fontWeight: 700, mb: 0.5 }}>TRACKING ID</Typography>
+                                        <Typography variant="body2" fontWeight="800" sx={{ fontFamily: 'Manrope' }}>{shipment.trackingNumber}</Typography>
                                     </Grid>
                                     <Grid item xs={6}>
-                                        <Typography variant="caption" display="block" color="text.secondary">Status</Typography>
-                                        <Chip label={shipment.status.toUpperCase()} size="small" sx={{ height: 20, bgcolor: 'rgba(0,217,184,0.1)', color: '#00d9b8', fontWeight: 'bold' }} />
+                                        <Typography variant="caption" display="block" color="text.secondary" sx={{ fontWeight: 700, mb: 0.5 }}>CURRENT STATUS</Typography>
+                                        <Chip label={shipment.status.toUpperCase()} size="small" sx={{ height: 20, bgcolor: 'rgba(0,80,212,0.1)', color: 'var(--primary)', fontWeight: '800', fontSize: '10px', fontFamily: 'Manrope' }} />
                                     </Grid>
 
                                     <Grid item xs={6}>
@@ -1627,12 +1696,12 @@ const ShipmentDetailsPage = () => {
 
                                     <Grid item xs={6}>
                                         <Typography variant="caption" display="block" color="text.secondary">Content Summary</Typography>
-                                        <Typography variant="body2">{totalPieces} Pcs | {totalWeight.toFixed(2)} KG</Typography>
+                                        <Typography variant="body2">{totalPieces} Pcs | {Number(totalWeight).toFixed(2)} KG</Typography>
                                         <Typography variant="caption" color="text.secondary">{shipment.serviceCode || 'Standard'}</Typography>
                                     </Grid>
                                     <Grid item xs={6}>
-                                        <Typography variant="caption" display="block" color="text.secondary">Est. Charge</Typography>
-                                        <Typography variant="body2" color="#00d9b8" fontWeight="bold">{accountingSummary.totalCharge.toFixed(3)} KD</Typography>
+                                        <Typography variant="caption" display="block" color="text.secondary" sx={{ fontWeight: 700, mb: 0.5 }}>REVENUE EST.</Typography>
+                                        <Typography variant="body2" color="var(--primary)" fontWeight="800" sx={{ fontFamily: 'Manrope' }}>{Number(accountingSummary.totalCharge).toFixed(3)} KD</Typography>
                                         <Typography variant="caption" color="text.secondary">{carrierCode}</Typography>
                                     </Grid>
                                 </Grid>
@@ -1640,7 +1709,7 @@ const ShipmentDetailsPage = () => {
                         </Box>
 
                         <Box>
-                            <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 1 }}>Internal Notes / Feedback</Typography>
+                            <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 1, fontWeight: 800 }}>Internal Notes / Feedback</Typography>
                             <TextField
                                 fullWidth
                                 multiline
@@ -1650,8 +1719,8 @@ const ShipmentDetailsPage = () => {
                                 onChange={(e) => setApprovalComment(e.target.value)}
                                 sx={{
                                     '& .MuiOutlinedInput-root': {
-                                        bgcolor: 'rgba(255,255,255,0.02)',
-                                        color: '#fff'
+                                        bgcolor: 'var(--surface-container-low)',
+                                        color: 'var(--on-surface)'
                                     }
                                 }}
                             />

@@ -1,47 +1,52 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import styled from 'styled-components';
-// axios import removed
 import { useAuth } from '../../context/AuthContext';
 import { Select, Input, AddressPanel } from '../../ui';
 import Toggle from '../../ui/components/Toggle';
 
 const PageContainer = styled.div`
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 0 16px;
+  width: 100%;
+  animation: fadeIn 0.5s ease-out;
 `;
 
 const TopControls = styled.div`
   display: grid;
   grid-template-columns: 1fr;
-  gap: 16px;
-  margin-bottom: 32px;
+  gap: 24px;
+  margin-bottom: 40px;
+  padding: 24px;
+  background: var(--surface-container-low);
+  border-radius: 24px;
 
   @media (min-width: 768px) {
-    grid-template-columns: 1fr 1fr auto;
+    grid-template-columns: 1fr 1fr 1fr;
+    align-items: flex-end;
   }
 `;
 
 const AddressGrid = styled.div`
   display: grid;
   grid-template-columns: 1fr;
-  gap: 20px;
-  margin-bottom: 32px;
+  gap: 32px;
+  margin-bottom: 40px;
+  align-items: start;
 
-  @media (min-width: 768px) {
+  @media (min-width: 992px) {
     grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    /* align-items: start ensures both cards start at the same vertical position */
   }
 `;
 
 const StaffControls = styled.div`
   display: grid;
   grid-template-columns: 1fr;
-  gap: 16px;
-  margin-bottom: 24px;
-  padding: 16px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-base);
+  gap: 24px;
+  margin-bottom: 32px;
+  padding: 24px;
+  background: var(--surface-container-high);
+  border-radius: 24px;
+  box-shadow: var(--shadow-ambient);
 
   @media (min-width: 768px) {
     grid-template-columns: 1fr 1fr;
@@ -55,32 +60,17 @@ const ShipmentSetup = ({
     plannedDate, setPlannedDate,
     pickupRequired, setPickupRequired,
     errors,
-    isStaff, isAdmin, clients, selectedClient, onClientChange,
+    isStaff, clients, selectedClient, onClientChange,
     availableCarriers, selectedCarrier, onCarrierChange,
     requiredFields = { sender: [], receiver: [] }
 }) => {
     const { user } = useAuth();
 
-    // Inject saved addresses into sender/receiver state for the panel to use
-    // Note: Ideally we pass 'savedAddresses' as a separate prop to AddressPanel
-    // but AddressPanel expects values object. We can pass it via values.savedAddresses
-    // or better, add a new prop to AddressPanel.
-    // I updated AddressPanel to use `values.savedAddresses` logic in the previous step,
-    // so I will pass it nicely.
-
     return (
         <PageContainer>
-            {/* Disabled WizardHeader to avoid duplication with parent ShipmentWizardV2 */}
-            {/* <WizardHeader 
-                title="Create New Shipment"
-                currentStep={1}
-                totalSteps={5}
-                timeEstimate="5-8 min"
-            /> */}
-
-            {/* Staff Only Controls */}
+            {/* Staff Only Controls (Carrier & Client selection) */}
             {isStaff && (
-                <StaffControls>
+                <StaffControls className="slide-up">
                     <Select
                         label="Create Shipment For (Organization)"
                         value={selectedClient || ''}
@@ -88,59 +78,58 @@ const ShipmentSetup = ({
                     >
                         <option value="">Select an Organization...</option>
                         {clients && clients.map((client) => (
-                            <option key={client._id} value={client._id}>
-                                {client.name} {client.organization ? `(${client.organization.name})` : ''} - {client.email}
+                            <option key={client.id} value={client.id}>
+                                {client.name} {client.organization ? `(${client.organization.name})` : ''} — {client.email}
                             </option>
                         ))}
                     </Select>
 
                     <Select
-                        label="Carrier Adapter"
+                        label="Select Delivery Network"
                         value={selectedCarrier || 'DGR'}
                         onChange={(e) => onCarrierChange(e.target.value)}
                     >
                         {availableCarriers.map((carrier) => (
                             <option key={carrier.code} value={carrier.code} disabled={!carrier.active}>
-                                {carrier.name} {!carrier.active && '(Inactive)'}
+                                {carrier.name} Network {!carrier.active && '(Service Suspended)'}
                             </option>
                         ))}
                     </Select>
                 </StaffControls>
             )}
 
-            {/* Top Controls */}
-            <TopControls>
+            {/* Core shipment settings */}
+            <TopControls className="slide-up" style={{ animationDelay: '100ms' }}>
                 <Select
-                    label="Shipment Type"
+                    label="Service Type"
                     value={shipmentType || 'package'}
                     onChange={(e) => setShipmentType(e.target.value)}
                 >
-                    <option value="package">Package (Dutiable)</option>
-                    <option value="documents">Documents (Non-Dutiable)</option>
+                    <option value="package">Standard Package (Dutiable)</option>
+                    <option value="documents">Document Express (Non-Dutiable)</option>
                 </Select>
 
                 <Input
-                    label="Planned Ship Date"
+                    label="Scheduled Pickup Date"
                     type="date"
                     value={plannedDate}
                     onChange={(e) => setPlannedDate(e.target.value)}
                 />
 
-
-
-                <div style={{ marginTop: 'auto' }}>
+                <div style={{ paddingBottom: '8px' }}>
                     <Toggle
                         label="Pickup Required?"
-                        subLabel={pickupRequired ? 'Driver will collect' : 'I will drop off'}
+                        subLabel={pickupRequired ? 'Courier will collect from origin' : 'Drop-off at local service point'}
                         checked={pickupRequired}
                         onChange={setPickupRequired}
                     />
                 </div>
             </TopControls>
 
-            <AddressGrid>
+            {/* Shipper & Receiver Address Panels */}
+            <AddressGrid className="slide-up" style={{ animationDelay: '200ms' }}>
                 <AddressPanel
-                    title="SHIPPER (From)"
+                    title="SHIPPER (ORIGIN)"
                     type="sender"
                     variant="shipper"
                     value={sender}
@@ -151,7 +140,7 @@ const ShipmentSetup = ({
                     requiredFields={requiredFields.sender}
                 />
                 <AddressPanel
-                    title="RECEIVER (To)"
+                    title="CONSIGNEE (DESTINATION)"
                     type="receiver"
                     variant="receiver"
                     value={receiver}

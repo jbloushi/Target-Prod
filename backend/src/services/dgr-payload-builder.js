@@ -430,7 +430,18 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
     const userVas = (order.optionalServices || []).map(item => {
         // Handle both string codes ('II') and objects ({ serviceCode: 'II' })
         const code = (typeof item === 'string') ? item : (item?.serviceCode || item?.code);
-        return { serviceCode: code };
+        const vas = { serviceCode: code };
+
+        // Insurance ('II') requires insuredValue and currency
+        if (code === 'II') {
+            const insuredValue = order.insuredValue || order.declaredValue || 0;
+            if (insuredValue > 0) {
+                vas.value = Number(insuredValue);
+                vas.currency = order.currency || 'KWD';
+            }
+        }
+
+        return vas;
     }).filter(s => s.serviceCode);
 
     // Combine arrays ensuring no duplicates (though unlikely to overlap if handled correctly)

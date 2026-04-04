@@ -50,31 +50,6 @@ class DgrAdapter extends CarrierAdapter {
      * @linked_constitution Section 5.1 (BYOC Support)
      */
     async _getResolvedConfig(shipmentData = null) {
-        const requestContext = require('../utils/RequestContext');
-        const OrganizationCredential = require('../models/OrganizationCredential.model');
-
-        let organizationId = shipmentData?.organization || requestContext.getStore()?.organizationId;
-
-        if (!organizationId && shipmentData?.user?.organization) {
-            organizationId = shipmentData.user.organization;
-        }
-
-        if (organizationId) {
-            const cred = await OrganizationCredential.findOne({
-                organization: organizationId,
-                carrierCode: { $in: ['DGR', 'DHL'] },
-                isActive: true
-            });
-
-            if (cred) {
-                return {
-                    baseUrl: this.config.baseUrl,
-                    apiKey: cred.apiKey,
-                    apiSecret: cred.getSecret(),
-                    accountNumber: cred.accountNumber
-                };
-            }
-        }
         return this.config;
     }
 
@@ -348,15 +323,21 @@ class DgrAdapter extends CarrierAdapter {
         if (serviceCode) shipment.serviceCode = serviceCode;
         const activeConfig = await this._getResolvedConfig(shipment);
         const { buildDgrShipmentPayload } = require('../services/dgr-payload-builder');
-        const CarrierLog = require('../models/CarrierLog');
         const startTime = Date.now();
 
         const maxRetries = 7;
         let lastError = null;
         let lastPayload = null;
+        let stripVas = false;   // strips user optional services
+        let stripDgVas = false; // strips DG VAS when route doesn't support it
 
         for (let offsetDays = 0; offsetDays <= maxRetries; offsetDays++) {
-            const payload = buildDgrShipmentPayload(shipment, { accountNumber: activeConfig.accountNumber }, offsetDays);
+            const effectiveShipment = {
+                ...shipment,
+                ...(stripVas ? { optionalServices: [] } : {}),
+                ...(stripDgVas ? { dangerousGoods: { ...shipment.dangerousGoods, contains: false } } : {})
+            };
+            const payload = buildDgrShipmentPayload(effectiveShipment, { accountNumber: activeConfig.accountNumber }, offsetDays);
             lastPayload = payload;
 
             try {
@@ -366,17 +347,17 @@ class DgrAdapter extends CarrierAdapter {
                 const sanitized = JSON.parse(JSON.stringify(res.data));
                 if (sanitized.documents) sanitized.documents.forEach(doc => doc.content = '[BASE64_REMOVED]');
 
-                await CarrierLog.create({
-                    user: shipmentData.user,
-                    shipment: shipmentData._id,
-                    carrier: 'DGR',
-                    endpoint: 'createShipment',
-                    requestPayload: payload,
-                    responsePayload: sanitized,
-                    statusCode: res.status,
-                    success: true,
-                    durationMs: Date.now() - startTime
-                }).catch(e => console.error('CarrierLog Save Failed:', e));
+                const { prisma } = require('../config/database');
+                await prisma.carrierLog.create({
+                    data: {
+                        carrierCode: 'DGR',
+                        requestType: 'book',
+                        requestPayload: payload,
+                        responsePayload: sanitized,
+                        statusCode: res.status,
+                        durationMs: Date.now() - startTime
+                    }
+                }).catch(e => console.error('CarrierLog Save Failed:', e.message));
 
                 let label, awb, invoice;
                 if (res.data.documents) {
@@ -403,6 +384,23 @@ class DgrAdapter extends CarrierAdapter {
                     (errorData.detail && errorData.detail.includes('not available for the requested pickup date'))
                 );
 
+                // 7008: VAS not available for this route — strip and retry in order:
+                // 1st attempt: strip user optional services
+                // 2nd attempt: strip DG VAS (if DG service code is route-restricted)
+                const isVasError = errorData?.detail?.includes('7008') || errorData?.detail?.includes('Special Service Code');
+                if (isVasError) {
+                    if (!stripVas && effectiveShipment.optionalServices?.length > 0) {
+                        stripVas = true;
+                        offsetDays--;
+                        continue;
+                    }
+                    if (!stripDgVas && effectiveShipment.dangerousGoods?.contains && effectiveShipment.dangerousGoods?.serviceCode) {
+                        stripDgVas = true;
+                        offsetDays--;
+                        continue;
+                    }
+                }
+
                 if (!isDateError || offsetDays === maxRetries) {
                     break;
                 }
@@ -427,18 +425,17 @@ class DgrAdapter extends CarrierAdapter {
             }
         }
 
-        await CarrierLog.create({
-            user: shipmentData.user,
-            shipment: shipmentData._id,
-            carrier: 'DGR',
-            endpoint: 'createShipment',
-            requestPayload: lastPayload,
-            responsePayload: errorData,
-            statusCode: lastError?.response?.status || 500,
-            success: false,
-            error: JSON.stringify(errorData),
-            durationMs: Date.now() - startTime
-        }).catch(e => console.error('CarrierLog Save Failed:', e));
+        const { prisma } = require('../config/database');
+        await prisma.carrierLog.create({
+            data: {
+                carrierCode: 'DGR',
+                requestType: 'book',
+                requestPayload: lastPayload || {},
+                responsePayload: errorData || {},
+                statusCode: lastError?.response?.status || 500,
+                durationMs: Date.now() - startTime
+            }
+        }).catch(e => console.error('CarrierLog Save Failed:', e.message));
 
         // Construct a more descriptive error message using Additional Details if available
         let detailedMessage = errorData.detail || JSON.stringify(errorData);
