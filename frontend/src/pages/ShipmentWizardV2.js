@@ -942,7 +942,7 @@ const ShipmentWizardV2 = () => {
 
                     {/* ── Right: summary ── */}
                     <Grid item xs={12} lg={4}>
-                        <Box sx={{ pt: { xs: 0, lg: 3 } }}>
+                        <Box sx={{ height: '100%' }}>
                             <SummaryPanel
                                 sender={sender}
                                 receiver={receiver}

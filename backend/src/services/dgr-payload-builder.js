@@ -502,7 +502,7 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
                     companyName: sender.company || sender.contactPerson,
                     fullName: sender.contactPerson,
                     phone: normalizePhoneForCarrier(sender.phone, senderCountryCode),
-                    email: sender.email
+                    email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sender.email || '') ? sender.email : 'noreply@target-logistics.com'
                 },
                 typeCode: sender.traderType || 'business',
                 registrationNumbers: []
@@ -520,7 +520,7 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
                     companyName: receiver.company || receiver.contactPerson,
                     fullName: receiver.contactPerson,
                     phone: normalizePhoneForCarrier(receiver.phone, receiverCountryCode),
-                    email: receiver.email
+                    email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(receiver.email || '') ? receiver.email : 'noreply@target-logistics.com'
                 },
                 typeCode: receiver.traderType || 'business',
                 registrationNumbers: []

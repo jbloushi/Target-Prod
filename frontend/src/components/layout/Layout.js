@@ -1,69 +1,59 @@
-import React from 'react';
-import { Box, Container } from '@mui/material'; // Keeping for structural utility in public layout
-import { Outlet, useLocation } from 'react-router-dom';
-import { ThemeProvider } from '@mui/material/styles';
-import { Header } from '../../ui'; // New UI components
-import Sidebar from './Sidebar'; // Use the full-featured Sidebar component
-import theme from '../../theme';
+import React, { useState } from 'react';
+import { Outlet } from 'react-router-dom';
+import { Header } from '../../ui';
+import Sidebar from './Sidebar';
 import Footer from './Footer';
 import { useAuth } from '../../context/AuthContext';
 
-
-
-
-
+/**
+ * Layout Component
+ * Standard layout containing Header, optional Sidebar (for auth), and Footer.
+ * Re-designed to be fully responsive and integrated with the Kinetic Horizon aesthetic.
+ * Manages the global sidebar collapse state.
+ */
 const Layout = () => {
-  const { isAuthenticated, user } = useAuth();
-  const location = useLocation();
+    const { isAuthenticated } = useAuth();
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  if (!isAuthenticated) {
-    // Public Layout Usage
+    const toggleSidebar = () => setIsSidebarCollapsed(!isSidebarCollapsed);
+
+    if (!isAuthenticated) {
+        return (
+            <div className="min-h-screen flex flex-col bg-surface dark:bg-slate-900 transition-colors duration-300">
+                <Header />
+                <main className="flex-grow pt-20 px-6 max-w-7xl mx-auto w-full">
+                    <Outlet />
+                </main>
+                <Footer compact />
+            </div>
+        );
+    }
+
     return (
-      <ThemeProvider theme={theme}>
-        <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', bgcolor: 'background.default' }}>
-          {/* Reuse new Header, it handles public state gracefully-ish */}
-          <Header />
-          <Box component="main" sx={{ flexGrow: 1, py: 4 }}>
-            <Container maxWidth="xl">
-              <Outlet />
-            </Container>
-          </Box>
-          <Footer compact />
-        </Box>
-      </ThemeProvider>
+        <div className="min-h-screen flex bg-surface dark:bg-slate-900 transition-colors duration-300 overflow-x-clip">
+            {/* Sidebar (with local collapse logic but also reactive width) */}
+            {/* Note: In a production app, this state would be in a Context or Redux */}
+            <Sidebar isCollapsed={isSidebarCollapsed} toggleCollapse={toggleSidebar} />
+
+            <div 
+                className={`flex-grow flex flex-col min-w-0 transition-all duration-300 ${
+                    isSidebarCollapsed ? 'ml-20' : 'ml-0 lg:ml-[240px]'
+                }`}
+            >
+                {/* Header (Reactive to Sidebar state) */}
+                <Header isSidebarCollapsed={isSidebarCollapsed} />
+
+                {/* Main Content Area */}
+                <main className="flex-grow pt-24 px-4 sm:px-6 lg:px-8 max-w-[1800px] w-full mx-auto">
+                    <div className="pb-12 h-full">
+                        <Outlet />
+                    </div>
+                </main>
+
+                <Footer />
+            </div>
+        </div>
     );
-  }
-
-  return (
-    <ThemeProvider theme={theme}>
-      {/* Global CSS Variables wrapper if needed, but imported in index.js usually. 
-                 Assuming App.js imports tokens.css */}
-      <Box sx={{ display: 'flex', bgcolor: '#0a0e1a', minHeight: '100vh' }}>
-        <Sidebar />
-
-        <Box sx={{
-          flexGrow: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          minWidth: 0, // Flexbox overflow fix
-          overflow: 'visible',
-          position: 'relative'
-        }}>
-          <Header />
-
-          <Box component="main" sx={{
-            flexGrow: 1,
-            p: 4,
-            maxWidth: '1600px', // Limit width for large screens
-            width: '100%',
-            margin: '0 auto'
-          }}>
-            <Outlet />
-          </Box>
-        </Box>
-      </Box>
-    </ThemeProvider>
-  );
 };
 
 export default Layout;

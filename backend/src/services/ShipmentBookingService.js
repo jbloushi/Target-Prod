@@ -15,7 +15,7 @@ class ShipmentBookingService {
      * @param {string[]} [optionalServiceCodes=[]] - Optional services selected at booking time.
      * @returns {Promise<Object>} { success, shipment, message }
      */
-    async bookShipment(trackingNumber, overrideCarrierCode = null, optionalServiceCodes = []) {
+    async bookShipment(trackingNumber, overrideCarrierCode = null, optionalServiceCodes = [], bookingUserRole = null) {
         const shipment = await prisma.shipment.findUnique({
             where: { trackingNumber },
             include: { user: true, organization: true }
@@ -40,8 +40,10 @@ class ShipmentBookingService {
 
         // Financial Gate: Credit Check
         // A null/undefined creditLimit means unlimited credit — skip the check entirely.
+        // Admin and staff roles bypass the credit gate entirely (they have override authority).
         // Check price against the org's credit limit directly (not net of balance).
-        if (organizationId && organization?.creditLimit != null) {
+        const isBypassRole = ['admin', 'staff', 'accounting'].includes(bookingUserRole);
+        if (!isBypassRole && organizationId && organization?.creditLimit != null) {
             if (price > 0 && price > organization.creditLimit) {
                 await prisma.shipment.update({
                     where: { id: shipment.id },
