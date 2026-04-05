@@ -27,6 +27,7 @@ const ShipmentDetailsPage = lazy(() => import('../pages/ShipmentDetailsPage'));
 const TrackingLandingPage = lazy(() => import('../pages/TrackingLandingPage'));
 const PrivacyPage = lazy(() => import('../pages/PrivacyPage'));
 const TermsPage = lazy(() => import('../pages/TermsPage'));
+const ApiDocsPage = lazy(() => import('../pages/ApiDocsPage'));
 
 
 
@@ -34,12 +35,13 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   const { isAuthenticated, loading, user } = useAuth();
 
   if (loading) return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: 16, background: 'var(--bg-primary, #0a0e1a)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: 16, background: '#f3f7fb' }}>
       <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect width="40" height="40" rx="10" fill="#00d9b8" />
+        <rect width="40" height="40" rx="10" fill="url(#grad)" />
         <path d="M10 20h20M20 10v20" stroke="white" strokeWidth="3" strokeLinecap="round" />
+        <defs><linearGradient id="grad" x1="0" y1="0" x2="40" y2="40"><stop stopColor="#0EA5E9"/><stop offset="1" stopColor="#2563EB"/></linearGradient></defs>
       </svg>
-      <div style={{ width: 32, height: 32, border: '3px solid rgba(0,217,184,0.2)', borderTopColor: '#00d9b8', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+      <div style={{ width: 32, height: 32, border: '3px solid rgba(0,80,212,0.15)', borderTopColor: '#0050d4', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
@@ -65,9 +67,9 @@ const AppRoutes = () => {
   return (
     <Suspense fallback={<div style={{ padding: '24px' }}>Loading...</div>}>
       <Routes>
-        <Route path="/login" element={<Navigate to="/" replace />} />
+        <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
-        <Route path="/" element={<LoginPage />} />
+        <Route path="/" element={<Navigate to="/login" replace />} />
 
         {/* Standalone Driver Route (No Sidebar) */}
         <Route path="/driver/pickup" element={
@@ -174,6 +176,12 @@ const AppRoutes = () => {
           <Route path="address-book" element={
             <ProtectedRoute allowedRoles={['admin', 'staff', 'client', 'manager', 'accounting', 'org_manager', 'org_agent']}>
               <AddressBookPage />
+            </ProtectedRoute>
+          } />
+
+          <Route path="api-docs" element={
+            <ProtectedRoute allowedRoles={['admin', 'staff', 'client', 'manager', 'accounting', 'org_manager', 'org_agent']}>
+              <ApiDocsPage />
             </ProtectedRoute>
           } />
 

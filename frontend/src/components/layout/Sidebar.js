@@ -1,305 +1,132 @@
 import React, { useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
-import {
-    Box,
-    Drawer,
-    List,
-    ListItem,
-    ListItemButton,
-    ListItemIcon,
-    ListItemText,
-    Typography,
-    Avatar,
-    useTheme,
-    Divider,
-    Tooltip,
-    IconButton
-} from '@mui/material';
-import HomeIcon from '@mui/icons-material/Home';
-import AssessmentIcon from '@mui/icons-material/Assessment';
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
-import LocalShippingIcon from '@mui/icons-material/LocalShipping';
-import MapIcon from '@mui/icons-material/Map';
-import WarehouseIcon from '@mui/icons-material/Warehouse';
-import DirectionsBusIcon from '@mui/icons-material/DirectionsBus';
-import PersonIcon from '@mui/icons-material/Person';
-import MessageIcon from '@mui/icons-material/Message';
-import NotificationsIcon from '@mui/icons-material/Notifications';
-import SettingsIcon from '@mui/icons-material/Settings';
-import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
-import MenuBookIcon from '@mui/icons-material/MenuBook';
-import BusinessIcon from '@mui/icons-material/Business';
-import MenuIcon from '@mui/icons-material/Menu';
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { getRoleLabel } from '../../utils/roleLabels';
 
-const DRAWER_WIDTH = 240;
-const COLLAPSED_WIDTH = 80;
-
-const Sidebar = () => {
-    const theme = useTheme();
-    const location = useLocation();
-    const { user } = useAuth();
-    const [collapsed, setCollapsed] = useState(false);
-
-    const drawerWidth = collapsed ? COLLAPSED_WIDTH : DRAWER_WIDTH;
-    const textStyles = {
-        opacity: collapsed ? 0 : 1,
-        width: collapsed ? 0 : 'auto',
-        marginLeft: collapsed ? 0 : undefined,
-        transition: 'opacity 0.2s ease',
-        whiteSpace: 'nowrap'
-    };
+/**
+ * Premium Sidebar Component (Kinetic Horizon)
+ * Rebuilt to match the 'Global Ops' aesthetic from the high-fidelity mockup.
+ * Features:
+ * - Collapsible state (managed locally for now)
+ * - Kinetic Horizon Branding
+ * - Dynamic, Role-based Navigation
+ * - Styled for Dark/Light mode compatibility
+ */
+const Sidebar = ({ isCollapsed, toggleCollapse }) => {
+    const { user, logout } = useAuth();
+    const navigate = useNavigate();
 
     const menuItems = [
-        { text: 'Dashboard', icon: <HomeIcon />, path: '/dashboard' },
-        { text: 'Analytics', icon: <AssessmentIcon />, path: '/analytics', adminAccountingOnly: true },
-        { text: 'Calendar', icon: <CalendarMonthIcon />, path: '/calendar', adminAccountingOnly: true },
-        { text: 'Shipments', icon: <LocalShippingIcon />, path: '/shipments' },
-        { text: 'Tracking', icon: <MapIcon />, path: '/tracking' },
-        { text: 'Warehouse Scan', icon: <WarehouseIcon />, path: '/warehouse/scan', staffOnly: true },
-        { text: 'Fleets', icon: <DirectionsBusIcon />, path: '/fleets', adminAccountingOnly: true },
-        { text: 'User Management', icon: <PersonIcon />, path: '/admin/users', adminOnly: true },
-        { text: 'Organizations', icon: <BusinessIcon />, path: '/admin/organizations', staffOnly: true },
-        { text: 'Address Book', icon: <MenuBookIcon />, path: '/address-book', restricted: true },
-        { text: 'Drivers', icon: <PersonIcon />, path: '/drivers', adminAccountingOnly: true, restricted: true },
-        { text: 'Finance & Credits', icon: <AccountBalanceWalletIcon />, path: '/finance', financeOnly: true },
+        { text: 'Dashboard', icon: 'speed', path: '/dashboard' },
+        { text: 'Shipments', icon: 'local_shipping', path: '/shipments' },
+        { text: 'Organizations', icon: 'corporate_fare', path: '/admin/organizations', roles: ['admin', 'staff', 'manager'] },
+        { text: 'Users', icon: 'people', path: '/admin/users', roles: ['admin'] },
+        { text: 'Analytics', icon: 'analytics', path: '/analytics', roles: ['admin', 'accounting', 'manager'] },
+        { text: 'Fleet Ops', icon: 'directions_bus', path: '/fleets', roles: ['admin', 'accounting', 'manager'] },
+        { text: 'Inventory', icon: 'inventory_2', path: '/warehouse/scan', roles: ['admin', 'staff', 'manager'] },
+        { text: 'Address Book', icon: 'menu_book', path: '/address-book' },
+        { text: 'API Docs', icon: 'api', path: '/api-docs' },
+        { text: 'Financials', icon: 'account_balance_wallet', path: '/finance', roles: ['admin', 'accounting', 'manager', 'staff'] },
+        { text: 'Settings', icon: 'settings', path: '/settings' },
     ];
 
-    const utilityItems = [
-        { text: 'Message', icon: <MessageIcon />, path: '/messages', adminAccountingOnly: true },
-        { text: 'Notification', icon: <NotificationsIcon />, path: '/notifications', adminAccountingOnly: true },
-        { text: 'Settings', icon: <SettingsIcon />, path: '/settings' },
-    ];
+    const filteredItems = menuItems.filter(item => 
+        !item.roles || item.roles.includes(user?.role)
+    );
+
 
     return (
-        <Drawer
-            variant="permanent"
-            sx={{
-                width: drawerWidth,
-                flexShrink: 0,
-                '& .MuiDrawer-paper': {
-                    width: drawerWidth,
-                    boxSizing: 'border-box',
-                    borderRight: '1px solid #2a3347',
-                    backgroundColor: '#141929',
-                    transition: 'width 0.2s ease',
-                    height: '100vh',
-                },
-            }}
+        <aside 
+            className={`h-screen fixed left-0 top-0 bg-white dark:bg-slate-900 border-r border-outline/10 dark:border-white/5 flex flex-col py-6 transition-all duration-300 z-[150] ${
+                isCollapsed ? 'w-20' : 'w-[240px]'
+            }`}
         >
-            <Box sx={{ p: 3, pb: 3, display: 'flex', alignItems: 'center', gap: 1.5, borderBottom: '1px solid #2a3347', mb: 3 }}>
-                <Avatar
-                    src={user?.avatar}
-                    alt={user?.name}
-                    sx={{
-                        width: 44,
-                        height: 44,
-                        bgcolor: '#00d9b8',
-                        color: '#0a0e1a',
-                        fontWeight: 700,
-                        fontSize: '18px'
-                    }}
+            {/* Branding Header */}
+            <div className={`px-5 mb-10 transition-all duration-300 ${isCollapsed ? 'items-center flex flex-col' : ''}`}>
+                <div className="flex items-center gap-3">
+                    <div 
+                        onClick={() => navigate('/dashboard')}
+                        className="w-10 h-10 kinetic-gradient rounded-xl flex items-center justify-center text-white shadow-lg shadow-primary/25 cursor-pointer hover:scale-105 active:scale-95 transition-all"
+                    >
+                        <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                            {isCollapsed ? 'dashboard_customize' : 'rocket_launch'}
+                        </span>
+                    </div>
+                    {!isCollapsed && (
+                        <div className="animate-in fade-in slide-in-from-left-2 duration-300">
+                            <h3 className="text-lg font-black text-on-surface leading-tight tracking-tighter">Target Global</h3>
+                            <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest opacity-60">Operations Suite</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Navigation Menu */}
+            <nav className="flex-1 space-y-1.5 px-3 overflow-y-auto no-scrollbar">
+                {filteredItems.map((item) => (
+                    <NavLink
+                        key={item.path}
+                        to={item.path}
+                        className={({ isActive }) => `
+                            flex items-center gap-3 px-3 py-3 rounded-xl transition-all font-bold group
+                            ${isActive 
+                                ? 'bg-primary/10 text-primary shadow-sm shadow-primary/5 border-l-4 border-primary rounded-l-none' 
+                                : 'text-on-surface-variant hover:bg-slate-50 dark:hover:bg-white/5 hover:text-on-surface'
+                            }
+                            ${isCollapsed ? 'justify-center px-0' : ''}
+                        `}
+                    >
+                        <span className="material-symbols-outlined text-2xl transition-transform group-active:scale-90">
+                            {item.icon}
+                        </span>
+                        {!isCollapsed && (
+                            <span className="text-sm tracking-tight truncate animate-in fade-in duration-300">
+                                {item.text}
+                            </span>
+                        )}
+                    </NavLink>
+                ))}
+            </nav>
+
+            {/* Footer Actions */}
+            <div className="px-3 mt-auto space-y-2">
+                {/* Collapse Toggle */}
+                <button 
+                    onClick={toggleCollapse}
+                    className="flex items-center gap-3 w-full px-3 py-3 text-on-surface-variant hover:bg-slate-50 dark:hover:bg-white/5 rounded-xl transition-all font-bold group"
                 >
-                    {user?.name?.charAt(0) || 'D'}
-                </Avatar>
-                {!collapsed && (
-                    <Box>
-                        <Typography variant="subtitle2" fontWeight={600} sx={{ fontSize: '15px', color: '#e8eaf0' }}>
-                            {user?.name || 'Demo Admin'}
-                        </Typography>
-                        <Typography variant="caption" sx={{ fontSize: '13px', color: '#9ca3af', textTransform: 'capitalize' }}>
-                            {getRoleLabel(user?.role) || 'Platform Admin'}
-                        </Typography>
-                    </Box>
-                )}
-                <IconButton
-                    onClick={() => setCollapsed((prev) => !prev)}
-                    sx={{ marginLeft: 'auto', color: '#9ca3af' }}
-                    aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                    <span className="material-symbols-outlined text-2xl transition-transform group-hover:rotate-12">
+                        {isCollapsed ? 'dock_to_right' : 'dock_to_left'}
+                    </span>
+                    {!isCollapsed && <span className="text-sm">Collapse View</span>}
+                </button>
+
+                {/* Sign Out */}
+                <button 
+                    onClick={logout}
+                    className="flex items-center gap-3 w-full px-3 py-3 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all font-black group"
                 >
-                    {collapsed ? <MenuIcon /> : <ChevronLeftIcon />}
-                </IconButton>
-            </Box>
-
-            <Box sx={{ overflow: 'auto', mt: 2, px: 2 }}>
-                <List>
-                    {menuItems.map((item) => {
-                        // Role-based visibility and access
-                        const isAdmin = user?.role === 'admin';
-                        const isAccounting = user?.role === 'accounting';
-                        const isAdminOrAccounting = isAdmin || isAccounting;
-
-                        if (item.adminAccountingOnly && !isAdminOrAccounting) return null;
-                        if (item.restricted && user?.role === 'driver') return null;
-                        if (item.adminOnly && !isAdmin) return null;
-                        if (item.staffOnly && !['admin', 'staff', 'manager'].includes(user?.role)) return null;
-                        if (item.financeOnly && !['admin', 'staff', 'accounting', 'manager'].includes(user?.role)) return null;
-
-                        return (
-                            <ListItem key={item.text} disablePadding sx={{ mb: 0.5 }}>
-                                {item.tooltip ? (
-                                    <Tooltip title={item.tooltip} placement="right" arrow>
-                                        <span style={{ width: '100%' }}>
-                                            <ListItemButton
-                                                component={item.disabled ? 'div' : NavLink}
-                                                to={item.disabled ? undefined : item.path}
-                                                disabled={item.disabled}
-                                                sx={{
-                                                    borderRadius: 2,
-                                                    mx: 1,
-                                                    py: 1.5,
-                                                    opacity: item.disabled ? 0.4 : 1,
-                                                    pointerEvents: item.disabled ? 'none' : 'auto',
-                                                    position: 'relative',
-                                                    justifyContent: collapsed ? 'center' : 'flex-start',
-                                                    '&:hover': {
-                                                        backgroundColor: item.disabled ? 'transparent' : 'rgba(0, 217, 184, 0.05)',
-                                                        color: item.disabled ? 'inherit' : '#e8eaf0',
-                                                    },
-                                                    '&.active': {
-                                                        backgroundColor: 'rgba(0, 217, 184, 0.1)',
-                                                        color: '#e8eaf0',
-                                                        '&::before': {
-                                                            content: '""',
-                                                            position: 'absolute',
-                                                            left: 0,
-                                                            top: 0,
-                                                            bottom: 0,
-                                                            width: '3px',
-                                                            bgcolor: '#00d9b8',
-                                                            borderRadius: '0 3px 3px 0',
-                                                        },
-                                                    },
-                                                }}
-                                            >
-                                                <ListItemIcon sx={{ minWidth: collapsed ? 'auto' : 40, color: 'inherit' }}>
-                                                    {item.icon}
-                                                </ListItemIcon>
-                                                <ListItemText
-                                                    primary={item.text}
-                                                    sx={textStyles}
-                                                    primaryTypographyProps={{
-                                                        fontSize: '14px',
-                                                        fontWeight: 500,
-                                                        color: 'inherit',
-                                                        noWrap: true,
-                                                        sx: {
-                                                            overflow: 'hidden',
-                                                            textOverflow: 'ellipsis'
-                                                        }
-                                                    }}
-                                                />
-                                            </ListItemButton>
-                                        </span>
-                                    </Tooltip>
-                                ) : (
-                                    <ListItemButton
-                                        component={NavLink}
-                                        to={item.path}
-                                        sx={{
-                                            borderRadius: 2,
-                                            mx: 1,
-                                            py: 1.5,
-                                            position: 'relative',
-                                            color: '#9ca3af',
-                                            justifyContent: collapsed ? 'center' : 'flex-start',
-                                            '&:hover': {
-                                                backgroundColor: 'rgba(0, 217, 184, 0.05)',
-                                                color: '#e8eaf0',
-                                                '& .MuiListItemIcon-root': {
-                                                    color: '#e8eaf0',
-                                                }
-                                            },
-                                            '&.active': {
-                                                backgroundColor: 'rgba(0, 217, 184, 0.1)',
-                                                color: '#e8eaf0',
-                                                '& .MuiListItemIcon-root': {
-                                                    color: '#e8eaf0', // Icon color when active
-                                                },
-                                                '&::before': {
-                                                    content: '""',
-                                                    position: 'absolute',
-                                                    left: 0,
-                                                    top: 0,
-                                                    bottom: 0,
-                                                    width: '3px',
-                                                    bgcolor: '#00d9b8',
-                                                    borderRadius: '0 3px 3px 0',
-                                                },
-                                            },
-                                        }}
-                                    >
-                                        <ListItemIcon sx={{ minWidth: collapsed ? 'auto' : 40, color: 'inherit' }}>
-                                            {item.icon}
-                                        </ListItemIcon>
-                                        <ListItemText
-                                            primary={item.text}
-                                            sx={textStyles}
-                                            primaryTypographyProps={{
-                                                fontSize: '14px',
-                                                fontWeight: 500,
-                                                color: 'inherit',
-                                                noWrap: true,
-                                                sx: {
-                                                    overflow: 'hidden',
-                                                    textOverflow: 'ellipsis'
-                                                }
-                                            }}
-                                        />
-                                    </ListItemButton>
-                                )}
-                            </ListItem>
-                        );
-                    })}
-                </List>
-
-                <Divider sx={{ my: 2, opacity: 0.1 }} />
-
-                <List>
-                    {utilityItems.map((item) => {
-                        // Role-based visibility
-                        const isAdmin = user?.role === 'admin';
-                        const isAccounting = user?.role === 'accounting';
-                        const isAdminOrAccounting = isAdmin || isAccounting;
-
-                        if (item.adminAccountingOnly && !isAdminOrAccounting) return null;
-
-                        return (
-                            <ListItem key={item.text} disablePadding sx={{ mb: 1 }}>
-                                <Tooltip title={item.tooltip || ''} placement="right" arrow>
-                                    <ListItemButton
-                                        component={item.disabled ? 'div' : NavLink}
-                                        to={item.disabled ? undefined : item.path}
-                                        selected={location.pathname === item.path}
-                                        disabled={item.disabled}
-                                        sx={{
-                                            borderRadius: 3,
-                                            color: 'text.secondary',
-                                            justifyContent: collapsed ? 'center' : 'flex-start',
-                                            '&.active': {
-                                                backgroundColor: theme.palette.primary.main,
-                                                color: theme.palette.primary.contrastText,
-                                            },
-                                        }}
-                                    >
-                                        <ListItemIcon sx={{ minWidth: collapsed ? 'auto' : 40, color: 'inherit' }}>
-                                            {item.icon}
-                                        </ListItemIcon>
-                                        <ListItemText
-                                            primary={item.text}
-                                            sx={textStyles}
-                                            primaryTypographyProps={{ fontSize: '0.9rem', fontWeight: 500 }}
-                                        />
-                                    </ListItemButton>
-                                </Tooltip>
-                            </ListItem>
-                        );
-                    })}
-                </List>
-            </Box>
-        </Drawer>
+                    <span className="material-symbols-outlined text-2xl transition-transform group-hover:-translate-x-1">
+                        logout
+                    </span>
+                    {!isCollapsed && <span className="text-sm">Sign Out</span>}
+                </button>
+            </div>
+            
+            {/* User Profile Summary (Bottom) */}
+            {!isCollapsed && (
+                <div className="mt-6 px-4 py-4 mx-3 bg-surface-container-low dark:bg-white/5 rounded-2xl border border-outline/5 transition-all hover:border-outline/10">
+                    <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-white dark:bg-slate-800 shadow-sm border border-outline/10 flex items-center justify-center font-black text-primary text-xs">
+                            {user?.name?.[0]}
+                        </div>
+                        <div className="overflow-hidden">
+                            <p className="text-xs font-black text-on-surface truncate">{user?.name}</p>
+                            <p className="text-[9px] font-black text-on-surface-variant uppercase tracking-widest truncate">{user?.role}</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </aside>
     );
 };
 
