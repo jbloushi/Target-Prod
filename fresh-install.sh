@@ -193,16 +193,8 @@ fi
 step 6 "Installing Backend Dependencies"
 
 cd $BACKEND_DIR
-log "Running npm install..."
-npm install --prefer-offline 2>&1 | grep -E "added|updated|warn|error" | tail -3
-
-# Extra packages that may be missing
-for pkg in mathjs bcryptjs; do
-  if [ ! -d "node_modules/$pkg" ]; then
-    log "Installing missing package: $pkg"
-    npm install $pkg 2>&1 | tail -1
-  fi
-done
+log "Running npm install (including devDependencies for prisma CLI)..."
+npm install 2>&1 | grep -E "added|updated|warn|error" | tail -3
 ok "Backend dependencies ready"
 
 # ════════════════════════════════════════════════════════════
@@ -212,17 +204,18 @@ step 7 "Applying Database Schema (Prisma)"
 
 cd $BACKEND_DIR
 
-log "Generating Prisma Client..."
-./node_modules/.bin/prisma generate 2>&1 | grep -E "Generated|Error|✔" | head -3
-if [ ! -d "./node_modules/@prisma/client" ]; then
-  log "Installing @prisma/client explicitly..."
-  npm install @prisma/client 2>&1 | tail -2
-  ./node_modules/.bin/prisma generate 2>&1 | tail -2
+PRISMA="$BACKEND_DIR/node_modules/.bin/prisma"
+if [ ! -f "$PRISMA" ]; then
+  log "Prisma CLI not found — installing..."
+  npm install prisma @prisma/client 2>&1 | tail -2
 fi
+
+log "Generating Prisma Client..."
+$PRISMA generate 2>&1 | grep -E "Generated|Error|✔|✓" | head -3
 ok "Prisma Client generated"
 
 log "Pushing schema to MySQL..."
-./node_modules/.bin/prisma db push --accept-data-loss 2>&1 | grep -E "pushed|error|warn|✓|Your|🚀" | head -5
+$PRISMA db push --accept-data-loss 2>&1 | grep -E "pushed|error|warn|✓|Your|🚀|Done" | head -5
 ok "Database schema applied"
 
 # ════════════════════════════════════════════════════════════
