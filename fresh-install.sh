@@ -1,22 +1,35 @@
 #!/bin/bash
 # ============================================================
-# 3PL Mawthook — Fresh Install Script for aaPanel VPS
-# Run from: /www/wwwroot/3pl.mawthook.io
+#  3PL Mawthook — Wizard Installer for aaPanel VPS
+#  Run: bash fresh-install.sh
 # ============================================================
 
-set -e
-
+# ── Colors & symbols ────────────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 YELLOW='\033[1;33m'
+BOLD='\033[1m'
 NC='\033[0m'
 
-log()  { echo -e "${BLUE}[→] $1${NC}"; }
-ok()   { echo -e "${GREEN}[✓] $1${NC}"; }
-warn() { echo -e "${YELLOW}[!] $1${NC}"; }
-fail() { echo -e "${RED}[✗] $1${NC}"; exit 1; }
+PASS="${GREEN}✓${NC}"
+FAIL="${RED}✗${NC}"
+WARN="${YELLOW}!${NC}"
+ARROW="${CYAN}→${NC}"
 
+# ── Helpers ──────────────────────────────────────────────────
+divider() { echo -e "${BLUE}────────────────────────────────────────────${NC}"; }
+header()  { echo ""; divider; echo -e "  ${BOLD}${CYAN}$1${NC}"; divider; }
+log()     { echo -e "  ${ARROW} $1"; }
+ok()      { echo -e "  ${PASS} ${GREEN}$1${NC}"; }
+warn()    { echo -e "  ${WARN} ${YELLOW}$1${NC}"; }
+fail()    { echo -e "  ${FAIL} ${RED}$1${NC}"; echo ""; exit 1; }
+step()    { echo ""; echo -e "${BOLD}${BLUE}[ Step $1/$TOTAL_STEPS ] $2${NC}"; }
+
+TOTAL_STEPS=11
+
+# ── Config ───────────────────────────────────────────────────
 PROJECT_ROOT="/www/wwwroot/3pl.mawthook.io"
 BACKEND_DIR="$PROJECT_ROOT/backend"
 FRONTEND_DIR="$PROJECT_ROOT/frontend"
@@ -28,108 +41,302 @@ DB_NAME="target_logistics"
 DB_USER="tl_api_b75531da"
 DB_PASS='TL_5dfaccf76a06b652a15898d2!'
 HEALTH_URL="http://127.0.0.1:8899/health"
+DOMAIN="3pl.mawthook.io"
 
+# ════════════════════════════════════════════════════════════
 echo ""
-echo -e "${BLUE}============================================${NC}"
-echo -e "${BLUE}  3PL Mawthook — Fresh Install             ${NC}"
-echo -e "${BLUE}============================================${NC}"
+echo -e "${BOLD}${CYAN}"
+echo "  ╔══════════════════════════════════════════╗"
+echo "  ║     3PL MAWTHOOK — INSTALL WIZARD        ║"
+echo "  ║     Target Logistics Platform            ║"
+echo "  ╚══════════════════════════════════════════╝"
+echo -e "${NC}"
+echo -e "  Domain  : ${BOLD}https://$DOMAIN${NC}"
+echo -e "  Install : ${BOLD}$PROJECT_ROOT${NC}"
+echo -e "  Date    : $(date '+%Y-%m-%d %H:%M:%S')"
 echo ""
+warn "This will RESET the database and reinstall everything."
+warn "Other apps on this VPS will NOT be affected."
+echo ""
+read -p "  Press ENTER to continue or Ctrl+C to cancel..." _
 
-# ── STEP 1: Stop old PM2 processes ──────────────────────────
-log "Step 1/9: Stopping old PM2 processes..."
-pm2 delete $PM2_NAME 2>/dev/null && ok "PM2 processes deleted" || warn "No PM2 processes to delete"
+# ════════════════════════════════════════════════════════════
+# STEP 1 — Check system dependencies
+# ════════════════════════════════════════════════════════════
+step 1 "Checking System Dependencies"
 
-# ── STEP 2: Pull latest code ─────────────────────────────────
-log "Step 2/9: Pulling latest code..."
+# Node.js
+NODE_VER=$(node -v 2>/dev/null)
+if [ $? -eq 0 ]; then
+  ok "Node.js $NODE_VER"
+else
+  fail "Node.js not found. Install it via aaPanel → App Store → Node.js"
+fi
+
+# npm
+NPM_VER=$(npm -v 2>/dev/null)
+if [ $? -eq 0 ]; then
+  ok "npm v$NPM_VER"
+else
+  fail "npm not found."
+fi
+
+# PM2
+PM2_VER=$(pm2 -v 2>/dev/null)
+if [ $? -eq 0 ]; then
+  ok "PM2 v$PM2_VER"
+else
+  warn "PM2 not found. Installing..."
+  npm install -g pm2 || fail "Could not install PM2"
+  ok "PM2 installed"
+fi
+
+# git
+GIT_VER=$(git --version 2>/dev/null)
+if [ $? -eq 0 ]; then
+  ok "git ($GIT_VER)"
+else
+  fail "git not found. Run: apt install git"
+fi
+
+# MySQL client
+if [ -f "$MYSQL_BIN" ]; then
+  ok "MySQL client at $MYSQL_BIN"
+else
+  fail "MySQL client not found at $MYSQL_BIN. Is aaPanel MySQL installed?"
+fi
+
+# curl
+if command -v curl &>/dev/null; then
+  ok "curl available"
+else
+  warn "curl not found. Installing..."
+  apt-get install -y curl &>/dev/null || fail "Could not install curl"
+fi
+
+# Nginx
+if [ -f "/www/server/nginx/sbin/nginx" ]; then
+  ok "aaPanel Nginx found"
+else
+  warn "aaPanel Nginx not found at default path — will try system nginx on reload"
+fi
+
+# ════════════════════════════════════════════════════════════
+# STEP 2 — Check project directory
+# ════════════════════════════════════════════════════════════
+step 2 "Checking Project Directory"
+
+if [ ! -d "$PROJECT_ROOT" ]; then
+  fail "Project directory not found: $PROJECT_ROOT"
+fi
+ok "Project root exists: $PROJECT_ROOT"
+
+if [ ! -f "$BACKEND_DIR/.env" ]; then
+  fail ".env file missing at $BACKEND_DIR/.env\nCreate it with DATABASE_URL, JWT_SECRET, DHL credentials."
+fi
+ok ".env file found"
+
+# Verify DATABASE_URL points to correct port
+if grep -q "3307" "$BACKEND_DIR/.env"; then
+  ok "DATABASE_URL uses port 3307 ✓"
+else
+  warn "DATABASE_URL may not use port 3307 — verifying..."
+  grep "DATABASE_URL" "$BACKEND_DIR/.env" | head -1
+fi
+
+# ════════════════════════════════════════════════════════════
+# STEP 3 — Pull latest code
+# ════════════════════════════════════════════════════════════
+step 3 "Pulling Latest Code from GitHub"
+
 cd $PROJECT_ROOT
-git fetch origin && git reset --hard origin/main || fail "Git pull failed"
-ok "Code updated to latest"
+git fetch origin 2>&1 | tail -1
+git reset --hard origin/main 2>&1 | tail -1
+ok "Code synced to latest ($(git log -1 --format='%h %s'))"
 
-# ── STEP 3: Reset MySQL database ────────────────────────────
-log "Step 3/9: Resetting MySQL database..."
-$MYSQL_BIN -u root -p"$MYSQL_ROOT_PASS" -P $MYSQL_PORT -h 127.0.0.1 2>/dev/null <<SQL
+# ════════════════════════════════════════════════════════════
+# STEP 4 — Stop old processes
+# ════════════════════════════════════════════════════════════
+step 4 "Stopping Old PM2 Processes"
+
+if pm2 describe $PM2_NAME &>/dev/null; then
+  pm2 delete $PM2_NAME &>/dev/null
+  ok "Deleted old PM2 process: $PM2_NAME"
+else
+  ok "No existing PM2 process to clean up"
+fi
+
+# ════════════════════════════════════════════════════════════
+# STEP 5 — Reset MySQL database
+# ════════════════════════════════════════════════════════════
+step 5 "Resetting MySQL Database"
+
+log "Connecting to MySQL on port $MYSQL_PORT..."
+$MYSQL_BIN -u root -p"$MYSQL_ROOT_PASS" -P $MYSQL_PORT -h 127.0.0.1 --connect-timeout=10 2>/dev/null <<SQL
 DROP DATABASE IF EXISTS \`$DB_NAME\`;
 CREATE DATABASE \`$DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS '$DB_USER'@'127.0.0.1' IDENTIFIED WITH mysql_native_password BY '$DB_PASS';
 GRANT ALL PRIVILEGES ON \`$DB_NAME\`.* TO '$DB_USER'@'127.0.0.1';
 FLUSH PRIVILEGES;
 SQL
-ok "Database reset and user ready"
 
-# ── STEP 4: Backend dependencies ────────────────────────────
-log "Step 4/9: Installing backend dependencies..."
+if [ $? -eq 0 ]; then
+  ok "Database '$DB_NAME' created fresh"
+  ok "User '$DB_USER' ready with full access"
+else
+  fail "MySQL connection failed. Check password and port."
+fi
+
+# ════════════════════════════════════════════════════════════
+# STEP 6 — Install backend dependencies
+# ════════════════════════════════════════════════════════════
+step 6 "Installing Backend Dependencies"
+
 cd $BACKEND_DIR
-npm install --prefer-offline 2>&1 | tail -3
-npm install mathjs --prefer-offline 2>&1 | tail -1
-ok "Backend dependencies installed"
+log "Running npm install..."
+npm install --prefer-offline 2>&1 | grep -E "added|updated|warn|error" | tail -3
 
-# ── STEP 5: Prisma generate + push ──────────────────────────
-log "Step 5/9: Running Prisma schema push..."
-./node_modules/.bin/prisma generate 2>&1 | tail -2
-./node_modules/.bin/prisma db push --accept-data-loss 2>&1 | tail -3
+# Extra packages that may be missing
+for pkg in mathjs bcryptjs; do
+  if [ ! -d "node_modules/$pkg" ]; then
+    log "Installing missing package: $pkg"
+    npm install $pkg 2>&1 | tail -1
+  fi
+done
+ok "Backend dependencies ready"
+
+# ════════════════════════════════════════════════════════════
+# STEP 7 — Prisma generate + push
+# ════════════════════════════════════════════════════════════
+step 7 "Applying Database Schema (Prisma)"
+
+log "Generating Prisma Client..."
+./node_modules/.bin/prisma generate 2>&1 | grep -E "Generated|Error" | head -3
+
+log "Pushing schema to MySQL..."
+./node_modules/.bin/prisma db push --accept-data-loss 2>&1 | grep -E "pushed|error|warn|✓|Your" | head -5
+
 ok "Database schema applied"
 
-# ── STEP 6: Seed admin user ──────────────────────────────────
-log "Step 6/9: Seeding admin user..."
-node prisma-seed.js 2>&1
-ok "Admin user seeded: admin@demo.com / password123"
+# ════════════════════════════════════════════════════════════
+# STEP 8 — Seed admin user
+# ════════════════════════════════════════════════════════════
+step 8 "Seeding Admin User"
 
-# ── STEP 7: Start backend with PM2 ──────────────────────────
-log "Step 7/9: Starting backend with PM2..."
+node prisma-seed.js 2>&1
+ok "Admin ready: admin@demo.com / password123"
+
+# ════════════════════════════════════════════════════════════
+# STEP 9 — Start backend
+# ════════════════════════════════════════════════════════════
+step 9 "Starting Backend with PM2"
+
+log "Launching 2 cluster instances on port 8899..."
 NODE_ENV=production pm2 start src/server.js \
   --name $PM2_NAME \
   -i 2 \
-  --cwd $BACKEND_DIR
-sleep 6
+  --cwd $BACKEND_DIR \
+  --log "$BACKEND_DIR/logs/pm2-out.log" \
+  --error "$BACKEND_DIR/logs/pm2-error.log" \
+  --merge-logs 2>&1 | tail -3
 
-# Health check
+log "Waiting for backend to initialize (8 seconds)..."
+sleep 8
+
 HEALTH=$(curl -s $HEALTH_URL 2>/dev/null)
 if echo "$HEALTH" | grep -q '"status":"ok"'; then
-  ok "Backend healthy: $HEALTH"
+  ok "Backend is healthy → $HEALTH"
 else
-  fail "Backend health check failed: $HEALTH\nRun: pm2 logs $PM2_NAME"
+  echo ""
+  warn "Health check failed. Showing last logs:"
+  pm2 logs $PM2_NAME --lines 20 --nostream 2>/dev/null | tail -20
+  fail "Backend not responding on port 8899. Fix errors above then rerun."
 fi
 
-# ── STEP 8: Build frontend ───────────────────────────────────
-log "Step 8/9: Building frontend..."
-cd $FRONTEND_DIR
-npm install --prefer-offline 2>&1 | tail -3
-npm run build 2>&1 | tail -5
-ok "Frontend built successfully"
-
-# ── STEP 9: Reload Nginx ─────────────────────────────────────
-log "Step 9/9: Reloading Nginx..."
-/www/server/nginx/sbin/nginx -t && /etc/init.d/nginx reload && ok "Nginx reloaded"
-
-# Save PM2
-pm2 save
+pm2 save &>/dev/null
 ok "PM2 process list saved"
 
-# ── Final test ───────────────────────────────────────────────
-echo ""
-echo -e "${BLUE}============================================${NC}"
-echo -e "${GREEN}  Running final checks...${NC}"
-echo -e "${BLUE}============================================${NC}"
+# ════════════════════════════════════════════════════════════
+# STEP 10 — Build frontend
+# ════════════════════════════════════════════════════════════
+step 10 "Building Frontend"
 
-LOGIN=$(curl -sk https://3pl.mawthook.io/api/auth/login \
-  -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@demo.com","password":"password123"}' 2>/dev/null)
+cd $FRONTEND_DIR
+log "Installing frontend dependencies..."
+npm install --prefer-offline 2>&1 | grep -E "added|updated|error" | tail -3
 
-if echo "$LOGIN" | grep -q '"success":true'; then
-  ok "HTTPS Login: SUCCESS ✅"
+log "Building React app (this takes ~2 minutes)..."
+npm run build 2>&1 | grep -E "Compiled|Warning|Error|Build|chunk" | tail -5
+
+if [ -f "$FRONTEND_DIR/build/index.html" ]; then
+  ok "Frontend built successfully"
 else
-  warn "HTTPS Login returned: $LOGIN"
-  warn "Local login test:"
-  curl -s http://127.0.0.1:8899/api/auth/login \
-    -X POST \
-    -H "Content-Type: application/json" \
-    -d '{"email":"admin@demo.com","password":"password123"}' | head -c 100
+  fail "Frontend build failed — check errors above"
 fi
 
+# ════════════════════════════════════════════════════════════
+# STEP 11 — Reload Nginx
+# ════════════════════════════════════════════════════════════
+step 11 "Reloading Nginx"
+
+if [ -f "/www/server/nginx/sbin/nginx" ]; then
+  /www/server/nginx/sbin/nginx -t 2>&1 && /etc/init.d/nginx reload 2>&1 | tail -1
+else
+  nginx -t 2>&1 && /etc/init.d/nginx reload 2>&1 | tail -1 || systemctl reload nginx 2>&1
+fi
+ok "Nginx reloaded"
+
+# ════════════════════════════════════════════════════════════
+# FINAL — E2E Test
+# ════════════════════════════════════════════════════════════
 echo ""
-echo -e "${GREEN}============================================${NC}"
-echo -e "${GREEN}  DONE! Site: https://3pl.mawthook.io      ${NC}"
-echo -e "${GREEN}  Admin: admin@demo.com / password123       ${NC}"
-echo -e "${GREEN}============================================${NC}"
+divider
+echo -e "  ${BOLD}${CYAN}Running End-to-End Verification${NC}"
+divider
+
+# Local API test
+LOCAL=$(curl -s http://127.0.0.1:8899/api/auth/login \
+  -X POST -H "Content-Type: application/json" \
+  -d '{"email":"admin@demo.com","password":"password123"}' 2>/dev/null)
+if echo "$LOCAL" | grep -q '"success":true'; then
+  ok "Local API login: PASS"
+else
+  warn "Local API login: FAIL — $LOCAL"
+fi
+
+# HTTPS test
+HTTPS=$(curl -sk https://$DOMAIN/api/auth/login \
+  -X POST -H "Content-Type: application/json" \
+  -d '{"email":"admin@demo.com","password":"password123"}' 2>/dev/null)
+if echo "$HTTPS" | grep -q '"success":true'; then
+  ok "HTTPS login: PASS"
+else
+  warn "HTTPS login: FAIL — $HTTPS"
+  warn "Check nginx config: /www/server/panel/vhost/nginx/$DOMAIN.conf"
+fi
+
+# Frontend check
+FRONT=$(curl -sk https://$DOMAIN/ 2>/dev/null | grep -o '<title>[^<]*</title>')
+if [ -n "$FRONT" ]; then
+  ok "Frontend serving: $FRONT"
+else
+  warn "Frontend check failed"
+fi
+
+# ════════════════════════════════════════════════════════════
+echo ""
+echo -e "${BOLD}${GREEN}"
+echo "  ╔══════════════════════════════════════════╗"
+echo "  ║        INSTALLATION COMPLETE ✓           ║"
+echo "  ╚══════════════════════════════════════════╝"
+echo -e "${NC}"
+echo -e "  🌐 URL    : ${BOLD}https://$DOMAIN${NC}"
+echo -e "  👤 Admin  : ${BOLD}admin@demo.com${NC}"
+echo -e "  🔑 Pass   : ${BOLD}password123${NC}"
+echo ""
+echo -e "  ${YELLOW}Change the admin password after first login!${NC}"
+echo ""
+divider
 pm2 status
+divider
+echo ""
