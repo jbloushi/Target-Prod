@@ -105,7 +105,8 @@ if (rateLimitEnabled) {
   const externalApiLimiter = rateLimit({
     windowMs: 60 * 1000, // 1 minute
     max: 30, // 30 requests per minute per API key
-    keyGenerator: (req) => req.headers['x-api-key'] || req.ip,
+    keyGenerator: (req) => req.headers['x-api-key'] || (req.ip ? req.ip.replace(/^::ffff:/, '') : 'unknown'),
+    validate: { xForwardedForHeader: false },
     message: { success: false, error: 'External API rate limit reached.' },
     standardHeaders: true,
     legacyHeaders: false,
