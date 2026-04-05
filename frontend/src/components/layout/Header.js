@@ -27,22 +27,22 @@ import LoginIcon from '@mui/icons-material/Login';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import PersonIcon from '@mui/icons-material/Person';
+import LightModeIcon from '@mui/icons-material/LightMode';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
 import { styled } from '@mui/material/styles';
 import { useAuth } from '../../context/AuthContext';
+import { useThemeMode } from '../../context/ThemeContext';
 import { financeService } from '../../services/api';
 
 const Search = styled('div')(({ theme }) => ({
   position: 'relative',
-  borderRadius: 10,
-  backgroundColor: '#1a2035',
-  border: '1px solid #2a3347',
-  transition: 'all 0.2s ease',
-  '&:hover': {
-    borderColor: '#00d9b8',
-  },
+  borderRadius: 12,
+  backgroundColor: theme.palette.mode === 'light' ? '#dde3e8' : alpha(theme.palette.background.paper, 0.1),
+  border: 'none',
+  transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
   '&:focus-within': {
-    borderColor: '#00d9b8',
-    boxShadow: '0 0 0 3px rgba(0, 217, 184, 0.1)',
+    backgroundColor: theme.palette.mode === 'light' ? '#ffffff' : theme.palette.background.paper,
+    boxShadow: `0 0 0 4px ${alpha(theme.palette.primary.main, 0.2)}`,
   },
   marginRight: theme.spacing(2),
   marginLeft: 0,
@@ -62,12 +62,13 @@ const SearchIconWrapper = styled('div')(({ theme }) => ({
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  color: '#9ca3af',
+  color: theme.palette.text.secondary,
 }));
 
 const StyledInputBase = styled(InputBase)(({ theme }) => ({
-  color: '#e8eaf0',
+  color: theme.palette.text.primary,
   width: '100%',
+  fontFamily: 'Manrope, sans-serif',
   '& .MuiInputBase-input': {
     padding: theme.spacing(1.5, 1, 1.5, 0),
     paddingLeft: `calc(1em + ${theme.spacing(4)})`,
@@ -75,7 +76,7 @@ const StyledInputBase = styled(InputBase)(({ theme }) => ({
     width: '100%',
     fontSize: '14px',
     '&::placeholder': {
-      color: '#9ca3af',
+      color: theme.palette.text.disabled,
       opacity: 1,
     }
   },
@@ -84,20 +85,21 @@ const StyledInputBase = styled(InputBase)(({ theme }) => ({
 const UserIconWrapper = styled(Box)(({ theme }) => ({
   width: 38,
   height: 38,
-  borderRadius: '50%',
-  backgroundColor: '#1a2035',
+  borderRadius: 12,
+  backgroundColor: theme.palette.mode === 'light' ? '#dde3e8' : alpha(theme.palette.background.paper, 0.1),
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   cursor: 'pointer',
   transition: 'all 0.2s ease',
   '&:hover': {
-    backgroundColor: '#2a3347',
+    backgroundColor: alpha(theme.palette.primary.main, 0.08),
   }
 }));
 
 const Header = () => {
   const theme = useTheme();
+  const { isDark, toggleTheme } = useThemeMode();
   const { user, isAuthenticated, logout } = useAuth();
   const [anchorElUser, setAnchorElUser] = useState(null);
   const [financeSummary, setFinanceSummary] = useState(null);
@@ -126,15 +128,20 @@ const Header = () => {
 
   if (!isAuthenticated) {
     return (
-      <AppBar position="sticky" color="transparent" elevation={0} sx={{ bgcolor: 'background.paper', borderBottom: `1px solid ${theme.palette.divider}` }}>
+      <AppBar position="sticky" color="transparent" elevation={0} sx={{ py: 1 }}>
         <Toolbar>
-          <Typography variant="h6" component={RouterLink} to="/" sx={{ textDecoration: 'none', color: 'text.primary', fontWeight: 700, flexGrow: 1 }}>
-            SHIPMENT<Box component="span" sx={{ color: 'primary.main' }}>TRACKER</Box>
+          <Typography variant="h6" component={RouterLink} to="/" sx={{ textDecoration: 'none', color: 'text.primary', fontWeight: 900, flexGrow: 1, fontFamily: 'Manrope, sans-serif', letterSpacing: '-0.04em' }}>
+            TARGET<Box component="span" sx={{ color: 'primary.main', opacity: 0.8 }}> LOGISTICS</Box> GLOBAL
           </Typography>
-          <Button component={RouterLink} to="/about" startIcon={<InfoIcon />}>About</Button>
-          <Button component={RouterLink} to="/contact" startIcon={<ContactSupportIcon />}>Contact</Button>
+          
+          <IconButton onClick={toggleTheme} sx={{ color: 'text.secondary', mr: 2 }}>
+            {isDark ? <LightModeIcon /> : <DarkModeIcon />}
+          </IconButton>
+
+          <Button component={RouterLink} to="/about" startIcon={<InfoIcon />} sx={{ color: 'text.secondary' }}>About</Button>
+          <Button component={RouterLink} to="/contact" startIcon={<ContactSupportIcon />} sx={{ color: 'text.secondary' }}>Contact</Button>
           <Box sx={{ mx: 1 }} />
-          <Button component={RouterLink} to="/login" startIcon={<LoginIcon />} variant="outlined" sx={{ mr: 1 }}>Login</Button>
+          <Button component={RouterLink} to="/login" startIcon={<LoginIcon />} variant="outlined" sx={{ mr: 1, borderColor: alpha(theme.palette.text.secondary, 0.2), color: 'text.primary' }}>Login</Button>
           <Button component={RouterLink} to="/signup" startIcon={<PersonAddIcon />} variant="contained">Join</Button>
         </Toolbar>
       </AppBar>
@@ -146,15 +153,9 @@ const Header = () => {
       position="sticky"
       color="transparent"
       elevation={0}
-      sx={{
-        bgcolor: '#141929',
-        backdropFilter: 'blur(10px)',
-        borderBottom: '1px solid #2a3347',
-        py: 1,
-      }}
+      sx={{ py: 1 }}
     >
       <Toolbar sx={{ px: 4 }}>
-        {/* Search Bar */}
         <Search>
           <SearchIconWrapper>
             <SearchIcon />
@@ -165,12 +166,9 @@ const Header = () => {
           />
         </Search>
 
-        {/* Spacer */}
         <Box sx={{ flexGrow: 1 }} />
 
-        {/* Actions */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          {/* Balance Display */}
           {user && (
             <Box
               sx={{
@@ -179,11 +177,12 @@ const Header = () => {
                 gap: 1,
                 px: 2,
                 py: 1,
-                bgcolor: 'rgba(0, 217, 184, 0.1)',
-                borderRadius: 2,
-                fontWeight: 600,
+                bgcolor: isDark ? alpha(theme.palette.primary.main, 0.15) : alpha(theme.palette.primary.main, 0.06),
+                borderRadius: '9999px',
+                fontWeight: 700,
                 fontSize: '14px',
-                color: '#00d9b8',
+                color: 'primary.main',
+                fontFamily: 'Manrope, sans-serif',
               }}
             >
               <AccountBalanceWalletIcon sx={{ fontSize: 20 }} />
@@ -191,7 +190,10 @@ const Header = () => {
             </Box>
           )}
 
-          {/* New Shipment Button */}
+          <IconButton onClick={toggleTheme} sx={{ color: 'text.secondary' }}>
+            {isDark ? <LightModeIcon /> : <DarkModeIcon />}
+          </IconButton>
+
           <Button
             variant="contained"
             color="primary"
@@ -199,10 +201,10 @@ const Header = () => {
             component={RouterLink}
             to="/create"
             sx={{
-              borderRadius: 2.5,
+              borderRadius: 3,
               px: 3,
               py: 1.5,
-              fontWeight: 600,
+              fontWeight: 700,
               textTransform: 'none',
               fontSize: '14px',
             }}
@@ -210,12 +212,11 @@ const Header = () => {
             New Shipment
           </Button>
 
-          {/* User Menu */}
           <UserIconWrapper onClick={handleOpenUserMenu}>
             {user?.avatar ? (
-              <Avatar alt={user?.name} src={user?.avatar} sx={{ width: 38, height: 38 }} />
+              <Avatar alt={user?.name} src={user?.avatar} sx={{ width: 38, height: 38, borderRadius: '12px' }} />
             ) : (
-              <PersonIcon sx={{ color: '#9ca3af', fontSize: 20 }} />
+              <PersonIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
             )}
           </UserIconWrapper>
           <Menu

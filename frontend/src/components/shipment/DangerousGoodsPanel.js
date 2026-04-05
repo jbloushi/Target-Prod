@@ -1,8 +1,9 @@
 import React from 'react';
 import {
-    Paper, Box, Typography, FormControlLabel, Switch, Collapse, Grid, TextField, FormControl, InputLabel, Select, MenuItem, Alert
+    Box, Typography, FormControlLabel, Switch, Collapse, Grid, TextField, FormControl, InputLabel, Select, MenuItem, Alert, alpha, useTheme, Stack
 } from '@mui/material';
 import WarningIcon from '@mui/icons-material/Warning';
+import BusinessCenterIcon from '@mui/icons-material/BusinessCenter';
 
 const DG_TYPES = [
     { label: 'Standard/Manual', code: '', serviceCode: '', contentId: '', hazard: '', psn: '' },
@@ -24,6 +25,7 @@ const DG_LIMITS = {
 };
 
 const DangerousGoodsPanel = ({ dangerousGoods, setDangerousGoods }) => {
+    const theme = useTheme();
     const handleChange = (field, value) => {
         const prev = dangerousGoods || {};
         let next = { ...prev };
@@ -74,20 +76,31 @@ const DangerousGoodsPanel = ({ dangerousGoods, setDangerousGoods }) => {
     if ((dangerousGoods.customDescription || '').length > DG_LIMITS.customDescription) warnings.push(`DG Marks & Instructions exceeds ${DG_LIMITS.customDescription} characters.`);
 
     return (
-        <Paper sx={{
-            p: 2, mb: 3,
-            border: dangerousGoods.contains ? '1px solid' : '1px solid transparent',
-            borderColor: 'error.main',
-            bgcolor: dangerousGoods.contains ? 'rgba(211, 47, 47, 0.08)' : 'background.paper',
-            transition: 'all 0.3s ease'
-        }}>
+        <Box 
+            sx={{ 
+                p: 4, mb: 4, 
+                bgcolor: dangerousGoods.contains ? alpha(theme.palette.error.main, 0.05) : 'surface-container-low', 
+                borderRadius: 6,
+                border: '1px solid',
+                borderColor: dangerousGoods.contains ? 'error.main' : 'transparent',
+                transition: 'var(--transition-base)'
+            }}
+        >
             <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box display="flex" alignItems="center" gap={1}>
-                    <WarningIcon color={dangerousGoods.contains ? "error" : "action"} />
-                    <Typography variant="subtitle1" fontWeight="bold" color={dangerousGoods.contains ? "error.main" : "text.primary"}>
-                        Dangerous Goods Declaration
-                    </Typography>
-                </Box>
+                <Stack direction="row" alignItems="center" spacing={2.5}>
+                    <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: dangerousGoods.contains ? alpha(theme.palette.error.main, 0.1) : alpha(theme.palette.primary.main, 0.1), color: dangerousGoods.contains ? 'error.main' : 'primary.main', display: 'flex' }}>
+                        <WarningIcon />
+                    </Box>
+                    <Box>
+                        <Typography variant="h5" fontWeight="800" sx={{ letterSpacing: '-0.02em' }}>
+                            Dangerous Goods Declaration
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" fontWeight="700">
+                            Regulatory validation for hazardous assets
+                        </Typography>
+                    </Box>
+                </Stack>
+                
                 <FormControlLabel
                     control={
                         <Switch
@@ -96,65 +109,66 @@ const DangerousGoodsPanel = ({ dangerousGoods, setDangerousGoods }) => {
                             color="error"
                         />
                     }
-                    label={dangerousGoods.contains ? "Yes, Contains DG" : "No, Standard Cargo"}
+                    label={<Typography variant="body2" fontWeight="800" color="text.secondary">Asset requires DGR handling</Typography>}
+                    labelPlacement="start"
+                    sx={{ gap: 2 }}
                 />
             </Box>
 
             <Collapse in={dangerousGoods.contains}>
-                <Box mt={2}>
-                    <Grid container spacing={2}>
+                <Box mt={5} className="slide-up">
+                    <Grid container spacing={3}>
                         <Grid item xs={12}>
-                            <FormControl fullWidth size="small" color="error">
-                                <InputLabel>Standard DG Type (Quick Select)</InputLabel>
-                                <Select
-                                    label="Standard DG Type (Quick Select)"
-                                    onChange={handleTypeChange}
-                                    defaultValue=""
-                                >
-                                    {DG_TYPES.map(t => (
-                                        <MenuItem key={t.label} value={t.label}>{t.label}</MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
+                            <Box sx={{ mb: 2, p: 3, borderRadius: 4, bgcolor: 'surface-container-high', display: 'flex', alignItems: 'center', gap: 2 }}>
+                                <BusinessCenterIcon color="error" />
+                                <Box flex={1}>
+                                    <FormControl fullWidth size="small" variant="standard">
+                                        <InputLabel sx={{ fontWeight: 800, color: 'error.main' }}>Logistics Template (Quick Select)</InputLabel>
+                                        <Select
+                                            onChange={handleTypeChange}
+                                            defaultValue=""
+                                            disableUnderline
+                                        >
+                                            {DG_TYPES.map(t => (
+                                                <MenuItem key={t.label} value={t.label}>{t.label}</MenuItem>
+                                            ))}
+                                        </Select>
+                                    </FormControl>
+                                </Box>
+                            </Box>
                         </Grid>
 
                         <Grid item xs={12} md={4}>
                             <TextField
                                 fullWidth
-                                label="UN/ID Code"
+                                label="UN/ID Primary Code"
                                 value={dangerousGoods.code || ''}
                                 onChange={(e) => handleChange('code', e.target.value)}
-                                color="error"
+                                error={(dangerousGoods.code || '').length > DG_LIMITS.code}
                                 placeholder="1266"
-                                size="small"
-                                helperText={`${(dangerousGoods.code || '').length}/${DG_LIMITS.code}`}
-                                InputProps={{ startAdornment: <Typography color="text.secondary" variant="caption" mr={1}>UN/ID</Typography> }}
+                                helperText="4-digit regulatory code"
                             />
                         </Grid>
 
                         <Grid item xs={12} md={4}>
                             <TextField
                                 fullWidth
-                                label="DGR Service Code"
+                                label="Logistics Service Code"
                                 value={dangerousGoods.serviceCode || ''}
                                 onChange={(e) => handleChange('serviceCode', e.target.value)}
-                                color="error"
                                 placeholder="HE"
-                                size="small"
-                                helperText="2 chars, e.g. HE, HV, HK"
+                                helperText="HE, HV, HK, or HA"
                             />
                         </Grid>
 
                         <Grid item xs={12} md={4}>
                             <TextField
                                 fullWidth
-                                label="DGR Content ID"
+                                label="Internal Content ID"
                                 value={dangerousGoods.contentId || ''}
                                 onChange={(e) => handleChange('contentId', e.target.value)}
-                                color="error"
                                 placeholder="910"
-                                size="small"
-                                helperText={`${(dangerousGoods.contentId || '').length}/${DG_LIMITS.contentId}`}
+                                helperText="Route-specific DGR identifier"
                             />
                         </Grid>
 
@@ -162,28 +176,26 @@ const DangerousGoodsPanel = ({ dangerousGoods, setDangerousGoods }) => {
                             <Grid item xs={12} md={6}>
                                 <TextField
                                     fullWidth
-                                    label="Dry Ice Weight (kg)"
+                                    label="Cryogenic Dry Ice Weight (kg)"
                                     type="number"
                                     value={dangerousGoods.dryIceWeight || ''}
                                     onChange={(e) => handleChange('dryIceWeight', e.target.value)}
-                                    color="error"
                                     placeholder="1.0"
-                                    size="small"
                                 />
                             </Grid>
                         )}
 
                         <Grid item xs={12} md={4}>
-                            <FormControl fullWidth size="small" color="error">
-                                <InputLabel>Packing Group</InputLabel>
+                            <FormControl fullWidth size="small">
+                                <InputLabel>Packing Sensitivity Group</InputLabel>
                                 <Select
                                     value={dangerousGoods.packingGroup || 'II'}
-                                    label="Packing Group"
+                                    label="Packing Sensitivity Group"
                                     onChange={(e) => handleChange('packingGroup', e.target.value)}
                                 >
-                                    <MenuItem value="I">I (High Danger)</MenuItem>
-                                    <MenuItem value="II">II (Medium Danger)</MenuItem>
-                                    <MenuItem value="III">III (Low Danger)</MenuItem>
+                                    <MenuItem value="I">Group I (Extreme Sensitivity)</MenuItem>
+                                    <MenuItem value="II">Group II (Medium Sensitivity)</MenuItem>
+                                    <MenuItem value="III">Group III (Low Sensitivity)</MenuItem>
                                 </Select>
                             </FormControl>
                         </Grid>
@@ -191,25 +203,21 @@ const DangerousGoodsPanel = ({ dangerousGoods, setDangerousGoods }) => {
                         <Grid item xs={12} md={4}>
                             <TextField
                                 fullWidth
-                                label="Hazard Class"
+                                label="Primary Hazard Class"
                                 value={dangerousGoods.hazardClass || ''}
                                 onChange={(e) => handleChange('hazardClass', e.target.value)}
-                                color="error"
                                 placeholder="e.g. 3"
-                                size="small"
-                                helperText="e.g. 3, 9"
+                                helperText="Regulatory Class (1-9)"
                             />
                         </Grid>
 
                         <Grid item xs={12} md={4}>
                             <TextField
                                 fullWidth
-                                label="Proper Shipping Name"
+                                label="Proper International Shipping Name"
                                 value={dangerousGoods.properShippingName || ''}
                                 onChange={(e) => handleChange('properShippingName', e.target.value)}
-                                color="error"
                                 placeholder="e.g. PERFUMERY PRODUCTS"
-                                size="small"
                                 error={(dangerousGoods.properShippingName || '').length > DG_LIMITS.properShippingName}
                                 helperText={`${(dangerousGoods.properShippingName || '').length}/${DG_LIMITS.properShippingName}`}
                             />
@@ -218,29 +226,28 @@ const DangerousGoodsPanel = ({ dangerousGoods, setDangerousGoods }) => {
                         <Grid item xs={12}>
                             <TextField
                                 fullWidth
-                                label="DG Marks & Instructions"
+                                label="Detailed Declaration Instruction"
                                 multiline
-                                rows={2}
+                                rows={3}
                                 value={dangerousGoods.customDescription || ''}
                                 onChange={(e) => handleChange('customDescription', e.target.value)}
-                                color="error"
-                                placeholder="Additional details for the declaration..."
-                                size="small"
+                                placeholder="Enter specific hazardous handling instructions..."
                                 error={(dangerousGoods.customDescription || '').length > DG_LIMITS.customDescription}
                                 helperText={`${(dangerousGoods.customDescription || '').length}/${DG_LIMITS.customDescription}`}
                             />
                         </Grid>
                     </Grid>
+
                     {warnings.length > 0 && (
-                        <Alert severity="warning" sx={{ mt: 2 }}>
+                        <Alert severity="warning" variant="outlined" sx={{ mt: 4, borderRadius: 4 }}>
                             {warnings.map((warning) => (
-                                <Typography key={warning} variant="body2">• {warning}</Typography>
+                                <Typography key={warning} variant="caption" display="block">• {warning}</Typography>
                             ))}
                         </Alert>
                     )}
                 </Box>
             </Collapse>
-        </Paper>
+        </Box>
     );
 };
 

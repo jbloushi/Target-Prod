@@ -1,52 +1,56 @@
-#!/usr/bin/env node
-
-/**
- * Security Secrets Generator for 3PLogistics-Solution
- * 
- * This script generates secure random secrets for production deployment.
- * Run this before deploying to production to get secure credentials.
- */
-
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
-console.log('\n==============================================');
-console.log('🔐 Security Secrets Generator');
-console.log('==============================================\n');
+function generateSecret(length = 32) {
+    return crypto.randomBytes(length).toString('hex');
+}
 
-// Generate JWT Secret (64 bytes = 128 hex characters)
-const jwtSecret = crypto.randomBytes(64).toString('hex');
+function updateEnvFile(envPath, secrets) {
+    if (!fs.existsSync(envPath)) {
+        console.log(`[WARN] .env file not found at ${envPath}. Creating new one...`);
+        fs.writeFileSync(envPath, '');
+    }
 
-// Generate MongoDB Root Password (32 bytes = 64 hex characters)
-const mongoPassword = crypto.randomBytes(32).toString('hex');
+    let content = fs.readFileSync(envPath, 'utf8');
+    let updated = false;
 
-// Generate a simpler password option (24 characters, alphanumeric)
-const simplePassword = crypto.randomBytes(18).toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 24);
+    for (const [key, value] of Object.entries(secrets)) {
+        const regex = new RegExp(`^${key}=.*`, 'm');
+        if (regex.test(content)) {
+            // Only update if it contains 'changeme' or is empty
+            if (content.match(new RegExp(`^${key}=.*(changeme|placeholder|TODO).*`, 'm'))) {
+                content = content.replace(regex, `${key}=${value}`);
+                console.log(`[INFO] Updated ${key} with a secure random value.`);
+                updated = true;
+            } else {
+                console.log(`[SKIP] ${key} already has a custom value. Skipping.`);
+            }
+        } else {
+            content += `\n${key}=${value}`;
+            console.log(`[INFO] Added ${key} with a secure random value.`);
+            updated = true;
+        }
+    }
 
-console.log('📋 Generated Secrets:\n');
-console.log('1. JWT_SECRET (for backend/.env):');
-console.log('   ' + jwtSecret);
-console.log('');
+    if (updated) {
+        fs.writeFileSync(envPath, content.trim() + '\n');
+        console.log(`[SUCCESS] .env file updated at ${envPath}`);
+    } else {
+        console.log(`[OK] No changes needed for .env`);
+    }
+}
 
-console.log('2. MONGO_ROOT_PASSWORD (strong, 64 characters):');
-console.log('   ' + mongoPassword);
-console.log('');
+const rootEnv = path.join(__dirname, '../.env');
+const backendEnv = path.join(__dirname, '../backend/.env');
 
-console.log('3. MONGO_ROOT_PASSWORD (simpler, 24 characters):');
-console.log('   ' + simplePassword);
-console.log('');
+const secrets = {
+    JWT_SECRET: generateSecret(32),
+    ENCRYPTION_KEY: generateSecret(32),
+    DB_PASSWORD: generateSecret(16)
+};
 
-console.log('==============================================');
-console.log('📝 Next Steps:');
-console.log('==============================================\n');
-
-console.log('1. Copy backend/.env.production.example to backend/.env');
-console.log('2. Replace JWT_SECRET with the value above');
-console.log('3. Update MONGO_URI password with one of the MongoDB passwords above');
-console.log('4. Update .env in root directory with the same MongoDB password');
-console.log('5. Replace DHL API credentials with your own from https://developer.dhl.com/');
-console.log('6. Replace Google Maps API key from https://console.cloud.google.com/');
-console.log('7. Set CORS_ORIGIN to your actual domain(s)');
-console.log('');
-
-console.log('⚠️  IMPORTANT: Never commit .env files to Git!');
-console.log('✅ These secrets are cryptographically secure and safe for production.\n');
+console.log('--- Secure Secret Generator ---');
+updateEnvFile(rootEnv, secrets);
+updateEnvFile(backendEnv, secrets);
+console.log('-------------------------------');

@@ -1,8 +1,7 @@
-const Shipment = require('../models/shipment.model');
+const { prisma } = require('../config/database');
 const PricingService = require('./pricing.service');
 const CarrierFactory = require('./CarrierFactory');
 const logger = require('../utils/logger');
-const User = require('../models/user.model');
 const { generateDraftTrackingNumber } = require('../utils/shipmentUtils');
 
 class ShipmentDraftService {
@@ -10,16 +9,22 @@ class ShipmentDraftService {
     /**
      * Creates a Shipment Draft with Pricing Snapshot.
      * @param {Object} data - Raw shipment data from controller
-     * @param {Object} user - The requesting user
+     * @param {Object} user - The requesting user (logged in user)
      * @returns {Object} Created Shipment
      */
     async createDraft(data, user) {
-        // 1. Determine Target User (Paying Entity)
-        let targetUserId = user._id;
+        // 1. Determine Target User (The paying entity/owner)
+        let targetUserId = user.id;
         if (['staff', 'admin'].includes(user.role) && data.userId) {
             targetUserId = data.userId;
         }
-        const targetUser = await User.findById(targetUserId).populate('organization');
+
+        // Fetch target user with organization details via Prisma
+        const targetUser = await prisma.user.findUnique({
+            where: { id: targetUserId },
+            include: { organization: true }
+        });
+        
         if (!targetUser) throw new Error('Target user not found');
 
         // 2. Sanitize & Normalize Data
@@ -48,7 +53,7 @@ class ShipmentDraftService {
                 data.currency || 'KWD',
                 source
             );
-            // Override total if provided manually (TRUSTED sources only? For now, mimicking legacy)
+            // Override total if provided manually (TRUSTED sources only)
             if (data.price) snapshot.totalPrice = Number(data.price);
         }
 
@@ -56,49 +61,88 @@ class ShipmentDraftService {
         const trackingNumber = data.trackingNumber || generateDraftTrackingNumber();
         const estimatedDelivery = data.estimatedDelivery || new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
 
-        // 4. Create Shipment
-        const shipmentData = {
-            ...cleanData,
-            trackingNumber,
-            estimatedDelivery,
-            currentLocation: cleanData.origin, // Initial location is origin
-            user: targetUserId,
-            organization: targetUser.organization?._id || targetUser.organization,
-            status: cleanData.status || 'ready_for_pickup',
-            pricingSnapshot: snapshot,
+        // 4. Create Shipment in MySQL
+        const shipment = await prisma.shipment.create({
+            data: {
+                trackingNumber,
+                status: cleanData.status || 'ready_for_pickup',
+                serviceCode: cleanData.serviceCode || 'P',
+                carrierCode: cleanData.carrierCode || 'DGR',
+                
+                // Address & Customer Info (JSON)
+                origin: { 
+                    ...cleanData.origin, 
+                    customer: cleanData.customer,
+                    packagingType: cleanData.packagingType || 'user',
+                    incoterm: cleanData.incoterm || 'DAP',
+                    shipperAccount: cleanData.shipperAccount,
+                    payerOfVat: cleanData.payerOfVat || 'receiver',
+                    gstPaid: cleanData.gstPaid || false,
+                    palletCount: cleanData.palletCount || 0,
+                    packageMarks: cleanData.packageMarks || '',
+                    labelSettings: cleanData.labelSettings || { format: 'pdf' },
+                    dangerousGoods: cleanData.dangerousGoods || { contains: false }
+                },
+                destination: cleanData.destination,
+                currentLocation: cleanData.origin,
+                
+                // Content Info (JSON)
+                items: cleanData.items,
+                parcels: cleanData.parcels || [],
+                
+                // Financials
+                price: snapshot.totalPrice,
+                costPrice: snapshot.carrierRate,
+                markupAmount: snapshot.markup, // Mapped to markupAmount natively
+                currency: cleanData.currency || snapshot.currency,
+                pricingSnapshot: snapshot,
+                
+                // Relations
+                userId: targetUserId,
+                organizationId: targetUser.organizationId,
 
-            // Legacy fields for compatibility (read-only for client)
-            price: snapshot.totalPrice,
-            costPrice: snapshot.carrierRate,
-            markup: snapshot.markup,
-            currency: cleanData.currency || snapshot.currency,
+                // Metadata
+                shipmentType: cleanData.shipmentType || 'package',
+                estimatedDelivery: estimatedDelivery ? new Date(estimatedDelivery) : null,
+                
+                // Arrays (JSON)
+                history: [
+                    {
+                        status: cleanData.status || 'draft',
+                        description: 'Shipment draft created',
+                        timestamp: new Date(),
+                        location: cleanData.origin
+                    }
+                ],
+                bookingAttempts: [],
+                documents: []
+            }
+        });
 
-            // Initialize empty arrays
-            bookingAttempts: [],
-            documents: []
-        };
-
-        const shipment = new Shipment(shipmentData);
-        logger.debug(`ShipmentDraftService: Draft created with Tracking ${trackingNumber}, Org: ${shipmentData.organization}`);
-        await shipment.save();
+        logger.debug(`ShipmentDraftService: Draft created with Tracking ${trackingNumber}, Org: ${targetUser.organizationId}`);
 
         // 5. Accounting: Record Initial Snapshot (0-amount audit trail)
-        if (shipment.organization && snapshot.totalPrice > 0) {
-            const financeLedgerService = require('./financeLedger.service');
-            await financeLedgerService.createLedgerEntry(shipment.organization, {
-                sourceRepo: 'Shipment',
-                sourceId: shipment._id,
-                amount: 0,
-                entryType: 'DEBIT',
-                category: 'SHIPMENT_CHARGE',
-                description: `Initial Pre-booking Snapshot: ${trackingNumber} (Price: ${snapshot.totalPrice})`,
-                reference: trackingNumber,
-                createdBy: user?._id,
-                metadata: {
-                    event: 'DRAFT_CREATION',
-                    price: snapshot.totalPrice.toString()
-                }
-            });
+        if (shipment.organizationId && snapshot.totalPrice > 0) {
+            try {
+                const financeLedgerService = require('./financeLedger.service');
+                await financeLedgerService.createLedgerEntry(shipment.organizationId, {
+                    sourceRepo: 'Shipment',
+                    sourceId: shipment.id,
+                    amount: 0,
+                    entryType: 'DEBIT',
+                    category: 'SHIPMENT_CHARGE',
+                    description: `Initial Pre-booking Snapshot: ${trackingNumber} (Price: ${snapshot.totalPrice})`,
+                    reference: trackingNumber,
+                    createdBy: user.id,
+                    metadata: {
+                        event: 'DRAFT_CREATION',
+                        price: snapshot.totalPrice.toString()
+                    }
+                });
+            } catch (ledgeError) {
+                logger.error('Failed to create initial ledger entry for draft:', ledgeError);
+                // We don't throw here to avoid failing the whole draft creation for an audit log
+            }
         }
 
         return shipment;
@@ -108,7 +152,7 @@ class ShipmentDraftService {
      * Fetches fresh rates from carrier and creates a pricing snapshot.
      */
     async getSecurePricing(data, user) {
-        const serviceCode = data.serviceCode || 'P'; // Default key
+        const serviceCode = data.serviceCode || 'P';
         const carrierCode = data.carrierCode || 'DGR';
 
         // 1. Call Carrier
@@ -121,10 +165,9 @@ class ShipmentDraftService {
             throw new Error(`Service ${serviceCode} not available from ${carrierCode}`);
         }
 
-        const selectedOptionalServices = Array.isArray(data.optionalServices) ? data.optionalServices : [];
         const selectedOptionalCodes = new Set(
-            selectedOptionalServices
-                .map(service => service?.serviceCode)
+            (data.optionalServiceCodes || [])
+                .map(code => String(code))
                 .filter(Boolean)
         );
 
@@ -138,7 +181,6 @@ class ShipmentDraftService {
             }));
 
         const { Decimal } = require('decimal.js');
-
         const optionalServicesTotal = optionalServices.reduce((sum, service) => {
             return sum.plus(new Decimal(service.totalPrice || 0));
         }, new Decimal(0));
@@ -212,7 +254,7 @@ class ShipmentDraftService {
 
         const items = (rawItems || []).map(item => ({
             ...item,
-            currency: currency // Force consistency
+            currency: currency
         }));
 
         return {

@@ -1,6 +1,14 @@
-const User = require('../models/user.model');
+const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
+const { compareApiKey } = require('../utils/security');
 
+/**
+ * Middleware: Validate x-api-key header and attach user context
+ * 
+ * @security Uses HMAC-SHA256 + timingSafeEqual instead of bcrypt for:
+ *   - Constant-time comparison (timing-attack resistant)
+ *   - ~200x faster than bcrypt (~0.01ms vs ~200ms per request)
+ */
 exports.validateApiKey = async (req, res, next) => {
     try {
         const apiKey = req.headers['x-api-key'];
@@ -17,28 +25,39 @@ exports.validateApiKey = async (req, res, next) => {
 
         const userId = parts[0];
 
-        // Find user with this API key
-        // Note: In real prod, this should be cached (Redis) to avoid DB hit on every request
-        // For Phase 1, DB query is acceptable
-        const user = await User.findOne({ _id: userId, active: true }).select('+apiKeyHash');
+        // Find user with this API key from MySQL via Prisma
+        const user = await prisma.user.findUnique({
+            where: { id: userId, active: true },
+            select: {
+                id: true,
+                role: true,
+                organizationId: true,
+                apiKeyHash: true,
+                active: true
+            }
+        });
 
         if (!user || !user.apiKeyHash) {
             return res.status(401).json({ success: false, error: 'Invalid API Key' });
         }
 
-        const bcrypt = require('bcryptjs');
-        const isMatch = await bcrypt.compare(apiKey, user.apiKeyHash);
-
+        // Verify using HMAC-SHA256 with constant-time comparison
+        const isMatch = compareApiKey(apiKey, user.apiKeyHash);
         if (!isMatch) {
             return res.status(401).json({ success: false, error: 'Invalid API Key' });
         }
 
         // Attach user to request
         req.user = user;
-        req.isExternalApi = true; // Flag for controllers to know context
+        req.isExternalApi = true; // Context flag
 
+        // Inject RequestContext for multi-tenancy support
         const requestContext = require('../utils/RequestContext');
-        requestContext.run({ organizationId: user.organization, role: user.role, userId: user._id }, () => {
+        requestContext.run({ 
+            organizationId: user.organizationId, 
+            role: user.role, 
+            userId: user.id 
+        }, () => {
             next();
         });
     } catch (error) {
@@ -46,3 +65,4 @@ exports.validateApiKey = async (req, res, next) => {
         res.status(500).json({ success: false, error: 'Authentication failed' });
     }
 };
+

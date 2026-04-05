@@ -1,39 +1,32 @@
-const PickupRequest = require('../models/pickupRequest.model');
-const Shipment = require('../models/shipment.model');
+const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
 
 // POST /api/client/pickups
 exports.createPickup = async (req, res) => {
     try {
-        // Reuse logic but stricter validation for API
         const { sender, receiver, parcels, serviceCode, requestedPickupDate, pickupInstructions } = req.body;
 
         if (!sender || !receiver || !parcels || !requestedPickupDate) {
             return res.status(400).json({ success: false, error: 'Missing required fields' });
         }
 
-        const newRequest = await PickupRequest.create({
-            client: req.user._id,
-            sender,
-            receiver,
-            parcels,
-            serviceCode: serviceCode || 'P',
-            requestedPickupDate,
-            pickupInstructions,
-            status: 'REQUESTED',
-            auditLog: [{
-                action: 'CREATED',
-                actor: req.user._id,
-                metadata: { source: 'EXTERNAL_API' }
-            }]
+        const newRequest = await prisma.pickupRequest.create({
+            data: {
+                userId: req.user.id,
+                organizationId: req.user.organizationId,
+                pickupLocation: sender, // Simplified mapping as per schema 
+                pickupTime: new Date(requestedPickupDate),
+                notes: pickupInstructions || '',
+                status: 'REQUESTED'
+            }
         });
 
         res.status(201).json({
             success: true,
             data: {
-                id: newRequest._id,
+                id: newRequest.id,
                 status: newRequest.status,
-                trackingNumber: null, // No tracking until approved
+                trackingNumber: null,
                 createdAt: newRequest.createdAt
             }
         });
@@ -46,21 +39,21 @@ exports.createPickup = async (req, res) => {
 // GET /api/client/pickups/:id
 exports.getPickupStatus = async (req, res) => {
     try {
-        const request = await PickupRequest.findOne({
-            _id: req.params.id,
-            client: req.user._id
-        }).populate('shipment', 'trackingNumber status labelUrl awbUrl invoiceUrl');
+        const request = await prisma.pickupRequest.findUnique({
+            where: { id: req.params.id },
+            include: { shipment: true }
+        });
 
-        if (!request) {
+        if (!request || request.userId !== req.user.id) {
             return res.status(404).json({ success: false, error: 'Pickup Request not found' });
         }
 
         res.status(200).json({
             success: true,
             data: {
-                id: request._id,
+                id: request.id,
                 status: request.status,
-                rejectionReason: request.rejectionReason,
+                rejectionReason: request.notes,
                 shipment: request.shipment ? {
                     trackingNumber: request.shipment.trackingNumber,
                     status: request.shipment.status,
@@ -81,13 +74,11 @@ exports.getShipmentStatus = async (req, res) => {
     try {
         const { id } = req.params;
 
-        // Find shipment belonging to this client (by user or by reference)
-        const shipment = await Shipment.findOne({
-            trackingNumber: id,
-            user: req.user._id
+        const shipment = await prisma.shipment.findUnique({
+            where: { trackingNumber: id }
         });
 
-        if (!shipment) {
+        if (!shipment || shipment.userId !== req.user.id) {
             return res.status(404).json({ success: false, error: 'Shipment not found' });
         }
 
@@ -108,31 +99,27 @@ exports.getShipmentStatus = async (req, res) => {
     }
 };
 
-
-
 // GET /api/client/shipments/:id/tracking (Unified)
 exports.getUnifiedTracking = async (req, res) => {
     try {
         const { id } = req.params;
-        const shipment = await Shipment.findOne({
-            trackingNumber: id,
-            user: req.user._id
+        const shipment = await prisma.shipment.findUnique({
+            where: { trackingNumber: id }
         });
 
-        if (!shipment) {
+        if (!shipment || shipment.userId !== req.user.id) {
             return res.status(404).json({ success: false, error: 'Shipment not found' });
         }
 
-        // Start with internal events
-        let unifiedEvents = shipment.history.map(h => ({
+        const history = Array.isArray(shipment.history) ? shipment.history : [];
+        let unifiedEvents = history.map(h => ({
             status: h.status,
             description: h.description,
             location: h.location?.formattedAddress || 'Unknown',
-            timestamp: new Date(h.timestamp), // Ensure Date object
+            timestamp: new Date(h.timestamp), 
             source: 'INTERNAL'
         }));
 
-        // Fetch DHL events if applicable
         if (shipment.dhlConfirmed && shipment.dhlTrackingNumber) {
             try {
                 const carrier = require('../services/CarrierFactory').getAdapter('DHL');
@@ -142,18 +129,16 @@ exports.getUnifiedTracking = async (req, res) => {
                         status: e.statusCode,
                         description: e.description,
                         location: e.location,
-                        timestamp: new Date(e.timestamp), // Ensure Date object
+                        timestamp: new Date(e.timestamp), 
                         source: 'DHL'
                     }));
                     unifiedEvents = [...unifiedEvents, ...dhlEvents];
                 }
             } catch (dhlError) {
                 logger.warn(`Failed to fetch DHL tracking for ${shipment.trackingNumber}:`, dhlError.message);
-                // Continue with just internal events
             }
         }
 
-        // Sort by timestamp descending (newest first)
         unifiedEvents.sort((a, b) => b.timestamp - a.timestamp);
 
         res.status(200).json({

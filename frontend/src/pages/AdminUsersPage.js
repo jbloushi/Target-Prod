@@ -112,7 +112,9 @@ const AdminUsersPage = () => {
         if (!initialData.carrierConfig) initialData.carrierConfig = { preferredCarrier: 'DGR', traderType: 'business' };
         if (!initialData.markup) initialData.markup = { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 };
         if (typeof initialData.organization === 'object' && initialData.organization) {
-            initialData.organization = initialData.organization._id;
+            initialData.organizationId = initialData.organization.id;
+        } else if (initialData.organizationId) {
+            initialData.organizationId = initialData.organizationId;
         }
 
         setFormData(initialData);
@@ -125,15 +127,17 @@ const AdminUsersPage = () => {
         try {
             const payload = { ...formData };
             // Ensure numbers
-            if (payload.creditLimit) payload.creditLimit = Number(payload.creditLimit);
+            if (payload.creditLimit !== undefined) payload.creditLimit = Number(payload.creditLimit);
+            // Fix organization mapping for backend
+            if (payload.organization && !payload.organizationId) payload.organizationId = payload.organization;
             // Cleanup markup
             if (payload.markup) {
                 payload.markup.percentageValue = Number(payload.markup.percentageValue || 0);
                 payload.markup.flatValue = Number(payload.markup.flatValue || 0);
             }
 
-            if (editingUser?._id) {
-                await userService.updateUser(editingUser._id, payload);
+            if (editingUser?.id) {
+                await userService.updateUser(editingUser.id, payload);
                 enqueueSnackbar('User updated successfully', { variant: 'success' });
             } else {
                 await userService.createUser(payload);
@@ -230,7 +234,7 @@ const AdminUsersPage = () => {
                             {loading ? (
                                 <Tr><Td colSpan={7} style={{ textAlign: 'center' }}>Loading...</Td></Tr>
                             ) : users.map(user => (
-                                <Tr key={user._id}>
+                                <Tr key={user.id}>
                                     <Td>
                                         <div style={{ fontWeight: 'bold' }}>{user.name}</div>
                                         <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{user.email}</div>
@@ -274,7 +278,7 @@ const AdminUsersPage = () => {
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                                 </svg>
                                             </ActionButton>
-                                            <ActionButton $color="var(--accent-error)" onClick={() => setDeleteConfirmId(user._id)}>
+                                            <ActionButton $color="var(--accent-error)" onClick={() => setDeleteConfirmId(user.id)}>
                                                 <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                                 </svg>
@@ -338,12 +342,12 @@ const AdminUsersPage = () => {
                             </Alert>
                             <Select
                                 label="Select Organization"
-                                value={formData.organization || ''}
-                                onChange={e => updateField('organization', e.target.value)}
+                                value={formData.organizationId || formData.organization || ''}
+                                onChange={e => updateField('organizationId', e.target.value)}
                             >
                                 <option value="">-- No Organization (Solo) --</option>
                                 {organizations.map(org => (
-                                    <option key={org._id} value={org._id}>{org.name} ({org.type})</option>
+                                    <option key={org.id} value={org.id}>{org.name} ({org.type})</option>
                                 ))}
                             </Select>
                         </div>

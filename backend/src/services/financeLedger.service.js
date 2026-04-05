@@ -1,11 +1,6 @@
-const mongoose = require('mongoose');
+const { prisma } = require('../config/database');
 const { Decimal } = require('decimal.js');
-const OrganizationLedger = require('../models/organizationLedger.model');
-const Payment = require('../models/payment.model');
-const PaymentAllocation = require('../models/paymentAllocation.model');
-const Shipment = require('../models/shipment.model');
-const Organization = require('../models/organization.model');
-const User = require('../models/user.model');
+const logger = require('../utils/logger');
 
 // Initialize Decimal precision
 Decimal.set({ precision: 20, rounding: Decimal.ROUND_HALF_UP });
@@ -31,150 +26,158 @@ const getShipmentChargeAmount = (shipment) => {
     return new Decimal(0);
 };
 
+/**
+ * Calculates current organization balance from ledger history
+ */
 const getOrganizationBalance = async (organizationId) => {
-    const matchId = organizationId ? (organizationId instanceof mongoose.Types.ObjectId ? organizationId : new mongoose.Types.ObjectId(organizationId)) : null;
-    const summary = await OrganizationLedger.aggregate([
-        { $match: { organization: matchId } },
-        {
-            $group: {
-                _id: '$organization',
-                totalDebits: {
-                    $sum: {
-                        $cond: [{ $eq: ['$entryType', 'DEBIT'] }, '$amount', 0]
-                    }
-                },
-                totalCredits: {
-                    $sum: {
-                        $cond: [{ $eq: ['$entryType', 'CREDIT'] }, '$amount', 0]
-                    }
-                }
-            }
+    if (!organizationId) return 0;
+
+    const summary = await prisma.organizationLedger.aggregate({
+        where: { organizationId },
+        _sum: {
+            amount: true
         }
-    ]);
+    });
 
-    if (!summary.length) return 0;
+    // Note: This aggregation needs to split DEBIT and CREDIT. 
+    // Prisma aggregate _sum is simple. For complex splitting, we use groupBy or separate queries.
+    const debits = await prisma.organizationLedger.aggregate({
+        where: { organizationId, entryType: 'DEBIT' },
+        _sum: { amount: true }
+    });
+    const credits = await prisma.organizationLedger.aggregate({
+        where: { organizationId, entryType: 'CREDIT' },
+        _sum: { amount: true }
+    });
 
-    const debits = normalizeAmount(summary[0].totalDebits);
-    const credits = normalizeAmount(summary[0].totalCredits);
+    const dVal = normalizeAmount(debits._sum.amount || 0);
+    const cVal = normalizeAmount(credits._sum.amount || 0);
 
-    // Balance = Debits (Charges) - Credits (Payments)
-    return toApiAmount(debits.minus(credits));
+    return toApiAmount(dVal.minus(cVal));
 };
 
-const getLatestBalance = async (organizationId) => {
-    const lastEntry = await OrganizationLedger.findOne({ organization: organizationId })
-        .sort({ createdAt: -1 })
-        .select('balanceAfter');
-
-    return toApiAmount(lastEntry?.balanceAfter || 0);
-};
-
-const createLedgerEntry = async (organizationId, entry, session = null) => {
+/**
+ * Atomic creation of ledger entries with balance updates
+ */
+const createLedgerEntry = async (organizationId, entry, externalTx = null) => {
     const amount = normalizeAmount(entry.amount);
     const multiplier = entry.entryType === 'DEBIT' ? 1 : -1;
     const transactionAmount = amount.times(multiplier);
 
-    let balanceAfter = new Decimal(0);
+    const execute = async (tx) => {
+        let balanceAfter = new Decimal(0);
 
-    if (organizationId) {
-        // Update the organization balance atomically
-        // Note: MongoDB $inc works with native numbers, so we convert back for the DB operation
-        // For absolute precision, we should ideally fetch, calculate, and set, but $inc is concurrency-safe.
-        // We stick to $inc for safety, utilizing the standardized 3-decimal precision.
-        const incValue = Number(transactionAmount.toFixed(3));
+        if (organizationId) {
+            // Update the organization balance atomically in MySQL
+            const org = await tx.organization.update({
+                where: { id: organizationId },
+                data: {
+                    balance: {
+                        increment: toApiAmount(transactionAmount)
+                    }
+                }
+            });
+            balanceAfter = normalizeAmount(org.balance);
+        } else {
+            // For Solo Shippers (null org), use previous ledger entry to track balance
+            const lastEntry = await tx.organizationLedger.findFirst({
+                where: { organizationId: null },
+                orderBy: { createdAt: 'desc' }
+            });
+            balanceAfter = normalizeAmount(lastEntry?.balanceAfter || 0).plus(transactionAmount);
+        }
 
-        const org = await Organization.findOneAndUpdate(
-            { _id: organizationId },
-            { $inc: { balance: incValue } },
-            { new: true, session }
-        );
+        // Create the immutable ledger record
+        return await tx.organizationLedger.create({
+            data: {
+                organizationId: organizationId || null,
+                amount: toApiAmount(amount),
+                entryType: entry.entryType,
+                category: entry.category,
+                description: entry.description,
+                reference: entry.reference,
+                sourceRepo: entry.sourceRepo,
+                sourceId: entry.sourceId,
+                parentEntryId: entry.parentEntryId,
+                balanceAfter: toApiAmount(balanceAfter),
+                createdBy: entry.createdBy,
+                metadata: entry.metadata
+            }
+        });
+    };
 
-        if (!org) throw new Error('Organization not found for ledger entry');
-        balanceAfter = normalizeAmount(org.balance);
+    if (externalTx) {
+        return await execute(externalTx);
     } else {
-        // For Solo Shippers, we maintain a logical balance from the ledger
-        const lastEntry = await OrganizationLedger.findOne({ organization: null })
-            .sort({ createdAt: -1 })
-            .select('balanceAfter');
-
-        const currentBalance = normalizeAmount(lastEntry?.balanceAfter || 0);
-        balanceAfter = currentBalance.plus(transactionAmount);
+        return await prisma.$transaction(execute);
     }
-
-    // Create the immutable ledger record
-    const [ledgerRecord] = await OrganizationLedger.create([{
-        organization: organizationId,
-        ...entry,
-        amount: toApiAmount(amount),
-        balanceAfter: toApiAmount(balanceAfter)
-    }], { session });
-
-    return ledgerRecord;
 };
 
-/**
- * High-performance balance retrieval
- * Returns the "Credit" (cash on hand) available to the organization.
- */
 const getAccountCredit = async (organizationId) => {
-    const org = await Organization.findById(organizationId).select('unappliedBalance');
+    if (!organizationId) return 0;
+    const org = await prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { unappliedBalance: true }
+    });
     return toApiAmount(org?.unappliedBalance || 0);
 };
 
-const getAllocationTotal = async ({ organizationId, shipmentId, paymentId }) => {
-    const match = { status: 'ACTIVE' };
-    if (organizationId !== undefined) {
-        match.organization = (organizationId === null) ? null : (organizationId instanceof mongoose.Types.ObjectId ? organizationId : new mongoose.Types.ObjectId(organizationId));
-    }
-    if (shipmentId) match.shipment = shipmentId instanceof mongoose.Types.ObjectId ? shipmentId : new mongoose.Types.ObjectId(shipmentId);
-    if (paymentId) match.payment = paymentId instanceof mongoose.Types.ObjectId ? paymentId : new mongoose.Types.ObjectId(paymentId);
+const getAllocationTotal = async ({ organizationId, shipmentId, paymentId }, txClient = prisma) => {
+    const where = { status: 'ACTIVE' };
+    if (organizationId !== undefined) where.organizationId = organizationId;
+    if (shipmentId) where.shipmentId = shipmentId;
+    if (paymentId) where.paymentId = paymentId;
 
-    const allocations = await PaymentAllocation.aggregate([
-        { $match: match },
-        { $group: { _id: null, total: { $sum: '$amount' } } }
-    ]);
+    const summary = await txClient.paymentAllocation.aggregate({
+        where,
+        _sum: { amount: true }
+    });
 
-    return normalizeAmount(allocations[0]?.total || 0);
+    return normalizeAmount(summary._sum.amount || 0);
 };
 
 const getUnappliedCash = async (organizationId) => {
     if (!organizationId) {
-        // For Solo Shippers, we aggregate payments directly
-        const payments = await Payment.find({ organization: null });
-        const allocations = await PaymentAllocation.aggregate([
-            { $match: { organization: null, status: 'ACTIVE' } },
-            { $group: { _id: '$payment', total: { $sum: '$amount' } } }
-        ]);
+        // Solo Shippers aggregation
+        const payments = await prisma.payment.findMany({ where: { organizationId: null } });
+        const allocations = await prisma.paymentAllocation.groupBy({
+            by: ['paymentId'],
+            where: { organizationId: null, status: 'ACTIVE' },
+            _sum: { amount: true }
+        });
 
         const allocationMap = allocations.reduce((acc, item) => {
-            acc[item._id.toString()] = normalizeAmount(item.total);
+            acc[item.paymentId] = normalizeAmount(item._sum.amount);
             return acc;
         }, {});
 
         const totalUnapplied = payments.reduce((sum, payment) => {
             const pAmount = normalizeAmount(payment.amount);
-            const allocated = allocationMap[payment._id.toString()] || new Decimal(0);
+            const allocated = allocationMap[payment.id] || new Decimal(0);
             return sum.plus(pAmount.minus(allocated));
         }, new Decimal(0));
 
         return toApiAmount(totalUnapplied);
     }
 
-    const org = await Organization.findById(organizationId).select('unappliedBalance');
+    const org = await prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { unappliedBalance: true }
+    });
     return toApiAmount(org?.unappliedBalance || 0);
 };
 
-const getShipmentAccounting = async (shipmentId, session = null) => {
-    const shipment = await Shipment.findById(shipmentId).session(session);
+const getShipmentAccounting = async (shipmentId, txClient = prisma) => {
+    const shipment = await txClient.shipment.findUnique({ where: { id: shipmentId } });
     if (!shipment) return null;
 
     const totalCharge = getShipmentChargeAmount(shipment);
-    const allocated = await getAllocationTotal({ shipmentId });
+    const allocated = await getAllocationTotal({ shipmentId }, txClient);
     const remaining = totalCharge.minus(allocated);
     const daysOutstanding = Math.floor((Date.now() - new Date(shipment.createdAt).getTime()) / (1000 * 60 * 60 * 24));
 
     let status = 'unpaid';
-    if (allocated > 0 && remaining.gt(0)) status = 'partial';
+    if (allocated.gt(0) && remaining.gt(0)) status = 'partial';
     if (remaining.lte(0.001) && totalCharge.gt(0)) status = 'paid';
     if (remaining.gt(0) && daysOutstanding > 30) status = 'overdue';
 
@@ -189,62 +192,34 @@ const getShipmentAccounting = async (shipmentId, session = null) => {
 };
 
 const getAgingReport = async (organizationId) => {
-    const now = new Date();
     const buckets = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
-
-    const agingData = await Shipment.aggregate([
-        { $match: { organization: organizationId ? (organizationId instanceof mongoose.Types.ObjectId ? organizationId : new mongoose.Types.ObjectId(organizationId)) : null } },
-        {
-            $lookup: {
-                from: 'paymentallocations',
-                localField: '_id',
-                foreignField: 'shipment',
-                as: 'allocations'
+    
+    // Fetch shipments with their active allocations via Prisma
+    const shipments = await prisma.shipment.findMany({
+        where: { organizationId: organizationId || null },
+        include: {
+            allocations: {
+                where: { status: 'ACTIVE' }
             }
-        },
-        {
-            $addFields: {
-                totalAllocated: {
-                    $sum: {
-                        $map: {
-                            input: {
-                                $filter: {
-                                    input: '$allocations',
-                                    as: 'a',
-                                    cond: { $eq: ['$$a.status', 'ACTIVE'] }
-                                }
-                            },
-                            as: 'f',
-                            in: '$$f.amount'
-                        }
-                    }
-                },
-                totalCharge: { $ifNull: ['$pricingSnapshot.totalPrice', '$price'] }
-            }
-        },
-        {
-            $addFields: {
-                remaining: { $subtract: ['$totalCharge', '$totalAllocated'] },
-                daysOld: {
-                    $divide: [
-                        { $subtract: [now, '$createdAt'] },
-                        1000 * 60 * 60 * 24
-                    ]
-                }
-            }
-        },
-        { $match: { remaining: { $gt: 0.001 } } }
-    ]);
+        }
+    });
 
     let totalUnpaid = new Decimal(0);
+    const now = new Date();
 
-    for (const item of agingData) {
-        const remaining = normalizeAmount(item.remaining);
+    for (const shipment of shipments) {
+        const totalCharge = getShipmentChargeAmount(shipment);
+        const totalAllocated = shipment.allocations.reduce((sum, a) => sum.plus(normalizeAmount(a.amount)), new Decimal(0));
+        const remaining = totalCharge.minus(totalAllocated);
+
+        if (remaining.lte(0.001)) continue;
+
         totalUnpaid = totalUnpaid.plus(remaining);
+        const daysOld = Math.floor((now - new Date(shipment.createdAt)) / (1000 * 60 * 60 * 24));
 
-        if (item.daysOld <= 30) buckets['0-30'] = toApiAmount(normalizeAmount(buckets['0-30']).plus(remaining));
-        else if (item.daysOld <= 60) buckets['31-60'] = toApiAmount(normalizeAmount(buckets['31-60']).plus(remaining));
-        else if (item.daysOld <= 90) buckets['61-90'] = toApiAmount(normalizeAmount(buckets['61-90']).plus(remaining));
+        if (daysOld <= 30) buckets['0-30'] = toApiAmount(normalizeAmount(buckets['0-30']).plus(remaining));
+        else if (daysOld <= 60) buckets['31-60'] = toApiAmount(normalizeAmount(buckets['31-60']).plus(remaining));
+        else if (daysOld <= 90) buckets['61-90'] = toApiAmount(normalizeAmount(buckets['61-90']).plus(remaining));
         else buckets['90+'] = toApiAmount(normalizeAmount(buckets['90+']).plus(remaining));
     }
 
@@ -252,16 +227,12 @@ const getAgingReport = async (organizationId) => {
 };
 
 const getOrganizationOverview = async (organizationId, creditLimit = 0) => {
-    const balance = await getOrganizationBalance(organizationId);
-    const unappliedCash = await getUnappliedCash(organizationId);
+    const [balance, unappliedCash, aging] = await Promise.all([
+        getOrganizationBalance(organizationId),
+        getUnappliedCash(organizationId),
+        getAgingReport(organizationId)
+    ]);
 
-    // Re-sync shipment financial fields to ensure UI reflects correct statuses (for legacy data)
-    await syncOrganizationShipmentFinancials(organizationId);
-
-    // Standardized AR Aging
-    const { totalUnpaid, buckets } = await getAgingReport(organizationId);
-
-    // Decimal arithmetic for available credit
     const limit = normalizeAmount(creditLimit);
     const bal = normalizeAmount(balance);
     const availableCredit = toApiAmount(limit.minus(bal));
@@ -271,158 +242,201 @@ const getOrganizationOverview = async (organizationId, creditLimit = 0) => {
         creditLimit: toApiAmount(limit),
         availableCredit,
         unappliedCash,
-        totalUnpaid,
-        agingBuckets: buckets
+        totalUnpaid: aging.totalUnpaid,
+        agingBuckets: aging.buckets
     };
 };
 
 const getRevenueSnapshot = async ({ startDate, endDate, orgId }) => {
-    const match = {
-        sourceRepo: 'Shipment'
-    };
-    if (orgId) match.organization = orgId instanceof mongoose.Types.ObjectId ? orgId : new mongoose.Types.ObjectId(orgId);
+    const where = { sourceRepo: 'Shipment' };
+    if (orgId) where.organizationId = orgId;
     if (startDate || endDate) {
-        match.createdAt = {};
-        if (startDate) match.createdAt.$gte = new Date(startDate);
-        if (endDate) match.createdAt.$lte = new Date(endDate);
+        where.createdAt = {};
+        if (startDate) where.createdAt.gte = new Date(startDate);
+        if (endDate) where.createdAt.lte = new Date(endDate);
     }
 
-    const snapshot = await OrganizationLedger.aggregate([
-        { $match: match },
-        {
-            $group: {
-                _id: {
-                    year: { $year: '$createdAt' },
-                    month: { $month: '$createdAt' },
-                    organization: '$organization'
-                },
-                totalRevenue: { $sum: { $cond: [{ $eq: ['$entryType', 'DEBIT'] }, '$amount', { $subtract: [0, '$amount'] }] } },
-                shipmentCount: { $sum: { $cond: [{ $eq: ['$entryType', 'DEBIT'] }, 1, 0] } }
-            }
-        },
-        { $sort: { '_id.year': -1, '_id.month': -1 } }
-    ]);
+    // Use raw query for MySQL specialized grouping by year/month if complex, or findMany
+    const ledgerEntries = await prisma.organizationLedger.findMany({ where });
 
-    return snapshot;
+    // Process in memory for monthly grouping (or use queryRaw for high volume)
+    const snapshotMap = {};
+    ledgerEntries.forEach(entry => {
+        const date = new Date(entry.createdAt);
+        const key = `${date.getFullYear()}-${date.getMonth() + 1}-${entry.organizationId || 'solo'}`;
+        
+        if (!snapshotMap[key]) {
+            snapshotMap[key] = {
+                _id: { year: date.getFullYear(), month: date.getMonth() + 1, organization: entry.organizationId },
+                totalRevenue: new Decimal(0),
+                shipmentCount: 0
+            };
+        }
+
+        const amount = normalizeAmount(entry.amount);
+        if (entry.entryType === 'DEBIT') {
+            snapshotMap[key].totalRevenue = snapshotMap[key].totalRevenue.plus(amount);
+            snapshotMap[key].shipmentCount++;
+        } else {
+            snapshotMap[key].totalRevenue = snapshotMap[key].totalRevenue.minus(amount);
+        }
+    });
+
+    return Object.values(snapshotMap).map(s => ({
+        ...s,
+        totalRevenue: toApiAmount(s.totalRevenue)
+    })).sort((a, b) => (b._id.year - a._id.year) || (b._id.month - a._id.month));
 };
 
-const updatePaymentStatus = async (paymentId, session = null) => {
-    const payment = await Payment.findById(paymentId).session(session);
+const updatePaymentStatus = async (paymentId, txClient = prisma) => {
+    const payment = await txClient.payment.findUnique({ where: { id: paymentId } });
     if (!payment) return null;
 
-    const allocated = await getAllocationTotal({ paymentId });
+    const allocated = await getAllocationTotal({ paymentId }, txClient);
     const pAmount = normalizeAmount(payment.amount);
     const remaining = pAmount.minus(allocated);
 
-    if (remaining.lte(0.001)) payment.status = 'APPLIED';
-    else if (allocated.gt(0)) payment.status = 'PARTIALLY_APPLIED';
-    else payment.status = 'UNAPPLIED';
+    let status = 'UNAPPLIED';
+    if (remaining.lte(0.001)) status = 'APPLIED';
+    else if (allocated.gt(0)) status = 'PARTIALLY_APPLIED';
 
-    await payment.save({ session });
-    return payment;
+    return await txClient.payment.update({
+        where: { id: paymentId },
+        data: { status }
+    });
 };
 
-const updateShipmentPaidStatus = async (shipmentId, session = null) => {
-    const id = typeof shipmentId === 'string' ? new mongoose.Types.ObjectId(shipmentId) : shipmentId;
-    const accounting = await getShipmentAccounting(id, session);
+const updateShipmentPaidStatus = async (shipmentId, txClient = prisma) => {
+    const accounting = await getShipmentAccounting(shipmentId, txClient);
     if (!accounting) return;
 
-    // Use string/number comparison for db update
-    const isPaid = accounting.remainingBalance <= 0.001;
-    await Shipment.findByIdAndUpdate(shipmentId, {
-        paid: isPaid,
-        totalPaid: accounting.totalPaid,
-        remainingBalance: accounting.remainingBalance
-    }, { session });
+    return await txClient.shipment.update({
+        where: { id: shipmentId },
+        data: {
+            paid: accounting.remainingBalance <= 0.001,
+            totalPaid: accounting.totalPaid,
+            remainingBalance: accounting.remainingBalance
+        }
+    });
 };
 
-const allocatePayment = async ({ organizationId, paymentId, shipmentId, amount, createdBy, isFifo = false, session = null }) => {
-    // Allocation amount is passed as number, normalize it
+const allocatePayment = async ({ organizationId, paymentId, shipmentId, amount, createdBy, isFifo = false }, externalTx = null) => {
     const allocAmount = normalizeAmount(amount);
 
-    const [allocation] = await PaymentAllocation.create([{
-        organization: organizationId,
-        payment: paymentId,
-        shipment: shipmentId,
-        amount: toApiAmount(allocAmount),
-        createdBy,
-        isFifo
-    }], { session });
-
-    const p = await Payment.findById(paymentId).session(session);
-    const s = await Shipment.findById(shipmentId).session(session);
-    const u = createdBy ? await User.findById(createdBy).select('name') : null;
-
-    // Create a 0-amount audit entry in the ledger for visibility
-    await createLedgerEntry(organizationId, {
-        sourceRepo: 'Payment',
-        sourceId: paymentId,
-        amount: 0,
-        entryType: 'CREDIT',
-        category: 'ALLOCATION',
-        description: `${isFifo ? '[FIFO] ' : ''}Allocation: ${p?.reference || 'Payment'} applied to ${s?.trackingNumber || 'Shipment'} by ${u?.name || 'System'}`,
-        createdBy,
-        session
-    });
-
-    // Update statuses
-    await updatePaymentStatus(paymentId, session);
-    await updateShipmentPaidStatus(shipmentId, session);
-
-    // Atomically decrement the unapplied balance
-    if (organizationId) {
-        const decValue = Number(allocAmount.toFixed(3));
-        await Organization.findByIdAndUpdate(organizationId, {
-            $inc: { unappliedBalance: -decValue }
-        }, { session });
-    }
-
-    return allocation;
-};
-
-const reverseAllocation = async ({ allocationId, reversedBy, reason }) => {
-    const allocation = await PaymentAllocation.findById(allocationId);
-    if (!allocation) return null;
-
-    allocation.status = 'REVERSED';
-    allocation.reversedAt = new Date();
-    allocation.reversalReason = reason || 'Reversal requested';
-    allocation.reversedBy = reversedBy;
-    await allocation.save();
-
-    await updatePaymentStatus(allocation.payment);
-    await updateShipmentPaidStatus(allocation.shipment);
-
-    // Atomically increment the unapplied balance back
-    if (allocation.organization) {
-        const incValue = Number(normalizeAmount(allocation.amount).toFixed(3));
-
-        await Organization.findByIdAndUpdate(allocation.organization, {
-            $inc: { unappliedBalance: incValue }
+    const execute = async (tx) => {
+        // 1. Create Allocation
+        const allocation = await tx.paymentAllocation.create({
+            data: {
+                organizationId: organizationId || null,
+                paymentId,
+                shipmentId,
+                amount: toApiAmount(allocAmount),
+                createdBy,
+                isFifo,
+                status: 'ACTIVE'
+            }
         });
-    }
 
-    return allocation;
+        // 2. Resolve Names for Audit
+        const [payment, shipment, user] = await Promise.all([
+            tx.payment.findUnique({ where: { id: paymentId } }),
+            tx.shipment.findUnique({ where: { id: shipmentId } }),
+            createdBy ? tx.user.findUnique({ where: { id: createdBy }, select: { name: true } }) : null
+        ]);
+
+        // 3. Create Audit Entry (DEBIT 0 amount as marker)
+        await tx.organizationLedger.create({
+            data: {
+                organizationId: organizationId || null,
+                sourceRepo: 'Payment',
+                sourceId: paymentId,
+                amount: 0,
+                entryType: 'CREDIT',
+                category: 'ALLOCATION',
+                description: `${isFifo ? '[FIFO] ' : ''}Allocation: ${payment?.reference || 'Payment'} applied to ${shipment?.trackingNumber || 'Shipment'} by ${user?.name || 'System'}`,
+                createdBy,
+                balanceAfter: 0 // No balance impact for allocation marker
+            }
+        });
+
+        if (organizationId) {
+            await tx.organization.update({
+                where: { id: organizationId },
+                data: {
+                    unappliedBalance: {
+                        decrement: toApiAmount(allocAmount)
+                    }
+                }
+            });
+        }
+
+        return allocation;
+    };
+
+    const runPostAction = async (allocation, txClient) => {
+        // Status updates run inside or post-transaction depending on caller
+        await updatePaymentStatus(paymentId, txClient);
+        await updateShipmentPaidStatus(shipmentId, txClient);
+        return allocation;
+    };
+
+    if (externalTx) {
+        const allocation = await execute(externalTx);
+        return await runPostAction(allocation, externalTx);
+    } else {
+        const allocation = await prisma.$transaction(execute);
+        return await runPostAction(allocation, prisma);
+    }
 };
 
-/**
- * Audit-Hardened Reversal: Creates an offsetting record for a specific ledger entry.
- * Ensures the ledger remains immutable and append-only.
- */
+const reverseAllocation = async ({ allocationId, reversedBy, reason }, externalTx = null) => {
+    const execute = async (tx) => {
+        const allocation = await tx.paymentAllocation.findUnique({ where: { id: allocationId } });
+        if (!allocation) return null;
+
+        const updatedAlloc = await tx.paymentAllocation.update({
+            where: { id: allocationId },
+            data: {
+                status: 'REVERSED',
+                reversedAt: new Date(),
+                reversalReason: reason || 'Reversal requested',
+                reversedBy
+            }
+        });
+
+        if (allocation.organizationId) {
+            await tx.organization.update({
+                where: { id: allocation.organizationId },
+                data: {
+                    unappliedBalance: {
+                        increment: allocation.amount
+                    }
+                }
+            });
+        }
+
+        return updatedAlloc;
+    };
+
+    if (externalTx) {
+        return await execute(externalTx);
+    } else {
+        return await prisma.$transaction(execute);
+    }
+};
+
 const reverseLedgerEntry = async (entryId, reversedBy, reason) => {
-    const originalEntry = await OrganizationLedger.findById(entryId);
+    const originalEntry = await prisma.organizationLedger.findUnique({ where: { id: entryId } });
     if (!originalEntry) throw new Error('Original ledger entry not found');
 
     const amount = normalizeAmount(originalEntry.amount);
-    // Reverse the entry type: DEBIT -> CREDIT, CREDIT -> DEBIT
     const entryType = originalEntry.entryType === 'DEBIT' ? 'CREDIT' : 'DEBIT';
     const description = `REVERSAL: ${originalEntry.description} (Reason: ${reason || 'Manual reversal'})`;
 
-    // Create the offsetting entry using atomic service
-    const reversalEntry = await createLedgerEntry(originalEntry.organization, {
+    const reversalEntry = await createLedgerEntry(originalEntry.organizationId, {
         sourceRepo: 'Reversal',
         sourceId: originalEntry.sourceId,
-        parentEntryId: originalEntry._id,
+        parentEntryId: originalEntry.id,
         amount: toApiAmount(amount),
         entryType,
         category: 'REVERSAL',
@@ -431,13 +445,15 @@ const reverseLedgerEntry = async (entryId, reversedBy, reason) => {
         createdBy: reversedBy
     });
 
-    // Special Case: If we reverse a Payment Credit, we must decrement the Unapplied Balance
-    if (originalEntry.category === 'PAYMENT') {
+    if (originalEntry.category === 'PAYMENT' && originalEntry.organizationId) {
         const unappliedMultiplier = entryType === 'DEBIT' ? -1 : 1;
-        const incValue = Number(amount.times(unappliedMultiplier).toFixed(3));
-
-        await Organization.findByIdAndUpdate(originalEntry.organization, {
-            $inc: { unappliedBalance: incValue }
+        await prisma.organization.update({
+            where: { id: originalEntry.organizationId },
+            data: {
+                unappliedBalance: {
+                    increment: toApiAmount(amount.times(unappliedMultiplier))
+                }
+            }
         });
     }
 
@@ -445,59 +461,62 @@ const reverseLedgerEntry = async (entryId, reversedBy, reason) => {
 };
 
 const allocatePaymentsFifo = async ({ organizationId, createdBy }) => {
-    const payments = await Payment.find({ organization: organizationId }).sort({ postedAt: 1 });
-    const shipments = await Shipment.find({ organization: organizationId }).sort({ createdAt: 1 });
+    // 1. Get Unapplied Payments
+    const payments = await prisma.payment.findMany({
+        where: { 
+            organizationId: organizationId || null,
+            status: { in: ['UNAPPLIED', 'PARTIALLY_APPLIED'] }
+        },
+        orderBy: { postedAt: 'asc' }
+    });
 
-    const allocations = [];
+    // 2. Get Unpaid Shipments
+    const shipments = await prisma.shipment.findMany({
+        where: { 
+            organizationId: organizationId || null,
+            paid: false,
+            status: { not: 'draft' }
+        },
+        orderBy: { createdAt: 'asc' }
+    });
 
+    const results = [];
     for (const payment of payments) {
-        const allocatedTotal = await getAllocationTotal({ paymentId: payment._id });
-        let remainingPayment = normalizeAmount(payment.amount).minus(allocatedTotal);
-        if (remainingPayment.lte(0)) continue;
+        // Calculate remaining in payment
+        const allocatedAmount = await getAllocationTotal({ paymentId: payment.id });
+        let remainingInPayment = normalizeAmount(payment.amount).minus(allocatedAmount);
+        
+        if (remainingInPayment.lte(0.001)) continue;
 
         for (const shipment of shipments) {
-            if (remainingPayment.lte(0)) break;
-            const totalCharge = getShipmentChargeAmount(shipment);
-            if (totalCharge.lte(0)) continue;
+            if (remainingInPayment.lte(0.001)) break;
 
-            const shipmentAllocated = await getAllocationTotal({ shipmentId: shipment._id });
-            const remainingShipment = totalCharge.minus(shipmentAllocated);
-            if (remainingShipment.lte(0)) continue;
+            const shipmentAccounting = await getShipmentAccounting(shipment.id);
+            if (!shipmentAccounting || shipmentAccounting.remainingBalance <= 0.001) continue;
 
-            const allocationAmount = Decimal.min(remainingPayment, remainingShipment);
-
-            // Only allocate if amount is meaningful (> 0.001)
-            if (allocationAmount.lte(0.001)) continue;
-
+            const amountToApply = Decimal.min(remainingInPayment, new Decimal(shipmentAccounting.remainingBalance));
+            
             const allocation = await allocatePayment({
                 organizationId,
-                paymentId: payment._id,
-                shipmentId: shipment._id,
-                amount: toApiAmount(allocationAmount),
+                paymentId: payment.id,
+                shipmentId: shipment.id,
+                amount: amountToApply,
                 createdBy,
                 isFifo: true
             });
-            allocations.push(allocation);
-            remainingPayment = remainingPayment.minus(allocationAmount);
+
+            results.push(allocation);
+            remainingInPayment = remainingInPayment.minus(amountToApply);
         }
     }
 
-    return allocations;
-};
-
-const syncOrganizationShipmentFinancials = async (organizationId) => {
-    const orgQuery = (organizationId === 'none' || !organizationId) ? null : organizationId;
-    const shipments = await Shipment.find({ organization: orgQuery });
-    for (const shipment of shipments) {
-        await updateShipmentPaidStatus(shipment._id);
-    }
+    return results;
 };
 
 module.exports = {
     normalizeAmount,
     getShipmentChargeAmount,
     getOrganizationBalance,
-    getLatestBalance,
     createLedgerEntry,
     getAccountCredit,
     getUnappliedCash,
@@ -507,9 +526,8 @@ module.exports = {
     getRevenueSnapshot,
     updatePaymentStatus,
     updateShipmentPaidStatus,
-    syncOrganizationShipmentFinancials,
     allocatePayment,
+    allocatePaymentsFifo,
     reverseAllocation,
-    reverseLedgerEntry,
-    allocatePaymentsFifo
+    reverseLedgerEntry
 };

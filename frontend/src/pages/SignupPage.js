@@ -1,72 +1,151 @@
 import React, { useState } from 'react';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
-import styled from 'styled-components';
+import styled, { keyframes } from 'styled-components';
 import { useAuth } from '../context/AuthContext';
 import { Button, Input, Alert } from '../ui';
 
+// --- Animations ---
+const fadeSlideUp = keyframes`
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+`;
+
+const driftIn = keyframes`
+  from { opacity: 0; transform: translateX(40px); }
+  to { opacity: 1; transform: translateX(0); }
+`;
+
+const lineGrow = keyframes`
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+`;
+
 // --- Styled Components ---
 
-const FullPageGradient = styled.div`
+const PageWrapper = styled.div`
     min-height: 100vh;
     width: 100%;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    background: radial-gradient(at 0% 0%, rgba(0, 217, 184, 0.15) 0px, transparent 50%),
-                radial-gradient(at 100% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
-                radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.1) 0px, transparent 50%), /* Success/Green hints */
-                linear-gradient(135deg, #0a0e1a 0%, #111827 100%);
-    background-size: cover;
-    padding: 16px;
+    background: var(--surface, #f3f7fb);
+    position: relative;
+    overflow: hidden;
 `;
 
-const SignupCard = styled.div`
-    padding: 40px;
+const FormSide = styled.div`
+    flex: 1;
     display: flex;
     flex-direction: column;
+    justify-content: center;
+    padding: 48px;
+    padding-left: 80px;
+    max-width: 560px;
+    position: relative;
+    z-index: 2;
+    animation: ${fadeSlideUp} 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+
+    @media (max-width: 1024px) {
+        max-width: 100%;
+        padding: 32px;
+    }
+`;
+
+const HeroSide = styled.div`
+    flex: 1.2;
+    position: relative;
+    overflow: hidden;
+
+    @media (max-width: 1024px) {
+        display: none;
+    }
+`;
+
+const HeroImage = styled.div`
+    position: absolute;
+    inset: 0;
+    background-image: url('/images/logistics-hero.png');
+    background-size: cover;
+    background-position: center;
+    animation: ${driftIn} 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    
+    &::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(to right, var(--surface, #f3f7fb) 0%, rgba(243, 247, 251, 0.3) 30%, transparent 60%);
+    }
+`;
+
+const MotionLine = styled.div`
+    position: absolute;
+    top: 0;
+    width: 1px;
+    height: 100%;
+    background: linear-gradient(to bottom, var(--primary, #0050d4), transparent);
+    opacity: 0.08;
+    transform-origin: top;
+    animation: ${lineGrow} 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+`;
+
+const BrandMark = styled.div`
+    display: flex;
     align-items: center;
-    border-radius: 24px;
-    width: 100%;
-    max-width: 480px;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
-    backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(30, 41, 59, 0.7);
-    transition: transform 0.3s ease-in-out;
+    gap: 12px;
+    margin-bottom: 48px;
+`;
+
+const BrandIcon = styled.div`
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: var(--gradient-primary, linear-gradient(135deg, #0EA5E9 0%, #2563EB 100%));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    box-shadow: 0 8px 24px rgba(0, 80, 212, 0.25);
+`;
+
+const BrandText = styled.span`
+    font-family: 'Manrope', sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--on-surface, #2a2f32);
+    letter-spacing: -0.02em;
 `;
 
 const Title = styled.h1`
-    font-size: 28px;
+    font-family: 'Manrope', sans-serif;
+    font-size: 32px;
     font-weight: 800;
     margin-bottom: 8px;
-    letter-spacing: -0.5px;
-    color: #fff;
-    text-align: center;
+    letter-spacing: -0.02em;
+    color: var(--on-surface, #2a2f32);
+    line-height: 1.2;
 `;
 
 const Subtitle = styled.p`
-    font-size: 14px;
-    color: var(--text-secondary);
-    margin-bottom: 32px;
-    text-align: center;
+    font-size: 15px;
+    color: var(--on-surface-variant, #575c60);
+    margin-bottom: 36px;
+    line-height: 1.6;
 `;
 
 const Form = styled.form`
     width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 20px;
 `;
 
 const LinkText = styled(RouterLink)`
-    color: var(--accent-primary);
+    color: var(--primary, #0050d4);
     text-decoration: none;
     font-size: 14px;
-    font-weight: 600;
-    transition: opacity 0.2s;
+    font-weight: 700;
+    transition: all 0.2s;
 
     &:hover {
-        opacity: 0.8;
+        color: var(--primary-dim, #0046bb);
     }
 `;
 
@@ -79,7 +158,6 @@ const SignupPage = () => {
     const { signup, loading, error, isAuthenticated, user } = useAuth();
     const navigate = useNavigate();
 
-    // If already authenticated, redirect
     React.useEffect(() => {
         if (isAuthenticated && user) {
             navigate(user.role === 'driver' ? '/driver/pickup' : '/dashboard');
@@ -101,14 +179,23 @@ const SignupPage = () => {
     };
 
     return (
-        <FullPageGradient>
-            <SignupCard>
-                <Title>Join 3PLogistics</Title>
-                <Subtitle>Create your organization agent account to start managing shipments</Subtitle>
+        <PageWrapper>
+            <FormSide>
+                <BrandMark>
+                    <BrandIcon>
+                        <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </BrandIcon>
+                    <BrandText>Target Logistics</BrandText>
+                </BrandMark>
+
+                <Title>Join Target Logistics</Title>
+                <Subtitle>Create your account to start managing shipments and unlock the full power of our logistics platform.</Subtitle>
 
                 {error && (
-                    <div style={{ width: '100%', marginBottom: '24px' }}>
-                        <Alert type="error" title="Registration Failed">
+                    <div style={{ marginBottom: '8px' }}>
+                        <Alert severity="error" title="Registration Failed">
                             {typeof error === 'string' ? error : 'An unexpected error occurred'}
                         </Alert>
                     </div>
@@ -134,7 +221,6 @@ const SignupPage = () => {
                         placeholder="name@company.com"
                         required
                     />
-
                     <Input
                         label="Password"
                         name="new-password"
@@ -150,18 +236,25 @@ const SignupPage = () => {
                         variant="primary"
                         type="submit"
                         disabled={loading}
-                        style={{ width: '100%', marginTop: '16px' }}
+                        style={{ width: '100%', marginTop: '8px', padding: '16px' }}
                     >
                         {loading ? 'Creating Account...' : 'Create Account'}
                     </Button>
                 </Form>
 
-                <div style={{ marginTop: '24px', textAlign: 'center' }}>
-                    <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Already have an account? </span>
-                    <LinkText to="/login">Log In</LinkText>
+                <div style={{ marginTop: '28px', textAlign: 'center' }}>
+                    <span style={{ color: 'var(--on-surface-variant)', fontSize: '14px' }}>Already have an account? </span>
+                    <LinkText to="/login">Sign In</LinkText>
                 </div>
-            </SignupCard>
-        </FullPageGradient>
+            </FormSide>
+
+            <HeroSide>
+                <HeroImage />
+                <MotionLine style={{ left: '20%' }} />
+                <MotionLine style={{ left: '50%', animationDelay: '0.2s' }} />
+                <MotionLine style={{ left: '75%', animationDelay: '0.4s' }} />
+            </HeroSide>
+        </PageWrapper>
     );
 };
 

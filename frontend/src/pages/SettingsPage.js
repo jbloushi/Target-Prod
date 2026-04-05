@@ -3,7 +3,7 @@ import styled from 'styled-components';
 import { useAuth } from '../context/AuthContext';
 import { useSnackbar } from 'notistack';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../services/api';
 import {
     PageHeader,
     Card,
@@ -84,9 +84,7 @@ const SettingsPage = () => {
     const generateNewKey = async () => {
         try {
             setLoading(true);
-            const res = await axios.post('/api/auth/api-key', {}, {
-                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-            });
+            const res = await api.post('/auth/api-key');
             setApiKey(res.data.apiKey);
             enqueueSnackbar('New API Key generated successfully!', { variant: 'success' });
         } catch (err) {
@@ -105,9 +103,7 @@ const SettingsPage = () => {
     const fetchClients = async () => {
         setClientsLoading(true);
         try {
-            const res = await axios.get('/api/auth/users', {
-                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-            });
+            const res = await api.get('/auth/users');
             setClients(res.data.data);
         } catch (err) {
             console.error(err);
@@ -118,9 +114,7 @@ const SettingsPage = () => {
 
     const updateSurcharge = async (userId, data) => {
         try {
-            await axios.patch('/api/auth/surcharge', { userId, ...data }, {
-                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-            });
+            await api.patch('/auth/surcharge', { userId, ...data });
             enqueueSnackbar('User surcharge updated!', { variant: 'success' });
         } catch (err) {
             console.error(err);
@@ -166,9 +160,7 @@ const SettingsPage = () => {
             currentAddresses = currentAddresses.map(({ _ownerId, _ownerName, _orgName, ...rest }) => rest);
             profilePayload.addresses = currentAddresses;
 
-            await axios.patch('/api/users/profile', profilePayload, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            await api.patch('/users/profile', profilePayload);
 
             enqueueSnackbar('Shipper Profile Updated Successfully', { variant: 'success' });
             await refreshUser();

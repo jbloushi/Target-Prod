@@ -1,250 +1,80 @@
-# 📦 3PLogistics-Solution 🚢
+# Target Logistics - System Architecture & Developer Guide
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](DOCKER.md)
-[![Node.js](https://img.shields.io/badge/Node.js-18.x-green.svg)](https://nodejs.org/)
+Welcome to the **Target Logistics** platform. This document serves as the authoritative guide for developers seeking to understand, customize, or extend the codebase.
 
-**3PLogistics-Solution** is a high-performance, multi-carrier shipment tracking and management system. Designed for scalability and ease of deployment, it streamlines logistics workflows for businesses of all sizes.
+## 1. Tech Stack Overview
 
----
+The application is structured as a monolithic monorepo containing a distinct Frontend and Backend, bridged by a REST API.
 
-## ✨ Features
-
-- 🚚 **Multi-Carrier Integration**: Built-in support for [DHL Express API](https://developer.dhl.com/).
-- � **Driver Pickup Scanner**: QR/Barcode scanning for optimized field operations.
-- 🗺️ **Interactive Mapping**: Real-time visual tracking powered by Google Maps.
-- � **Enterprise-Grade Security**: JWT-based authentication and secure role-based access.
-- 📊 **Automated Documentation**: Dynamic generation of invoices and labels.
-- � **Docker-Ready**: Production-grade containerization for rapid scaling.
-- 🔗 **Public Tracking**: Secure, shareable links for end-customer visibility.
+*   **Frontend Client:** React 18 (Single Page Application)
+*   **Styling:** Material-UI (MUI) v5 with custom localized design CSS tokens (`ui/tokens.css`).
+*   **Backend Server:** Node.js v22 (Express Framework)
+*   **Database Engine:** Native MySQL 8.0
+*   **ORM Tooling:** Prisma v6.2.1
 
 ---
 
-## 🗺️ Product Roadmap
+## 2. Codebase Structure
 
-We are constantly evolving! Here's what's coming next:
+### 🗂️ `\backend` (API & Core Logic)
+*   **`/prisma`**: Contains `schema.prisma`. This is the single source of truth for all database tables and relationships. Any schema edits must be followed by `npx prisma db push` to sync the MySQL database.
+*   **`/src/controllers`**: Holds the business logic for all endpoints. Controllers are strictly divided by domain (e.g., `user.controller.js`, `shipment-crud.controller.js`, `external.controller.js`).
+*   **`/src/models`**: *[DEPRECATED]* Old Mongoose schema files from the previous MongoDB iteration. These are kept temporarily for historical reference but have been replaced by Prisma.
+*   **`/src/routes`**: API routing definitions. They map specific Express HTTP verbs (GET, POST) to Controller functions and inject middleware.
+*   **`/src/middleware`**: Functions that run before a controller (e.g., `apiAuth.js` which verifies JWTs).
+*   **`/src/services`**: Shared utility logic (e.g., DHL Booking API adapters, mapping handlers).
 
-- [ ] **Carrier Expansion**: Integration with FedEx, UPS, and Aramex.
-- [ ] **AI Route Optimization**: Predictive routing for driver efficiency.
-- [ ] **Customer Portal**: Self-service booking for authorized organizations.
-- [ ] **Real-time Notifications**: SMS and Email milestone alerts.
-- [ ] **Advanced Analytics**: Cost analysis and performance reporting.
-- [ ] **Multi-Currency Support**: Automated currency conversion for international bills.
-
----
-
-## 🚀 Quick Start (Docker)
-
-Get up and running in under 2 minutes:
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/jbloushi/3PLogstics-Solution.git
-   cd 3PLogstics-Solution
-   ```
-
-2. **Configure Environment**
-   ```bash
-   cp .env.docker.example .env
-   # Edit .env with your keys (optional for basic test)
-   ```
-
-3. **Launch**
-   ```bash
-   docker-compose up -d
-   ```
-
-🔗 Access the API at: `http://localhost:8899/api`
-🔗 Access the Health Check: `http://localhost:8899/health`
+### 🗂️ `\frontend` (React Interface)
+*   **`/src/components`**: Reusable generic UI elements (Buttons, Tables).
+*   **`/src/components/layout`**: The global structure. `Sidebar.js` defines all menu navigation and controls Role-Based Access Views.
+*   **`/src/pages`**: Top-level views mapped directly to application URLs (e.g., `DashboardPage.js`, `ShipmentDetailsPage.js`).
+*   **`/src/services/api.js`**: The central Axios service. It defines all outgoing frontend requests to the Node backend and handles centralized JWT token attachment.
+*   **`/src/theme`**: Contains Material-UI overrides to enforce the premium dark-mode aesthetic.
 
 ---
 
-## 🔐 Default Credentials
+## 3. Database Architecture (Prisma/MySQL)
 
-For a fresh installation or development environment, the following default users are created:
+We strictly use the **Prisma ORM**. To update the database structure:
+1. Modify `backend/prisma/schema.prisma`.
+2. Run `npx prisma db push` to push structure changes to MySQL.
+3. Run `npx prisma generate` to update the native Javascript Prisma Client.
 
-| Role | Email | Password |
-|------|-------|----------|
-| **Admin** | `admin@demo.com` | `password123` |
-| **Staff** | `staff@demo.com` | `password123` |
-| **Client** | `client@demo.com` | `password123` |
-| **Driver** | `driver@demo.com` | `password123` |
-
-> [!TIP]
-> Use these credentials to access different perspectives of the system. The **Client** user is pre-linked to the **Target Logistics Org** with a 1000 KWD balance.
+### Primary Entities:
+*   **User / Organization**: The system supports multi-tenancy. A `User` (staff, driver, admin) can optionally belong to an `Organization` (client). Accounting functions, like credit limits and markups, happen at the `Organization` level.
+*   **Shipment**: The core parcel object. Contains origins, destinations, items, and dimensions.
+*   **History / Checkpoints**: These are now localized natively within the MySQL `Shipment` record using JSON arrays (`history` and `checkpoints`), allowing rapid mutations without heavy table joins.
+*   **PickupRequests**: Abstract request entities from external clients asking a driver to come to an origin. Once approved, these natively convert into fully booked `Shipments`.
 
 ---
 
-## 🛠️ Maintenance & Reset
+## 4. Development & Running Locally
 
-### Fresh Installation / Seeding
-To populate a fresh database with the default users and organization, run:
-```bash
+Ensure XAMPP or native MySQL 8.0 is running on port 3306.
+
+**Terminal 1 (Backend):**
+\`\`\`bash
 cd backend
-npm run seed
-```
+npm install
+npm run dev  # Runs Nodemon on port 8899
+\`\`\`
 
-### Reset Admin / Passwords
-If you need to reset the system to its default state or recover the admin password, simply run the seed command again. It will ensure all default users exist and reset their passwords to `password123`.
-
----
-
-## 🚀 Production Deployment (VPS)
-
-### Prerequisites
-- Ubuntu 20.04+ or similar Linux distribution
-- Node.js 18.x
-- MongoDB (standalone or Docker)
-- Domain name with DNS configured (optional but recommended)
-
-### Quick Production Setup
-
-#### 1. Generate Secure Credentials
-```bash
-node scripts/generate-secrets.js
-```
-This will generate secure JWT secrets and MongoDB passwords. **Save these values!**
-
-#### 2. Configure Backend Environment
-```bash
-cd backend
-cp .env.production.example .env
-nano .env
-```
-
-Update the following **REQUIRED** values:
-- `JWT_SECRET` - Use the generated value from step 1
-- `MONGO_URI` - Update password with generated value
-- `DHL_API_KEY` & `DHL_API_SECRET` - Your DHL credentials from [developer.dhl.com](https://developer.dhl.com/)
-- `GOOGLE_MAPS_API_KEY` - Your key from [Google Cloud Console](https://console.cloud.google.com/)
-- `CORS_ORIGIN` - Set to your domain(s): `https://yourdomain.com`
-
-#### 3. Configure Frontend Environment
-```bash
+**Terminal 2 (Frontend):**
+\`\`\`bash
 cd frontend
-cp .env.production.example .env.production
-nano .env.production
-```
+npm install
+npm start   # Runs React on port 3000
+\`\`\`
 
-Update:
-- `REACT_APP_GOOGLE_MAPS_API_KEY` - Same as backend
-
-#### 4. Deploy with Docker (Recommended)
-```bash
-# From project root
-cp .env.example .env
-nano .env  # Update MongoDB password from step 1
-
-docker-compose up -d
-```
-
-#### 5. Create Default Users
-```bash
-docker exec -it target-logistics-api npm run create-default-users
-```
-
-#### 6. Verify Deployment
-```bash
-curl http://localhost:8899/health
-# Expected: {"status":"ok","database":"connected"}
-```
-
-### 🔄 Updating Production After a Git Pull
-
-If you pull new changes on the VPS and do **not** rebuild/restart, you will still be running the old Docker images (or old frontend build). Use the steps below to ensure the latest code is running:
-
-#### Docker-based deployment
-```bash
-# From project root on the VPS
-git pull
-
-# Rebuild images so new code is baked in
-docker-compose build --no-cache
-
-# Restart containers with the rebuilt images
-docker-compose up -d --build
-```
-
-#### Non-Docker deployment (PM2/Node + Nginx)
-```bash
-# Backend
-git pull
-cd backend
-npm ci --omit=dev
-pm2 restart ecosystem.config.js --env production
-
-# Frontend (build is required for changes to appear)
-cd ../frontend
-npm ci --omit=dev
-npm run build
-# Ensure Nginx is serving the latest build output
-sudo systemctl reload nginx
-```
-
-> [!IMPORTANT]
-> React builds are static. If you pull frontend changes but do not rebuild, the UI will not update in production.
-
-### 🔒 Security Checklist
-
-Before going live, ensure you've completed:
-
-- [ ] Changed all default passwords and secrets
-- [ ] Set `NODE_ENV=production` in backend/.env
-- [ ] Updated `CORS_ORIGIN` to your actual domain (not `*`)
-- [ ] Replaced demo DHL API credentials with your own
-- [ ] Replaced demo Google Maps API key with your own
-- [ ] Configured HTTPS/SSL (use Let's Encrypt with Nginx)
-- [ ] Set up firewall rules (UFW recommended)
-- [ ] Configured MongoDB authentication
-- [ ] Reviewed all `.env` files for sensitive data
-
-### 📖 Detailed Deployment Guide
-
-For step-by-step VPS deployment, Nginx configuration, SSL setup, and production best practices, see:
-- [**OPERATIONS.md**](docs/OPERATIONS.md) - Complete deployment guide
-- [**AAPANEL_DEPLOYMENT.md**](docs/AAPANEL_DEPLOYMENT.md) - aaPanel VPS update guide
-- [**backend/PRODUCTION-USER-SETUP.md**](backend/PRODUCTION-USER-SETUP.md) - User management in production
+*   **API Base Path:** The frontend looks to \`REACT_APP_API_URL\` in \`frontend/.env.local\` to find the backend (defaults to `http://localhost:8899/api`).
+*   **Database Connection:** The backend looks to \`DATABASE_URL\` in \`backend/.env\` to connect to MySQL.
 
 ---
 
-## 🛠️ Technology Stack
+## 5. Security & Authentication
 
-| Layer | Technology |
-|-------|------------|
-| **Frontend** | React, TailwindCSS |
-| **Backend** | Node.js, Express |
-| **Database** | MongoDB |
-| **DevOps** | Docker, Docker Compose, PM2 |
-| **API** | DHL Express API, Google Maps API |
-
----
-
-## 📖 Documentation
-
-- 🎯 [**Product Vision**](docs/PRODUCT_VISION.md) - Goals, MVP scope & roadmap.
-- 🏗️ [**Architecture**](docs/ARCHITECTURE.md) - System design, API routes & data models.
-- ⚙️ [**Operations**](docs/OPERATIONS.md) - Deployment, Docker, security & configuration.
-- 👨‍💻 [**Development**](docs/DEVELOPMENT.md) - Local setup, testing & code conventions.
-- 🤖 [**AI Agent Rules**](docs/AI_AGENT_RULES.md) - Binding rules for AI assistants.
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-**Developed with ❤️ by [jbloushi](https://github.com/jbloushi)**
+*   Authentication is handled via **JWT (JSON Web Tokens)**.
+*   Upon login (`/login`), the backend returns an encrypted JWT and standard User object.
+*   The frontend stores this token in `localStorage`. 
+*   `frontend/src/services/api.js` uses an Axios interceptor to automatically inject the token as `Bearer <token>` in the Authorization header on every outgoing API query.
+*   The backend's `apiAuth.js` middleware rejects any incoming requests that lack a valid token.

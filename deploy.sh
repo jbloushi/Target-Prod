@@ -23,12 +23,16 @@ echo -e "${BLUE}=== Starting Deployment ===${NC}"
 # Navigate to project root
 cd $PROJECT_ROOT || { echo -e "${RED}Error: Project root $PROJECT_ROOT not found${NC}"; exit 1; }
 
-# Pull latest code
+# 1. Pull latest code
 echo -e "${BLUE}1. Pulling latest code from GitHub...${NC}"
 git pull origin main || { echo -e "${RED}Error: git pull failed${NC}"; exit 1; }
 
-# Update Backend
-echo -e "${BLUE}2. Updating Backend dependencies...${NC}"
+# 2. Automated Secret Generation (New)
+echo -e "${BLUE}2. Ensuring secure secrets (.env)...${NC}"
+node scripts/generate-secrets.js || { echo -e "${RED}Error: Secret generation failed${NC}"; exit 1; }
+
+# 3. Update Backend
+echo -e "${BLUE}3. Updating Backend dependencies...${NC}"
 cd $BACKEND_DIR
 
 # Check for .env in project root or backend directory
@@ -38,6 +42,13 @@ if [ ! -f "$PROJECT_ROOT/.env" ] && [ ! -f "$BACKEND_DIR/.env" ]; then
 fi
 
 npm install --production || { echo -e "${RED}Error: backend npm install failed${NC}"; exit 1; }
+
+# 4. Prisma Generation (New)
+echo -e "${BLUE}4. Generating Prisma Client...${NC}"
+npx prisma generate || { echo -e "${RED}Error: Prisma generation failed${NC}"; exit 1; }
+
+# (Optional) Push schema to empty DB if fresh start
+# npx prisma db push --accept-data-loss || { echo -e "${RED}Error: Prisma DB push failed${NC}"; exit 1; }
 
 # Restart Backend via PM2
 echo -e "${BLUE}3. Restarting Backend via PM2...${NC}"

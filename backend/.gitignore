@@ -11,3 +11,4 @@ verify-*.js
 scripts/*users.json
 scripts/production-*.json
 !scripts/users.example.json
+/src/generated/prisma

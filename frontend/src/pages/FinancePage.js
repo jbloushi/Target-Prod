@@ -193,6 +193,8 @@ const FinancePage = () => {
     const { user, refreshUser, can } = useAuth();
     const { enqueueSnackbar } = useSnackbar();
 
+    const fmtKD = (val) => parseFloat(val || 0).toFixed(3);
+
     // Ledger State
     const [ledger, setLedger] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -317,7 +319,7 @@ const FinancePage = () => {
 
     const currentOrgName = selectedOrgId === 'none'
         ? 'Solo Shippers (Unorganized)'
-        : organizations.find(o => o._id === selectedOrgId)?.name || 'Selected Organization';
+        : organizations.find(o => o.id === selectedOrgId)?.name || 'Selected Organization';
 
     const isFirstOrgLoad = useRef(true);
 
@@ -335,13 +337,13 @@ const FinancePage = () => {
                 } catch (error) {
                     console.error('Failed to fetch organizations:', error);
                 }
-            } else if (user?.organization?._id) {
-                setSelectedOrgId(user.organization._id);
+            } else if (user?.organization?.id) {
+                setSelectedOrgId(user.organization.id);
             }
         };
         loadOrganizations();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user, user?.role, user?.organization?._id]);
+    }, [user, user?.role, user?.organization?.id]);
 
     const loadFinance = useCallback(async () => {
         if (!selectedOrgId) return;
@@ -425,7 +427,7 @@ const FinancePage = () => {
             return;
         }
 
-        const payment = payments.find(p => p._id === selectedPaymentId);
+        const payment = payments.find(p => p.id === selectedPaymentId);
         if (!payment) {
             enqueueSnackbar('Selected payment not found', { variant: 'error' });
             return;
@@ -462,16 +464,16 @@ const FinancePage = () => {
         if (shipment.paid) return;
         setSelectedShipmentsMap(prev => {
             const next = { ...prev };
-            if (next[shipment._id]) {
-                delete next[shipment._id];
+            if (next[shipment.id]) {
+                delete next[shipment.id];
             } else {
-                next[shipment._id] = shipment;
+                next[shipment.id] = shipment;
             }
             return next;
         });
     };
 
-    const selectedPayment = payments.find(p => p._id === selectedPaymentId);
+    const selectedPayment = payments.find(p => p.id === selectedPaymentId);
 
     // Calculate total from selected map
     const selectedShipmentsTotal = Object.values(selectedShipmentsMap).reduce((sum, s) => {
@@ -535,7 +537,7 @@ const FinancePage = () => {
                                                 Solo Shippers (Unorganized)
                                             </option>
                                             {organizations.map((org) => (
-                                                <option key={org._id} value={org._id}>{org.name}</option>
+                                                <option key={org.id} value={org.id}>{org.name}</option>
                                             ))}
                                         </Select>
                                     </div>
@@ -551,7 +553,7 @@ const FinancePage = () => {
                                 <div>
                                     <StatLabel>Outstanding Balance</StatLabel>
                                     <StatValue>
-                                        {loading ? <Loader /> : `${parseFloat(summary.balance).toFixed(3)}`} <span>KD</span>
+                                        {loading ? <Loader /> : fmtKD(summary.balance)} <span>KD</span>
                                     </StatValue>
                                 </div>
                             </StatCard>
@@ -560,7 +562,7 @@ const FinancePage = () => {
                                 <div>
                                     <StatLabel>Unapplied Cash</StatLabel>
                                     <StatValue $highlight>
-                                        {loading ? <Loader /> : `${parseFloat(summary.unappliedCash).toFixed(3)}`} <span>KD</span>
+                                        {loading ? <Loader /> : fmtKD(summary.unappliedCash)} <span>KD</span>
                                     </StatValue>
                                     <ItemSub style={{ marginTop: '8px' }}>Available funds for allocation</ItemSub>
                                 </div>
@@ -571,9 +573,9 @@ const FinancePage = () => {
                                 <div>
                                     <StatLabel>Available Credit</StatLabel>
                                     <StatValue>
-                                        {loading ? <Loader /> : `${parseFloat(summary.availableCredit).toFixed(3)}`} <span>KD</span>
+                                        {loading ? <Loader /> : fmtKD(summary.availableCredit)} <span>KD</span>
                                     </StatValue>
-                                    <ItemSub style={{ marginTop: '8px' }}>Limit: {summary.creditLimit.toFixed(3)} KD</ItemSub>
+                                    <ItemSub style={{ marginTop: '8px' }}>Limit: {fmtKD(summary.creditLimit)} KD</ItemSub>
                                 </div>
                             </StatCard>
 
@@ -581,7 +583,7 @@ const FinancePage = () => {
                                 <div>
                                     <StatLabel>Total Unpaid Shipments</StatLabel>
                                     <StatValue>
-                                        {parseFloat(summary.totalUnpaid).toFixed(3)} <span>KD</span>
+                                        {fmtKD(summary.totalUnpaid)} <span>KD</span>
                                     </StatValue>
                                 </div>
                             </StatCard>
@@ -591,10 +593,10 @@ const FinancePage = () => {
                                     <div>
                                         <StatLabel>Aging Buckets</StatLabel>
                                         <StatValue style={{ fontSize: '18px', display: 'flex', gap: '16px', marginTop: '12px' }}>
-                                            <div><div style={{ fontSize: '10px', opacity: 0.7 }}>0–30</div>{summary.agingBuckets['0-30'].toFixed(3)}</div>
-                                            <div><div style={{ fontSize: '10px', opacity: 0.7 }}>31–60</div>{summary.agingBuckets['31-60'].toFixed(3)}</div>
-                                            <div><div style={{ fontSize: '10px', opacity: 0.7 }}>61–90</div>{summary.agingBuckets['61-90'].toFixed(3)}</div>
-                                            <div><div style={{ fontSize: '10px', opacity: 0.7 }}>90+</div>{summary.agingBuckets['90+'].toFixed(3)}</div>
+                                            <div><div style={{ fontSize: '10px', opacity: 0.7 }}>0–30</div>{fmtKD(summary.agingBuckets['0-30'])}</div>
+                                            <div><div style={{ fontSize: '10px', opacity: 0.7 }}>31–60</div>{fmtKD(summary.agingBuckets['31-60'])}</div>
+                                            <div><div style={{ fontSize: '10px', opacity: 0.7 }}>61–90</div>{fmtKD(summary.agingBuckets['61-90'])}</div>
+                                            <div><div style={{ fontSize: '10px', opacity: 0.7 }}>90+</div>{fmtKD(summary.agingBuckets['90+'])}</div>
                                         </StatValue>
                                     </div>
                                 </div>
@@ -661,9 +663,9 @@ const FinancePage = () => {
                                                 <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}><Loader /></div>
                                             ) : payments.length > 0 ? payments.map(p => (
                                                 <ListItem
-                                                    key={p._id}
-                                                    $selected={selectedPaymentId === p._id}
-                                                    onClick={() => setSelectedPaymentId(p._id)}
+                                                    key={p.id}
+                                                    $selected={selectedPaymentId === p.id}
+                                                    onClick={() => setSelectedPaymentId(p.id)}
                                                 >
                                                     <ItemInfo>
                                                         <ItemTitle>{p.reference || 'No Reference'}</ItemTitle>
@@ -673,10 +675,10 @@ const FinancePage = () => {
                                                     </ItemInfo>
                                                     <div style={{ textAlign: 'right' }}>
                                                         <div style={{ fontWeight: 800, color: 'var(--accent-primary)', fontSize: '15px' }}>
-                                                            {(p.amount - (p.allocatedAmount || 0)).toFixed(3)} KD
+                                                            {fmtKD(parseFloat(p.amount) - parseFloat(p.allocatedAmount || 0))} KD
                                                         </div>
                                                         <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
-                                                            Total: {p.amount.toFixed(3)} KD
+                                                            Total: {fmtKD(p.amount)} KD
                                                         </div>
                                                     </div>
                                                 </ListItem>
@@ -727,8 +729,8 @@ const FinancePage = () => {
                                                 <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}><Loader /></div>
                                             ) : shipments.length > 0 ? shipments.map(s => (
                                                 <ListItem
-                                                    key={s._id}
-                                                    $selected={!!selectedShipmentsMap[s._id]}
+                                                    key={s.id}
+                                                    $selected={!!selectedShipmentsMap[s.id]}
                                                     $disabled={s.paid}
                                                     onClick={() => toggleShipmentSelection(s)}
                                                 >
@@ -740,10 +742,10 @@ const FinancePage = () => {
                                                     </ItemInfo>
                                                     <div style={{ textAlign: 'right' }}>
                                                         <div style={{ fontWeight: 800, fontSize: '15px' }}>
-                                                            {(s.paid ? 0 : (s.remainingBalance !== undefined ? s.remainingBalance : (s.pricingSnapshot?.totalPrice || s.price || 0) - (s.totalPaid || 0))).toFixed(3)} KD
+                                                            {fmtKD(s.paid ? 0 : (s.remainingBalance !== undefined ? s.remainingBalance : (parseFloat(s.pricingSnapshot?.totalPrice || s.price || 0) - parseFloat(s.totalPaid || 0))))} KD
                                                         </div>
                                                         <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
-                                                            Total: {(s.pricingSnapshot?.totalPrice || s.price || 0).toFixed(3)} KD
+                                                            Total: {fmtKD(s.pricingSnapshot?.totalPrice || s.price || 0)} KD
                                                         </div>
                                                         <div style={{
                                                             fontSize: '10px',
@@ -785,10 +787,10 @@ const FinancePage = () => {
                                         <AllocationFooter>
                                             <div style={{ fontSize: '14px' }}>
                                                 {selectedPayment && (
-                                                    <span>Allocating From: <strong>({(selectedPayment.amount - (selectedPayment.allocatedAmount || 0)).toFixed(3)} KD)</strong></span>
+                                                    <span>Allocating From: <strong>({fmtKD(parseFloat(selectedPayment.amount) - parseFloat(selectedPayment.allocatedAmount || 0))} KD)</strong></span>
                                                 )}
                                                 {selectedShipmentsTotal > 0 && (
-                                                    <span style={{ marginLeft: '16px' }}>To Pay: <strong>({selectedShipmentsTotal.toFixed(3)} KD)</strong></span>
+                                                    <span style={{ marginLeft: '16px' }}>To Pay: <strong>({fmtKD(selectedShipmentsTotal)} KD)</strong></span>
                                                 )}
                                             </div>
                                             <Button
@@ -838,7 +840,7 @@ const FinancePage = () => {
                                         {loading ? (
                                             <Tr><Td colSpan={5} style={{ textAlign: 'center' }}><Loader /></Td></Tr>
                                         ) : ledger.length > 0 ? ledger.map((entry) => (
-                                            <Tr key={entry._id} style={{ height: '40px' }}>
+                                            <Tr key={entry.id} style={{ height: '40px' }}>
                                                 <Td>
                                                     <div style={{ fontWeight: '500' }}>{format(new Date(entry.createdAt), 'MMM dd, yyyy')}</div>
                                                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{format(new Date(entry.createdAt), 'HH:mm')}</div>

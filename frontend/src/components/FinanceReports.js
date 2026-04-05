@@ -27,6 +27,7 @@ const ReportTitle = styled.h3`
 // In a real implementation, these would come from the backend via useEffect
 const FinanceReports = ({ ledger = [], shipments = [], organizations = [] }) => {
     const [activeReport, setActiveReport] = useState('profitability');
+    const fmt = (val) => parseFloat(val || 0).toFixed(3);
 
     const renderProfitability = () => {
         // Calculate profitability from shipments
@@ -40,9 +41,9 @@ const FinanceReports = ({ ledger = [], shipments = [], organizations = [] }) => 
                 Tracking: s.trackingNumber,
                 Date: format(new Date(s.createdAt), 'yyyy-MM-dd'),
                 Customer: s.customer?.name || 'N/A',
-                Cost: cost.toFixed(3),
-                Revenue: revenue.toFixed(3),
-                Profit: profit.toFixed(3),
+                Cost: fmt(cost),
+                Revenue: fmt(revenue),
+                Profit: fmt(profit),
                 Margin: `${margin}%`,
                 Status: s.paid ? 'PAID' : 'UNPAID'
             };
@@ -97,9 +98,9 @@ const FinanceReports = ({ ledger = [], shipments = [], organizations = [] }) => 
             if (!acc[date]) acc[date] = { date, revenue: 0, received: 0 };
 
             if (entry.entryType === 'DEBIT' && entry.category === 'SHIPMENT_CHARGE') {
-                acc[date].revenue += entry.amount;
+                acc[date].revenue += parseFloat(entry.amount || 0);
             } else if (entry.entryType === 'CREDIT' && entry.category === 'PAYMENT') {
-                acc[date].received += entry.amount;
+                acc[date].received += parseFloat(entry.amount || 0);
             }
             return acc;
         }, {});
@@ -124,8 +125,8 @@ const FinanceReports = ({ ledger = [], shipments = [], organizations = [] }) => 
                         {data.length > 0 ? data.map((row, i) => (
                             <Tr key={i}>
                                 <Td>{row.date}</Td>
-                                <Td style={{ textAlign: 'right' }}>{row.revenue.toFixed(3)}</Td>
-                                <Td style={{ textAlign: 'right', color: 'var(--accent-success)' }}>{row.received.toFixed(3)}</Td>
+                                <Td style={{ textAlign: 'right' }}>{fmt(row.revenue)}</Td>
+                                <Td style={{ textAlign: 'right', color: 'var(--accent-success)' }}>{fmt(row.received)}</Td>
                             </Tr>
                         )) : (
                             <Tr><Td colSpan={3} style={{ textAlign: 'center', padding: '20px' }}>No transactions found</Td></Tr>
@@ -139,9 +140,9 @@ const FinanceReports = ({ ledger = [], shipments = [], organizations = [] }) => 
     const renderOrgBalances = () => {
         const data = organizations.map(org => ({
             Organization: org.name,
-            'Credit Limit': (org.creditLimit || 0).toFixed(3),
-            'Current Balance': (org.balance || 0).toFixed(3),
-            'Unapplied Cash': (org.unappliedBalance || 0).toFixed(3), // Use unappliedBalance from model
+            'Credit Limit': fmt(org.creditLimit),
+            'Current Balance': fmt(org.balance),
+            'Unapplied Cash': fmt(org.unappliedBalance), // Use unappliedBalance from model
             Status: org.active ? 'Active' : 'Inactive'
         })).sort((a, b) => parseFloat(b['Current Balance']) - parseFloat(a['Current Balance']));
 

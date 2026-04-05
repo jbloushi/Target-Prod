@@ -393,7 +393,7 @@ const ShipmentList = () => {
             <Tbody>
               {loading ? renderSkeleton() : shipments.map(shipment => (
                 <Tr
-                  key={shipment._id}
+                  key={shipment.id}
                   onClick={() => navigate(`/shipment/${shipment.trackingNumber}`)}
                   style={{ cursor: 'pointer' }}
                 >

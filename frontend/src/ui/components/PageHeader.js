@@ -2,7 +2,7 @@ import React from 'react';
 import styled from 'styled-components';
 
 const HeaderContainer = styled.div`
-  margin-bottom: 32px;
+  margin-bottom: 40px;
   display: flex;
   justify-content: ${props => props.$align === 'center' ? 'center' : 'space-between'};
   align-items: flex-start;
@@ -14,25 +14,26 @@ const HeaderContainer = styled.div`
 const TitleGroup = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   align-items: ${props => props.$align === 'center' ? 'center' : 'flex-start'};
 `;
 
 const Title = styled.h1`
-  font-family: 'Outfit', sans-serif;
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--text-primary);
+  font-family: 'Manrope', sans-serif;
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--on-surface, #2a2f32);
   margin: 0;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
 `;
 
 const Description = styled.p`
   font-size: 15px;
-  color: var(--text-secondary);
+  color: var(--on-surface-variant, #575c60);
   margin: 0;
-  max-width: 600px;
-  line-height: 1.5;
+  max-width: 640px;
+  line-height: 1.6;
 `;
 
 const ActionGroup = styled.div`

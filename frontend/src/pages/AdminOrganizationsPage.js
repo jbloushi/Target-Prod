@@ -69,11 +69,11 @@ const AdminOrganizationsPage = () => {
             setUsers(userRes.data || []);
             const overviewEntries = await Promise.all(organizations.map(async (org) => {
                 try {
-                    const response = await financeService.getOrganizationOverview(org._id);
-                    return [org._id, response.data];
+                    const response = await financeService.getOrganizationOverview(org.id);
+                    return [org.id, response.data];
                 } catch (error) {
                     console.error('Failed to load organization overview:', error);
-                    return [org._id, null];
+                    return [org.id, null];
                 }
             }));
             setOrgOverviews(Object.fromEntries(overviewEntries));
@@ -119,7 +119,7 @@ const AdminOrganizationsPage = () => {
     const handleSave = async () => {
         try {
             if (editingOrg) {
-                await organizationService.updateOrganization(editingOrg._id, formData);
+                await organizationService.updateOrganization(editingOrg.id, formData);
                 enqueueSnackbar('Organization updated', { variant: 'success' });
             } else {
                 await organizationService.createOrganization(formData);
@@ -140,11 +140,11 @@ const AdminOrganizationsPage = () => {
         }
         if (!selectedMemberToAdd) return;
         try {
-            await organizationService.addMember(editingOrg._id, selectedMemberToAdd);
+            await organizationService.addMember(editingOrg.id, selectedMemberToAdd);
             enqueueSnackbar('Member added', { variant: 'success' });
             fetchOrgs();
             // Update local state to reflect change immediately
-            const updatedOrgRes = await organizationService.getOrganization(editingOrg._id);
+            const updatedOrgRes = await organizationService.getOrganization(editingOrg.id);
             setEditingOrg(updatedOrgRes.data);
             setSelectedMemberToAdd('');
         } catch (err) {
@@ -159,12 +159,12 @@ const AdminOrganizationsPage = () => {
             return;
         }
         try {
-            await organizationService.removeMember(editingOrg._id, memberId);
+            await organizationService.removeMember(editingOrg.id, memberId);
             enqueueSnackbar('Member removed', { variant: 'success' });
             fetchOrgs();
             setEditingOrg(prev => ({
                 ...prev,
-                members: prev.members.filter(m => m._id !== memberId)
+                members: prev.members.filter(m => m.id !== memberId)
             }));
         } catch (err) {
             enqueueSnackbar('Failed to remove member', { variant: 'error' });
@@ -212,12 +212,12 @@ const AdminOrganizationsPage = () => {
                             {loading ? (
                                 <Tr><Td colSpan={7} style={{ textAlign: 'center' }}>Loading...</Td></Tr>
                             ) : orgs.map(org => {
-                                const overview = orgOverviews[org._id];
+                                const overview = orgOverviews[org.id];
                                 const outstanding = overview?.balance ?? 0;
                                 const availableCredit = overview?.availableCredit ?? 0;
 
                                 return (
-                                    <Tr key={org._id}>
+                                    <Tr key={org.id}>
                                         <Td>
                                             <div style={{ fontWeight: 'bold' }}>{org.name}</div>
                                             <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Tax ID: {org.taxId || 'N/A'}</div>
@@ -340,12 +340,12 @@ const AdminOrganizationsPage = () => {
                             </Thead>
                             <Tbody>
                                 {editingOrg?.members?.map(member => (
-                                    <Tr key={member._id}>
+                                    <Tr key={member.id}>
                                         <Td>{member.name}</Td>
                                         <Td>{member.email}</Td>
                                         <Td><StatusPill text={member.role} status="neutral" /></Td>
                                         <Td style={{ textAlign: 'right' }}>
-                                            <ActionButton $color="var(--accent-error)" onClick={() => handleRemoveMember(member._id)}>
+                                            <ActionButton $color="var(--accent-error)" onClick={() => handleRemoveMember(member.id)}>
                                                 Remove
                                             </ActionButton>
                                         </Td>
@@ -369,9 +369,9 @@ const AdminOrganizationsPage = () => {
                             >
                                 <option value="">-- Select User --</option>
                                 {users
-                                    .filter(u => !editingOrg?.members?.some(m => m._id === u._id) && !u.organization)
+                                    .filter(u => !editingOrg?.members?.some(m => m.id === u.id) && !u.organization)
                                     .map(u => (
-                                        <option key={u._id} value={u._id}>{u.name} ({u.email})</option>
+                                        <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
                                     ))
                                 }
                             </Select>

@@ -8,7 +8,9 @@ import {
     Typography,
     CircularProgress,
     Alert,
-    Paper
+    Paper,
+    alpha,
+    useTheme
 } from '@mui/material';
 
 import LocationOnIcon from '@mui/icons-material/LocationOn';
@@ -55,12 +57,13 @@ const mapPlaceComponentsToAddress = (addressComponents = []) => {
 const GoogleAddressInput = ({
     value = {},
     onChange,
-    label = 'Search Address (Google)',
+    label = 'Search Global Address Registry',
     disabled,
     required,
     error,
     helperText
 }) => {
+    const theme = useTheme();
     const apiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
     const [inputValue, setInputValue] = useState(value?.formattedAddress || '');
     const [debouncedInput, setDebouncedInput] = useState(value?.formattedAddress || '');
@@ -69,10 +72,7 @@ const GoogleAddressInput = ({
 
     useEffect(() => {
         if (!apiKey) {
-            console.error(
-                'GOOGLE MAPS API KEY MISSING. Address autofill will not work. ' +
-                'Set REACT_APP_GOOGLE_MAPS_API_KEY in your .env file.'
-            );
+            console.warn('Google Maps API Key Missing.');
         }
     }, [apiKey]);
 
@@ -204,7 +204,6 @@ const GoogleAddressInput = ({
                     validationStatus: 'CONFIRMED'
                 };
             } else {
-                // Fallback for older API or AutocompleteService predictions
                 const results = await getGeocode({ address: selectedOption.description });
                 if (!results || results.length === 0) throw new Error('No geocode results found');
 
@@ -231,13 +230,14 @@ const GoogleAddressInput = ({
 
     const helperMessage = useMemo(() => {
         if (helperText) return helperText;
-        if (loadError) return `Google Maps Error: ${loadError.message}`;
+        if (loadError) return `Maps Engine Registry Error`;
         return undefined;
     }, [helperText, loadError]);
 
     return (
-        <Box>
+        <Box sx={{ width: '100%' }}>
             <MuiAutocomplete
+                id="google-address-search"
                 componentsProps={{
                     popper: {
                         style: { zIndex: 10000 }
@@ -268,62 +268,77 @@ const GoogleAddressInput = ({
                             helperText={helperMessage}
                             InputProps={{
                                 ...params.InputProps,
-                                startAdornment: <SearchIcon color="action" sx={{ mr: 1 }} />,
+                                startAdornment: (
+                                    <SearchIcon 
+                                        sx={{ mr: 1, fontSize: 20, color: 'primary.main', opacity: 0.7 }} 
+                                    />
+                                ),
                                 endAdornment: (
                                     <>
-                                        {(loadingSuggestions || !isLoaded) && <CircularProgress size={20} />}
+                                        {(loadingSuggestions || !isLoaded) && <CircularProgress size={16} sx={{ mr: 1 }} />}
                                         {params.InputProps.endAdornment}
                                     </>
                                 )
                             }}
+                            sx={{
+                                '& .MuiOutlinedInput-root': {
+                                    borderRadius: 3,
+                                    bgcolor: 'surface-container-high'
+                                }
+                            }}
                         />
                         {(!apiKey || loadError) && (
                             <Box mt={1}>
-                                <Alert severity="error">
-                                    {loadError ? `Google Maps Error: ${loadError.message}` : 'Google Maps API Key is missing. Autofill disabled.'}
+                                <Alert severity="info" variant="outlined" sx={{ borderRadius: 3 }}>
+                                    {loadError ? `Maps Engine Registry Offline` : 'Manual address entry enabled.'}
                                 </Alert>
                             </Box>
                         )}
                     </>
                 )}
-                renderOption={(props, option) => (
-                    <li {...props} key={option.placeId} style={{ padding: '10px 16px' }}>
-                        <Box display="flex" alignItems="center" sx={{ width: '100%' }}>
-                            <Box sx={{
-                                mr: 2,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                bgcolor: 'rgba(0, 217, 184, 0.1)',
-                                borderRadius: '50%',
-                                p: 1
-                            }}>
-                                <LocationOnIcon sx={{ color: '#00d9b8', fontSize: 20 }} />
+                renderOption={(props, option) => {
+                    const { key, ...rest } = props;
+                    return (
+                        <li key={key} {...rest} style={{ padding: '12px 16px' }}>
+                            <Box display="flex" alignItems="center" sx={{ width: '100%' }}>
+                                <Box sx={{
+                                    mr: 2,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    bgcolor: alpha(theme.palette.primary.main, 0.1),
+                                    borderRadius: 2,
+                                    p: 1
+                                }}>
+                                    <LocationOnIcon sx={{ color: 'primary.main', fontSize: 18 }} />
+                                </Box>
+                                <Box sx={{ flexGrow: 1 }}>
+                                    <Typography variant="body2" sx={{ fontWeight: 800 }}>
+                                        {option.mainText || option.description}
+                                    </Typography>
+                                    <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', opacity: 0.7 }}>
+                                        {option.secondaryText}
+                                    </Typography>
+                                </Box>
                             </Box>
-                            <Box sx={{ flexGrow: 1 }}>
-                                <Typography variant="body1" sx={{ fontWeight: 600, color: '#e0e0e0' }}>
-                                    {option.mainText || option.description}
-                                </Typography>
-                                <Typography variant="caption" sx={{ color: '#aaa', display: 'block' }}>
-                                    {option.secondaryText}
-                                </Typography>
-                            </Box>
-                        </Box>
-                    </li>
-                )}
+                        </li>
+                    );
+                }}
                 PaperComponent={(paperProps) => (
                     <Paper {...paperProps} sx={{
-                        bgcolor: '#1a1f2e !important',
-                        color: '#ffffff !important',
-                        borderRadius: 2,
-                        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-                        border: '1px solid #2a3347',
+                        bgcolor: 'surface-container-lowest !important',
+                        color: 'text.primary !important',
+                        borderRadius: 3,
+                        boxShadow: 'var(--shadow-ambient)',
+                        border: '1px solid',
+                        borderColor: 'divider',
                         marginTop: '8px',
+                        overflow: 'hidden',
                         '& .MuiAutocomplete-option[aria-selected="true"]': {
-                            bgcolor: 'rgba(0, 217, 184, 0.2) !important',
+                            bgcolor: alpha(theme.palette.primary.main, 0.1) + ' !important',
                         },
                         '& .MuiAutocomplete-option:hover': {
-                            bgcolor: 'rgba(255, 255, 255, 0.05) !important',
+                            bgcolor: 'surface-container-high !important',
                         }
                     }} />
                 )}

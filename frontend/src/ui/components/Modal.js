@@ -1,7 +1,5 @@
 import React, { useEffect } from 'react';
 import styled from 'styled-components';
-import { Card } from './Card';
-import { Button } from './Button';
 
 const Overlay = styled.div`
   position: fixed;
@@ -9,8 +7,9 @@ const Overlay = styled.div`
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(4px);
+  background: rgba(42, 47, 50, 0.3);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -24,16 +23,18 @@ const Overlay = styled.div`
 `;
 
 const ModalContainer = styled.div`
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(169, 174, 177, 0.15);
+  border-radius: 20px;
   width: ${props => props.$width || '600px'};
   max-width: 90vw;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-  animation: slideUp 0.3s ease;
+  box-shadow: 0 20px 48px -8px rgba(42, 47, 50, 0.1);
+  animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
   @keyframes slideUp {
     from { transform: translateY(20px); opacity: 0; }
@@ -43,34 +44,34 @@ const ModalContainer = styled.div`
 
 const ModalHeader = styled.div`
   padding: 20px 24px;
-  border-bottom: 1px solid var(--border-color);
   display: flex;
   justify-content: space-between;
   align-items: center;
   
   h3 {
     margin: 0;
-    font-family: 'Outfit', sans-serif;
+    font-family: 'Manrope', sans-serif;
     font-size: 18px;
-    color: var(--text-primary);
+    font-weight: 700;
+    color: var(--on-surface, #2a2f32);
   }
 `;
 
 const CloseButton = styled.button`
-  background: transparent;
+  background: var(--surface-container-low, #ecf1f6);
   border: none;
-  color: var(--text-secondary);
+  color: var(--on-surface-variant, #575c60);
   cursor: pointer;
-  padding: 4px;
-  border-radius: 50%;
+  padding: 8px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
 
   &:hover {
-    color: var(--text-primary);
-    background: var(--bg-tertiary);
+    color: var(--on-surface, #2a2f32);
+    background: var(--surface-container, #e3e9ee);
   }
 `;
 
@@ -82,12 +83,11 @@ const ModalContent = styled.div`
 
 const ModalFooter = styled.div`
   padding: 16px 24px;
-  border-top: 1px solid var(--border-color);
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  background: var(--bg-secondary);
-  border-radius: 0 0 16px 16px;
+  background: var(--surface-container-low, #ecf1f6);
+  border-radius: 0 0 20px 20px;
 `;
 
 const Modal = ({ isOpen, onClose, title, children, footer, width }) => {

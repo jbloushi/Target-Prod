@@ -2,12 +2,15 @@ import React, { useState } from 'react';
 import {
     Box, Typography, Button, Grid, Paper, FormControl,
     InputLabel, Select, MenuItem, IconButton,
-    Alert, TextField
+    Alert, TextField, Stack, alpha, useTheme
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
+import Inventory2Icon from '@mui/icons-material/Inventory2';
+import DescriptionIcon from '@mui/icons-material/Description';
 import ParcelCard from './ParcelCard';
 import DangerousGoodsPanel from './DangerousGoodsPanel';
+import StatusPill from '../../ui/components/StatusPill';
 
 const HS_CODE_REGEX = /^\d{4}(\.\d{2}(\.\d{2})?)?$/;
 const ISO_COUNTRY_REGEX = /^[A-Z]{2}$/;
@@ -31,6 +34,7 @@ const ShipmentContent = ({
     setCurrency,
     defaultOrigin = 'KW'
 }) => {
+    const theme = useTheme();
     const [expandedParcel, setExpandedParcel] = useState(0);
 
     const updateParcel = (index, fieldOrUpdates, val) => {
@@ -80,34 +84,59 @@ const ShipmentContent = ({
     });
 
     return (
-        <Box>
-            {/* Dangerous Goods Section (Conditional Panel) */}
+        <Box className="fade-in">
+            {/* Dangerous Goods Section */}
             {showDangerousGoods && (
-                <DangerousGoodsPanel
-                    dangerousGoods={dangerousGoods}
-                    setDangerousGoods={setDangerousGoods}
-                />
+                <Box mb={4}>
+                    <DangerousGoodsPanel
+                        dangerousGoods={dangerousGoods}
+                        setDangerousGoods={setDangerousGoods}
+                    />
+                </Box>
             )}
 
-            <Paper sx={{ p: 3, mb: 3, mt: 2 }} variant="outlined">
-                <Typography variant="h6" fontWeight="bold" gutterBottom>1. Physical Packages</Typography>
+            {/* 1. Physical Packages */}
+            <Box 
+                sx={{ 
+                    p: 4, mb: 4, 
+                    bgcolor: 'surface-container-low', 
+                    borderRadius: 6,
+                    position: 'relative'
+                }}
+            >
+                <Stack direction="row" alignItems="center" spacing={2} mb={4}>
+                    <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: alpha(theme.palette.primary.main, 0.1), color: 'primary.main', display: 'flex' }}>
+                        <Inventory2Icon />
+                    </Box>
+                    <Typography variant="h5" fontWeight="800" sx={{ letterSpacing: '-0.02em' }}>
+                        Physical Packages
+                    </Typography>
+                </Stack>
 
-                <Box mb={3}>
-                    <FormControl fullWidth size="small">
-                        <InputLabel>Packaging Type</InputLabel>
-                        <Select
-                            value={packagingType || 'user'}
-                            label="Packaging Type"
-                            onChange={(e) => setPackagingType(e.target.value)}
-                        >
-                            {(packagingOptions || DEFAULT_PACKAGING_OPTIONS).map((option) => (
-                                <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
+                <Box mb={4}>
+                    <Grid container spacing={3} alignItems="flex-end">
+                        <Grid item xs={12} md={6}>
+                            <FormControl fullWidth size="small">
+                                <InputLabel>Packaging Selection</InputLabel>
+                                <Select
+                                    value={packagingType || 'user'}
+                                    label="Packaging Selection"
+                                    onChange={(e) => setPackagingType(e.target.value)}
+                                >
+                                    {(packagingOptions || DEFAULT_PACKAGING_OPTIONS).map((option) => (
+                                        <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                        </Grid>
+                        <Grid item xs />
+                        <Grid item>
+                           <StatusPill label={`${parcels.length} Unit(s)`} status="primary" />
+                        </Grid>
+                    </Grid>
                 </Box>
 
-                <Grid container spacing={2}>
+                <Grid container spacing={3}>
                     {parcels.map((parcel, index) => (
                         <Grid item xs={12} key={index}>
                             <ParcelCard
@@ -124,24 +153,39 @@ const ShipmentContent = ({
                 </Grid>
 
                 <Button
+                    variant="outlined"
                     startIcon={<AddIcon />}
                     onClick={() => setParcels([...parcels, { description: '', weight: '', length: '', width: '', height: '', quantity: 1, declaredValue: '' }])}
-                    sx={{ mt: 2 }}
+                    sx={{ mt: 4, borderRadius: 3, textTransform: 'none', fontWeight: 800, py: 1, px: 3 }}
                 >
-                    Add Another Package
+                    Add Physical Unit
                 </Button>
-            </Paper>
+            </Box>
 
-            {/* Customs Items Section */}
+            {/* 2. Customs Declaration */}
             {shipmentType !== 'documents' && (
-                <Paper sx={{ p: 3, mb: 3 }} variant="outlined">
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                        <Typography variant="h6" fontWeight="bold">2. Customs Declaration (Items)</Typography>
-                        <FormControl size="small" sx={{ minWidth: 150 }}>
-                            <InputLabel>Shipment Currency</InputLabel>
+                <Box 
+                    sx={{ 
+                        p: 4, mb: 4, 
+                        bgcolor: 'surface-container-low', 
+                        borderRadius: 6
+                    }}
+                >
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
+                        <Stack direction="row" alignItems="center" spacing={2}>
+                            <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: alpha(theme.palette.secondary.main, 0.1), color: 'secondary.main', display: 'flex' }}>
+                                <DescriptionIcon />
+                            </Box>
+                            <Typography variant="h5" fontWeight="800" sx={{ letterSpacing: '-0.02em' }}>
+                                Customs Declaration
+                            </Typography>
+                        </Stack>
+                        
+                        <FormControl size="small" sx={{ minWidth: 160 }}>
+                            <InputLabel>Valuation Currency</InputLabel>
                             <Select
                                 value={currency || 'KWD'}
-                                label="Shipment Currency"
+                                label="Valuation Currency"
                                 onChange={(e) => setCurrency(e.target.value)}
                             >
                                 <MenuItem value="KWD">KWD - Kuwaiti Dinar</MenuItem>
@@ -152,82 +196,100 @@ const ShipmentContent = ({
                             </Select>
                         </FormControl>
                     </Box>
-                    <Alert severity="info" sx={{ mb: 2 }}>
-                        List package contents for customs. HS Code format: 1234 or 1234.56 or 1234.56.78. Origin must be ISO-2 (e.g. KW, US).
-                    </Alert>
 
                     {itemWarnings.length > 0 && (
-                        <Alert severity="warning" sx={{ mb: 2 }}>
+                        <Alert severity="warning" variant="outlined" sx={{ mb: 4, borderRadius: 4 }}>
                             {itemWarnings.map((warning) => (
-                                <Typography key={warning} variant="body2">• {warning}</Typography>
+                                <Typography key={warning} variant="caption" display="block">• {warning}</Typography>
                             ))}
                         </Alert>
                     )}
 
-                    {items.map((item, index) => (
-                        <Paper key={index} sx={{ p: 2, mb: 2, border: '1px solid #e0e0e0', bgcolor: 'background.paper', color: 'text.primary' }}>
-                            <Box display="flex" justifyContent="space-between" mb={2}>
-                                <Typography fontWeight="bold" color="primary">Item {index + 1}</Typography>
-                                <IconButton size="small" onClick={() => removeItem(index)}><DeleteIcon /></IconButton>
+                    <Stack spacing={3}>
+                        {items.map((item, index) => (
+                            <Box 
+                                key={index} 
+                                className="slide-up"
+                                sx={{ 
+                                    p: 3, 
+                                    borderRadius: 4, 
+                                    bgcolor: 'surface-container-high',
+                                    border: '1px solid transparent',
+                                    transition: 'var(--transition-base)',
+                                    '&:hover': { bgcolor: 'surface-container' }
+                                }}
+                            >
+                                <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+                                    <Typography variant="subtitle2" fontWeight="800" color="primary.main">
+                                        ITEM CONSIGNMENT {index + 1}
+                                    </Typography>
+                                    <IconButton size="small" onClick={() => removeItem(index)} sx={{ bgcolor: alpha(theme.palette.error.main, 0.05), color: 'error.main' }}>
+                                        <DeleteIcon fontSize="small" />
+                                    </IconButton>
+                                </Box>
+                                
+                                <Grid container spacing={3}>
+                                    <Grid item xs={12} md={6}>
+                                        <TextField
+                                            fullWidth label="Editorial Description" value={item.description}
+                                            onChange={(e) => updateItem(index, 'description', e.target.value)}
+                                            error={!!errors[`item${index}desc`] || (item.description || '').length > 70}
+                                            helperText={`${(item.description || '').length}/70 — Professional invoice description`}
+                                        />
+                                    </Grid>
+                                    <Grid item xs={6} md={2}>
+                                        <TextField
+                                            fullWidth type="number" label="Quantity" value={item.quantity}
+                                            onChange={(e) => updateItem(index, 'quantity', e.target.value)}
+                                            error={!!errors[`item${index}qty`]}
+                                        />
+                                    </Grid>
+                                    <Grid item xs={6} md={4}>
+                                        <TextField
+                                            fullWidth type="number" label={`Unit Value (${currency})`} value={item.declaredValue}
+                                            onChange={(e) => updateItem(index, 'declaredValue', e.target.value)}
+                                            error={!!errors[`item${index}val`]}
+                                        />
+                                    </Grid>
+                                    <Grid item xs={6} md={4}>
+                                        <TextField
+                                            fullWidth type="number" label="Net Weight (kg)" value={item.weight}
+                                            onChange={(e) => updateItem(index, 'weight', e.target.value)}
+                                            error={!!errors[`item${index}wgt`]}
+                                        />
+                                    </Grid>
+                                    <Grid item xs={6} md={4}>
+                                        <TextField
+                                            fullWidth label="HS / Harmonized Code" value={item.hsCode}
+                                            onChange={(e) => updateItem(index, 'hsCode', e.target.value)}
+                                            error={!!errors[`item${index}hs`] || (!!item.hsCode && !HS_CODE_REGEX.test(item.hsCode))}
+                                            placeholder="e.g. 3303.00.00"
+                                            helperText="Standard Customs Code"
+                                        />
+                                    </Grid>
+                                    <Grid item xs={6} md={4}>
+                                        <TextField
+                                            fullWidth label="Country of Origin" value={item.countryOfOrigin}
+                                            onChange={(e) => updateItem(index, 'countryOfOrigin', e.target.value)}
+                                            error={!!errors[`item${index}origin`] || (!!item.countryOfOrigin && !ISO_COUNTRY_REGEX.test(item.countryOfOrigin))}
+                                            placeholder="e.g. KW"
+                                            helperText="2-letter ISO code"
+                                        />
+                                    </Grid>
+                                </Grid>
                             </Box>
-                            <Grid container spacing={2}>
-                                <Grid item xs={12} md={6}>
-                                    <TextField
-                                        fullWidth label="Description" value={item.description}
-                                        onChange={(e) => updateItem(index, 'description', e.target.value)}
-                                        error={!!errors[`item${index}desc`] || (item.description || '').length > 70}
-                                        helperText={`${(item.description || '').length}/70`}
-                                    />
-                                </Grid>
-                                <Grid item xs={6} md={2}>
-                                    <TextField
-                                        fullWidth type="number" label="Quantity" value={item.quantity}
-                                        onChange={(e) => updateItem(index, 'quantity', e.target.value)}
-                                        error={!!errors[`item${index}qty`]}
-                                    />
-                                </Grid>
-                                <Grid item xs={6} md={3}>
-                                    <TextField
-                                        fullWidth type="number" label="Unit Value" value={item.declaredValue}
-                                        onChange={(e) => updateItem(index, 'declaredValue', e.target.value)}
-                                        error={!!errors[`item${index}val`]}
-                                        InputProps={{ endAdornment: <Box ml={1} color="text.secondary">{currency}</Box> }}
-                                    />
-                                </Grid>
-                                <Grid item xs={6} md={3}>
-                                    <TextField
-                                        fullWidth type="number" label="Net Weight (kg)" value={item.weight}
-                                        onChange={(e) => updateItem(index, 'weight', e.target.value)}
-                                        error={!!errors[`item${index}wgt`]}
-                                        InputProps={{ endAdornment: <Box ml={1} color="text.secondary">kg</Box> }}
-                                    />
-                                </Grid>
-                                <Grid item xs={6} md={3}>
-                                    <TextField
-                                        fullWidth label="HS Code" value={item.hsCode}
-                                        onChange={(e) => updateItem(index, 'hsCode', e.target.value)}
-                                        error={!!errors[`item${index}hs`] || (!!item.hsCode && !HS_CODE_REGEX.test(item.hsCode))}
-                                        placeholder="e.g. 3303.00.00"
-                                        helperText="4, 6, or 8 digits (with dots optional)"
-                                    />
-                                </Grid>
-                                <Grid item xs={6} md={3}>
-                                    <TextField
-                                        fullWidth label="Origin" value={item.countryOfOrigin}
-                                        onChange={(e) => updateItem(index, 'countryOfOrigin', e.target.value)}
-                                        error={!!errors[`item${index}origin`] || (!!item.countryOfOrigin && !ISO_COUNTRY_REGEX.test(item.countryOfOrigin))}
-                                        placeholder="KW"
-                                        helperText="2-letter ISO country code"
-                                    />
-                                </Grid>
-                            </Grid>
-                        </Paper>
-                    ))}
+                        ))}
+                    </Stack>
 
-                    <Button startIcon={<AddIcon />} onClick={() => setItems([...items, { description: '', quantity: 1, declaredValue: '', currency: currency || 'KWD', weight: '', hsCode: '', countryOfOrigin: defaultOrigin || 'KW' }])}>
-                        Add Another Item
+                    <Button 
+                        variant="outlined"
+                        startIcon={<AddIcon />} 
+                        onClick={() => setItems([...items, { description: '', quantity: 1, declaredValue: '', currency: currency || 'KWD', weight: '', hsCode: '', countryOfOrigin: defaultOrigin || 'KW' }])}
+                        sx={{ mt: 4, borderRadius: 3, fontWeight: 800, py: 1, px: 3 }}
+                    >
+                        Register Another Asset
                     </Button>
-                </Paper>
+                </Box>
             )}
         </Box>
     );

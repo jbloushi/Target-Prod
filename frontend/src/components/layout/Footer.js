@@ -24,9 +24,8 @@ const Footer = ({ compact = false }) => {
     <Box
       component="footer"
       sx={{
-        bgcolor: 'background.paper',
+        bgcolor: '#ffffff',
         py: compact ? 3 : 6,
-        borderTop: `1px solid ${theme.palette.divider}`,
         mt: 'auto',
       }}
     >
@@ -34,9 +33,9 @@ const Footer = ({ compact = false }) => {
         {compact ? (
           <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' }, gap: 2 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <LocalShippingIcon sx={{ color: 'primary.main' }} />
-              <Typography variant="subtitle1" color="text.primary" fontWeight="bold">
-                SHIPMENT<Box component="span" sx={{ color: 'primary.main' }}>TRACKER</Box>
+              <LocalShippingIcon sx={{ color: '#0050d4' }} />
+              <Typography variant="subtitle1" color="text.primary" fontWeight="bold" sx={{ fontFamily: 'Manrope, sans-serif' }}>
+                TARGET<Box component="span" sx={{ color: '#0050d4' }}> LOGISTICS</Box>
               </Typography>
             </Box>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
@@ -46,14 +45,14 @@ const Footer = ({ compact = false }) => {
                   component={RouterLink}
                   to={`/${item.toLowerCase()}`}
                   color="text.secondary"
-                  sx={{ textDecoration: 'none', fontSize: '0.85rem' }}
+                  sx={{ textDecoration: 'none', fontSize: '0.85rem', fontFamily: 'Manrope, sans-serif' }}
                 >
                   {item}
                 </Link>
               ))}
             </Box>
-            <Typography variant="body2" color="text.secondary">
-              © {currentYear} ShipmentTracker
+            <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'Manrope, sans-serif' }}>
+              © {currentYear} Target Logistics
             </Typography>
           </Box>
         ) : (
@@ -61,33 +60,33 @@ const Footer = ({ compact = false }) => {
             <Grid container spacing={4}>
               <Grid item xs={12} md={4}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                  <LocalShippingIcon sx={{ mr: 1, color: 'primary.main' }} />
-                  <Typography variant="h6" color="text.primary" fontWeight="bold">
-                    SHIPMENT<Box component="span" sx={{ color: 'primary.main' }}>TRACKER</Box>
+                  <LocalShippingIcon sx={{ mr: 1, color: '#0050d4' }} />
+                  <Typography variant="h6" color="text.primary" fontWeight="bold" sx={{ fontFamily: 'Manrope, sans-serif' }}>
+                    TARGET<Box component="span" sx={{ color: '#0050d4' }}> LOGISTICS</Box>
                   </Typography>
                 </Box>
-                <Typography variant="body2" color="text.secondary" paragraph>
+                <Typography variant="body2" color="text.secondary" paragraph sx={{ fontFamily: 'Manrope, sans-serif' }}>
                   Track your shipments in real-time with our advanced tracking system.
                   We provide reliable and fast shipping services worldwide.
                 </Typography>
                 <Box sx={{ mt: 2 }}>
-                  <IconButton color="primary" aria-label="Facebook">
+                  <IconButton sx={{ color: '#0050d4' }} aria-label="Facebook">
                     <FacebookIcon />
                   </IconButton>
-                  <IconButton color="primary" aria-label="Twitter">
+                  <IconButton sx={{ color: '#0050d4' }} aria-label="Twitter">
                     <TwitterIcon />
                   </IconButton>
-                  <IconButton color="primary" aria-label="LinkedIn">
+                  <IconButton sx={{ color: '#0050d4' }} aria-label="LinkedIn">
                     <LinkedInIcon />
                   </IconButton>
-                  <IconButton color="primary" aria-label="Instagram">
+                  <IconButton sx={{ color: '#0050d4' }} aria-label="Instagram">
                     <InstagramIcon />
                   </IconButton>
                 </Box>
               </Grid>
               
               <Grid item xs={6} md={2}>
-                <Typography variant="subtitle1" color="text.primary" gutterBottom fontWeight="medium">
+                <Typography variant="subtitle1" color="text.primary" gutterBottom fontWeight="bold" sx={{ fontFamily: 'Manrope, sans-serif' }}>
                   Navigation
                 </Typography>
                 <Box component="ul" sx={{ p: 0, m: 0, listStyle: 'none' }}>
@@ -99,7 +98,8 @@ const Footer = ({ compact = false }) => {
                         color="text.secondary"
                         sx={{ 
                           textDecoration: 'none',
-                          '&:hover': { color: 'primary.main' }
+                          fontFamily: 'Manrope, sans-serif',
+                          '&:hover': { color: '#0050d4' }
                         }}
                       >
                         {item}
@@ -110,7 +110,7 @@ const Footer = ({ compact = false }) => {
               </Grid>
               
               <Grid item xs={6} md={2}>
-                <Typography variant="subtitle1" color="text.primary" gutterBottom fontWeight="medium">
+                <Typography variant="subtitle1" color="text.primary" gutterBottom fontWeight="bold" sx={{ fontFamily: 'Manrope, sans-serif' }}>
                   Company
                 </Typography>
                 <Box component="ul" sx={{ p: 0, m: 0, listStyle: 'none' }}>
@@ -122,7 +122,8 @@ const Footer = ({ compact = false }) => {
                         color="text.secondary"
                         sx={{ 
                           textDecoration: 'none',
-                          '&:hover': { color: 'primary.main' }
+                          fontFamily: 'Manrope, sans-serif',
+                          '&:hover': { color: '#0050d4' }
                         }}
                       >
                         {item}
@@ -133,7 +134,7 @@ const Footer = ({ compact = false }) => {
               </Grid>
               
               <Grid item xs={6} md={2}>
-                <Typography variant="subtitle1" color="text.primary" gutterBottom fontWeight="medium">
+                <Typography variant="subtitle1" color="text.primary" gutterBottom fontWeight="bold" sx={{ fontFamily: 'Manrope, sans-serif' }}>
                   Legal
                 </Typography>
                 <Box component="ul" sx={{ p: 0, m: 0, listStyle: 'none' }}>
@@ -145,7 +146,8 @@ const Footer = ({ compact = false }) => {
                         color="text.secondary"
                         sx={{ 
                           textDecoration: 'none',
-                          '&:hover': { color: 'primary.main' }
+                          fontFamily: 'Manrope, sans-serif',
+                          '&:hover': { color: '#0050d4' }
                         }}
                       >
                         {item}
@@ -156,7 +158,7 @@ const Footer = ({ compact = false }) => {
               </Grid>
               
               <Grid item xs={6} md={2}>
-                <Typography variant="subtitle1" color="text.primary" gutterBottom fontWeight="medium">
+                <Typography variant="subtitle1" color="text.primary" gutterBottom fontWeight="bold" sx={{ fontFamily: 'Manrope, sans-serif' }}>
                   Support
                 </Typography>
                 <Box component="ul" sx={{ p: 0, m: 0, listStyle: 'none' }}>
@@ -168,7 +170,8 @@ const Footer = ({ compact = false }) => {
                         color="text.secondary"
                         sx={{ 
                           textDecoration: 'none',
-                          '&:hover': { color: 'primary.main' }
+                          fontFamily: 'Manrope, sans-serif',
+                          '&:hover': { color: '#0050d4' }
                         }}
                       >
                         {item}
@@ -179,20 +182,20 @@ const Footer = ({ compact = false }) => {
               </Grid>
             </Grid>
             
-            <Divider sx={{ my: 4 }} />
+            <Divider sx={{ my: 4, borderColor: 'rgba(169, 174, 177, 0.15)' }} />
             
             <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">
-                © {currentYear} ShipmentTracker. All rights reserved.
+              <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'Manrope, sans-serif' }}>
+                © {currentYear} Target Logistics. All rights reserved.
               </Typography>
               <Box sx={{ display: 'flex', gap: 2, mt: { xs: 2, sm: 0 } }}>
-                <Link component={RouterLink} to="/privacy" color="text.secondary" sx={{ textDecoration: 'none' }}>
+                <Link component={RouterLink} to="/privacy" color="text.secondary" sx={{ textDecoration: 'none', fontFamily: 'Manrope, sans-serif' }}>
                   Privacy
                 </Link>
-                <Link component={RouterLink} to="/terms" color="text.secondary" sx={{ textDecoration: 'none' }}>
+                <Link component={RouterLink} to="/terms" color="text.secondary" sx={{ textDecoration: 'none', fontFamily: 'Manrope, sans-serif' }}>
                   Terms
                 </Link>
-                <Link component={RouterLink} to="/cookies" color="text.secondary" sx={{ textDecoration: 'none' }}>
+                <Link component={RouterLink} to="/cookies" color="text.secondary" sx={{ textDecoration: 'none', fontFamily: 'Manrope, sans-serif' }}>
                   Cookies
                 </Link>
               </Box>

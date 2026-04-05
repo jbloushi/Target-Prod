@@ -1,256 +1,177 @@
 import React, { useState, useRef, useEffect } from 'react';
-import styled from 'styled-components';
-import { useNavigate } from 'react-router-dom';
-import Button from './Button';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useThemeMode } from '../../context/ThemeContext';
 import { financeService } from '../../services/api';
 
-const HeaderContainer = styled.header`
-  height: 70px;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
-  padding: 0 32px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  position: sticky;
-  top: 0;
-  z-index: 9999;
-  backdrop-filter: blur(10px);
-  overflow: visible !important;
-`;
+/**
+ * Premium Header Component (Kinetic Horizon)
+ * Rebuilt to match the glassmorphic, high-fidelity mockup provided.
+ * Features:
+ * - Real-time Balance Display
+ * - Global Search
+ * - Light/Dark Mode Toggle
+ * - User Profile Management
+ */
+const Header = ({ isSidebarCollapsed }) => {
+    const { user, logout, isAuthenticated } = useAuth();
+    const { isDark, toggleTheme } = useThemeMode();
+    const [menuOpen, setMenuOpen] = useState(false);
+    const [financeSummary, setFinanceSummary] = useState(null);
+    const menuRef = useRef();
+    const navigate = useNavigate();
+    const location = useLocation();
 
-const BrandMark = styled.div`
-  font-family: 'Outfit', sans-serif;
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: 0.3px;
-`;
-
-const SearchContainer = styled.div`
-  position: relative;
-  width: clamp(220px, 35vw, 400px);
-
-  input {
-    width: 100%;
-    height: 40px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-color);
-    border-radius: 20px;
-    padding: 0 16px 0 44px;
-    color: var(--text-primary);
-    font-family: 'DM Sans', sans-serif;
-    font-size: 14px;
-    transition: all 0.2s ease;
-
-    &:focus {
-      outline: none;
-      border-color: var(--accent-primary);
-      box-shadow: 0 0 0 3px rgba(0, 217, 184, 0.1);
-    }
-  }
-
-  svg {
-    position: absolute;
-    left: 16px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--text-secondary);
-  }
-`;
-
-const RightSection = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 16px;
-`;
-
-const BalancePill = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 16px;
-  background: rgba(0, 217, 184, 0.1);
-  border-radius: 20px;
-  color: var(--accent-primary);
-  font-weight: 600;
-  font-size: 14px;
-`;
-
-const UserAvatar = styled.div`
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s;
-  position: relative;
-
-  img {
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    object-fit: cover;
-  }
-
-  &:hover {
-    border-color: var(--accent-primary);
-  }
-`;
-
-const DropdownMenu = styled.div`
-  position: absolute;
-  top: 50px;
-  right: 0;
-  width: 200px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-  padding: 8px;
-  display: ${props => props.$isOpen ? 'block' : 'none'};
-  z-index: 10000;
-`;
-
-const MenuItem = styled.button`
-  width: 100%;
-  padding: 10px 12px;
-  text-align: left;
-  background: transparent;
-  border: none;
-  color: var(--text-primary);
-  font-size: 14px;
-  cursor: pointer;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-
-  &:hover {
-    background: var(--bg-tertiary);
-  }
-
-  &.danger {
-    color: var(--accent-error);
-    &:hover {
-      background: rgba(239, 68, 68, 0.1);
-    }
-  }
-`;
-
-const Header = () => {
-  const { user, logout, isAuthenticated } = useAuth();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef();
-  const navigate = useNavigate();
-  const [financeSummary, setFinanceSummary] = useState(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    const loadFinance = async () => {
-      if (!user?.organization) return;
-      try {
-        const response = await financeService.getBalance();
-        setFinanceSummary(response.data);
-      } catch (error) {
-        console.error('Failed to fetch finance summary:', error);
-      }
-    };
-
-    loadFinance();
-  }, [user?.organization]);
-
-  return (
-    <HeaderContainer>
-      {isAuthenticated ? (
-        <SearchContainer>
-          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <input type="text" placeholder="Search shipments, organizations, or orders..." />
-        </SearchContainer>
-      ) : (
-        <BrandMark>3PLogistics Solution</BrandMark>
-      )}
-
-      <RightSection>
-        {isAuthenticated && user && (
-          <BalancePill>
-            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-            </svg>
-            {parseFloat(financeSummary?.balance || 0).toFixed(3)} KD
-          </BalancePill>
-        )}
-
-        {!isAuthenticated && (
-          <>
-            <Button variant="secondary" onClick={() => navigate('/track')}>
-              Track Shipment
-            </Button>
-            <Button variant="primary" onClick={() => navigate('/')}>
-              Sign In
-            </Button>
-          </>
-        )}
-
-        {isAuthenticated && (
-          <Button
-            variant="primary"
-            onClick={() => navigate('/create')}
-            icon={
-              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-              </svg>
+    // Close dropdown on outside click
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (menuRef.current && !menuRef.current.contains(event.target)) {
+                setMenuOpen(false);
             }
-          >
-            New Shipment
-          </Button>
-        )}
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
-        {isAuthenticated && (
-          <div ref={menuRef} style={{ position: 'relative' }}>
-            <UserAvatar onClick={() => setMenuOpen(!menuOpen)}>
-              {user?.avatar ? (
-                <img src={user.avatar} alt="User" />
-              ) : (
-                <span>{user?.name?.[0] || 'U'}</span>
-              )}
-            </UserAvatar>
+    // Fetch finance data for authenticated users
+    useEffect(() => {
+        if (!isAuthenticated || !user?.organization) return;
+        financeService.getBalance()
+            .then(res => setFinanceSummary(res.data))
+            .catch(err => console.error('Header Finance Load Error:', err));
+    }, [isAuthenticated, user]);
 
-            <DropdownMenu $isOpen={menuOpen}>
-              <MenuItem onClick={() => { navigate('/profile'); setMenuOpen(false); }}>
-                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-                Profile
-              </MenuItem>
-              <MenuItem className="danger" onClick={() => { logout(); setMenuOpen(false); }}>
-                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
-                Logout
-              </MenuItem>
-            </DropdownMenu>
-          </div>
-        )}
-      </RightSection>
-    </HeaderContainer>
-  );
+    const navLinks = [
+        { label: 'Dashboard', path: '/dashboard' },
+        { label: 'Analytics', path: '/analytics' },
+        { label: 'Shipments', path: '/shipments' },
+        { label: 'Finance', path: '/finance' }
+    ];
+
+    return (
+        <header className={`fixed top-0 right-0 left-0 z-[100] h-16 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border-b border-outline/10 dark:border-white/5 flex items-center justify-between px-6 transition-all duration-300 ${
+            isSidebarCollapsed ? 'lg:left-20' : 'lg:left-[240px]'
+        }`}>
+            
+            {/* Left Section: Brand or Search */}
+            <div className="flex items-center gap-10">
+                {!isAuthenticated ? (
+                    <Link to="/" className="text-xl font-black tracking-tighter text-primary uppercase">Target Logistics</Link>
+                ) : (
+                    <div className="hidden md:flex gap-6 items-center">
+                        {navLinks.map((link) => (
+                            <Link 
+                                key={link.path}
+                                to={link.path}
+                                className={`text-sm font-bold tracking-tight transition-all pb-1 border-b-2 ${
+                                    location.pathname.startsWith(link.path) 
+                                        ? 'text-primary border-primary' 
+                                        : 'text-on-surface-variant hover:text-primary border-transparent'
+                                }`}
+                            >
+                                {link.label}
+                            </Link>
+                        ))}
+                    </div>
+                )}
+
+                {isAuthenticated && (
+                    <div className="relative hidden xl:block ml-4">
+                        <input 
+                            type="text" 
+                            placeholder="Quick search (⌘K)..." 
+                            className="bg-surface-container-low dark:bg-white/5 border-none rounded-xl pl-10 pr-4 py-2 text-sm focus:ring-2 focus:ring-primary/20 w-72 transition-all"
+                        />
+                        <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">search</span>
+                    </div>
+                )}
+            </div>
+
+            {/* Right Section: Profile & Actions */}
+            <div className="flex items-center gap-4">
+                
+                {/* Finance Balance */}
+                {isAuthenticated && user && (
+                    <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-primary/5 dark:bg-primary/10 rounded-full border border-primary/10 transition-all hover:bg-primary/10">
+                        <span className="material-symbols-outlined text-primary text-lg">account_balance_wallet</span>
+                        <span className="text-sm font-black text-primary tracking-tight">
+                            {parseFloat(financeSummary?.balance || 0).toFixed(3)} KD
+                        </span>
+                    </div>
+                )}
+
+                {/* Theme Toggle */}
+                <button 
+                    onClick={toggleTheme}
+                    className="p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 transition-all text-on-surface-variant group border border-transparent hover:border-outline/10"
+                    title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                >
+                    <span className="material-symbols-outlined text-xl group-hover:rotate-12 transition-transform">
+                        {isDark ? 'light_mode' : 'dark_mode'}
+                    </span>
+                </button>
+
+                {/* Notifications (Mock) */}
+                {isAuthenticated && (
+                    <button className="p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 transition-all text-on-surface-variant group relative border border-transparent hover:border-outline/10">
+                        <span className="material-symbols-outlined text-xl">notifications</span>
+                        <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-primary rounded-full border-2 border-white dark:border-slate-900"></span>
+                    </button>
+                )}
+
+                {/* User Dropdown */}
+                {isAuthenticated && (
+                    <div className="relative" ref={menuRef}>
+                        <button 
+                            onClick={() => setMenuOpen(!menuOpen)}
+                            className="flex items-center gap-3 pl-2 pr-1 py-1 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 transition-all group border border-transparent hover:border-outline/10"
+                        >
+                            <div className="w-8 h-8 rounded-lg kinetic-gradient flex items-center justify-center text-white text-xs font-black shadow-lg shadow-primary/20 overflow-hidden ring-2 ring-primary/5">
+                                {user?.avatar ? (
+                                    <img src={user.avatar} alt="User" className="w-full h-full object-cover" />
+                                ) : (
+                                    <span>{user?.name?.[0] || 'U'}</span>
+                                )}
+                            </div>
+                            <span className="material-symbols-outlined text-on-surface-variant text-lg group-hover:translate-y-0.5 transition-transform">expand_more</span>
+                        </button>
+
+                        {/* Dropdown Menu */}
+                        {menuOpen && (
+                            <div className="absolute top-[calc(100%+8px)] right-0 w-64 bg-white/90 dark:bg-slate-900/90 backdrop-blur-2xl border border-outline/10 dark:border-white/5 rounded-2xl shadow-2xl p-2 animate-in fade-in slide-in-from-top-2 duration-200 z-[101]">
+                                <div className="px-4 py-3 mb-2 border-b border-outline/5 dark:border-white/5">
+                                    <p className="text-sm font-black text-on-surface truncate">{user?.name}</p>
+                                    <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">{user?.role}</p>
+                                </div>
+                                <button 
+                                    onClick={() => { navigate('/profile'); setMenuOpen(false); }}
+                                    className="flex items-center gap-3 w-full px-4 py-2.5 text-sm font-bold text-on-surface-variant hover:text-primary hover:bg-slate-50 dark:hover:bg-white/5 rounded-xl transition-all"
+                                >
+                                    <span className="material-symbols-outlined text-lg">person</span>
+                                    My Profile
+                                </button>
+                                <button 
+                                    onClick={() => { navigate('/settings'); setMenuOpen(false); }}
+                                    className="flex items-center gap-3 w-full px-4 py-2.5 text-sm font-bold text-on-surface-variant hover:text-primary hover:bg-slate-50 dark:hover:bg-white/5 rounded-xl transition-all"
+                                >
+                                    <span className="material-symbols-outlined text-lg">settings</span>
+                                    Account Settings
+                                </button>
+                                <div className="my-2 border-t border-outline/5 dark:border-white/5"></div>
+                                <button 
+                                    onClick={() => { logout(); setMenuOpen(false); }}
+                                    className="flex items-center gap-3 w-full px-4 py-2.5 text-sm font-black text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"
+                                >
+                                    <span className="material-symbols-outlined text-lg">logout</span>
+                                    Sign Out
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        </header>
+    );
 };
 
 export default Header;

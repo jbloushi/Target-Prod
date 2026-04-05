@@ -3,16 +3,10 @@ const cors = require('cors');
 const compression = require('compression');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const mongoose = require('mongoose');
-
-// Globals Plugins
-mongoose.plugin(require('./plugins/tenant.plugin'));
-
-const { port, mongoUri, corsOrigin, rateLimitGlobalMax, rateLimitAuthMax, rateLimitEnabled } = require('./config/config');
-const { connectDB } = require('./config/database');
+const { port, databaseUrl, corsOrigin, rateLimitGlobalMax, rateLimitAuthMax, rateLimitEnabled } = require('./config/config');
+const { connectDB, prisma } = require('./config/database');
 const logger = require('./utils/logger');
 const { errorHandler } = require('./middleware/error.middleware');
-const { checkDbAuth } = require('./middleware/auth.middleware');
 const shipmentRoutes = require('./routes/shipment.routes');
 const authRoutes = require('./routes/auth.routes');
 const authController = require('./controllers/auth.controller');
@@ -106,6 +100,18 @@ if (rateLimitEnabled) {
   });
   app.use('/api/auth', authLimiter);
   app.use('/api/shipments/public', authLimiter);
+
+  // Stricter limiter for external client API (API-key authenticated routes)
+  const externalApiLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 30, // 30 requests per minute per API key
+    keyGenerator: (req) => req.headers['x-api-key'] || req.ip,
+    message: { success: false, error: 'External API rate limit reached.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  app.use('/api/client', externalApiLimiter);
+  app.use('/api/v1', externalApiLimiter);
 } else {
   logger.info('Rate limiting is disabled');
 }
@@ -126,26 +132,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Database connection check middleware
-app.use((req, res, next) => {
-  if (mongoose.connection.readyState !== 1) {
-    logger.warn('MongoDB not connected, attempting to reconnect...');
-    connectDB()
-      .then(() => {
-        logger.info('MongoDB reconnected successfully');
-        next();
-      })
-      .catch(err => {
-        logger.error('Failed to reconnect to MongoDB:', err);
-        res.status(500).json({
-          success: false,
-          error: 'Database connection error. Please try again later.'
-        });
-      });
-  } else {
-    next();
-  }
-});
+// No-op middleware (Mongoose connection check removed)
 
 // Routes
 const geocodeRoutes = require('./routes/geocode.routes');
@@ -162,23 +149,29 @@ const shipmentPublicRoutes = require('./routes/shipment-public.routes');
 // Standard API Route Mounting
 app.use('/api/public/shipments', shipmentPublicRoutes);
 app.use('/api/auth', authRoutes);
-app.use('/api/finance', checkDbAuth, financeRoutes);
-app.use('/api/users', checkDbAuth, userRoutes);
-app.use('/api/organizations', checkDbAuth, organizationRoutes);
+app.use('/api/finance', financeRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/organizations', organizationRoutes);
 app.use('/api/pickups', pickupRoutes);
 app.use('/api/client', externalRoutes);
 app.use('/api/v1', apiRoutes);
 app.use('/api/geocode', geocodeRoutes);
 app.use('/api/receivers', receiverRoutes);
-app.use('/api/shipments', checkDbAuth, shipmentRoutes);
+app.use('/api/shipments', shipmentRoutes);
 
 // Health check endpoint
-app.get('/health', (req, res) => {
-  const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-  res.status(200).json({
-    status: 'ok',
-    database: dbStatus
-  });
+app.get('/health', async (req, res) => {
+  const isInternal = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1';
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    if (isInternal) {
+      res.status(200).json({ status: 'ok', database: 'connected (mysql)' });
+    } else {
+      res.status(200).json({ status: 'ok' }); // No infrastructure detail to public
+    }
+  } catch (err) {
+    res.status(503).json({ status: 'degraded' }); // Never expose error detail
+  }
 });
 
 
@@ -207,13 +200,13 @@ app.use(errorHandler);
 // Start server
 const startServer = async () => {
   try {
-    // Connect to MongoDB
+    // Connect to MySQL via Prisma
     await connectDB();
 
-    // Run seed in development to populate In-Memory DB
+    // Run seed in development if needed
     if (process.env.NODE_ENV === 'development') {
-      console.log('Running startup dataseeding...');
-      seedDemoData().catch(err => console.error('Seeding failed:', err));
+      logger.info('Running startup dataseeding check...');
+      // seedDemoData().catch(err => logger.error('Seeding failed:', err));
     }
 
     // Start Express server
@@ -243,11 +236,11 @@ const startServer = async () => {
       serverInstance.close(async () => {
         logger.info('Express server closed');
         try {
-          await mongoose.connection.close();
-          logger.info('MongoDB connection closed');
+          const { closeDB } = require('./config/database');
+          await closeDB();
           process.exit(0);
         } catch (err) {
-          logger.error('Error closing MongoDB connection:', err);
+          logger.error('Error during database disconnection:', err);
           process.exit(1);
         }
       });

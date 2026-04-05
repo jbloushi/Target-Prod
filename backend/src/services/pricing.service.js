@@ -7,6 +7,7 @@
 const logger = require('../utils/logger');
 const { Decimal } = require('decimal.js');
 const crypto = require('crypto');
+const { evaluate } = require('mathjs');
 
 class PricingService {
 
@@ -51,12 +52,17 @@ class PricingService {
             // Cleanup label if it was combined
             if (surchargeLabel.startsWith('0% +')) surchargeLabel = surchargeLabel.replace('0% + ', '');
 
-            // Custom Formula evaluation (Sanitized via new Function context)
+            // Custom Formula evaluation (sandboxed via mathjs — no access to process/require/fs)
             if (type === 'FORMULA' && markup.formula) {
                 try {
-                    const safeEval = new Function('base', `return ${markup.formula}`);
-                    const calculated = safeEval(base.toNumber());
-                    if (isNaN(calculated)) throw new Error('Formula result is NaN');
+                    // mathjs only evaluates mathematical expressions.
+                    // It CANNOT access process, fs, require, or any Node globals.
+                    const cleanFormula = markup.formula.replace(/base/g, String(base.toNumber()));
+                    const calculated = evaluate(cleanFormula);
+                    
+                    if (typeof calculated !== 'number' || isNaN(calculated) || !isFinite(calculated)) {
+                        throw new Error('Formula result must be a finite number');
+                    }
                     finalPrice = new Decimal(calculated);
                     surchargeLabel = 'Custom Formula';
                 } catch (e) {

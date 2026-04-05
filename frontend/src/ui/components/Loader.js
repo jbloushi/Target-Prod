@@ -23,8 +23,9 @@ const LoaderWrapper = styled.div`
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(10, 14, 26, 0.7);
-    backdrop-filter: blur(8px);
+    background: rgba(243, 247, 251, 0.8);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
     z-index: 10000;
   `}
 `;
@@ -41,7 +42,7 @@ const BaseRing = styled.div`
   left: 0;
   width: 100%;
   height: 100%;
-  border: 3px solid rgba(0, 217, 184, 0.1);
+  border: 3px solid rgba(0, 80, 212, 0.1);
   border-radius: 50%;
 `;
 
@@ -52,7 +53,7 @@ const ActiveRing = styled.div`
   width: 100%;
   height: 100%;
   border: 3px solid transparent;
-  border-top-color: #00d9b8;
+  border-top-color: var(--primary, #0050d4);
   border-radius: 50%;
   animation: ${spin} 1s cubic-bezier(0.5, 0, 0.5, 1) infinite;
 `;
@@ -63,18 +64,18 @@ const PulseCircle = styled.div`
   left: 25%;
   width: 50%;
   height: 50%;
-  background: #00d9b8;
+  background: var(--gradient-primary, linear-gradient(135deg, #0EA5E9 0%, #2563EB 100%));
   border-radius: 50%;
-  box-shadow: 0 0 15px rgba(0, 217, 184, 0.5);
+  box-shadow: 0 0 15px rgba(0, 80, 212, 0.3);
   animation: ${pulse} 2s ease-in-out infinite;
 `;
 
 const LoadingText = styled.span`
-  color: #00d9b8;
-  font-family: 'Outfit', sans-serif;
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 1px;
+  color: var(--primary, #0050d4);
+  font-family: 'Manrope', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   opacity: 0.8;
 `;

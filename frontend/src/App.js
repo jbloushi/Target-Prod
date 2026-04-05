@@ -1,8 +1,7 @@
 import { BrowserRouter as Router } from 'react-router-dom';
-import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { SnackbarProvider } from 'notistack';
-import theme from './theme';
+import { ThemeModeProvider } from './context/ThemeContext';
 import AppRoutes from './routes';
 import { AuthProvider } from './context/AuthContext';
 import { ShipmentProvider } from './context/ShipmentContext';
@@ -16,7 +15,7 @@ const routerFutureConfig = {
 
 function App() {
   return (
-    <ThemeProvider theme={theme}>
+    <ThemeModeProvider>
       <CssBaseline />
       <SnackbarProvider
         maxSnack={3}
@@ -34,7 +33,7 @@ function App() {
           </ShipmentProvider>
         </AuthProvider>
       </SnackbarProvider>
-    </ThemeProvider>
+    </ThemeModeProvider>
   );
 }
 

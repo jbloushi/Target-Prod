@@ -32,6 +32,10 @@ module.exports = {
             env_production: {
                 NODE_ENV: 'production',
                 PORT: 8899,
+                DB_USER: 'root',
+                DB_HOST: 'localhost',
+                DB_PORT: 3306,
+                DB_NAME: 'target_logistics',
             },
 
             // Environment variables - Development
@@ -44,6 +48,10 @@ module.exports = {
             kill_timeout: 5000, // Time to wait for graceful shutdown
             wait_ready: true, // Wait for app.listen() before considering app ready
             listen_timeout: 30000, // Increased to 30s for DB connection
+            
+            // Log management - keep logs manageable
+            max_size: '10M',
+            retain: 5,
 
             // Restart delay
             min_uptime: '10s', // Minimum uptime before considering successful start
