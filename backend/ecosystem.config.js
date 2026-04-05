@@ -46,8 +46,8 @@ module.exports = {
 
             // Advanced options
             kill_timeout: 5000, // Time to wait for graceful shutdown
-            wait_ready: true, // Wait for app.listen() before considering app ready
-            listen_timeout: 30000, // Increased to 30s for DB connection
+            wait_ready: false,
+            listen_timeout: 10000,
             
             // Log management - keep logs manageable
             max_size: '10M',
