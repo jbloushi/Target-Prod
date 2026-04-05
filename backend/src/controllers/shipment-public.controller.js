@@ -2,31 +2,37 @@
  * Shipment Public Controller
  * getPublicShipment, updatePublicLocation, updatePublicSettings
  */
-const Shipment = require('../models/shipment.model');
+const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
 const { syncCarrierTrackingHistory } = require('./shipment.helpers');
 const { normalizeStatus } = require('../constants/statusConstants');
 
+/**
+ * Public tracking view for customers
+ */
 exports.getPublicShipment = async (req, res) => {
     try {
         const { trackingNumber } = req.params;
-        const shipment = await Shipment.findOne({ trackingNumber });
+        const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
-        // Sync carrier tracking into the unified history (best-effort)
+        // Sync carrier tracking into the unified history
         try {
-            await syncCarrierTrackingHistory(shipment);
+            const updates = await syncCarrierTrackingHistory(shipment);
+            if (updates) {
+                await prisma.shipment.update({
+                    where: { id: shipment.id },
+                    data: {
+                        history: updates.history,
+                        status: updates.status
+                    }
+                });
+                shipment.history = updates.history;
+                shipment.status = updates.status;
+            }
         } catch (err) {
             logger.warn(`Public tracking: carrier sync failed for ${trackingNumber}: ${err.message}`);
         }
-
-        // Re-read the shipment to get the latest history after sync
-        await shipment.reload?.() || await shipment.constructor.findOne({ trackingNumber }).then(s => {
-            if (s) {
-                shipment.history = s.history;
-                shipment.status = s.status;
-            }
-        });
 
         // Build unified events array from the merged history
         const events = (shipment.history || []).map(h => ({
@@ -51,13 +57,11 @@ exports.getPublicShipment = async (req, res) => {
                 origin: {
                     city: shipment.origin?.city,
                     countryCode: shipment.origin?.countryCode,
-                    country: shipment.origin?.country,
                     formattedAddress: shipment.origin?.formattedAddress
                 },
                 destination: {
                     city: shipment.destination?.city,
                     countryCode: shipment.destination?.countryCode,
-                    country: shipment.destination?.country,
                     formattedAddress: shipment.destination?.formattedAddress
                 },
                 currentLocation: shipment.currentLocation,
@@ -72,7 +76,7 @@ exports.getPublicShipment = async (req, res) => {
                 totalPieces: shipment.parcels?.length || 1,
                 createdAt: shipment.createdAt,
 
-                // Unified events (single merged timeline)
+                // Unified events
                 events,
 
                 // Public update settings
@@ -86,38 +90,75 @@ exports.getPublicShipment = async (req, res) => {
     }
 };
 
+/**
+ * Allow receiver to update destination details if enabled
+ */
 exports.updatePublicLocation = async (req, res) => {
     try {
         const { trackingNumber } = req.params;
         const { coordinates, address } = req.body;
-        const shipment = await Shipment.findOne({ trackingNumber });
+        
+        const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
-        if (!shipment.allowPublicLocationUpdate) return res.status(403).json({ success: false, error: 'Location updates are not enabled for this shipment.' });
+        if (!shipment.allowPublicLocationUpdate) return res.status(403).json({ success: false, error: 'Disabled' });
         if (!coordinates || !Array.isArray(coordinates) || coordinates.length !== 2) return res.status(400).json({ success: false, error: 'Invalid coordinates' });
 
-        shipment.destination = { ...shipment.destination.toObject(), formattedAddress: address, longitude: coordinates[0], latitude: coordinates[1] };
-        shipment.allowPublicLocationUpdate = false;
-        shipment.history.push({ location: shipment.currentLocation, status: shipment.status, description: 'Destination location updated by receiver', timestamp: new Date() });
-        await shipment.save();
+        const updatedDestination = { 
+            ...shipment.destination, 
+            formattedAddress: address, 
+            longitude: coordinates[0], 
+            latitude: coordinates[1] 
+        };
+
+        const history = Array.isArray(shipment.history) ? shipment.history : [];
+        const updatedHistory = [
+            ...history,
+            { 
+                location: shipment.currentLocation, 
+                status: shipment.status, 
+                description: 'Destination updated by receiver', 
+                timestamp: new Date() 
+            }
+        ];
+
+        await prisma.shipment.update({
+            where: { id: shipment.id },
+            data: {
+                destination: updatedDestination,
+                allowPublicLocationUpdate: false,
+                history: updatedHistory
+            }
+        });
+
         logger.info(`Shipment ${trackingNumber} destination updated by receiver`);
-        res.status(200).json({ success: true, data: { trackingNumber: shipment.trackingNumber, destination: shipment.destination }, message: 'Location updated successfully' });
+        res.status(200).json({ success: true, message: 'Location updated successfully' });
     } catch (error) {
         logger.error('Error updating public location:', error);
         res.status(500).json({ success: false, error: 'Failed to update location' });
     }
 };
 
+/**
+ * Public visibility settings
+ */
 exports.updatePublicSettings = async (req, res) => {
     try {
         const { trackingNumber } = req.params;
         const { allowPublicLocationUpdate, allowPublicInfoUpdate } = req.body;
-        const shipment = await Shipment.findOne({ trackingNumber });
+
+        const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
-        if (typeof allowPublicLocationUpdate === 'boolean') shipment.allowPublicLocationUpdate = allowPublicLocationUpdate;
-        if (typeof allowPublicInfoUpdate === 'boolean') shipment.allowPublicInfoUpdate = allowPublicInfoUpdate;
-        await shipment.save();
+
+        await prisma.shipment.update({
+            where: { id: shipment.id },
+            data: {
+                allowPublicLocationUpdate: typeof allowPublicLocationUpdate === 'boolean' ? allowPublicLocationUpdate : shipment.allowPublicLocationUpdate,
+                allowPublicInfoUpdate: typeof allowPublicInfoUpdate === 'boolean' ? allowPublicInfoUpdate : shipment.allowPublicInfoUpdate
+            }
+        });
+
         logger.info(`Shipment ${trackingNumber} public settings updated`);
-        res.status(200).json({ success: true, data: { trackingNumber: shipment.trackingNumber, allowPublicLocationUpdate: shipment.allowPublicLocationUpdate, allowPublicInfoUpdate: shipment.allowPublicInfoUpdate }, message: 'Public settings updated successfully' });
+        res.status(200).json({ success: true, message: 'Public settings updated successfully' });
     } catch (error) {
         logger.error('Error updating public settings:', error);
         res.status(500).json({ success: false, error: 'Failed to update public settings' });

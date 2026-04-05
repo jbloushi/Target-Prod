@@ -17,7 +17,7 @@ export const ThemeModeProvider = ({ children }) => {
   const [mode, setMode] = useState(() => {
     const savedMode = localStorage.getItem('theme-mode');
     if (savedMode) return savedMode;
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    return 'light'; // Default to light mode regardless of system preference
   });
 
   const toggleTheme = () => {
