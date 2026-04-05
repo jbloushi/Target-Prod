@@ -1,0 +1,336 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider   = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ========================================
+// ENUMS
+// ========================================
+
+enum Role {
+  staff
+  admin
+  driver
+  accounting
+  manager
+  org_manager
+  org_agent
+  client
+}
+
+enum EntryType {
+  DEBIT
+  CREDIT
+}
+
+// ========================================
+// CORE MODELS
+// ========================================
+
+model Organization {
+  id               String     @id @default(uuid())
+  name             String     @unique
+  type             String     @default("BUSINESS")
+  taxId            String?
+  balance          Decimal    @default(0.0) @db.Decimal(18, 4)
+  creditLimit      Decimal    @default(0.0) @db.Decimal(18, 4)
+  unappliedBalance Decimal    @default(0.0) @db.Decimal(18, 4)
+  currency         String     @default("KWD")
+  
+  // JSON Blobs
+  markup           Json?
+  allowedCarriers  Json?
+  addresses        Json?
+  
+  active           Boolean    @default(true)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  // Relations
+  members          User[]
+  shipments        Shipment[]
+  payments         Payment[]
+  ledgerEntries    OrganizationLedger[]
+  allocations     PaymentAllocation[]
+  webhooks         WebhookSubscription[]
+  pickupRequests   PickupRequest[]
+}
+
+model User {
+  id               String       @id @default(uuid())
+  organizationId   String?
+  organization     Organization? @relation(fields: [organizationId], references: [id])
+  
+  name             String
+  email            String       @unique
+  phone            String?      @unique
+  role             Role         @default(org_agent)
+  password         String
+  
+  // JSON Blobs
+  carrierConfig    Json?
+  agentPolicy      Json?
+  addresses        Json?
+  otp              Json?
+  
+  balance          Decimal      @default(0.0) @db.Decimal(18, 4)
+  creditLimit      Decimal      @default(0.0) @db.Decimal(18, 4)
+  
+  apiKeyHash       String?
+  apiKeyLast4      String?
+  
+  active           Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  // Relations
+  shipments          Shipment[]          @relation("UserShipments")
+  assignedShipments   Shipment[]          @relation("AssignedStaff")
+  drivenShipments    Shipment[]          @relation("AssignedDriver")
+  payments           Payment[]
+  createdAllocations  PaymentAllocation[]
+  pickupRequests     PickupRequest[]     @relation("UserPickups")
+  drivenPickups      PickupRequest[]     @relation("PickupDriver")
+  auditLogs          SystemAuditLog[]
+}
+
+model Shipment {
+  id               String       @id @default(uuid())
+  trackingNumber   String       @unique
+  
+  userId           String
+  user             User         @relation("UserShipments", fields: [userId], references: [id])
+  organizationId   String?
+  organization     Organization? @relation(fields: [organizationId], references: [id])
+  
+  assignedStaffId  String?
+  assignedStaff    User?        @relation("AssignedStaff", fields: [assignedStaffId], references: [id])
+  assignedDriverId String?
+  assignedDriver   User?        @relation("AssignedDriver", fields: [assignedDriverId], references: [id])
+
+  status           String       @default("draft")
+  estimatedDelivery DateTime?
+  
+  carrierCode      String       @default("DGR")
+  serviceCode      String?
+  shipmentType     String       @default("package")
+  
+  // Financials
+  price            Decimal?     @db.Decimal(18, 4)
+  costPrice        Decimal?     @db.Decimal(18, 4)
+  markupAmount     Decimal?     @db.Decimal(18, 4)
+  currency         String       @default("KWD")
+  paid             Boolean      @default(false)
+  totalPaid        Decimal      @default(0.0) @db.Decimal(18, 4)
+  remainingBalance Decimal      @default(0.0) @db.Decimal(18, 4)
+  
+  // JSON Blobs
+  origin           Json
+  destination      Json
+  customer         Json?
+  currentLocation  Json?
+  checkpoints      Json?
+  history          Json?
+  parcels          Json?
+  items            Json?
+  pricingSnapshot  Json?
+  bookingAttempts  Json?
+  documents        Json?
+  financeHold      Json?
+  
+  // Carrier Specifics
+  packagingType    String       @default("user")
+  incoterm         String?      @default("DAP")
+  
+  // Carrier Specifics
+  dhlTrackingNumber String?
+  dhlConfirmed      Boolean     @default(false)
+  carrierShipmentId String?
+  labelUrl          String?
+  awbUrl            String?
+  invoiceUrl        String?
+  
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  // Relations
+  allocations      PaymentAllocation[]
+  pickupRequests   PickupRequest[]
+}
+
+model OrganizationLedger {
+  id               String       @id @default(uuid())
+  organizationId   String?
+  organization     Organization? @relation(fields: [organizationId], references: [id])
+  
+  amount           Decimal      @db.Decimal(18, 4)
+  entryType        EntryType
+  category         String
+  description      String
+  reference        String?
+  sourceRepo       String?
+  sourceId         String?
+  parentEntryId    String?
+  balanceAfter     Decimal      @db.Decimal(18, 4)
+  
+  createdBy        String?
+  metadata         Json?
+  
+  createdAt        DateTime     @default(now())
+}
+
+model Payment {
+  id               String       @id @default(uuid())
+  organizationId   String?
+  organization     Organization? @relation(fields: [organizationId], references: [id])
+  
+  amount           Decimal      @db.Decimal(18, 4)
+  currency         String       @default("KWD")
+  status           String       @default("UNAPPLIED")
+  method           String       @default("manual")
+  reference        String?
+  notes            String?      @db.Text
+  
+  createdById      String?
+  createdBy        User?        @relation(fields: [createdById], references: [id])
+  
+  metadata         Json?
+  postedAt         DateTime     @default(now())
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  // Relations
+  allocations      PaymentAllocation[]
+}
+
+model PaymentAllocation {
+  id               String       @id @default(uuid())
+  organizationId   String?
+  organization     Organization? @relation(fields: [organizationId], references: [id])
+  
+  paymentId        String
+  payment          Payment      @relation(fields: [paymentId], references: [id])
+  
+  shipmentId       String
+  shipment         Shipment     @relation(fields: [shipmentId], references: [id])
+  
+  amount           Decimal      @db.Decimal(18, 4)
+  status           String       @default("ACTIVE")
+  isFifo           Boolean      @default(false)
+  
+  createdBy        String?
+  createdByUser    User?        @relation(fields: [createdBy], references: [id])
+  
+  reversedAt       DateTime?
+  reversedBy       String?
+  reversalReason   String?
+  
+  createdAt        DateTime     @default(now())
+}
+
+model WebhookSubscription {
+  id               String       @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  
+  targetUrl        String
+  secret           String
+  events           Json         // Array of event names
+  isActive         Boolean      @default(true)
+  
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  // Relations
+  deliveryEvents   WebhookEvent[]
+}
+
+model WebhookEvent {
+  id               String       @id @default(uuid())
+  subscriptionId   String
+  subscription     WebhookSubscription @relation(fields: [subscriptionId], references: [id])
+  
+  event            String
+  payload          Json
+  status           String       @default("pending")
+  attempts         Int          @default(0)
+  lastAttemptAt    DateTime?
+  lastError        String?      @db.Text
+  
+  createdAt        DateTime     @default(now())
+}
+
+model PickupRequest {
+  id               String       @id @default(uuid())
+  organizationId   String?
+  organization     Organization? @relation(fields: [organizationId], references: [id])
+  
+  userId           String
+  user             User         @relation("UserPickups", fields: [userId], references: [id])
+  
+  shipmentId       String?
+  shipment         Shipment?    @relation(fields: [shipmentId], references: [id])
+  
+  status           String       @default("pending") // pending, assigned, completed, cancelled
+  pickupLocation   Json
+  pickupTime       DateTime?
+  
+  assignedDriverId String?
+  assignedDriver   User?        @relation("PickupDriver", fields: [assignedDriverId], references: [id])
+  
+  notes            String?      @db.Text
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+}
+
+model CarrierLog {
+  id               String       @id @default(uuid())
+  carrierCode      String
+  requestType      String       // quote, book, track
+  requestPayload   Json
+  responsePayload  Json?
+  statusCode       Int?
+  durationMs       Int?
+  
+  trackingNumber   String?
+  organizationId   String?
+  
+  createdAt        DateTime     @default(now())
+}
+
+model SystemAuditLog {
+  id               String       @id @default(uuid())
+  userId           String?
+  user             User?        @relation(fields: [userId], references: [id])
+  
+  action           String
+  resource         String
+  resourceId       String?
+  oldValues        Json?
+  newValues        Json?
+  
+  ipAddress        String?
+  userAgent        String?
+  
+  createdAt        DateTime     @default(now())
+}
+
+model IdempotencyKey {
+  id             String   @id @default(uuid())
+  key            String   @unique
+  status         String   @default("PROCESSING") // PROCESSING | COMPLETED
+  responseStatus Int?
+  responseBody   Json?
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+
+  @@index([key])
+  @@index([expiresAt])
+}
