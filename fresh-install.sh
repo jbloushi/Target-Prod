@@ -210,12 +210,19 @@ ok "Backend dependencies ready"
 # ════════════════════════════════════════════════════════════
 step 7 "Applying Database Schema (Prisma)"
 
+cd $BACKEND_DIR
+
 log "Generating Prisma Client..."
-./node_modules/.bin/prisma generate 2>&1 | grep -E "Generated|Error" | head -3
+./node_modules/.bin/prisma generate 2>&1 | grep -E "Generated|Error|✔" | head -3
+if [ ! -d "./node_modules/@prisma/client" ]; then
+  log "Installing @prisma/client explicitly..."
+  npm install @prisma/client 2>&1 | tail -2
+  ./node_modules/.bin/prisma generate 2>&1 | tail -2
+fi
+ok "Prisma Client generated"
 
 log "Pushing schema to MySQL..."
-./node_modules/.bin/prisma db push --accept-data-loss 2>&1 | grep -E "pushed|error|warn|✓|Your" | head -5
-
+./node_modules/.bin/prisma db push --accept-data-loss 2>&1 | grep -E "pushed|error|warn|✓|Your|🚀" | head -5
 ok "Database schema applied"
 
 # ════════════════════════════════════════════════════════════
@@ -223,13 +230,26 @@ ok "Database schema applied"
 # ════════════════════════════════════════════════════════════
 step 8 "Seeding Admin User"
 
-node prisma-seed.js 2>&1
-ok "Admin ready: admin@demo.com / password123"
+cd $BACKEND_DIR
+SEED_OUT=$(node prisma-seed.js 2>&1)
+echo "$SEED_OUT"
+if echo "$SEED_OUT" | grep -q "Created Admin\|upsert\|already exists\|✅"; then
+  ok "Admin ready: admin@demo.com / password123"
+else
+  warn "Seed may have had issues — check output above"
+fi
 
 # ════════════════════════════════════════════════════════════
 # STEP 9 — Start backend
 # ════════════════════════════════════════════════════════════
 step 9 "Starting Backend with PM2"
+
+cd $BACKEND_DIR
+mkdir -p logs
+
+# Test if server starts cleanly before PM2
+log "Testing server startup (5 seconds)..."
+timeout 5 node src/server.js 2>&1 | head -8 || true
 
 log "Launching 2 cluster instances on port 8899..."
 NODE_ENV=production pm2 start src/server.js \
@@ -238,19 +258,19 @@ NODE_ENV=production pm2 start src/server.js \
   --cwd $BACKEND_DIR \
   --log "$BACKEND_DIR/logs/pm2-out.log" \
   --error "$BACKEND_DIR/logs/pm2-error.log" \
-  --merge-logs 2>&1 | tail -3
+  --merge-logs 2>&1 | grep -E "launched|Done|error" | head -5
 
-log "Waiting for backend to initialize (8 seconds)..."
-sleep 8
+log "Waiting for backend to initialize (10 seconds)..."
+sleep 10
 
 HEALTH=$(curl -s $HEALTH_URL 2>/dev/null)
 if echo "$HEALTH" | grep -q '"status":"ok"'; then
   ok "Backend is healthy → $HEALTH"
 else
   echo ""
-  warn "Health check failed. Showing last logs:"
-  pm2 logs $PM2_NAME --lines 20 --nostream 2>/dev/null | tail -20
-  fail "Backend not responding on port 8899. Fix errors above then rerun."
+  warn "Health check failed. Direct node test:"
+  node src/server.js 2>&1 | head -10
+  fail "Backend not responding. Fix errors above then rerun."
 fi
 
 pm2 save &>/dev/null
