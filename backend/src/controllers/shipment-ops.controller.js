@@ -8,7 +8,8 @@ const pickupController = require('./pickup.controller');
 const logger = require('../utils/logger');
 const path = require('path');
 const fs = require('fs');
-const { SHIPMENT_STATUSES } = require('../constants/statusConstants');
+const { SHIPMENT_STATUSES, MANUAL_SHIPMENT_STATUSES } = require('../constants/statusConstants');
+const { canUpdateShipmentStatus, isManualShipment } = require('./shipment.helpers');
 
 exports.updateShipmentStatus = async (req, res) => {
     try {
@@ -22,11 +23,20 @@ exports.updateShipmentStatus = async (req, res) => {
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
+        if (isManualShipment(shipment) && !MANUAL_SHIPMENT_STATUSES.includes(status)) {
+            return res.status(400).json({ success: false, error: `Invalid manual shipment status '${status}'. Valid: ${MANUAL_SHIPMENT_STATUSES.join(', ')}` });
+        }
+
+        if (!canUpdateShipmentStatus(req.user, shipment, status)) {
+            return res.status(403).json({ success: false, error: 'Permission denied to update shipment status' });
+        }
+
         const history = Array.isArray(shipment.history) ? shipment.history : [];
         const newHistoryEntry = {
             location: shipment.currentLocation,
             status,
-            description: description || `Status updated to ${status}`,
+            description: description || `Status updated to ${status} by ${req.user.name}`,
+            source: 'platform',
             timestamp: new Date()
         };
 
@@ -216,7 +226,18 @@ exports.serveDocument = async (req, res) => {
             return res.status(403).json({ success: false, error: 'Unauthorized to view documents for this shipment' });
         }
 
-        const filePath = path.join(process.cwd(), 'uploads', 'documents', filename);
+        // Prevent path traversal: reject any filename containing directory separators or dots
+        if (!filename || /[/\\]/.test(filename) || filename.includes('..')) {
+            return res.status(400).json({ success: false, error: 'Invalid filename' });
+        }
+
+        const uploadsDir = path.resolve(process.cwd(), 'uploads', 'documents');
+        const filePath = path.resolve(uploadsDir, filename);
+
+        // Ensure resolved path is still within the uploads directory
+        if (!filePath.startsWith(uploadsDir + path.sep)) {
+            return res.status(400).json({ success: false, error: 'Invalid filename' });
+        }
 
         if (!fs.existsSync(filePath)) {
             logger.error(`Document not found: ${filePath}`);

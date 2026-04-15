@@ -2,7 +2,10 @@
 .DS_Store
 node_modules
 logs
-uploads/
+uploads/*
+!uploads/documents/
+uploads/documents/*
+!uploads/documents/.gitkeep
 *.log
 test-*.js
 verify-*.js

@@ -32,9 +32,9 @@ exports.comparePassword = async (candidatePassword, userPassword) => {
  * @returns {string} Hex-encoded HMAC hash
  */
 exports.hashApiKey = (fullKey) => {
-    const secret = process.env.JWT_SECRET;
+    const secret = process.env.API_KEY_SECRET || process.env.JWT_SECRET;
     if (!secret) {
-        throw new Error('JWT_SECRET is required for API key hashing');
+        throw new Error('API_KEY_SECRET (or JWT_SECRET) is required for API key hashing');
     }
     return crypto.createHmac('sha256', secret)
                  .update(fullKey)

@@ -1,7 +1,0 @@
-{
-  "instance": "/expressapi/shipments",
-  "detail": "#/content/exportDeclaration/lineItems/0/commodityCodes/0/typeCode: export is not a valid enum value",
-  "title": "Validation error",
-  "message": "Unprocessable Entity",
-  "status": "422"
-}

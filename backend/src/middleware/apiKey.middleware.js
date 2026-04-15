@@ -26,14 +26,24 @@ exports.validateApiKey = async (req, res, next) => {
         const userId = parts[0];
 
         // Find user with this API key from MySQL via Prisma
-        const user = await prisma.user.findUnique({
+        const user = await prisma.user.findFirst({
             where: { id: userId, active: true },
             select: {
                 id: true,
                 role: true,
                 organizationId: true,
                 apiKeyHash: true,
-                active: true
+                active: true,
+                carrierConfig: true,
+                agentPolicy: true,
+                organization: {
+                    select: {
+                        id: true,
+                        name: true,
+                        allowedCarriers: true,
+                        carrierConfig: true
+                    }
+                }
             }
         });
 
@@ -65,4 +75,3 @@ exports.validateApiKey = async (req, res, next) => {
         res.status(500).json({ success: false, error: 'Authentication failed' });
     }
 };
-

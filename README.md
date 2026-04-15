@@ -1,80 +1,182 @@
-# Target Logistics - System Architecture & Developer Guide
+# Target Logistics
 
-Welcome to the **Target Logistics** platform. This document serves as the authoritative guide for developers seeking to understand, customize, or extend the codebase.
+Target Logistics is a multi-tenant shipment operations platform for creating, pricing, booking, tracking, and financially managing shipments across carrier networks and manual fulfillment.
 
-## 1. Tech Stack Overview
+The system is a monorepo with a React frontend, an Express API, and a Prisma/MySQL database.
 
-The application is structured as a monolithic monorepo containing a distinct Frontend and Backend, bridged by a REST API.
+## Current Product Shape
 
-*   **Frontend Client:** React 18 (Single Page Application)
-*   **Styling:** Material-UI (MUI) v5 with custom localized design CSS tokens (`ui/tokens.css`).
-*   **Backend Server:** Node.js v22 (Express Framework)
-*   **Database Engine:** Native MySQL 8.0
-*   **ORM Tooling:** Prisma v6.2.1
+- Platform users can create shipments, review shipment details, book eligible carrier shipments, scan pickups, process warehouse handovers, and manage public tracking.
+- Client users are restricted to their assigned shipping access: exactly one carrier/service pair or Manual Shipment.
+- API clients do not need to send carrier or service fields. The backend derives them from the assigned user policy.
+- Manual Shipments are supported without 3PL carrier registration. They use `carrierCode: MANUAL`, skip carrier booking, and allow manual operational fields such as price, cost, currency, and estimated delivery.
+- Shipment status can be changed manually only by `admin`, `manager`, and `accounting` roles. Carrier sync, booking, pickup scan, and warehouse scan flows can still move statuses automatically.
+- Shipment types are limited to `Standard Package` and `Document Express`.
+- The UI is branded for Target Logistics with light mode as the default and dark mode as an optional theme.
 
----
+## Documentation
 
-## 2. Codebase Structure
+Keep these files updated when behavior changes:
 
-### 🗂️ `\backend` (API & Core Logic)
-*   **`/prisma`**: Contains `schema.prisma`. This is the single source of truth for all database tables and relationships. Any schema edits must be followed by `npx prisma db push` to sync the MySQL database.
-*   **`/src/controllers`**: Holds the business logic for all endpoints. Controllers are strictly divided by domain (e.g., `user.controller.js`, `shipment-crud.controller.js`, `external.controller.js`).
-*   **`/src/models`**: *[DEPRECATED]* Old Mongoose schema files from the previous MongoDB iteration. These are kept temporarily for historical reference but have been replaced by Prisma.
-*   **`/src/routes`**: API routing definitions. They map specific Express HTTP verbs (GET, POST) to Controller functions and inject middleware.
-*   **`/src/middleware`**: Functions that run before a controller (e.g., `apiAuth.js` which verifies JWTs).
-*   **`/src/services`**: Shared utility logic (e.g., DHL Booking API adapters, mapping handlers).
+| File | Purpose |
+| --- | --- |
+| [docs/PLATFORM_FEATURES.md](docs/PLATFORM_FEATURES.md) | Maintained feature catalog and product invariants for future developers. |
+| [CLIENT_API_GUIDE.md](CLIENT_API_GUIDE.md) | Client-facing API integration guide. |
+| [backend/README.md](backend/README.md) | Backend architecture, commands, and source map. |
+| [frontend/README.md](frontend/README.md) | Frontend architecture, commands, and UI conventions. |
+| [VPS_AAPANEL_DEPLOYMENT.md](VPS_AAPANEL_DEPLOYMENT.md) | VPS and aaPanel deployment checklist. |
+| [branding_.md](branding_.md) | Current Target Logistics UI and brand direction. |
 
-### 🗂️ `\frontend` (React Interface)
-*   **`/src/components`**: Reusable generic UI elements (Buttons, Tables).
-*   **`/src/components/layout`**: The global structure. `Sidebar.js` defines all menu navigation and controls Role-Based Access Views.
-*   **`/src/pages`**: Top-level views mapped directly to application URLs (e.g., `DashboardPage.js`, `ShipmentDetailsPage.js`).
-*   **`/src/services/api.js`**: The central Axios service. It defines all outgoing frontend requests to the Node backend and handles centralized JWT token attachment.
-*   **`/src/theme`**: Contains Material-UI overrides to enforce the premium dark-mode aesthetic.
+Historical audit reports, gap analyses, temporary screenshots, generated PDFs, npm cache files, and one-off diagnostic scripts should not be treated as maintained documentation.
 
----
+## Tech Stack
 
-## 3. Database Architecture (Prisma/MySQL)
+- Frontend: React 18, React Router, styled-components, Material UI, notistack, Axios.
+- Backend: Node.js, Express, Prisma, MySQL, JWT authentication, rate limiting, Helmet, CORS.
+- Database: MySQL through Prisma Client.
+- Carrier integrations: DGR/DHL active, Manual Shipment active, Aramex adapter present, FedEx/UPS listed but not active for normal use.
 
-We strictly use the **Prisma ORM**. To update the database structure:
-1. Modify `backend/prisma/schema.prisma`.
-2. Run `npx prisma db push` to push structure changes to MySQL.
-3. Run `npx prisma generate` to update the native Javascript Prisma Client.
+## Repository Layout
 
-### Primary Entities:
-*   **User / Organization**: The system supports multi-tenancy. A `User` (staff, driver, admin) can optionally belong to an `Organization` (client). Accounting functions, like credit limits and markups, happen at the `Organization` level.
-*   **Shipment**: The core parcel object. Contains origins, destinations, items, and dimensions.
-*   **History / Checkpoints**: These are now localized natively within the MySQL `Shipment` record using JSON arrays (`history` and `checkpoints`), allowing rapid mutations without heavy table joins.
-*   **PickupRequests**: Abstract request entities from external clients asking a driver to come to an origin. Once approved, these natively convert into fully booked `Shipments`.
+```text
+backend/
+  prisma/                 Prisma schema and generated client inputs
+  src/controllers/        Express controller logic
+  src/routes/             Route registration
+  src/services/           Carrier, pricing, ledger, shipment, and access services
+  src/middleware/         Auth, API key, RBAC, idempotency, and request middleware
+  src/constants/          Shared backend status constants
 
----
+frontend/
+  src/pages/              Route-level screens
+  src/components/         Shared and domain components
+  src/services/api.jsx    Axios API client
+  src/constants/          Frontend status rendering constants
+  src/utils/              Role labels, capabilities, and helpers
 
-## 4. Development & Running Locally
+docs/
+  PLATFORM_FEATURES.md    Canonical feature catalog
+```
 
-Ensure XAMPP or native MySQL 8.0 is running on port 3306.
+## Local Development
 
-**Terminal 1 (Backend):**
-\`\`\`bash
+Install dependencies:
+
+```bash
+npm install
+cd backend && npm install
+cd ../frontend && npm install
+```
+
+Run both apps from the repository root:
+
+```bash
+npm run dev
+```
+
+## Production Verification
+
+Run the full readiness gate before release:
+
+```bash
+npm run verify
+```
+
+This runs the frontend ESLint gate, backend Jest suites, frontend Vitest suites, the Vite production build, and npm audit checks for the root, backend, and frontend packages.
+
+Focused commands:
+
+```bash
+npm run lint
+npm test
+npm run build
+npm run audit
+npm run db:migrate:deploy
+npm run deploy:prepare
+```
+
+Or run each app separately:
+
+```bash
 cd backend
-npm install
-npm run dev  # Runs Nodemon on port 8899
-\`\`\`
+npm run dev
+```
 
-**Terminal 2 (Frontend):**
-\`\`\`bash
+```bash
 cd frontend
-npm install
-npm start   # Runs React on port 3000
-\`\`\`
+npm start
+```
 
-*   **API Base Path:** The frontend looks to \`REACT_APP_API_URL\` in \`frontend/.env.local\` to find the backend (defaults to `http://localhost:8899/api`).
-*   **Database Connection:** The backend looks to \`DATABASE_URL\` in \`backend/.env\` to connect to MySQL.
+Default local URLs:
 
----
+- Frontend: `http://localhost:3000`
+- Backend API: `http://localhost:8899/api`
+- Backend health: `http://localhost:8899/health`
 
-## 5. Security & Authentication
+## Environment
 
-*   Authentication is handled via **JWT (JSON Web Tokens)**.
-*   Upon login (`/login`), the backend returns an encrypted JWT and standard User object.
-*   The frontend stores this token in `localStorage`. 
-*   `frontend/src/services/api.js` uses an Axios interceptor to automatically inject the token as `Bearer <token>` in the Authorization header on every outgoing API query.
-*   The backend's `apiAuth.js` middleware rejects any incoming requests that lack a valid token.
+Backend configuration is read from `backend/.env`.
+
+Minimum backend values:
+
+```env
+PORT=8899
+NODE_ENV=development
+DATABASE_URL="mysql://USER:PASSWORD@127.0.0.1:3306/target_logistics"
+JWT_SECRET="replace-with-a-long-secret"
+JWT_EXPIRES_IN=7d
+CORS_ORIGIN=http://localhost:3000
+ADMIN_ORGANIZATION_NAME=Target Logistics
+ADMIN_NAME=System Admin
+ADMIN_EMAIL=admin@target.local
+ADMIN_PASSWORD=replace-with-a-temporary-local-password
+```
+
+Frontend configuration is read from `frontend/.env.local`.
+
+```env
+REACT_APP_API_URL=http://localhost:8899/api
+```
+
+Do not commit `.env`, `.env.local`, production credentials, generated labels, generated invoices, or runtime upload files.
+
+## Database
+
+The Prisma schema lives at `backend/prisma/schema.prisma`.
+
+Common commands:
+
+```bash
+cd backend
+npm run db:generate
+npm run db:migrate:deploy
+npm run seed
+```
+
+Use `npm run db:migrate:deploy` in staging and production so committed Prisma migrations are applied before the backend starts. `prisma db push` should only be used for disposable local experimentation, not release deployments.
+
+## Verification
+
+Backend:
+
+```bash
+cd backend
+npm test
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm run build
+```
+
+Health check:
+
+```bash
+curl http://localhost:8899/health
+```
+
+## Documentation Maintenance Rule
+
+When changing platform behavior, update the documentation in the same change set. In particular, update [docs/PLATFORM_FEATURES.md](docs/PLATFORM_FEATURES.md) when roles, shipment statuses, carrier access, API behavior, finance behavior, or public tracking behavior changes.

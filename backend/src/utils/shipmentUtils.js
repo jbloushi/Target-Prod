@@ -19,3 +19,7 @@ exports.generateTrackingNumber = () => {
 exports.generateDraftTrackingNumber = () => {
     return `DGR-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
 };
+
+exports.generateManualTrackingNumber = () => {
+    return `MAN-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+};

@@ -1,5 +1,5 @@
 /**
- * Normalizes Mongoose Shipment Document to Carrier-Agnostic Model
+ * Normalizes shipment payloads to the carrier-agnostic model.
  * @param {Object} data - The raw shipment data from DB or Frontend
  * @returns {Object} NormalizedShipment
  */

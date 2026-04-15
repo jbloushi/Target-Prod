@@ -1,7 +1,0 @@
-{
-  "instance": "/expressapi/shipments",
-  "detail": "#/plannedShippingDateAndTime is not well formatted.(Expected Sample Format : '2010-02-11T17:10:09 GMT+01:00')",
-  "title": "Bad request",
-  "message": "Bad request",
-  "status": "422"
-}

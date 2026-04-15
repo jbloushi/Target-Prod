@@ -18,6 +18,27 @@ const hasMarkupShape = (markup) => Boolean(markup && typeof markup === 'object' 
 const resolveEffectiveCarrierPolicy = ({ targetUser, carrierCode, availableCarrierCodes }) => {
     const normalizedCarrier = (carrierCode || '').toUpperCase();
     const org = targetUser?.organization;
+    const assignedCarrier = targetUser?.agentPolicy?.shippingAccess?.carrierCode
+        ? String(targetUser.agentPolicy.shippingAccess.carrierCode).toUpperCase()
+        : null;
+
+    if (assignedCarrier) {
+        if (normalizedCarrier && normalizedCarrier !== assignedCarrier) {
+            const deniedError = new Error(`Carrier ${normalizedCarrier} is not allowed for this account`);
+            deniedError.statusCode = 403;
+            throw deniedError;
+        }
+
+        return {
+            effectiveAllowed: [assignedCarrier],
+            markup: hasMarkupShape(targetUser?.agentPolicy?.markupOverride)
+                ? targetUser.agentPolicy.markupOverride
+                : (hasMarkupShape(org?.markup) ? org.markup : DEFAULT_MARKUP),
+            policySource: hasMarkupShape(targetUser?.agentPolicy?.markupOverride)
+                ? 'agent_default'
+                : (hasMarkupShape(org?.markup) ? 'org_default' : 'platform_default')
+        };
+    }
 
     // 1. Resolve Allowed Carriers (Hierarchy: User Agent Policy -> Org Policy -> All)
     const orgAllowed = Array.isArray(org?.allowedCarriers) && org.allowedCarriers.length > 0
@@ -203,6 +224,39 @@ const hasCriticalChanges = (original, updates) => {
     return false;
 };
 
+const isManualShipment = (shipment) => {
+    return String(shipment?.carrierCode || '').toUpperCase() === 'MANUAL'
+        || shipment?.manualShipment === true;
+};
+
+const getAllowedStatusUpdates = (user, shipment) => {
+    if (!user || !shipment) return [];
+
+    const role = user.role;
+    const operationalStatuses = [
+        'draft',
+        'pending',
+        'booked',
+        'ready_for_pickup',
+        'picked_up',
+        'in_transit',
+        'out_for_delivery',
+        'delivered',
+        'exception',
+        'cancelled'
+    ];
+
+    if (['admin', 'manager', 'accounting'].includes(role)) {
+        return operationalStatuses;
+    }
+
+    return [];
+};
+
+const canUpdateShipmentStatus = (user, shipment, nextStatus) => {
+    return getAllowedStatusUpdates(user, shipment).includes(nextStatus);
+};
+
 module.exports = {
     DEFAULT_MARKUP,
     hasMarkupShape,
@@ -210,6 +264,9 @@ module.exports = {
     buildHistoryKey,
     syncCarrierTrackingHistory,
     calculateEstimatedDelivery,
-    hasCriticalChanges
+    hasCriticalChanges,
+    isManualShipment,
+    getAllowedStatusUpdates,
+    canUpdateShipmentStatus
 };
 

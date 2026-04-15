@@ -2,7 +2,7 @@
  * Idempotency Middleware (Prisma/MySQL)
  * 
  * Prevents duplicate API requests by tracking unique Idempotency-Key headers.
- * Replaces the broken Mongoose-based implementation.
+ * Uses the Prisma IdempotencyKey table.
  * 
  * @security Namespaces keys per user to prevent cross-tenant replay attacks.
  */

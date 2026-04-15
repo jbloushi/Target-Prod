@@ -4,19 +4,34 @@
  */
 
 const SHIPMENT_STATUSES = [
-    'draft', 'pending', 'booked', 'picked_up',
-    'in_transit', 'out_for_delivery', 'delivered', 'exception'
+    'draft', 'pending', 'booked', 'ready_for_pickup', 'picked_up',
+    'in_transit', 'out_for_delivery', 'delivered', 'exception', 'cancelled'
+];
+
+const MANUAL_SHIPMENT_STATUSES = [
+    'draft',
+    'pending',
+    'booked',
+    'ready_for_pickup',
+    'picked_up',
+    'in_transit',
+    'out_for_delivery',
+    'delivered',
+    'exception',
+    'cancelled'
 ];
 
 const STATUS_LABELS = {
     draft: 'Draft',
     pending: 'Pending Review',
     booked: 'Booked',
+    ready_for_pickup: 'Ready for Pickup',
     picked_up: 'Picked Up',
     in_transit: 'In Transit',
     out_for_delivery: 'Out for Delivery',
     delivered: 'Delivered',
     exception: 'Exception',
+    cancelled: 'Cancelled',
 };
 
 // Maps raw DHL Unified Tracking API statusCode → platform status
@@ -69,6 +84,7 @@ function isStatusAhead(statusA, statusB) {
 
 module.exports = {
     SHIPMENT_STATUSES,
+    MANUAL_SHIPMENT_STATUSES,
     STATUS_LABELS,
     DHL_STATUS_MAP,
     LEGACY_STATUS_MAP,

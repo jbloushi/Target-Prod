@@ -9,6 +9,12 @@ const logger = require('../utils/logger');
 const { handleControllerError } = require('../utils/controllerError');
 const { isPlatformRole } = require('../middleware/rbac.policy');
 const { resolveEffectiveCarrierPolicy } = require('./shipment.helpers');
+const {
+    getAssignedShippingAccess,
+    assertRequestedAccessAllowed,
+    shouldEnforceAssignedAccess,
+    getServiceOptions
+} = require('../services/shippingAccess.service');
 
 /**
  * Get rate quotes with markup applied
@@ -16,7 +22,8 @@ const { resolveEffectiveCarrierPolicy } = require('./shipment.helpers');
  */
 exports.getQuotes = async (req, res) => {
     try {
-        const carrierCode = String(req.body.carrierCode || 'DGR').toUpperCase();
+        const requestedCarrierCode = req.body.carrierCode ? String(req.body.carrierCode).toUpperCase() : null;
+        const requestedServiceCode = req.body.serviceCode ? String(req.body.serviceCode).toUpperCase() : null;
         const carriers = CarrierFactory.getAvailableCarriers();
         const carrierCodes = carriers.map(c => c.code.toUpperCase());
 
@@ -35,12 +42,55 @@ exports.getQuotes = async (req, res) => {
             if (selectedUser) targetUser = selectedUser;
         }
 
+        const assignedAccess = getAssignedShippingAccess(targetUser);
+        const enforceAssignedAccess = shouldEnforceAssignedAccess(req.user, targetUser);
+        if (enforceAssignedAccess) {
+            assertRequestedAccessAllowed(assignedAccess, {
+                carrierCode: requestedCarrierCode,
+                serviceCode: requestedServiceCode
+            });
+        }
+
+        const carrierCode = enforceAssignedAccess
+            ? assignedAccess.carrierCode
+            : (requestedCarrierCode || assignedAccess.carrierCode || 'DGR');
+        const serviceCode = enforceAssignedAccess
+            ? assignedAccess.serviceCode
+            : (requestedServiceCode || req.body.serviceCode || null);
+
         const { markup, policySource } = resolveEffectiveCarrierPolicy({ targetUser, carrierCode, availableCarrierCodes: carrierCodes });
 
-        const carrier = CarrierFactory.getAdapter(carrierCode);
-        const rawQuotes = await carrier.getRates({ ...req.body, carrierCode });
+        if (carrierCode === 'MANUAL') {
+            const basePrice = Number(req.body.costPrice || req.body.price || 0);
+            const calculation = PricingService.calculateFinalPrice(basePrice, markup);
+            return res.status(200).json({
+                success: true,
+                data: [{
+                    serviceName: 'Manual Shipment',
+                    serviceCode: null,
+                    carrier: 'MANUAL',
+                    totalPrice: Number(calculation.finalPrice.toFixed(3)),
+                    estimatedShipmentCost: Number(calculation.finalPrice.toFixed(3)),
+                    optionalServices: [],
+                    currency: req.body.currency || 'KWD',
+                    pricingPolicySource: policySource,
+                    basePrice,
+                    markupAmount: calculation.markupAmount
+                }]
+            });
+        }
 
-        const markupQuotes = rawQuotes.map(quote => {
+        const carrier = CarrierFactory.getAdapter(carrierCode);
+        const rawQuotes = await carrier.getRates({ ...req.body, carrierCode, serviceCode });
+        const visibleQuotes = serviceCode
+            ? rawQuotes.filter(quote => String(quote.serviceCode || '').toUpperCase() === String(serviceCode).toUpperCase())
+            : rawQuotes;
+
+        if (serviceCode && visibleQuotes.length === 0) {
+            return res.status(400).json({ success: false, error: `Assigned service ${serviceCode} is not available for this shipment.` });
+        }
+
+        const markupQuotes = visibleQuotes.map(quote => {
             const basePrice = Number(quote.totalPrice);
             const calculation = PricingService.calculateFinalPrice(basePrice, markup);
             
@@ -85,8 +135,35 @@ exports.getAvailableCarriers = async (req, res) => {
         
         if (!currentUser) return res.status(404).json({ success: false, error: 'User not found' });
 
-        const { effectiveAllowed } = resolveEffectiveCarrierPolicy({ targetUser: currentUser, carrierCode: null, availableCarrierCodes: carrierCodes });
-        const filteredCarriers = carriers.filter(c => effectiveAllowed.includes(c.code.toUpperCase()));
+        let targetUser = currentUser;
+        if (isPlatformRole(req.user.role) && req.query.userId) {
+            const selectedUser = await prisma.user.findUnique({
+                where: { id: req.query.userId },
+                include: { organization: true }
+            });
+            if (selectedUser) targetUser = selectedUser;
+        }
+
+        const assignedAccess = getAssignedShippingAccess(targetUser);
+        const enforceAssignedAccess = shouldEnforceAssignedAccess(req.user, targetUser);
+
+        let filteredCarriers;
+        if (enforceAssignedAccess) {
+            filteredCarriers = carriers
+                .filter(c => c.code.toUpperCase() === assignedAccess.carrierCode)
+                .map(c => ({
+                    ...c,
+                    assigned: true,
+                    serviceCode: assignedAccess.serviceCode,
+                    serviceName: assignedAccess.serviceName,
+                    serviceOptions: getServiceOptions(c.code)
+                }));
+        } else {
+            const { effectiveAllowed } = resolveEffectiveCarrierPolicy({ targetUser, carrierCode: null, availableCarrierCodes: carrierCodes });
+            filteredCarriers = carriers
+                .filter(c => effectiveAllowed.includes(c.code.toUpperCase()))
+                .map(c => ({ ...c, serviceOptions: getServiceOptions(c.code) }));
+        }
 
         res.status(200).json({ success: true, data: filteredCarriers });
     } catch (error) {
@@ -108,6 +185,10 @@ exports.getBookingOptions = async (req, res) => {
         // Authorization check (simplistic for now, should use middleware)
         if (shipment.userId !== req.user.id && !['admin', 'staff'].includes(req.user.role)) {
             return res.status(403).json({ success: false, error: 'Permission denied' });
+        }
+
+        if (String(shipment.carrierCode || carrierCode || '').toUpperCase() === 'MANUAL') {
+            return res.status(200).json({ success: true, data: { carrierCode: 'MANUAL', services: [], selectedServiceCode: null, optionalServices: [] } });
         }
 
         const carrier = CarrierFactory.getAdapter(carrierCode);
@@ -163,6 +244,10 @@ exports.bookWithCarrier = async (req, res) => {
             return res.status(403).json({ success: false, error: 'Permission denied' });
         }
 
+        if (String(shipment.carrierCode || carrierCode || '').toUpperCase() === 'MANUAL') {
+            return res.status(400).json({ success: false, error: 'Manual Shipment is managed inside the platform and cannot be booked with a 3PL carrier.' });
+        }
+
         const result = await ShipmentBookingService.bookShipment(trackingNumber, carrierCode, optionalServiceCodes, req.user.role);
         res.status(200).json({ success: true, data: result, message: `Shipment successfully booked` });
     } catch (error) {
@@ -176,6 +261,10 @@ exports.bookWithCarrier = async (req, res) => {
 exports.submitToDhl = async (req, res) => {
     try {
         const { trackingNumber } = req.params;
+        const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
+        if (String(shipment?.carrierCode || '').toUpperCase() === 'MANUAL') {
+            return res.status(400).json({ success: false, error: 'Manual Shipment is managed inside the platform and cannot be booked with a 3PL carrier.' });
+        }
         const result = await ShipmentBookingService.bookShipment(trackingNumber);
         res.status(200).json({ success: true, data: result.shipment, message: 'Shipment booked successfully' });
     } catch (error) {

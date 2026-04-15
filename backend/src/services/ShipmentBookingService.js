@@ -5,6 +5,7 @@ const CarrierDocumentService = require('./CarrierDocumentService');
 const logger = require('../utils/logger');
 const crypto = require('crypto');
 const financeLedgerService = require('./financeLedger.service');
+const { getAssignedShippingAccess, normalizeCarrier } = require('./shippingAccess.service');
 
 class ShipmentBookingService {
 
@@ -114,7 +115,7 @@ class ShipmentBookingService {
                 dhlConfirmed: true,
                 carrierShipmentId: carrierResult.carrierShipmentId || carrierResult.trackingNumber,
                 dhlTrackingNumber: carrierResult.trackingNumber,
-                status: 'created',
+                status: 'booked',
                 bookingAttempts: freshAttempts,
                 documents: freshShipment.documents || []
             };
@@ -167,6 +168,22 @@ class ShipmentBookingService {
      * @private
      */
     ensureCarrierAllowed({ carrierCode, organization, payingUser }) {
+        const normalizedCarrier = normalizeCarrier(carrierCode);
+        const policy = payingUser?.agentPolicy || {};
+        const hasExplicitUserAssignment = Boolean(policy.shippingAccess)
+            || (Array.isArray(policy.allowedCarriers) && policy.allowedCarriers.length === 1)
+            || Boolean(payingUser?.carrierConfig?.preferredCarrier);
+
+        if (hasExplicitUserAssignment) {
+            const assignedAccess = getAssignedShippingAccess(payingUser);
+            if (assignedAccess.carrierCode !== normalizedCarrier) {
+                const err = new Error(`Carrier ${normalizedCarrier} is restricted for this account.`);
+                err.statusCode = 403;
+                throw err;
+            }
+            return;
+        }
+
         const orgAllowed = Array.isArray(organization?.allowedCarriers) && organization.allowedCarriers.length > 0
             ? organization.allowedCarriers.map((c) => String(c).toUpperCase())
             : CarrierFactory.getAvailableCarriers().map((c) => c.code.toUpperCase());
@@ -175,8 +192,8 @@ class ShipmentBookingService {
             ? payingUser.agentPolicy.allowedCarriers.map((c) => String(c).toUpperCase())
             : orgAllowed;
 
-        if (!orgAllowed.filter((code) => agentAllowed.includes(code)).includes(carrierCode)) {
-            const err = new Error(`Carrier ${carrierCode} is restricted for this account.`);
+        if (!orgAllowed.filter((code) => agentAllowed.includes(code)).includes(normalizedCarrier)) {
+            const err = new Error(`Carrier ${normalizedCarrier} is restricted for this account.`);
             err.statusCode = 403;
             throw err;
         }

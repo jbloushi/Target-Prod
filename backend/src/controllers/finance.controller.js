@@ -11,7 +11,15 @@ exports.getBalance = async (req, res) => {
     try {
         const user = await prisma.user.findUnique({
             where: { id: req.user.id },
-            include: { organization: true }
+            select: {
+                organization: {
+                    select: {
+                        id: true,
+                        creditLimit: true,
+                        currency: true
+                    }
+                }
+            }
         });
 
         if (!user || !user.organization) {
@@ -57,25 +65,28 @@ exports.getLedger = async (req, res) => {
             organizationId = orgId === 'none' ? null : orgId;
         }
 
-        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const parsedLimit = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
+        const parsedPage = Math.max(parseInt(page) || 1, 1);
+        const skip = (parsedPage - 1) * parsedLimit;
 
-        const transactions = await prisma.organizationLedger.findMany({
-            where: { organizationId },
-            orderBy: { createdAt: 'desc' },
-            skip,
-            take: parseInt(limit)
-        });
-
-        const total = await prisma.organizationLedger.count({ where: { organizationId } });
+        const [transactions, total] = await Promise.all([
+            prisma.organizationLedger.findMany({
+                where: { organizationId },
+                orderBy: { createdAt: 'desc' },
+                skip,
+                take: parsedLimit
+            }),
+            prisma.organizationLedger.count({ where: { organizationId } })
+        ]);
 
         res.status(200).json({
             success: true,
             data: transactions,
             pagination: {
                 total,
-                page: parseInt(page),
-                limit: parseInt(limit),
-                pages: Math.ceil(total / limit)
+                page: parsedPage,
+                limit: parsedLimit,
+                pages: Math.ceil(total / parsedLimit)
             }
         });
     } catch (error) {
@@ -153,7 +164,8 @@ exports.listPayments = async (req, res) => {
             where: { organizationId },
             include: {
                 allocations: {
-                    where: { status: 'ACTIVE' }
+                    where: { status: 'ACTIVE' },
+                    select: { amount: true }
                 }
             },
             orderBy: { postedAt: 'desc' }

@@ -2,7 +2,7 @@
  * RBAC Policy — Single Source of Truth
  * 
  * Maps roles → capabilities. All authorization decisions flow through here.
- * Keep this file in sync with frontend/src/utils/capabilities.js
+ * Keep this file in sync with frontend/src/utils/capabilities.jsx
  */
 
 const CAPABILITIES = Object.freeze({
@@ -110,6 +110,12 @@ const ROLE_CAPABILITIES = Object.freeze({
         CAPABILITIES.VIEW_OWN_SHIPMENTS,
         CAPABILITIES.GENERATE_API_KEY,
     ],
+
+    client: [
+        CAPABILITIES.CREATE_SHIPMENTS,
+        CAPABILITIES.VIEW_OWN_SHIPMENTS,
+        CAPABILITIES.GENERATE_API_KEY,
+    ],
 });
 
 /**
@@ -120,7 +126,7 @@ const PLATFORM_ROLES = Object.freeze(['admin', 'accounting', 'manager', 'staff',
 /**
  * Roles scoped to their own organization's data.
  */
-const ORG_ROLES = Object.freeze(['org_manager', 'org_agent']);
+const ORG_ROLES = Object.freeze(['org_manager', 'org_agent', 'client']);
 
 /**
  * Check if a role has a specific capability.

@@ -89,12 +89,20 @@ class DgrAdapter extends CarrierAdapter {
      */
     buildPartyDetails(party) {
         if (!party) return {};
+        const normalizeCityForRates = (city, countryCode) => {
+            const cleanCity = (city || '').toString().trim();
+            if (String(countryCode || '').toUpperCase() === 'KW') {
+                const upper = cleanCity.toUpperCase();
+                if (upper === 'KUWAIT CITY' || upper === 'CITY') return 'KUWAIT';
+            }
+            return cleanCity;
+        };
         const { addressLine1, addressLine2, addressLine3 } = this.splitAddress(
             (party.streetLines || []).filter(Boolean).join(', ') || party.formattedAddress
         );
         const details = {
             postalCode: party.postalCode || '',
-            cityName: party.city || '',
+            cityName: normalizeCityForRates(party.city, party.countryCode),
             countryCode: party.countryCode || '',
             addressLine1,
             addressLine2,
@@ -124,6 +132,13 @@ class DgrAdapter extends CarrierAdapter {
     async getRates(shipmentData) {
         const shipment = normalizeShipment(shipmentData);
         const activeConfig = await this._getResolvedConfig(shipment);
+        const { validateDgrInvoiceData } = require('../services/dgr-payload-builder');
+        const preflightErrors = validateDgrInvoiceData(shipment);
+        if (preflightErrors.length > 0) {
+            const err = new Error(`DGR Validation Failed: ${preflightErrors.join('; ')}`);
+            err.statusCode = 400;
+            throw err;
+        }
 
         const maxRetries = 7;
         let lastError = null;

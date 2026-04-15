@@ -99,6 +99,9 @@ model User {
   pickupRequests     PickupRequest[]     @relation("UserPickups")
   drivenPickups      PickupRequest[]     @relation("PickupDriver")
   auditLogs          SystemAuditLog[]
+
+  @@index([organizationId, role, active], map: "User_org_role_active_idx")
+  @@index([role, active], map: "User_role_active_idx")
 }
 
 model Shipment {
@@ -163,6 +166,14 @@ model Shipment {
   // Relations
   allocations      PaymentAllocation[]
   pickupRequests   PickupRequest[]
+
+  @@index([userId, status, createdAt], map: "Shipment_user_status_created_idx")
+  @@index([organizationId, status, createdAt], map: "Shipment_org_status_created_idx")
+  @@index([organizationId, paid, createdAt], map: "Shipment_org_paid_created_idx")
+  @@index([assignedDriverId, status, createdAt], map: "Shipment_driver_status_created_idx")
+  @@index([carrierCode, serviceCode], map: "Shipment_carrier_service_idx")
+  @@index([createdAt], map: "Shipment_createdAt_idx")
+  @@index([updatedAt], map: "Shipment_updatedAt_idx")
 }
 
 model OrganizationLedger {
@@ -184,6 +195,11 @@ model OrganizationLedger {
   metadata         Json?
   
   createdAt        DateTime     @default(now())
+
+  @@index([organizationId, createdAt], map: "Ledger_org_created_idx")
+  @@index([organizationId, entryType], map: "Ledger_org_entryType_idx")
+  @@index([sourceRepo, sourceId], map: "Ledger_source_idx")
+  @@index([reference], map: "Ledger_reference_idx")
 }
 
 model Payment {
@@ -208,6 +224,10 @@ model Payment {
 
   // Relations
   allocations      PaymentAllocation[]
+
+  @@index([organizationId, status, postedAt], map: "Payment_org_status_posted_idx")
+  @@index([createdById, postedAt], map: "Payment_createdBy_posted_idx")
+  @@index([reference], map: "Payment_reference_idx")
 }
 
 model PaymentAllocation {
@@ -233,6 +253,11 @@ model PaymentAllocation {
   reversalReason   String?
   
   createdAt        DateTime     @default(now())
+
+  @@index([shipmentId, status], map: "Allocation_shipment_status_idx")
+  @@index([paymentId, status], map: "Allocation_payment_status_idx")
+  @@index([organizationId, status, createdAt], map: "Allocation_org_status_created_idx")
+  @@index([createdBy, createdAt], map: "Allocation_createdBy_created_idx")
 }
 
 model WebhookSubscription {
@@ -250,6 +275,8 @@ model WebhookSubscription {
 
   // Relations
   deliveryEvents   WebhookEvent[]
+
+  @@index([organizationId, isActive], map: "WebhookSubscription_org_active_idx")
 }
 
 model WebhookEvent {
@@ -265,6 +292,8 @@ model WebhookEvent {
   lastError        String?      @db.Text
   
   createdAt        DateTime     @default(now())
+
+  @@index([subscriptionId, status, createdAt], map: "WebhookEvent_subscription_status_created_idx")
 }
 
 model PickupRequest {
@@ -288,6 +317,11 @@ model PickupRequest {
   notes            String?      @db.Text
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
+
+  @@index([organizationId, status, createdAt], map: "Pickup_org_status_created_idx")
+  @@index([userId, status, createdAt], map: "Pickup_user_status_created_idx")
+  @@index([assignedDriverId, status, createdAt], map: "Pickup_driver_status_created_idx")
+  @@index([shipmentId], map: "Pickup_shipment_idx")
 }
 
 model CarrierLog {
@@ -303,6 +337,10 @@ model CarrierLog {
   organizationId   String?
   
   createdAt        DateTime     @default(now())
+
+  @@index([carrierCode, requestType, createdAt], map: "CarrierLog_carrier_request_created_idx")
+  @@index([trackingNumber], map: "CarrierLog_tracking_idx")
+  @@index([organizationId, createdAt], map: "CarrierLog_org_created_idx")
 }
 
 model SystemAuditLog {
@@ -320,6 +358,9 @@ model SystemAuditLog {
   userAgent        String?
   
   createdAt        DateTime     @default(now())
+
+  @@index([userId, createdAt], map: "SystemAuditLog_user_created_idx")
+  @@index([resource, resourceId, createdAt], map: "SystemAuditLog_resource_created_idx")
 }
 
 model IdempotencyKey {

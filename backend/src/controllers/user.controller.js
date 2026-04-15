@@ -1,6 +1,25 @@
 const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
 const { handleControllerError } = require('../utils/controllerError');
+const { hashPassword } = require('../utils/security');
+const { normalizeShippingAccess } = require('../services/shippingAccess.service');
+
+const buildAgentPolicy = (existingPolicy = {}, { markup, shippingAccess } = {}) => {
+    const nextPolicy = { ...(existingPolicy || {}) };
+
+    if (markup !== undefined) {
+        nextPolicy.markupOverride = markup;
+    }
+
+    if (shippingAccess !== undefined) {
+        const normalizedAccess = normalizeShippingAccess(shippingAccess);
+        nextPolicy.shippingAccess = normalizedAccess;
+        nextPolicy.allowedCarriers = [normalizedAccess.carrierCode];
+        nextPolicy.serviceCode = normalizedAccess.serviceCode;
+    }
+
+    return nextPolicy;
+};
 
 /**
  * Get users by role (e.g., 'client')
@@ -67,6 +86,66 @@ exports.getUsers = async (req, res) => {
             success: false,
             error: 'Server Error'
         });
+    }
+};
+
+/**
+ * Create user (Admin)
+ * @route POST /api/users
+ * @access Private (Admin)
+ */
+exports.createUser = async (req, res) => {
+    try {
+        const {
+            name,
+            email,
+            phone,
+            role = 'org_agent',
+            password,
+            organizationId,
+            organization,
+            carrierConfig,
+            markup,
+            creditLimit,
+            shippingAccess
+        } = req.body;
+
+        if (!name || !email || !password) {
+            return res.status(400).json({ success: false, error: 'Name, email, and password are required' });
+        }
+
+        if (password.length < 8) {
+            return res.status(400).json({ success: false, error: 'Password must be at least 8 characters' });
+        }
+
+        const targetOrgId = organizationId || organization || null;
+        const hashedPassword = await hashPassword(password);
+        const normalizedShippingAccess = normalizeShippingAccess(shippingAccess || {
+            carrierCode: carrierConfig?.preferredCarrier || 'DGR',
+            serviceCode: carrierConfig?.serviceCode || 'P'
+        });
+
+        const user = await prisma.user.create({
+            data: {
+                name,
+                email: email.toLowerCase(),
+                phone: phone || null,
+                role,
+                password: hashedPassword,
+                carrierConfig: {
+                    ...(carrierConfig || {}),
+                    preferredCarrier: normalizedShippingAccess.carrierCode,
+                    serviceCode: normalizedShippingAccess.serviceCode
+                },
+                agentPolicy: buildAgentPolicy({}, { markup, shippingAccess: normalizedShippingAccess }),
+                creditLimit: creditLimit !== undefined ? Number(creditLimit) : undefined,
+                ...(targetOrgId ? { organization: { connect: { id: targetOrgId } } } : {})
+            }
+        });
+
+        res.status(201).json({ success: true, data: user });
+    } catch (error) {
+        return handleControllerError(res, error, 'User creation');
     }
 };
 
@@ -143,7 +222,7 @@ exports.updateProfile = async (req, res) => {
 exports.updateUser = async (req, res) => {
     try {
         const userId = req.params.id;
-        const { name, email, phone, role, organizationId, organization, carrierConfig, markup, creditLimit } = req.body;
+        const { name, email, phone, role, organizationId, organization, carrierConfig, markup, creditLimit, shippingAccess } = req.body;
 
         const targetOrgId = organizationId || organization;
 
@@ -163,13 +242,27 @@ exports.updateUser = async (req, res) => {
             }
         }
         
-        if (carrierConfig !== undefined) updateData.carrierConfig = carrierConfig;
-        
-        if (markup !== undefined) {
-            updateData.agentPolicy = {
-                ...(existingUser.agentPolicy || {}),
-                markupOverride: markup
+        let normalizedShippingAccess = null;
+        if (shippingAccess !== undefined) {
+            normalizedShippingAccess = normalizeShippingAccess(shippingAccess);
+        }
+
+        if (carrierConfig !== undefined || normalizedShippingAccess) {
+            updateData.carrierConfig = {
+                ...(existingUser.carrierConfig || {}),
+                ...(carrierConfig || {}),
+                ...(normalizedShippingAccess ? {
+                    preferredCarrier: normalizedShippingAccess.carrierCode,
+                    serviceCode: normalizedShippingAccess.serviceCode
+                } : {})
             };
+        }
+
+        if (markup !== undefined || normalizedShippingAccess) {
+            updateData.agentPolicy = buildAgentPolicy(existingUser.agentPolicy, {
+                markup,
+                shippingAccess: normalizedShippingAccess || undefined
+            });
         }
 
         const user = await prisma.user.update({

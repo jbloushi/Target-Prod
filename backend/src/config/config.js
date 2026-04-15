@@ -5,7 +5,7 @@ require('dotenv').config();
  */
 const validateProductionEnv = () => {
   if (process.env.NODE_ENV === 'production') {
-    const required = ['DATABASE_URL', 'JWT_SECRET', 'DHL_API_KEY', 'DHL_API_SECRET'];
+    const required = ['DATABASE_URL', 'JWT_SECRET', 'API_KEY_SECRET', 'ENCRYPTION_KEY', 'DHL_API_KEY', 'DHL_API_SECRET'];
     const missing = required.filter(key => !process.env[key]);
 
     if (missing.length > 0) {

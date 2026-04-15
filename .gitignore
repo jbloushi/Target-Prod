@@ -1,11 +1,29 @@
 node_modules/
+.npm-cache/
+**/.npm-cache/
 .env
 .env.*
+**/.env
+**/.env.local
+**/.env.production
+**/.env.*.local
+!**/.env.example
+!**/.env.production.example
 *.log
+runtime-logs/
 .DS_Store
 dist/
 build/
 coverage/
+
+# Generated runtime/output files
+backend/uploads/documents/*
+!backend/uploads/documents/.gitkeep
+backend/doc.pdf
+backend/invoice_*.pdf
+backend/test_label.pdf
+resources/*.pdf
+frontend/screenshots/
 
 # Diagnostic scripts & outputs
 audit_*.js
@@ -16,6 +34,12 @@ ui_audit.png
 ui_source*.html
 visual-audit.js
 vps_check.sh
+vps_fix.sh
 resolve_conflict.sh
 user_walkthrough.js
+generate_api_doc.py
+inspect_shipment.js
+*.bak
+Target_3PL_Client_API_v2.pdf
+.claude/settings.local.json
 *.log

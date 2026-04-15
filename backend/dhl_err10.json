@@ -1,7 +1,0 @@
-{
-  "instance": "/expressapi/shipments",
-  "detail": "420504: The origin location is invalid. Please check the data",
-  "title": "Bad request",
-  "message": "Bad request",
-  "status": "400"
-}

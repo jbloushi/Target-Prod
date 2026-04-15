@@ -70,7 +70,6 @@ const formatWeight = (num) => Number(Number(num || 0).toFixed(3));
  */
 const normalizeCur = (currency) => (currency || 'KWD').substring(0, 3).toUpperCase();
 
-
 /**
  * Validates the order data for DGR Invoice requirements (Pre-flight).
  * Returns an array of error strings.
@@ -80,6 +79,7 @@ const normalizeCur = (currency) => (currency || 'KWD').substring(0, 3).toUpperCa
 function validateShipmentForDgr(order) {
     const errors = [];
     const { sender, receiver, items, dangerousGoods } = order;
+    const requiresCustomsItems = !order.isDocument && order.shipmentType !== 'documents';
 
     // Shipper
     if (!sender.company && !sender.contactPerson) errors.push('Shipper: Company or Contact Person is required.');
@@ -106,18 +106,18 @@ function validateShipmentForDgr(order) {
     // Invoice
     if (!order.currency) errors.push('Invoice: Currency is required.');
 
-    // Items
-    if (!items || items.length === 0) errors.push('Shipment must have at least one line item.');
+    // Items are required for customs-declarable shipments. Document Express can rate/book without invoice items.
+    if (requiresCustomsItems && (!items || items.length === 0)) errors.push('Shipment must have at least one line item.');
 
-    items.forEach((item, index) => {
+    (items || []).forEach((item, index) => {
         const prefix = `Item ${index + 1}:`;
         if (!item.description) errors.push(`${prefix} Description is required.`);
-        if (!item.hsCode) errors.push(`${prefix} HS Code is required.`);
+        if (requiresCustomsItems && !item.hsCode) errors.push(`${prefix} HS Code is required.`);
         else if (normalizeDigits(item.hsCode).length < 6) errors.push(`${prefix} HS Code must be at least 6 digits.`);
 
-        if (!item.countryOfOrigin) errors.push(`${prefix} Country of Origin is required.`);
+        if (requiresCustomsItems && !item.countryOfOrigin) errors.push(`${prefix} Country of Origin is required.`);
         if (!item.quantity || item.quantity <= 0) errors.push(`${prefix} Quantity must be > 0.`);
-        if (!item.value || item.value <= 0) errors.push(`${prefix} Unit Value must be > 0.`);
+        if (requiresCustomsItems && (!item.value || item.value <= 0)) errors.push(`${prefix} Unit Value must be > 0.`);
     });
 
     // DG Validation
