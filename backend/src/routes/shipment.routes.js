@@ -6,6 +6,7 @@ const { check } = require('express-validator');
 const logger = require('../utils/logger');
 const authController = require('../controllers/auth.controller');
 const { authorize } = require('../middleware/authorize.middleware');
+const { SHIPMENT_STATUSES } = require('../constants/statusConstants');
 
 // Validation middleware
 const validate = (req, res, next) => {
@@ -101,7 +102,7 @@ router.patch(
   '/:trackingNumber',
   [
     param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
-    body('status').optional().isIn(['draft', 'pending', 'updated', 'created', 'ready_for_pickup', 'picked_up', 'in_transit', 'out_for_delivery', 'delivered', 'exception']),
+    body('status').optional().isIn(SHIPMENT_STATUSES),
     validate
   ],
   shipmentController.updateShipment
@@ -116,7 +117,7 @@ router.patch(
     param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
     body('coordinates').isArray({ min: 2, max: 2 }).withMessage('Invalid coordinates'),
     body('address').isString().notEmpty().withMessage('Address is required'),
-    body('status').optional().isIn(['pending', 'in_transit', 'out_for_delivery', 'delivered', 'exception']),
+    body('status').optional().isIn(['pending', 'in_transit', 'out_for_delivery', 'delivered', 'exception', 'cancelled']),
     body('description').optional().isString(),
     validate
   ],
@@ -184,7 +185,7 @@ router.patch(
     param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
     body('coordinates').isArray({ min: 2, max: 2 }).withMessage('Invalid coordinates'),
     body('address').isString().notEmpty().withMessage('Address is required'),
-    body('status').optional().isIn(['pending', 'in_transit', 'out_for_delivery', 'delivered', 'exception']),
+    body('status').optional().isIn(['pending', 'in_transit', 'out_for_delivery', 'delivered', 'exception', 'cancelled']),
     body('description').optional().isString(),
     validate
   ],

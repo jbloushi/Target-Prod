@@ -2,6 +2,10 @@ const express = require('express');
 const router = express.Router();
 const addressService = require('../services/address.service');
 const logger = require('../utils/logger');
+const authController = require('../controllers/auth.controller');
+
+// All geocode routes require authentication to protect Google Maps API quota
+router.use(authController.protect);
 
 /**
  * Geocode Routes - Google Maps Address Intelligence API
@@ -48,8 +52,7 @@ router.get('/autocomplete', async (req, res) => {
         logger.error('Autocomplete route error:', error.message);
         res.status(500).json({
             success: false,
-            error: error.message,
-            details: error.response?.data
+            error: 'Failed to fetch address suggestions'
         });
     }
 });

@@ -6,8 +6,9 @@ const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
 const ShipmentDraftService = require('../services/ShipmentDraftService');
 const { handleControllerError } = require('../utils/controllerError');
-const { hasCapability } = require('../middleware/rbac.policy');
-const { syncCarrierTrackingHistory, hasCriticalChanges } = require('./shipment.helpers');
+const { hasCapability, isPlatformRole } = require('../middleware/rbac.policy');
+const { MANUAL_SHIPMENT_STATUSES, SHIPMENT_STATUSES } = require('../constants/statusConstants');
+const { syncCarrierTrackingHistory, hasCriticalChanges, canUpdateShipmentStatus, isManualShipment } = require('./shipment.helpers');
 
 /**
  * Get shipment statistics (Status counts and Monthly volume)
@@ -184,9 +185,19 @@ exports.getAllShipments = async (req, res) => {
             if (statuses.length > 0) where.status = { in: statuses };
         }
 
-        // 2. Organization Filter
-        if (organizationId) {
-            where.organizationId = organizationId === 'none' ? null : organizationId;
+        // 2. Organization Filter — enforce tenant isolation for non-platform users
+        if (isPlatformRole(req.user.role)) {
+            // Platform staff can filter by any org or see all
+            if (organizationId) {
+                where.organizationId = organizationId === 'none' ? null : organizationId;
+            }
+        } else {
+            // Org users are hard-scoped to their own organization / user ID
+            if (req.user.organizationId) {
+                where.organizationId = req.user.organizationId;
+            } else {
+                where.userId = req.user.id;
+            }
         }
 
         // 3. Payment Filter
@@ -209,8 +220,9 @@ exports.getAllShipments = async (req, res) => {
         const parsedPage = Math.max(parseInt(page) || 1, 1);
         const skip = (parsedPage - 1) * parsedLimit;
         
+        const ALLOWED_SORT_FIELDS = ['createdAt', 'updatedAt', 'status', 'estimatedDelivery', 'price', 'trackingNumber'];
         const orderBy = {};
-        if (sortBy) {
+        if (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy)) {
             orderBy[sortBy] = sortOrder === 'desc' ? 'desc' : 'asc';
         } else {
             orderBy.createdAt = 'desc';
@@ -221,17 +233,38 @@ exports.getAllShipments = async (req, res) => {
         const canViewDocs = hasCapability(req.user.role, 'VIEW_DOCUMENTS');
         const isSummary = summary === 'true' || summary === '1' || summary === true;
 
+        const shipmentListQuery = {
+            where,
+            orderBy,
+            skip,
+            take: parsedLimit
+        };
+
+        if (isSummary) {
+            shipmentListQuery.select = {
+                id: true,
+                trackingNumber: true,
+                status: true,
+                createdAt: true,
+                estimatedDelivery: true,
+                origin: true,
+                destination: true,
+                customer: true,
+                paid: true,
+                totalPaid: true,
+                price: true,
+                user: { select: { id: true, name: true, email: true, role: true } },
+                organization: { select: { id: true, name: true } }
+            };
+        } else {
+            shipmentListQuery.include = {
+                user: { select: { id: true, name: true, email: true, role: true } },
+                organization: { select: { id: true, name: true } }
+            };
+        }
+
         const [shipments, totalCount] = await Promise.all([
-            prisma.shipment.findMany({
-                where,
-                orderBy,
-                skip,
-                take: parsedLimit,
-                include: {
-                    user: { select: { id: true, name: true, email: true, role: true } },
-                    organization: { select: { id: true, name: true } }
-                }
-            }),
+            prisma.shipment.findMany(shipmentListQuery),
             prisma.shipment.count({ where })
         ]);
 
@@ -245,24 +278,6 @@ exports.getAllShipments = async (req, res) => {
                 delete s.labelUrl;
                 delete s.invoiceUrl;
                 delete s.awbUrl;
-            }
-            if (isSummary) {
-                // Return only specific fields for list view optimization
-                return {
-                    id: s.id,
-                    trackingNumber: s.trackingNumber,
-                    status: s.status,
-                    createdAt: s.createdAt,
-                    estimatedDelivery: s.estimatedDelivery,
-                    origin: s.origin,
-                    destination: s.destination,
-                    customer: s.customer,
-                    paid: s.paid,
-                    totalPaid: s.totalPaid,
-                    price: s.price,
-                    organization: s.organization,
-                    user: s.user
-                };
             }
             return s;
         });
@@ -296,7 +311,7 @@ exports.deleteShipment = async (req, res) => {
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
         const isOwner = shipment.userId === user.id;
-        const isAdminOrStaff = ['admin', 'staff'].includes(user.role);
+        const isAdminOrStaff = ['admin', 'staff', 'manager', 'accounting'].includes(user.role);
         if (!isAdminOrStaff && !isOwner) return res.status(403).json({ success: false, error: 'Not authorized' });
 
         if (shipment.status !== 'draft' && shipment.status !== 'ready_for_pickup') {
@@ -329,17 +344,51 @@ exports.updateShipment = async (req, res) => {
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
         const isOwner = shipment.userId === user.id;
-        const isAdminOrStaff = ['admin', 'staff'].includes(user.role);
+        const isAdminOrStaff = ['admin', 'staff', 'manager', 'accounting'].includes(user.role);
         if (!isAdminOrStaff && !isOwner) return res.status(403).json({ success: false, error: 'Not authorized' });
 
         const allowedFields = ['destination', 'origin', 'items', 'parcels', 'incoterm', 'currency', 'dangerousGoods', 'serviceCode', 'status', 'allowPublicLocationUpdate'];
+        const manualEditableFields = ['price', 'costPrice', 'estimatedDelivery'];
         const updateData = {};
         let criticalChangesDetected = hasCriticalChanges(shipment, updates);
+        const shipmentIsManual = isManualShipment(shipment);
+        const canManageManualFields = shipmentIsManual && ['admin', 'manager', 'accounting'].includes(user.role);
+
+        if (updates.status && updates.status !== shipment.status) {
+            const validStatuses = shipmentIsManual ? MANUAL_SHIPMENT_STATUSES : SHIPMENT_STATUSES;
+            if (!validStatuses.includes(updates.status)) {
+                return res.status(400).json({ success: false, error: `Invalid shipment status '${updates.status}'. Valid: ${validStatuses.join(', ')}` });
+            }
+            if (!canUpdateShipmentStatus(user, shipment, updates.status)) {
+                return res.status(403).json({ success: false, error: 'Permission denied to update shipment status' });
+            }
+        }
 
         // Filter updates
         Object.keys(updates).forEach(key => {
             if (allowedFields.includes(key)) updateData[key] = updates[key];
+            if (manualEditableFields.includes(key)) {
+                if (!canManageManualFields) return;
+                if (key === 'estimatedDelivery') {
+                    updateData[key] = updates[key] ? new Date(updates[key]) : null;
+                } else if (updates[key] !== '' && updates[key] != null) {
+                    updateData[key] = Number(updates[key]);
+                }
+            }
         });
+
+        if (canManageManualFields && updates.price !== undefined) {
+            const price = Number(updates.price);
+            updateData.price = price;
+            updateData.pricingSnapshot = {
+                ...(shipment.pricingSnapshot || {}),
+                carrierRate: Number(updates.costPrice ?? shipment.costPrice ?? 0),
+                totalPrice: price,
+                currency: updates.currency || shipment.currency || 'KWD',
+                policySource: 'manual',
+                rulesVersion: 'manual'
+            };
+        }
 
         // Handle Status Change History
         if (updates.status && updates.status !== shipment.status) {
@@ -348,7 +397,8 @@ exports.updateShipment = async (req, res) => {
                 ...history,
                 {
                     status: updates.status,
-                    description: `Status changed by ${user.name}`,
+                    description: updates.statusDescription || updates.description || `Status changed by ${user.name}`,
+                    source: 'platform',
                     timestamp: new Date(),
                     location: shipment.currentLocation
                 }
@@ -356,7 +406,7 @@ exports.updateShipment = async (req, res) => {
         }
 
         // --- Dynamic Re-rating Logic ---
-        if (criticalChangesDetected) {
+        if (criticalChangesDetected && !shipmentIsManual) {
             logger.info(`Critical changes detected for ${trackingNumber}. Initiating re-rating.`);
             try {
                 const PricingService = require('../services/pricing.service');

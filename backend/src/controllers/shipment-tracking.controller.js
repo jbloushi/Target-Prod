@@ -1,6 +1,6 @@
 const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
-const { calculateDistance } = require('./shipment.helpers');
+const { calculateDistance, canUpdateShipmentStatus } = require('./shipment.helpers');
 
 /**
  * Update shipment location
@@ -12,6 +12,10 @@ exports.updateShipmentLocation = async (req, res) => {
 
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Not found' });
+
+        if (status && status !== shipment.status && !canUpdateShipmentStatus(req.user, shipment, status)) {
+            return res.status(403).json({ success: false, error: 'Permission denied to update shipment status' });
+        }
 
         const updatedHistory = shipment.history || [];
         const newLocation = {

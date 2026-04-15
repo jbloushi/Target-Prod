@@ -11,6 +11,7 @@ class CarrierFactory {
      */
     static getAvailableCarriers() {
         return [
+            { code: 'MANUAL', name: 'Manual Shipment', active: true },
             { code: 'DGR', name: 'DHL DGR', active: true },
             { code: 'ARAMEX', name: 'Aramex', active: true }, // <-- ADDED
             { code: 'FEDEX', name: 'FedEx', active: false }, // <-- DEACTIVATED

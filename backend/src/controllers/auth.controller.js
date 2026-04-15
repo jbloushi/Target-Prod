@@ -92,7 +92,8 @@ exports.signup = async (req, res) => {
         createSendToken(newUser, 201, res);
     } catch (error) {
         logger.error('Signup error:', error);
-        res.status(400).json({ success: false, error: error.message });
+        // Use generic message to prevent email enumeration
+        res.status(400).json({ success: false, error: 'Registration failed. Please check your details and try again.' });
     }
 };
 
@@ -173,6 +174,11 @@ exports.protect = async (req, res, next) => {
             return res.status(401).json({ success: false, error: 'User no longer exists' });
         }
 
+        if (!currentUser.active) {
+            logger.warn(`Auth Failed: User ${decoded.id} account is deactivated.`);
+            return res.status(401).json({ success: false, error: 'Account is deactivated' });
+        }
+
         // Grant access to protected route
         req.user = currentUser;
 
@@ -237,14 +243,22 @@ exports.getClients = async (req, res) => {
     try {
         const clients = await prisma.user.findMany({
             where: {
-                role: { in: ['org_agent', 'org_manager'] }
+                role: { in: ['org_agent', 'org_manager', 'client'] }
             },
             select: {
                 id: true,
                 name: true,
                 email: true,
                 phone: true,
-                addresses: true
+                addresses: true,
+                carrierConfig: true,
+                agentPolicy: true,
+                organization: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                }
             }
         });
         res.status(200).json({ success: true, data: clients });
@@ -258,20 +272,26 @@ exports.getClients = async (req, res) => {
  */
 exports.updateUserSurcharge = async (req, res) => {
     try {
-        const { userId, type, percentageValue, flatValue } = req.body;
-        
-        const updatedUser = await prisma.user.update({
-            where: { id: userId },
+        const { organizationId, type, percentageValue, flatValue } = req.body;
+
+        if (!organizationId) {
+            return res.status(400).json({ success: false, error: 'organizationId is required' });
+        }
+
+        // Markup lives on Organization, not User
+        const updatedOrg = await prisma.organization.update({
+            where: { id: organizationId },
             data: {
                 markup: {
                     type: type || 'PERCENTAGE',
-                    percentageValue: percentageValue || 0,
-                    flatValue: flatValue || 0
+                    percentageValue: percentageValue ?? 0,
+                    flatValue: flatValue ?? 0
                 }
-            }
+            },
+            select: { id: true, name: true, markup: true }
         });
 
-        res.status(200).json({ success: true, data: updatedUser });
+        res.status(200).json({ success: true, data: updatedOrg });
     } catch (error) {
         logger.error('Update markup error:', error);
         res.status(500).json({ success: false, error: 'Failed to update markup' });

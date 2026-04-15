@@ -32,7 +32,7 @@ const authorize = (...requiredCapabilities) => {
 
         for (const cap of requiredCapabilities) {
             if (!hasCapability(role, cap)) {
-                logger.warn(`Authorization denied: user=${req.user._id} role=${role} missing=${cap}`);
+                logger.warn(`Authorization denied: user=${req.user.id} role=${role} missing=${cap}`);
                 return res.status(403).json({
                     success: false,
                     error: 'Permission denied',
@@ -45,20 +45,20 @@ const authorize = (...requiredCapabilities) => {
 };
 
 /**
- * Mutates a Mongoose query filter to scope results by organization.
+ * Mutates a Prisma-style query filter to scope results by organization.
  * 
  * - Platform roles (admin, staff, manager, accounting) → no scoping, see everything
  * - Org roles with an organization → scoped to their organization
  * - Org roles without an organization → scoped to their own user ID
  * 
  * @param {Object} req - Express request (must have req.user)
- * @param {Object} query - Mongoose filter object to mutate
+ * @param {Object} query - Filter object to mutate
  * @returns {Object} The mutated query (for chaining convenience)
  */
 function scopeToOrg(req, query) {
     if (!req.user) return query;
 
-    const { role, organization, _id } = req.user;
+    const { role, organizationId, id } = req.user;
 
     if (isPlatformRole(role)) {
         // Platform users see everything — no scoping
@@ -66,18 +66,18 @@ function scopeToOrg(req, query) {
     }
 
     if (isOrgRole(role)) {
-        if (organization) {
+        if (organizationId) {
             // Org user with an org → see all shipments for that org
-            query.organization = organization;
+            query.organizationId = organizationId;
         } else {
             // Org user without an org → see only their own data
-            query.user = _id;
+            query.userId = id;
         }
         return query;
     }
 
     // Fallback: unknown role → scope to own data only
-    query.user = _id;
+    query.userId = id;
     return query;
 }
 
@@ -93,17 +93,17 @@ function scopeToOrg(req, query) {
 function canAccessShipment(req, shipment) {
     if (!req.user) return false;
 
-    const { role, organization, _id } = req.user;
+    const { role, organizationId, id } = req.user;
 
     if (isPlatformRole(role)) return true;
 
     // Org user: check org match or direct ownership
-    if (organization && shipment.organization) {
-        return organization.toString() === shipment.organization.toString();
+    if (organizationId && shipment.organizationId) {
+        return organizationId === shipment.organizationId;
     }
 
     // Direct ownership check
-    return shipment.user?.toString() === _id.toString();
+    return shipment.userId === id;
 }
 
 module.exports = {

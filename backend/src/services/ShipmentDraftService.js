@@ -2,7 +2,14 @@ const { prisma } = require('../config/database');
 const PricingService = require('./pricing.service');
 const CarrierFactory = require('./CarrierFactory');
 const logger = require('../utils/logger');
-const { generateDraftTrackingNumber } = require('../utils/shipmentUtils');
+const { generateDraftTrackingNumber, generateManualTrackingNumber } = require('../utils/shipmentUtils');
+const { SHIPMENT_STATUSES, MANUAL_SHIPMENT_STATUSES } = require('../constants/statusConstants');
+const {
+    getAssignedShippingAccess,
+    assertRequestedAccessAllowed,
+    shouldEnforceAssignedAccess
+} = require('./shippingAccess.service');
+const { isPlatformRole } = require('../middleware/rbac.policy');
 
 class ShipmentDraftService {
 
@@ -15,7 +22,7 @@ class ShipmentDraftService {
     async createDraft(data, user) {
         // 1. Determine Target User (The paying entity/owner)
         let targetUserId = user.id;
-        if (['staff', 'admin'].includes(user.role) && data.userId) {
+        if (isPlatformRole(user.role) && data.userId) {
             targetUserId = data.userId;
         }
 
@@ -29,13 +36,29 @@ class ShipmentDraftService {
 
         // 2. Sanitize & Normalize Data
         const cleanData = this.sanitizePayload(data);
+        const assignedAccess = getAssignedShippingAccess(targetUser);
+        const enforceAssignedAccess = shouldEnforceAssignedAccess(user, targetUser);
+
+        if (enforceAssignedAccess) {
+            assertRequestedAccessAllowed(assignedAccess, {
+                carrierCode: cleanData.carrierCode,
+                serviceCode: cleanData.serviceCode
+            });
+            cleanData.carrierCode = assignedAccess.carrierCode;
+            cleanData.serviceCode = assignedAccess.serviceCode;
+            cleanData.manualShipment = assignedAccess.mode === 'manual';
+        }
+
+        const carrierCode = String(cleanData.carrierCode || assignedAccess.carrierCode || '').toUpperCase();
+        const isManualShipment = cleanData.manualShipment === true
+            || carrierCode === 'MANUAL';
 
         // 3. Rate Shopping & Pricing Snapshot
-        const serviceCode = cleanData.serviceCode || 'P';
+        const serviceCode = isManualShipment ? null : (cleanData.serviceCode || 'P');
         logger.debug(`ShipmentDraftService: Creating draft for user ${targetUserId}, service ${serviceCode}`);
 
         let snapshot;
-        const needsCarrier = (cleanData.carrierCode === 'DGR' || cleanData.carrierCode === 'DHL' || !cleanData.carrierCode) && serviceCode;
+        const needsCarrier = !isManualShipment && (cleanData.carrierCode === 'DGR' || cleanData.carrierCode === 'DHL' || !cleanData.carrierCode) && serviceCode;
 
         if (needsCarrier) {
             try {
@@ -46,28 +69,35 @@ class ShipmentDraftService {
             }
         } else {
             // Fallback for manual shipments / other carriers
-            const { markup, source } = PricingService.resolveMarkup(targetUser, targetUser.organization, cleanData.carrierCode || 'DGR');
+            const { markup, source } = PricingService.resolveMarkup(targetUser, targetUser.organization, isManualShipment ? 'MANUAL' : (cleanData.carrierCode || 'DGR'));
             snapshot = PricingService.createSnapshot(
-                data.costPrice || 0,
+                data.costPrice || data.price || data.totalPrice || 0,
                 markup,
                 data.currency || 'KWD',
                 source
             );
             // Override total if provided manually (TRUSTED sources only)
-            if (data.price) snapshot.totalPrice = Number(data.price);
+            if (data.price || data.totalPrice) snapshot.totalPrice = Number(data.price || data.totalPrice);
         }
 
         // Helper to generate tracking number
-        const trackingNumber = data.trackingNumber || generateDraftTrackingNumber();
+        const trackingNumber = data.trackingNumber || (isManualShipment ? generateManualTrackingNumber() : generateDraftTrackingNumber());
         const estimatedDelivery = data.estimatedDelivery || new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+        const requestedStatus = cleanData.status || (isManualShipment ? 'draft' : 'ready_for_pickup');
+        if (!SHIPMENT_STATUSES.includes(requestedStatus)) {
+            throw new Error(`Invalid shipment status '${requestedStatus}'`);
+        }
+        if (isManualShipment && !MANUAL_SHIPMENT_STATUSES.includes(requestedStatus)) {
+            throw new Error(`Invalid manual shipment status '${requestedStatus}'`);
+        }
 
         // 4. Create Shipment in MySQL
         const shipment = await prisma.shipment.create({
             data: {
                 trackingNumber,
-                status: cleanData.status || 'ready_for_pickup',
-                serviceCode: cleanData.serviceCode || 'P',
-                carrierCode: cleanData.carrierCode || 'DGR',
+                status: requestedStatus,
+                serviceCode,
+                carrierCode: isManualShipment ? 'MANUAL' : (cleanData.carrierCode || 'DGR'),
                 
                 // Address & Customer Info (JSON)
                 origin: { 
@@ -102,14 +132,14 @@ class ShipmentDraftService {
                 organizationId: targetUser.organizationId,
 
                 // Metadata
-                shipmentType: cleanData.shipmentType || 'package',
+                shipmentType: cleanData.shipmentType,
                 estimatedDelivery: estimatedDelivery ? new Date(estimatedDelivery) : null,
                 
                 // Arrays (JSON)
                 history: [
                     {
-                        status: cleanData.status || 'draft',
-                        description: 'Shipment draft created',
+                        status: requestedStatus,
+                        description: isManualShipment ? 'Manual shipment created' : 'Shipment draft created',
                         timestamp: new Date(),
                         location: cleanData.origin
                     }
@@ -263,11 +293,29 @@ class ShipmentDraftService {
             destination,
             customer,
             items,
-            shipmentType: data.shipmentType || 'package',
+            shipmentType: this.normalizeShipmentType(data.shipmentType),
             packagingType: data.packagingType || 'user',
             incoterm: data.incoterm || 'DAP',
             currency
         };
+    }
+
+    normalizeShipmentType(shipmentType) {
+        const value = String(shipmentType || 'package').toLowerCase();
+
+        if (['documents', 'document', 'document_express'].includes(value)) {
+            return 'documents';
+        }
+
+        if (['package', 'standard_package', 'standard'].includes(value)) {
+            return 'package';
+        }
+
+        if (value === 'manual') {
+            return 'package';
+        }
+
+        throw new Error('Shipment type must be Standard Package or Document Express');
     }
 }
 

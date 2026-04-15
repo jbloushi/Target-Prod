@@ -32,26 +32,16 @@ const getShipmentChargeAmount = (shipment) => {
 const getOrganizationBalance = async (organizationId) => {
     if (!organizationId) return 0;
 
-    const summary = await prisma.organizationLedger.aggregate({
+    const totals = await prisma.organizationLedger.groupBy({
+        by: ['entryType'],
         where: { organizationId },
-        _sum: {
-            amount: true
-        }
-    });
-
-    // Note: This aggregation needs to split DEBIT and CREDIT. 
-    // Prisma aggregate _sum is simple. For complex splitting, we use groupBy or separate queries.
-    const debits = await prisma.organizationLedger.aggregate({
-        where: { organizationId, entryType: 'DEBIT' },
-        _sum: { amount: true }
-    });
-    const credits = await prisma.organizationLedger.aggregate({
-        where: { organizationId, entryType: 'CREDIT' },
         _sum: { amount: true }
     });
 
-    const dVal = normalizeAmount(debits._sum.amount || 0);
-    const cVal = normalizeAmount(credits._sum.amount || 0);
+    const debitTotal = totals.find(row => row.entryType === 'DEBIT')?._sum.amount || 0;
+    const creditTotal = totals.find(row => row.entryType === 'CREDIT')?._sum.amount || 0;
+    const dVal = normalizeAmount(debitTotal);
+    const cVal = normalizeAmount(creditTotal);
 
     return toApiAmount(dVal.minus(cVal));
 };
@@ -168,7 +158,22 @@ const getUnappliedCash = async (organizationId) => {
 };
 
 const getShipmentAccounting = async (shipmentId, txClient = prisma) => {
-    const shipment = await txClient.shipment.findUnique({ where: { id: shipmentId } });
+    const shipment = await txClient.shipment.findUnique({
+        where: { id: shipmentId },
+        select: {
+            id: true,
+            trackingNumber: true,
+            organizationId: true,
+            status: true,
+            price: true,
+            pricingSnapshot: true,
+            currency: true,
+            paid: true,
+            totalPaid: true,
+            remainingBalance: true,
+            createdAt: true
+        }
+    });
     if (!shipment) return null;
 
     const totalCharge = getShipmentChargeAmount(shipment);
@@ -197,9 +202,14 @@ const getAgingReport = async (organizationId) => {
     // Fetch shipments with their active allocations via Prisma
     const shipments = await prisma.shipment.findMany({
         where: { organizationId: organizationId || null },
-        include: {
+        select: {
+            id: true,
+            price: true,
+            pricingSnapshot: true,
+            createdAt: true,
             allocations: {
-                where: { status: 'ACTIVE' }
+                where: { status: 'ACTIVE' },
+                select: { amount: true }
             }
         }
     });
@@ -257,7 +267,15 @@ const getRevenueSnapshot = async ({ startDate, endDate, orgId }) => {
     }
 
     // Use raw query for MySQL specialized grouping by year/month if complex, or findMany
-    const ledgerEntries = await prisma.organizationLedger.findMany({ where });
+    const ledgerEntries = await prisma.organizationLedger.findMany({
+        where,
+        select: {
+            organizationId: true,
+            entryType: true,
+            amount: true,
+            createdAt: true
+        }
+    });
 
     // Process in memory for monthly grouping (or use queryRaw for high volume)
     const snapshotMap = {};
@@ -289,7 +307,10 @@ const getRevenueSnapshot = async ({ startDate, endDate, orgId }) => {
 };
 
 const updatePaymentStatus = async (paymentId, txClient = prisma) => {
-    const payment = await txClient.payment.findUnique({ where: { id: paymentId } });
+    const payment = await txClient.payment.findUnique({
+        where: { id: paymentId },
+        select: { id: true, amount: true }
+    });
     if (!payment) return null;
 
     const allocated = await getAllocationTotal({ paymentId }, txClient);
@@ -339,8 +360,8 @@ const allocatePayment = async ({ organizationId, paymentId, shipmentId, amount, 
 
         // 2. Resolve Names for Audit
         const [payment, shipment, user] = await Promise.all([
-            tx.payment.findUnique({ where: { id: paymentId } }),
-            tx.shipment.findUnique({ where: { id: shipmentId } }),
+            tx.payment.findUnique({ where: { id: paymentId }, select: { reference: true } }),
+            tx.shipment.findUnique({ where: { id: shipmentId }, select: { trackingNumber: true } }),
             createdBy ? tx.user.findUnique({ where: { id: createdBy }, select: { name: true } }) : null
         ]);
 

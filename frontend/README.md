@@ -1,108 +1,74 @@
-# Target Logistics - Frontend
+# Frontend
 
-A modern React application for shipment tracking with Google Maps integration.
+The frontend is a React 18 single page application built with Vite for Target Logistics platform users, client users, public tracking users, drivers, finance users, and administrators.
 
-## 🛠️ Technologies
-- **React 18** - UI framework
-- **Material UI** - Component library
-- **Google Maps API** - Interactive maps
-- **React Router** - Navigation
-
-## 📱 Features
-
-### Dashboard
-- Tabbed navigation (Shipments, Saved Addresses, Parcel Templates)
-- Role-based tabs (Client Management, User Management)
-- Live stats cards (Total, Pending, In Transit, Delivered)
-
-### Shipment Management
-- Create shipments with DHL rate quotes
-- Real-time tracking with Google Maps
-- Download DHL labels and AWB documents (staff/admin)
-- Public tracking link sharing
-
-### Role-Based Access
-| Feature | Admin | Staff | Client | Public |
-|---------|-------|-------|--------|--------|
-| Create Shipments | ✅ | ✅ | ✅ | ❌ |
-| View All Shipments | ✅ | ✅ | Own only | ❌ |
-| DHL Documents | ✅ | ✅ | ❌ | ❌ |
-| Tracking History | ✅ | ✅ | ✅ | ✅ |
-| Update Location | ✅ | ✅ | ❌ | ❌ |
-| User Management | ✅ | ❌ | ❌ | ❌ |
-
-## 🔧 Environment Variables
-
-Create a `.env` file in the frontend directory:
-
-```env
-# Backend API endpoint
-REACT_APP_API_URL=/api
-
-# Google Maps API Key (REQUIRED for address autofill)
-# Get your key from: https://console.cloud.google.com/google/maps-apis
-# Required APIs: Maps JavaScript API, Places API, Geocoding API
-REACT_APP_GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here
-
-# Mapbox Token (Optional)
-REACT_APP_MAPBOX_TOKEN=your_mapbox_token_here
-```
-
-### Production Deployment
-
-For production builds, ensure the environment variables are set:
-
-**Option 1: Docker Build**
-```bash
-docker build \
-  --build-arg REACT_APP_API_URL=/api \
-  --build-arg REACT_APP_GOOGLE_MAPS_API_KEY=your_key \
-  --build-arg REACT_APP_MAPBOX_TOKEN=your_token \
-  -t target-logistics-frontend .
-```
-
-**Option 2: Docker Compose**
-```bash
-# Create a .env file in the root directory
-echo "REACT_APP_GOOGLE_MAPS_API_KEY=your_key" >> .env
-echo "REACT_APP_MAPBOX_TOKEN=your_token" >> .env
-
-# Build and run
-docker-compose up -d
-```
-
-**Option 3: GitHub Actions**
-Add the following secrets to your repository:
-- `REACT_APP_GOOGLE_MAPS_API_KEY`
-- `REACT_APP_MAPBOX_TOKEN`
-
-> ⚠️ **Important**: Without the Google Maps API key, address autofill will not work in production!
-
-## 🚀 Quick Start
+## Commands
 
 ```bash
 npm install
 npm start
+npm run lint
+npm test
+npm run build
+npm run verify
 ```
 
-The application runs at http://localhost:3000
+The local dev server runs on `http://localhost:3000`.
 
-## 📁 Project Structure
+`npm run lint` runs the frontend ESLint gate. `npm test` runs Vitest coverage for status rendering rules, role capabilities, and CSV export behavior. `npm run verify` runs lint, tests, build, and audit.
 
+## Environment
+
+Create `frontend/.env.local` locally. Do not commit it.
+
+```env
+REACT_APP_API_URL=http://localhost:8899/api
 ```
-src/
-├── components/
-│   ├── GoogleMapComponent.js    # Single shipment map
-│   ├── GoogleMapAll.js          # Dashboard overview map
-│   ├── ShipmentDetails.js       # Shipment detail view
-│   └── ShipmentList.js          # Shipment list with map
-├── pages/
-│   ├── DashboardPage.js         # Main dashboard
-│   ├── HomePage.js              # Landing page
-│   └── TrackingPage.js          # Public tracking
-├── context/
-│   ├── AuthContext.js           # Authentication state
-│   └── ShipmentContext.js       # Shipment state
-└── services/
-    └── api.js                   # API client
+
+## Source Map
+
+| Path | Purpose |
+| --- | --- |
+| `src/pages/` | Route-level screens. |
+| `src/components/` | Shared and domain components. |
+| `src/components/shipment/` | Shipment wizard and shipment content panels. |
+| `src/components/layout/` | App shell, sidebar, and footer. |
+| `src/services/api.jsx` | Axios API client and service wrappers. |
+| `src/constants/statusConfig.jsx` | Frontend shipment status labels and progress steps. |
+| `src/utils/capabilities.jsx` | Frontend RBAC capability mirror. |
+| `src/ui/` | Shared UI primitives and tokens. |
+
+## Current UI Invariants
+
+- Light mode is the default app experience. Dark mode is optional.
+- Product copy should use friendly operational labels, not carrier-specific technical wording.
+- Shipment type options are limited to `Standard Package` and `Document Express`.
+- Client users should not be forced to select carrier or service in the wizard when their assigned access already determines it.
+- Public tracking must remain light, branded, and easy for customers to read.
+- Manual Shipment should not show the carrier approval/booking action.
+- Manual Shipment editing should expose authorized manual commercial fields where the user role allows it.
+- Frontend status labels must stay aligned with backend status constants.
+
+## Main Pages
+
+| Page | Purpose |
+| --- | --- |
+| `ShipmentWizardV2.jsx` | Step-by-step shipment creation. |
+| `ShipmentDetailsPage.jsx` | Shipment detail, editing, documents, status, timeline. |
+| `ShipmentsPage.jsx` | Shipment listing. |
+| `PublicTrackingLandingPage.jsx` | Public tracking search/detail experience. |
+| `DriverPickupPage.jsx` | Driver pickup workflow. |
+| `WarehouseScanPage.jsx` | Warehouse scan workflow. |
+| `FinancePage.jsx` | Finance and accounting workflows. |
+| `AdminUsersPage.jsx` | User and shipping access administration. |
+| `AdminOrganizationsPage.jsx` | Organization administration. |
+| `SettingsPage.jsx` | Profile and API key settings. |
+| `AddressBookPage.jsx` | Saved addresses. |
+
+## Build Verification
+
+Run this before handing off frontend changes:
+
+```bash
+npm run build
 ```

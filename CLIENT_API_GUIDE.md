@@ -1,288 +1,221 @@
-# Target Logistics — Client API Guide (v2.0)
+# Target Logistics Client API Guide
 
-Welcome to the Target Logistics Developer API. This guide covers everything you need to integrate shipment creation, real-time tracking, rate quotation, pickup requests, and address management into your own systems.
+Version: 2.1
+Audience: client developers integrating server-to-server shipment workflows.
 
----
+## Core Rule
 
-## 1. Quick Start
+Each client API key belongs to one platform user. That user is assigned exactly one shipping access option by Target Logistics:
 
-Create your first shipment in under a minute:
+- A carrier plus one service, for example `DGR` with service `P`.
+- Manual Shipment, stored as `carrierCode: MANUAL` with no service code.
 
-```bash
-curl -X POST https://api.target-logistics.com/api/v1/shipments \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: YOUR_API_KEY" \
-  -d '{
-    "sender": {
-      "company": "My Warehouse",
-      "contactPerson": "Ahmed Al-Rashid",
-      "phone": "96512345678",
-      "phoneCountryCode": "+965",
-      "email": "warehouse@mycompany.com",
-      "countryCode": "KW",
-      "city": "Kuwait City",
-      "postalCode": "13001",
-      "streetLines": ["Industrial Area, Block 4, Street 12"]
-    },
-    "receiver": {
-      "contactPerson": "Sara Al-Mutairi",
-      "phone": "96598765432",
-      "phoneCountryCode": "+965",
-      "email": "sara@gmail.com",
-      "countryCode": "KW",
-      "city": "Salmiya",
-      "postalCode": "22001",
-      "streetLines": ["Block 12, Building 45, Apartment 3"]
-    },
-    "parcels": [{ "weight": 2.5, "length": 30, "width": 20, "height": 10 }],
-    "items": [{ "description": "Electronics", "quantity": 1, "unitValue": 150, "currency": "KWD", "countryOfOrigin": "KW" }]
-  }'
-```
+Client integrations should not send `carrierCode` or `serviceCode`. The backend derives both from the API key owner. If a request includes a carrier or service that does not match the assigned access, the API returns `403`.
 
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "trackingNumber": "DGR-AB12CD34",
-    "status": "draft",
-    "price": 4.500,
-    "currency": "KWD",
-    "carrier": "DGR"
-  }
-}
-```
+This keeps the client API simple and prevents the wrong carrier rate or service from being selected.
 
----
-
-## 2. Authentication
-
-All API requests (except public tracking) **must** include your API key in the request header:
-
-| Header | Value |
-|--------|-------|
-| `x-api-key` | `YOUR_API_KEY` |
-
-**Key format:** `{userId}.{randomBytes}` — e.g. `42.a7f3bc9d12e045f8`
-
-> **How to get your API key:** Log in to your dashboard → **Settings** → **General & API** → click **Generate Key**. Store it securely in your server-side environment variables (`.env`). Never expose it in frontend JavaScript.
-
----
-
-## 3. Base URLs
+## Base URLs
 
 | Environment | Base URL |
-|-------------|----------|
-| Development | `http://localhost:8899/api` |
-| Production  | `https://api.target-logistics.com/api` |
+| --- | --- |
+| Local | `http://localhost:8899/api` |
+| Production | `https://api.target-logistics.com/api` |
 
-All endpoint paths below are relative to the base URL (e.g. `/v1/shipments` = `https://api.target-logistics.com/api/v1/shipments`).
+All `/v1` paths below are relative to the base URL.
 
----
+## Authentication
 
-## 4. Rate Limiting
+Send the API key in every private API request:
 
-API keys are limited to **30 requests per minute**.
+```http
+x-api-key: YOUR_API_KEY
+```
 
-When exceeded, you receive:
+API keys are generated from the user Settings page in the platform. Store keys server-side only. Do not expose API keys in browser JavaScript or mobile apps.
+
+## Rate Limits
+
+External API traffic is rate limited. A limited request returns:
 
 ```json
-HTTP 429 Too Many Requests
 {
   "success": false,
   "error": "Too many requests, please slow down."
 }
 ```
 
-Implement exponential backoff when you receive 429 responses.
+Use retry backoff for `429` responses.
 
----
-
-## 5. Error Format
-
-All errors follow this consistent shape:
+## Error Shape
 
 ```json
 {
   "success": false,
   "error": "Human-readable error message",
-  "details": ["Optional array of validation errors"]
+  "details": ["Optional validation details"]
 }
 ```
 
-**Common HTTP status codes:**
+Common status codes:
 
 | Code | Meaning |
-|------|---------|
-| `400` | Bad request — missing or invalid fields |
-| `401` | Unauthorized — missing or invalid API key |
+| --- | --- |
+| `400` | Invalid request or validation failure |
+| `401` | Missing or invalid API key |
+| `403` | Request conflicts with assigned carrier/service access |
 | `404` | Resource not found |
-| `409` | Conflict — idempotency key collision |
+| `409` | Idempotency collision |
 | `429` | Rate limit exceeded |
-| `500` | Internal server error |
+| `500` | Server error |
 
----
+## Shipment Creation
 
-## 6. Idempotency
+### `POST /v1/shipments`
 
-For `POST /client/pickups`, include an `Idempotency-Key` header to safely retry requests without creating duplicates:
+Creates a shipment for the API key owner.
 
+For carrier-backed users, the shipment is submitted through the assigned carrier/service and returned as booked when carrier booking succeeds.
+
+For manual users, the shipment is created as a Manual Shipment draft and is not registered with a 3PL carrier.
+
+Do not include `carrierCode` or `serviceCode` in normal client requests.
+
+```bash
+curl -X POST http://localhost:8899/api/v1/shipments \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: YOUR_API_KEY" \
+  -d '{
+    "sender": {
+      "company": "Client Warehouse",
+      "contactPerson": "Ahmed Ali",
+      "phone": "96512345678",
+      "phoneCountryCode": "+965",
+      "email": "warehouse@example.com",
+      "countryCode": "KW",
+      "city": "Kuwait City",
+      "postalCode": "13001",
+      "streetLines": ["Industrial Area, Block 4"]
+    },
+    "receiver": {
+      "company": "Receiver Co",
+      "contactPerson": "Sara Saleh",
+      "phone": "971555555555",
+      "phoneCountryCode": "+971",
+      "email": "receiver@example.com",
+      "countryCode": "AE",
+      "city": "Dubai",
+      "postalCode": "00000",
+      "streetLines": ["Business Bay"]
+    },
+    "shipmentType": "package",
+    "parcels": [
+      { "weight": 2.5, "length": 30, "width": 20, "height": 10 }
+    ],
+    "items": [
+      { "description": "Documents", "quantity": 1, "unitValue": 10, "currency": "KWD", "countryOfOrigin": "KW" }
+    ],
+    "currency": "KWD"
+  }'
 ```
-Idempotency-Key: unique-key-per-request-uuid-here
-```
 
-- Use a UUID or other unique string per logical operation
-- Keys are valid for **24 hours**
-- If a request with the same key is already being processed:
+Success response for a carrier-backed user:
 
-```json
-HTTP 409 Conflict
-{
-  "success": false,
-  "error": "A request with this Idempotency-Key is currently being processed."
-}
-```
-
----
-
-## 7. Endpoints
-
----
-
-### 7.1 Shipments
-
----
-
-#### `POST /v1/shipments` — Create Shipment
-
-Creates a new shipment in `draft` status. The shipment is not yet booked with a carrier.
-
-**Headers:** `x-api-key` (required)
-
-**Request Body:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `sender` | object | ✅ | Origin address (see Address Object below) |
-| `receiver` | object | ✅ | Destination address |
-| `parcels` | array | ✅ | One or more parcel objects |
-| `items` | array | ✅ | Shipment contents/commodities |
-| `carrierCode` | string | — | `"DGR"` (default) or `"DHL"` |
-| `serviceCode` | string | — | Service type (e.g. `"P"` for express). Default: `"P"` |
-| `shipmentDate` | string | — | ISO 8601 date (e.g. `"2026-04-10"`) |
-| `currency` | string | — | Default: `"KWD"` |
-
-**Address Object fields:**
-
-| Field | Type | Required |
-|-------|------|----------|
-| `company` | string | ✅ |
-| `contactPerson` | string | ✅ |
-| `phone` | string | ✅ |
-| `phoneCountryCode` | string | ✅ (e.g. `"+965"`) |
-| `email` | string | ✅ |
-| `countryCode` | string | ✅ (ISO 2-letter, e.g. `"KW"`) |
-| `city` | string | ✅ |
-| `postalCode` | string | ✅ |
-| `streetLines` | string[] | ✅ |
-| `state` | string | — |
-| `taxId` | string | — |
-| `eoriNumber` | string | — |
-| `vatNumber` | string | — |
-
-**Parcel Object:**
-
-| Field | Type | Required |
-|-------|------|----------|
-| `weight` | number | ✅ (kg) |
-| `length` | number | ✅ (cm) |
-| `width` | number | ✅ (cm) |
-| `height` | number | ✅ (cm) |
-
-**Item Object:**
-
-| Field | Type | Required |
-|-------|------|----------|
-| `description` | string | ✅ |
-| `quantity` | number | ✅ |
-| `unitValue` | number | ✅ |
-| `currency` | string | ✅ |
-| `countryOfOrigin` | string | ✅ (ISO 2-letter) |
-
-**Success Response `201`:**
 ```json
 {
   "success": true,
   "data": {
     "trackingNumber": "DGR-AB12CD34",
-    "status": "draft",
-    "price": 4.500,
-    "currency": "KWD",
-    "carrier": "DGR"
+    "carrier": "DGR",
+    "serviceCode": "P",
+    "status": "booked",
+    "price": 4.5,
+    "currency": "KWD"
   }
 }
 ```
 
-**Error Responses:**
+Success response for a manual user:
 
-| Code | Error |
-|------|-------|
-| `400` | Validation failed (missing required fields) |
-| `500` | Internal server error |
-
----
-
-#### `PUT /v1/shipments/:trackingNumber` — Update Shipment
-
-Update a shipment's details. Only allowed when status is `draft`, `pending`, or `created`.
-
-**Headers:** `x-api-key` (required)
-
-**URL Param:** `:trackingNumber` — e.g. `DGR-AB12CD34`
-
-**Request Body** (all fields optional, provide only what you want to change):
-
-| Field | Type |
-|-------|------|
-| `sender` | object |
-| `receiver` | object |
-| `parcels` | array |
-| `items` | array |
-| `serviceCode` | string |
-| `currency` | string |
-| `incoterm` | string |
-| `reference` | string |
-| `remarks` | string |
-
-**Success Response `200`:**
 ```json
 {
   "success": true,
   "data": {
-    "trackingNumber": "DGR-AB12CD34",
+    "trackingNumber": "MAN-AB12CD34",
+    "carrier": "MANUAL",
+    "serviceCode": null,
     "status": "draft",
-    "price": 5.250,
-    "updatedAt": "2026-04-10T08:30:00.000Z"
+    "price": 0,
+    "currency": "KWD"
   }
 }
 ```
 
-**Error Responses:**
+### Shipment Types
 
-| Code | Error |
-|------|-------|
-| `400` | Cannot update shipment in current status |
-| `404` | Shipment not found |
+Only these shipment types are supported:
 
----
+| API value | Label |
+| --- | --- |
+| `package` | Standard Package |
+| `documents` | Document Express |
 
-#### `GET /v1/tracking/:trackingNumber` — Track Shipment
+Legacy aliases such as `standard`, `standard_package`, `document`, and `document_express` are normalized internally, but new integrations should use `package` or `documents`.
 
-Get the current status and history of a shipment.
+## Shipment Update
 
-**Headers:** `x-api-key` (required)
+### `PUT /v1/shipments/:trackingNumber`
 
-**Success Response `200`:**
+Updates editable shipment details for shipments owned by the API key owner.
+
+Editable while the shipment is in `draft`, `pending`, `booked`, `ready_for_pickup`, or `exception`.
+
+Allowed fields:
+
+- `origin`
+- `destination`
+- `items`
+- `parcels`
+- `incoterm`
+- `currency`
+- `dangerousGoods`
+- `customer`
+- `reference`
+- `remarks`
+
+Status changes are not part of the client API. Status is managed by platform roles, carrier updates, booking, pickup scans, and warehouse scans.
+
+## Quotes
+
+### `POST /v1/quotes`
+
+Returns the quote for the API key owner's assigned carrier/service. Clients should not send carrier or service selection fields.
+
+Manual Shipment users receive a manual quote placeholder:
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "serviceName": "Manual Shipment",
+      "serviceCode": null,
+      "carrier": "MANUAL",
+      "totalPrice": 0,
+      "currency": "KWD",
+      "estimatedDelivery": null
+    }
+  ]
+}
+```
+
+Carrier-backed users receive only the assigned service rate after organization/user markup is applied.
+
+## Tracking
+
+### `GET /v1/tracking/:trackingNumber`
+
+Returns tracking for a shipment owned by the API key owner.
+
 ```json
 {
   "success": true,
@@ -290,373 +223,103 @@ Get the current status and history of a shipment.
     "trackingNumber": "DGR-AB12CD34",
     "status": "in_transit",
     "carrier": "DGR",
-    "estimatedDelivery": "2026-04-11T00:00:00.000Z",
-    "history": [
-      {
-        "status": "picked_up",
-        "description": "Shipment collected from sender",
-        "location": "Kuwait City Gateway",
-        "timestamp": "2026-04-10T09:00:00.000Z"
-      }
-    ]
-  }
-}
-```
-
-**Error Responses:**
-
-| Code | Error |
-|------|-------|
-| `404` | Shipment not found |
-
----
-
-### 7.2 Quotes
-
----
-
-#### `POST /v1/quotes` — Get Rate Quote
-
-Fetch live shipping rates for a given origin/destination and package size. Rates include your organization's markup. Does **not** create a shipment.
-
-**Headers:** `x-api-key` (required)
-
-**Request Body:** Same structure as Create Shipment — `sender`, `receiver`, `parcels`, `items`. Optionally `carrierCode`.
-
-**Success Response `200`:**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "serviceName": "EXPRESS WORLDWIDE",
-      "serviceCode": "P",
-      "carrier": "DGR",
-      "totalPrice": 4.500,
-      "currency": "KWD",
-      "estimatedDelivery": "2026-04-11T00:00:00.000Z"
-    },
-    {
-      "serviceName": "EXPRESS 9:00",
-      "serviceCode": "9",
-      "carrier": "DGR",
-      "totalPrice": 7.200,
-      "currency": "KWD",
-      "estimatedDelivery": "2026-04-11T00:00:00.000Z"
-    }
-  ]
-}
-```
-
----
-
-### 7.3 Address Book
-
----
-
-#### `GET /v1/addresses` — List Saved Addresses
-
-Returns all addresses saved in your account's address book.
-
-**Headers:** `x-api-key` (required)
-
-**Success Response `200`:**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": "addr_01abc",
-      "label": "Main Warehouse",
-      "company": "My Warehouse Co.",
-      "contactPerson": "Ahmed Al-Rashid",
-      "phone": "96512345678",
-      "email": "warehouse@mycompany.com",
-      "streetLines": ["Industrial Area, Block 4"],
-      "city": "Kuwait City",
-      "postalCode": "13001",
-      "countryCode": "KW",
-      "taxId": null,
-      "vatNumber": null,
-      "eoriNumber": null
-    }
-  ]
-}
-```
-
----
-
-#### `POST /v1/addresses` — Add Address
-
-**Headers:** `x-api-key` (required)
-
-**Request Body:**
-
-| Field | Type | Required |
-|-------|------|----------|
-| `label` | string | ✅ (e.g. `"Main Warehouse"`) |
-| `company` | string | ✅ |
-| `contactPerson` | string | ✅ |
-| `phone` | string | ✅ |
-| `email` | string | ✅ |
-| `streetLines` | string[] | ✅ |
-| `city` | string | ✅ |
-| `postalCode` | string | ✅ |
-| `countryCode` | string | ✅ |
-| `state` | string | — |
-| `taxId` | string | — |
-| `vatNumber` | string | — |
-| `eoriNumber` | string | — |
-
-**Success Response `201`:**
-```json
-{
-  "success": true,
-  "data": { "id": "addr_02xyz", "label": "Main Warehouse", "..." : "..." }
-}
-```
-
-**Error Responses:**
-
-| Code | Error |
-|------|-------|
-| `400` | Failed to add address |
-
----
-
-#### `PUT /v1/addresses/:id` — Update Address
-
-**Headers:** `x-api-key` (required)
-
-**URL Param:** `:id` — address ID or label
-
-**Request Body:** Any address fields to update (partial update supported).
-
-**Success Response `200`:**
-```json
-{
-  "success": true,
-  "data": { "id": "addr_02xyz", "label": "Main Warehouse", "city": "Hawalli", "..." : "..." }
-}
-```
-
-**Error Responses:**
-
-| Code | Error |
-|------|-------|
-| `404` | Address not found |
-
----
-
-### 7.4 Pickups
-
----
-
-#### `POST /client/pickups` — Request a Pickup
-
-Request a driver pickup from your location.
-
-**Headers:**
-
-| Header | Required |
-|--------|----------|
-| `x-api-key` | ✅ |
-| `Idempotency-Key` | Recommended |
-
-**Request Body:**
-
-| Field | Type | Required |
-|-------|------|----------|
-| `sender` | object | ✅ (pickup origin address) |
-| `receiver` | object | ✅ (delivery destination) |
-| `parcels` | array | ✅ |
-| `requestedPickupDate` | string | ✅ (ISO 8601, e.g. `"2026-04-12"`) |
-| `serviceCode` | string | — |
-| `pickupInstructions` | string | — (e.g. `"Call on arrival"`) |
-
-**Success Response `201`:**
-```json
-{
-  "success": true,
-  "data": {
-    "id": "pickup_88abc",
-    "status": "REQUESTED",
-    "trackingNumber": null,
-    "createdAt": "2026-04-10T10:00:00.000Z"
-  }
-}
-```
-
-**Error Responses:**
-
-| Code | Error |
-|------|-------|
-| `400` | Missing required fields |
-| `409` | Idempotency key collision (retry with new key) |
-
----
-
-#### `GET /client/pickups/:id` — Get Pickup Status
-
-Check the status of a previously submitted pickup request.
-
-**Headers:** `x-api-key` (required)
-
-**URL Param:** `:id` — pickup request ID returned from `POST /client/pickups`
-
-**Success Response `200`:**
-```json
-{
-  "success": true,
-  "data": {
-    "id": "pickup_88abc",
-    "status": "APPROVED",
-    "rejectionReason": null,
-    "shipment": {
-      "trackingNumber": "DGR-AB12CD34",
-      "status": "pending",
-      "labelUrl": "https://...",
-      "awbUrl": "https://...",
-      "invoiceUrl": "https://..."
-    },
-    "createdAt": "2026-04-10T10:00:00.000Z"
-  }
-}
-```
-
-**Error Responses:**
-
-| Code | Error |
-|------|-------|
-| `404` | Pickup request not found |
-
----
-
-### 7.5 Shipment Status (Client)
-
----
-
-#### `GET /client/shipments/:trackingNumber` — Get Shipment Status
-
-**Headers:** `x-api-key` (required)
-
-**Success Response `200`:**
-```json
-{
-  "success": true,
-  "data": {
-    "trackingNumber": "DGR-AB12CD34",
-    "status": "in_transit",
-    "currentLocation": {
-      "address": "Ardiya Gateway, Kuwait",
-      "updatedAt": "2026-04-10T14:00:00.000Z"
-    },
-    "estimatedDelivery": "2026-04-11T00:00:00.000Z",
-    "dhlTrackingNumber": null,
+    "serviceCode": "P",
+    "estimatedDelivery": "2026-04-17T00:00:00.000Z",
     "history": []
   }
 }
 ```
 
----
+## Address Book
 
-#### `GET /client/shipments/:trackingNumber/tracking` — Unified Tracking
+### `GET /v1/addresses`
 
-Returns merged tracking events from both internal system and carrier (DGR/DHL), sorted chronologically.
+Returns saved addresses for the API key owner.
 
-**Headers:** `x-api-key` (required)
+### `POST /v1/addresses`
 
-**Success Response `200`:**
-```json
-{
-  "success": true,
-  "data": {
-    "trackingNumber": "DGR-AB12CD34",
-    "status": "in_transit",
-    "events": [
-      {
-        "status": "picked_up",
-        "description": "Shipment collected",
-        "location": "Kuwait City",
-        "timestamp": "2026-04-10T09:00:00.000Z",
-        "source": "INTERNAL"
-      },
-      {
-        "status": "in_transit",
-        "description": "Departed origin facility",
-        "location": "Kuwait Airport",
-        "timestamp": "2026-04-10T13:00:00.000Z",
-        "source": "DGR"
-      }
-    ]
-  }
-}
+Creates an address.
+
+### `PUT /v1/addresses/:id`
+
+Updates an address by id or label.
+
+Address object fields:
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `label` | For saved addresses | Friendly address name |
+| `company` | Yes | Company or location name |
+| `contactPerson` | Yes | Main contact |
+| `phone` | Yes | Local phone number |
+| `phoneCountryCode` | Yes | Example: `+965` |
+| `email` | Yes | Contact email |
+| `countryCode` | Yes | ISO 2-letter code |
+| `city` | Yes | City |
+| `postalCode` | Yes | Postal code |
+| `streetLines` | Yes | Array of street lines |
+| `state` | No | Region/state |
+| `taxId` | No | Tax id |
+| `eoriNumber` | No | EORI value |
+| `vatNumber` | No | VAT value |
+
+## Pickup Requests
+
+### `POST /client/pickups`
+
+Creates an external pickup request. Include an `Idempotency-Key` header for safe retries.
+
+```http
+Idempotency-Key: unique-operation-id
 ```
 
----
+### `GET /client/pickups/:id`
 
-### 7.6 Public Tracking (No Auth Required)
+Returns pickup request status.
 
----
+Pickup status values used by the external flow include `pending`, `assigned`, `completed`, and `cancelled`. Some approval flows may return uppercase operational states while legacy data is being normalized.
 
-#### `GET /public/shipments/:trackingNumber` — Public Shipment Tracking
+## Client Shipment Status
 
-No API key required. Share this endpoint directly with your end customers.
+### `GET /client/shipments/:trackingNumber`
 
-**Success Response `200`:**
-```json
-{
-  "success": true,
-  "data": {
-    "trackingNumber": "DGR-AB12CD34",
-    "status": "in_transit",
-    "currentLocation": {
-      "address": "Ardiya Gateway, Kuwait",
-      "updatedAt": "2026-04-10T14:00:00.000Z"
-    }
-  }
-}
-```
+Returns private shipment status for the API key owner.
 
----
+### `GET /client/shipments/:trackingNumber/tracking`
 
-## 8. Status Reference
+Returns internal and carrier tracking events in chronological order.
 
-### Shipment Statuses
+## Public Tracking
 
-| Status | Description |
-|--------|-------------|
-| `draft` | Created but not yet booked with carrier |
-| `pending` | Awaiting pickup |
-| `picked_up` | Collected from sender |
-| `in_transit` | Moving through the network |
-| `out_for_delivery` | With local courier for final delivery |
-| `delivered` | Successfully delivered |
-| `exception` | Delay or issue requiring attention |
-| `cancelled` | Shipment cancelled |
+Public tracking does not require an API key.
 
-### Pickup Request Statuses
+### `GET /public/shipments/:trackingNumber`
 
-| Status | Description |
-|--------|-------------|
-| `REQUESTED` | Submitted, awaiting review |
-| `APPROVED` | Approved, driver assigned |
-| `REJECTED` | Rejected (see `rejectionReason`) |
-| `COLLECTED` | Picked up by driver |
+Returns public shipment details and tracking history for customer-facing pages.
 
----
+## Status Reference
 
-## 9. Security Best Practices
+Canonical shipment statuses:
 
-> ⚠️ **Your API key grants full access to create shipments in your name. Protect it carefully.**
+| Status | Meaning |
+| --- | --- |
+| `draft` | Shipment is being prepared |
+| `pending` | Pending review or processing |
+| `booked` | Booked in the platform/carrier flow |
+| `ready_for_pickup` | Ready for pickup |
+| `picked_up` | Picked up by driver/courier |
+| `in_transit` | Received into movement/warehouse network |
+| `out_for_delivery` | Out for final delivery |
+| `delivered` | Delivered |
+| `exception` | Issue requiring attention |
+| `cancelled` | Cancelled |
 
-- **Never** expose your API key in client-side JavaScript (React, Vue, etc.)
-- Store it in server-side environment variables (`.env`) only
-- **Never** commit it to version control
-- If compromised, regenerate immediately via **Settings → General & API → Regenerate Key**
-- Use `Idempotency-Key` on all `POST /client/pickups` calls to prevent duplicate pickups
-- Rotate your key periodically as a security best practice
+Manual status changes inside the platform are limited to `admin`, `manager`, and `accounting`. Client API callers cannot set status directly.
 
----
+## Security Checklist
 
-*Target Logistics Developer API v2.0 — For support contact your account manager.*
+- Store API keys server-side only.
+- Rotate keys if exposed.
+- Use idempotency keys for pickup creation retries.
+- Do not send carrier/service fields unless Target Logistics explicitly tells you to test access enforcement.
+- Treat tracking numbers and labels as customer data.

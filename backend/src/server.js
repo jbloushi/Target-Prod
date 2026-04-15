@@ -11,7 +11,6 @@ const shipmentRoutes = require('./routes/shipment.routes');
 const authRoutes = require('./routes/auth.routes');
 const authController = require('./controllers/auth.controller');
 const userRoutes = require('./routes/user.routes');
-const seedDemoData = require('./services/seedDemoData');
 
 // Initialize Express app
 const app = express();
@@ -47,25 +46,27 @@ const corsOptions = {
     // allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
 
-    if (corsOrigin === '*') return callback(null, true);
-
-    const allowedOrigins = corsOrigin.split(',').map(o => o.trim().replace(/\/$/, ''));
     const cleanOrigin = origin.replace(/\/$/, '');
-
-    // DEBUG: Log CORS details
-    // logger.debug(`CORS Check: Origin=${origin}, Clean=${cleanOrigin}, Env=${process.env.NODE_ENV}`);
 
     // In development, allow any localhost origin
     if (process.env.NODE_ENV === 'development' && cleanOrigin.startsWith('http://localhost')) {
       return callback(null, true);
     }
 
+    // IMPORTANT: wildcard '*' is incompatible with credentials:true in browsers.
+    // When CORS_ORIGIN=* we reflect the actual request origin so credentialed
+    // requests (Authorization, cookies, x-api-key) work correctly.
+    if (corsOrigin === '*') {
+      return callback(null, origin);
+    }
+
+    const allowedOrigins = corsOrigin.split(',').map(o => o.trim().replace(/\/$/, ''));
+
     if (allowedOrigins.includes(cleanOrigin)) {
       callback(null, true);
     } else {
       logger.warn(`CORS blocked origin: ${origin} (Clean: ${cleanOrigin})`);
       logger.warn(`Allowed: ${JSON.stringify(allowedOrigins)}`);
-      logger.warn(`Env: ${process.env.NODE_ENV}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -99,7 +100,7 @@ if (rateLimitEnabled) {
     message: { success: false, error: 'Security limit reached. Please try again later.' }
   });
   app.use('/api/auth', authLimiter);
-  app.use('/api/shipments/public', authLimiter);
+  app.use('/api/public/shipments', authLimiter);
 
   // Stricter limiter for external client API (API-key authenticated routes)
   const externalApiLimiter = rateLimit({
@@ -133,11 +134,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// No-op middleware (Mongoose connection check removed)
-
 // Routes
 const geocodeRoutes = require('./routes/geocode.routes');
-const receiverRoutes = require('./routes/receiver.routes');
 const pickupRoutes = require('./routes/pickup.routes');
 const externalRoutes = require('./routes/external.routes');
 
@@ -157,7 +155,6 @@ app.use('/api/pickups', pickupRoutes);
 app.use('/api/client', externalRoutes);
 app.use('/api/v1', apiRoutes);
 app.use('/api/geocode', geocodeRoutes);
-app.use('/api/receivers', receiverRoutes);
 app.use('/api/shipments', shipmentRoutes);
 
 // Health check endpoint
@@ -203,12 +200,6 @@ const startServer = async () => {
   try {
     // Connect to MySQL via Prisma
     await connectDB();
-
-    // Run seed in development if needed
-    if (process.env.NODE_ENV === 'development') {
-      logger.info('Running startup dataseeding check...');
-      // seedDemoData().catch(err => logger.error('Seeding failed:', err));
-    }
 
     // Start Express server
     const serverInstance = app.listen(port, () => {

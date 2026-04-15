@@ -1,12 +1,17 @@
 const CarrierFactory = require('../services/CarrierFactory');
 const CarrierRateService = require('../services/CarrierRateService');
 const PricingService = require('../services/pricing.service');
+const ShipmentDraftService = require('../services/ShipmentDraftService');
 const { prisma } = require('../config/database');
 const { normalizeShipment } = require('../utils/shipmentNormalizer');
 const { hasCriticalChanges } = require('./shipment.helpers');
 const { Decimal } = require('decimal.js');
 const logger = require('../utils/logger');
 const { handleControllerError } = require('../utils/controllerError');
+const {
+    getAssignedShippingAccess,
+    assertRequestedAccessAllowed
+} = require('../services/shippingAccess.service');
 
 /**
  * Helper to map normalized address to schema format
@@ -34,11 +39,42 @@ exports.createShipment = async (req, res) => {
     try {
         const { carrierCode, serviceCode, ...shipmentData } = req.body;
 
+        const apiUser = await prisma.user.findUnique({
+            where: { id: req.user.id },
+            include: { organization: true }
+        });
+        if (!apiUser) return res.status(404).json({ success: false, error: 'User not found' });
+
+        const assignedAccess = getAssignedShippingAccess(apiUser);
+        assertRequestedAccessAllowed(assignedAccess, { carrierCode, serviceCode });
+
+        if (assignedAccess.mode === 'manual') {
+            const shipment = await ShipmentDraftService.createDraft({
+                ...shipmentData,
+                carrierCode: 'MANUAL',
+                serviceCode: null,
+                manualShipment: true
+            }, apiUser);
+
+            return res.status(201).json({
+                success: true,
+                data: {
+                    trackingNumber: shipment.trackingNumber,
+                    carrier: shipment.carrierCode,
+                    serviceCode: shipment.serviceCode,
+                    status: shipment.status,
+                    price: shipment.price,
+                    currency: shipment.currency
+                }
+            });
+        }
+
         // 1. Normalize
         const normalized = normalizeShipment(shipmentData);
+        normalized.serviceCode = assignedAccess.serviceCode;
 
         // 2. Get Adapter
-        const carrier = carrierCode || 'DHL';
+        const carrier = assignedAccess.carrierCode;
         const adapter = CarrierFactory.getAdapter(carrier);
 
         // 3. Validate via Adapter
@@ -51,7 +87,7 @@ exports.createShipment = async (req, res) => {
         const result = await adapter.createShipment({
             ...normalized,
             user: req.user.id
-        }, serviceCode || 'P');
+        }, assignedAccess.serviceCode);
 
         // 5. Audit/Persist to MySQL
         const newShipment = await prisma.shipment.create({
@@ -59,9 +95,9 @@ exports.createShipment = async (req, res) => {
                 trackingNumber: result.trackingNumber,
                 userId: req.user.id,
                 organizationId: req.user.organizationId,
-                carrier: carrier,
-                serviceCode: serviceCode || 'P',
-                status: 'created',
+                carrierCode: carrier,
+                serviceCode: assignedAccess.serviceCode,
+                status: 'booked',
                 labelUrl: result.labelBase64 ? `data:application/pdf;base64,${result.labelBase64}` : null,
                 invoiceUrl: result.invoiceBase64 ? `data:application/pdf;base64,${result.invoiceBase64}` : null,
                 origin: mapAddressToSchema(normalized.sender),
@@ -73,7 +109,6 @@ exports.createShipment = async (req, res) => {
                     phone: normalized.sender.phone
                 },
                 estimatedDelivery: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-                shipmentDate: normalized.shipmentDate || new Date(),
                 parcels: normalized.packages.map(p => ({
                     weight: p.weight.value,
                     dimensions: p.dimensions,
@@ -85,9 +120,9 @@ exports.createShipment = async (req, res) => {
                 dhlTrackingNumber: result.dhlTrackingNumber || null,
                 dhlConfirmed: !!result.dhlTrackingNumber,
                 history: [{
-                    status: 'created',
+                    status: 'booked',
                     timestamp: new Date().toISOString(),
-                    description: 'Shipment created via API',
+                    description: 'Shipment booked with carrier via API',
                     location: normalized.sender
                 }]
             }
@@ -100,6 +135,7 @@ exports.createShipment = async (req, res) => {
                 labelUrl: newShipment.labelUrl,
                 invoiceUrl: newShipment.invoiceUrl,
                 carrier,
+                serviceCode: newShipment.serviceCode,
                 status: newShipment.status
             }
         });
@@ -130,7 +166,8 @@ exports.trackShipment = async (req, res) => {
             data: {
                 trackingNumber: shipment.trackingNumber,
                 status: shipment.status,
-                carrier: shipment.carrier,
+                carrier: shipment.carrierCode,
+                serviceCode: shipment.serviceCode,
                 history: shipment.history,
                 estimatedDelivery: shipment.estimatedDelivery
             }
@@ -156,14 +193,14 @@ exports.updateShipment = async (req, res) => {
 
         if (!shipment) return res.status(404).json({ success: false, error: 'Not found' });
 
-        const editableStatuses = ['draft', 'pending', 'updated', 'created', 'exception', 'ready_for_pickup'];
+        const editableStatuses = ['draft', 'pending', 'booked', 'exception', 'ready_for_pickup'];
         if (!editableStatuses.includes(shipment.status)) {
             return res.status(400).json({ success: false, error: 'Cannot update in current status' });
         }
 
         const allowedFields = [
             'destination', 'origin', 'items', 'parcels', 'incoterm',
-            'currency', 'dangerousGoods', 'serviceCode', 'customer',
+            'currency', 'dangerousGoods', 'customer',
             'reference', 'remarks'
         ];
 
@@ -176,13 +213,13 @@ exports.updateShipment = async (req, res) => {
         if (criticalChanges) {
             // Re-rating logic
             const tempState = { ...shipment, ...updates };
-            const adapter = CarrierFactory.getAdapter(tempState.carrier || 'DHL');
+            const adapter = CarrierFactory.getAdapter(tempState.carrierCode || 'DGR');
             const quotes = await adapter.getRates({ ...tempState, sender: tempState.origin, receiver: tempState.destination });
             
             if (!quotes || quotes.length === 0) throw new Error('Re-rating failed');
             
-            const selected = quotes.find(q => q.serviceCode === (tempState.serviceCode || shipment.serviceCode)) || quotes[0];
-            const { markup, source } = PricingService.resolveMarkup(shipment.user, shipment.user.organization, (tempState.carrier || 'DHL').toUpperCase());
+            const selected = quotes.find(q => q.serviceCode === shipment.serviceCode) || quotes[0];
+            const { markup, source } = PricingService.resolveMarkup(shipment.user, shipment.user.organization, (tempState.carrierCode || 'DGR').toUpperCase());
             
             finalSnapshot = PricingService.createSnapshot(Number(selected.totalPrice), markup, selected.currency || 'KWD', source);
             finalPrice = Number(finalSnapshot.totalPrice);
@@ -226,7 +263,16 @@ exports.updateShipment = async (req, res) => {
             }
         });
 
-        res.status(200).json({ success: true, data: updated });
+        res.status(200).json({
+            success: true,
+            data: {
+                trackingNumber: updated.trackingNumber,
+                status: updated.status,
+                price: updated.price,
+                currency: updated.currency,
+                updatedAt: updated.updatedAt
+            }
+        });
     } catch (error) {
         return handleControllerError(res, error, 'API shipment update');
     }
@@ -237,22 +283,46 @@ exports.updateShipment = async (req, res) => {
  */
 exports.getQuotation = async (req, res) => {
     try {
-        const normalized = normalizeShipment(req.body);
-        const { carrierCode } = req.query;
-        const rawRates = await CarrierRateService.getRates(normalized, carrierCode);
-
+        const { carrierCode, serviceCode } = req.body || {};
         const user = await prisma.user.findUnique({
             where: { id: req.user.id },
             include: { organization: true }
         });
+        if (!user) return res.status(404).json({ success: false, error: 'User not found' });
 
-        const finalQuotes = rawRates.map(rate => {
-            const { markup, source } = PricingService.resolveMarkup(user, user.organization, (rate.provider || 'DHL').toUpperCase());
+        const assignedAccess = getAssignedShippingAccess(user);
+        assertRequestedAccessAllowed(assignedAccess, { carrierCode, serviceCode });
+
+        if (assignedAccess.mode === 'manual') {
+            return res.status(200).json({
+                success: true,
+                data: [{
+                    serviceName: 'Manual Shipment',
+                    serviceCode: null,
+                    carrier: 'MANUAL',
+                    totalPrice: 0,
+                    currency: req.body.currency || 'KWD',
+                    estimatedDelivery: null
+                }]
+            });
+        }
+
+        const normalized = normalizeShipment(req.body);
+        normalized.serviceCode = assignedAccess.serviceCode;
+        const rawRates = await CarrierRateService.getRates(normalized, assignedAccess.carrierCode);
+        const visibleRates = rawRates.filter(rate => String(rate.serviceCode || '').toUpperCase() === assignedAccess.serviceCode);
+
+        if (visibleRates.length === 0) {
+            return res.status(400).json({ success: false, error: `Assigned service ${assignedAccess.serviceCode} is not available for this shipment.` });
+        }
+
+        const finalQuotes = visibleRates.map(rate => {
+            const { markup } = PricingService.resolveMarkup(user, user.organization, assignedAccess.carrierCode);
             const calculation = PricingService.calculateFinalPrice(rate.totalPrice, markup, rate.currency);
             return {
                 serviceName: rate.serviceName,
                 serviceCode: rate.serviceCode,
-                carrier: rate.provider || 'DHL',
+                carrier: assignedAccess.carrierCode,
                 totalPrice: calculation.finalPrice,
                 currency: rate.currency,
                 estimatedDelivery: rate.estimatedDelivery
@@ -277,7 +347,8 @@ exports.addAddress = async (req, res) => {
     try {
         const user = await prisma.user.findUnique({ where: { id: req.user.id } });
         const addresses = user.addresses || [];
-        addresses.push(req.body);
+        const { label, company, contactPerson, phone, email, streetLines, city, postalCode, countryCode, state, taxId, vatNumber, eoriNumber } = req.body;
+        addresses.push({ label, company, contactPerson, phone, email, streetLines, city, postalCode, countryCode, state, taxId, vatNumber, eoriNumber });
 
         await prisma.user.update({
             where: { id: req.user.id },

@@ -24,10 +24,14 @@ const SAFE_ERROR_PATTERNS = [
     'already exists',
     'not found',
     'DGR Error',
+    'DGR Validation Failed',
+    'DHL API Error',
     'Insufficient',
     'Carrier booking failed',
     'Validation Failed',
     'restricted for this account',
+    'not allowed',
+    'does not allow',
     'A booking request is currently being processed',
 ];
 
@@ -48,7 +52,7 @@ exports.handleControllerError = (res, error, context = 'Operation', defaultStatu
     );
 
     if (isSafe) {
-        return res.status(400).json({ success: false, error: error.message });
+        return res.status(error.statusCode || 400).json({ success: false, error: error.message });
     }
 
     // Prisma known unique constraint violations — safe to surface generically
