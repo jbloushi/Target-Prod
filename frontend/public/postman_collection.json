@@ -16,8 +16,8 @@
   "variable": [
     {
       "key": "base_url",
-      "value": "http://localhost:8899/api",
-      "description": "Change to https://api.target-logistics.com/api in production"
+      "value": "https://3pl-api.mawthook.io/api",
+      "description": "Production API base URL. For local development use http://localhost:8899/api"
     },
     {
       "key": "api_key",

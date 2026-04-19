@@ -11,7 +11,8 @@ const { compareApiKey } = require('../utils/security');
  */
 exports.validateApiKey = async (req, res, next) => {
     try {
-        const apiKey = req.headers['x-api-key'];
+        const apiKeyHeader = req.headers['x-api-key'];
+        const apiKey = typeof apiKeyHeader === 'string' ? apiKeyHeader.trim() : '';
 
         if (!apiKey) {
             return res.status(401).json({ success: false, error: 'API Key missing. Please provide x-api-key header.' });
@@ -19,7 +20,7 @@ exports.validateApiKey = async (req, res, next) => {
 
         // Parse compound key format: {userId}.{randomBytes}
         const parts = apiKey.split('.');
-        if (parts.length !== 2) {
+        if (parts.length !== 2 || !parts[0] || !parts[1]) {
             return res.status(401).json({ success: false, error: 'Malformed API Key format.' });
         }
 
@@ -40,8 +41,7 @@ exports.validateApiKey = async (req, res, next) => {
                     select: {
                         id: true,
                         name: true,
-                        allowedCarriers: true,
-                        carrierConfig: true
+                        allowedCarriers: true
                     }
                 }
             }
@@ -71,7 +71,10 @@ exports.validateApiKey = async (req, res, next) => {
             next();
         });
     } catch (error) {
-        logger.error('API Key Validation Error:', error);
-        res.status(500).json({ success: false, error: 'Authentication failed' });
+        logger.error('API Key Validation Error:', {
+            message: error.message,
+            stack: error.stack
+        });
+        res.status(500).json({ success: false, error: 'Authentication failed due to an internal error.' });
     }
 };

@@ -113,6 +113,11 @@ Default local URLs:
 - Backend API: `http://localhost:8899/api`
 - Backend health: `http://localhost:8899/health`
 
+Current production URLs:
+
+- Frontend: `https://3pl.mawthook.io`
+- Backend API: `https://3pl-api.mawthook.io/api`
+
 ## Environment
 
 Backend configuration is read from `backend/.env`.
