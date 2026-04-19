@@ -3,7 +3,7 @@ const cors = require('cors');
 const compression = require('compression');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const { port, databaseUrl, corsOrigin, rateLimitGlobalMax, rateLimitAuthMax, rateLimitEnabled } = require('./config/config');
+const { port, databaseUrl, corsOrigin, frontendUrl, rateLimitGlobalMax, rateLimitAuthMax, rateLimitEnabled } = require('./config/config');
 const { connectDB, prisma } = require('./config/database');
 const logger = require('./utils/logger');
 const { errorHandler } = require('./middleware/error.middleware');
@@ -182,6 +182,12 @@ app.get('/', (req, res) => {
       api: '/api/shipments'
     }
   });
+});
+
+// Convenience redirect so accidental backend hits to /api-docs land on frontend docs page
+app.get('/api-docs', (req, res) => {
+  const target = `${String(frontendUrl || 'https://3pl.mawthook.io').replace(/\/$/, '')}/api-docs`;
+  return res.redirect(302, target);
 });
 
 const { AppError } = require('./middleware/error.middleware');
