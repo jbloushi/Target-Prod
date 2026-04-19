@@ -1,34 +1,53 @@
+const crypto = require('crypto');
 const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
 const { compareApiKey } = require('../utils/security');
 
+const AUTH_ERROR = Object.freeze({
+    MISSING_KEY: { status: 401, code: 'MISSING_API_KEY', message: 'API Key missing. Please provide x-api-key header.' },
+    MALFORMED_KEY: { status: 401, code: 'MALFORMED_API_KEY', message: 'Malformed API Key format.' },
+    INVALID_KEY: { status: 401, code: 'INVALID_API_KEY', message: 'Invalid API Key' },
+    INACTIVE_USER: { status: 403, code: 'INACTIVE_ACCOUNT', message: 'Account is inactive or revoked.' },
+    INACTIVE_ORG: { status: 403, code: 'INACTIVE_ORGANIZATION', message: 'Organization is inactive or unavailable.' },
+    INTERNAL: { status: 500, code: 'AUTH_INTERNAL_ERROR', message: 'Authentication failed due to an internal error.' }
+});
+
+const safeKeyFingerprint = (apiKey) => crypto
+    .createHash('sha256')
+    .update(String(apiKey || ''))
+    .digest('hex')
+    .slice(0, 12);
+
+const fail = (res, authError) => res.status(authError.status).json({
+    success: false,
+    error: authError.message,
+    code: authError.code
+});
+
 /**
  * Middleware: Validate x-api-key header and attach user context
- * 
- * @security Uses HMAC-SHA256 + timingSafeEqual instead of bcrypt for:
- *   - Constant-time comparison (timing-attack resistant)
- *   - ~200x faster than bcrypt (~0.01ms vs ~200ms per request)
  */
 exports.validateApiKey = async (req, res, next) => {
+    const requestContext = require('../utils/RequestContext');
+
     try {
-        const apiKeyHeader = req.headers['x-api-key'];
-        const apiKey = typeof apiKeyHeader === 'string' ? apiKeyHeader.trim() : '';
+        const rawHeader = req.headers['x-api-key'];
+        const apiKey = typeof rawHeader === 'string' ? rawHeader.trim() : '';
 
         if (!apiKey) {
-            return res.status(401).json({ success: false, error: 'API Key missing. Please provide x-api-key header.' });
+            return fail(res, AUTH_ERROR.MISSING_KEY);
         }
 
-        // Parse compound key format: {userId}.{randomBytes}
-        const parts = apiKey.split('.');
-        if (parts.length !== 2 || !parts[0] || !parts[1]) {
-            return res.status(401).json({ success: false, error: 'Malformed API Key format.' });
+        // Expected format: <key_id>.<secret>
+        const separatorIndex = apiKey.indexOf('.');
+        if (separatorIndex <= 0 || separatorIndex >= apiKey.length - 1 || apiKey.indexOf('.', separatorIndex + 1) !== -1) {
+            return fail(res, AUTH_ERROR.MALFORMED_KEY);
         }
 
-        const userId = parts[0];
+        const keyId = apiKey.slice(0, separatorIndex);
 
-        // Find user with this API key from MySQL via Prisma
-        const user = await prisma.user.findFirst({
-            where: { id: userId, active: true },
+        const user = await prisma.user.findUnique({
+            where: { id: keyId },
             select: {
                 id: true,
                 role: true,
@@ -36,45 +55,71 @@ exports.validateApiKey = async (req, res, next) => {
                 apiKeyHash: true,
                 active: true,
                 carrierConfig: true,
-                agentPolicy: true,
-                organization: {
-                    select: {
-                        id: true,
-                        name: true,
-                        allowedCarriers: true
-                    }
-                }
+                agentPolicy: true
             }
         });
 
         if (!user || !user.apiKeyHash) {
-            return res.status(401).json({ success: false, error: 'Invalid API Key' });
+            logger.warn('API key rejected: unknown key id', {
+                keyId,
+                keyFp: safeKeyFingerprint(apiKey),
+                path: req.originalUrl
+            });
+            return fail(res, AUTH_ERROR.INVALID_KEY);
         }
 
-        // Verify using HMAC-SHA256 with constant-time comparison
-        const isMatch = compareApiKey(apiKey, user.apiKeyHash);
-        if (!isMatch) {
-            return res.status(401).json({ success: false, error: 'Invalid API Key' });
+        if (!compareApiKey(apiKey, user.apiKeyHash)) {
+            logger.warn('API key rejected: hash mismatch', {
+                keyId,
+                keyFp: safeKeyFingerprint(apiKey),
+                path: req.originalUrl
+            });
+            return fail(res, AUTH_ERROR.INVALID_KEY);
         }
 
-        // Attach user to request
+        if (!user.active) {
+            logger.warn('API key rejected: inactive user', {
+                keyId: user.id,
+                organizationId: user.organizationId || null,
+                path: req.originalUrl
+            });
+            return fail(res, AUTH_ERROR.INACTIVE_USER);
+        }
+
+        if (user.organizationId) {
+            const organization = await prisma.organization.findUnique({
+                where: { id: user.organizationId },
+                select: { id: true, active: true, name: true }
+            });
+
+            if (!organization || !organization.active) {
+                logger.warn('API key rejected: inactive or missing organization', {
+                    keyId: user.id,
+                    organizationId: user.organizationId,
+                    path: req.originalUrl
+                });
+                return fail(res, AUTH_ERROR.INACTIVE_ORG);
+            }
+
+            req.organization = organization;
+        }
+
         req.user = user;
-        req.isExternalApi = true; // Context flag
+        req.isExternalApi = true;
 
-        // Inject RequestContext for multi-tenancy support
-        const requestContext = require('../utils/RequestContext');
-        requestContext.run({ 
-            organizationId: user.organizationId, 
-            role: user.role, 
-            userId: user.id 
-        }, () => {
-            next();
-        });
+        requestContext.run({
+            organizationId: user.organizationId,
+            role: user.role,
+            userId: user.id
+        }, () => next());
     } catch (error) {
-        logger.error('API Key Validation Error:', {
+        logger.error('API Key Validation Error', {
             message: error.message,
-            stack: error.stack
+            stack: error.stack,
+            path: req.originalUrl,
+            method: req.method
         });
-        res.status(500).json({ success: false, error: 'Authentication failed due to an internal error.' });
+        return fail(res, AUTH_ERROR.INTERNAL);
     }
 };
+
