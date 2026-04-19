@@ -231,7 +231,7 @@ const SettingsPage = () => {
 
                             <CodeBlock>
                                 curl -X POST https://api.yourlogistics.com/shipments \<br />
-                                &nbsp;&nbsp;-H "Authorization: Bearer YOUR_API_KEY" \<br />
+                                &nbsp;&nbsp;-H "x-api-key: YOUR_API_KEY" \<br />
                                 &nbsp;&nbsp;-d {'\'{"origin": "..."}\''}
                             </CodeBlock>
                         </Card>

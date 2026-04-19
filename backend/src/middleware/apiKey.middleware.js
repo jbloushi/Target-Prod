@@ -1,4 +1,3 @@
-const crypto = require('crypto');
 const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
 const { compareApiKey } = require('../utils/security');
@@ -12,16 +11,9 @@ const AUTH_ERROR = Object.freeze({
     INTERNAL: { status: 500, code: 'AUTH_INTERNAL_ERROR', message: 'Authentication failed due to an internal error.' }
 });
 
-const safeKeyFingerprint = (apiKey) => crypto
-    .createHash('sha256')
-    .update(String(apiKey || ''))
-    .digest('hex')
-    .slice(0, 12);
-
 const fail = (res, authError) => res.status(authError.status).json({
     success: false,
-    error: authError.message,
-    code: authError.code
+    error: authError.message
 });
 
 /**
@@ -62,7 +54,6 @@ exports.validateApiKey = async (req, res, next) => {
         if (!user || !user.apiKeyHash) {
             logger.warn('API key rejected: unknown key id', {
                 keyId,
-                keyFp: safeKeyFingerprint(apiKey),
                 path: req.originalUrl
             });
             return fail(res, AUTH_ERROR.INVALID_KEY);
@@ -71,7 +62,6 @@ exports.validateApiKey = async (req, res, next) => {
         if (!compareApiKey(apiKey, user.apiKeyHash)) {
             logger.warn('API key rejected: hash mismatch', {
                 keyId,
-                keyFp: safeKeyFingerprint(apiKey),
                 path: req.originalUrl
             });
             return fail(res, AUTH_ERROR.INVALID_KEY);
@@ -122,4 +112,3 @@ exports.validateApiKey = async (req, res, next) => {
         return fail(res, AUTH_ERROR.INTERNAL);
     }
 };
-
