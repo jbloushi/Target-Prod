@@ -9,7 +9,7 @@ const { handleControllerError } = require('../utils/controllerError');
  */
 exports.createOrganization = async (req, res) => {
     try {
-        const { name, type, creditLimit, markup, address, taxId } = req.body;
+        const { name, type, creditLimit, markup, address, taxId, allowedCarriers } = req.body;
 
         const organization = await prisma.organization.create({
             data: {
@@ -18,7 +18,8 @@ exports.createOrganization = async (req, res) => {
                 creditLimit: Number(creditLimit) || 0,
                 taxId,
                 markup: markup || {},
-                addresses: address ? [address] : []
+                addresses: address ? [address] : [],
+                allowedCarriers: allowedCarriers || []
             }
         });
 

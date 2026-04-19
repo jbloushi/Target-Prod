@@ -6,6 +6,7 @@
 const CarrierFactory = require('../services/CarrierFactory');
 const logger = require('../utils/logger');
 const { normalizeStatus, isStatusAhead } = require('../constants/statusConstants');
+const { resolveOrgAllowedCarriers } = require('../utils/sourcePolicy');
 
 const DEFAULT_MARKUP = { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 };
 
@@ -41,9 +42,7 @@ const resolveEffectiveCarrierPolicy = ({ targetUser, carrierCode, availableCarri
     }
 
     // 1. Resolve Allowed Carriers (Hierarchy: User Agent Policy -> Org Policy -> All)
-    const orgAllowed = Array.isArray(org?.allowedCarriers) && org.allowedCarriers.length > 0
-        ? org.allowedCarriers.map((c) => String(c).toUpperCase())
-        : availableCarrierCodes;
+    const orgAllowed = resolveOrgAllowedCarriers(org, availableCarrierCodes);
 
     const userAllowed = Array.isArray(targetUser?.agentPolicy?.allowedCarriers) && targetUser.agentPolicy.allowedCarriers.length > 0
         ? targetUser.agentPolicy.allowedCarriers.map((c) => String(c).toUpperCase())
@@ -269,4 +268,3 @@ module.exports = {
     getAllowedStatusUpdates,
     canUpdateShipmentStatus
 };
-

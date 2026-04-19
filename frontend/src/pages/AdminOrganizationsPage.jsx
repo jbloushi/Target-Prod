@@ -20,6 +20,7 @@ import {
     StatusPill,
     Alert
 } from '../ui';
+import { countries } from '../utils/countries';
 
 // --- Styled Components ---
 
@@ -32,6 +33,20 @@ const ActionButton = styled.button`
     transition: all 0.2s;
     &:hover { color: var(--text-primary); transform: scale(1.1); }
 `;
+
+const DEFAULT_SOURCE_POLICY = { mode: 'restricted', countries: ['KW'] };
+
+const parseSourcePolicy = (allowedCarriers) => {
+    const fallback = { ...DEFAULT_SOURCE_POLICY };
+    if (!allowedCarriers || typeof allowedCarriers !== 'object' || Array.isArray(allowedCarriers)) return fallback;
+    const configured = allowedCarriers.sourcePolicy;
+    if (!configured || typeof configured !== 'object') return fallback;
+    const mode = configured.mode === 'all' ? 'all' : 'restricted';
+    const countriesList = Array.isArray(configured.countries)
+        ? configured.countries.map((c) => String(c || '').toUpperCase()).filter(Boolean)
+        : [];
+    return { mode, countries: countriesList.length > 0 ? countriesList : ['KW'] };
+};
 
 const AdminOrganizationsPage = () => {
     const { enqueueSnackbar } = useSnackbar();
@@ -52,7 +67,9 @@ const AdminOrganizationsPage = () => {
         taxId: '',
         type: 'BUSINESS',
         creditLimit: 0,
-        active: true
+        active: true,
+        sourcePolicyMode: 'restricted',
+        sourceCountryCode: 'KW'
     });
 
     const [selectedMemberToAdd, setSelectedMemberToAdd] = useState('');
@@ -101,7 +118,9 @@ const AdminOrganizationsPage = () => {
                 taxId: org.taxId || '',
                 type: org.type || 'BUSINESS',
                 creditLimit: org.creditLimit || 0,
-                active: org.active ?? true
+                active: org.active ?? true,
+                sourcePolicyMode: parseSourcePolicy(org.allowedCarriers).mode,
+                sourceCountryCode: parseSourcePolicy(org.allowedCarriers).countries[0] || 'KW'
             });
         } else {
             setEditingOrg(null);
@@ -110,7 +129,9 @@ const AdminOrganizationsPage = () => {
                 taxId: '',
                 type: 'BUSINESS',
                 creditLimit: 0,
-                active: true
+                active: true,
+                sourcePolicyMode: 'restricted',
+                sourceCountryCode: 'KW'
             });
         }
         setOpenDialog(true);
@@ -118,11 +139,27 @@ const AdminOrganizationsPage = () => {
 
     const handleSave = async () => {
         try {
+            const payload = {
+                name: formData.name,
+                taxId: formData.taxId,
+                type: formData.type,
+                creditLimit: formData.creditLimit,
+                active: formData.active,
+                allowedCarriers: {
+                    carriers: Array.isArray(editingOrg?.allowedCarriers)
+                        ? editingOrg.allowedCarriers
+                        : (editingOrg?.allowedCarriers?.carriers || []),
+                    sourcePolicy: {
+                        mode: formData.sourcePolicyMode === 'all' ? 'all' : 'restricted',
+                        countries: formData.sourcePolicyMode === 'all' ? [] : [String(formData.sourceCountryCode || 'KW').toUpperCase()]
+                    }
+                }
+            };
             if (editingOrg) {
-                await organizationService.updateOrganization(editingOrg.id, formData);
+                await organizationService.updateOrganization(editingOrg.id, payload);
                 enqueueSnackbar('Organization updated', { variant: 'success' });
             } else {
-                await organizationService.createOrganization(formData);
+                await organizationService.createOrganization(payload);
                 enqueueSnackbar('Organization created', { variant: 'success' });
             }
             setOpenDialog(false);
@@ -205,16 +242,18 @@ const AdminOrganizationsPage = () => {
                                 <Th style={{ textAlign: 'right' }}>Outstanding</Th>
                                 <Th style={{ textAlign: 'right' }}>Available Credit</Th>
                                 <Th style={{ textAlign: 'right' }}>Credit Limit</Th>
+                                <Th>Source Country Policy</Th>
                                 <Th style={{ textAlign: 'center' }}>Actions</Th>
                             </Tr>
                         </Thead>
                         <Tbody>
                             {loading ? (
-                                <Tr><Td colSpan={7} style={{ textAlign: 'center' }}>Loading...</Td></Tr>
+                                <Tr><Td colSpan={8} style={{ textAlign: 'center' }}>Loading...</Td></Tr>
                             ) : orgs.map(org => {
                                 const overview = orgOverviews[org.id];
                                 const outstanding = overview?.balance ?? 0;
                                 const availableCredit = overview?.availableCredit ?? 0;
+                                const sourcePolicy = parseSourcePolicy(org.allowedCarriers);
 
                                 return (
                                     <Tr key={org.id}>
@@ -234,6 +273,11 @@ const AdminOrganizationsPage = () => {
                                         </Td>
                                         <Td style={{ textAlign: 'right', fontFamily: 'monospace' }}>
                                             {Number(org.creditLimit || 0).toFixed(3)} KD
+                                        </Td>
+                                        <Td>
+                                            {sourcePolicy.mode === 'all'
+                                                ? 'All source countries'
+                                                : `Restricted: ${sourcePolicy.countries.join(', ')}`}
                                         </Td>
                                         <Td style={{ textAlign: 'center' }}>
                                             {isAdmin ? (
@@ -312,6 +356,29 @@ const AdminOrganizationsPage = () => {
                             <Alert severity="info" style={{ gridColumn: '1 / -1', margin: 0 }}>
                                 Balances are derived from the organization ledger. Use Finance to post adjustments or payments.
                             </Alert>
+                        </div>
+                    </Card>
+
+                    <Card title="Source Country Policy" variant="subtle">
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                            <Select
+                                label="Origin Source Policy"
+                                value={formData.sourcePolicyMode}
+                                onChange={e => setFormData({ ...formData, sourcePolicyMode: e.target.value })}
+                            >
+                                <option value="restricted">Restrict source country</option>
+                                <option value="all">Allow all source countries</option>
+                            </Select>
+                            <Select
+                                label="Restricted Source Country"
+                                value={formData.sourceCountryCode}
+                                onChange={e => setFormData({ ...formData, sourceCountryCode: e.target.value })}
+                                disabled={formData.sourcePolicyMode === 'all'}
+                            >
+                                {countries.map((country) => (
+                                    <option key={country.code} value={country.code}>{country.name} ({country.code})</option>
+                                ))}
+                            </Select>
                         </div>
                     </Card>
                 </div>

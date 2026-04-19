@@ -637,6 +637,7 @@ const ShipmentWizardV2 = () => {
 
     const [availableCarriers, setAvailableCarriers] = useState([{ code: 'DGR', name: 'DGR', active: true }]);
     const [selectedCarrier,   setSelectedCarrier]   = useState('DGR');
+    const [sourcePolicy,      setSourcePolicy]      = useState({ mode: 'restricted', countries: ['KW'] });
     const [clients,           setClients]           = useState([]);
     const [selectedClient,    setSelectedClient]    = useState('');
     const [createdShipment,   setCreatedShipment]   = useState(null);
@@ -663,10 +664,26 @@ const ShipmentWizardV2 = () => {
     const estimatedShipmentTotal = Number(selectedService.totalPrice || 0) + optionalServicesTotal;
 
     useEffect(() => {
+        const enforceSenderCountry = sourcePolicy?.mode !== 'all'
+            && Array.isArray(sourcePolicy?.countries)
+            && sourcePolicy.countries.length > 0
+            ? sourcePolicy.countries[0]
+            : null;
+
+        if (!enforceSenderCountry) return;
+
+        setSender((prev) => {
+            if ((prev.countryCode || '').toUpperCase() === enforceSenderCountry.toUpperCase()) return prev;
+            return { ...prev, countryCode: enforceSenderCountry };
+        });
+    }, [sourcePolicy]);
+
+    useEffect(() => {
         const load = async () => {
             try {
                 const res = await shipmentService.getAvailableCarriers();
                 if (res.success && res.data?.length) setAvailableCarriers(res.data);
+                if (res.sourcePolicy) setSourcePolicy(res.sourcePolicy);
             } catch { /* ignore */ }
             if (user?.addresses?.length) {
                 const def = user.addresses.find(a => a.isDefault) || user.addresses[0];
@@ -691,6 +708,7 @@ const ShipmentWizardV2 = () => {
                     setAvailableCarriers(res.data);
                     setSelectedCarrier(res.data[0].code);
                 }
+                if (res.sourcePolicy) setSourcePolicy(res.sourcePolicy);
             })
             .catch(() => {});
     }, [isStaff, selectedClient]);
@@ -853,6 +871,7 @@ const ShipmentWizardV2 = () => {
                             selectedCarrier={selectedCarrier}
                             onCarrierChange={handleCarrierChange}
                             requiredFields={selectedCarrierProfile.requiredFields}
+                            senderCountryLock={sourcePolicy?.mode === 'all' ? null : sourcePolicy?.countries?.[0] || 'KW'}
                         />
                     </>
                 );

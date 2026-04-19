@@ -15,6 +15,7 @@ const {
     shouldEnforceAssignedAccess,
     getServiceOptions
 } = require('../services/shippingAccess.service');
+const { enforceSourceCountryPolicy, resolveSourcePolicy } = require('../utils/sourcePolicy');
 
 /**
  * Get rate quotes with markup applied
@@ -61,6 +62,7 @@ exports.getQuotes = async (req, res) => {
         const { markup, policySource } = resolveEffectiveCarrierPolicy({ targetUser, carrierCode, availableCarrierCodes: carrierCodes });
 
         if (carrierCode === 'MANUAL') {
+            const normalizedSender = enforceSourceCountryPolicy(req.body.sender || req.body.origin || {}, targetUser.organization);
             const basePrice = Number(req.body.costPrice || req.body.price || 0);
             const calculation = PricingService.calculateFinalPrice(basePrice, markup);
             return res.status(200).json({
@@ -73,6 +75,7 @@ exports.getQuotes = async (req, res) => {
                     estimatedShipmentCost: Number(calculation.finalPrice.toFixed(3)),
                     optionalServices: [],
                     currency: req.body.currency || 'KWD',
+                    senderCountryCode: normalizedSender.countryCode,
                     pricingPolicySource: policySource,
                     basePrice,
                     markupAmount: calculation.markupAmount
@@ -81,7 +84,15 @@ exports.getQuotes = async (req, res) => {
         }
 
         const carrier = CarrierFactory.getAdapter(carrierCode);
-        const rawQuotes = await carrier.getRates({ ...req.body, carrierCode, serviceCode });
+        const normalizedSender = enforceSourceCountryPolicy(req.body.sender || req.body.origin || {}, targetUser.organization);
+        const payload = {
+            ...req.body,
+            sender: normalizedSender,
+            origin: normalizedSender,
+            carrierCode,
+            serviceCode
+        };
+        const rawQuotes = await carrier.getRates(payload);
         const visibleQuotes = serviceCode
             ? rawQuotes.filter(quote => String(quote.serviceCode || '').toUpperCase() === String(serviceCode).toUpperCase())
             : rawQuotes;
@@ -165,7 +176,11 @@ exports.getAvailableCarriers = async (req, res) => {
                 .map(c => ({ ...c, serviceOptions: getServiceOptions(c.code) }));
         }
 
-        res.status(200).json({ success: true, data: filteredCarriers });
+        res.status(200).json({
+            success: true,
+            data: filteredCarriers,
+            sourcePolicy: resolveSourcePolicy(targetUser.organization)
+        });
     } catch (error) {
         return handleControllerError(res, error, 'Carrier listing');
     }

@@ -6,6 +6,7 @@ const logger = require('../utils/logger');
 const crypto = require('crypto');
 const financeLedgerService = require('./financeLedger.service');
 const { getAssignedShippingAccess, normalizeCarrier } = require('./shippingAccess.service');
+const { resolveOrgAllowedCarriers } = require('../utils/sourcePolicy');
 
 class ShipmentBookingService {
 
@@ -184,9 +185,10 @@ class ShipmentBookingService {
             return;
         }
 
-        const orgAllowed = Array.isArray(organization?.allowedCarriers) && organization.allowedCarriers.length > 0
-            ? organization.allowedCarriers.map((c) => String(c).toUpperCase())
-            : CarrierFactory.getAvailableCarriers().map((c) => c.code.toUpperCase());
+        const orgAllowed = resolveOrgAllowedCarriers(
+            organization,
+            CarrierFactory.getAvailableCarriers().map((c) => c.code.toUpperCase())
+        );
 
         const agentAllowed = Array.isArray(payingUser?.agentPolicy?.allowedCarriers) && payingUser.agentPolicy.allowedCarriers.length > 0
             ? payingUser.agentPolicy.allowedCarriers.map((c) => String(c).toUpperCase())

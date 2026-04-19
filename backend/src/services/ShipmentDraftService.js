@@ -10,6 +10,7 @@ const {
     shouldEnforceAssignedAccess
 } = require('./shippingAccess.service');
 const { isPlatformRole } = require('../middleware/rbac.policy');
+const { enforceSourceCountryPolicy } = require('../utils/sourcePolicy');
 
 class ShipmentDraftService {
 
@@ -35,7 +36,7 @@ class ShipmentDraftService {
         if (!targetUser) throw new Error('Target user not found');
 
         // 2. Sanitize & Normalize Data
-        const cleanData = this.sanitizePayload(data);
+        const cleanData = this.sanitizePayload(data, targetUser.organization);
         const assignedAccess = getAssignedShippingAccess(targetUser);
         const enforceAssignedAccess = shouldEnforceAssignedAccess(user, targetUser);
 
@@ -240,7 +241,7 @@ class ShipmentDraftService {
     /**
      * Sanitizes address and normalizes payload structure.
      */
-    sanitizePayload(data) {
+    sanitizePayload(data, organization) {
         const { sender, receiver, origin: legacyOrigin, destination: legacyDestination, items: legacyItems, parcels } = data;
 
         const sanitizeAddress = (addr) => {
@@ -262,7 +263,8 @@ class ShipmentDraftService {
             return clean;
         };
 
-        const origin = sanitizeAddress(sender || legacyOrigin);
+        const originRaw = sanitizeAddress(sender || legacyOrigin);
+        const origin = enforceSourceCountryPolicy(originRaw, organization);
         const destination = sanitizeAddress(receiver || legacyDestination);
 
         if (!origin || !origin.formattedAddress) throw new Error('Sender address is required');

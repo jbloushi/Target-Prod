@@ -39,7 +39,8 @@ const AddressPanel = ({
     onCopy = null,
     isStaff = false,
     titleOverride = null,
-    requiredFields = []
+    requiredFields = [],
+    countryCodeLock = null
 }) => {
     const theme = useTheme();
     const [showDetails, setShowDetails] = React.useState(true);
@@ -102,6 +103,10 @@ const AddressPanel = ({
     };
 
     const updateField = (field, fieldValue) => {
+        if (field === 'countryCode' && countryCodeLock) {
+            onChange({ ...value, countryCode: countryCodeLock });
+            return;
+        }
         onChange({ ...value, [field]: fieldValue });
     };
 
@@ -368,10 +373,10 @@ const AddressPanel = ({
                                 <FormControl fullWidth size="small">
                                     <InputLabel>Country</InputLabel>
                                     <Select
-                                        value={value.countryCode || 'KW'}
+                                        value={countryCodeLock || value.countryCode || 'KW'}
                                         label="Country"
                                         onChange={(e) => updateField('countryCode', e.target.value)}
-                                        disabled={disabled}
+                                        disabled={disabled || Boolean(countryCodeLock)}
                                         renderValue={(s) => (
                                             <Box sx={{ display: 'flex', alignItems: 'center' }}>
                                                 <Box component="img" src={`https://flagcdn.com/w20/${s.toLowerCase()}.png`} sx={{ mr: 1, width: 18 }} />
@@ -387,6 +392,11 @@ const AddressPanel = ({
                                         ))}
                                     </Select>
                                 </FormControl>
+                                {countryCodeLock && (
+                                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                                        Origin country is restricted by admin policy.
+                                    </Typography>
+                                )}
                             </Grid>
                         </Grid>
                     </Box>

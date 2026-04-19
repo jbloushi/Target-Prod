@@ -61,7 +61,8 @@ const ShipmentSetup = ({
     errors,
     isStaff, clients, selectedClient, onClientChange,
     availableCarriers, selectedCarrier, onCarrierChange,
-    requiredFields = { sender: [], receiver: [] }
+    requiredFields = { sender: [], receiver: [] },
+    senderCountryLock = null
 }) => {
     return (
         <PageContainer>
@@ -135,6 +136,7 @@ const ShipmentSetup = ({
                     onCopy={() => setReceiver({ ...sender })}
                     isStaff={isStaff}
                     requiredFields={requiredFields.sender}
+                    countryCodeLock={senderCountryLock}
                 />
                 <AddressPanel
                     title="CONSIGNEE (DESTINATION)"
