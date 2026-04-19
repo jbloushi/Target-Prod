@@ -13,11 +13,12 @@ export const useThemeMode = () => {
 };
 
 export const ThemeModeProvider = ({ children }) => {
-  // Initialize from localStorage or system preference
+  const normalizeMode = (rawMode) => (rawMode === 'dark' ? 'dark' : 'light');
+
+  // Initialize from localStorage (default: light)
   const [mode, setMode] = useState(() => {
     const savedMode = localStorage.getItem('theme-mode');
-    if (savedMode) return savedMode;
-    return 'light'; // Default to light mode regardless of system preference
+    return normalizeMode(savedMode);
   });
 
   const toggleTheme = () => {
@@ -26,12 +27,17 @@ export const ThemeModeProvider = ({ children }) => {
 
   useEffect(() => {
     localStorage.setItem('theme-mode', mode);
-    // Apply class to body and html for CSS variable overrides and Tailwind dark mode
+    // Apply classes/attributes to both html and body for CSS vars + Tailwind dark mode consistency
+    document.documentElement.setAttribute('data-theme', mode);
+    document.body.setAttribute('data-theme', mode);
+
     if (mode === 'dark') {
       document.body.classList.add('dark-mode');
+      document.body.classList.add('dark');
       document.documentElement.classList.add('dark');
     } else {
       document.body.classList.remove('dark-mode');
+      document.body.classList.remove('dark');
       document.documentElement.classList.remove('dark');
     }
     

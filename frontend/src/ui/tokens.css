@@ -104,7 +104,10 @@
 }
 
 /* ── KINETIC HORIZON DARK MODE ── */
-.dark-mode {
+:root.dark,
+html.dark,
+body.dark-mode,
+body.dark {
   /* ── Primary Override ── */
   --primary: #4e92ff;
   --primary-dim: #3a75e0;
