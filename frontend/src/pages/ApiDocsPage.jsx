@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     Box, Typography, Chip, Divider, Table, TableBody,
     TableCell, TableHead, TableRow, Collapse, IconButton,
@@ -163,15 +163,20 @@ const SectionHeader = ({ id, title, subtitle }) => (
 const ApiKeyPanel = () => {
     const { user } = useAuth();
     const { enqueueSnackbar } = useSnackbar();
-    const [apiKey, setApiKey] = useState(user?.apiKey || '');
+    const [apiKey, setApiKey] = useState(() => localStorage.getItem('generated-api-key') || user?.apiKey || '');
     const [loading, setLoading] = useState(false);
     const [show, setShow] = useState(false);
+
+    useEffect(() => {
+        setApiKey(localStorage.getItem('generated-api-key') || user?.apiKey || '');
+    }, [user?.apiKey]);
 
     const generate = async () => {
         setLoading(true);
         try {
             const res = await api.post('/auth/api-key');
             setApiKey(res.data.apiKey);
+            localStorage.setItem('generated-api-key', res.data.apiKey);
             enqueueSnackbar('New API key generated!', { variant: 'success' });
         } catch {
             enqueueSnackbar('Failed to generate key', { variant: 'error' });
@@ -188,7 +193,9 @@ const ApiKeyPanel = () => {
 
     const masked = apiKey
         ? (show ? apiKey : apiKey.substring(0, 8) + '••••••••••••••••••••••••')
-        : 'No key generated yet — click Generate';
+        : (user?.apiKeyLast4
+            ? `Stored key ending with ••••${user.apiKeyLast4} — regenerate to view full key`
+            : 'No key generated yet — click Generate');
 
     return (
         <Box sx={{ ...CARD_SX, p: 3, mb: 3 }}>

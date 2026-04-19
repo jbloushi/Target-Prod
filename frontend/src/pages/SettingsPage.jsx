@@ -51,7 +51,7 @@ const SettingsPage = () => {
     const [activeTab, setActiveTab] = useState('general');
 
     // API Key State
-    const [apiKey, setApiKey] = useState(user?.apiKey || '');
+    const [apiKey, setApiKey] = useState(() => localStorage.getItem('generated-api-key') || user?.apiKey || '');
     const [loading, setLoading] = useState(false);
 
     // Staff states
@@ -65,7 +65,7 @@ const SettingsPage = () => {
     // Initialize Shipper Profile
     useEffect(() => {
         if (user) {
-            setApiKey(user.apiKey || '');
+            setApiKey(localStorage.getItem('generated-api-key') || user.apiKey || '');
             const defaultAddress = user.addresses?.find(a => a.isDefault) || {};
             setShipperProfile({
                 ...defaultAddress,
@@ -86,6 +86,7 @@ const SettingsPage = () => {
             setLoading(true);
             const res = await api.post('/auth/api-key');
             setApiKey(res.data.apiKey);
+            localStorage.setItem('generated-api-key', res.data.apiKey);
             enqueueSnackbar('New API Key generated successfully!', { variant: 'success' });
         } catch (err) {
             console.error(err);
@@ -96,9 +97,14 @@ const SettingsPage = () => {
     };
 
     const copyToClipboard = () => {
+        if (!apiKey) return;
         navigator.clipboard.writeText(apiKey);
         enqueueSnackbar('API Key copied!', { variant: 'success' });
     };
+
+    const apiKeyDisplay = apiKey
+        ? apiKey
+        : (user?.apiKeyLast4 ? `Stored key ending with ••••${user.apiKeyLast4}` : 'No key generated yet');
 
     const fetchClients = async () => {
         setClientsLoading(true);
@@ -206,7 +212,7 @@ const SettingsPage = () => {
                                 <div style={{ flex: 1 }}>
                                     <Input
                                         label="Your API Key"
-                                        value={apiKey || 'No key generated yet'}
+                                        value={apiKeyDisplay}
                                         disabled
                                         icon={
                                             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">

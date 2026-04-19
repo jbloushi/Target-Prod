@@ -212,7 +212,9 @@ exports.generateApiKey = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            apiKey: fullKey
+            apiKey: fullKey,
+            apiKeyLast4: last4,
+            message: 'API key generated successfully. Copy and store it now; it cannot be retrieved again.'
         });
     } catch (error) {
         logger.error('Generate API Key error:', error);
