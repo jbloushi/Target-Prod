@@ -51,7 +51,7 @@ const SettingsPage = () => {
     const [activeTab, setActiveTab] = useState('general');
 
     // API Key State
-    const [apiKey, setApiKey] = useState(() => localStorage.getItem('generated-api-key') || user?.apiKey || '');
+    const [apiKey, setApiKey] = useState(user?.apiKey || '');
     const [loading, setLoading] = useState(false);
 
     // Staff states
@@ -65,7 +65,7 @@ const SettingsPage = () => {
     // Initialize Shipper Profile
     useEffect(() => {
         if (user) {
-            setApiKey(localStorage.getItem('generated-api-key') || user.apiKey || '');
+            setApiKey(user.apiKey || '');
             const defaultAddress = user.addresses?.find(a => a.isDefault) || {};
             setShipperProfile({
                 ...defaultAddress,
@@ -86,7 +86,6 @@ const SettingsPage = () => {
             setLoading(true);
             const res = await api.post('/auth/api-key');
             setApiKey(res.data.apiKey);
-            localStorage.setItem('generated-api-key', res.data.apiKey);
             enqueueSnackbar('New API Key generated successfully!', { variant: 'success' });
         } catch (err) {
             console.error(err);

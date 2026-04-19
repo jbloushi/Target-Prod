@@ -2,6 +2,7 @@ const { prisma } = require('../config/database');
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
 const { hashPassword, comparePassword, generateUserApiKey } = require('../utils/security');
+const { encrypt } = require('../utils/fieldEncryption');
 
 /**
  * Signs a JWT token for the given user ID
@@ -201,12 +202,27 @@ exports.protect = async (req, res, next) => {
 exports.generateApiKey = async (req, res) => {
     try {
         const { fullKey, hash, last4 } = generateUserApiKey(req.user.id);
+        const currentUser = await prisma.user.findUnique({
+            where: { id: req.user.id },
+            select: { otp: true }
+        });
+        const otpPayload = currentUser?.otp && typeof currentUser.otp === 'object'
+            ? { ...currentUser.otp }
+            : {};
+
+        try {
+            otpPayload.apiKeyVault = encrypt(fullKey);
+            otpPayload.apiKeyUpdatedAt = new Date().toISOString();
+        } catch (vaultError) {
+            logger.warn(`API key vault encryption skipped for ${req.user.id}: ${vaultError.message}`);
+        }
         
         await prisma.user.update({
             where: { id: req.user.id },
             data: {
                 apiKeyHash: hash,
-                apiKeyLast4: last4
+                apiKeyLast4: last4,
+                otp: otpPayload
             }
         });
 

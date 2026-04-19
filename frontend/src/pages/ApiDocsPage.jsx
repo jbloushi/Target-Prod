@@ -163,12 +163,12 @@ const SectionHeader = ({ id, title, subtitle }) => (
 const ApiKeyPanel = () => {
     const { user } = useAuth();
     const { enqueueSnackbar } = useSnackbar();
-    const [apiKey, setApiKey] = useState(() => localStorage.getItem('generated-api-key') || user?.apiKey || '');
+    const [apiKey, setApiKey] = useState(user?.apiKey || '');
     const [loading, setLoading] = useState(false);
     const [show, setShow] = useState(false);
 
     useEffect(() => {
-        setApiKey(localStorage.getItem('generated-api-key') || user?.apiKey || '');
+        setApiKey(user?.apiKey || '');
     }, [user?.apiKey]);
 
     const generate = async () => {
@@ -176,7 +176,6 @@ const ApiKeyPanel = () => {
         try {
             const res = await api.post('/auth/api-key');
             setApiKey(res.data.apiKey);
-            localStorage.setItem('generated-api-key', res.data.apiKey);
             enqueueSnackbar('New API key generated!', { variant: 'success' });
         } catch {
             enqueueSnackbar('Failed to generate key', { variant: 'error' });

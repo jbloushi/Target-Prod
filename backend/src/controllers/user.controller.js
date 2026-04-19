@@ -3,6 +3,7 @@ const logger = require('../utils/logger');
 const { handleControllerError } = require('../utils/controllerError');
 const { hashPassword } = require('../utils/security');
 const { normalizeShippingAccess } = require('../services/shippingAccess.service');
+const { decrypt } = require('../utils/fieldEncryption');
 
 const buildAgentPolicy = (existingPolicy = {}, { markup, shippingAccess } = {}) => {
     const nextPolicy = { ...(existingPolicy || {}) };
@@ -168,7 +169,8 @@ exports.getMe = async (req, res) => {
         const mappedUser = {
             ...user,
             markup: user.agentPolicy?.markupOverride || { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 },
-            creditLimit: user.organization?.creditLimit !== undefined ? user.organization.creditLimit : (user.creditLimit || 0)
+            creditLimit: user.organization?.creditLimit !== undefined ? user.organization.creditLimit : (user.creditLimit || 0),
+            apiKey: user.otp?.apiKeyVault ? decrypt(user.otp.apiKeyVault) : null
         };
 
         res.status(200).json({
