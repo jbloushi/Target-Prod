@@ -30,6 +30,16 @@ const phoneCodes = sortedCountries
 
 phoneCodes.push({ code: 'OTHER', country: 'Other', flag: '🌍' });
 
+const findDialCodeOption = (dialCode) => {
+    if (!dialCode) return null;
+    return phoneCodes.find((option) => option.code === dialCode) || null;
+};
+
+const findCountryOption = (countryCode) => {
+    if (!countryCode) return null;
+    return sortedCountries.find((country) => country.code === countryCode) || null;
+};
+
 const AddressPanel = ({
     type = 'sender',
     value = {},
@@ -249,28 +259,33 @@ const AddressPanel = ({
                                 />
                             </Grid>
                             <Grid item xs={12} md={5}>
-                                <FormControl fullWidth size="small">
-                                    <InputLabel>Dial Code</InputLabel>
-                                    <Select
-                                        value={value.phoneCountryCode || '+965'}
-                                        label="Dial Code"
-                                        onChange={(e) => updateField('phoneCountryCode', e.target.value)}
-                                        disabled={disabled}
-                                        renderValue={(selected) => (
-                                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                                <Box component="img" src={`https://flagcdn.com/w20/${(countries.find(c => c.dialCode === selected)?.code || 'KW').toLowerCase()}.png`} sx={{ mr: 1, width: 18 }} />
-                                                {selected}
-                                            </Box>
-                                        )}
-                                    >
-                                        {phoneCodes.map(c => (
-                                            <MenuItem key={c.code} value={c.code}>
-                                                <Box component="img" src={`https://flagcdn.com/w20/${(countries.find(country => country.name === c.country)?.code || 'KW').toLowerCase()}.png`} sx={{ mr: 1, width: 20 }} />
-                                                <Typography variant="body2">{c.code} — {c.country}</Typography>
-                                            </MenuItem>
-                                        ))}
-                                    </Select>
-                                </FormControl>
+                                <Autocomplete
+                                    fullWidth
+                                    size="small"
+                                    disabled={disabled}
+                                    options={phoneCodes}
+                                    value={findDialCodeOption(value.phoneCountryCode || '+965') || findDialCodeOption('+965')}
+                                    onChange={(_, selected) => updateField('phoneCountryCode', selected?.code || '+965')}
+                                    getOptionLabel={(option) => `${option.code} — ${option.country}`}
+                                    isOptionEqualToValue={(option, selected) => option.code === selected.code}
+                                    renderInput={(params) => (
+                                        <TextField
+                                            {...params}
+                                            label="Dial Code"
+                                            placeholder="Search country or dial code"
+                                        />
+                                    )}
+                                    renderOption={(props, option) => {
+                                        const { key, ...rest } = props;
+                                        const countryCode = countries.find(country => country.name === option.country)?.code || 'KW';
+                                        return (
+                                            <li key={key} {...rest}>
+                                                <Box component="img" src={`https://flagcdn.com/w20/${countryCode.toLowerCase()}.png`} sx={{ mr: 1, width: 20 }} />
+                                                <Typography variant="body2">{option.code} — {option.country}</Typography>
+                                            </li>
+                                        );
+                                    }}
+                                />
                             </Grid>
                             <Grid item xs={12} md={7}>
                                 <TextField
@@ -344,19 +359,19 @@ const AddressPanel = ({
                                     InputProps={{ startAdornment: <MapIcon sx={{ mr: 1.5, fontSize: 18, color: 'text.secondary', opacity: 0.5 }} /> }}
                                 />
                             </Grid>
-                            <Grid item xs={6}>
+                            <Grid item xs={12} md={6}>
                                 <TextField fullWidth size="small" label="Unit / Floor" value={value.unitNumber || ''} onChange={(e) => updateField('unitNumber', e.target.value)} disabled={disabled} />
                             </Grid>
-                            <Grid item xs={6}>
+                            <Grid item xs={12} md={6}>
                                 <TextField fullWidth size="small" label="Building Name" value={value.buildingName || ''} onChange={(e) => updateField('buildingName', e.target.value)} disabled={disabled} />
                             </Grid>
-                            <Grid item xs={6}>
+                            <Grid item xs={12} md={6}>
                                 <TextField fullWidth size="small" label="Area / Block" value={value.area || ''} onChange={(e) => updateField('area', e.target.value)} disabled={disabled} />
                             </Grid>
-                            <Grid item xs={6}>
+                            <Grid item xs={12} md={6}>
                                 <TextField fullWidth size="small" label="City" value={value.city || ''} onChange={(e) => updateField('city', e.target.value)} required={isFieldRequired('city')} disabled={disabled} error={!!(isSender ? errors.senderCity : errors.receiverCity)} />
                             </Grid>
-                            <Grid item xs={6}>
+                            <Grid item xs={12} md={6}>
                                 <TextField
                                     fullWidth
                                     size="small"
@@ -369,29 +384,33 @@ const AddressPanel = ({
                                     helperText={isSender ? errors.senderPostal : errors.receiverPostal}
                                 />
                             </Grid>
-                            <Grid item xs={6}>
-                                <FormControl fullWidth size="small">
-                                    <InputLabel>Country</InputLabel>
-                                    <Select
-                                        value={countryCodeLock || value.countryCode || 'KW'}
-                                        label="Country"
-                                        onChange={(e) => updateField('countryCode', e.target.value)}
-                                        disabled={disabled || Boolean(countryCodeLock)}
-                                        renderValue={(s) => (
-                                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                                <Box component="img" src={`https://flagcdn.com/w20/${s.toLowerCase()}.png`} sx={{ mr: 1, width: 18 }} />
-                                                {countries.find(c => c.code === s)?.name || s}
-                                            </Box>
-                                        )}
-                                    >
-                                        {sortedCountries.map(c => (
-                                            <MenuItem key={c.code} value={c.code}>
-                                                <Box component="img" src={`https://flagcdn.com/w20/${c.code.toLowerCase()}.png`} sx={{ mr: 1, width: 18, borderRadius: '2px' }} />
-                                                <Typography variant="body2">{c.name}</Typography>
-                                            </MenuItem>
-                                        ))}
-                                    </Select>
-                                </FormControl>
+                            <Grid item xs={12} md={6}>
+                                <Autocomplete
+                                    fullWidth
+                                    size="small"
+                                    disabled={disabled || Boolean(countryCodeLock)}
+                                    options={sortedCountries}
+                                    value={findCountryOption(countryCodeLock || value.countryCode || 'KW') || findCountryOption('KW')}
+                                    onChange={(_, selected) => updateField('countryCode', selected?.code || 'KW')}
+                                    getOptionLabel={(option) => `${option.name} (${option.code})`}
+                                    isOptionEqualToValue={(option, selected) => option.code === selected.code}
+                                    renderInput={(params) => (
+                                        <TextField
+                                            {...params}
+                                            label="Country"
+                                            placeholder="Search country name or code"
+                                        />
+                                    )}
+                                    renderOption={(props, option) => {
+                                        const { key, ...rest } = props;
+                                        return (
+                                            <li key={key} {...rest}>
+                                                <Box component="img" src={`https://flagcdn.com/w20/${option.code.toLowerCase()}.png`} sx={{ mr: 1, width: 18, borderRadius: '2px' }} />
+                                                <Typography variant="body2">{option.name} ({option.code})</Typography>
+                                            </li>
+                                        );
+                                    }}
+                                />
                                 {countryCodeLock && (
                                     <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
                                         Origin country is restricted by admin policy.
