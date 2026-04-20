@@ -17,6 +17,8 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 3000,
+      // Add the allowedHosts property here
+      allowedHosts: ['3pl.mawthook.io'], 
       proxy: {
         '/api': 'http://localhost:8899'
       }

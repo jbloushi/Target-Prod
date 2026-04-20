@@ -81,6 +81,10 @@ const SettingsPage = () => {
         }
     }, [user]);
 
+    const apiKeyPreview = apiKey
+        ? apiKey
+        : (user?.apiKeyLast4 ? `Stored securely (ends with ${user.apiKeyLast4})` : 'No key generated yet');
+
     const generateNewKey = async () => {
         try {
             setLoading(true);
@@ -206,7 +210,7 @@ const SettingsPage = () => {
                                 <div style={{ flex: 1 }}>
                                     <Input
                                         label="Your API Key"
-                                        value={apiKey || 'No key generated yet'}
+                                        value={apiKeyPreview}
                                         disabled
                                         icon={
                                             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -225,7 +229,7 @@ const SettingsPage = () => {
 
                             <CodeBlock>
                                 curl -X POST https://api.yourlogistics.com/shipments \<br />
-                                &nbsp;&nbsp;-H "Authorization: Bearer YOUR_API_KEY" \<br />
+                                &nbsp;&nbsp;-H "x-api-key: YOUR_API_KEY" \<br />
                                 &nbsp;&nbsp;-d {'\'{"origin": "..."}\''}
                             </CodeBlock>
                         </Card>

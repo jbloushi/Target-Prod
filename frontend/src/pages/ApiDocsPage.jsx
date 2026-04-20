@@ -186,9 +186,10 @@ const ApiKeyPanel = () => {
         enqueueSnackbar('API key copied!', { variant: 'success' });
     };
 
+    const persistedMask = user?.apiKeyLast4 ? `Stored securely (ends with ${user.apiKeyLast4})` : '';
     const masked = apiKey
         ? (show ? apiKey : apiKey.substring(0, 8) + '••••••••••••••••••••••••')
-        : 'No key generated yet — click Generate';
+        : (persistedMask || 'No key generated yet — click Generate');
 
     return (
         <Box sx={{ ...CARD_SX, p: 3, mb: 3 }}>
