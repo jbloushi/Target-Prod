@@ -81,6 +81,17 @@ exports.getQuotes = async (req, res) => {
         }
 
         const carrier = CarrierFactory.getAdapter(carrierCode);
+        
+        console.log('QUOTE DEBUG', {
+        assignedAccess,
+        enforceAssignedAccess,
+        requestedCarrierCode,
+        requestedServiceCode,
+        finalCarrierCode: carrierCode,
+        finalServiceCode: serviceCode,
+        userId: targetUser?.id
+        });
+        
         const rawQuotes = await carrier.getRates({ ...req.body, carrierCode, serviceCode });
         const visibleQuotes = serviceCode
             ? rawQuotes.filter(quote => String(quote.serviceCode || '').toUpperCase() === String(serviceCode).toUpperCase())

@@ -43,3 +43,6 @@ inspect_shipment.js
 Target_3PL_Client_API_v2.pdf
 .claude/settings.local.json
 *.log
+frontend/.env.local
+3pt-test.zip
+3pt-test.zip

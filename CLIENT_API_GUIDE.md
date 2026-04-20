@@ -1,25 +1,48 @@
 # Target Logistics Client API Guide
 
-Version: 2.1
+Version: 2.2
 Audience: client developers integrating server-to-server shipment workflows.
 
 ## Core Rule
 
-Each client API key belongs to one platform user. That user is assigned exactly one shipping access option by Target Logistics:
+Each client API key belongs to one platform user. That user is assigned exactly one shipping access mode by Target Logistics:
 
-- A carrier plus one service, for example `DGR` with service `P`.
-- Manual Shipment, stored as `carrierCode: MANUAL` with no service code.
+- **Carrier mode** — locked to a carrier such as `DGR`, with an optional default/assigned service.
+- **Manual mode** — stored as `carrierCode: MANUAL` with no carrier service code.
 
-Client integrations should not send `carrierCode` or `serviceCode`. The backend derives both from the API key owner. If a request includes a carrier or service that does not match the assigned access, the API returns `403`.
+## Important Integration Pattern
 
-This keeps the client API simple and prevents the wrong carrier rate or service from being selected.
+There are **two supported API flows**:
+
+### 1) Carrier-backed flow
+Use this when the API key belongs to a carrier-backed user.
+
+Recommended sequence:
+
+1. `POST /v1/quotes`
+2. Read the returned `serviceCode`
+3. `POST /v1/shipments` using that service code
+
+**Do not assume a service like `P` works for every route.**
+Carrier product availability is route/account dependent.
+
+### 2) Manual flow
+Use this when the API key belongs to a manual user.
+
+Manual flow:
+
+1. `POST /v1/shipments`
+2. Shipment is created internally as `carrierCode: MANUAL`
+3. No carrier quote, no carrier booking, no DHL call
+
+---
 
 ## Base URLs
 
 | Environment | Base URL |
 | --- | --- |
 | Local | `http://localhost:8899/api` |
-| Production | `https://api.target-logistics.com/api` |
+| Production | `https://3pl-api.mawthook.io/api` |
 
 All `/v1` paths below are relative to the base URL.
 
@@ -68,91 +91,276 @@ Common status codes:
 | `429` | Rate limit exceeded |
 | `500` | Server error |
 
-## Shipment Creation
+---
 
-### `POST /v1/shipments`
+## Quotes
 
-Creates a shipment for the API key owner.
+### `POST /v1/quotes`
 
-For carrier-backed users, the shipment is submitted through the assigned carrier/service and returned as booked when carrier booking succeeds.
+Returns quotes for the API key owner.
 
-For manual users, the shipment is created as a Manual Shipment draft and is not registered with a 3PL carrier.
+### Carrier-backed users
+For carrier-backed users, this endpoint returns the live rate(s) available to the API user for the submitted route.
 
-Do not include `carrierCode` or `serviceCode` in normal client requests.
+**Best practice:** quote first, then create the shipment using the returned `serviceCode`.
+
+### Manual users
+Manual Shipment users receive a manual placeholder quote:
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "serviceName": "Manual Shipment",
+      "serviceCode": null,
+      "carrier": "MANUAL",
+      "totalPrice": 0,
+      "currency": "KWD",
+      "estimatedDelivery": null
+    }
+  ]
+}
+```
+
+### Live-verified carrier quote example
+The following route was verified live:
+- Origin: `KW`
+- Destination: `AE`
+- Returned service: `P`
 
 ```bash
-curl -X POST http://localhost:8899/api/v1/shipments \
+curl -X POST https://3pl-api.mawthook.io/api/v1/quotes \
   -H "Content-Type: application/json" \
   -H "x-api-key: YOUR_API_KEY" \
   -d '{
     "sender": {
-      "company": "Client Warehouse",
-      "contactPerson": "Ahmed Ali",
+      "company": "My Warehouse Co.",
+      "contactPerson": "Ahmed Al-Rashid",
       "phone": "96512345678",
       "phoneCountryCode": "+965",
-      "email": "warehouse@example.com",
+      "email": "warehouse@mycompany.com",
       "countryCode": "KW",
       "city": "Kuwait City",
       "postalCode": "13001",
       "streetLines": ["Industrial Area, Block 4"]
     },
     "receiver": {
-      "company": "Receiver Co",
-      "contactPerson": "Sara Saleh",
-      "phone": "971555555555",
-      "phoneCountryCode": "+971",
-      "email": "receiver@example.com",
+      "contactPerson": "Sara Al-Mutairi",
+      "phone": "96598765432",
+      "phoneCountryCode": "+965",
+      "email": "sara@gmail.com",
       "countryCode": "AE",
       "city": "Dubai",
       "postalCode": "00000",
-      "streetLines": ["Business Bay"]
+      "streetLines": ["Dubai Marina, Tower 5"]
     },
-    "shipmentType": "package",
     "parcels": [
-      { "weight": 2.5, "length": 30, "width": 20, "height": 10 }
+      { "weight": 5.0, "length": 40, "width": 30, "height": 20, "description": "Clothing Box" }
     ],
     "items": [
-      { "description": "Documents", "quantity": 1, "unitValue": 10, "currency": "KWD", "countryOfOrigin": "KW" }
+      {
+        "description": "Clothing",
+        "quantity": 3,
+        "unitValue": 50,
+        "currency": "KWD",
+        "countryOfOrigin": "KW",
+        "hsCode": "610910",
+        "weight": 5.0
+      }
     ],
     "currency": "KWD"
   }'
 ```
 
-Success response for a carrier-backed user:
+Live-verified response:
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "serviceName": "EXPRESS WORLDWIDE",
+      "serviceCode": "P",
+      "carrier": "DGR",
+      "totalPrice": 18.576,
+      "currency": "KWD"
+    }
+  ]
+}
+```
+
+### Notes
+- `hsCode` is required for customs-declarable carrier quotes.
+- `unitValue` is supported in API payloads.
+- Some services are route-dependent. For example, `P` was rejected for the tested `KW -> KW` route under the same account.
+
+---
+
+## Shipment Creation
+
+### `POST /v1/shipments`
+
+Creates a shipment for the API key owner.
+
+### Carrier-backed shipment flow
+For carrier-backed users, the shipment is submitted through the carrier and returned as booked when booking succeeds.
+
+**Recommended flow:**
+1. Quote first
+2. Use the returned `serviceCode`
+3. Create shipment
+
+### Manual shipment flow
+For manual users, the shipment is created as a Manual Shipment draft and is not registered with a 3PL carrier.
+
+### Live-verified carrier shipment example
+The following route was verified live:
+- Origin: `KW`
+- Destination: `AE`
+- `carrierCode: DGR`
+- `serviceCode: P`
+
+```bash
+curl -X POST https://3pl-api.mawthook.io/api/v1/shipments \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: YOUR_API_KEY" \
+  -d '{
+    "carrierCode": "DGR",
+    "serviceCode": "P",
+    "sender": {
+      "company": "My Warehouse Co.",
+      "contactPerson": "Ahmed Al-Rashid",
+      "phone": "96512345678",
+      "phoneCountryCode": "+965",
+      "email": "warehouse@mycompany.com",
+      "countryCode": "KW",
+      "city": "Kuwait City",
+      "postalCode": "13001",
+      "streetLines": ["Industrial Area, Block 4"]
+    },
+    "receiver": {
+      "contactPerson": "Sara Al-Mutairi",
+      "phone": "96598765432",
+      "phoneCountryCode": "+965",
+      "email": "sara@gmail.com",
+      "countryCode": "AE",
+      "city": "Dubai",
+      "postalCode": "00000",
+      "streetLines": ["Dubai Marina, Tower 5"]
+    },
+    "parcels": [
+      { "weight": 5.0, "length": 40, "width": 30, "height": 20, "description": "Clothing Box" }
+    ],
+    "items": [
+      {
+        "description": "Clothing",
+        "quantity": 3,
+        "unitValue": 50,
+        "currency": "KWD",
+        "countryOfOrigin": "KW",
+        "hsCode": "610910",
+        "weight": 5.0
+      }
+    ],
+    "currency": "KWD",
+    "incoterm": "DAP",
+    "exportReason": "Sale",
+    "remarks": "Handle with care",
+    "reference": "ORDER-2026-001"
+  }'
+```
+
+Live-verified response:
 
 ```json
 {
   "success": true,
   "data": {
-    "trackingNumber": "DGR-AB12CD34",
+    "trackingNumber": "2042595203",
+    "labelUrl": null,
+    "invoiceUrl": null,
     "carrier": "DGR",
     "serviceCode": "P",
-    "status": "booked",
-    "price": 4.5,
-    "currency": "KWD"
+    "status": "booked"
   }
 }
 ```
 
-Success response for a manual user:
+### Live-verified manual shipment example
+This was also verified live with the same client API path after switching the API user to manual mode:
+
+```bash
+curl -X POST https://3pl-api.mawthook.io/api/v1/shipments \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: YOUR_API_KEY" \
+  -d '{
+    "sender": {
+      "company": "My Warehouse Co.",
+      "contactPerson": "Ahmed Al-Rashid",
+      "phone": "96512345678",
+      "email": "warehouse@mycompany.com",
+      "countryCode": "KW",
+      "city": "Kuwait City",
+      "postalCode": "13001",
+      "streetLines": ["Industrial Area, Block 4, Street 12"]
+    },
+    "receiver": {
+      "contactPerson": "Sara Al-Mutairi",
+      "phone": "96598765432",
+      "email": "sara@gmail.com",
+      "countryCode": "KW",
+      "city": "Salmiya",
+      "postalCode": "22001",
+      "streetLines": ["Block 12, Building 45, Apartment 3"]
+    },
+    "parcels": [
+      {
+        "weight": 2.5,
+        "length": 30,
+        "width": 20,
+        "height": 10,
+        "description": "Manual shipment box"
+      }
+    ],
+    "items": [
+      {
+        "description": "Manual shipment item",
+        "quantity": 1,
+        "unitValue": 25,
+        "currency": "KWD"
+      }
+    ],
+    "currency": "KWD",
+    "reference": "MANUAL-ORDER-001",
+    "remarks": "Create internal shipment only"
+  }'
+```
+
+Live-verified response:
 
 ```json
 {
   "success": true,
   "data": {
-    "trackingNumber": "MAN-AB12CD34",
+    "trackingNumber": "MAN-OYXH39LR",
     "carrier": "MANUAL",
     "serviceCode": null,
     "status": "draft",
-    "price": 0,
+    "price": "0",
     "currency": "KWD"
   }
 }
 ```
 
+### Notes
+- Carrier-backed shipments should generally be quoted first.
+- Manual shipments do not require quote or carrier booking.
+- `hsCode` is required for customs-declarable carrier shipments.
+
 ### Shipment Types
 
-Only these shipment types are supported:
+Supported shipment types:
 
 | API value | Label |
 | --- | --- |
@@ -160,6 +368,8 @@ Only these shipment types are supported:
 | `documents` | Document Express |
 
 Legacy aliases such as `standard`, `standard_package`, `document`, and `document_express` are normalized internally, but new integrations should use `package` or `documents`.
+
+---
 
 ## Shipment Update
 
@@ -184,31 +394,7 @@ Allowed fields:
 
 Status changes are not part of the client API. Status is managed by platform roles, carrier updates, booking, pickup scans, and warehouse scans.
 
-## Quotes
-
-### `POST /v1/quotes`
-
-Returns the quote for the API key owner's assigned carrier/service. Clients should not send carrier or service selection fields.
-
-Manual Shipment users receive a manual quote placeholder:
-
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "serviceName": "Manual Shipment",
-      "serviceCode": null,
-      "carrier": "MANUAL",
-      "totalPrice": 0,
-      "currency": "KWD",
-      "estimatedDelivery": null
-    }
-  ]
-}
-```
-
-Carrier-backed users receive only the assigned service rate after organization/user markup is applied.
+---
 
 ## Tracking
 
@@ -229,6 +415,8 @@ Returns tracking for a shipment owned by the API key owner.
   }
 }
 ```
+
+---
 
 ## Address Book
 
@@ -252,74 +440,19 @@ Address object fields:
 | `company` | Yes | Company or location name |
 | `contactPerson` | Yes | Main contact |
 | `phone` | Yes | Local phone number |
-| `phoneCountryCode` | Yes | Example: `+965` |
+| `phoneCountryCode` | Recommended | Example: `+965` |
 | `email` | Yes | Contact email |
 | `countryCode` | Yes | ISO 2-letter code |
 | `city` | Yes | City |
 | `postalCode` | Yes | Postal code |
 | `streetLines` | Yes | Array of street lines |
-| `state` | No | Region/state |
-| `taxId` | No | Tax id |
-| `eoriNumber` | No | EORI value |
-| `vatNumber` | No | VAT value |
 
-## Pickup Requests
-
-### `POST /client/pickups`
-
-Creates an external pickup request. Include an `Idempotency-Key` header for safe retries.
-
-```http
-Idempotency-Key: unique-operation-id
-```
-
-### `GET /client/pickups/:id`
-
-Returns pickup request status.
-
-Pickup status values used by the external flow include `pending`, `assigned`, `completed`, and `cancelled`. Some approval flows may return uppercase operational states while legacy data is being normalized.
-
-## Client Shipment Status
-
-### `GET /client/shipments/:trackingNumber`
-
-Returns private shipment status for the API key owner.
-
-### `GET /client/shipments/:trackingNumber/tracking`
-
-Returns internal and carrier tracking events in chronological order.
+---
 
 ## Public Tracking
 
-Public tracking does not require an API key.
-
 ### `GET /public/shipments/:trackingNumber`
 
-Returns public shipment details and tracking history for customer-facing pages.
+Returns public tracking information without authentication.
 
-## Status Reference
-
-Canonical shipment statuses:
-
-| Status | Meaning |
-| --- | --- |
-| `draft` | Shipment is being prepared |
-| `pending` | Pending review or processing |
-| `booked` | Booked in the platform/carrier flow |
-| `ready_for_pickup` | Ready for pickup |
-| `picked_up` | Picked up by driver/courier |
-| `in_transit` | Received into movement/warehouse network |
-| `out_for_delivery` | Out for final delivery |
-| `delivered` | Delivered |
-| `exception` | Issue requiring attention |
-| `cancelled` | Cancelled |
-
-Manual status changes inside the platform are limited to `admin`, `manager`, and `accounting`. Client API callers cannot set status directly.
-
-## Security Checklist
-
-- Store API keys server-side only.
-- Rotate keys if exposed.
-- Use idempotency keys for pickup creation retries.
-- Do not send carrier/service fields unless Target Logistics explicitly tells you to test access enforcement.
-- Treat tracking numbers and labels as customer data.
+Use this in customer-facing experiences only when the tracking number is intended to be public.

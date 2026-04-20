@@ -69,13 +69,22 @@ exports.createShipment = async (req, res) => {
             });
         }
 
+        const resolvedCarrierCode = assignedAccess.carrierCode;
+        const resolvedServiceCode = serviceCode || assignedAccess.serviceCode || null;
+
+        if (!resolvedServiceCode) {
+            return res.status(400).json({
+                success: false,
+                error: 'No carrier service selected. Request a quote first and then create the shipment using an available serviceCode.'
+            });
+        }
+
         // 1. Normalize
         const normalized = normalizeShipment(shipmentData);
-        normalized.serviceCode = assignedAccess.serviceCode;
+        normalized.serviceCode = resolvedServiceCode;
 
         // 2. Get Adapter
-        const carrier = assignedAccess.carrierCode;
-        const adapter = CarrierFactory.getAdapter(carrier);
+        const adapter = CarrierFactory.getAdapter(resolvedCarrierCode);
 
         // 3. Validate via Adapter
         const errors = await adapter.validate(normalized);
@@ -87,7 +96,7 @@ exports.createShipment = async (req, res) => {
         const result = await adapter.createShipment({
             ...normalized,
             user: req.user.id
-        }, assignedAccess.serviceCode);
+        }, resolvedServiceCode);
 
         // 5. Audit/Persist to MySQL
         const newShipment = await prisma.shipment.create({
@@ -95,8 +104,8 @@ exports.createShipment = async (req, res) => {
                 trackingNumber: result.trackingNumber,
                 userId: req.user.id,
                 organizationId: req.user.organizationId,
-                carrierCode: carrier,
-                serviceCode: assignedAccess.serviceCode,
+                carrierCode: resolvedCarrierCode,
+                serviceCode: resolvedServiceCode,
                 status: 'booked',
                 labelUrl: result.labelBase64 ? `data:application/pdf;base64,${result.labelBase64}` : null,
                 invoiceUrl: result.invoiceBase64 ? `data:application/pdf;base64,${result.invoiceBase64}` : null,
@@ -134,7 +143,7 @@ exports.createShipment = async (req, res) => {
                 trackingNumber: result.trackingNumber,
                 labelUrl: newShipment.labelUrl,
                 invoiceUrl: newShipment.invoiceUrl,
-                carrier,
+                carrier: resolvedCarrierCode,
                 serviceCode: newShipment.serviceCode,
                 status: newShipment.status
             }
@@ -215,12 +224,12 @@ exports.updateShipment = async (req, res) => {
             const tempState = { ...shipment, ...updates };
             const adapter = CarrierFactory.getAdapter(tempState.carrierCode || 'DGR');
             const quotes = await adapter.getRates({ ...tempState, sender: tempState.origin, receiver: tempState.destination });
-            
+
             if (!quotes || quotes.length === 0) throw new Error('Re-rating failed');
-            
+
             const selected = quotes.find(q => q.serviceCode === shipment.serviceCode) || quotes[0];
             const { markup, source } = PricingService.resolveMarkup(shipment.user, shipment.user.organization, (tempState.carrierCode || 'DGR').toUpperCase());
-            
+
             finalSnapshot = PricingService.createSnapshot(Number(selected.totalPrice), markup, selected.currency || 'KWD', source);
             finalPrice = Number(finalSnapshot.totalPrice);
 
@@ -307,22 +316,43 @@ exports.getQuotation = async (req, res) => {
             });
         }
 
-        const normalized = normalizeShipment(req.body);
-        normalized.serviceCode = assignedAccess.serviceCode;
-        const rawRates = await CarrierRateService.getRates(normalized, assignedAccess.carrierCode);
-        const visibleRates = rawRates.filter(rate => String(rate.serviceCode || '').toUpperCase() === assignedAccess.serviceCode);
+        const resolvedCarrierCode = assignedAccess.carrierCode;
+        const resolvedServiceCode = serviceCode || assignedAccess.serviceCode || null;
 
-        if (visibleRates.length === 0) {
-            return res.status(400).json({ success: false, error: `Assigned service ${assignedAccess.serviceCode} is not available for this shipment.` });
+        console.log('QUOTE DEBUG', {
+            requestedCarrierCode: carrierCode || null,
+            requestedServiceCode: serviceCode || null,
+            assignedAccess,
+            finalCarrierCode: resolvedCarrierCode,
+            finalServiceCode: resolvedServiceCode,
+            userId: user?.id,
+            carrierConfig: user?.carrierConfig,
+            agentPolicy: user?.agentPolicy
+        });
+
+        const normalized = normalizeShipment(req.body);
+        normalized.serviceCode = resolvedServiceCode;
+
+        const rawRates = await CarrierRateService.getRates(normalized, resolvedCarrierCode);
+
+        const visibleRates = resolvedServiceCode
+            ? rawRates.filter(rate => String(rate.serviceCode || '').toUpperCase() === String(resolvedServiceCode).toUpperCase())
+            : rawRates;
+
+        if (resolvedServiceCode && visibleRates.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: `Assigned/requested service ${resolvedServiceCode} is not available for this shipment.`
+            });
         }
 
         const finalQuotes = visibleRates.map(rate => {
-            const { markup } = PricingService.resolveMarkup(user, user.organization, assignedAccess.carrierCode);
+            const { markup } = PricingService.resolveMarkup(user, user.organization, resolvedCarrierCode);
             const calculation = PricingService.calculateFinalPrice(rate.totalPrice, markup, rate.currency);
             return {
                 serviceName: rate.serviceName,
                 serviceCode: rate.serviceCode,
-                carrier: assignedAccess.carrierCode,
+                carrier: resolvedCarrierCode,
                 totalPrice: calculation.finalPrice,
                 currency: rate.currency,
                 estimatedDelivery: rate.estimatedDelivery
@@ -366,11 +396,11 @@ exports.updateAddress = async (req, res) => {
         const { id } = req.params;
         const user = await prisma.user.findUnique({ where: { id: req.user.id } });
         const addresses = user.addresses || [];
-        
+
         // Match by some criteria since MySQL JSON doesn't have .id() helper
         const index = addresses.findIndex(a => a.id === id || a.label === id);
         if (index === -1) return res.status(404).json({ success: false, error: 'Not found' });
-        
+
         addresses[index] = { ...addresses[index], ...req.body };
 
         await prisma.user.update({

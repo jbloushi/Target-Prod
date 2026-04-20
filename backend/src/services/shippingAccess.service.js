@@ -1,7 +1,7 @@
 const CarrierFactory = require('./CarrierFactory');
 
 const DEFAULT_CARRIER = 'DGR';
-const DEFAULT_SERVICE = 'P';
+const DEFAULT_SERVICE = null;
 
 const SERVICE_LABELS = {
     DGR: {
@@ -32,13 +32,22 @@ const getAvailableCarrierCodes = () => CarrierFactory
 const normalizeCarrier = (carrierCode) => String(carrierCode || DEFAULT_CARRIER).toUpperCase();
 
 const normalizeService = (serviceCode) => {
-    if (serviceCode == null || serviceCode === '') return DEFAULT_SERVICE;
+    if (serviceCode == null || serviceCode === '') return null;
     return String(serviceCode).toUpperCase();
 };
 
 const getServiceName = (carrierCode, serviceCode) => {
     const carrier = normalizeCarrier(carrierCode);
-    const service = serviceCode ? normalizeService(serviceCode) : 'MANUAL';
+
+    if (carrier === 'MANUAL') {
+        return 'Manual Shipment';
+    }
+
+    if (!serviceCode) {
+        return 'Any Available Service';
+    }
+
+    const service = normalizeService(serviceCode);
     return SERVICE_LABELS[carrier]?.[service] || service;
 };
 
@@ -75,13 +84,13 @@ const getAssignedShippingAccess = (user) => {
     if (allowedCarriers.length === 1) {
         return normalizeShippingAccess({
             carrierCode: allowedCarriers[0],
-            serviceCode: policy.serviceCode || policy.defaultServiceCode
+            serviceCode: policy.serviceCode || policy.defaultServiceCode || null
         });
     }
 
     return normalizeShippingAccess({
         carrierCode: user?.carrierConfig?.preferredCarrier || DEFAULT_CARRIER,
-        serviceCode: user?.carrierConfig?.serviceCode || DEFAULT_SERVICE
+        serviceCode: user?.carrierConfig?.serviceCode || null
     });
 };
 
@@ -104,7 +113,8 @@ const assertRequestedAccessAllowed = (assignedAccess, requested = {}) => {
         return;
     }
 
-    if (requestedService && requestedService !== assignedAccess.serviceCode) {
+    // Only enforce service restriction if a service is explicitly assigned
+    if (assignedAccess.serviceCode && requestedService && requestedService !== assignedAccess.serviceCode) {
         const err = new Error(`This account is assigned to ${assignedAccess.serviceName}. Requested service ${requestedService} is not allowed.`);
         err.statusCode = 403;
         throw err;
@@ -124,9 +134,17 @@ const shouldEnforceAssignedAccess = (actor, targetUser) => {
 
 const getServiceOptions = (carrierCode) => {
     const carrier = normalizeCarrier(carrierCode);
-    return Object.entries(SERVICE_LABELS[carrier] || { [DEFAULT_SERVICE]: getServiceName(carrier, DEFAULT_SERVICE) })
+
+    if (carrier === 'MANUAL') {
+        return [{
+            serviceCode: null,
+            serviceName: 'Manual Shipment'
+        }];
+    }
+
+    return Object.entries(SERVICE_LABELS[carrier] || {})
         .map(([serviceCode, serviceName]) => ({
-            serviceCode: carrier === 'MANUAL' ? null : serviceCode,
+            serviceCode,
             serviceName
         }));
 };

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     Box, Typography, Chip, Divider, Table, TableBody,
     TableCell, TableHead, TableRow, Collapse, IconButton,
@@ -167,6 +167,10 @@ const ApiKeyPanel = () => {
     const [loading, setLoading] = useState(false);
     const [show, setShow] = useState(false);
 
+    useEffect(() => {
+        setApiKey(user?.apiKey || '');
+    }, [user?.apiKey]);
+
     const generate = async () => {
         setLoading(true);
         try {
@@ -186,10 +190,11 @@ const ApiKeyPanel = () => {
         enqueueSnackbar('API key copied!', { variant: 'success' });
     };
 
-    const persistedMask = user?.apiKeyLast4 ? `Stored securely (ends with ${user.apiKeyLast4})` : '';
     const masked = apiKey
-        ? (show ? apiKey : apiKey.substring(0, 8) + '••••••••••••••••••••••••')
-        : (persistedMask || 'No key generated yet — click Generate');
+        ? (show ? apiKey : apiKey.substring(0, 8) + '...')
+        : (user?.apiKeyLast4
+            ? `Stored key ending with ....${user.apiKeyLast4} - regenerate to view full key`
+            : 'No key generated yet - click Generate');
 
     return (
         <Box sx={{ ...CARD_SX, p: 3, mb: 3 }}>
@@ -345,59 +350,77 @@ const ApiDocsPage = () => {
                             <CodeBlock>{`x-api-key: YOUR_API_KEY`}</CodeBlock>
                             <Divider sx={{ my: 2 }} />
                             <Typography sx={{ fontSize: 12, color: DS.onSurfaceVar }}>
-                                <strong>Base URL (production):</strong> <code style={{ fontFamily: 'monospace', background: DS.surfaceLow, padding: '2px 6px', borderRadius: 4 }}>https://api.target-logistics.com/api</code><br />
+                                <strong>Base URL (production):</strong> <code style={{ fontFamily: 'monospace', background: DS.surfaceLow, padding: '2px 6px', borderRadius: 4 }}>https://3pl-api.mawthook.io/api</code><br />
                                 <strong>Rate limit:</strong> 30 requests/minute per key. Exceeding returns HTTP 429.
                             </Typography>
+                            <Alert severity="info" sx={{ mt: 2, fontSize: 12 }}>
+                                Carrier-backed integrations should quote first, then create the shipment using the returned <code>serviceCode</code>. Manual-mode integrations can create shipments directly with no quote and no carrier booking.
+                            </Alert>
                         </Box>
 
                         {/* Shipments */}
                         <SectionHeader id="shipments" title="Shipments" />
                         <EndpointCard
-                            method="POST" path="/v1/shipments" title="Create Shipment"
-                            description="Creates a new shipment in draft status. Not yet booked with a carrier."
+                            method="POST" path="/v1/shipments" title="Create Carrier Shipment"
+                            description="Creates a carrier-backed shipment for the API key owner. Best practice is to quote first, then create the shipment using the returned serviceCode."
+                            note="Live-verified for a KW → AE route using DGR / P."
                             fields={[
                                 { field: 'sender', type: 'object', required: true, description: 'Origin address — see Address fields below' },
                                 { field: 'receiver', type: 'object', required: true, description: 'Destination address' },
                                 { field: 'parcels', type: 'object[]', required: true, description: 'weight(kg), length, width, height (cm)' },
-                                { field: 'items', type: 'object[]', required: true, description: 'description, quantity, unitValue, currency, countryOfOrigin' },
-                                { field: 'carrierCode', type: 'string', required: false, description: '"DGR" (default) or "DHL"' },
-                                { field: 'serviceCode', type: 'string', required: false, description: 'Service type, e.g. "P" for Express Worldwide' },
+                                { field: 'items', type: 'object[]', required: true, description: 'description, quantity, unitValue, currency, countryOfOrigin, hsCode for customs-declarable carrier shipments' },
+                                { field: 'carrierCode', type: 'string', required: false, description: 'Use the quoted carrier for the selected route' },
+                                { field: 'serviceCode', type: 'string', required: false, description: 'Use the serviceCode returned from /v1/quotes' },
                                 { field: 'shipmentDate', type: 'string', required: false, description: 'ISO 8601 date e.g. "2026-04-10"' },
                                 { field: 'currency', type: 'string', required: false, description: 'Default: "KWD"' },
                             ]}
-                            response={`{\n  "success": true,\n  "data": {\n    "trackingNumber": "DGR-AB12CD34",\n    "status": "draft",\n    "price": 4.500,\n    "currency": "KWD",\n    "carrier": "DGR"\n  }\n}`}
-                            errors={[{ code: 400, msg: 'Validation failed — missing required fields' }, { code: 500, msg: 'Internal server error' }]}
+                            response={`{\n  "success": true,\n  "data": {\n    "trackingNumber": "2042595203",\n    "status": "booked",\n    "carrier": "DGR",\n    "serviceCode": "P",\n    "labelUrl": null,\n    "invoiceUrl": null\n  }\n}`}
+                            errors={[{ code: 400, msg: 'Validation failed - missing fields or unsupported route/service' }, { code: 403, msg: 'Requested carrier or service is not allowed for this API key' }, { code: 500, msg: 'Internal server error' }]}
+                        />
+                        <EndpointCard
+                            method="POST" path="/v1/shipments" title="Create Manual Shipment"
+                            description="Creates an internal manual shipment draft with no carrier quote and no carrier booking. Works only when the API user is assigned to Manual Shipment mode."
+                            note="Live-verified. Response returns carrier MANUAL, serviceCode null, and draft status."
+                            fields={[
+                                { field: 'sender', type: 'object', required: true, description: 'Origin address — see Address fields below' },
+                                { field: 'receiver', type: 'object', required: true, description: 'Destination address' },
+                                { field: 'parcels', type: 'object[]', required: true, description: 'weight(kg), length, width, height (cm)' },
+                                { field: 'items', type: 'object[]', required: true, description: 'Internal/manual contents. hsCode is not required for a pure manual draft.' },
+                                { field: 'reference', type: 'string', required: false, description: 'Your internal order reference' },
+                                { field: 'remarks', type: 'string', required: false, description: 'Internal handling note' },
+                            ]}
+                            response={`{\n  "success": true,\n  "data": {\n    "trackingNumber": "MAN-OYXH39LR",\n    "carrier": "MANUAL",\n    "serviceCode": null,\n    "status": "draft",\n    "price": "0",\n    "currency": "KWD"\n  }\n}`}
+                            errors={[{ code: 400, msg: 'Validation failed - missing required fields' }, { code: 403, msg: 'API key is not assigned to Manual Shipment mode' }]}
                         />
                         <EndpointCard
                             method="PUT" path="/v1/shipments/:trackingNumber" title="Update Shipment"
-                            description="Update shipment details. Only allowed when status is draft, pending, or created."
+                            description="Update shipment details. Allowed while status is draft, pending, booked, exception, or ready_for_pickup."
                             fields={[
                                 { field: 'sender', type: 'object', required: false, description: 'Updated origin address' },
                                 { field: 'receiver', type: 'object', required: false, description: 'Updated destination' },
                                 { field: 'parcels', type: 'object[]', required: false, description: 'Updated parcels' },
                                 { field: 'items', type: 'object[]', required: false, description: 'Updated contents' },
-                                { field: 'serviceCode', type: 'string', required: false, description: 'Service type code' },
                                 { field: 'reference', type: 'string', required: false, description: 'Your internal order reference' },
                                 { field: 'remarks', type: 'string', required: false, description: 'Special handling notes' },
                             ]}
-                            response={`{\n  "success": true,\n  "data": {\n    "trackingNumber": "DGR-AB12CD34",\n    "status": "draft",\n    "price": 5.250,\n    "updatedAt": "2026-04-10T08:30:00.000Z"\n  }\n}`}
+                            response={`{\n  "success": true,\n  "data": {\n    "trackingNumber": "DGR-AB12CD34",\n    "status": "booked",\n    "price": 5.250,\n    "currency": "KWD",\n    "updatedAt": "2026-04-10T08:30:00.000Z"\n  }\n}`}
                             errors={[{ code: 400, msg: 'Cannot update in current status' }, { code: 404, msg: 'Shipment not found' }]}
                         />
 
                         {/* Quotes */}
-                        <SectionHeader id="quotes" title="Quotes" subtitle="Get live rates before creating a shipment." />
+                        <SectionHeader id="quotes" title="Quotes" subtitle="Get live rates before creating a carrier-backed shipment." />
                         <EndpointCard
                             method="POST" path="/v1/quotes" title="Get Rate Quote"
-                            description="Fetch live shipping rates for a given route and parcel size. Rates include your organization's markup. Does not create a shipment."
+                            description="Fetch live shipping rates before creating a carrier-backed shipment. Verified live for a KW → AE route that returned DGR / P."
+                            note="Best practice: quote first, then create the shipment using the returned serviceCode. Do not assume a service like P works for every route."
                             fields={[
                                 { field: 'sender', type: 'object', required: true, description: 'Origin address (countryCode + city minimum)' },
                                 { field: 'receiver', type: 'object', required: true, description: 'Destination address' },
                                 { field: 'parcels', type: 'object[]', required: true, description: 'weight, length, width, height' },
-                                { field: 'items', type: 'object[]', required: true, description: 'Commodity details' },
-                                { field: 'carrierCode', type: 'string', required: false, description: '"DGR" or "DHL"' },
+                                { field: 'items', type: 'object[]', required: true, description: 'Commodity details, including hsCode for customs-declarable carrier quotes' },
                             ]}
-                            response={`{\n  "success": true,\n  "data": [\n    {\n      "serviceName": "EXPRESS WORLDWIDE",\n      "serviceCode": "P",\n      "carrier": "DGR",\n      "totalPrice": 4.500,\n      "currency": "KWD",\n      "estimatedDelivery": "2026-04-11T00:00:00.000Z"\n    }\n  ]\n}`}
-                            errors={[{ code: 500, msg: 'Carrier rate fetch failed' }]}
+                            response={`{\n  "success": true,\n  "data": [\n    {\n      "serviceName": "EXPRESS WORLDWIDE",\n      "serviceCode": "P",\n      "carrier": "DGR",\n      "totalPrice": 18.576,\n      "currency": "KWD"\n    }\n  ]\n}`}
+                            errors={[{ code: 400, msg: 'Requested service is not available for this shipment route/account' }, { code: 403, msg: 'Requested carrier or service is not allowed for this API key' }, { code: 500, msg: 'Carrier rate fetch failed' }]}
                         />
 
                         {/* Address Book */}

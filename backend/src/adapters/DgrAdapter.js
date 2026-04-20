@@ -5,6 +5,8 @@
  */
 
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 const CarrierAdapter = require('./CarrierAdapter');
 const { normalizeShipment } = require('../utils/shipmentNormalizer');
 const { dhlApiKey, dhlApiSecret, dhlAccountNumber, dhlApiUrl } = require('../config/config');
@@ -44,7 +46,7 @@ class DgrAdapter extends CarrierAdapter {
     /**
      * Resolves active credentials based on Multi-tenancy context.
      * @private
-     * @param {Object|null} shipmentData 
+     * @param {Object|null} shipmentData
      * @returns {Promise<Object>} Active configuration object
      * @business_rule Priority: 1. Passed Shipment Org -> 2. RequestContext Store -> 3. System Defaults.
      * @linked_constitution Section 5.1 (BYOC Support)
@@ -55,7 +57,7 @@ class DgrAdapter extends CarrierAdapter {
 
     /**
      * Helper to split address into DHL-compliant 3 lines of 45 chars.
-     * @param {string} fullAddress 
+     * @param {string} fullAddress
      * @returns {Object} { addressLine1, addressLine2, addressLine3 }
      * @performance Uses a while loop with a limit of 3 iterations to prevent runaway recursion.
      */
@@ -114,6 +116,118 @@ class DgrAdapter extends CarrierAdapter {
     }
 
     /**
+     * Safely stringify any object for logs/debug output.
+     * @param {*} value
+     * @returns {string}
+     */
+    safeJson(value) {
+        try {
+            return JSON.stringify(value, null, 2);
+        } catch {
+            return '[Unserializable value]';
+        }
+    }
+
+    /**
+     * Appends a carrier debug log entry to disk.
+     * Production-safe: best effort only.
+     * @param {string} tag
+     * @param {Object} data
+     */
+    appendDebugLog(tag, data = {}) {
+        try {
+            const logEntry =
+                `\n--- [${tag}] ${new Date().toISOString()} ---\n` +
+                Object.entries(data).map(([k, v]) => `${k}: ${typeof v === 'string' ? v : this.safeJson(v)}`).join('\n') +
+                `\n-------------------------------------------\n`;
+
+            fs.appendFileSync(path.join(__dirname, '../../dgr_debug_error.log'), logEntry);
+        } catch (err) {
+            console.error('Failed to write DGR debug log:', err);
+        }
+    }
+
+    /**
+     * Extracts top-level provider message from a DHL error payload.
+     * @param {*} raw
+     * @param {Error|null} fallbackError
+     * @returns {string}
+     */
+    extractTopLevelProviderMessage(raw, fallbackError = null) {
+        if (!raw) return fallbackError?.message || 'Unknown error';
+        if (typeof raw === 'string') return raw;
+
+        return (
+            raw.detail ||
+            raw.message ||
+            raw.description ||
+            raw.title ||
+            raw.error ||
+            fallbackError?.message ||
+            this.safeJson(raw)
+        );
+    }
+
+    /**
+     * Extracts structured detail lines from a DHL error payload.
+     * Handles multiple possible field names because DHL/adapter shapes vary.
+     * @param {*} raw
+     * @returns {string[]}
+     */
+    extractProviderDetailLines(raw) {
+        const candidates =
+            raw?.additionalDetails ||
+            raw?.details ||
+            raw?.errors ||
+            raw?.messages ||
+            [];
+
+        if (!Array.isArray(candidates)) return [];
+
+        return candidates.map((d, index) => {
+            if (typeof d === 'string') return d;
+
+            const field =
+                d?.field ||
+                d?.property ||
+                d?.path ||
+                d?.name ||
+                d?.code ||
+                d?.type ||
+                `Detail ${index + 1}`;
+
+            const message =
+                d?.message ||
+                d?.detail ||
+                d?.description ||
+                d?.reason ||
+                d?.msg ||
+                d?.error ||
+                d?.title ||
+                this.safeJson(d);
+
+            return `${field}: ${message}`;
+        });
+    }
+
+    /**
+     * Builds a user-safe but informative provider error message.
+     * @param {*} errorData
+     * @param {Error|null} fallbackError
+     * @returns {string}
+     */
+    buildProviderErrorMessage(errorData, fallbackError = null) {
+        let detailedMessage = this.extractTopLevelProviderMessage(errorData, fallbackError);
+        const detailLines = this.extractProviderDetailLines(errorData);
+
+        if (detailLines.length > 0) {
+            detailedMessage += ` (Details: ${detailLines.join('; ')})`;
+        }
+
+        return detailedMessage;
+    }
+
+    /**
      * Validates shipment data specifically for DGR carrier.
      * @param {Object} shipment - Normalized Shipment
      * @returns {Promise<Boolean>}
@@ -142,9 +256,11 @@ class DgrAdapter extends CarrierAdapter {
 
         const maxRetries = 7;
         let lastError = null;
+        let lastPayload = null;
 
         for (let offsetDays = 0; offsetDays <= maxRetries; offsetDays++) {
             const payload = this.buildRatePayload(shipment, activeConfig, offsetDays);
+            lastPayload = payload;
 
             try {
                 const res = await axios.post(`${activeConfig.baseUrl}/rates`, payload, {
@@ -181,10 +297,19 @@ class DgrAdapter extends CarrierAdapter {
             }
         }
 
-        const errorData = lastError?.response?.data;
-        const message = errorData ? `DHL API Error: ${JSON.stringify(errorData)}` : lastError?.message || 'Unknown error';
-        const err = new Error(message);
-        err.statusCode = lastError?.response?.status || 500;
+        const errorData = lastError?.response?.data || null;
+        const responseStatus = lastError?.response?.status || 500;
+        const message = this.buildProviderErrorMessage(errorData, lastError);
+
+        this.appendDebugLog('DGR_RATE_ERROR', {
+            Status: responseStatus,
+            AxiosMessage: lastError?.message || '',
+            Payload: lastPayload || {},
+            Response: errorData || {}
+        });
+
+        const err = new Error(`DHL API Error: ${message}`);
+        err.statusCode = responseStatus;
         throw err;
     }
 
@@ -343,7 +468,7 @@ class DgrAdapter extends CarrierAdapter {
         const maxRetries = 7;
         let lastError = null;
         let lastPayload = null;
-        let stripVas = false;   // strips user optional services
+        let stripVas = false; // strips user optional services
         let stripDgVas = false; // strips DG VAS when route doesn't support it
 
         for (let offsetDays = 0; offsetDays <= maxRetries; offsetDays++) {
@@ -356,7 +481,9 @@ class DgrAdapter extends CarrierAdapter {
             lastPayload = payload;
 
             try {
-                const res = await axios.post(`${activeConfig.baseUrl}/shipments`, payload, { headers: this.getAuthHeader(activeConfig) });
+                const res = await axios.post(`${activeConfig.baseUrl}/shipments`, payload, {
+                    headers: this.getAuthHeader(activeConfig)
+                });
 
                 // Audit logging with sanitized documents to prevent DB bloat
                 const sanitized = JSON.parse(JSON.stringify(res.data));
@@ -422,23 +549,17 @@ class DgrAdapter extends CarrierAdapter {
             }
         }
 
-        const errorData = lastError?.response?.data || lastError?.message || 'Unknown error';
+        const errorData = lastError?.response?.data || null;
+        const responseStatus = lastError?.response?.status || 500;
+        const detailedMessage = this.buildProviderErrorMessage(errorData, lastError);
 
-        // Log detailed error to a permanent debug file for better visibility into Additional Details
-        if (process.env.NODE_ENV === 'development') {
-            try {
-                const fs = require('fs');
-                const path = require('path');
-                const logEntry = `\n--- [DGR_ERROR] ${new Date().toISOString()} ---\n` +
-                    `Status: ${lastError?.response?.status}\n` +
-                    `Payload: ${JSON.stringify(lastPayload, null, 2)}\n` +
-                    `Response: ${JSON.stringify(errorData, null, 2)}\n` +
-                    `-------------------------------------------\n`;
-                fs.appendFileSync(path.join(__dirname, '../../dgr_debug_error.log'), logEntry);
-            } catch (err) {
-                console.error('Failed to write to dgr_debug_error.log:', err);
-            }
-        }
+        // Always log raw provider failure server-side
+        this.appendDebugLog('DGR_BOOK_ERROR', {
+            Status: responseStatus,
+            AxiosMessage: lastError?.message || '',
+            Payload: lastPayload || {},
+            Response: errorData || {}
+        });
 
         const { prisma } = require('../config/database');
         await prisma.carrierLog.create({
@@ -446,22 +567,16 @@ class DgrAdapter extends CarrierAdapter {
                 carrierCode: 'DGR',
                 requestType: 'book',
                 requestPayload: lastPayload || {},
-                responsePayload: errorData || {},
-                statusCode: lastError?.response?.status || 500,
+                responsePayload: errorData || { message: lastError?.message || 'Unknown error' },
+                statusCode: responseStatus,
                 durationMs: Date.now() - startTime
             }
         }).catch(e => console.error('CarrierLog Save Failed:', e.message));
 
-        // Construct a more descriptive error message using Additional Details if available
-        let detailedMessage = errorData.detail || JSON.stringify(errorData);
-        if (errorData.additionalDetails) {
-            const extra = errorData.additionalDetails.map(d => `${d.field || 'General'}: ${d.message}`).join('; ');
-            detailedMessage += ` (Details: ${extra})`;
-        }
-
         const providerError = new Error(`DGR Error: ${detailedMessage}`);
-        providerError.statusCode = lastError?.response?.status || 500;
+        providerError.statusCode = responseStatus;
         providerError.isProviderError = true;
+        providerError.rawProviderError = errorData;
         throw providerError;
     }
 

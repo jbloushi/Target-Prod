@@ -4,7 +4,7 @@
  * @returns {Object} NormalizedShipment
  */
 function normalizeShipment(data) {
-    const normalizeAddress = (party) => ({
+    const normalizeAddress = (party = {}) => ({
         company: party.company || party.contactPerson,
         contactPerson: party.contactPerson,
         phone: party.phone,
@@ -31,12 +31,21 @@ function normalizeShipment(data) {
     const items = (data.items || []).map(item => ({
         description: item.description,
         quantity: Number(item.quantity) || 1,
-        value: Number(item.declaredValue) || Number(item.value) || 10,
+
+        // Accept all common client payload names
+        value:
+            Number(item.declaredValue) ||
+            Number(item.value) ||
+            Number(item.unitValue) ||
+            10,
+
         currency: data.currency || item.currency || 'USD',
         netWeight: Number(item.weight) || 0.1,
         hsCode: item.hsCode,
         countryOfOrigin: item.countryOfOrigin,
-        sku: item.sku
+        sku: item.sku,
+        declaredValue: Number(item.declaredValue) || Number(item.value) || Number(item.unitValue) || undefined,
+        unitValue: Number(item.unitValue) || undefined
     }));
 
     const totalDeclaredValue = items.reduce((sum, item) => sum + (item.value * item.quantity), 0);
@@ -50,7 +59,8 @@ function normalizeShipment(data) {
             unit: 'cm'
         },
         description: p.description,
-        type: data.packagingType || 'my_box'
+        type: data.packagingType || 'my_box',
+        reference: p.reference
     }));
 
     // If no parcels, assume 1 package from items (Legacy support)
@@ -84,10 +94,13 @@ function normalizeShipment(data) {
         optionalServices: data.optionalServices, // Preserve optional services (array of codes)
 
         isDocument: data.shipmentType === 'documents' || data.isCustomsDeclarable === false,
+        shipmentType: data.shipmentType,
         incoterm: data.incoterm || 'DAP',
         currency: data.currency || 'USD',
         declaredValue: data.declaredValue || totalDeclaredValue,
         exportReason: data.exportReason || 'Sale',
+        exportReasonType: data.exportReasonType,
+        placeOfIncoterm: data.placeOfIncoterm,
         remarks: data.remarks,
         reference: data.reference || data.sender?.reference,
 
@@ -100,6 +113,14 @@ function normalizeShipment(data) {
         palletCount: data.palletCount,
         packageMarks: data.packageMarks,
         receiverReference: data.receiverReference || data.receiver?.reference,
+        forceInvoice: data.forceInvoice,
+        hsCodeType: data.hsCodeType,
+        shipperAccount: data.shipperAccount,
+        insuredValue: data.insuredValue,
+        senderContractNumber: data.senderContractNumber,
+        receiverContractNumber: data.receiverContractNumber,
+        packagingType: data.packagingType,
+        labelSettings: data.labelSettings,
 
         invoice: {
             number: data.invoice?.number || `INV-${Date.now()}`,
