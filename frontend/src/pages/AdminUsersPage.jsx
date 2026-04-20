@@ -74,7 +74,7 @@ const normalizeShippingAccess = (user = {}) => {
         return { mode: 'manual', carrierCode: 'MANUAL', serviceCode: '', serviceName: 'Manual Shipment' };
     }
 
-    const serviceCode = existing?.serviceCode || user.carrierConfig?.serviceCode || 'P';
+    const serviceCode = existing?.serviceCode || user.carrierConfig?.serviceCode || '';
     const serviceName = existing?.serviceName
         || CARRIER_SERVICE_OPTIONS[carrierCode]?.find(service => service.serviceCode === serviceCode)?.serviceName
         || serviceCode;
@@ -153,7 +153,7 @@ const AdminUsersPage = () => {
         const initialData = user ? { ...user } : {
             role: 'org_agent',
             carrierConfig: { preferredCarrier: 'DGR', traderType: 'business' },
-            shippingAccess: { mode: 'carrier', carrierCode: 'DGR', serviceCode: 'P', serviceName: 'DHL Express Worldwide' },
+            shippingAccess: { mode: 'carrier', carrierCode: 'DGR', serviceCode: '', serviceName: 'Any Available Service' },
             markup: { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 }
         };
 
@@ -192,12 +192,14 @@ const AdminUsersPage = () => {
                 };
             } else if (payload.shippingAccess) {
                 const carrierCode = payload.shippingAccess.carrierCode || 'DGR';
-                const serviceCode = payload.shippingAccess.serviceCode || 'P';
+                const serviceCode = payload.shippingAccess.serviceCode || '';
                 payload.shippingAccess = {
                     mode: 'carrier',
                     carrierCode,
-                    serviceCode,
-                    serviceName: CARRIER_SERVICE_OPTIONS[carrierCode]?.find(service => service.serviceCode === serviceCode)?.serviceName || serviceCode
+                    serviceCode: serviceCode || null,
+                    serviceName: serviceCode
+                        ? (CARRIER_SERVICE_OPTIONS[carrierCode]?.find(service => service.serviceCode === serviceCode)?.serviceName || serviceCode)
+                        : 'Any Available Service'
                 };
             }
 
@@ -250,10 +252,10 @@ const AdminUsersPage = () => {
             }
 
             if (field === 'carrierCode') {
-                const options = CARRIER_SERVICE_OPTIONS[value] || [{ serviceCode: 'P', serviceName: 'Priority' }];
+                const options = CARRIER_SERVICE_OPTIONS[value] || [];
                 next.mode = value === 'MANUAL' ? 'manual' : 'carrier';
-                next.serviceCode = value === 'MANUAL' ? '' : options[0].serviceCode;
-                next.serviceName = value === 'MANUAL' ? 'Manual Shipment' : options[0].serviceName;
+                next.serviceCode = value === 'MANUAL' ? '' : (options[0]?.serviceCode || '');
+                next.serviceName = value === 'MANUAL' ? 'Manual Shipment' : (options[0]?.serviceName || 'Any Available Service');
             }
 
             if (field === 'serviceCode') {
@@ -511,9 +513,10 @@ const AdminUsersPage = () => {
                                     {formData.shippingAccess?.carrierCode !== 'MANUAL' ? (
                                         <Select
                                             label="Assigned Shipment Method"
-                                            value={formData.shippingAccess?.serviceCode || 'P'}
+                                            value={formData.shippingAccess?.serviceCode || ''}
                                             onChange={e => updateShippingAccess('serviceCode', e.target.value)}
                                         >
+                                            <option value="">Any Available Service</option>
                                             {(CARRIER_SERVICE_OPTIONS[formData.shippingAccess?.carrierCode || 'DGR'] || CARRIER_SERVICE_OPTIONS.DGR).map(service => (
                                                 <option key={service.serviceCode} value={service.serviceCode}>
                                                     {service.serviceName}

@@ -113,7 +113,6 @@ const assertRequestedAccessAllowed = (assignedAccess, requested = {}) => {
         return;
     }
 
-    // Only enforce service restriction if a service is explicitly assigned
     if (assignedAccess.serviceCode && requestedService && requestedService !== assignedAccess.serviceCode) {
         const err = new Error(`This account is assigned to ${assignedAccess.serviceName}. Requested service ${requestedService} is not allowed.`);
         err.statusCode = 403;
