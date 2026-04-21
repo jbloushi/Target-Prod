@@ -46,6 +46,42 @@ const formatDate = (timestamp) => {
     };
 };
 
+const toText = (value) => {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string' || typeof value === 'number') return String(value);
+    return '';
+};
+
+const formatAddressObject = (address) => {
+    if (!address || typeof address !== 'object') return '';
+
+    const street = Array.isArray(address.streetLines)
+        ? address.streetLines.filter(Boolean).join(', ')
+        : toText(address.streetLines || address.line1 || address.addressLine1);
+    const city = toText(address.city);
+    const postalCode = toText(address.postalCode);
+    const countryCode = toText(address.countryCode);
+
+    return [street, [city, postalCode].filter(Boolean).join(' '), countryCode]
+        .filter(Boolean)
+        .join(', ');
+};
+
+const formatLocation = (location) => {
+    if (!location) return '';
+    if (typeof location === 'string' || typeof location === 'number') return String(location);
+    if (Array.isArray(location)) return location.map(toText).filter(Boolean).join(', ');
+    if (typeof location !== 'object') return '';
+
+    return (
+        toText(location.formattedAddress)
+        || toText(location.address)
+        || formatAddressObject(location.addressObject)
+        || formatAddressObject(location.address)
+        || formatAddressObject(location)
+    );
+};
+
 // Group events by date
 const groupEventsByDate = (events) => {
     const groups = {};
@@ -132,6 +168,7 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                                 const { time } = formatDate(event.timestamp);
                                 const isFirst = dateIndex === 0 && eventIndex === 0;
                                 const source = event.source === 'carrier' ? 'Global Network' : 'Logistics Center';
+                                const locationText = formatLocation(event.location);
 
                                 return (
                                     <Box
@@ -174,9 +211,9 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                                                 </Typography>
 
                                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 0.5 }}>
-                                                    {(event.location?.address || event.location?.formattedAddress || event.location) && (
+                                                    {locationText && (
                                                         <Typography variant="caption" sx={{ color: 'var(--on-surface-variant, #575c60)', display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                                            {event.location.formattedAddress || event.location.address || event.location}
+                                                            {locationText}
                                                         </Typography>
                                                     )}
                                                     <Box sx={{ width: 4, height: 4, borderRadius: '50%', bgcolor: 'rgba(87, 92, 96, 0.28)' }} />
