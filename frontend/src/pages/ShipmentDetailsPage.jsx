@@ -373,6 +373,36 @@ const EmptyState = styled.div`
     text-align: center;
 `;
 
+const toDisplayText = (value) => {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string' || typeof value === 'number') return String(value);
+    return '';
+};
+
+const normalizePartyAddress = (party = {}) => {
+    const nestedAddress = party.address && typeof party.address === 'object' ? party.address : {};
+    const streetLines = Array.isArray(party.streetLines)
+        ? party.streetLines
+        : Array.isArray(nestedAddress.streetLines)
+            ? nestedAddress.streetLines
+            : [];
+
+    return {
+        ...party,
+        line1: toDisplayText(party.line1 || nestedAddress.line1 || nestedAddress.street || streetLines[0]),
+        line2: toDisplayText(party.line2 || nestedAddress.line2 || streetLines[1]),
+        line3: toDisplayText(party.line3 || nestedAddress.line3 || streetLines[2]),
+        city: toDisplayText(party.city || nestedAddress.city),
+        state: toDisplayText(party.state || nestedAddress.state),
+        postalCode: toDisplayText(party.postalCode || nestedAddress.postalCode),
+        countryCode: toDisplayText(party.countryCode || nestedAddress.countryCode),
+        email: toDisplayText(party.email || nestedAddress.email),
+        phone: toDisplayText(party.phone || nestedAddress.phone),
+        company: toDisplayText(party.company || nestedAddress.company),
+        contactPerson: toDisplayText(party.contactPerson || nestedAddress.contactPerson)
+    };
+};
+
 // --- Main Component ---
 
 const ShipmentDetailsPage = () => {
@@ -427,7 +457,7 @@ const ShipmentDetailsPage = () => {
     // Capability and Status Checks
     const isStaff = ['admin', 'staff', 'manager', 'accounting'].includes(user?.role);
     const isClient = user?.role === 'client';
-    const approvalStatuses = ['pending', 'draft', 'updated', 'ready_for_pickup', 'picked_up'];
+    const approvalStatuses = ['draft', 'pending', 'updated', 'created', 'booked', 'ready_for_pickup', 'picked_up'];
     const clientEditableStatuses = ['draft', 'pending', 'updated'];
     const isManualShipment = shipment && (
         String(shipment.carrierCode || '').toUpperCase() === 'MANUAL'
@@ -435,7 +465,7 @@ const ShipmentDetailsPage = () => {
     );
     const statusEditOptions = shipment ? getAllowedStatusOptions(user, shipment) : [];
     const canEditStatus = statusEditOptions.length > 0;
-    const canManageApproval = canEditStatus && shipment && approvalStatuses.includes(shipment.status);
+    const canManageApproval = isStaff && shipment && approvalStatuses.includes(String(shipment.status || '').toLowerCase());
     const canApprove = canManageApproval && !isManualShipment;
     const canEdit = isClient && shipment && clientEditableStatuses.includes(shipment.status);
 
@@ -770,8 +800,8 @@ const ShipmentDetailsPage = () => {
         await generateWaybillPDF(shipment);
     };
 
-    const sender = shipment.origin || shipment.sender || {};
-    const receiver = shipment.destination || shipment.receiver || {};
+    const sender = normalizePartyAddress(shipment.origin || shipment.sender || {});
+    const receiver = normalizePartyAddress(shipment.destination || shipment.receiver || {});
     const parcels = shipment.parcels || [];
     const items = shipment.items || [];
     const rawDocuments = shipment.documents || [];
