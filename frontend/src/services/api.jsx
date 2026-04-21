@@ -149,9 +149,13 @@ export const shipmentService = {
     }
   },
 
-  getAvailableCarriers: async (userId) => {
+  getAvailableCarriers: async (userId, options = {}) => {
     try {
-      const response = await api.get(`shipments/carriers${userId ? `?userId=${userId}` : ''}`);
+      const params = new URLSearchParams();
+      if (userId) params.set('userId', userId);
+      if (options.scope) params.set('scope', options.scope);
+      const query = params.toString();
+      const response = await api.get(`shipments/carriers${query ? `?${query}` : ''}`);
       return response.data;
     } catch (error) {
       console.error('Error fetching carriers:', error);

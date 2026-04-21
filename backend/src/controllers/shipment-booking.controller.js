@@ -137,6 +137,7 @@ exports.getQuotes = async (req, res) => {
 exports.getAvailableCarriers = async (req, res) => {
     try {
         const carriers = CarrierFactory.getAvailableCarriers();
+        const scope = String(req.query.scope || '').toLowerCase();
         const carrierCodes = carriers.map(c => c.code.toUpperCase());
 
         const currentUser = await prisma.user.findUnique({
@@ -159,6 +160,17 @@ exports.getAvailableCarriers = async (req, res) => {
         const enforceAssignedAccess = shouldEnforceAssignedAccess(req.user, targetUser);
 
         let filteredCarriers;
+        const isAssignmentScope = scope === 'assignment';
+
+        if (isAssignmentScope && isPlatformRole(req.user.role)) {
+            filteredCarriers = carriers.map(c => ({
+                ...c,
+                serviceOptions: getServiceOptions(c.code)
+            }));
+
+            return res.status(200).json({ success: true, data: filteredCarriers });
+        }
+
         if (enforceAssignedAccess) {
             filteredCarriers = carriers
                 .filter(c => c.code.toUpperCase() === assignedAccess.carrierCode)

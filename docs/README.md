@@ -7,6 +7,7 @@ This folder contains maintained product and engineering documentation for Target
 | File | Owner | Update When |
 | --- | --- | --- |
 | [PLATFORM_FEATURES.md](PLATFORM_FEATURES.md) | Product/engineering | Any user role, shipment, carrier, finance, public tracking, API, or platform capability changes. |
+| [CARRIER_ADAPTER_ONBOARDING.md](CARRIER_ADAPTER_ONBOARDING.md) | Engineering | Adding/updating carrier adapters, service labels, or assignment visibility behavior. |
 
 ## Root Docs
 
