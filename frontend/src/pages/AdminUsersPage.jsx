@@ -127,7 +127,7 @@ const AdminUsersPage = () => {
 
     const fetchCarriers = async () => {
         try {
-            const res = await shipmentService.getAvailableCarriers();
+            const res = await shipmentService.getAvailableCarriers(undefined, { scope: 'assignment' });
             setAvailableCarriers(res.data || []);
         } catch (err) {
             console.error(err);
