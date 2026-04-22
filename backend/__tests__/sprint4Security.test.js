@@ -1,9 +1,11 @@
 const request = require('supertest');
 const express = require('express');
-const { prismaMock } = require('./mocks/prisma.mock');
 
 // Mock modules before importing controllers
-jest.mock('../src/config/database', () => ({ prisma: prismaMock }));
+jest.mock('../src/config/database', () => {
+  const { prismaMock } = require('./mocks/prisma.mock');
+  return { prisma: prismaMock };
+});
 
 const app = require('../src/server');
 
