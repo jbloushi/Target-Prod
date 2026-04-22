@@ -65,6 +65,12 @@ function scopeToOrg(req, query) {
         return query;
     }
 
+    // Drivers are scoped to shipments explicitly assigned to them
+    if (role === 'driver') {
+        query.assignedDriverId = id;
+        return query;
+    }
+
     if (isOrgRole(role)) {
         if (organizationId) {
             // Org user with an org → see all shipments for that org
@@ -96,6 +102,11 @@ function canAccessShipment(req, shipment) {
     const { role, organizationId, id } = req.user;
 
     if (isPlatformRole(role)) return true;
+
+    // Drivers can only access shipments assigned to them
+    if (role === 'driver') {
+        return shipment.assignedDriverId === id;
+    }
 
     // Org user: check org match or direct ownership
     if (organizationId && shipment.organizationId) {
