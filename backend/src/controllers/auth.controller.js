@@ -3,6 +3,11 @@ const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
 const { hashPassword, comparePassword, generateUserApiKey } = require('../utils/security');
 
+const isStrongPassword = (password) => {
+    if (!password || password.length < 12) return false;
+    return /[A-Z]/.test(password) && /[0-9]/.test(password) && /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
+};
+
 /**
  * Signs a JWT token for the given user ID
  */
@@ -108,28 +113,39 @@ exports.login = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Please provide email and password' });
         }
 
-        logger.debug(`Attempting login for: ${email}`);
-        
-        // In Prisma, we pull the password explicitly if we want it, 
-        // but here we just find the user.
         const user = await prisma.user.findUnique({
             where: { email: email.toLowerCase() }
         });
 
         if (!user) {
-            logger.warn(`Login failed: No user found for email ${email}`);
             return res.status(401).json({ success: false, error: 'Incorrect email or password' });
         }
 
-        // Compare password using new security utility
+        // Check if account is locked
+        if (user.lockedUntil && user.lockedUntil > new Date()) {
+            return res.status(429).json({ success: false, error: 'Account locked due to too many failed attempts. Try again later.' });
+        }
+
+        // Compare password using security utility
         const isMatch = await comparePassword(password, user.password);
 
         if (!isMatch) {
-            logger.warn(`Login failed: Password mismatch for ${email}`);
+            // Increment failed attempts
+            const newAttempts = user.failedLoginAttempts + 1;
+            const lockUntil = newAttempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
+            await prisma.user.update({
+                where: { id: user.id },
+                data: { failedLoginAttempts: newAttempts, lockedUntil: lockUntil }
+            });
             return res.status(401).json({ success: false, error: 'Incorrect email or password' });
         }
 
-        logger.debug('Password match, creating token...');
+        // Reset failed attempts on successful login
+        await prisma.user.update({
+            where: { id: user.id },
+            data: { failedLoginAttempts: 0, lockedUntil: null }
+        });
+
         createSendToken(user, 200, res);
     } catch (error) {
         logger.error('Login error:', error);
