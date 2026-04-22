@@ -2,6 +2,8 @@
  * Aramex Carrier Adapter (Mock Implementation)
  * Provides simulated rating and booking for development and testing.
  */
+const logger = require('../utils/logger');
+
 class AramexAdapter {
     constructor(config = {}) {
         this.config = config;
@@ -11,10 +13,10 @@ class AramexAdapter {
 
     /**
      * Rate a shipment (Mock)
-     * @param {Object} payload 
+     * @param {Object} payload
      */
     async rate(payload) {
-        console.log('Aramex Mock: Calculating rates for payload:', JSON.stringify(payload, null, 2));
+        logger.debug('Aramex Mock: Calculating rates for shipment');
 
         // Simulate network delay
         await new Promise(resolve => setTimeout(resolve, 800));
@@ -49,10 +51,10 @@ class AramexAdapter {
 
     /**
      * Book/Create a shipment (Mock)
-     * @param {Object} payload 
+     * @param {Object} payload
      */
     async book(payload) {
-        console.log('Aramex Mock: Booking shipment for payload:', JSON.stringify(payload, null, 2));
+        logger.debug('Aramex Mock: Booking shipment');
 
         // Simulate network delay
         await new Promise(resolve => setTimeout(resolve, 1500));

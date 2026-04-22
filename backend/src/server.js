@@ -19,7 +19,7 @@ const app = express();
 app.use((req, res, next) => {
   if (process.env.NODE_ENV === 'development') {
     const rawMsg = `[RAW_REQUEST] ${req.method} ${req.originalUrl || req.url} - CT: ${req.headers['content-type']}`;
-    console.log(rawMsg);
+    logger.debug(rawMsg);
   }
   next();
 });
@@ -197,14 +197,14 @@ const startServer = async () => {
     // Start Express server
     const serverInstance = app.listen(port, () => {
       logger.info(`Server running in ${process.env.NODE_ENV} mode on port ${port}`);
-      
+
       // Signal PM2 that the application is ready
       if (process.send) {
         process.send('ready');
-        console.log('Sent ready signal to PM2');
+        logger.debug('Sent ready signal to PM2');
       }
     });
-    console.log('Called app.listen');
+    logger.debug('Called app.listen');
 
     serverInstance.on('error', (error) => {
       if (error.code === 'EADDRINUSE') {
