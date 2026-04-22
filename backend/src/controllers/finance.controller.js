@@ -63,6 +63,10 @@ exports.getLedger = async (req, res) => {
             organizationId = user.organizationId;
         } else if (orgId) {
             organizationId = orgId === 'none' ? null : orgId;
+            // Log cross-org finance queries by staff/admin (F-17)
+            if (organizationId) {
+                logger.info(`Finance query: user=${req.user.email} (${req.user.role}) queried org=${organizationId}`);
+            }
         }
 
         const parsedLimit = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
