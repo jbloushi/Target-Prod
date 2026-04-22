@@ -319,17 +319,6 @@ exports.getQuotation = async (req, res) => {
         const resolvedCarrierCode = assignedAccess.carrierCode;
         const resolvedServiceCode = serviceCode || assignedAccess.serviceCode || null;
 
-        console.log('QUOTE DEBUG', {
-            requestedCarrierCode: carrierCode || null,
-            requestedServiceCode: serviceCode || null,
-            assignedAccess,
-            finalCarrierCode: resolvedCarrierCode,
-            finalServiceCode: resolvedServiceCode,
-            userId: user?.id,
-            carrierConfig: user?.carrierConfig,
-            agentPolicy: user?.agentPolicy
-        });
-
         const normalized = normalizeShipment(req.body);
         normalized.serviceCode = resolvedServiceCode;
 
