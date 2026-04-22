@@ -224,6 +224,9 @@ exports.getAllShipments = async (req, res) => {
             }
         }
 
+        // 2.5. Exclude soft-deleted shipments
+        where.deletedAt = null;
+
         // 3. Payment Filter
         if (paid !== undefined) {
             const isPaid = paid === 'true' || paid === true;
@@ -340,7 +343,10 @@ exports.deleteShipment = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Cannot delete shipment that is beyond draft/ready status' });
         }
 
-        await prisma.shipment.delete({ where: { id: shipment.id } });
+        await prisma.shipment.update({
+            where: { id: shipment.id },
+            data: { deletedAt: new Date() }
+        });
         return res.status(200).json({ success: true, message: 'Shipment deleted successfully' });
     } catch (error) {
         logger.error('Error deleting shipment:', error);
