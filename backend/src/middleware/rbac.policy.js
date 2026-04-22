@@ -31,6 +31,7 @@ const CAPABILITIES = Object.freeze({
 
     // Driver
     DRIVER_OPS: 'DRIVER_OPS',
+    VIEW_ASSIGNED_SHIPMENTS: 'VIEW_ASSIGNED_SHIPMENTS',
 });
 
 /**
@@ -95,8 +96,8 @@ const ROLE_CAPABILITIES = Object.freeze({
 
     driver: [
         CAPABILITIES.DRIVER_OPS,
-        CAPABILITIES.VIEW_ALL_SHIPMENTS,
         CAPABILITIES.VIEW_OWN_SHIPMENTS,
+        CAPABILITIES.VIEW_ASSIGNED_SHIPMENTS,
     ],
 
     org_manager: [
@@ -121,12 +122,12 @@ const ROLE_CAPABILITIES = Object.freeze({
 /**
  * Roles that can see data across all organizations (platform-level visibility).
  */
-const PLATFORM_ROLES = Object.freeze(['admin', 'accounting', 'manager', 'staff', 'driver']);
+const PLATFORM_ROLES = Object.freeze(['admin', 'accounting', 'manager', 'staff']);
 
 /**
  * Roles scoped to their own organization's data.
  */
-const ORG_ROLES = Object.freeze(['org_manager', 'org_agent', 'client']);
+const ORG_ROLES = Object.freeze(['org_manager', 'org_agent', 'client', 'driver']);
 
 /**
  * Check if a role has a specific capability.
