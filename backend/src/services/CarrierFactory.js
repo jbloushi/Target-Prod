@@ -28,6 +28,11 @@ class CarrierFactory {
     static getAdapter(carrierCode, config = {}) {
         const code = (carrierCode || 'DGR').toUpperCase();
 
+        // Block ARAMEX in production (F-23)
+        if (code === 'ARAMEX' && process.env.NODE_ENV === 'production') {
+            throw new Error('Aramex carrier is not available in production environment');
+        }
+
         switch (code) {
             case 'DGR':
             case 'DHL': // Backward compatibility for any lingering DB refs
