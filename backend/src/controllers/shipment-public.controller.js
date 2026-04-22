@@ -103,11 +103,16 @@ exports.updatePublicLocation = async (req, res) => {
         if (!shipment.allowPublicLocationUpdate) return res.status(403).json({ success: false, error: 'Disabled' });
         if (!coordinates || !Array.isArray(coordinates) || coordinates.length !== 2) return res.status(400).json({ success: false, error: 'Invalid coordinates' });
 
-        const updatedDestination = { 
-            ...shipment.destination, 
-            formattedAddress: address, 
-            longitude: coordinates[0], 
-            latitude: coordinates[1] 
+        const [lng, lat] = coordinates;
+        if (typeof lng !== 'number' || typeof lat !== 'number' || lng < -180 || lng > 180 || lat < -90 || lat > 90) {
+            return res.status(400).json({ success: false, error: 'Coordinates must be valid numbers: longitude [-180, 180], latitude [-90, 90]' });
+        }
+
+        const updatedDestination = {
+            ...shipment.destination,
+            formattedAddress: address,
+            longitude: lng,
+            latitude: lat
         };
 
         const history = Array.isArray(shipment.history) ? shipment.history : [];
