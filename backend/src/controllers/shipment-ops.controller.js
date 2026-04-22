@@ -10,6 +10,7 @@ const path = require('path');
 const fs = require('fs');
 const { SHIPMENT_STATUSES, MANUAL_SHIPMENT_STATUSES } = require('../constants/statusConstants');
 const { canUpdateShipmentStatus, isManualShipment } = require('./shipment.helpers');
+const { canAccessShipment } = require('../middleware/authorize.middleware');
 
 exports.updateShipmentStatus = async (req, res) => {
     try {
@@ -219,10 +220,7 @@ exports.serveDocument = async (req, res) => {
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
-        const isStaff = ['admin', 'staff', 'manager', 'accounting'].includes(user.role);
-        const isMember = user.organizationId && shipment.organizationId && user.organizationId === shipment.organizationId;
-
-        if (!isStaff && !isMember) {
+        if (!canAccessShipment(req, shipment)) {
             return res.status(403).json({ success: false, error: 'Unauthorized to view documents for this shipment' });
         }
 

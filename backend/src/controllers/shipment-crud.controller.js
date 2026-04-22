@@ -7,6 +7,7 @@ const logger = require('../utils/logger');
 const ShipmentDraftService = require('../services/ShipmentDraftService');
 const { handleControllerError } = require('../utils/controllerError');
 const { hasCapability, isPlatformRole } = require('../middleware/rbac.policy');
+const { canAccessShipment } = require('../middleware/authorize.middleware');
 const { MANUAL_SHIPMENT_STATUSES, SHIPMENT_STATUSES } = require('../constants/statusConstants');
 const { syncCarrierTrackingHistory, hasCriticalChanges, canUpdateShipmentStatus, isManualShipment } = require('./shipment.helpers');
 
@@ -154,6 +155,10 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
 
         if (!shipment) {
             return res.status(404).json({ success: false, error: 'Shipment not found' });
+        }
+
+        if (!canAccessShipment(req, shipment)) {
+            return res.status(403).json({ success: false, error: 'Not authorized to access this shipment' });
         }
 
         // Capability checks
@@ -329,9 +334,7 @@ exports.deleteShipment = async (req, res) => {
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
-        const isOwner = shipment.userId === user.id;
-        const isAdminOrStaff = ['admin', 'staff', 'manager', 'accounting'].includes(user.role);
-        if (!isAdminOrStaff && !isOwner) return res.status(403).json({ success: false, error: 'Not authorized' });
+        if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Not authorized' });
 
         if (shipment.status !== 'draft' && shipment.status !== 'ready_for_pickup') {
             return res.status(400).json({ success: false, error: 'Cannot delete shipment that is beyond draft/ready status' });
@@ -362,9 +365,7 @@ exports.updateShipment = async (req, res) => {
         
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
-        const isOwner = shipment.userId === user.id;
-        const isAdminOrStaff = ['admin', 'staff', 'manager', 'accounting'].includes(user.role);
-        if (!isAdminOrStaff && !isOwner) return res.status(403).json({ success: false, error: 'Not authorized' });
+        if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Not authorized' });
 
         const allowedFields = ['destination', 'origin', 'items', 'parcels', 'incoterm', 'currency', 'dangerousGoods', 'serviceCode', 'status', 'allowPublicLocationUpdate'];
         const manualEditableFields = ['price', 'costPrice', 'estimatedDelivery'];
