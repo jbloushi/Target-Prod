@@ -53,13 +53,6 @@ const corsOptions = {
       return callback(null, true);
     }
 
-    // IMPORTANT: wildcard '*' is incompatible with credentials:true in browsers.
-    // When CORS_ORIGIN=* we reflect the actual request origin so credentialed
-    // requests (Authorization, cookies, x-api-key) work correctly.
-    if (corsOrigin === '*') {
-      return callback(null, origin);
-    }
-
     const allowedOrigins = corsOrigin.split(',').map(o => o.trim().replace(/\/$/, ''));
 
     if (allowedOrigins.includes(cleanOrigin)) {
