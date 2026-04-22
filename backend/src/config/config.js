@@ -52,7 +52,14 @@ module.exports = {
   dhlApiKey: process.env.DHL_API_KEY,
   dhlApiSecret: process.env.DHL_API_SECRET,
   dhlAccountNumber: process.env.DHL_ACCOUNT_NUMBER,
-  dhlApiUrl: process.env.DHL_API_URL || 'https://express.api.dhl.com/mydhlapi/test',
+  dhlApiUrl: (() => {
+    // F-26: Require explicit DHL_API_URL; no test URL fallback
+    const url = process.env.DHL_API_URL;
+    if (!url) {
+      throw new Error('DHL_API_URL environment variable is required (e.g., https://express.api.dhl.com/mydhlapi/test or production URL)');
+    }
+    return url;
+  })(),
   googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY,
   googleMapsAutocompleteUrl: process.env.GOOGLE_MAPS_AUTOCOMPLETE_URL || 'https://maps.googleapis.com/maps/api/place/autocomplete/json',
   googleMapsDetailsUrl: process.env.GOOGLE_MAPS_DETAILS_URL || 'https://maps.googleapis.com/maps/api/place/details/json',
