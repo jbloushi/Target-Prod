@@ -129,25 +129,6 @@ class DgrAdapter extends CarrierAdapter {
     }
 
     /**
-     * Appends a carrier debug log entry to disk.
-     * Production-safe: best effort only.
-     * @param {string} tag
-     * @param {Object} data
-     */
-    appendDebugLog(tag, data = {}) {
-        try {
-            const logEntry =
-                `\n--- [${tag}] ${new Date().toISOString()} ---\n` +
-                Object.entries(data).map(([k, v]) => `${k}: ${typeof v === 'string' ? v : this.safeJson(v)}`).join('\n') +
-                `\n-------------------------------------------\n`;
-
-            fs.appendFileSync(path.join(__dirname, '../../dgr_debug_error.log'), logEntry);
-        } catch (err) {
-            console.error('Failed to write DGR debug log:', err);
-        }
-    }
-
-    /**
      * Extracts top-level provider message from a DHL error payload.
      * @param {*} raw
      * @param {Error|null} fallbackError
