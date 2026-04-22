@@ -5,7 +5,7 @@ require('dotenv').config();
  */
 const validateProductionEnv = () => {
   if (process.env.NODE_ENV === 'production') {
-    const required = ['DATABASE_URL', 'JWT_SECRET', 'API_KEY_SECRET', 'ENCRYPTION_KEY', 'DHL_API_KEY', 'DHL_API_SECRET'];
+    const required = ['DATABASE_URL', 'JWT_SECRET', 'API_KEY_SECRET', 'ENCRYPTION_KEY', 'CORS_ORIGIN', 'DHL_API_KEY', 'DHL_API_SECRET'];
     const missing = required.filter(key => !process.env[key]);
 
     if (missing.length > 0) {
@@ -24,6 +24,11 @@ if (!process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET environment variable is required');
 }
 
+// CORS_ORIGIN must be explicitly set; wildcard '*' allows credential theft via CSRF
+if (!process.env.CORS_ORIGIN || process.env.CORS_ORIGIN === '*') {
+  throw new Error('CORS_ORIGIN environment variable is required and must not be "*"');
+}
+
 // Run validation
 if (process.env.NODE_ENV === 'production') {
   validateProductionEnv();
@@ -40,7 +45,7 @@ module.exports = {
   // Security & Authentication
   jwtSecret: process.env.JWT_SECRET,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
-  corsOrigin: process.env.CORS_ORIGIN || '*',
+  corsOrigin: process.env.CORS_ORIGIN,
   frontendUrl: process.env.FRONTEND_URL || 'https://target-logistics.com',
 
   // API Keys (will be validated in adapters)
