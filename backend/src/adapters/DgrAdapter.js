@@ -32,6 +32,39 @@ class DgrAdapter extends CarrierAdapter {
     }
 
     /**
+     * Scrub PII from shipment request before logging (F-20)
+     * @private
+     */
+    scrubPiiFromPayload(payload) {
+        const scrubbed = JSON.parse(JSON.stringify(payload));
+        if (scrubbed.shipmentDetails?.ShipperDetails) {
+            const shipper = scrubbed.shipmentDetails.ShipperDetails;
+            shipper.Name = '[REDACTED]';
+            shipper.CompanyName = '[REDACTED]';
+            shipper.Phone = '[REDACTED]';
+            shipper.Email = '[REDACTED]';
+            if (shipper.Address) {
+                shipper.Address.AddressLine1 = '[REDACTED]';
+                shipper.Address.AddressLine2 = '[REDACTED]';
+                shipper.Address.AddressLine3 = '[REDACTED]';
+            }
+        }
+        if (scrubbed.shipmentDetails?.ReceiverDetails) {
+            const receiver = scrubbed.shipmentDetails.ReceiverDetails;
+            receiver.Name = '[REDACTED]';
+            receiver.CompanyName = '[REDACTED]';
+            receiver.Phone = '[REDACTED]';
+            receiver.Email = '[REDACTED]';
+            if (receiver.Address) {
+                receiver.Address.AddressLine1 = '[REDACTED]';
+                receiver.Address.AddressLine2 = '[REDACTED]';
+                receiver.Address.AddressLine3 = '[REDACTED]';
+            }
+        }
+        return scrubbed;
+    }
+
+    /**
      * Generates Basic Auth header for DHL API.
      * @param {Object} config - The active config containing apiKey and apiSecret
      * @returns {Object} { Authorization, 'content-type' }
@@ -475,7 +508,7 @@ class DgrAdapter extends CarrierAdapter {
                     data: {
                         carrierCode: 'DGR',
                         requestType: 'book',
-                        requestPayload: payload,
+                        requestPayload: this.scrubPiiFromPayload(payload),
                         responsePayload: sanitized,
                         statusCode: res.status,
                         durationMs: Date.now() - startTime
@@ -547,7 +580,7 @@ class DgrAdapter extends CarrierAdapter {
             data: {
                 carrierCode: 'DGR',
                 requestType: 'book',
-                requestPayload: lastPayload || {},
+                requestPayload: lastPayload ? this.scrubPiiFromPayload(lastPayload) : {},
                 responsePayload: errorData || { message: lastError?.message || 'Unknown error' },
                 statusCode: responseStatus,
                 durationMs: Date.now() - startTime
