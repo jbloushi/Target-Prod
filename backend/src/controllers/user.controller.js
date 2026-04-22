@@ -301,8 +301,9 @@ exports.updateUser = async (req, res) => {
  */
 exports.deleteUser = async (req, res) => {
     try {
-        await prisma.user.delete({
-            where: { id: req.params.id }
+        await prisma.user.update({
+            where: { id: req.params.id },
+            data: { active: false }
         });
         res.status(204).json({ success: true, data: null });
     } catch (error) {
