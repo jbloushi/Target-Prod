@@ -188,22 +188,19 @@ describe('Sprint 4 Security Findings', () => {
   describe('Sprint 4 Integration Checks', () => {
     test('all 8 findings are implemented', () => {
       const findings = [
-        { file: 'shipment-public.controller.js', text: 'lng < -180' },
-        { file: 'finance.controller.js', text: 'Finance query' },
-        { file: 'auth.controller.js', text: 'page = 1' },
-        { file: 'auth.controller.js', text: 'res.status(501)' },
-        { file: 'CarrierFactory.js', text: 'NODE_ENV === \'production\'' },
-        { file: 'auth.controller.js', text: 'active: false' },
-        { file: 'config.js', text: 'DHL_API_URL environment variable is required' },
-        { file: 'AramexAdapter.js', text: 'logger.debug' },
+        { path: '../src/controllers/shipment-public.controller.js', text: 'lng < -180' },
+        { path: '../src/controllers/finance.controller.js', text: 'Finance query' },
+        { path: '../src/controllers/auth.controller.js', text: 'page = 1' },
+        { path: '../src/controllers/auth.controller.js', text: 'res.status(501)' },
+        { path: '../src/services/CarrierFactory.js', text: 'NODE_ENV === \'production\'' },
+        { path: '../src/controllers/auth.controller.js', text: 'active: false' },
+        { path: '../src/config/config.js', text: 'DHL_API_URL environment variable is required' },
+        { path: '../src/adapters/AramexAdapter.js', text: 'logger.debug' },
       ];
 
-      findings.forEach(({ file, text }) => {
+      findings.forEach(({ path: filePath, text }) => {
         const source = fs.readFileSync(
-          path.join(__dirname, '../src',
-            file.includes('CarrierFactory') ? 'services/' :
-            file.includes('config') ? 'config/' : 'controllers/',
-            file),
+          path.join(__dirname, filePath),
           'utf-8'
         );
         expect(source).toContain(text);
