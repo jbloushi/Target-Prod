@@ -187,13 +187,12 @@ exports.getMe = async (req, res) => {
  */
 exports.updateProfile = async (req, res) => {
     try {
-        const { name, phone, addresses, carrierConfig } = req.body;
+        const { name, phone, addresses } = req.body;
         const updateData = {};
 
         if (name) updateData.name = name;
         if (phone) updateData.phone = phone;
         if (addresses) updateData.addresses = addresses;
-        if (carrierConfig) updateData.carrierConfig = carrierConfig;
 
         const user = await prisma.user.update({
             where: { id: req.user.id },
