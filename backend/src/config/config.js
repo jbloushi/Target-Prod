@@ -19,6 +19,11 @@ const validateProductionEnv = () => {
   }
 };
 
+// JWT_SECRET is required in all environments — no fallback
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
+
 // Run validation
 if (process.env.NODE_ENV === 'production') {
   validateProductionEnv();
@@ -33,7 +38,7 @@ module.exports = {
   databaseUrl: process.env.DATABASE_URL,
 
   // Security & Authentication
-  jwtSecret: process.env.JWT_SECRET || 'dev-secret-key-change-in-production',
+  jwtSecret: process.env.JWT_SECRET,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   corsOrigin: process.env.CORS_ORIGIN || '*',
   frontendUrl: process.env.FRONTEND_URL || 'https://target-logistics.com',
