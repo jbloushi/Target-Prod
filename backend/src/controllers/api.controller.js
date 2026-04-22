@@ -390,7 +390,14 @@ exports.updateAddress = async (req, res) => {
         const index = addresses.findIndex(a => a.id === id || a.label === id);
         if (index === -1) return res.status(404).json({ success: false, error: 'Not found' });
 
-        addresses[index] = { ...addresses[index], ...req.body };
+        // Whitelist allowed fields — prevent mass assignment
+        const ALLOWED = ['company', 'contactPerson', 'phone', 'email', 'streetLines', 'city', 'postalCode', 'countryCode', 'state', 'taxId', 'vatNumber', 'eoriNumber', 'label'];
+        const updates = {};
+        for (const key of ALLOWED) {
+            if (key in req.body) updates[key] = req.body[key];
+        }
+
+        addresses[index] = { ...addresses[index], ...updates };
 
         await prisma.user.update({
             where: { id: req.user.id },
