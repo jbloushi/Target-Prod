@@ -16,11 +16,23 @@ const { syncCarrierTrackingHistory, hasCriticalChanges, canUpdateShipmentStatus,
  */
 exports.getShipmentStats = async (req, res) => {
     try {
-        const { organizationId } = req.query;
         const where = {};
 
-        if (organizationId) {
-            where.organizationId = organizationId === 'none' ? null : organizationId;
+        // Enforce tenant isolation — mirror the same scoping as getAllShipments
+        let effectiveOrgId;
+        if (isPlatformRole(req.user.role)) {
+            const { organizationId } = req.query;
+            if (organizationId) {
+                where.organizationId = organizationId === 'none' ? null : organizationId;
+                effectiveOrgId = organizationId;
+            }
+        } else {
+            if (req.user.organizationId) {
+                where.organizationId = req.user.organizationId;
+                effectiveOrgId = req.user.organizationId;
+            } else {
+                where.userId = req.user.id;
+            }
         }
 
         // 1. Group by Status
@@ -32,27 +44,34 @@ exports.getShipmentStats = async (req, res) => {
             }
         });
 
-        // 2. Monthly Stats (Last 6 months)
+        // 2. Monthly Stats (Last 6 months) — use parameterised raw SQL
         const sixMonthsAgo = new Date();
         sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-        
+
         let monthlyStats;
-        if (organizationId) {
-            if (organizationId === 'none') {
-                monthlyStats = await prisma.$queryRaw`
-                    SELECT MONTH(createdAt) as month, YEAR(createdAt) as year, COUNT(*) as count
-                    FROM Shipment
-                    WHERE createdAt >= ${sixMonthsAgo} AND organizationId IS NULL
-                    GROUP BY year, month ORDER BY year ASC, month ASC
-                `;
-            } else {
-                monthlyStats = await prisma.$queryRaw`
-                    SELECT MONTH(createdAt) as month, YEAR(createdAt) as year, COUNT(*) as count
-                    FROM Shipment
-                    WHERE createdAt >= ${sixMonthsAgo} AND organizationId = ${organizationId}
-                    GROUP BY year, month ORDER BY year ASC, month ASC
-                `;
-            }
+        if (effectiveOrgId === 'none') {
+            monthlyStats = await prisma.$queryRaw`
+                SELECT MONTH(createdAt) as month, YEAR(createdAt) as year, COUNT(*) as count
+                FROM Shipment
+                WHERE createdAt >= ${sixMonthsAgo} AND organizationId IS NULL
+                GROUP BY year, month ORDER BY year ASC, month ASC
+            `;
+        } else if (effectiveOrgId) {
+            monthlyStats = await prisma.$queryRaw`
+                SELECT MONTH(createdAt) as month, YEAR(createdAt) as year, COUNT(*) as count
+                FROM Shipment
+                WHERE createdAt >= ${sixMonthsAgo} AND organizationId = ${effectiveOrgId}
+                GROUP BY year, month ORDER BY year ASC, month ASC
+            `;
+        } else if (!isPlatformRole(req.user.role)) {
+            // Org user with no org — scope by userId
+            const userId = req.user.id;
+            monthlyStats = await prisma.$queryRaw`
+                SELECT MONTH(createdAt) as month, YEAR(createdAt) as year, COUNT(*) as count
+                FROM Shipment
+                WHERE createdAt >= ${sixMonthsAgo} AND userId = ${userId}
+                GROUP BY year, month ORDER BY year ASC, month ASC
+            `;
         } else {
             monthlyStats = await prisma.$queryRaw`
                 SELECT MONTH(createdAt) as month, YEAR(createdAt) as year, COUNT(*) as count
