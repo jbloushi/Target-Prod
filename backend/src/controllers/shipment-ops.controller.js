@@ -12,16 +12,6 @@ const { SHIPMENT_STATUSES, MANUAL_SHIPMENT_STATUSES } = require('../constants/st
 const { canUpdateShipmentStatus, isManualShipment } = require('./shipment.helpers');
 const { canAccessShipment } = require('../middleware/authorize.middleware');
 
-const esc = (str) => {
-    if (!str) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#x27;');
-};
-
 exports.updateShipmentStatus = async (req, res) => {
     try {
         const { trackingNumber } = req.params;
