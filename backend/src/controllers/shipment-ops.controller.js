@@ -12,6 +12,16 @@ const { SHIPMENT_STATUSES, MANUAL_SHIPMENT_STATUSES } = require('../constants/st
 const { canUpdateShipmentStatus, isManualShipment } = require('./shipment.helpers');
 const { canAccessShipment } = require('../middleware/authorize.middleware');
 
+const esc = (str) => {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#x27;');
+};
+
 exports.updateShipmentStatus = async (req, res) => {
     try {
         const { trackingNumber } = req.params;
@@ -63,17 +73,18 @@ exports.generateLabel = async (req, res) => {
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).send('Shipment not found');
 
-        const html = `<!DOCTYPE html><html><head><title>Label - ${trackingNumber}</title>
+        const html = `<!DOCTYPE html><html><head><title>Label - ${esc(trackingNumber)}</title>
 <style>body{font-family:'Arial',sans-serif;background:#f5f5f5;display:flex;justify-content:center;padding:20px}.label-container{width:400px;height:600px;background:#fff;padding:20px;border:2px solid #000;position:relative}.header{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:20px}.logo{font-size:24px;font-weight:bold;color:#d32f2f}.tracking{font-size:14px;font-weight:bold}.barcode{margin:20px 0;text-align:center;border:1px dashed #ccc;padding:10px}.details{margin-bottom:20px}.section-title{font-size:12px;font-weight:bold;color:#666;text-transform:uppercase;margin-bottom:5px}.address-box{border:1px solid #000;padding:10px;margin-bottom:15px}.address-text{font-size:14px;line-height:1.4}.footer{position:absolute;bottom:20px;left:20px;right:20px;text-align:center;font-size:12px;color:#666}.print-btn{position:fixed;bottom:20px;right:20px;padding:10px 20px;background:#000;color:#fff;border:none;cursor:pointer;border-radius:5px}@media print{body{background:#fff;padding:0}.print-btn{display:none}.label-container{border:none;width:100%;height:100%}}</style></head>
 <body><div class="label-container">
-<div class="header"><div class="logo">TARGET LOGISTICS</div><div class="tracking">TN: ${trackingNumber}</div></div>
-<div class="details"><div class="section-title">From (Sender)</div><div class="address-box"><div class="address-text"><strong>${shipment.origin.contactPerson}</strong><br>${shipment.origin.company ? shipment.origin.company + '<br>' : ''}${shipment.origin.formattedAddress || 'N/A'}<br>${shipment.origin.city}, ${shipment.origin.countryCode}<br>Ph: ${shipment.origin.phone}</div></div>
-<div class="section-title">To (Receiver)</div><div class="address-box"><div class="address-text"><strong>${shipment.destination.contactPerson}</strong><br>${shipment.destination.company ? shipment.destination.company + '<br>' : ''}${shipment.destination.formattedAddress || 'N/A'}<br>${shipment.destination.city}, ${shipment.destination.countryCode}<br>Ph: ${shipment.destination.phone}</div></div></div>
-<div class="barcode"><h3>*${trackingNumber}*</h3><p>Scan for Details</p></div>
-<div class="details"><div class="section-title">Shipment Details</div><p><strong>Status:</strong> ${(shipment.status || '').replace(/_/g, ' ').toUpperCase()}</p><p><strong>Pieces:</strong> ${Array.isArray(shipment.items) ? shipment.items.length : 1} | <strong>Weight:</strong> ${Array.isArray(shipment.items) ? shipment.items.reduce((acc, i) => acc + (i.weight || 0), 0) : 0} kg</p><p><strong>Date:</strong> ${new Date(shipment.createdAt).toLocaleDateString()}</p></div>
-<div class="footer">Thank you for shipping with Target Logistics.<br>Track at: ${config.frontendUrl || 'https://targetlogistics.demo'}</div></div>
+<div class="header"><div class="logo">TARGET LOGISTICS</div><div class="tracking">TN: ${esc(trackingNumber)}</div></div>
+<div class="details"><div class="section-title">From (Sender)</div><div class="address-box"><div class="address-text"><strong>${esc(shipment.origin.contactPerson)}</strong><br>${shipment.origin.company ? esc(shipment.origin.company) + '<br>' : ''}${esc(shipment.origin.formattedAddress || 'N/A')}<br>${esc(shipment.origin.city)}, ${esc(shipment.origin.countryCode)}<br>Ph: ${esc(shipment.origin.phone)}</div></div>
+<div class="section-title">To (Receiver)</div><div class="address-box"><div class="address-text"><strong>${esc(shipment.destination.contactPerson)}</strong><br>${shipment.destination.company ? esc(shipment.destination.company) + '<br>' : ''}${esc(shipment.destination.formattedAddress || 'N/A')}<br>${esc(shipment.destination.city)}, ${esc(shipment.destination.countryCode)}<br>Ph: ${esc(shipment.destination.phone)}</div></div></div>
+<div class="barcode"><h3>*${esc(trackingNumber)}*</h3><p>Scan for Details</p></div>
+<div class="details"><div class="section-title">Shipment Details</div><p><strong>Status:</strong> ${esc((shipment.status || '').replace(/_/g, ' ').toUpperCase())}</p><p><strong>Pieces:</strong> ${Array.isArray(shipment.items) ? shipment.items.length : 1} | <strong>Weight:</strong> ${Array.isArray(shipment.items) ? shipment.items.reduce((acc, i) => acc + (i.weight || 0), 0) : 0} kg</p><p><strong>Date:</strong> ${new Date(shipment.createdAt).toLocaleDateString()}</p></div>
+<div class="footer">Thank you for shipping with Target Logistics.<br>Track at: ${esc(config.frontendUrl || 'https://targetlogistics.demo')}</div></div>
 <button class="print-btn" onclick="window.print()">Print Label</button></body></html>`;
 
+        res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'");
         res.send(html);
     } catch (error) {
         logger.error('Error generating label:', error);
