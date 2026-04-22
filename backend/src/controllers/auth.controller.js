@@ -66,6 +66,7 @@ exports.signup = async (req, res) => {
                     data: {
                         name: organizationName,
                         type: 'BUSINESS',
+                        active: false, // Require admin approval before using (F-25)
                         markup: {
                             type: 'PERCENTAGE',
                             percentageValue: 15,
@@ -160,7 +161,7 @@ exports.login = async (req, res) => {
  * Placeholder for WABA/OTP login
  */
 exports.requestOtp = async (req, res) => {
-    res.status(200).json({ success: true, message: 'OTP sent via WABA (Mocked)' });
+    res.status(501).json({ success: false, error: 'OTP login not yet implemented' });
 };
 
 /**
@@ -241,12 +242,37 @@ exports.generateApiKey = async (req, res) => {
  */
 exports.getAllUsers = async (req, res) => {
     try {
-        const users = await prisma.user.findMany({
-            where: {
-                role: { in: ['org_agent', 'org_manager'] }
+        const { page = 1, limit = 20 } = req.query;
+        const parsedLimit = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
+        const parsedPage = Math.max(parseInt(page) || 1, 1);
+        const skip = (parsedPage - 1) * parsedLimit;
+
+        const [users, total] = await Promise.all([
+            prisma.user.findMany({
+                where: {
+                    role: { in: ['org_agent', 'org_manager'] }
+                },
+                skip,
+                take: parsedLimit,
+                orderBy: { name: 'asc' }
+            }),
+            prisma.user.count({
+                where: {
+                    role: { in: ['org_agent', 'org_manager'] }
+                }
+            })
+        ]);
+
+        res.status(200).json({
+            success: true,
+            data: users,
+            pagination: {
+                total,
+                page: parsedPage,
+                limit: parsedLimit,
+                pages: Math.ceil(total / parsedLimit)
             }
         });
-        res.status(200).json({ success: true, data: users });
     } catch (error) {
         res.status(500).json({ success: false, error: 'Failed to fetch users' });
     }
