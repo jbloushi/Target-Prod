@@ -229,7 +229,7 @@ const BookingCard = ({ clients, selectedClient, onClientChange, availableCarrier
 
 // ─── Right summary panel ──────────────────────────────────────────────────────
 const SummaryPanel = ({
-    sender, receiver, totals, billableWeight, currency,
+    sender, receiver, totals, billableWeight, declaredCurrency, billingCurrency,
     shipmentType, selectedCarrier,
     selectedService, availableServices, onSelectService,
     optionalServicesTotal, estimatedShipmentTotal,
@@ -353,11 +353,11 @@ const SummaryPanel = ({
                                 <>
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                                         <Typography sx={{ fontSize: 12, color: DS.outline, fontFamily: "'Manrope', sans-serif" }}>Carrier Base Rate</Typography>
-                                        <Typography sx={{ fontSize: 12, fontWeight: 700, fontFamily: "'Manrope', sans-serif" }}>{Number(selectedService.basePrice).toFixed(3)} {currency}</Typography>
+                                        <Typography sx={{ fontSize: 12, fontWeight: 700, fontFamily: "'Manrope', sans-serif" }}>{Number(selectedService.basePrice).toFixed(3)} {billingCurrency}</Typography>
                                     </Box>
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                                         <Typography sx={{ fontSize: 12, color: DS.outline, fontFamily: "'Manrope', sans-serif" }}>Markup</Typography>
-                                        <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#d97706', fontFamily: "'Manrope', sans-serif" }}>+{Number(selectedService.markupAmount || 0).toFixed(3)} {currency}</Typography>
+                                        <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#d97706', fontFamily: "'Manrope', sans-serif" }}>+{Number(selectedService.markupAmount || 0).toFixed(3)} {billingCurrency}</Typography>
                                     </Box>
                                     {selectedService.pricingPolicySource && (
                                         <Typography sx={{ fontSize: 10, color: DS.outlineVariant, fontFamily: "'Manrope', sans-serif" }}>
@@ -369,14 +369,23 @@ const SummaryPanel = ({
                             )}
                             <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                                 <Typography sx={{ fontSize: 12, color: DS.outline, fontFamily: "'Manrope', sans-serif" }}>Freight Rate</Typography>
-                                <Typography sx={{ fontSize: 12, fontWeight: 700, fontFamily: "'Manrope', sans-serif" }}>{Number(selectedService.totalPrice || 0).toFixed(3)} {currency}</Typography>
+                                <Typography sx={{ fontSize: 12, fontWeight: 700, fontFamily: "'Manrope', sans-serif" }}>{Number(selectedService.totalPrice || 0).toFixed(3)} {billingCurrency}</Typography>
                             </Box>
                             {optionalServicesTotal > 0 && (
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                                     <Typography sx={{ fontSize: 12, color: DS.outline, fontFamily: "'Manrope', sans-serif" }}>Optional Services</Typography>
-                                    <Typography sx={{ fontSize: 12, fontWeight: 700, fontFamily: "'Manrope', sans-serif" }}>+{optionalServicesTotal.toFixed(3)} {currency}</Typography>
+                                    <Typography sx={{ fontSize: 12, fontWeight: 700, fontFamily: "'Manrope', sans-serif" }}>+{optionalServicesTotal.toFixed(3)} {billingCurrency}</Typography>
                                 </Box>
                             )}
+                        </Stack>
+
+                        <Stack spacing={0.5} sx={{ mb: 2 }}>
+                            <Typography sx={{ fontSize: 11, color: DS.outline, fontFamily: "'Manrope', sans-serif" }}>
+                                Declared Currency: <strong>{declaredCurrency}</strong>
+                            </Typography>
+                            <Typography sx={{ fontSize: 11, color: DS.outline, fontFamily: "'Manrope', sans-serif" }}>
+                                Billing Currency: <strong>{billingCurrency}</strong>
+                            </Typography>
                         </Stack>
 
                         {/* Total */}
@@ -384,7 +393,7 @@ const SummaryPanel = ({
                             <Typography sx={{ ...LABEL_SX, mb: 0, letterSpacing: '0.12em' }}>Estimated Total</Typography>
                             <Typography sx={{ fontSize: 24, fontWeight: 900, color: DS.onSurface, letterSpacing: '-0.04em', lineHeight: 1, fontFamily: "'Manrope', sans-serif" }}>
                                 {estimatedShipmentTotal.toFixed(3)}
-                                <Box component="span" sx={{ fontSize: 12, fontWeight: 700, color: DS.outline, ml: 0.5 }}>{currency}</Box>
+                                <Box component="span" sx={{ fontSize: 12, fontWeight: 700, color: DS.outline, ml: 0.5 }}>{billingCurrency}</Box>
                             </Typography>
                         </Box>
                     </>
@@ -464,7 +473,7 @@ const SummaryPanel = ({
 };
 
 // ─── Review content ───────────────────────────────────────────────────────────
-const ReviewContent = ({ sender, receiver, parcels, items, currency }) => {
+const ReviewContent = ({ sender, receiver, parcels, items, declaredCurrency, billingCurrency }) => {
     const s = formatPartyAddress(sender);
     const r = formatPartyAddress(receiver);
     return (
@@ -492,6 +501,18 @@ const ReviewContent = ({ sender, receiver, parcels, items, currency }) => {
                     </Grid>
                 ))}
             </Grid>
+
+            <Box sx={{ ...CARD_SX, p: 2.5 }}>
+                <Typography sx={{ ...LABEL_SX, mb: 1 }}>Currency Declaration</Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                    <Typography sx={{ fontSize: 13, fontWeight: 700, fontFamily: "'Manrope', sans-serif" }}>
+                        Declared Currency: {declaredCurrency}
+                    </Typography>
+                    <Typography sx={{ fontSize: 13, fontWeight: 700, color: DS.primary, fontFamily: "'Manrope', sans-serif" }}>
+                        Billing Currency: {billingCurrency}
+                    </Typography>
+                </Stack>
+            </Box>
 
             <Box sx={{ ...CARD_SX, overflow: 'hidden' }}>
                 <TableContainer>
@@ -536,7 +557,7 @@ const ReviewContent = ({ sender, receiver, parcels, items, currency }) => {
                                         <TableCell sx={{ fontSize: 13, fontFamily: "'Manrope', sans-serif" }}>{item.countryOfOrigin || '—'}</TableCell>
                                         <TableCell sx={{ fontSize: 13, fontFamily: "'Manrope', sans-serif" }}>{item.quantity}</TableCell>
                                         <TableCell sx={{ fontSize: 13, fontWeight: 700, color: DS.primary, fontFamily: "'Manrope', sans-serif" }}>
-                                            {currency} {Number(item.declaredValue || 0).toFixed(3)}
+                                            {declaredCurrency} {Number(item.declaredValue || 0).toFixed(3)}
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -628,6 +649,8 @@ const ShipmentWizardV2 = () => {
     const [shipmentType,    setShipmentType]    = useState('package');
     const [plannedDate,     setPlannedDate]     = useState(new Date().toISOString().split('T')[0]);
     const [currency,        setCurrency]        = useState('KWD');
+    const [billingCurrency, setBillingCurrency] = useState('KWD');
+    const [insuredValue,    setInsuredValue]    = useState('');
     const [errors,          setErrors]          = useState({});
 
     const [selectedService,               setSelectedService]               = useState({ serviceName: '', serviceCode: '', totalPrice: '0', currency: 'KWD' });
@@ -718,7 +741,7 @@ const ShipmentWizardV2 = () => {
             deliveryDate:        s.deliveryDate,
         });
         setAvailableOptionalServices(s.optionalServices || []);
-        setCurrency(s.currency);
+        setBillingCurrency(s.billingCurrency || s.currency || 'KWD');
     };
 
     const fetchRates = async () => {
@@ -729,6 +752,7 @@ const ShipmentWizardV2 = () => {
                 sender, receiver, parcels, items,
                 shipmentType,
                 plannedDate,
+                currency,
                 ...(shouldSendCarrierSelection ? {
                     carrierCode: selectedCarrier,
                     serviceCode: selectedService.serviceCode || undefined,
@@ -765,6 +789,13 @@ const ShipmentWizardV2 = () => {
         if (step === 1) {
             parcels.forEach((p, i) => { if (!p.weight) errs[`parcel${i}weight`] = 'Required'; });
         }
+        if (step === 2) {
+            const insuranceSelected = selectedOptionalServiceCodes.includes('II');
+            const effectiveInsuredValue = Number(insuredValue || totals.declaredValue || 0);
+            if (insuranceSelected && effectiveInsuredValue <= 0) {
+                errs.insuredValue = 'Insurance value must be greater than 0 when insurance service (II) is selected.';
+            }
+        }
         setErrors(errs);
         return Object.keys(errs).length === 0;
     };
@@ -789,6 +820,10 @@ const ShipmentWizardV2 = () => {
                 parcels, items, sender, receiver,
                 totalPrice:  estimatedShipmentTotal,
                 currency,
+                billingCurrency,
+                insuredValue: selectedOptionalServiceCodes.includes('II')
+                    ? Number(insuredValue || totals.declaredValue || 0)
+                    : undefined,
                 shipmentType,
                 incoterm,
                 pickupRequired,
@@ -890,7 +925,11 @@ const ShipmentWizardV2 = () => {
                                 prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]
                             )
                         }
-                        currency={currency} errors={errors}
+                        declaredCurrency={currency}
+                        billingCurrency={billingCurrency}
+                        insuredValue={insuredValue || (selectedOptionalServiceCodes.includes('II') ? Number(totals.declaredValue || 0).toFixed(3) : '')}
+                        setInsuredValue={setInsuredValue}
+                        errors={errors}
                         estimatedShipmentCost={Number(selectedService.totalPrice || 0)}
                         optionalServicesTotal={optionalServicesTotal}
                         estimatedShipmentTotal={estimatedShipmentTotal}
@@ -902,7 +941,8 @@ const ShipmentWizardV2 = () => {
                     <ReviewContent
                         sender={sender} receiver={receiver}
                         parcels={parcels} items={items}
-                        currency={currency}
+                        declaredCurrency={currency}
+                        billingCurrency={billingCurrency}
                     />
                 );
             default:
@@ -978,7 +1018,8 @@ const ShipmentWizardV2 = () => {
                                 receiver={receiver}
                                 totals={totals}
                                 billableWeight={billableWeight}
-                                currency={currency}
+                                declaredCurrency={currency}
+                                billingCurrency={billingCurrency}
                                 shipmentType={shipmentType}
                                 selectedCarrier={selectedCarrier}
                                 selectedService={selectedService}
