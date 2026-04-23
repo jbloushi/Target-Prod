@@ -118,6 +118,8 @@ exports.getQuotes = async (req, res) => {
                 totalPrice: estimatedShipmentCost,
                 estimatedShipmentCost,
                 optionalServices,
+                declaredCurrency: req.body.currency || quote.currency || 'KWD',
+                billingCurrency: quote.currency || 'KWD',
                 currency: quote.currency || 'KWD',
                 pricingPolicySource: policySource,
                 basePrice: basePrice,

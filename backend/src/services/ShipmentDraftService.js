@@ -56,6 +56,10 @@ class ShipmentDraftService {
         // 3. Rate Shopping & Pricing Snapshot
         const serviceCode = isManualShipment ? null : (cleanData.serviceCode || 'P');
         logger.debug(`ShipmentDraftService: Creating draft for user ${targetUserId}, service ${serviceCode}`);
+        const selectedOptionalCodes = new Set((cleanData.optionalServiceCodes || []).map(code => String(code).toUpperCase()));
+        if (selectedOptionalCodes.has('II') && Number(cleanData.insuredValue || 0) <= 0) {
+            throw new Error('Insurance service (II) requires insuredValue > 0.');
+        }
 
         let snapshot;
         const needsCarrier = !isManualShipment && (cleanData.carrierCode === 'DGR' || cleanData.carrierCode === 'DHL' || !cleanData.carrierCode) && serviceCode;
@@ -111,7 +115,8 @@ class ShipmentDraftService {
                     palletCount: cleanData.palletCount || 0,
                     packageMarks: cleanData.packageMarks || '',
                     labelSettings: cleanData.labelSettings || { format: 'pdf' },
-                    dangerousGoods: cleanData.dangerousGoods || { contains: false }
+                    dangerousGoods: cleanData.dangerousGoods || { contains: false },
+                    insuredValue: cleanData.insuredValue || null
                 },
                 destination: cleanData.destination,
                 currentLocation: cleanData.origin,
@@ -223,6 +228,8 @@ class ShipmentDraftService {
             quote.currency,
             source
         );
+        snapshot.billingCurrency = quote.currency || 'KWD';
+        snapshot.declaredCurrency = data.currency || quote.currency || 'KWD';
 
         snapshot.optionalServices = optionalServices;
         snapshot.optionalServicesTotal = Number(optionalServicesTotal.toFixed(3));
