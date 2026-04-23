@@ -753,6 +753,10 @@ const ShipmentWizardV2 = () => {
                 shipmentType,
                 plannedDate,
                 currency,
+                optionalServiceCodes: selectedOptionalServiceCodes,
+                insuredValue: selectedOptionalServiceCodes.includes('II')
+                    ? Number(insuredValue || totals.declaredValue || 0)
+                    : undefined,
                 ...(shouldSendCarrierSelection ? {
                     carrierCode: selectedCarrier,
                     serviceCode: selectedService.serviceCode || undefined,
@@ -776,6 +780,19 @@ const ShipmentWizardV2 = () => {
             setFetchingRates(false);
         }
     };
+
+    useEffect(() => {
+        if (activeStep !== 2) return;
+        if (!selectedOptionalServiceCodes.includes('II')) return;
+        const effectiveInsuredValue = Number(insuredValue || totals.declaredValue || 0);
+        if (effectiveInsuredValue <= 0) return;
+
+        const timer = setTimeout(() => {
+            fetchRates();
+        }, 350);
+
+        return () => clearTimeout(timer);
+    }, [activeStep, insuredValue, totals.declaredValue, currency, selectedOptionalServiceCodes.join('|')]);
 
     const validateStep = (step) => {
         const errs = {};

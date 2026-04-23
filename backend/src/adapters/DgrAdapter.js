@@ -318,6 +318,16 @@ class DgrAdapter extends CarrierAdapter {
      * @business_rule plannedShippingDateAndTime is forced to 10:00 AM next day to avoid DHL '996' errors for same-day past-time requests.
      */
     buildRatePayload(shipment, activeConfig = this.config, offsetDays = 0) {
+        const selectedOptionalCodes = (shipment.optionalServiceCodes || shipment.optionalServices || [])
+            .map((entry) => (typeof entry === 'string' ? entry : (entry?.serviceCode || entry?.code || '')))
+            .map((code) => String(code).toUpperCase())
+            .filter(Boolean);
+
+        const computedInsuredVal = Number(shipment.insuredValue || shipment.items?.reduce(
+            (sum, item) => sum + (Number(item.value || 0) * Number(item.quantity || 1)),
+            0
+        ) || 0);
+
         return {
             customerDetails: {
                 shipperDetails: this.buildPartyDetails(shipment.sender),
@@ -354,12 +364,27 @@ class DgrAdapter extends CarrierAdapter {
                     value: Number(shipment.declaredValue || 1),
                     currency: (shipment.currency || 'KWD').substring(0, 3).toUpperCase()
                 }];
-                const insuredVal = Number(shipment.items?.reduce((sum, item) => sum + (Number(item.value || 0) * Number(item.quantity || 1)), 0) || 0);
-                if (insuredVal > 0) {
-                    amounts.push({ typeCode: 'insuredValue', value: insuredVal, currency: (shipment.currency || 'KWD').substring(0, 3).toUpperCase() });
+                if (computedInsuredVal > 0) {
+                    amounts.push({ typeCode: 'insuredValue', value: computedInsuredVal, currency: (shipment.currency || 'KWD').substring(0, 3).toUpperCase() });
                 }
                 return amounts;
             })(),
+            valueAddedServices: selectedOptionalCodes.length > 0
+                ? selectedOptionalCodes
+                    .map((code) => {
+                        if (code === 'II') {
+                            const insuranceValue = Number(computedInsuredVal || shipment.declaredValue || 0);
+                            if (insuranceValue <= 0) return null;
+                            return {
+                                serviceCode: code,
+                                value: insuranceValue,
+                                currency: (shipment.currency || 'KWD').substring(0, 3).toUpperCase()
+                            };
+                        }
+                        return { serviceCode: code };
+                    })
+                    .filter(Boolean)
+                : undefined,
             requestAllValueAddedServices: false,
             returnStandardProductsOnly: true,
             nextBusinessDay: false,
