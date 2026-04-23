@@ -108,8 +108,28 @@ exports.getQuotes = async (req, res) => {
             const optionalServices = (quote.optionalServices || []).map(service => ({
                 serviceCode: service.serviceCode,
                 serviceName: service.serviceName,
-                totalPrice: Number(Number(service.totalPrice || 0).toFixed(3)),
-                currency: service.currency || quote.currency || 'KWD'
+                ...(() => {
+                    const carrierAmount = Number(Number(service.totalPrice || 0).toFixed(3));
+                    const currency = service.currency || quote.currency || 'KWD';
+                    const { markup: optionalMarkup, source: optionalMarkupSource } =
+                        PricingService.resolveOptionalServiceMarkup(targetUser, targetUser.organization, carrierCode, service.serviceCode);
+                    if (!optionalMarkup) {
+                        return {
+                            totalPrice: carrierAmount,
+                            carrierAmount,
+                            markupAmount: 0,
+                            currency
+                        };
+                    }
+                    const optionalCalc = PricingService.calculateFinalPrice(carrierAmount, optionalMarkup, currency);
+                    return {
+                        totalPrice: Number(optionalCalc.finalPrice.toFixed(3)),
+                        carrierAmount,
+                        markupAmount: Number(optionalCalc.markupAmount.toFixed(3)),
+                        markupPolicySource: optionalMarkupSource,
+                        currency
+                    };
+                })()
             }));
 
             const estimatedShipmentCost = Number(calculation.finalPrice.toFixed(3));
@@ -118,6 +138,8 @@ exports.getQuotes = async (req, res) => {
                 totalPrice: estimatedShipmentCost,
                 estimatedShipmentCost,
                 optionalServices,
+                declaredCurrency: req.body.currency || quote.currency || 'KWD',
+                billingCurrency: quote.currency || 'KWD',
                 currency: quote.currency || 'KWD',
                 pricingPolicySource: policySource,
                 basePrice: basePrice,

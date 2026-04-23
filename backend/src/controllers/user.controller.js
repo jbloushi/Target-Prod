@@ -4,7 +4,7 @@ const { handleControllerError } = require('../utils/controllerError');
 const { hashPassword } = require('../utils/security');
 const { normalizeShippingAccess } = require('../services/shippingAccess.service');
 
-const buildAgentPolicy = (existingPolicy = {}, { markup, shippingAccess } = {}) => {
+const buildAgentPolicy = (existingPolicy = {}, { markup, shippingAccess, optionalServiceMarkup } = {}) => {
     const nextPolicy = { ...(existingPolicy || {}) };
 
     if (markup !== undefined) {
@@ -16,6 +16,13 @@ const buildAgentPolicy = (existingPolicy = {}, { markup, shippingAccess } = {}) 
         nextPolicy.shippingAccess = normalizedAccess;
         nextPolicy.allowedCarriers = [normalizedAccess.carrierCode];
         nextPolicy.serviceCode = normalizedAccess.serviceCode;
+    }
+
+    if (optionalServiceMarkup !== undefined) {
+        nextPolicy.optionalServiceMarkup = {
+            ...(nextPolicy.optionalServiceMarkup || {}),
+            ...(optionalServiceMarkup || {})
+        };
     }
 
     return nextPolicy;
@@ -72,6 +79,7 @@ exports.getUsers = async (req, res) => {
         const mappedUsers = users.map(u => ({
             ...u,
             markup: u.agentPolicy?.markupOverride || { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 },
+            optionalServiceMarkup: u.agentPolicy?.optionalServiceMarkup || {},
             creditLimit: u.organization?.creditLimit !== undefined ? u.organization.creditLimit : (u.creditLimit || 0)
         }));
 
@@ -106,6 +114,7 @@ exports.createUser = async (req, res) => {
             organization,
             carrierConfig,
             markup,
+            optionalServiceMarkup,
             creditLimit,
             shippingAccess
         } = req.body;
@@ -137,7 +146,7 @@ exports.createUser = async (req, res) => {
                     preferredCarrier: normalizedShippingAccess.carrierCode,
                     serviceCode: normalizedShippingAccess.serviceCode
                 },
-                agentPolicy: buildAgentPolicy({}, { markup, shippingAccess: normalizedShippingAccess }),
+                agentPolicy: buildAgentPolicy({}, { markup, shippingAccess: normalizedShippingAccess, optionalServiceMarkup }),
                 creditLimit: creditLimit !== undefined ? Number(creditLimit) : undefined,
                 ...(targetOrgId ? { organization: { connect: { id: targetOrgId } } } : {})
             }
@@ -168,6 +177,7 @@ exports.getMe = async (req, res) => {
         const mappedUser = {
             ...user,
             markup: user.agentPolicy?.markupOverride || { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 },
+            optionalServiceMarkup: user.agentPolicy?.optionalServiceMarkup || {},
             creditLimit: user.organization?.creditLimit !== undefined ? user.organization.creditLimit : (user.creditLimit || 0)
         };
 
@@ -222,7 +232,7 @@ exports.updateProfile = async (req, res) => {
 exports.updateUser = async (req, res) => {
     try {
         const userId = req.params.id;
-        const { name, email, phone, role, organizationId, organization, carrierConfig, markup, creditLimit, shippingAccess } = req.body;
+        const { name, email, phone, role, organizationId, organization, carrierConfig, markup, optionalServiceMarkup, creditLimit, shippingAccess } = req.body;
 
         const targetOrgId = organizationId || organization;
 
@@ -258,9 +268,10 @@ exports.updateUser = async (req, res) => {
             };
         }
 
-        if (markup !== undefined || normalizedShippingAccess) {
+        if (markup !== undefined || optionalServiceMarkup !== undefined || normalizedShippingAccess) {
             updateData.agentPolicy = buildAgentPolicy(existingUser.agentPolicy, {
                 markup,
+                optionalServiceMarkup,
                 shippingAccess: normalizedShippingAccess || undefined
             });
         }

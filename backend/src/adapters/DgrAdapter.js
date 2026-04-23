@@ -423,8 +423,9 @@ class DgrAdapter extends CarrierAdapter {
             let price = item.price || item.chargeAmount || 0;
             let currency = item.currency || item.currencyType || item.chargeCurrencyCode || defaultCurrency;
             if (typeof price === 'object') {
-                price = price.amount || price.value || 0;
-                currency = price.currency || currency;
+                const priceObj = price;
+                price = priceObj.amount || priceObj.value || 0;
+                currency = priceObj.currency || currency;
             }
             return { price: Number(price), currency };
         };

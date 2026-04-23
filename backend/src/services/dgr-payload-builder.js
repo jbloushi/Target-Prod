@@ -435,10 +435,11 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
         // Insurance ('II') requires insuredValue and currency
         if (code === 'II') {
             const insuredValue = order.insuredValue || order.declaredValue || 0;
-            if (insuredValue > 0) {
-                vas.value = Number(insuredValue);
-                vas.currency = order.currency || 'KWD';
+            if (insuredValue <= 0) {
+                throw new Error('Insurance service (II) requires insuredValue > 0.');
             }
+            vas.value = Number(insuredValue);
+            vas.currency = order.currency || 'KWD';
         }
 
         return vas;

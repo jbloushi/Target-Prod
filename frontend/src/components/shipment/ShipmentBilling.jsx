@@ -37,7 +37,10 @@ const ShipmentBilling = ({
     optionalServicesTotal = 0,
     estimatedShipmentTotal = 0,
     deliveryDate = null,
-    currency = 'KWD',
+    declaredCurrency = 'KWD',
+    billingCurrency = 'KWD',
+    insuredValue = '',
+    setInsuredValue,
     errors = {}
 }) => {
     const theme = useTheme();
@@ -47,6 +50,54 @@ const ShipmentBilling = ({
     if (signatureName.length > LIMITS.signatureName) warnings.push(`Signature Name exceeds ${LIMITS.signatureName} characters.`);
     if (signatureTitle.length > LIMITS.signatureTitle) warnings.push(`Signature Title exceeds ${LIMITS.signatureTitle} characters.`);
     if (shipperAccount.length > LIMITS.shipperAccount) warnings.push(`Shipper Account exceeds ${LIMITS.shipperAccount} characters.`);
+
+    const recommendedServices = availableOptionalServices.filter((service) => {
+        const name = String(service.serviceName || '').toLowerCase();
+        const code = String(service.serviceCode || '').toUpperCase();
+        return code === 'II' || name.includes('insur') || name.includes('sign');
+    });
+    const paidServices = availableOptionalServices.filter((service) => {
+        const code = String(service.serviceCode || '').toUpperCase();
+        return Number(service.totalPrice || 0) > 0 && !recommendedServices.some((r) => r.serviceCode === code);
+    });
+    const includedServices = availableOptionalServices.filter((service) => {
+        const code = String(service.serviceCode || '').toUpperCase();
+        return Number(service.totalPrice || 0) === 0 && !recommendedServices.some((r) => r.serviceCode === code);
+    });
+
+    const insuranceSelected = selectedOptionalServiceCodes.includes('II');
+    const insuranceAmount = Number(insuredValue || 0);
+
+    const renderServiceRow = (service) => {
+        const checked = selectedOptionalServiceCodes.includes(service.serviceCode);
+        return (
+            <Box
+                key={service.serviceCode}
+                onClick={() => onToggleOptionalService?.(service.serviceCode)}
+                sx={{
+                    p: 2,
+                    borderRadius: 4,
+                    bgcolor: checked ? alpha(theme.palette.primary.main, 0.05) : 'surface-container-high',
+                    border: '1px solid',
+                    borderColor: checked ? 'primary.main' : 'transparent',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    transition: 'var(--transition-base)',
+                    '&:hover': { bgcolor: 'surface-container' }
+                }}
+            >
+                <Checkbox checked={checked} sx={{ mr: 1, color: 'text.disabled' }} />
+                <Box flex={1}>
+                    <Typography variant="body2" fontWeight="800">{service.serviceName}</Typography>
+                    <Typography variant="caption" color="text.secondary">Asset Protection & Operations</Typography>
+                </Box>
+                <Typography variant="body2" fontWeight="800" color="primary.main">
+                    {Number(service.totalPrice || 0) === 0 ? 'Included' : `+${Number(service.totalPrice).toFixed(3)}`}
+                </Typography>
+            </Box>
+        );
+    };
 
     return (
         <Box className="fade-in">
@@ -188,46 +239,42 @@ const ShipmentBilling = ({
                         </Grid>
                         <Grid item>
                             <Typography variant="h5" fontWeight="800" color="primary.main">
-                                {Number(estimatedShipmentTotal).toFixed(3)} <Box component="span" sx={{ fontSize: '0.9rem', opacity: 0.7 }}>{currency}</Box>
+                                {Number(estimatedShipmentTotal).toFixed(3)} <Box component="span" sx={{ fontSize: '0.9rem', opacity: 0.7 }}>{billingCurrency}</Box>
                             </Typography>
                         </Grid>
                     </Grid>
                 </Stack>
 
+                <Alert severity="info" sx={{ mb: 2 }}>
+                    Declared Currency: <strong>{declaredCurrency}</strong> · Billing Currency: <strong>{billingCurrency}</strong>
+                </Alert>
+
                 <Grid container spacing={4}>
                     <Grid item xs={12} lg={7}>
                         {availableOptionalServices.length > 0 ? (
                             <Stack spacing={1.5}>
-                                {availableOptionalServices.filter(s => Number(s.totalPrice || 0) > 0).map((service) => {
-                                    const checked = selectedOptionalServiceCodes.includes(service.serviceCode);
-                                    return (
-                                        <Box
-                                            key={service.serviceCode}
-                                            onClick={() => onToggleOptionalService?.(service.serviceCode)}
-                                            sx={{ 
-                                                p: 2, 
-                                                borderRadius: 4, 
-                                                bgcolor: checked ? alpha(theme.palette.primary.main, 0.05) : 'surface-container-high',
-                                                border: '1px solid',
-                                                borderColor: checked ? 'primary.main' : 'transparent',
-                                                cursor: 'pointer',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                transition: 'var(--transition-base)',
-                                                '&:hover': { bgcolor: 'surface-container' }
-                                            }}
-                                        >
-                                            <Checkbox checked={checked} sx={{ mr: 1, color: 'text.disabled' }} />
-                                            <Box flex={1}>
-                                                <Typography variant="body2" fontWeight="800">{service.serviceName}</Typography>
-                                                <Typography variant="caption" color="text.secondary">Asset Protection & Operations</Typography>
-                                            </Box>
-                                            <Typography variant="body2" fontWeight="800" color="primary.main">
-                                                +{Number(service.totalPrice).toFixed(3)}
-                                            </Typography>
-                                        </Box>
-                                    );
-                                })}
+                                <Typography variant="overline" color="text.secondary" fontWeight="800">Section A: Recommended</Typography>
+                                {recommendedServices.length > 0 ? recommendedServices.map(renderServiceRow) : <Typography variant="caption" color="text.secondary">No recommended services for this lane.</Typography>}
+
+                                <Typography variant="overline" color="text.secondary" fontWeight="800" sx={{ mt: 2 }}>Section B: Paid adds</Typography>
+                                {paidServices.length > 0 ? paidServices.map(renderServiceRow) : <Typography variant="caption" color="text.secondary">No paid add-ons returned by DHL rating.</Typography>}
+
+                                <Typography variant="overline" color="text.secondary" fontWeight="800" sx={{ mt: 2 }}>Section C: Included (0.000)</Typography>
+                                {includedServices.length > 0 ? includedServices.map(renderServiceRow) : <Typography variant="caption" color="text.secondary">No included services returned by DHL rating.</Typography>}
+
+                                {insuranceSelected && (
+                                    <TextField
+                                        fullWidth
+                                        size="small"
+                                        type="number"
+                                        label={`Insurance Value (${declaredCurrency})`}
+                                        value={insuredValue}
+                                        onChange={(e) => setInsuredValue?.(e.target.value)}
+                                        inputProps={{ min: 0.001, step: 0.001 }}
+                                        error={insuranceAmount <= 0 || Boolean(errors.insuredValue)}
+                                        helperText={errors.insuredValue || 'Required when insurance (II) is selected. Must be greater than 0.'}
+                                    />
+                                )}
                             </Stack>
                         ) : (
                             <Box sx={{ p: 4, borderRadius: 4, bgcolor: 'surface-container-high', textAlign: 'center' }}>
@@ -256,7 +303,7 @@ const ShipmentBilling = ({
                                 <Box display="flex" justifyContent="space-between" alignItems="center">
                                     <Typography variant="body1" fontWeight="800">Total Calculation</Typography>
                                     <Typography variant="h6" fontWeight="800" color="primary.main">
-                                        {Number(estimatedShipmentTotal).toFixed(3)} {currency}
+                                        {Number(estimatedShipmentTotal).toFixed(3)} {billingCurrency}
                                     </Typography>
                                 </Box>
 
