@@ -101,16 +101,20 @@ exports.getQuotes = async (req, res) => {
             return res.status(400).json({ success: false, error: `Assigned service ${serviceCode} is not available for this shipment.` });
         }
 
+        const requestedCurrency = String(req.body.currency || '').substring(0, 3).toUpperCase();
         const markupQuotes = visibleQuotes.map(quote => {
             const basePrice = Number(quote.totalPrice);
             const calculation = PricingService.calculateFinalPrice(basePrice, markup);
+            const effectiveCurrency = requestedCurrency || quote.currency || 'KWD';
             
             const optionalServices = (quote.optionalServices || []).map(service => ({
                 serviceCode: service.serviceCode,
                 serviceName: service.serviceName,
                 totalPrice: Number(Number(service.totalPrice || 0).toFixed(3)),
-                currency: service.currency || quote.currency || 'KWD'
-            }));
+                currency: service.currency || effectiveCurrency,
+                requiredServiceCodes: service.requiredServiceCodes || service.dependsOn || [],
+                mutuallyExclusiveWith: service.mutuallyExclusiveWith || service.excludedServiceCodes || []
+            })).filter((service) => !/fuel/i.test(`${service.serviceCode || ''} ${service.serviceName || ''}`));
 
             const estimatedShipmentCost = Number(calculation.finalPrice.toFixed(3));
             return {
@@ -118,7 +122,7 @@ exports.getQuotes = async (req, res) => {
                 totalPrice: estimatedShipmentCost,
                 estimatedShipmentCost,
                 optionalServices,
-                currency: quote.currency || 'KWD',
+                currency: effectiveCurrency,
                 pricingPolicySource: policySource,
                 basePrice: basePrice,
                 markupAmount: calculation.markupAmount

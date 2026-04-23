@@ -120,6 +120,14 @@ function validateShipmentForDgr(order) {
         if (requiresCustomsItems && (!item.value || item.value <= 0)) errors.push(`${prefix} Unit Value must be > 0.`);
     });
 
+    const declaredInvoiceTotal = (items || []).reduce((sum, item) => sum + ((Number(item.value || item.declaredValue || 0) || 0) * (Number(item.quantity || 1) || 1)), 0);
+    const insuredValue = Number(order.insuredValue || order.insurance?.amount || 0) || 0;
+    const insuranceCurrency = normalizeCur(order.insurance?.currency || order.currency);
+    const invoiceCurrency = normalizeCur(order.currency);
+    if (insuredValue < 0) errors.push('Insurance: Amount cannot be negative.');
+    if (insuredValue > declaredInvoiceTotal) errors.push('Insurance: Amount must be less than or equal to invoice value.');
+    if (insuredValue > 0 && insuranceCurrency !== invoiceCurrency) errors.push('Insurance: Currency must match invoice currency.');
+
     // DG Validation
     if (dangerousGoods && dangerousGoods.contains) {
         if (!dangerousGoods.code) errors.push('DG: UN Code is required.');
@@ -430,19 +438,21 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
     const userVas = (order.optionalServices || []).map(item => {
         // Handle both string codes ('II') and objects ({ serviceCode: 'II' })
         const code = (typeof item === 'string') ? item : (item?.serviceCode || item?.code);
+        // DHL rule: FF (Fuel Surcharge) is automatically applied in billing and must not be sent as requested VAS.
+        if (!code || /fuel/i.test(String(code)) || String(code).toUpperCase() === 'FF') return null;
         const vas = { serviceCode: code };
 
         // Insurance ('II') requires insuredValue and currency
         if (code === 'II') {
-            const insuredValue = order.insuredValue || order.declaredValue || 0;
+            const insuredValue = order.insuredValue || order.insurance?.amount || 0;
             if (insuredValue > 0) {
                 vas.value = Number(insuredValue);
-                vas.currency = order.currency || 'KWD';
+                vas.currency = normalizeCur(order.insurance?.currency || order.currency || 'KWD');
             }
         }
 
         return vas;
-    }).filter(s => s.serviceCode);
+    }).filter(s => s && s.serviceCode);
 
     // Combine arrays ensuring no duplicates (though unlikely to overlap if handled correctly)
     const valueAddedServices = [...dgVas, ...userVas];

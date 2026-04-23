@@ -12,6 +12,7 @@ const {
 const { isPlatformRole } = require('../middleware/rbac.policy');
 
 class ShipmentDraftService {
+    static SIGNATURE_REQUIRED_FEE = 2.5;
 
     /**
      * Creates a Shipment Draft with Pricing Snapshot.
@@ -36,6 +37,7 @@ class ShipmentDraftService {
 
         // 2. Sanitize & Normalize Data
         const cleanData = this.sanitizePayload(data);
+        this.validateInsuranceInput(cleanData);
         const assignedAccess = getAssignedShippingAccess(targetUser);
         const enforceAssignedAccess = shouldEnforceAssignedAccess(user, targetUser);
 
@@ -111,7 +113,8 @@ class ShipmentDraftService {
                     palletCount: cleanData.palletCount || 0,
                     packageMarks: cleanData.packageMarks || '',
                     labelSettings: cleanData.labelSettings || { format: 'pdf' },
-                    dangerousGoods: cleanData.dangerousGoods || { contains: false }
+                    dangerousGoods: cleanData.dangerousGoods || { contains: false },
+                    signatureRequired: Boolean(cleanData.signatureRequired)
                 },
                 destination: cleanData.destination,
                 currentLocation: cleanData.origin,
@@ -197,12 +200,19 @@ class ShipmentDraftService {
 
         const selectedOptionalCodes = new Set(
             (data.optionalServiceCodes || [])
-                .map(code => String(code))
+                .map(code => String(code || '').toUpperCase())
                 .filter(Boolean)
         );
+        if (Number(data.insuredValue || 0) > 0) {
+            selectedOptionalCodes.add('II');
+        }
 
-        const optionalServices = (quote.optionalServices || [])
-            .filter(service => selectedOptionalCodes.has(service.serviceCode))
+        const availableOptionalServices = (quote.optionalServices || [])
+            .filter(service => !this.isFuelService(service));
+        this.assertOptionalServicesAreDhlValid(availableOptionalServices, Array.from(selectedOptionalCodes));
+
+        const optionalServices = availableOptionalServices
+            .filter(service => selectedOptionalCodes.has(String(service.serviceCode || '').toUpperCase()))
             .map(service => ({
                 serviceCode: service.serviceCode,
                 serviceName: service.serviceName,
@@ -224,12 +234,28 @@ class ShipmentDraftService {
             source
         );
 
-        snapshot.optionalServices = optionalServices;
+        snapshot.optionalServices = optionalServices; // DHL-backed VAS only
         snapshot.optionalServicesTotal = Number(optionalServicesTotal.toFixed(3));
+
+        const signatureRequired = Boolean(data.signatureRequired || data.signature_required);
+        if (signatureRequired) {
+            // Business-only surcharge (NOT a DHL VAS code unless mapped from DHL rating data).
+            snapshot.localSurcharges = [
+                {
+                    code: 'LOCAL_SIGNATURE_REQUIRED',
+                    name: 'Require receiver signature',
+                    totalPrice: Number(ShipmentDraftService.SIGNATURE_REQUIRED_FEE.toFixed(3)),
+                    currency: 'KWD',
+                    pricingSource: 'local_business_rule'
+                }
+            ];
+        }
 
         // Final Total = Snapshot (Base + Markup) + Optional Services
         const baseTotal = new Decimal(snapshot.totalPrice);
-        const finalTotal = baseTotal.plus(optionalServicesTotal);
+        const localSurchargeTotal = Number((snapshot.localSurcharges || []).reduce((sum, s) => sum + Number(s.totalPrice || 0), 0).toFixed(3));
+        snapshot.localSurchargesTotal = localSurchargeTotal;
+        const finalTotal = baseTotal.plus(snapshot.optionalServicesTotal).plus(localSurchargeTotal);
 
         snapshot.estimatedShipmentCost = Number(baseTotal.toFixed(3));
         snapshot.totalPrice = Number(finalTotal.toFixed(3));
@@ -280,7 +306,12 @@ class ShipmentDraftService {
 
         // Map and normalize items
         const rawItems = (legacyItems && legacyItems.length > 0) ? legacyItems : parcels;
-        const currency = data.currency || 'KWD';
+        const currency = String(data.currency || 'KWD').substring(0, 3).toUpperCase();
+        const invoiceValue = (rawItems || []).reduce((sum, item) => {
+            return sum + ((Number(item.declaredValue || item.value || item.unitValue || 0) || 0) * (Number(item.quantity || 1) || 1));
+        }, 0);
+        const insuranceAmount = Number(data.insurance?.amount ?? data.insuredValue ?? 0) || 0;
+        const signatureRequired = Boolean(data.signatureRequired || data.signature_required);
 
         const items = (rawItems || []).map(item => ({
             ...item,
@@ -296,8 +327,110 @@ class ShipmentDraftService {
             shipmentType: this.normalizeShipmentType(data.shipmentType),
             packagingType: data.packagingType || 'user',
             incoterm: data.incoterm || 'DAP',
-            currency
+            currency,
+            invoiceValue,
+            insuredValue: insuranceAmount,
+            insurance: {
+                amount: insuranceAmount,
+                currency: String(data.insurance?.currency || currency).substring(0, 3).toUpperCase()
+            },
+            signatureRequired,
+            optionalServiceCodes: (data.optionalServiceCodes || []).filter((code) => !this.isFuelCode(code))
         };
+    }
+
+    isFuelCode(code) {
+        const normalized = String(code || '').trim().toUpperCase();
+        return ['FUEL', 'FUE', 'FF', 'FS', 'YF'].includes(normalized);
+    }
+
+    isFuelService(service) {
+        return this.isFuelCode(service?.serviceCode) || /fuel/i.test(String(service?.serviceName || ''));
+    }
+
+    validateInsuranceInput(data) {
+        const insuranceAmount = Number(data.insurance?.amount ?? data.insuredValue ?? 0) || 0;
+        const invoiceValue = Number(data.invoiceValue || 0);
+        const insuranceCurrency = String(data.insurance?.currency || data.currency || '').toUpperCase();
+        const invoiceCurrency = String(data.currency || '').toUpperCase();
+
+        if (insuranceAmount < 0) {
+            const err = new Error('Validation Failed: Insurance amount cannot be negative.');
+            err.statusCode = 400;
+            throw err;
+        }
+        if (insuranceAmount > invoiceValue) {
+            const err = new Error('Validation Failed: Insurance amount must be equal to or less than invoice value.');
+            err.statusCode = 400;
+            throw err;
+        }
+        if (insuranceAmount > 0 && insuranceCurrency !== invoiceCurrency) {
+            const err = new Error('Validation Failed: Insurance currency must match invoice currency.');
+            err.statusCode = 400;
+            throw err;
+        }
+    }
+
+    /**
+     * DHL rule guard:
+     * Only VAS codes returned by rating for the selected product should be sent to booking.
+     * Also validates simple dependency/mutual-exclusion metadata when present.
+     */
+    assertOptionalServicesAreDhlValid(availableServices = [], selectedCodes = []) {
+        const normalizedSelected = selectedCodes
+            .map(code => String(code || '').toUpperCase())
+            .filter(code => code && !this.isFuelCode(code));
+        if (normalizedSelected.length === 0) return;
+
+        const availableMap = new Map(
+            availableServices.map(service => [String(service.serviceCode || '').toUpperCase(), service])
+        );
+
+        const unavailableCodes = normalizedSelected.filter(code => !availableMap.has(code));
+        if (unavailableCodes.length > 0) {
+            const err = new Error(`Validation Failed: Optional services not available from DHL rating for this shipment: ${unavailableCodes.join(', ')}`);
+            err.statusCode = 400;
+            throw err;
+        }
+
+        normalizedSelected.forEach(code => {
+            const service = availableMap.get(code);
+            const requiredCodes = this.extractRuleCodes(service, ['dependsOn', 'requiredServiceCodes', 'requiredServiceCode', 'dependentServiceCodes']);
+            const exclusionCodes = this.extractRuleCodes(service, ['mutuallyExclusiveWith', 'excludedServiceCodes', 'incompatibleServiceCodes']);
+
+            const missingRequirements = requiredCodes.filter(reqCode => !normalizedSelected.includes(reqCode));
+            if (missingRequirements.length > 0) {
+                const err = new Error(`Validation Failed: Optional service ${code} requires ${missingRequirements.join(', ')}.`);
+                err.statusCode = 400;
+                throw err;
+            }
+
+            const conflictingCodes = exclusionCodes.filter(exCode => normalizedSelected.includes(exCode));
+            if (conflictingCodes.length > 0) {
+                const err = new Error(`Validation Failed: Optional service ${code} cannot be combined with ${conflictingCodes.join(', ')}.`);
+                err.statusCode = 400;
+                throw err;
+            }
+        });
+    }
+
+    extractRuleCodes(service, keys = []) {
+        const codes = new Set();
+        keys.forEach((key) => {
+            const raw = service?.[key];
+            if (Array.isArray(raw)) {
+                raw.forEach(item => {
+                    const v = typeof item === 'string' ? item : (item?.serviceCode || item?.code || item?.value);
+                    if (v) codes.add(String(v).toUpperCase());
+                });
+            } else if (typeof raw === 'string') {
+                raw.split(',').map(v => v.trim()).filter(Boolean).forEach(v => codes.add(v.toUpperCase()));
+            } else if (raw && typeof raw === 'object') {
+                const v = raw.serviceCode || raw.code || raw.value;
+                if (v) codes.add(String(v).toUpperCase());
+            }
+        });
+        return Array.from(codes);
     }
 
     normalizeShipmentType(shipmentType) {

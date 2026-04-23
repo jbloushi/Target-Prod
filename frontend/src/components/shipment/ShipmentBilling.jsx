@@ -33,6 +33,12 @@ const ShipmentBilling = ({
     availableOptionalServices = [],
     selectedOptionalServiceCodes = [],
     onToggleOptionalService,
+    invoiceValue = 0,
+    insuranceAmount = '',
+    setInsuranceAmount,
+    signatureRequired = false,
+    setSignatureRequired,
+    signatureServiceFee = 0,
     estimatedShipmentCost = 0,
     optionalServicesTotal = 0,
     estimatedShipmentTotal = 0,
@@ -157,6 +163,29 @@ const ShipmentBilling = ({
 
                     <Grid item xs={12} md={6}>
                         <TextField
+                            fullWidth
+                            size="small"
+                            type="number"
+                            label={`Insurance Amount (${currency})`}
+                            value={insuranceAmount}
+                            onChange={(e) => setInsuranceAmount?.(e.target.value)}
+                            error={!!errors.insuranceAmount}
+                            helperText={errors.insuranceAmount || 'Insurance amount must be equal to or less than invoice value'}
+                        />
+                    </Grid>
+                    <Grid item xs={12} md={6} display="flex" alignItems="center" sx={{ pl: 1 }}>
+                        <FormControlLabel
+                            control={<Switch checked={signatureRequired} onChange={(e) => setSignatureRequired?.(e.target.checked)} />}
+                            label={`Require receiver signature (Local fee +${Number(signatureServiceFee || 2.5).toFixed(3)} KWD)`}
+                        />
+                    </Grid>
+                    <Grid item xs={12}>
+                        <Typography variant="caption" color="text.secondary">
+                            Invoice value: {Number(invoiceValue || 0).toFixed(3)} {currency}. Insurance currency must match invoice currency.
+                        </Typography>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                        <TextField
                             fullWidth size="small"
                             label="Custom Carrier Account (Optional)"
                             value={shipperAccount}
@@ -195,10 +224,18 @@ const ShipmentBilling = ({
                 </Stack>
 
                 <Grid container spacing={4}>
+                    {errors.optionalServices && (
+                        <Grid item xs={12}>
+                            <Alert severity="error" variant="outlined">{errors.optionalServices}</Alert>
+                        </Grid>
+                    )}
                     <Grid item xs={12} lg={7}>
                         {availableOptionalServices.length > 0 ? (
                             <Stack spacing={1.5}>
-                                {availableOptionalServices.filter(s => Number(s.totalPrice || 0) > 0).map((service) => {
+                                {availableOptionalServices
+                                    .filter(s => Number(s.totalPrice || 0) > 0)
+                                    .filter(s => !/fuel/i.test(`${s.serviceCode || ''} ${s.serviceName || ''}`))
+                                    .map((service) => {
                                     const checked = selectedOptionalServiceCodes.includes(service.serviceCode);
                                     return (
                                         <Box
@@ -251,6 +288,10 @@ const ShipmentBilling = ({
                                 <Box display="flex" justifyContent="space-between">
                                     <Typography variant="body2">Total Optional Adds</Typography>
                                     <Typography variant="body2" fontWeight="800">{Number(optionalServicesTotal).toFixed(3)}</Typography>
+                                </Box>
+                                <Box display="flex" justifyContent="space-between">
+                                    <Typography variant="body2">Signature Service</Typography>
+                                    <Typography variant="body2" fontWeight="800">{signatureRequired ? `+${Number(signatureServiceFee).toFixed(3)} KWD` : 'Not selected'}</Typography>
                                 </Box>
                                 <Divider sx={{ opacity: 0.5 }} />
                                 <Box display="flex" justifyContent="space-between" alignItems="center">

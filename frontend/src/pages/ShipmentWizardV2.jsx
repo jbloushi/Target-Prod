@@ -628,6 +628,8 @@ const ShipmentWizardV2 = () => {
     const [shipmentType,    setShipmentType]    = useState('package');
     const [plannedDate,     setPlannedDate]     = useState(new Date().toISOString().split('T')[0]);
     const [currency,        setCurrency]        = useState('KWD');
+    const [insuranceAmount, setInsuranceAmount] = useState('');
+    const [signatureRequired, setSignatureRequired] = useState(false);
     const [errors,          setErrors]          = useState({});
 
     const [selectedService,               setSelectedService]               = useState({ serviceName: '', serviceCode: '', totalPrice: '0', currency: 'KWD' });
@@ -656,11 +658,18 @@ const ShipmentWizardV2 = () => {
     }, [parcels, items]);
 
     const billableWeight        = Math.max(totals.actualWeight, totals.volumetricWeight);
+    const signatureServiceFee = signatureRequired ? 2.5 : 0;
     const optionalServicesTotal = selectedOptionalServiceCodes.reduce((acc, code) => {
         const s = availableOptionalServices.find(os => os.serviceCode === code);
         return acc + (Number(s?.totalPrice) || 0);
-    }, 0);
+    }, 0) + signatureServiceFee;
     const estimatedShipmentTotal = Number(selectedService.totalPrice || 0) + optionalServicesTotal;
+
+    useEffect(() => {
+        if (insuranceAmount === '' || insuranceAmount == null) {
+            setInsuranceAmount(Number(totals.declaredValue || 0).toFixed(3));
+        }
+    }, [totals.declaredValue]);
 
     useEffect(() => {
         const load = async () => {
@@ -717,8 +726,7 @@ const ShipmentWizardV2 = () => {
             pricingPolicySource: s.pricingPolicySource,
             deliveryDate:        s.deliveryDate,
         });
-        setAvailableOptionalServices(s.optionalServices || []);
-        setCurrency(s.currency);
+        setAvailableOptionalServices((s.optionalServices || []).filter((svc) => !/fuel/i.test(`${svc.serviceCode || ''} ${svc.serviceName || ''}`)));
     };
 
     const fetchRates = async () => {
@@ -729,6 +737,11 @@ const ShipmentWizardV2 = () => {
                 sender, receiver, parcels, items,
                 shipmentType,
                 plannedDate,
+                currency,
+                insurance: {
+                    amount: insuranceAmount === '' ? null : Number(insuranceAmount),
+                    currency
+                },
                 ...(shouldSendCarrierSelection ? {
                     carrierCode: selectedCarrier,
                     serviceCode: selectedService.serviceCode || undefined,
@@ -764,6 +777,32 @@ const ShipmentWizardV2 = () => {
         }
         if (step === 1) {
             parcels.forEach((p, i) => { if (!p.weight) errs[`parcel${i}weight`] = 'Required'; });
+        }
+        if (step === 2) {
+            const insuranceNumeric = Number(insuranceAmount || 0);
+            if (Number.isNaN(insuranceNumeric) || insuranceNumeric < 0) {
+                errs.insuranceAmount = 'Insurance amount must be a valid positive number';
+            } else if (insuranceNumeric > Number(totals.declaredValue || 0)) {
+                errs.insuranceAmount = 'Insurance amount must be equal to or less than invoice value';
+            }
+            const selectedSet = new Set(selectedOptionalServiceCodes.map(code => String(code || '').toUpperCase()));
+            selectedOptionalServiceCodes.forEach((code) => {
+                const service = availableOptionalServices.find((s) => String(s.serviceCode || '').toUpperCase() === String(code || '').toUpperCase());
+                if (!service) {
+                    errs.optionalServices = `Selected option ${code} is not available for this DHL quote.`;
+                    return;
+                }
+                const required = Array.isArray(service.requiredServiceCodes) ? service.requiredServiceCodes : [];
+                const excluded = Array.isArray(service.mutuallyExclusiveWith) ? service.mutuallyExclusiveWith : [];
+                const missing = required.filter((reqCode) => !selectedSet.has(String(reqCode || '').toUpperCase()));
+                if (missing.length > 0) {
+                    errs.optionalServices = `${code} requires: ${missing.join(', ')}`;
+                }
+                const conflicts = excluded.filter((exCode) => selectedSet.has(String(exCode || '').toUpperCase()));
+                if (conflicts.length > 0) {
+                    errs.optionalServices = `${code} cannot be combined with: ${conflicts.join(', ')}`;
+                }
+            });
         }
         setErrors(errs);
         return Object.keys(errs).length === 0;
@@ -802,6 +841,12 @@ const ShipmentWizardV2 = () => {
                     signatureTitle: signatureTitle || 'Authorized Sender',
                 },
                 optionalServiceCodes: selectedOptionalServiceCodes,
+                insurance: {
+                    amount: insuranceAmount === '' ? null : Number(insuranceAmount),
+                    currency
+                },
+                signature_required: signatureRequired,
+                signatureRequired,
                 ...(shouldSendCarrierSelection ? {
                     carrierCode: selectedCarrier,
                     serviceCode: selectedService.serviceCode,
@@ -891,6 +936,12 @@ const ShipmentWizardV2 = () => {
                             )
                         }
                         currency={currency} errors={errors}
+                        invoiceValue={totals.declaredValue}
+                        insuranceAmount={insuranceAmount}
+                        setInsuranceAmount={setInsuranceAmount}
+                        signatureRequired={signatureRequired}
+                        setSignatureRequired={setSignatureRequired}
+                        signatureServiceFee={signatureServiceFee}
                         estimatedShipmentCost={Number(selectedService.totalPrice || 0)}
                         optionalServicesTotal={optionalServicesTotal}
                         estimatedShipmentTotal={estimatedShipmentTotal}

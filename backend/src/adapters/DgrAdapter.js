@@ -354,9 +354,13 @@ class DgrAdapter extends CarrierAdapter {
                     value: Number(shipment.declaredValue || 1),
                     currency: (shipment.currency || 'KWD').substring(0, 3).toUpperCase()
                 }];
-                const insuredVal = Number(shipment.items?.reduce((sum, item) => sum + (Number(item.value || 0) * Number(item.quantity || 1)), 0) || 0);
+                const insuredVal = Number(shipment.insuredValue || shipment.insurance?.amount || 0);
                 if (insuredVal > 0) {
-                    amounts.push({ typeCode: 'insuredValue', value: insuredVal, currency: (shipment.currency || 'KWD').substring(0, 3).toUpperCase() });
+                    amounts.push({
+                        typeCode: 'insuredValue',
+                        value: insuredVal,
+                        currency: (shipment.insurance?.currency || shipment.currency || 'KWD').substring(0, 3).toUpperCase()
+                    });
                 }
                 return amounts;
             })(),
@@ -438,7 +442,10 @@ class DgrAdapter extends CarrierAdapter {
                 serviceCode: code,
                 serviceName: s.localServiceName || s.serviceName || s.name || s.chargeName || code,
                 totalPrice: Number(price.toFixed(3)),
-                currency: currency
+                currency: currency,
+                // DHL may return dependency/exclusion metadata for VAS; pass through for validation layers.
+                requiredServiceCodes: s.requiredServiceCodes || s.dependentServiceCodes || s.dependsOn || [],
+                mutuallyExclusiveWith: s.mutuallyExclusiveWith || s.excludedServiceCodes || s.incompatibleServiceCodes || []
             });
             seenCodes.add(code);
         };

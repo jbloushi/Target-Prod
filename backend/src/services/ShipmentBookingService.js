@@ -6,6 +6,7 @@ const logger = require('../utils/logger');
 const crypto = require('crypto');
 const financeLedgerService = require('./financeLedger.service');
 const { getAssignedShippingAccess, normalizeCarrier } = require('./shippingAccess.service');
+const ShipmentDraftService = require('./ShipmentDraftService');
 
 class ShipmentBookingService {
 
@@ -91,7 +92,18 @@ class ShipmentBookingService {
             
             // Integrate optional services passed from the controller
             if (optionalServiceCodes && optionalServiceCodes.length > 0) {
-                payload.optionalServices = optionalServiceCodes;
+                const requestedCodes = optionalServiceCodes
+                    .map((code) => String(code || '').toUpperCase())
+                    .filter((code) => code && !/fuel/i.test(code));
+
+                // DHL best-practice: validate requested VAS against current rating/capability response.
+                const bookingQuotes = await adapter.getRates(payload);
+                const selectedQuote = bookingQuotes.find((q) => q.serviceCode === shipment.serviceCode) || bookingQuotes[0];
+                const availableOptionalServices = (selectedQuote?.optionalServices || [])
+                    .filter((service) => !/fuel/i.test(`${service.serviceCode || ''} ${service.serviceName || ''}`));
+
+                ShipmentDraftService.assertOptionalServicesAreDhlValid(availableOptionalServices, requestedCodes);
+                payload.optionalServices = requestedCodes;
             }
 
             carrierResult = await adapter.createShipment(payload, shipment.serviceCode);
