@@ -385,8 +385,8 @@ class DgrAdapter extends CarrierAdapter {
                     })
                     .filter(Boolean)
                 : undefined,
-            requestAllValueAddedServices: false,
-            returnStandardProductsOnly: true,
+            requestAllValueAddedServices: true,
+            returnStandardProductsOnly: selectedOptionalCodes.length === 0,
             nextBusinessDay: false,
             productCode: shipment.serviceCode || undefined,
             packages: (shipment.packages || []).map((pkg) => ({
