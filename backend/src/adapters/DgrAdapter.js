@@ -441,42 +441,97 @@ class DgrAdapter extends CarrierAdapter {
      * Aggregates all optional services/VAS from DHL response.
      */
     extractOptionalServices(product, fallbackCurrency) {
-        const services = [];
-        const seenCodes = new Set();
+        const servicesByCode = new Map();
 
-        const getPrice = (item, defaultCurrency) => {
-            let price = item.price || item.chargeAmount || 0;
-            let currency = item.currency || item.currencyType || item.chargeCurrencyCode || defaultCurrency;
-            if (typeof price === 'object') {
-                const priceObj = price;
-                price = priceObj.amount || priceObj.value || 0;
-                currency = priceObj.currency || currency;
+        const toNumber = (value) => {
+            const num = Number(value);
+            return Number.isFinite(num) ? num : null;
+        };
+
+        const extractCurrency = (item, defaultCurrency) => {
+            const candidates = [
+                item?.currency,
+                item?.currencyCode,
+                item?.priceCurrency,
+                item?.chargeCurrencyCode,
+                defaultCurrency
+            ]
+                .map((c) => String(c || '').trim().toUpperCase())
+                .filter(Boolean);
+            return candidates[0] || String(defaultCurrency || 'KWD').toUpperCase();
+        };
+
+        const extractPrice = (item, defaultCurrency) => {
+            const directAmount =
+                toNumber(item?.price) ??
+                toNumber(item?.chargeAmount) ??
+                toNumber(item?.amount) ??
+                toNumber(item?.value);
+
+            if (directAmount != null) {
+                return { price: directAmount, currency: extractCurrency(item, defaultCurrency) };
             }
-            return { price: Number(price), currency };
+
+            const objectAmount = item?.price && typeof item.price === 'object'
+                ? toNumber(item.price.amount) ?? toNumber(item.price.value)
+                : null;
+            if (objectAmount != null) {
+                return {
+                    price: objectAmount,
+                    currency: extractCurrency({ ...item, ...item.price }, defaultCurrency)
+                };
+            }
+
+            const oneTimeCharge = Array.isArray(item?.oneTimeCharge) ? item.oneTimeCharge : [];
+            if (oneTimeCharge.length > 0) {
+                const charge = oneTimeCharge.find((c) => c?.typeCode === 'BILLC') || oneTimeCharge[0];
+                const amount = toNumber(charge?.price) ?? toNumber(charge?.amount);
+                if (amount != null) {
+                    return { price: amount, currency: extractCurrency(charge, defaultCurrency) };
+                }
+            }
+
+            return { price: 0, currency: extractCurrency(item, defaultCurrency) };
         };
 
-        const processService = (s, groupCurrency = null) => {
-            const code = s.serviceCode || s.code || s.localServiceCode || s.typeCode || s.chargeCode;
-            if (!code || seenCodes.has(code) || s.typeCode === 'PRD') return;
+        const upsertService = (service, opts = {}) => {
+            const { groupCurrency = null, source = 'breakdown' } = opts;
+            const code = String(
+                service?.serviceCode || service?.code || service?.localServiceCode || service?.typeCode || service?.chargeCode || ''
+            ).toUpperCase();
+            if (!code || code === 'PRD') return;
 
-            const { price, currency } = getPrice(s, groupCurrency || fallbackCurrency);
-            services.push({
+            const { price, currency } = extractPrice(service, groupCurrency || fallbackCurrency);
+            const normalizedPrice = Number(Number(price || 0).toFixed(3));
+            const existing = servicesByCode.get(code);
+
+            // Prefer valueAddedServices over breakdown when code overlaps.
+            if (existing && existing._source === 'valueAddedServices' && source !== 'valueAddedServices') return;
+
+            servicesByCode.set(code, {
                 serviceCode: code,
-                serviceName: s.localServiceName || s.serviceName || s.name || s.chargeName || code,
-                totalPrice: Number(price.toFixed(3)),
-                currency: currency
+                serviceName: service?.localServiceName || service?.serviceName || service?.name || service?.chargeName || code,
+                totalPrice: normalizedPrice,
+                currency,
+                _source: source
             });
-            seenCodes.add(code);
         };
 
-        // Prioritize valueAddedServices from DHL payload, then fill missing services from breakdown.
-        if (Array.isArray(product.valueAddedServices)) product.valueAddedServices.forEach(s => processService(s));
-        if (Array.isArray(product.detailedPriceBreakdown)) {
-            product.detailedPriceBreakdown.forEach(group => {
-                if (Array.isArray(group.breakdown)) group.breakdown.forEach(item => processService(item, group.currencyType));
+        if (Array.isArray(product.valueAddedServices)) {
+            product.valueAddedServices.forEach((service) => {
+                upsertService(service, { source: 'valueAddedServices' });
             });
         }
-        return services;
+
+        if (Array.isArray(product.detailedPriceBreakdown)) {
+            product.detailedPriceBreakdown.forEach((group) => {
+                const groupCurrency = group?.priceCurrency || group?.currency || fallbackCurrency;
+                if (!Array.isArray(group?.breakdown)) return;
+                group.breakdown.forEach((item) => upsertService(item, { groupCurrency, source: 'breakdown' }));
+            });
+        }
+
+        return Array.from(servicesByCode.values()).map(({ _source, ...service }) => service);
     }
 
     /**
