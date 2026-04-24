@@ -384,7 +384,10 @@ const SummaryPanel = ({
                                     {selectedOptionalServices.map((service) => (
                                         <Box key={`summary-opt-${service.serviceCode}`} sx={{ pl: 1.25, borderLeft: `2px solid ${DS.surfaceContainer}` }}>
                                             <Typography sx={{ fontSize: 10, color: DS.outline, fontFamily: "'Manrope', sans-serif" }}>
-                                                {service.serviceName}: {Number(service.carrierAmount || service.totalPrice || 0).toFixed(3)} + {Number(service.markupAmount || 0).toFixed(3)} = {Number(service.totalPrice || 0).toFixed(3)} {billingCurrency}
+                                                {showMarkup
+                                                    ? `${service.serviceName}: ${Number(service.carrierAmount || service.totalPrice || 0).toFixed(3)} + ${Number(service.markupAmount || 0).toFixed(3)} = ${Number(service.totalPrice || 0).toFixed(3)} ${billingCurrency}`
+                                                    : `${service.serviceName}: ${Number(service.totalPrice || 0).toFixed(3)} ${billingCurrency}`
+                                                }
                                             </Typography>
                                         </Box>
                                     ))}
@@ -964,6 +967,7 @@ const ShipmentWizardV2 = () => {
                         optionalServicesTotal={optionalServicesTotal}
                         estimatedShipmentTotal={estimatedShipmentTotal}
                         deliveryDate={selectedService.deliveryDate || ''}
+                        showMarkupDetails={isStaff}
                     />
                 );
             case 'Review':

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import {
     Box, Typography, Grid, FormControl,
     InputLabel, Select, MenuItem, TextField, FormControlLabel,
@@ -39,6 +39,7 @@ const ShipmentBilling = ({
     optionalServicesTotal = 0,
     estimatedShipmentTotal = 0,
     deliveryDate = null,
+    showMarkupDetails = false,
     declaredCurrency = 'KWD',
     billingCurrency = 'KWD',
     insuredValue = '',
@@ -46,16 +47,6 @@ const ShipmentBilling = ({
     errors = {}
 }) => {
     const theme = useTheme();
-    const [expandedPanels, setExpandedPanels] = useState({
-        docs: true,
-        finance: false,
-        optional: true,
-        operations: false
-    });
-
-    const togglePanel = (key) => (_event, isExpanded) => {
-        setExpandedPanels((prev) => ({ ...prev, [key]: isExpanded }));
-    };
     const warnings = [];
     if (invoiceRemarks.length > LIMITS.invoiceRemarks) warnings.push(`Invoice Remarks exceeds ${LIMITS.invoiceRemarks} characters.`);
     if (packageMarks.length > LIMITS.packageMarks) warnings.push(`Package Marks exceeds ${LIMITS.packageMarks} characters.`);
@@ -108,7 +99,7 @@ const ShipmentBilling = ({
                         <Typography variant="body2" fontWeight="800">{service.serviceName}</Typography>
                         <Typography variant="caption" color="text.secondary">
                             Asset Protection & Operations
-                            {Number(service.markupAmount || 0) > 0
+                            {showMarkupDetails && Number(service.markupAmount || 0) > 0
                                 ? ` · Base ${Number(service.carrierAmount || 0).toFixed(3)} + Markup ${Number(service.markupAmount || 0).toFixed(3)}`
                                 : ''}
                         </Typography>
@@ -166,13 +157,12 @@ const ShipmentBilling = ({
         <Box className="fade-in">
             {/* 1. Commercial Invoice Data */}
             <Accordion
-                expanded={expandedPanels.docs}
-                onChange={togglePanel('docs')}
+                expanded
                 disableGutters
                 elevation={0}
                 sx={{ mb: 3, borderRadius: 6, overflow: 'hidden', bgcolor: 'surface-container-low' }}
             >
-                <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 4, py: 1 }}>
+                <AccordionSummary sx={{ px: 4, py: 1, '& .MuiAccordionSummary-expandIconWrapper': { display: 'none' } }}>
                     <Stack direction="row" alignItems="center" spacing={2}>
                         <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: alpha(theme.palette.primary.main, 0.1), color: 'primary.main', display: 'flex' }}>
                             <ReceiptLongIcon />
@@ -240,13 +230,12 @@ const ShipmentBilling = ({
 
             {/* 2. Duties, Taxes & Billing */}
             <Accordion
-                expanded={expandedPanels.finance}
-                onChange={togglePanel('finance')}
+                expanded
                 disableGutters
                 elevation={0}
                 sx={{ mb: 3, borderRadius: 6, overflow: 'hidden', bgcolor: 'surface-container-low' }}
             >
-                <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 4, py: 1 }}>
+                <AccordionSummary sx={{ px: 4, py: 1, '& .MuiAccordionSummary-expandIconWrapper': { display: 'none' } }}>
                     <Stack direction="row" alignItems="center" spacing={2}>
                     <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: alpha(theme.palette.secondary.main, 0.1), color: 'secondary.main', display: 'flex' }}>
                         <CreditCardIcon />
@@ -308,13 +297,12 @@ const ShipmentBilling = ({
 
             {/* 3. Optional Services */}
             <Accordion
-                expanded={expandedPanels.optional}
-                onChange={togglePanel('optional')}
+                expanded
                 disableGutters
                 elevation={0}
                 sx={{ mb: 3, borderRadius: 6, overflow: 'hidden', bgcolor: 'surface-container-low' }}
             >
-                <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 4, py: 1 }}>
+                <AccordionSummary sx={{ px: 4, py: 1, '& .MuiAccordionSummary-expandIconWrapper': { display: 'none' } }}>
                     <Stack direction="row" alignItems="center" spacing={2} sx={{ width: '100%' }}>
                     <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: alpha(theme.palette.primary.main, 0.1), color: 'primary.main', display: 'flex' }}>
                         <LocalOfferIcon />
@@ -401,7 +389,10 @@ const ShipmentBilling = ({
                                             <Typography variant="caption" fontWeight="700">{Number(service.totalPrice || 0).toFixed(3)} {billingCurrency}</Typography>
                                         </Box>
                                         <Typography variant="caption" color="text.secondary">
-                                            Base {Number(service.carrierAmount || service.totalPrice || 0).toFixed(3)} + Markup {Number(service.markupAmount || 0).toFixed(3)}
+                                            {showMarkupDetails
+                                                ? `Base ${Number(service.carrierAmount || service.totalPrice || 0).toFixed(3)} + Markup ${Number(service.markupAmount || 0).toFixed(3)}`
+                                                : `Total ${Number(service.totalPrice || 0).toFixed(3)} ${billingCurrency}`
+                                            }
                                         </Typography>
                                         {String(service.serviceCode || '').toUpperCase() === 'II' && (
                                             <Typography variant="caption" display="block" color="text.secondary">
@@ -438,13 +429,12 @@ const ShipmentBilling = ({
 
             {/* 4. Operations */}
             <Accordion
-                expanded={expandedPanels.operations}
-                onChange={togglePanel('operations')}
+                expanded
                 disableGutters
                 elevation={0}
                 sx={{ borderRadius: 6, overflow: 'hidden', bgcolor: 'surface-container-low' }}
             >
-                <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 4, py: 1 }}>
+                <AccordionSummary sx={{ px: 4, py: 1, '& .MuiAccordionSummary-expandIconWrapper': { display: 'none' } }}>
                     <Stack direction="row" alignItems="center" spacing={2}>
                     <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: alpha(theme.palette.primary.main, 0.1), color: 'primary.main', display: 'flex' }}>
                         <SettingsSuggestIcon />
