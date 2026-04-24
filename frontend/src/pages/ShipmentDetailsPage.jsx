@@ -542,6 +542,9 @@ const ShipmentDetailsPage = () => {
         const draft = JSON.parse(JSON.stringify(shipment));
         if (!draft.sender && draft.origin) draft.sender = draft.origin;
         if (!draft.receiver && draft.destination) draft.receiver = draft.destination;
+        if (draft.insuredValue === undefined || draft.insuredValue === null) {
+            draft.insuredValue = draft.origin?.insuredValue ?? '';
+        }
 
         setEditDraft(draft);
         setEditErrors({});
@@ -615,7 +618,10 @@ const ShipmentDetailsPage = () => {
                     allowPublicLocationUpdate: editDraft.allowPublicLocationUpdate,
                     allowPublicInfoUpdate: editDraft.allowPublicInfoUpdate,
                     reference: editDraft.reference,
-                    optionalServiceCodes: selectedOptionalServiceCodes
+                    optionalServiceCodes: selectedOptionalServiceCodes,
+                    insuredValue: selectedOptionalServiceCodes.includes('II')
+                        ? Number(editDraft.insuredValue || 0)
+                        : undefined
                 };
             }
             else if (editSection === 'status') {
@@ -1667,7 +1673,10 @@ const ShipmentDetailsPage = () => {
                                                 prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]
                                             );
                                         }}
-                                        currency={editDraft.currency}
+                                        insuredValue={editDraft.insuredValue ?? ''}
+                                        setInsuredValue={(val) => setEditDraft({ ...editDraft, insuredValue: val })}
+                                        declaredCurrency={editDraft.currency || shipment?.currency || 'KWD'}
+                                        billingCurrency={shipment?.pricingSnapshot?.billingCurrency || shipment?.currency || 'KWD'}
                                         showMarkupDetails={isStaff}
                                     />
                                 )}
