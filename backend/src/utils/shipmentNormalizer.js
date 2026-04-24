@@ -91,7 +91,7 @@ function normalizeShipment(data) {
 
         shipmentDate: data.plannedDate || data.plannedShippingDateAndTime || data.shipmentDate,
         serviceCode: data.serviceCode || data.productCode,
-        optionalServices: data.optionalServices, // Preserve optional services (array of codes)
+        optionalServices: data.optionalServices || data.optionalServiceCodes, // Preserve optional service selections
 
         isDocument: data.shipmentType === 'documents' || data.isCustomsDeclarable === false,
         shipmentType: data.shipmentType,

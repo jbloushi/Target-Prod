@@ -318,6 +318,16 @@ class DgrAdapter extends CarrierAdapter {
      * @business_rule plannedShippingDateAndTime is forced to 10:00 AM next day to avoid DHL '996' errors for same-day past-time requests.
      */
     buildRatePayload(shipment, activeConfig = this.config, offsetDays = 0) {
+        const selectedOptionalCodes = (shipment.optionalServiceCodes || shipment.optionalServices || [])
+            .map((entry) => (typeof entry === 'string' ? entry : (entry?.serviceCode || entry?.code || '')))
+            .map((code) => String(code).toUpperCase())
+            .filter(Boolean);
+
+        const computedInsuredVal = Number(shipment.insuredValue || shipment.items?.reduce(
+            (sum, item) => sum + (Number(item.value || 0) * Number(item.quantity || 1)),
+            0
+        ) || 0);
+
         return {
             customerDetails: {
                 shipperDetails: this.buildPartyDetails(shipment.sender),
@@ -354,14 +364,29 @@ class DgrAdapter extends CarrierAdapter {
                     value: Number(shipment.declaredValue || 1),
                     currency: (shipment.currency || 'KWD').substring(0, 3).toUpperCase()
                 }];
-                const insuredVal = Number(shipment.items?.reduce((sum, item) => sum + (Number(item.value || 0) * Number(item.quantity || 1)), 0) || 0);
-                if (insuredVal > 0) {
-                    amounts.push({ typeCode: 'insuredValue', value: insuredVal, currency: (shipment.currency || 'KWD').substring(0, 3).toUpperCase() });
+                if (computedInsuredVal > 0) {
+                    amounts.push({ typeCode: 'insuredValue', value: computedInsuredVal, currency: (shipment.currency || 'KWD').substring(0, 3).toUpperCase() });
                 }
                 return amounts;
             })(),
-            requestAllValueAddedServices: false,
-            returnStandardProductsOnly: true,
+            valueAddedServices: selectedOptionalCodes.length > 0
+                ? selectedOptionalCodes
+                    .map((code) => {
+                        if (code === 'II') {
+                            const insuranceValue = Number(computedInsuredVal || shipment.declaredValue || 0);
+                            if (insuranceValue <= 0) return null;
+                            return {
+                                serviceCode: code,
+                                value: insuranceValue,
+                                currency: (shipment.currency || 'KWD').substring(0, 3).toUpperCase()
+                            };
+                        }
+                        return { serviceCode: code };
+                    })
+                    .filter(Boolean)
+                : undefined,
+            requestAllValueAddedServices: true,
+            returnStandardProductsOnly: selectedOptionalCodes.length === 0,
             nextBusinessDay: false,
             productCode: shipment.serviceCode || undefined,
             packages: (shipment.packages || []).map((pkg) => ({
@@ -423,8 +448,9 @@ class DgrAdapter extends CarrierAdapter {
             let price = item.price || item.chargeAmount || 0;
             let currency = item.currency || item.currencyType || item.chargeCurrencyCode || defaultCurrency;
             if (typeof price === 'object') {
-                price = price.amount || price.value || 0;
-                currency = price.currency || currency;
+                const priceObj = price;
+                price = priceObj.amount || priceObj.value || 0;
+                currency = priceObj.currency || currency;
             }
             return { price: Number(price), currency };
         };
