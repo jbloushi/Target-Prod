@@ -580,14 +580,19 @@ const ShipmentDetailsPage = () => {
                 }).catch(err => console.error('Failed to fetch optional services for edit:', err));
                 
                 // Initialize selected codes from shipment pricing snapshot or current state
-                const selectedFromSnapshot = (shipment.pricingSnapshot?.optionalServices || []).map(s => s.serviceCode);
+                const selectedFromSnapshot = (shipment.pricingSnapshot?.optionalServices || [])
+                    .map(s => String(s?.serviceCode || '').toUpperCase())
+                    .filter(Boolean);
                 const selectedFromOrigin = (shipment.origin?.optionalServices || shipment.optionalServices || [])
-                    .map((s) => (typeof s === 'string' ? s : (s?.serviceCode || s?.code || '')))
+                    .map((s) => String(typeof s === 'string' ? s : (s?.serviceCode || s?.code || '')).toUpperCase())
                     .filter(Boolean);
                 const selected = selectedFromSnapshot.length > 0 ? selectedFromSnapshot : selectedFromOrigin;
                 setSelectedOptionalServiceCodes(selected);
                 if ((draft.insuredValue === '' || draft.insuredValue === null || draft.insuredValue === undefined) && selected.includes('II')) {
-                    const inferredInsured = shipment.origin?.insuredValue ?? shipment.insuredValue ?? 0;
+                    const declaredTotal = (shipment.items || []).reduce((sum, item) => {
+                        return sum + (Number(item?.declaredValue || item?.value || 0) * Number(item?.quantity || 1));
+                    }, 0);
+                    const inferredInsured = shipment.origin?.insuredValue ?? shipment.insuredValue ?? declaredTotal ?? 0;
                     setEditDraft((prev) => ({ ...prev, insuredValue: inferredInsured > 0 ? inferredInsured : '' }));
                 }
             }
@@ -1682,7 +1687,15 @@ const ShipmentDetailsPage = () => {
                                                 prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]
                                             );
                                         }}
-                                        insuredValue={editDraft.insuredValue ?? ''}
+                                        insuredValue={
+                                            editDraft.insuredValue
+                                            ?? (selectedOptionalServiceCodes.includes('II')
+                                                ? Number((editDraft.items || []).reduce(
+                                                    (sum, item) => sum + (Number(item?.declaredValue || item?.value || 0) * Number(item?.quantity || 1)),
+                                                    0
+                                                ) || 0).toFixed(3)
+                                                : '')
+                                        }
                                         setInsuredValue={(val) => setEditDraft({ ...editDraft, insuredValue: val })}
                                         declaredCurrency={editDraft.currency || shipment?.currency || 'KWD'}
                                         billingCurrency={shipment?.pricingSnapshot?.billingCurrency || shipment?.currency || 'KWD'}
