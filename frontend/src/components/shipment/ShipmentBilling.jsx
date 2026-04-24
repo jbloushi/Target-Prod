@@ -67,6 +67,9 @@ const ShipmentBilling = ({
 
     const insuranceSelected = selectedOptionalServiceCodes.includes('II');
     const insuranceAmount = Number(insuredValue || 0);
+    const selectedOptionalServices = availableOptionalServices.filter(service =>
+        selectedOptionalServiceCodes.includes(service.serviceCode)
+    );
 
     const renderServiceRow = (service) => {
         const checked = selectedOptionalServiceCodes.includes(service.serviceCode);
@@ -304,6 +307,22 @@ const ShipmentBilling = ({
                                     <Typography variant="body2">Total Optional Adds</Typography>
                                     <Typography variant="body2" fontWeight="800">{Number(optionalServicesTotal).toFixed(3)}</Typography>
                                 </Box>
+                                {selectedOptionalServices.map((service) => (
+                                    <Box key={`calc-${service.serviceCode}`} sx={{ pl: 1, borderLeft: '2px solid', borderColor: 'divider' }}>
+                                        <Box display="flex" justifyContent="space-between">
+                                            <Typography variant="caption" color="text.secondary">{service.serviceName}</Typography>
+                                            <Typography variant="caption" fontWeight="700">{Number(service.totalPrice || 0).toFixed(3)} {billingCurrency}</Typography>
+                                        </Box>
+                                        <Typography variant="caption" color="text.secondary">
+                                            Base {Number(service.carrierAmount || service.totalPrice || 0).toFixed(3)} + Markup {Number(service.markupAmount || 0).toFixed(3)}
+                                        </Typography>
+                                        {String(service.serviceCode || '').toUpperCase() === 'II' && (
+                                            <Typography variant="caption" display="block" color="text.secondary">
+                                                Insurance Value: {Number(insuranceAmount || 0).toFixed(3)} {declaredCurrency}
+                                            </Typography>
+                                        )}
+                                    </Box>
+                                ))}
                                 <Divider sx={{ opacity: 0.5 }} />
                                 <Box display="flex" justifyContent="space-between" alignItems="center">
                                     <Typography variant="body1" fontWeight="800">Total Calculation</Typography>
