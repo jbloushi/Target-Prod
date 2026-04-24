@@ -12,6 +12,7 @@ const {
     getAssignedShippingAccess,
     assertRequestedAccessAllowed
 } = require('../services/shippingAccess.service');
+const PREDEFINED_OPTIONAL_SERVICE_CODES = new Set(['II', 'SX', 'NN']);
 
 /**
  * Helper to map normalized address to schema format
@@ -38,6 +39,24 @@ const mapAddressToSchema = (addr) => ({
 exports.createShipment = async (req, res) => {
     try {
         const { carrierCode, serviceCode, ...shipmentData } = req.body;
+        const requestedOptionalCodes = Array.isArray(shipmentData.optionalServiceCodes)
+            ? shipmentData.optionalServiceCodes.map((code) => String(code || '').toUpperCase()).filter(Boolean)
+            : [];
+
+        const unsupportedCodes = requestedOptionalCodes.filter((code) => !PREDEFINED_OPTIONAL_SERVICE_CODES.has(code));
+        if (unsupportedCodes.length > 0) {
+            return res.status(400).json({
+                success: false,
+                error: `Unsupported optionalServiceCodes: ${unsupportedCodes.join(', ')}`
+            });
+        }
+        if (requestedOptionalCodes.includes('II') && Number(shipmentData.insuredValue || 0) <= 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Insurance service (II) requires insuredValue > 0.'
+            });
+        }
+        shipmentData.optionalServiceCodes = [...new Set(requestedOptionalCodes)];
 
         const apiUser = await prisma.user.findUnique({
             where: { id: req.user.id },
@@ -64,7 +83,8 @@ exports.createShipment = async (req, res) => {
                     serviceCode: shipment.serviceCode,
                     status: shipment.status,
                     price: shipment.price,
-                    currency: shipment.currency
+                    currency: shipment.currency,
+                    optionalServices: shipmentData.optionalServiceCodes || []
                 }
             });
         }
@@ -145,7 +165,8 @@ exports.createShipment = async (req, res) => {
                 invoiceUrl: newShipment.invoiceUrl,
                 carrier: resolvedCarrierCode,
                 serviceCode: newShipment.serviceCode,
-                status: newShipment.status
+                status: newShipment.status,
+                optionalServices: shipmentData.optionalServiceCodes || []
             }
         });
 

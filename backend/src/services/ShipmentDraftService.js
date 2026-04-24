@@ -57,6 +57,11 @@ class ShipmentDraftService {
         const serviceCode = isManualShipment ? null : (cleanData.serviceCode || 'P');
         logger.debug(`ShipmentDraftService: Creating draft for user ${targetUserId}, service ${serviceCode}`);
         const selectedOptionalCodes = new Set((cleanData.optionalServiceCodes || []).map(code => String(code).toUpperCase()));
+        const allowedOptionalCodes = new Set(['II', 'SX', 'NN']);
+        const unsupportedOptionalCodes = Array.from(selectedOptionalCodes).filter(code => !allowedOptionalCodes.has(code));
+        if (unsupportedOptionalCodes.length > 0) {
+            throw new Error(`Unsupported optionalServiceCodes: ${unsupportedOptionalCodes.join(', ')}`);
+        }
         if (selectedOptionalCodes.has('II') && Number(cleanData.insuredValue || 0) <= 0) {
             throw new Error('Insurance service (II) requires insuredValue > 0.');
         }
