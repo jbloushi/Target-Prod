@@ -376,6 +376,7 @@ const SummaryPanel = ({
                                 <Typography sx={{ fontSize: 12, fontWeight: 700, fontFamily: "'Manrope', sans-serif" }}>{Number(selectedService.totalPrice || 0).toFixed(3)} {billingCurrency}</Typography>
                             </Box>
                             {optionalServicesTotal > 0 && (
+<<<<<<< codex/review-dhl-adapter-functionality-oaelb6
                                 <>
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                                         <Typography sx={{ fontSize: 12, color: DS.outline, fontFamily: "'Manrope', sans-serif" }}>Optional Services</Typography>
@@ -389,6 +390,12 @@ const SummaryPanel = ({
                                         </Box>
                                     ))}
                                 </>
+=======
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <Typography sx={{ fontSize: 12, color: DS.outline, fontFamily: "'Manrope', sans-serif" }}>Optional Services</Typography>
+                                    <Typography sx={{ fontSize: 12, fontWeight: 700, fontFamily: "'Manrope', sans-serif" }}>+{optionalServicesTotal.toFixed(3)} {billingCurrency}</Typography>
+                                </Box>
+>>>>>>> main
                             )}
                         </Stack>
 
@@ -766,10 +773,13 @@ const ShipmentWizardV2 = () => {
                 shipmentType,
                 plannedDate,
                 currency,
+<<<<<<< codex/review-dhl-adapter-functionality-oaelb6
                 optionalServiceCodes: selectedOptionalServiceCodes,
                 insuredValue: selectedOptionalServiceCodes.includes('II')
                     ? Number(insuredValue || totals.declaredValue || 0)
                     : undefined,
+=======
+>>>>>>> main
                 ...(shouldSendCarrierSelection ? {
                     carrierCode: selectedCarrier,
                     serviceCode: selectedService.serviceCode || undefined,

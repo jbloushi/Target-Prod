@@ -67,9 +67,12 @@ const ShipmentBilling = ({
 
     const insuranceSelected = selectedOptionalServiceCodes.includes('II');
     const insuranceAmount = Number(insuredValue || 0);
+<<<<<<< codex/review-dhl-adapter-functionality-oaelb6
     const selectedOptionalServices = availableOptionalServices.filter(service =>
         selectedOptionalServiceCodes.includes(service.serviceCode)
     );
+=======
+>>>>>>> main
 
     const renderServiceRow = (service) => {
         const checked = selectedOptionalServiceCodes.includes(service.serviceCode);
@@ -93,12 +96,16 @@ const ShipmentBilling = ({
                 <Checkbox checked={checked} sx={{ mr: 1, color: 'text.disabled' }} />
                 <Box flex={1}>
                     <Typography variant="body2" fontWeight="800">{service.serviceName}</Typography>
+<<<<<<< codex/review-dhl-adapter-functionality-oaelb6
                     <Typography variant="caption" color="text.secondary">
                         Asset Protection & Operations
                         {Number(service.markupAmount || 0) > 0
                             ? ` · Base ${Number(service.carrierAmount || 0).toFixed(3)} + Markup ${Number(service.markupAmount || 0).toFixed(3)}`
                             : ''}
                     </Typography>
+=======
+                    <Typography variant="caption" color="text.secondary">Asset Protection & Operations</Typography>
+>>>>>>> main
                 </Box>
                 <Typography variant="body2" fontWeight="800" color="primary.main">
                     {Number(service.totalPrice || 0) === 0 ? 'Included' : `+${Number(service.totalPrice).toFixed(3)}`}
