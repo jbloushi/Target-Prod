@@ -319,17 +319,6 @@ exports.getQuotation = async (req, res) => {
         const resolvedCarrierCode = assignedAccess.carrierCode;
         const resolvedServiceCode = serviceCode || assignedAccess.serviceCode || null;
 
-        console.log('QUOTE DEBUG', {
-            requestedCarrierCode: carrierCode || null,
-            requestedServiceCode: serviceCode || null,
-            assignedAccess,
-            finalCarrierCode: resolvedCarrierCode,
-            finalServiceCode: resolvedServiceCode,
-            userId: user?.id,
-            carrierConfig: user?.carrierConfig,
-            agentPolicy: user?.agentPolicy
-        });
-
         const normalized = normalizeShipment(req.body);
         normalized.serviceCode = resolvedServiceCode;
 
@@ -349,13 +338,20 @@ exports.getQuotation = async (req, res) => {
         const finalQuotes = visibleRates.map(rate => {
             const { markup } = PricingService.resolveMarkup(user, user.organization, resolvedCarrierCode);
             const calculation = PricingService.calculateFinalPrice(rate.totalPrice, markup, rate.currency);
+            const optionalServices = (rate.optionalServices || []).map((service) => ({
+                serviceCode: service.serviceCode,
+                serviceName: service.serviceName,
+                totalPrice: Number(Number(service.totalPrice || 0).toFixed(3)),
+                currency: service.currency || rate.currency || 'KWD'
+            }));
             return {
                 serviceName: rate.serviceName,
                 serviceCode: rate.serviceCode,
                 carrier: resolvedCarrierCode,
                 totalPrice: calculation.finalPrice,
                 currency: rate.currency,
-                estimatedDelivery: rate.estimatedDelivery
+                estimatedDelivery: rate.estimatedDelivery,
+                optionalServices
             };
         });
 

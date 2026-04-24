@@ -1,10 +1,10 @@
 const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
 const { handleControllerError } = require('../utils/controllerError');
-const { hashPassword } = require('../utils/security');
+const { hashPassword, generateUserApiKey } = require('../utils/security');
 const { normalizeShippingAccess } = require('../services/shippingAccess.service');
 
-const buildAgentPolicy = (existingPolicy = {}, { markup, shippingAccess } = {}) => {
+const buildAgentPolicy = (existingPolicy = {}, { markup, shippingAccess, optionalServiceMarkup } = {}) => {
     const nextPolicy = { ...(existingPolicy || {}) };
 
     if (markup !== undefined) {
@@ -16,6 +16,13 @@ const buildAgentPolicy = (existingPolicy = {}, { markup, shippingAccess } = {}) 
         nextPolicy.shippingAccess = normalizedAccess;
         nextPolicy.allowedCarriers = [normalizedAccess.carrierCode];
         nextPolicy.serviceCode = normalizedAccess.serviceCode;
+    }
+
+    if (optionalServiceMarkup !== undefined) {
+        nextPolicy.optionalServiceMarkup = {
+            ...(nextPolicy.optionalServiceMarkup || {}),
+            ...(optionalServiceMarkup || {})
+        };
     }
 
     return nextPolicy;
@@ -61,6 +68,7 @@ exports.getUsers = async (req, res) => {
                     }
                 },
                 addresses: true,
+                apiKeyLast4: true,
                 active: true,
                 createdAt: true
             },
@@ -72,6 +80,7 @@ exports.getUsers = async (req, res) => {
         const mappedUsers = users.map(u => ({
             ...u,
             markup: u.agentPolicy?.markupOverride || { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 },
+            optionalServiceMarkup: u.agentPolicy?.optionalServiceMarkup || {},
             creditLimit: u.organization?.creditLimit !== undefined ? u.organization.creditLimit : (u.creditLimit || 0)
         }));
 
@@ -86,6 +95,44 @@ exports.getUsers = async (req, res) => {
             success: false,
             error: 'Server Error'
         });
+    }
+};
+
+/**
+ * Regenerate API key for a user (Admin/Staff via MANAGE_USERS)
+ * @route POST /api/users/:id/api-key
+ */
+exports.regenerateUserApiKey = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const existingUser = await prisma.user.findUnique({
+            where: { id },
+            select: { id: true, name: true, email: true, role: true }
+        });
+
+        if (!existingUser) {
+            return res.status(404).json({ success: false, error: 'User not found' });
+        }
+
+        const { fullKey, hash, last4 } = generateUserApiKey(existingUser.id);
+        await prisma.user.update({
+            where: { id: existingUser.id },
+            data: {
+                apiKeyHash: hash,
+                apiKeyLast4: last4
+            }
+        });
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                userId: existingUser.id,
+                apiKey: fullKey,
+                apiKeyLast4: last4
+            }
+        });
+    } catch (error) {
+        return handleControllerError(res, error, 'Admin API key regeneration');
     }
 };
 
@@ -106,6 +153,7 @@ exports.createUser = async (req, res) => {
             organization,
             carrierConfig,
             markup,
+            optionalServiceMarkup,
             creditLimit,
             shippingAccess
         } = req.body;
@@ -137,7 +185,7 @@ exports.createUser = async (req, res) => {
                     preferredCarrier: normalizedShippingAccess.carrierCode,
                     serviceCode: normalizedShippingAccess.serviceCode
                 },
-                agentPolicy: buildAgentPolicy({}, { markup, shippingAccess: normalizedShippingAccess }),
+                agentPolicy: buildAgentPolicy({}, { markup, shippingAccess: normalizedShippingAccess, optionalServiceMarkup }),
                 creditLimit: creditLimit !== undefined ? Number(creditLimit) : undefined,
                 ...(targetOrgId ? { organization: { connect: { id: targetOrgId } } } : {})
             }
@@ -168,6 +216,7 @@ exports.getMe = async (req, res) => {
         const mappedUser = {
             ...user,
             markup: user.agentPolicy?.markupOverride || { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 },
+            optionalServiceMarkup: user.agentPolicy?.optionalServiceMarkup || {},
             creditLimit: user.organization?.creditLimit !== undefined ? user.organization.creditLimit : (user.creditLimit || 0)
         };
 
@@ -222,7 +271,7 @@ exports.updateProfile = async (req, res) => {
 exports.updateUser = async (req, res) => {
     try {
         const userId = req.params.id;
-        const { name, email, phone, role, organizationId, organization, carrierConfig, markup, creditLimit, shippingAccess } = req.body;
+        const { name, email, phone, role, organizationId, organization, carrierConfig, markup, optionalServiceMarkup, creditLimit, shippingAccess } = req.body;
 
         const targetOrgId = organizationId || organization;
 
@@ -258,9 +307,10 @@ exports.updateUser = async (req, res) => {
             };
         }
 
-        if (markup !== undefined || normalizedShippingAccess) {
+        if (markup !== undefined || optionalServiceMarkup !== undefined || normalizedShippingAccess) {
             updateData.agentPolicy = buildAgentPolicy(existingUser.agentPolicy, {
                 markup,
+                optionalServiceMarkup,
                 shippingAccess: normalizedShippingAccess || undefined
             });
         }

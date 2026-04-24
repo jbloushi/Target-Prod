@@ -1668,6 +1668,7 @@ const ShipmentDetailsPage = () => {
                                             );
                                         }}
                                         currency={editDraft.currency}
+                                        showMarkupDetails={isStaff}
                                     />
                                 )}
 

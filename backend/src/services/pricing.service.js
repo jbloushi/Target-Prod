@@ -10,6 +10,13 @@ const crypto = require('crypto');
 const { evaluate } = require('mathjs');
 
 class PricingService {
+    static normalizeMarkupConfig(markup) {
+        if (!markup || typeof markup !== 'object') return null;
+        if (!markup.type) return null;
+        if (markup.percentageValue === undefined && markup.flatValue === undefined && markup.value === undefined && !markup.formula) return null;
+        return markup;
+    }
+
 
     /**
      * Calculates the final price for a shipment by applying markup rules to the base carrier rate.
@@ -155,6 +162,38 @@ class PricingService {
             markup: { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 },
             source: 'platform_default'
         };
+    }
+
+    /**
+     * Resolve markup policy for an optional service (currently insurance II).
+     * Hierarchy mirrors shipment markup where possible.
+     */
+    static resolveOptionalServiceMarkup(user, organization, carrierCode, serviceCode) {
+        const normalizedCode = String(serviceCode || '').toUpperCase();
+        if (!normalizedCode) return { markup: null, source: 'none' };
+
+        const userPolicy = user?.agentPolicy?.optionalServiceMarkup || {};
+        const orgPolicy = organization?.markup?.optionalServiceMarkup || {};
+
+        // 1) User carrier+service override
+        const userCarrier = userPolicy?.byCarrier?.[String(carrierCode || '').toUpperCase()];
+        const userCarrierService = this.normalizeMarkupConfig(userCarrier?.[normalizedCode]);
+        if (userCarrierService) return { markup: userCarrierService, source: 'agent_optional_carrier' };
+
+        // 2) User service default
+        const userService = this.normalizeMarkupConfig(userPolicy?.[normalizedCode] || userPolicy?.insurance);
+        if (userService) return { markup: userService, source: 'agent_optional_default' };
+
+        // 3) Organization carrier+service override
+        const orgCarrier = orgPolicy?.byCarrier?.[String(carrierCode || '').toUpperCase()];
+        const orgCarrierService = this.normalizeMarkupConfig(orgCarrier?.[normalizedCode]);
+        if (orgCarrierService) return { markup: orgCarrierService, source: 'org_optional_carrier' };
+
+        // 4) Organization service default
+        const orgService = this.normalizeMarkupConfig(orgPolicy?.[normalizedCode] || orgPolicy?.insurance);
+        if (orgService) return { markup: orgService, source: 'org_optional_default' };
+
+        return { markup: null, source: 'none' };
     }
 
     /**

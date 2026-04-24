@@ -102,6 +102,7 @@ const AdminUsersPage = () => {
     const [organizations, setOrganizations] = useState([]);
     const [availableCarriers, setAvailableCarriers] = useState([]);
     const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+    const [generatedApiKeys, setGeneratedApiKeys] = useState({});
 
     const fetchUsers = useCallback(async () => {
         setLoading(true);
@@ -154,13 +155,24 @@ const AdminUsersPage = () => {
             role: 'org_agent',
             carrierConfig: { preferredCarrier: 'DGR', traderType: 'business' },
             shippingAccess: { mode: 'carrier', carrierCode: 'DGR', serviceCode: '', serviceName: 'Any Available Service' },
-            markup: { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 }
+            markup: { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 },
+            optionalServiceMarkup: {
+                insurance: { enabled: false, type: 'PERCENTAGE', percentageValue: 0, flatValue: 0 }
+            }
         };
 
         // Ensure nested objects
         if (!initialData.carrierConfig) initialData.carrierConfig = { preferredCarrier: 'DGR', traderType: 'business' };
         initialData.shippingAccess = normalizeShippingAccess(initialData);
         if (!initialData.markup) initialData.markup = { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 };
+        if (!initialData.optionalServiceMarkup) {
+            initialData.optionalServiceMarkup = {
+                insurance: { enabled: false, type: 'PERCENTAGE', percentageValue: 0, flatValue: 0 }
+            };
+        }
+        if (!initialData.optionalServiceMarkup.insurance) {
+            initialData.optionalServiceMarkup.insurance = { enabled: false, type: 'PERCENTAGE', percentageValue: 0, flatValue: 0 };
+        }
         if (typeof initialData.organization === 'object' && initialData.organization) {
             initialData.organizationId = initialData.organization.id;
         }
@@ -182,6 +194,14 @@ const AdminUsersPage = () => {
             if (payload.markup) {
                 payload.markup.percentageValue = Number(payload.markup.percentageValue || 0);
                 payload.markup.flatValue = Number(payload.markup.flatValue || 0);
+            }
+            if (payload.optionalServiceMarkup?.insurance) {
+                payload.optionalServiceMarkup.insurance = {
+                    ...payload.optionalServiceMarkup.insurance,
+                    enabled: Boolean(payload.optionalServiceMarkup.insurance.enabled),
+                    percentageValue: Number(payload.optionalServiceMarkup.insurance.percentageValue || 0),
+                    flatValue: Number(payload.optionalServiceMarkup.insurance.flatValue || 0)
+                };
             }
             if (payload.shippingAccess?.mode === 'manual') {
                 payload.shippingAccess = {
@@ -229,6 +249,30 @@ const AdminUsersPage = () => {
         } catch (error) {
             enqueueSnackbar('Failed to delete user', { variant: 'error' });
         }
+    };
+
+    const handleRegenerateApiKey = async (targetUser) => {
+        try {
+            const res = await userService.regenerateApiKey(targetUser.id);
+            const apiKey = res?.data?.apiKey || '';
+            const last4 = res?.data?.apiKeyLast4 || '';
+            setGeneratedApiKeys((prev) => ({ ...prev, [targetUser.id]: apiKey }));
+            enqueueSnackbar(`API key regenerated for ${targetUser.name}${last4 ? ` (..${last4})` : ''}`, { variant: 'success' });
+            fetchUsers();
+        } catch (error) {
+            const msg = error.response?.data?.error || 'Failed to regenerate API key';
+            enqueueSnackbar(msg, { variant: 'error' });
+        }
+    };
+
+    const handleCopyApiKey = async (targetUser) => {
+        const key = generatedApiKeys[targetUser.id];
+        if (!key) {
+            enqueueSnackbar('No visible key for this user yet. Regenerate first to reveal and copy.', { variant: 'warning' });
+            return;
+        }
+        await navigator.clipboard.writeText(key);
+        enqueueSnackbar(`API key copied for ${targetUser.name}`, { variant: 'success' });
     };
 
 
@@ -328,12 +372,13 @@ const AdminUsersPage = () => {
                                 <Th>Assigned Network</Th>
                                 <Th>Markup</Th>
                                 <Th>Credit Limit</Th>
+                                <Th>API Key</Th>
                                 <Th style={{ textAlign: 'right' }}>Actions</Th>
                             </Tr>
                         </Thead>
                         <Tbody>
                             {loading ? (
-                                <Tr><Td colSpan={7} style={{ textAlign: 'center' }}>Loading...</Td></Tr>
+                                <Tr><Td colSpan={8} style={{ textAlign: 'center' }}>Loading...</Td></Tr>
                             ) : users.map(user => (
                                 <Tr key={user.id}>
                                     <Td>
@@ -372,8 +417,31 @@ const AdminUsersPage = () => {
                                             </div>
                                         )}
                                     </Td>
+                                    <Td>
+                                        <div style={{ fontFamily: 'monospace', fontSize: '12px' }}>
+                                            {generatedApiKeys[user.id]
+                                                ? `${generatedApiKeys[user.id].slice(0, 10)}...`
+                                                : (user.apiKeyLast4 ? `Stored ....${user.apiKeyLast4}` : 'Not generated')}
+                                        </div>
+                                    </Td>
                                     <Td style={{ textAlign: 'right' }}>
                                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                                            <ActionButton
+                                                title="Copy API key (use latest generated key)"
+                                                onClick={() => handleCopyApiKey(user)}
+                                            >
+                                                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                                </svg>
+                                            </ActionButton>
+                                            <ActionButton
+                                                title="Regenerate API key for user"
+                                                onClick={() => handleRegenerateApiKey(user)}
+                                            >
+                                                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0A8.003 8.003 0 015.418 15m13.001 0H15" />
+                                                </svg>
+                                            </ActionButton>
                                             <ActionButton $color="var(--accent-primary)" onClick={() => handleOpenDialog(user)}>
                                                 <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -485,6 +553,55 @@ const AdminUsersPage = () => {
                                         type="number"
                                         value={formData.markup?.flatValue || 0}
                                         onChange={e => updateNested('markup', 'flatValue', e.target.value)}
+                                    />
+                                </div>
+                            </Card>
+
+                            <Card title="Insurance Markup (Service II)" variant="subtle">
+                                <Alert severity="info" style={{ marginBottom: '12px' }}>
+                                    Configure how insurance (II) is marked up for this user during DHL quoting and booking.
+                                </Alert>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '16px' }}>
+                                    <Select
+                                        label="Enabled"
+                                        value={formData.optionalServiceMarkup?.insurance?.enabled ? 'yes' : 'no'}
+                                        onChange={e => updateNested('optionalServiceMarkup', 'insurance', {
+                                            ...(formData.optionalServiceMarkup?.insurance || {}),
+                                            enabled: e.target.value === 'yes'
+                                        })}
+                                    >
+                                        <option value="yes">Yes</option>
+                                        <option value="no">No</option>
+                                    </Select>
+                                    <Select
+                                        label="Markup Type"
+                                        value={formData.optionalServiceMarkup?.insurance?.type || 'PERCENTAGE'}
+                                        onChange={e => updateNested('optionalServiceMarkup', 'insurance', {
+                                            ...(formData.optionalServiceMarkup?.insurance || {}),
+                                            type: e.target.value
+                                        })}
+                                    >
+                                        <option value="PERCENTAGE">% Only</option>
+                                        <option value="FLAT">Flat Only</option>
+                                        <option value="COMBINED">Combined</option>
+                                    </Select>
+                                    <Input
+                                        label="Insurance %"
+                                        type="number"
+                                        value={formData.optionalServiceMarkup?.insurance?.percentageValue || 0}
+                                        onChange={e => updateNested('optionalServiceMarkup', 'insurance', {
+                                            ...(formData.optionalServiceMarkup?.insurance || {}),
+                                            percentageValue: e.target.value
+                                        })}
+                                    />
+                                    <Input
+                                        label="Insurance Flat"
+                                        type="number"
+                                        value={formData.optionalServiceMarkup?.insurance?.flatValue || 0}
+                                        onChange={e => updateNested('optionalServiceMarkup', 'insurance', {
+                                            ...(formData.optionalServiceMarkup?.insurance || {}),
+                                            flatValue: e.target.value
+                                        })}
                                     />
                                 </div>
                             </Card>

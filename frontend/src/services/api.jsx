@@ -637,6 +637,16 @@ export const userService = {
       throw error;
     }
   },
+
+  regenerateApiKey: async (id) => {
+    try {
+      const response = await api.post(`users/${id}/api-key`);
+      return response.data;
+    } catch (error) {
+      console.error('Error regenerating user API key:', error);
+      throw error;
+    }
+  },
 };
 
 export const organizationService = {

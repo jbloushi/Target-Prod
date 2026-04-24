@@ -265,6 +265,12 @@ const ADDRESS_FIELDS = [
     { field: 'vatNumber', type: 'string', required: false, description: 'VAT registration number' },
 ];
 
+const PREDEFINED_OPTIONAL_SERVICES = [
+    { code: 'II', name: 'Shipment Insurance', notes: 'Requires insuredValue > 0 and uses shipment currency.' },
+    { code: 'SX', name: 'Signature Required', notes: 'Request signature on delivery where available.' },
+    { code: 'NN', name: 'Neutral Delivery', notes: 'Neutral shipment handling where available.' }
+];
+
 const SECTIONS = [
     { id: 'auth', label: 'Authentication' },
     { id: 'shipments', label: 'Shipments' },
@@ -356,6 +362,9 @@ const ApiDocsPage = () => {
                             <Alert severity="info" sx={{ mt: 2, fontSize: 12 }}>
                                 Carrier-backed integrations should quote first, then create the shipment using the returned <code>serviceCode</code>. Manual-mode integrations can create shipments directly with no quote and no carrier booking.
                             </Alert>
+                            <Alert severity="success" sx={{ mt: 1.5, fontSize: 12 }}>
+                                Optional services are currently <strong>predefined</strong> for API clients. Send selected codes in <code>optionalServiceCodes</code>. For insurance (<code>II</code>), include <code>insuredValue</code>.
+                            </Alert>
                         </Box>
 
                         {/* Shipments */}
@@ -373,6 +382,8 @@ const ApiDocsPage = () => {
                                 { field: 'serviceCode', type: 'string', required: false, description: 'Use the serviceCode returned from /v1/quotes' },
                                 { field: 'shipmentDate', type: 'string', required: false, description: 'ISO 8601 date e.g. "2026-04-10"' },
                                 { field: 'currency', type: 'string', required: false, description: 'Default: "KWD"' },
+                                { field: 'optionalServiceCodes', type: 'string[]', required: false, description: 'Predefined VAS codes, e.g. ["II","SX"]' },
+                                { field: 'insuredValue', type: 'number', required: false, description: 'Required when optionalServiceCodes includes "II"' },
                             ]}
                             response={`{\n  "success": true,\n  "data": {\n    "trackingNumber": "2042595203",\n    "status": "booked",\n    "carrier": "DGR",\n    "serviceCode": "P",\n    "labelUrl": null,\n    "invoiceUrl": null\n  }\n}`}
                             errors={[{ code: 400, msg: 'Validation failed - missing fields or unsupported route/service' }, { code: 403, msg: 'Requested carrier or service is not allowed for this API key' }, { code: 500, msg: 'Internal server error' }]}
@@ -418,10 +429,33 @@ const ApiDocsPage = () => {
                                 { field: 'receiver', type: 'object', required: true, description: 'Destination address' },
                                 { field: 'parcels', type: 'object[]', required: true, description: 'weight, length, width, height' },
                                 { field: 'items', type: 'object[]', required: true, description: 'Commodity details, including hsCode for customs-declarable carrier quotes' },
+                                { field: 'optionalServiceCodes', type: 'string[]', required: false, description: 'Predefined VAS codes requested by client' },
+                                { field: 'insuredValue', type: 'number', required: false, description: 'Required with II (Insurance)' },
                             ]}
-                            response={`{\n  "success": true,\n  "data": [\n    {\n      "serviceName": "EXPRESS WORLDWIDE",\n      "serviceCode": "P",\n      "carrier": "DGR",\n      "totalPrice": 18.576,\n      "currency": "KWD"\n    }\n  ]\n}`}
+                            response={`{\n  "success": true,\n  "data": [\n    {\n      "serviceName": "EXPRESS WORLDWIDE",\n      "serviceCode": "P",\n      "carrier": "DGR",\n      "totalPrice": 18.576,\n      "currency": "KWD",\n      "optionalServices": [\n        { "serviceCode": "II", "serviceName": "Shipment Insurance", "totalPrice": 4.000, "currency": "KWD" }\n      ]\n    }\n  ]\n}`}
                             errors={[{ code: 400, msg: 'Requested service is not available for this shipment route/account' }, { code: 403, msg: 'Requested carrier or service is not allowed for this API key' }, { code: 500, msg: 'Carrier rate fetch failed' }]}
                         />
+                        <Box sx={{ ...CARD_SX, p: 2.5, mb: 3 }}>
+                            <Typography sx={{ fontSize: 13, fontWeight: 800, color: DS.onSurface, mb: 1 }}>Predefined Optional Services (Current)</Typography>
+                            <Table size="small">
+                                <TableHead>
+                                    <TableRow>
+                                        <TableCell>Code</TableCell>
+                                        <TableCell>Name</TableCell>
+                                        <TableCell>Notes</TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {PREDEFINED_OPTIONAL_SERVICES.map((service) => (
+                                        <TableRow key={service.code}>
+                                            <TableCell><code>{service.code}</code></TableCell>
+                                            <TableCell>{service.name}</TableCell>
+                                            <TableCell>{service.notes}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </Box>
 
                         {/* Address Book */}
                         <SectionHeader id="addresses" title="Address Book" subtitle="Save and reuse sender/receiver addresses." />

@@ -28,6 +28,13 @@ const UserManagementDialog = ({ open, onClose, user, onSave, refreshTrigger }) =
             // Ensure nested objects exist
             if (!initialData.carrierConfig) initialData.carrierConfig = {};
             if (!initialData.markup) initialData.markup = { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 };
+            if (!initialData.optionalServiceMarkup) {
+                initialData.optionalServiceMarkup = {
+                    insurance: { enabled: false, type: 'PERCENTAGE', percentageValue: 0, flatValue: 0 }
+                };
+            } else if (!initialData.optionalServiceMarkup.insurance) {
+                initialData.optionalServiceMarkup.insurance = { enabled: false, type: 'PERCENTAGE', percentageValue: 0, flatValue: 0 };
+            }
 
             // Map legacy or missing fields if needed
             if (!initialData.carrierConfig.preferredCarrier) initialData.carrierConfig.preferredCarrier = 'DGR';
@@ -67,6 +74,19 @@ const UserManagementDialog = ({ open, onClose, user, onSave, refreshTrigger }) =
         setFormData(prev => ({
             ...prev,
             markup: { ...prev.markup, [field]: value }
+        }));
+    };
+
+    const handleInsuranceMarkupChange = (field, value) => {
+        setFormData(prev => ({
+            ...prev,
+            optionalServiceMarkup: {
+                ...(prev.optionalServiceMarkup || {}),
+                insurance: {
+                    ...(prev.optionalServiceMarkup?.insurance || { enabled: false, type: 'PERCENTAGE', percentageValue: 0, flatValue: 0 }),
+                    [field]: value
+                }
+            }
         }));
     };
 
@@ -274,6 +294,63 @@ const UserManagementDialog = ({ open, onClose, user, onSave, refreshTrigger }) =
                                     value={formData.markup?.flatValue || 0}
                                     onChange={(e) => handleMarkupChange('flatValue', Number(e.target.value))}
                                     disabled={formData.markup?.type === 'PERCENTAGE'}
+                                    InputProps={{ endAdornment: <InputAdornment position="end">KWD</InputAdornment> }}
+                                />
+                            </Grid>
+                        </Grid>
+
+                        <Divider sx={{ my: 2 }} />
+
+                        {/* Optional Service Markup Section */}
+                        <Typography variant="h6" gutterBottom>Insurance Markup (Service II)</Typography>
+                        <Grid container spacing={2} sx={{ mb: 4 }}>
+                            <Grid item xs={12} sm={4}>
+                                <FormControl fullWidth>
+                                    <InputLabel>Insurance Markup Type</InputLabel>
+                                    <Select
+                                        value={formData.optionalServiceMarkup?.insurance?.type || 'PERCENTAGE'}
+                                        label="Insurance Markup Type"
+                                        onChange={(e) => handleInsuranceMarkupChange('type', e.target.value)}
+                                        disabled={!formData.optionalServiceMarkup?.insurance?.enabled}
+                                    >
+                                        <MenuItem value="PERCENTAGE">Percentage Only</MenuItem>
+                                        <MenuItem value="FLAT">Flat Fee Only</MenuItem>
+                                        <MenuItem value="COMBINED">Combined (Perc + Flat)</MenuItem>
+                                    </Select>
+                                </FormControl>
+                            </Grid>
+                            <Grid item xs={12} sm={2}>
+                                <FormControl fullWidth>
+                                    <InputLabel>Enabled</InputLabel>
+                                    <Select
+                                        value={formData.optionalServiceMarkup?.insurance?.enabled ? 'yes' : 'no'}
+                                        label="Enabled"
+                                        onChange={(e) => handleInsuranceMarkupChange('enabled', e.target.value === 'yes')}
+                                    >
+                                        <MenuItem value="yes">Yes</MenuItem>
+                                        <MenuItem value="no">No</MenuItem>
+                                    </Select>
+                                </FormControl>
+                            </Grid>
+                            <Grid item xs={12} sm={3}>
+                                <TextField
+                                    label="Insurance %"
+                                    fullWidth
+                                    type="number"
+                                    value={formData.optionalServiceMarkup?.insurance?.percentageValue || 0}
+                                    onChange={(e) => handleInsuranceMarkupChange('percentageValue', Number(e.target.value))}
+                                    disabled={!formData.optionalServiceMarkup?.insurance?.enabled || formData.optionalServiceMarkup?.insurance?.type === 'FLAT'}
+                                    InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
+                                />
+                            </Grid>
+                            <Grid item xs={12} sm={3}>
+                                <TextField
+                                    label="Insurance Flat"
+                                    fullWidth
+                                    type="number"
+                                    value={formData.optionalServiceMarkup?.insurance?.flatValue || 0}
+                                    onChange={(e) => handleInsuranceMarkupChange('flatValue', Number(e.target.value))}
+                                    disabled={!formData.optionalServiceMarkup?.insurance?.enabled || formData.optionalServiceMarkup?.insurance?.type === 'PERCENTAGE'}
                                     InputProps={{ endAdornment: <InputAdornment position="end">KWD</InputAdornment> }}
                                 />
                             </Grid>

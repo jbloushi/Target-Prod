@@ -19,5 +19,6 @@ router.post('/', authorize('MANAGE_USERS'), userController.createUser);
 router.patch('/:id', authorize('MANAGE_USERS'), userController.updateUser);
 router.delete('/:id', authorize('MANAGE_USERS'), userController.deleteUser);
 router.patch('/:id/password', authorize('MANAGE_USERS'), authController.resetUserPassword);
+router.post('/:id/api-key', authorize('MANAGE_USERS'), userController.regenerateUserApiKey);
 
 module.exports = router;

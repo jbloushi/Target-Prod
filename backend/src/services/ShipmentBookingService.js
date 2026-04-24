@@ -279,6 +279,7 @@ class ShipmentBookingService {
             packageMarks: origin.packageMarks,
             labelSettings: origin.labelSettings,
             dangerousGoods: origin.dangerousGoods,
+            insuredValue: origin.insuredValue,
             incoterm: origin.incoterm || shipment.incoterm || 'DAP',
             packagingType: origin.packagingType || shipment.packagingType || 'user'
         };
