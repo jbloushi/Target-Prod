@@ -232,6 +232,7 @@ const SummaryPanel = ({
     sender, receiver, totals, billableWeight, declaredCurrency, billingCurrency,
     shipmentType, selectedCarrier,
     selectedService, availableServices, onSelectService,
+    availableOptionalServices, selectedOptionalServiceCodes,
     optionalServicesTotal, estimatedShipmentTotal,
     activeStep, loading, fetchingRates, isStaff,
     onBack, onNext, onSubmit,
@@ -240,6 +241,9 @@ const SummaryPanel = ({
     const hasPricing = Number(selectedService?.totalPrice || 0) > 0;
     const showMarkup = isStaff && selectedService?.basePrice != null;
     const tipText    = STEP_TIPS[STEPS[activeStep]?.key] || '';
+    const selectedOptionalServices = (availableOptionalServices || []).filter(
+        service => (selectedOptionalServiceCodes || []).includes(service.serviceCode)
+    );
 
 
     return (
@@ -372,10 +376,19 @@ const SummaryPanel = ({
                                 <Typography sx={{ fontSize: 12, fontWeight: 700, fontFamily: "'Manrope', sans-serif" }}>{Number(selectedService.totalPrice || 0).toFixed(3)} {billingCurrency}</Typography>
                             </Box>
                             {optionalServicesTotal > 0 && (
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <Typography sx={{ fontSize: 12, color: DS.outline, fontFamily: "'Manrope', sans-serif" }}>Optional Services</Typography>
-                                    <Typography sx={{ fontSize: 12, fontWeight: 700, fontFamily: "'Manrope', sans-serif" }}>+{optionalServicesTotal.toFixed(3)} {billingCurrency}</Typography>
-                                </Box>
+                                <>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <Typography sx={{ fontSize: 12, color: DS.outline, fontFamily: "'Manrope', sans-serif" }}>Optional Services</Typography>
+                                        <Typography sx={{ fontSize: 12, fontWeight: 700, fontFamily: "'Manrope', sans-serif" }}>+{optionalServicesTotal.toFixed(3)} {billingCurrency}</Typography>
+                                    </Box>
+                                    {selectedOptionalServices.map((service) => (
+                                        <Box key={`summary-opt-${service.serviceCode}`} sx={{ pl: 1.25, borderLeft: `2px solid ${DS.surfaceContainer}` }}>
+                                            <Typography sx={{ fontSize: 10, color: DS.outline, fontFamily: "'Manrope', sans-serif" }}>
+                                                {service.serviceName}: {Number(service.carrierAmount || service.totalPrice || 0).toFixed(3)} + {Number(service.markupAmount || 0).toFixed(3)} = {Number(service.totalPrice || 0).toFixed(3)} {billingCurrency}
+                                            </Typography>
+                                        </Box>
+                                    ))}
+                                </>
                             )}
                         </Stack>
 
@@ -1041,6 +1054,8 @@ const ShipmentWizardV2 = () => {
                                 selectedCarrier={selectedCarrier}
                                 selectedService={selectedService}
                                 availableServices={availableServices}
+                                availableOptionalServices={availableOptionalServices}
+                                selectedOptionalServiceCodes={selectedOptionalServiceCodes}
                                 onSelectService={handleSelectService}
                                 optionalServicesTotal={optionalServicesTotal}
                                 estimatedShipmentTotal={estimatedShipmentTotal}
