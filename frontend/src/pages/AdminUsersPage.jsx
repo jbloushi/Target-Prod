@@ -509,6 +509,9 @@ const AdminUsersPage = () => {
                             </Card>
 
                             <Card title="Insurance Markup (Service II)" variant="subtle">
+                                <Alert severity="info" style={{ marginBottom: '12px' }}>
+                                    Configure how insurance (II) is marked up for this user during DHL quoting and booking.
+                                </Alert>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '16px' }}>
                                     <Select
                                         label="Enabled"
