@@ -543,7 +543,7 @@ const ShipmentDetailsPage = () => {
         if (!draft.sender && draft.origin) draft.sender = draft.origin;
         if (!draft.receiver && draft.destination) draft.receiver = draft.destination;
         if (draft.insuredValue === undefined || draft.insuredValue === null) {
-            draft.insuredValue = draft.origin?.insuredValue ?? '';
+            draft.insuredValue = draft.origin?.insuredValue ?? draft.insuredValue ?? '';
         }
 
         setEditDraft(draft);
@@ -580,8 +580,16 @@ const ShipmentDetailsPage = () => {
                 }).catch(err => console.error('Failed to fetch optional services for edit:', err));
                 
                 // Initialize selected codes from shipment pricing snapshot or current state
-                const selected = (shipment.pricingSnapshot?.optionalServices || []).map(s => s.serviceCode);
+                const selectedFromSnapshot = (shipment.pricingSnapshot?.optionalServices || []).map(s => s.serviceCode);
+                const selectedFromOrigin = (shipment.origin?.optionalServices || shipment.optionalServices || [])
+                    .map((s) => (typeof s === 'string' ? s : (s?.serviceCode || s?.code || '')))
+                    .filter(Boolean);
+                const selected = selectedFromSnapshot.length > 0 ? selectedFromSnapshot : selectedFromOrigin;
                 setSelectedOptionalServiceCodes(selected);
+                if ((draft.insuredValue === '' || draft.insuredValue === null || draft.insuredValue === undefined) && selected.includes('II')) {
+                    const inferredInsured = shipment.origin?.insuredValue ?? shipment.insuredValue ?? 0;
+                    setEditDraft((prev) => ({ ...prev, insuredValue: inferredInsured > 0 ? inferredInsured : '' }));
+                }
             }
         }
     };
@@ -840,6 +848,7 @@ const ShipmentDetailsPage = () => {
         : null;
     const fallbackTotalCharge = Number(
         shipment.pricingSnapshot?.totalPrice
+        ?? shipment.totalPrice
         ?? shipment.price
         ?? 0
     );
