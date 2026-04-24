@@ -469,12 +469,13 @@ class DgrAdapter extends CarrierAdapter {
             seenCodes.add(code);
         };
 
+        // Prioritize valueAddedServices from DHL payload, then fill missing services from breakdown.
+        if (Array.isArray(product.valueAddedServices)) product.valueAddedServices.forEach(s => processService(s));
         if (Array.isArray(product.detailedPriceBreakdown)) {
             product.detailedPriceBreakdown.forEach(group => {
                 if (Array.isArray(group.breakdown)) group.breakdown.forEach(item => processService(item, group.currencyType));
             });
         }
-        if (Array.isArray(product.valueAddedServices)) product.valueAddedServices.forEach(s => processService(s));
         return services;
     }
 
