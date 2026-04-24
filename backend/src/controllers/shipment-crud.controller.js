@@ -347,12 +347,52 @@ exports.updateShipment = async (req, res) => {
         const isAdminOrStaff = ['admin', 'staff', 'manager', 'accounting'].includes(user.role);
         if (!isAdminOrStaff && !isOwner) return res.status(403).json({ success: false, error: 'Not authorized' });
 
-        const allowedFields = ['destination', 'origin', 'items', 'parcels', 'incoterm', 'currency', 'dangerousGoods', 'serviceCode', 'status', 'allowPublicLocationUpdate'];
+        const allowedFields = [
+            'destination', 'origin', 'items', 'parcels',
+            'incoterm', 'currency', 'dangerousGoods', 'serviceCode', 'status',
+            'allowPublicLocationUpdate', 'allowPublicInfoUpdate',
+            'exportReason', 'invoiceRemarks', 'signatureName', 'signatureTitle',
+            'payerOfVat', 'gstPaid', 'shipperAccount', 'labelFormat',
+            'palletCount', 'packageMarks', 'reference'
+        ];
         const manualEditableFields = ['price', 'costPrice', 'estimatedDelivery'];
         const updateData = {};
         let criticalChangesDetected = hasCriticalChanges(shipment, updates);
         const shipmentIsManual = isManualShipment(shipment);
         const canManageManualFields = shipmentIsManual && ['admin', 'manager', 'accounting'].includes(user.role);
+
+        const optionalServiceCodes = Array.isArray(updates.optionalServiceCodes)
+            ? updates.optionalServiceCodes.map(code => String(code || '').toUpperCase()).filter(Boolean)
+            : null;
+        if (optionalServiceCodes) {
+            const allowedOptionalCodes = new Set(['II', 'SX', 'NN']);
+            const unsupportedCodes = optionalServiceCodes.filter(code => !allowedOptionalCodes.has(code));
+            if (unsupportedCodes.length > 0) {
+                return res.status(400).json({ success: false, error: `Unsupported optionalServiceCodes: ${unsupportedCodes.join(', ')}` });
+            }
+            if (optionalServiceCodes.includes('II') && Number(updates.insuredValue || shipment.origin?.insuredValue || 0) <= 0) {
+                return res.status(400).json({ success: false, error: 'Insurance service (II) requires insuredValue > 0.' });
+            }
+            updateData.origin = {
+                ...(shipment.origin || {}),
+                insuredValue: optionalServiceCodes.includes('II')
+                    ? Number(updates.insuredValue || shipment.origin?.insuredValue || 0)
+                    : null,
+                optionalServices: [...new Set(optionalServiceCodes)]
+            };
+            criticalChangesDetected = true;
+        } else if (updates.insuredValue !== undefined) {
+            const insuredValue = Number(updates.insuredValue || 0);
+            const existingOptionalCodes = (shipment.origin?.optionalServices || []).map(code => String(code).toUpperCase());
+            if (existingOptionalCodes.includes('II') && insuredValue <= 0) {
+                return res.status(400).json({ success: false, error: 'Insurance service (II) requires insuredValue > 0.' });
+            }
+            updateData.origin = {
+                ...(updateData.origin || shipment.origin || {}),
+                insuredValue: insuredValue > 0 ? insuredValue : null
+            };
+            criticalChangesDetected = true;
+        }
 
         if (updates.status && updates.status !== shipment.status) {
             const validStatuses = shipmentIsManual ? MANUAL_SHIPMENT_STATUSES : SHIPMENT_STATUSES;
@@ -469,4 +509,3 @@ exports.updateShipment = async (req, res) => {
         res.status(500).json({ success: false, error: 'Server error' });
     }
 };
-
