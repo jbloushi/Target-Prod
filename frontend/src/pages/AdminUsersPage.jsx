@@ -154,13 +154,24 @@ const AdminUsersPage = () => {
             role: 'org_agent',
             carrierConfig: { preferredCarrier: 'DGR', traderType: 'business' },
             shippingAccess: { mode: 'carrier', carrierCode: 'DGR', serviceCode: '', serviceName: 'Any Available Service' },
-            markup: { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 }
+            markup: { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 },
+            optionalServiceMarkup: {
+                insurance: { enabled: false, type: 'PERCENTAGE', percentageValue: 0, flatValue: 0 }
+            }
         };
 
         // Ensure nested objects
         if (!initialData.carrierConfig) initialData.carrierConfig = { preferredCarrier: 'DGR', traderType: 'business' };
         initialData.shippingAccess = normalizeShippingAccess(initialData);
         if (!initialData.markup) initialData.markup = { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 };
+        if (!initialData.optionalServiceMarkup) {
+            initialData.optionalServiceMarkup = {
+                insurance: { enabled: false, type: 'PERCENTAGE', percentageValue: 0, flatValue: 0 }
+            };
+        }
+        if (!initialData.optionalServiceMarkup.insurance) {
+            initialData.optionalServiceMarkup.insurance = { enabled: false, type: 'PERCENTAGE', percentageValue: 0, flatValue: 0 };
+        }
         if (typeof initialData.organization === 'object' && initialData.organization) {
             initialData.organizationId = initialData.organization.id;
         }
@@ -182,6 +193,14 @@ const AdminUsersPage = () => {
             if (payload.markup) {
                 payload.markup.percentageValue = Number(payload.markup.percentageValue || 0);
                 payload.markup.flatValue = Number(payload.markup.flatValue || 0);
+            }
+            if (payload.optionalServiceMarkup?.insurance) {
+                payload.optionalServiceMarkup.insurance = {
+                    ...payload.optionalServiceMarkup.insurance,
+                    enabled: Boolean(payload.optionalServiceMarkup.insurance.enabled),
+                    percentageValue: Number(payload.optionalServiceMarkup.insurance.percentageValue || 0),
+                    flatValue: Number(payload.optionalServiceMarkup.insurance.flatValue || 0)
+                };
             }
             if (payload.shippingAccess?.mode === 'manual') {
                 payload.shippingAccess = {
@@ -485,6 +504,55 @@ const AdminUsersPage = () => {
                                         type="number"
                                         value={formData.markup?.flatValue || 0}
                                         onChange={e => updateNested('markup', 'flatValue', e.target.value)}
+                                    />
+                                </div>
+                            </Card>
+
+                            <Card title="Insurance Markup (Service II)" variant="subtle">
+                                <Alert severity="info" style={{ marginBottom: '12px' }}>
+                                    Configure how insurance (II) is marked up for this user during DHL quoting and booking.
+                                </Alert>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '16px' }}>
+                                    <Select
+                                        label="Enabled"
+                                        value={formData.optionalServiceMarkup?.insurance?.enabled ? 'yes' : 'no'}
+                                        onChange={e => updateNested('optionalServiceMarkup', 'insurance', {
+                                            ...(formData.optionalServiceMarkup?.insurance || {}),
+                                            enabled: e.target.value === 'yes'
+                                        })}
+                                    >
+                                        <option value="yes">Yes</option>
+                                        <option value="no">No</option>
+                                    </Select>
+                                    <Select
+                                        label="Markup Type"
+                                        value={formData.optionalServiceMarkup?.insurance?.type || 'PERCENTAGE'}
+                                        onChange={e => updateNested('optionalServiceMarkup', 'insurance', {
+                                            ...(formData.optionalServiceMarkup?.insurance || {}),
+                                            type: e.target.value
+                                        })}
+                                    >
+                                        <option value="PERCENTAGE">% Only</option>
+                                        <option value="FLAT">Flat Only</option>
+                                        <option value="COMBINED">Combined</option>
+                                    </Select>
+                                    <Input
+                                        label="Insurance %"
+                                        type="number"
+                                        value={formData.optionalServiceMarkup?.insurance?.percentageValue || 0}
+                                        onChange={e => updateNested('optionalServiceMarkup', 'insurance', {
+                                            ...(formData.optionalServiceMarkup?.insurance || {}),
+                                            percentageValue: e.target.value
+                                        })}
+                                    />
+                                    <Input
+                                        label="Insurance Flat"
+                                        type="number"
+                                        value={formData.optionalServiceMarkup?.insurance?.flatValue || 0}
+                                        onChange={e => updateNested('optionalServiceMarkup', 'insurance', {
+                                            ...(formData.optionalServiceMarkup?.insurance || {}),
+                                            flatValue: e.target.value
+                                        })}
                                     />
                                 </div>
                             </Card>

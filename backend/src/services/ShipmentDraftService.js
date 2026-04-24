@@ -208,12 +208,34 @@ class ShipmentDraftService {
 
         const optionalServices = (quote.optionalServices || [])
             .filter(service => selectedOptionalCodes.has(service.serviceCode))
-            .map(service => ({
-                serviceCode: service.serviceCode,
-                serviceName: service.serviceName,
-                totalPrice: Number(PricingService.normalizeAmount(service.totalPrice || 0).toFixed(3)),
-                currency: service.currency || quote.currency || 'KWD'
-            }));
+            .map(service => {
+                const carrierAmount = Number(PricingService.normalizeAmount(service.totalPrice || 0).toFixed(3));
+                const currency = service.currency || quote.currency || 'KWD';
+                const { markup: optionalMarkup, source: optionalMarkupSource } =
+                    PricingService.resolveOptionalServiceMarkup(user, user.organization, carrierCode, service.serviceCode);
+
+                if (!optionalMarkup) {
+                    return {
+                        serviceCode: service.serviceCode,
+                        serviceName: service.serviceName,
+                        totalPrice: carrierAmount,
+                        carrierAmount,
+                        markupAmount: 0,
+                        currency
+                    };
+                }
+
+                const optionalCalc = PricingService.calculateFinalPrice(carrierAmount, optionalMarkup, currency);
+                return {
+                    serviceCode: service.serviceCode,
+                    serviceName: service.serviceName,
+                    totalPrice: Number(optionalCalc.finalPrice.toFixed(3)),
+                    carrierAmount,
+                    markupAmount: Number(optionalCalc.markupAmount.toFixed(3)),
+                    markupPolicySource: optionalMarkupSource,
+                    currency
+                };
+            });
 
         const { Decimal } = require('decimal.js');
         const optionalServicesTotal = optionalServices.reduce((sum, service) => {

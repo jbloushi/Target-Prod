@@ -35,9 +35,10 @@
   "scripts": {
     "start": "vite --host 0.0.0.0",
     "dev": "vite --host 0.0.0.0",
+    "check:merge-markers": "node scripts/check-merge-markers.mjs",
     "lint": "eslint . --max-warnings=0",
     "test": "vitest run",
-    "build": "vite build",
+    "build": "npm run check:merge-markers && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "verify": "npm run lint && npm run test && npm run build && npm audit"
   },
