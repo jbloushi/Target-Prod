@@ -49,6 +49,8 @@ module.exports = {
   logesTechsUsername: process.env.LOGESTECHS_USERNAME,
   logesTechsPassword: process.env.LOGESTECHS_PASSWORD,
   logesTechsEmail: process.env.LOGESTECHS_EMAIL,
+  logesTechsShipmentEmail: process.env.LOGESTECHS_SHIPMENT_EMAIL,
+  logesTechsShipmentPassword: process.env.LOGESTECHS_SHIPMENT_PASSWORD,
   googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY,
   googleMapsAutocompleteUrl: process.env.GOOGLE_MAPS_AUTOCOMPLETE_URL || 'https://maps.googleapis.com/maps/api/place/autocomplete/json',
   googleMapsDetailsUrl: process.env.GOOGLE_MAPS_DETAILS_URL || 'https://maps.googleapis.com/maps/api/place/details/json',

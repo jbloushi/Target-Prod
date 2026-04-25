@@ -37,6 +37,8 @@ describe('LogesTechsAdapter', () => {
         username: 'user-1',
         password: 'secret-pass',
         email: 'ops@example.com',
+        shipmentEmail: 'shipper@example.com',
+        shipmentPassword: 'shipment-pass',
         ...overrides
     });
 
@@ -94,8 +96,8 @@ describe('LogesTechsAdapter', () => {
         });
 
         expect(shipmentClient.post).toHaveBeenCalledWith('/ship/request/by-email', expect.objectContaining({
-            email: 'ops@example.com',
-            password: 'secret-pass',
+            email: 'shipper@example.com',
+            password: 'shipment-pass',
             pkgUnitType: 'METRIC',
             destinationAddress: expect.objectContaining({ villageId: '6' }),
             originAddress: expect.objectContaining({ villageId: '3' })
@@ -110,7 +112,7 @@ describe('LogesTechsAdapter', () => {
     });
 
     it('uses username as shipment email fallback when LOGESTECHS_EMAIL is not set', async () => {
-        const adapter = createAdapter({ email: '' });
+        const adapter = createAdapter({ shipmentEmail: '', email: '' });
         shipmentClient.get.mockResolvedValue({ data: [] });
         shipmentClient.post.mockResolvedValue({ data: { shipmentId: 'shp-127', barcode: 'BR-127' } });
 
@@ -121,6 +123,21 @@ describe('LogesTechsAdapter', () => {
 
         expect(shipmentClient.post).toHaveBeenCalledWith('/ship/request/by-email', expect.objectContaining({
             email: 'user-1'
+        }), expect.any(Object));
+    });
+
+    it('falls back to LOGESTECHS_PASSWORD when shipment password override is missing', async () => {
+        const adapter = createAdapter({ shipmentPassword: '' });
+        shipmentClient.get.mockResolvedValue({ data: [] });
+        shipmentClient.post.mockResolvedValue({ data: { shipmentId: 'shp-128', barcode: 'BR-128' } });
+
+        await adapter.createShipment({
+            sender: { addressLine1: 'S', city: 'Kuwait' },
+            receiver: { addressLine1: 'R', city: 'Riyadh' }
+        });
+
+        expect(shipmentClient.post).toHaveBeenCalledWith('/ship/request/by-email', expect.objectContaining({
+            password: 'secret-pass'
         }), expect.any(Object));
     });
 
@@ -176,7 +193,7 @@ describe('LogesTechsAdapter', () => {
         await expect(adapter.createShipment({
             sender: { addressLine1: 'S', city: 'Kuwait' },
             receiver: { addressLine1: 'R', city: 'Riyadh' }
-        })).rejects.toThrow(/OTE authentication failed/i);
+        })).rejects.toThrow(/LOGESTECHS_SHIPMENT_EMAIL\/LOGESTECHS_SHIPMENT_PASSWORD/i);
     });
 
     it('requires barcode or id for getStatus', async () => {

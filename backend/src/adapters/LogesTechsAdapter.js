@@ -7,7 +7,9 @@ const {
     logesTechsCompanyId,
     logesTechsUsername,
     logesTechsPassword,
-    logesTechsEmail
+    logesTechsEmail,
+    logesTechsShipmentEmail,
+    logesTechsShipmentPassword
 } = require('../config/config');
 
 class LogesTechsAdapter extends CarrierAdapter {
@@ -18,6 +20,8 @@ class LogesTechsAdapter extends CarrierAdapter {
         const username = configOverrides.username || logesTechsUsername;
         const password = configOverrides.password || logesTechsPassword;
         const email = configOverrides.email || logesTechsEmail;
+        const shipmentEmail = configOverrides.shipmentEmail || logesTechsShipmentEmail;
+        const shipmentPassword = configOverrides.shipmentPassword || logesTechsShipmentPassword;
 
         super({
             shipmentBaseUrl,
@@ -25,7 +29,9 @@ class LogesTechsAdapter extends CarrierAdapter {
             companyId,
             username,
             password,
-            email
+            email,
+            shipmentEmail,
+            shipmentPassword
         });
 
         this.code = 'OTE';
@@ -34,7 +40,7 @@ class LogesTechsAdapter extends CarrierAdapter {
         this.fulfillmentClient = axios.create({ baseURL: fulfillmentBaseUrl, timeout: 30000 });
     }
 
-    _assertCredentials(required = ['companyId', 'username', 'password']) {
+    _assertCredentials(required = ['companyId']) {
         const missing = required.filter((field) => !this.config[field]);
         if (missing.length > 0) {
             const err = new Error(`Validation Failed: Missing LogesTechs credentials: ${missing.join(', ')}`);
@@ -44,11 +50,9 @@ class LogesTechsAdapter extends CarrierAdapter {
     }
 
     _shipmentHeaders() {
-        this._assertCredentials(['companyId', 'username', 'password']);
+        this._assertCredentials(['companyId']);
         return {
             'company-id': this.config.companyId,
-            username: this.config.username,
-            password: this.config.password,
             'content-type': 'application/json'
         };
     }
@@ -62,11 +66,21 @@ class LogesTechsAdapter extends CarrierAdapter {
     }
 
     _shipmentAuthEmail() {
-        return this._firstNonEmpty(this.config.email, this.config.username);
+        return this._firstNonEmpty(this.config.shipmentEmail, this.config.email, this.config.username);
+    }
+
+    _shipmentAuthPassword() {
+        return this._firstNonEmpty(this.config.shipmentPassword, this.config.password);
     }
 
     _fulfillmentHeaders() {
-        return this._shipmentHeaders();
+        this._assertCredentials(['companyId', 'username', 'password']);
+        return {
+            'company-id': this.config.companyId,
+            username: this.config.username,
+            password: this.config.password,
+            'content-type': 'application/json'
+        };
     }
 
     _safeString(value) {
@@ -236,7 +250,7 @@ class LogesTechsAdapter extends CarrierAdapter {
         const isCredentialError = /البريد الالكتروني او كلمة المرور غير صحيحة|incorrect email or password|invalid credentials/i
             .test(String(upstreamMessage || ''));
         const normalizedMessage = isCredentialError
-            ? 'OTE authentication failed. Verify LOGESTECHS_EMAIL, LOGESTECHS_PASSWORD, LOGESTECHS_USERNAME, and LOGESTECHS_COMPANY_ID.'
+            ? 'OTE authentication failed. Verify LOGESTECHS_SHIPMENT_EMAIL/LOGESTECHS_SHIPMENT_PASSWORD (or LOGESTECHS_EMAIL/LOGESTECHS_PASSWORD), LOGESTECHS_USERNAME, and LOGESTECHS_COMPANY_ID.'
             : upstreamMessage;
 
         logger.error(`LogesTechs ${operation} failed`, {
@@ -258,7 +272,7 @@ class LogesTechsAdapter extends CarrierAdapter {
 
         if (!this.config.companyId) errors.push('company-id is required');
         if (!this.config.username) errors.push('username is required');
-        if (!this.config.password) errors.push('password is required');
+        if (!this._shipmentAuthPassword()) errors.push('password is required');
         if (!this._shipmentAuthEmail()) errors.push('email or username is required');
 
         return errors;
@@ -270,7 +284,7 @@ class LogesTechsAdapter extends CarrierAdapter {
 
     async createShipment(normalizedShipment = {}) {
         try {
-            this._assertCredentials(['companyId', 'username', 'password']);
+            this._assertCredentials(['companyId']);
             const validationErrors = await this.validate(normalizedShipment);
             if (validationErrors.length > 0) {
                 const err = new Error(`Validation Failed: ${validationErrors.join('; ')}`);
@@ -291,10 +305,16 @@ class LogesTechsAdapter extends CarrierAdapter {
                 err.statusCode = 400;
                 throw err;
             }
+            const shipmentPassword = this._shipmentAuthPassword();
+            if (!shipmentPassword) {
+                const err = new Error('Validation Failed: password is required for LogesTechs shipment create');
+                err.statusCode = 400;
+                throw err;
+            }
 
             const payload = {
                 email: shipmentEmail,
-                password: this.config.password,
+                password: shipmentPassword,
                 pkgUnitType: 'METRIC',
                 pkg: this._toPackagePayload(normalizedShipment),
                 destinationAddress,
@@ -347,7 +367,7 @@ class LogesTechsAdapter extends CarrierAdapter {
 
     async cancelShipment(shipmentId, email = null) {
         try {
-            this._assertCredentials(['companyId', 'password']);
+            this._assertCredentials(['companyId']);
             if (!shipmentId) {
                 const err = new Error('Validation Failed: shipmentId required for cancellation');
                 err.statusCode = 400;
@@ -355,8 +375,8 @@ class LogesTechsAdapter extends CarrierAdapter {
             }
 
             const body = {
-                email: email || this.config.email,
-                password: this.config.password
+                email: email || this._shipmentAuthEmail(),
+                password: this._shipmentAuthPassword()
             };
 
             if (!body.email) {

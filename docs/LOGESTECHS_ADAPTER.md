@@ -13,6 +13,8 @@ LOGESTECHS_COMPANY_ID=
 LOGESTECHS_USERNAME=
 LOGESTECHS_PASSWORD=
 LOGESTECHS_EMAIL=
+LOGESTECHS_SHIPMENT_EMAIL=
+LOGESTECHS_SHIPMENT_PASSWORD=
 ```
 
 > Never expose these values to frontend bundles. They are read only by backend runtime config.
@@ -38,7 +40,8 @@ LOGESTECHS_EMAIL=
 ## Mapping and Validation Notes
 
 - Shipment payload uses `pkgUnitType: METRIC`.
-- Shipment `email` is resolved as `LOGESTECHS_EMAIL` with fallback to `LOGESTECHS_USERNAME`.
+- Shipment `email` is resolved as `LOGESTECHS_SHIPMENT_EMAIL` -> `LOGESTECHS_EMAIL` -> `LOGESTECHS_USERNAME`.
+- Shipment `password` is resolved as `LOGESTECHS_SHIPMENT_PASSWORD` -> `LOGESTECHS_PASSWORD`.
 - `destinationAddress` and `originAddress` are mapped in best-effort mode from internal shipment fields.
 - When IDs are missing, adapter attempts village lookup (`/addresses/villages?search=`) using textual address hints to auto-fill `villageId/cityId/regionId` before shipment create.
 - Village lookup requests use `company-id` header as in provider examples.
@@ -47,7 +50,7 @@ LOGESTECHS_EMAIL=
 - Adapter preserves UTF-8 business/address strings (Arabic text is forwarded without transliteration).
 - Carrier code is `OTE` (legacy `LOGESTECHS` values are treated as backward-compatible aliases).
 - Returned shipment object stores `carrierShipmentId` and `barcode`/`trackingNumber` when available.
-- If provider returns invalid login credentials (including Arabic auth errors), adapter returns an actionable message to verify `LOGESTECHS_EMAIL`, `LOGESTECHS_PASSWORD`, `LOGESTECHS_USERNAME`, and `LOGESTECHS_COMPANY_ID`.
+- If provider returns invalid login credentials (including Arabic auth errors), adapter returns actionable guidance to verify shipment credentials (`LOGESTECHS_SHIPMENT_EMAIL`/`LOGESTECHS_SHIPMENT_PASSWORD` or fallback values), plus `LOGESTECHS_USERNAME` and `LOGESTECHS_COMPANY_ID`.
 - Fulfillment product bulk requests are sent in `{ list: [...] }` shape per provider collection.
 - Fulfillment order requests are normalized to provider fields (`receiverName`, `receiverPhone`, `receiverAddress`, `shipmentType`, `codCollectionMethod`, `cod`, `cost`, `items`, `invoiceNumber`) with safe defaults for omitted optional values.
 - Manual `price`/`costPrice` override for existing OTE shipments is allowed only for platform roles (`admin`, `staff`, `manager`, `accounting`); client users cannot override these fields.
