@@ -191,8 +191,33 @@ const hasCriticalChanges = (original, updates) => {
     if (!updates) return false;
     if (updates.serviceCode && updates.serviceCode !== original.serviceCode) return true;
 
+    const normalizeCodes = (value) => {
+        if (!Array.isArray(value)) return [];
+        return value
+            .map(code => String(code || '').toUpperCase().trim())
+            .filter(Boolean)
+            .sort();
+    };
+
+    const originalOptionalCodes = normalizeCodes(
+        original.origin?.optionalServiceCodes
+            || (original.pricingSnapshot?.optionalServices || []).map(service => service.serviceCode)
+    );
+    const updateOptionalCodes = normalizeCodes(updates.optionalServiceCodes);
+    if (updates.optionalServiceCodes !== undefined
+        && JSON.stringify(updateOptionalCodes) !== JSON.stringify(originalOptionalCodes)) {
+        return true;
+    }
+
+    const originalInsuredValue = Number(original.origin?.insuredValue ?? original.insuredValue ?? 0);
+    const updateInsuredValue = Number(updates.insuredValue ?? originalInsuredValue);
+    if (updates.insuredValue !== undefined && Math.abs(updateInsuredValue - originalInsuredValue) > 0.0001) {
+        return true;
+    }
+
     if (updates.dangerousGoods) {
-        if (updates.dangerousGoods.contains !== original.dangerousGoods?.contains) return true;
+        const originalDg = original.dangerousGoods || original.origin?.dangerousGoods || {};
+        if (JSON.stringify(updates.dangerousGoods || {}) !== JSON.stringify(originalDg || {})) return true;
     }
 
     if (updates.parcels) {
@@ -269,4 +294,3 @@ module.exports = {
     getAllowedStatusUpdates,
     canUpdateShipmentStatus
 };
-

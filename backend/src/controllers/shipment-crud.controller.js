@@ -382,6 +382,8 @@ exports.updateShipment = async (req, res) => {
             nextOrigin.optionalServiceCodes = updates.optionalServiceCodes;
         }
 
+        logger.info(`[shipment.update] ${trackingNumber} payload keys: ${Object.keys(updates || {}).join(', ')}`);
+
         // Filter updates
         Object.keys(updates).forEach(key => {
             if (allowedFields.includes(key)) updateData[key] = updates[key];
@@ -449,6 +451,49 @@ exports.updateShipment = async (req, res) => {
 
                 const { markup, source } = PricingService.resolveMarkup(targetUser, targetUser.organization, shipment.carrierCode);
                 const snapshot = PricingService.createSnapshot(selectedService.totalPrice, markup, selectedService.currency, source);
+                const selectedOptionalCodes = new Set(
+                    (updates.optionalServiceCodes ?? currentOrigin.optionalServiceCodes ?? [])
+                        .map(code => String(code))
+                        .filter(Boolean)
+                );
+                const optionalServices = (selectedService.optionalServices || [])
+                    .filter(service => selectedOptionalCodes.has(service.serviceCode))
+                    .map(service => {
+                        const carrierAmount = Number(PricingService.normalizeAmount(service.totalPrice || 0).toFixed(3));
+                        const currency = service.currency || selectedService.currency || shipment.currency || 'KWD';
+                        const { markup: optionalMarkup, source: optionalMarkupSource } =
+                            PricingService.resolveOptionalServiceMarkup(targetUser, targetUser.organization, mergedState.carrierCode || shipment.carrierCode, service.serviceCode);
+
+                        if (!optionalMarkup) {
+                            return {
+                                serviceCode: service.serviceCode,
+                                serviceName: service.serviceName,
+                                totalPrice: carrierAmount,
+                                carrierAmount,
+                                markupAmount: 0,
+                                currency
+                            };
+                        }
+
+                        const optionalCalc = PricingService.calculateFinalPrice(carrierAmount, optionalMarkup, currency);
+                        return {
+                            serviceCode: service.serviceCode,
+                            serviceName: service.serviceName,
+                            totalPrice: Number(optionalCalc.finalPrice.toFixed(3)),
+                            carrierAmount,
+                            markupAmount: Number(optionalCalc.markupAmount.toFixed(3)),
+                            markupPolicySource: optionalMarkupSource,
+                            currency
+                        };
+                    });
+                const optionalServicesTotal = optionalServices.reduce((sum, service) => sum + Number(service.totalPrice || 0), 0);
+                const estimatedShipmentCost = Number(snapshot.totalPrice || 0);
+                snapshot.optionalServices = optionalServices;
+                snapshot.optionalServicesTotal = Number(optionalServicesTotal.toFixed(3));
+                snapshot.estimatedShipmentCost = Number(estimatedShipmentCost.toFixed(3));
+                snapshot.totalPrice = Number((estimatedShipmentCost + optionalServicesTotal).toFixed(3));
+                snapshot.declaredCurrency = updates.currency || shipment.currency || selectedService.currency || 'KWD';
+                snapshot.insuredValue = updates.insuredValue ?? currentOrigin.insuredValue ?? null;
 
                 const oldPrice = shipment.price || 0;
                 const newPrice = snapshot.totalPrice;
@@ -457,6 +502,7 @@ exports.updateShipment = async (req, res) => {
                 updateData.pricingSnapshot = snapshot;
                 updateData.costPrice = snapshot.carrierRate;
                 updateData.markupAmount = snapshot.markup;
+                updateData.remainingBalance = Number(Math.max(0, (newPrice - Number(shipment.totalPaid || 0))).toFixed(4));
 
                 // Ledger Adjustment
                 if (shipment.organizationId && oldPrice !== newPrice) {

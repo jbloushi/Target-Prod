@@ -584,7 +584,11 @@ const ShipmentDetailsPage = () => {
                 
                 // Initialize selected codes from shipment pricing snapshot or current state
                 const selected = (shipment.pricingSnapshot?.optionalServices || []).map(s => s.serviceCode);
-                setSelectedOptionalServiceCodes(selected);
+                const selectedFallback = Array.isArray(shipment.origin?.optionalServiceCodes)
+                    ? shipment.origin.optionalServiceCodes
+                    : [];
+                const selectedCodes = selected.length > 0 ? selected : selectedFallback;
+                setSelectedOptionalServiceCodes(selectedCodes);
                 const declaredValue = (shipment.items || []).reduce((sum, item) => {
                     const itemValue = Number(item?.declaredValue || 0) * Number(item?.quantity || 1);
                     return sum + itemValue;
@@ -594,7 +598,7 @@ const ShipmentDetailsPage = () => {
                     ? Number(savedInsuredValueRaw)
                     : declaredValue;
                 setEditInsuredValue(
-                    selected.includes('II') && savedInsuredValue > 0
+                    selectedCodes.includes('II') && savedInsuredValue > 0
                         ? String(savedInsuredValue)
                         : ''
                 );
