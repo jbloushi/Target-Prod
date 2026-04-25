@@ -26,8 +26,13 @@ const DG_LIMITS = {
 
 const DangerousGoodsPanel = ({ dangerousGoods, setDangerousGoods }) => {
     const theme = useTheme();
+    const dg = {
+        contains: false,
+        ...(dangerousGoods || {})
+    };
+
     const handleChange = (field, value) => {
-        const prev = dangerousGoods || {};
+        const prev = dg;
         let next = { ...prev };
 
         if (field === 'contains') {
@@ -59,36 +64,36 @@ const DangerousGoodsPanel = ({ dangerousGoods, setDangerousGoods }) => {
         const type = DG_TYPES.find(t => t.label === e.target.value);
         if (type) {
             setDangerousGoods({
-                ...(dangerousGoods || {}),
+                ...dg,
                 code: type.code,
                 serviceCode: type.serviceCode,
                 contentId: type.contentId,
                 hazardClass: type.hazard,
                 properShippingName: type.psn,
                 packingGroup: type.pg || 'II',
-                customDescription: (dangerousGoods || {}).customDescription || DG_MARKS_DEFAULT
+                customDescription: dg.customDescription || DG_MARKS_DEFAULT
             });
         }
     };
 
     const warnings = [];
-    if ((dangerousGoods.properShippingName || '').length > DG_LIMITS.properShippingName) warnings.push(`Proper Shipping Name exceeds ${DG_LIMITS.properShippingName} characters.`);
-    if ((dangerousGoods.customDescription || '').length > DG_LIMITS.customDescription) warnings.push(`DG Marks & Instructions exceeds ${DG_LIMITS.customDescription} characters.`);
+    if ((dg.properShippingName || '').length > DG_LIMITS.properShippingName) warnings.push(`Proper Shipping Name exceeds ${DG_LIMITS.properShippingName} characters.`);
+    if ((dg.customDescription || '').length > DG_LIMITS.customDescription) warnings.push(`DG Marks & Instructions exceeds ${DG_LIMITS.customDescription} characters.`);
 
     return (
         <Box 
             sx={{ 
                 p: 4, mb: 4, 
-                bgcolor: dangerousGoods.contains ? alpha(theme.palette.error.main, 0.05) : 'surface-container-low', 
+                bgcolor: dg.contains ? alpha(theme.palette.error.main, 0.05) : 'surface-container-low', 
                 borderRadius: 6,
                 border: '1px solid',
-                borderColor: dangerousGoods.contains ? 'error.main' : 'transparent',
+                borderColor: dg.contains ? 'error.main' : 'transparent',
                 transition: 'var(--transition-base)'
             }}
         >
             <Box display="flex" alignItems="center" justifyContent="space-between">
                 <Stack direction="row" alignItems="center" spacing={2.5}>
-                    <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: dangerousGoods.contains ? alpha(theme.palette.error.main, 0.1) : alpha(theme.palette.primary.main, 0.1), color: dangerousGoods.contains ? 'error.main' : 'primary.main', display: 'flex' }}>
+                    <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: dg.contains ? alpha(theme.palette.error.main, 0.1) : alpha(theme.palette.primary.main, 0.1), color: dg.contains ? 'error.main' : 'primary.main', display: 'flex' }}>
                         <WarningIcon />
                     </Box>
                     <Box>
@@ -104,7 +109,7 @@ const DangerousGoodsPanel = ({ dangerousGoods, setDangerousGoods }) => {
                 <FormControlLabel
                     control={
                         <Switch
-                            checked={dangerousGoods.contains}
+                            checked={Boolean(dg.contains)}
                             onChange={(e) => handleChange('contains', e.target.checked)}
                             color="error"
                         />
@@ -115,7 +120,7 @@ const DangerousGoodsPanel = ({ dangerousGoods, setDangerousGoods }) => {
                 />
             </Box>
 
-            <Collapse in={dangerousGoods.contains}>
+            <Collapse in={Boolean(dg.contains)}>
                 <Box mt={5} className="slide-up">
                     <Grid container spacing={3}>
                         <Grid item xs={12}>
@@ -142,9 +147,9 @@ const DangerousGoodsPanel = ({ dangerousGoods, setDangerousGoods }) => {
                             <TextField
                                 fullWidth
                                 label="UN/ID Primary Code"
-                                value={dangerousGoods.code || ''}
+                                value={dg.code || ''}
                                 onChange={(e) => handleChange('code', e.target.value)}
-                                error={(dangerousGoods.code || '').length > DG_LIMITS.code}
+                                error={(dg.code || '').length > DG_LIMITS.code}
                                 placeholder="1266"
                                 helperText="4-digit regulatory code"
                             />
@@ -154,7 +159,7 @@ const DangerousGoodsPanel = ({ dangerousGoods, setDangerousGoods }) => {
                             <TextField
                                 fullWidth
                                 label="Logistics Service Code"
-                                value={dangerousGoods.serviceCode || ''}
+                                value={dg.serviceCode || ''}
                                 onChange={(e) => handleChange('serviceCode', e.target.value)}
                                 placeholder="HE"
                                 helperText="HE, HV, HK, or HA"
@@ -165,20 +170,20 @@ const DangerousGoodsPanel = ({ dangerousGoods, setDangerousGoods }) => {
                             <TextField
                                 fullWidth
                                 label="Internal Content ID"
-                                value={dangerousGoods.contentId || ''}
+                                value={dg.contentId || ''}
                                 onChange={(e) => handleChange('contentId', e.target.value)}
                                 placeholder="910"
                                 helperText="Route-specific DGR identifier"
                             />
                         </Grid>
 
-                        {dangerousGoods.code === '1845' && (
+                        {dg.code === '1845' && (
                             <Grid item xs={12} md={6}>
                                 <TextField
                                     fullWidth
                                     label="Cryogenic Dry Ice Weight (kg)"
                                     type="number"
-                                    value={dangerousGoods.dryIceWeight || ''}
+                                    value={dg.dryIceWeight || ''}
                                     onChange={(e) => handleChange('dryIceWeight', e.target.value)}
                                     placeholder="1.0"
                                 />
@@ -189,7 +194,7 @@ const DangerousGoodsPanel = ({ dangerousGoods, setDangerousGoods }) => {
                             <FormControl fullWidth size="small">
                                 <InputLabel>Packing Sensitivity Group</InputLabel>
                                 <Select
-                                    value={dangerousGoods.packingGroup || 'II'}
+                                    value={dg.packingGroup || 'II'}
                                     label="Packing Sensitivity Group"
                                     onChange={(e) => handleChange('packingGroup', e.target.value)}
                                 >
@@ -204,7 +209,7 @@ const DangerousGoodsPanel = ({ dangerousGoods, setDangerousGoods }) => {
                             <TextField
                                 fullWidth
                                 label="Primary Hazard Class"
-                                value={dangerousGoods.hazardClass || ''}
+                                value={dg.hazardClass || ''}
                                 onChange={(e) => handleChange('hazardClass', e.target.value)}
                                 placeholder="e.g. 3"
                                 helperText="Regulatory Class (1-9)"
@@ -215,11 +220,11 @@ const DangerousGoodsPanel = ({ dangerousGoods, setDangerousGoods }) => {
                             <TextField
                                 fullWidth
                                 label="Proper International Shipping Name"
-                                value={dangerousGoods.properShippingName || ''}
+                                value={dg.properShippingName || ''}
                                 onChange={(e) => handleChange('properShippingName', e.target.value)}
                                 placeholder="e.g. PERFUMERY PRODUCTS"
-                                error={(dangerousGoods.properShippingName || '').length > DG_LIMITS.properShippingName}
-                                helperText={`${(dangerousGoods.properShippingName || '').length}/${DG_LIMITS.properShippingName}`}
+                                error={(dg.properShippingName || '').length > DG_LIMITS.properShippingName}
+                                helperText={`${(dg.properShippingName || '').length}/${DG_LIMITS.properShippingName}`}
                             />
                         </Grid>
 
@@ -229,11 +234,11 @@ const DangerousGoodsPanel = ({ dangerousGoods, setDangerousGoods }) => {
                                 label="Detailed Declaration Instruction"
                                 multiline
                                 rows={3}
-                                value={dangerousGoods.customDescription || ''}
+                                value={dg.customDescription || ''}
                                 onChange={(e) => handleChange('customDescription', e.target.value)}
                                 placeholder="Enter specific hazardous handling instructions..."
-                                error={(dangerousGoods.customDescription || '').length > DG_LIMITS.customDescription}
-                                helperText={`${(dangerousGoods.customDescription || '').length}/${DG_LIMITS.customDescription}`}
+                                error={(dg.customDescription || '').length > DG_LIMITS.customDescription}
+                                helperText={`${(dg.customDescription || '').length}/${DG_LIMITS.customDescription}`}
                             />
                         </Grid>
                     </Grid>
