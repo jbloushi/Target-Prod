@@ -223,4 +223,42 @@ describe('shipment controllers', () => {
         }));
         expect(res.status).toHaveBeenCalledWith(200);
     });
+
+    it('hydrates legacy shipment response origin insurance and optional services for old records', async () => {
+        const controller = require('../src/controllers/shipment-crud.controller');
+        const req = {
+            params: { trackingNumber: 'OLD-1' },
+            user: { id: 'staff-1', role: 'staff' }
+        };
+        const res = createMockRes();
+
+        prisma.shipment.findUnique.mockResolvedValue({
+            id: 'shipment-4',
+            trackingNumber: 'OLD-1',
+            userId: 'client-1',
+            status: 'pending',
+            origin: { contactPerson: 'Sender' },
+            destination: { contactPerson: 'Receiver' },
+            pricingSnapshot: {
+                insuredValue: 55,
+                optionalServices: [
+                    { serviceCode: 'II' },
+                    { serviceCode: 'ADULT_SIG' }
+                ]
+            }
+        });
+
+        await controller.getShipmentByTrackingNumber(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+            success: true,
+            data: expect.objectContaining({
+                origin: expect.objectContaining({
+                    insuredValue: 55,
+                    optionalServiceCodes: ['II', 'ADULT_SIG']
+                })
+            })
+        }));
+    });
 });

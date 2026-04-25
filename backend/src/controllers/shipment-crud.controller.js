@@ -137,6 +137,33 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
             return res.status(404).json({ success: false, error: 'Shipment not found' });
         }
 
+        // Backward-compatibility hydration for legacy shipments:
+        // keep response shape consistent for old + new records.
+        const hydratedOrigin = { ...(shipment.origin || {}) };
+        const snapshot = shipment.pricingSnapshot || {};
+        const snapshotOptionalServices = Array.isArray(snapshot.optionalServices) ? snapshot.optionalServices : [];
+        const insuranceOptional = snapshotOptionalServices.find((service) => String(service?.serviceCode || '').toUpperCase() === 'II') || {};
+
+        if (!hydratedOrigin.dangerousGoods && shipment.dangerousGoods) {
+            hydratedOrigin.dangerousGoods = shipment.dangerousGoods;
+        }
+        if (!Array.isArray(hydratedOrigin.optionalServiceCodes) || hydratedOrigin.optionalServiceCodes.length === 0) {
+            hydratedOrigin.optionalServiceCodes = snapshotOptionalServices
+                .map((service) => service?.serviceCode)
+                .filter(Boolean);
+        }
+        if (hydratedOrigin.insuredValue == null || hydratedOrigin.insuredValue === '') {
+            const insuredCandidates = [
+                snapshot.insuredValue,
+                snapshot.metadata?.insuredValue,
+                insuranceOptional.insuredValue,
+                insuranceOptional.metadata?.insuredValue
+            ];
+            const foundInsured = insuredCandidates.find((v) => v !== undefined && v !== null && String(v).trim() !== '');
+            if (foundInsured !== undefined) hydratedOrigin.insuredValue = foundInsured;
+        }
+        shipment.origin = hydratedOrigin;
+
         // Capability checks
         if (!hasCapability(req.user.role, 'VIEW_COST_DATA')) { 
             shipment.costPrice = null; 
