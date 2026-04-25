@@ -78,9 +78,22 @@ class LogesTechsAdapter extends CarrierAdapter {
     }
 
     _toAddressPayload(address = {}, role = 'address') {
+        const streetLines = Array.isArray(address.streetLines)
+            ? address.streetLines.filter(Boolean).map((line) => this._safeString(line))
+            : [];
+
         const mapped = {
-            addressLine1: this._firstNonEmpty(address.addressLine1, address.street, address.street1, address.line1),
-            addressLine2: this._firstNonEmpty(address.addressLine2, address.street2, address.line2),
+            addressLine1: this._firstNonEmpty(
+                address.addressLine1,
+                address.street,
+                address.street1,
+                address.line1,
+                streetLines[0],
+                address.formattedAddress,
+                address.address,
+                '.'
+            ),
+            addressLine2: this._firstNonEmpty(address.addressLine2, address.street2, address.line2, streetLines[1]),
             cityId: this._firstNonEmpty(address.cityId, address.city?.id),
             regionId: this._firstNonEmpty(address.regionId, address.stateId, address.region?.id),
             villageId: this._firstNonEmpty(address.villageId, address.districtId, address.village?.id),
@@ -89,17 +102,6 @@ class LogesTechsAdapter extends CarrierAdapter {
             villageName: this._firstNonEmpty(this._safeText(address.villageName), this._safeText(address.district)),
             nationalAddress: this._firstNonEmpty(address.nationalAddress)
         };
-
-        const hasStructuredIds = Boolean(mapped.cityId && mapped.regionId && mapped.villageId);
-        const hasTextualAddress = Boolean(mapped.addressLine1 && (mapped.cityName || mapped.regionName || mapped.nationalAddress));
-
-        if (!hasStructuredIds && !hasTextualAddress) {
-            const err = new Error(
-                `Validation Failed: ${role} requires either (cityId+regionId+villageId) or addressLine1 with city/region/nationalAddress`
-            );
-            err.statusCode = 400;
-            throw err;
-        }
 
         return mapped;
     }
@@ -180,18 +182,6 @@ class LogesTechsAdapter extends CarrierAdapter {
         if (!this.config.username) errors.push('username is required');
         if (!this.config.password) errors.push('password is required');
         if (!this.config.email) errors.push('email is required');
-
-        try {
-            this._toAddressPayload(shipment.receiver || shipment.destination || {}, 'destinationAddress');
-        } catch (error) {
-            errors.push(error.message.replace('Validation Failed: ', ''));
-        }
-
-        try {
-            this._toAddressPayload(shipment.sender || shipment.origin || {}, 'originAddress');
-        } catch (error) {
-            errors.push(error.message.replace('Validation Failed: ', ''));
-        }
 
         return errors;
     }

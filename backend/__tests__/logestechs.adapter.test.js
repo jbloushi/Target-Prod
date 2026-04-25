@@ -107,12 +107,21 @@ describe('LogesTechsAdapter', () => {
         await expect(adapter.getLabel()).rejects.toThrow(/ids array required/i);
     });
 
-    it('fails createShipment when address lacks both ids and textual location data', async () => {
+    it('maps sparse addresses without blocking booking flow', async () => {
         const adapter = createAdapter();
-        await expect(adapter.createShipment({
+        shipmentClient.post.mockResolvedValue({
+            data: { shipmentId: 'shp-126', barcode: 'BR-126' }
+        });
+
+        const result = await adapter.createShipment({
             sender: { addressLine1: 'Only line' },
             receiver: { addressLine1: 'Only line' }
-        })).rejects.toThrow(/requires either \(cityId\+regionId\+villageId\) or addressLine1 with city\/region\/nationalAddress/i);
+        });
+
+        expect(result).toEqual(expect.objectContaining({
+            carrierShipmentId: 'shp-126',
+            trackingNumber: 'BR-126'
+        }));
     });
 
     it('requires barcode or id for getStatus', async () => {

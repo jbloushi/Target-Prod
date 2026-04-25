@@ -38,9 +38,7 @@ LOGESTECHS_EMAIL=
 ## Mapping and Validation Notes
 
 - Shipment payload uses `pkgUnitType: METRIC`.
-- `destinationAddress` and `originAddress` accept either:
-  - structured IDs: `regionId`, `cityId`, `villageId`, or
-  - textual fallback: `addressLine1` plus `cityName`/`regionName`/`nationalAddress`.
+- `destinationAddress` and `originAddress` are mapped in best-effort mode from internal shipment fields (IDs when available, otherwise textual lines/city/state), so booking is not blocked locally when IDs are missing.
 - Status lookup requires either `barcode` or `id`.
 - Label PDF retrieval requires non-empty `ids` array.
 - Adapter preserves UTF-8 business/address strings (Arabic text is forwarded without transliteration).
@@ -89,3 +87,4 @@ curl -X POST "https://apisv2.logestechs.com/api/ship/request/by-email" \
 - `getRates()` returns an empty list because no LogesTechs rate endpoint was provided in the integration brief.
 - TODO: Confirm exact shipment creation response schema from LogesTechs docs to finalize `shipmentId`/`barcode` field extraction paths.
 - TODO: Confirm canonical fulfillment product/order request body schemas for stricter DTO validation.
+- TODO: Confirm whether OTE/LogesTechs requires strict location IDs for all tenants; local adapter currently sends IDs when present and otherwise forwards textual addresses.
