@@ -534,6 +534,32 @@ const ShipmentDetailsPage = () => {
         }
     };
 
+    const inferInsuredValueFromShipment = (sourceShipment) => {
+        const iiFromOptionalServices = [
+            ...(sourceShipment?.origin?.optionalServices || []),
+            ...(sourceShipment?.optionalServices || []),
+            ...(sourceShipment?.pricingSnapshot?.optionalServices || [])
+        ].find((svc) => {
+            if (typeof svc === 'string') return svc.toUpperCase() === 'II';
+            return String(svc?.serviceCode || svc?.code || '').toUpperCase() === 'II';
+        });
+
+        const optionalServiceInsuredValue = typeof iiFromOptionalServices === 'object'
+            ? (iiFromOptionalServices.insuredValue ?? iiFromOptionalServices.value ?? iiFromOptionalServices.amount ?? iiFromOptionalServices.declaredValue)
+            : undefined;
+
+        return (
+            sourceShipment?.origin?.insuredValue
+            ?? sourceShipment?.origin?.insuranceValue
+            ?? sourceShipment?.origin?.customer?.insuredValue
+            ?? sourceShipment?.origin?.customer?.insuranceValue
+            ?? sourceShipment?.insuredValue
+            ?? sourceShipment?.insuranceValue
+            ?? sourceShipment?.pricingSnapshot?.insuredValue
+            ?? optionalServiceInsuredValue
+        );
+    };
+
     const handleOpenEdit = (section) => {
         if (!shipment) return;
         setEditSection(section);
@@ -544,12 +570,7 @@ const ShipmentDetailsPage = () => {
         if (!draft.receiver && draft.destination) draft.receiver = draft.destination;
         draft.dangerousGoods = draft.dangerousGoods || { contains: false };
         if (draft.insuredValue === undefined || draft.insuredValue === null || String(draft.insuredValue) === '') {
-            draft.insuredValue =
-                draft.origin?.insuredValue
-                ?? draft.origin?.customer?.insuredValue
-                ?? draft.insuredValue
-                ?? shipment.insuredValue
-                ?? '';
+            draft.insuredValue = inferInsuredValueFromShipment(shipment) ?? '';
         }
 
         setEditDraft(draft);
@@ -598,13 +619,7 @@ const ShipmentDetailsPage = () => {
                     const declaredTotal = (shipment.items || []).reduce((sum, item) => {
                         return sum + (Number(item?.declaredValue || item?.value || 0) * Number(item?.quantity || 1));
                     }, 0);
-                    const inferredInsured =
-                        shipment.origin?.insuredValue
-                        ?? shipment.origin?.customer?.insuredValue
-                        ?? shipment.insuredValue
-                        ?? shipment.pricingSnapshot?.insuredValue
-                        ?? declaredTotal
-                        ?? 0;
+                    const inferredInsured = inferInsuredValueFromShipment(shipment) ?? declaredTotal ?? 0;
                     setEditDraft((prev) => ({ ...prev, insuredValue: inferredInsured > 0 ? inferredInsured : '' }));
                 }
             }

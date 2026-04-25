@@ -10,6 +10,17 @@ const { hasCapability, isPlatformRole } = require('../middleware/rbac.policy');
 const { MANUAL_SHIPMENT_STATUSES, SHIPMENT_STATUSES } = require('../constants/statusConstants');
 const { syncCarrierTrackingHistory, hasCriticalChanges, canUpdateShipmentStatus, isManualShipment } = require('./shipment.helpers');
 
+const stripUndefinedDeep = (value) => {
+    if (Array.isArray(value)) return value.map(stripUndefinedDeep);
+    if (!value || typeof value !== 'object') return value;
+
+    return Object.entries(value).reduce((acc, [key, nested]) => {
+        if (nested === undefined) return acc;
+        acc[key] = stripUndefinedDeep(nested);
+        return acc;
+    }, {});
+};
+
 /**
  * Get shipment statistics (Status counts and Monthly volume)
  * @route GET /api/shipments/stats
@@ -416,6 +427,13 @@ exports.updateShipment = async (req, res) => {
                 }
             }
         });
+
+        if (updateData.dangerousGoods && typeof updateData.dangerousGoods === 'object') {
+            updateData.dangerousGoods = {
+                ...stripUndefinedDeep(updateData.dangerousGoods),
+                contains: Boolean(updateData.dangerousGoods.contains)
+            };
+        }
 
         if (canManageManualFields && updates.price !== undefined) {
             const price = Number(updates.price);

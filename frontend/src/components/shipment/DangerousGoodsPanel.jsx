@@ -24,9 +24,11 @@ const DG_LIMITS = {
     customDescription: 200
 };
 
-const DangerousGoodsPanel = ({ dangerousGoods, setDangerousGoods }) => {
+const DangerousGoodsPanel = ({ dangerousGoods = { contains: false }, setDangerousGoods }) => {
     const theme = useTheme();
-    const safeDangerousGoods = dangerousGoods || {};
+    const safeDangerousGoods = (dangerousGoods && typeof dangerousGoods === 'object' && !Array.isArray(dangerousGoods))
+        ? dangerousGoods
+        : { contains: false };
     const containsDangerousGoods = Boolean(safeDangerousGoods.contains);
 
     const handleChange = (field, value) => {
