@@ -45,6 +45,7 @@ LOGESTECHS_EMAIL=
 - Adapter preserves UTF-8 business/address strings (Arabic text is forwarded without transliteration).
 - Carrier code is `OTE` (legacy `LOGESTECHS` values are treated as backward-compatible aliases).
 - Returned shipment object stores `carrierShipmentId` and `barcode`/`trackingNumber` when available.
+- If provider returns invalid login credentials (including Arabic auth errors), adapter returns an actionable message to verify `LOGESTECHS_EMAIL`, `LOGESTECHS_PASSWORD`, `LOGESTECHS_USERNAME`, and `LOGESTECHS_COMPANY_ID`.
 
 ## Sample cURL
 

@@ -122,6 +122,28 @@ const CARRIER_PROFILES = {
             { value: 'envelope', label: 'Aramex Express Envelope' },
         ],
     },
+    OTE: {
+        supportsDangerousGoods: false,
+        requiredFields: {
+            sender:   ['contactPerson','phone','streetLines','city','countryCode'],
+            receiver: ['contactPerson','phone','streetLines','city','countryCode'],
+        },
+        packagingOptions: [
+            { value: 'user', label: 'My Own Packaging' },
+            { value: 'box',  label: 'Standard Box' },
+        ],
+    },
+    LOGESTECHS: {
+        supportsDangerousGoods: false,
+        requiredFields: {
+            sender:   ['contactPerson','phone','streetLines','city','countryCode'],
+            receiver: ['contactPerson','phone','streetLines','city','countryCode'],
+        },
+        packagingOptions: [
+            { value: 'user', label: 'My Own Packaging' },
+            { value: 'box',  label: 'Standard Box' },
+        ],
+    },
 };
 
 // ─── Horizontal step tabs ─────────────────────────────────────────────────────

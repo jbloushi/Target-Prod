@@ -221,14 +221,19 @@ class LogesTechsAdapter extends CarrierAdapter {
         const statusCode = error?.response?.status || error?.statusCode || 500;
         const upstreamBody = error?.response?.data;
         const upstreamMessage = this._extractProviderMessage(upstreamBody) || error?.message || 'Unknown provider error';
+        const isCredentialError = /البريد الالكتروني او كلمة المرور غير صحيحة|incorrect email or password|invalid credentials/i
+            .test(String(upstreamMessage || ''));
+        const normalizedMessage = isCredentialError
+            ? 'OTE authentication failed. Verify LOGESTECHS_EMAIL, LOGESTECHS_PASSWORD, LOGESTECHS_USERNAME, and LOGESTECHS_COMPANY_ID.'
+            : upstreamMessage;
 
         logger.error(`LogesTechs ${operation} failed`, {
             statusCode,
-            upstreamMessage,
+            upstreamMessage: normalizedMessage,
             response: this._sanitizeForLogs(upstreamBody)
         });
 
-        const wrapped = new Error(`Carrier booking failed: LogesTechs ${operation} failed - ${upstreamMessage}`);
+        const wrapped = new Error(`Carrier booking failed: LogesTechs ${operation} failed - ${normalizedMessage}`);
         wrapped.statusCode = statusCode;
         wrapped.isProviderError = true;
         wrapped.provider = this.code;

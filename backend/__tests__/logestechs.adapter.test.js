@@ -147,6 +147,22 @@ describe('LogesTechsAdapter', () => {
         })).rejects.toThrow(/villageId is invalid for selected city/i);
     });
 
+    it('normalizes provider authentication errors to actionable env guidance', async () => {
+        const adapter = createAdapter();
+        shipmentClient.get.mockResolvedValue({ data: [] });
+        shipmentClient.post.mockRejectedValue({
+            response: {
+                status: 400,
+                data: { detail: 'البريد الالكتروني او كلمة المرور غير صحيحة' }
+            }
+        });
+
+        await expect(adapter.createShipment({
+            sender: { addressLine1: 'S', city: 'Kuwait' },
+            receiver: { addressLine1: 'R', city: 'Riyadh' }
+        })).rejects.toThrow(/OTE authentication failed/i);
+    });
+
     it('requires barcode or id for getStatus', async () => {
         const adapter = createAdapter();
         await expect(adapter.getStatus({})).rejects.toThrow(/barcode or id required/i);
