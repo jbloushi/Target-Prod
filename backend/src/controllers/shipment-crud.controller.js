@@ -456,7 +456,7 @@ exports.updateShipment = async (req, res) => {
                 updateData.price = newPrice;
                 updateData.pricingSnapshot = snapshot;
                 updateData.costPrice = snapshot.carrierRate;
-                updateData.markup = snapshot.markup;
+                updateData.markupAmount = snapshot.markup;
 
                 // Ledger Adjustment
                 if (shipment.organizationId && oldPrice !== newPrice) {
