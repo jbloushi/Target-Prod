@@ -89,6 +89,7 @@ Current carrier list:
 | `MANUAL` | Active | Internal/manual shipments. |
 | `DGR` | Active | DHL/DGR adapter path. |
 | `DHL` | Compatibility | Backward-compatible alias handled by DGR adapter paths. |
+| `LOGESTECHS` | Active | Shipment (v2) + fulfillment (v5) adapter integration with credentialed header auth. |
 | `ARAMEX` | Adapter present | Basic adapter option exists. Confirm before production rollout. |
 | `FEDEX` | Inactive | Listed but not active for normal use. |
 | `UPS` | Inactive | Not implemented. |

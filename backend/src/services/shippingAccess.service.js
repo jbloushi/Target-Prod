@@ -17,6 +17,9 @@ const SERVICE_LABELS = {
     ARAMEX: {
         P: 'Aramex Priority'
     },
+    LOGESTECHS: {
+        STD: 'LogesTechs Standard'
+    },
     FEDEX: {
         P: 'FedEx Priority'
     },
