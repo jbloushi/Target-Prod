@@ -543,7 +543,7 @@ const ShipmentDetailsPage = () => {
         if (!draft.sender && draft.origin) draft.sender = draft.origin;
         if (!draft.receiver && draft.destination) draft.receiver = draft.destination;
         draft.dangerousGoods = draft.dangerousGoods || { contains: false };
-        if (draft.insuredValue === undefined || draft.insuredValue === null) {
+        if (draft.insuredValue === undefined || draft.insuredValue === null || String(draft.insuredValue) === '') {
             draft.insuredValue =
                 draft.origin?.insuredValue
                 ?? draft.origin?.customer?.insuredValue
@@ -619,6 +619,16 @@ const ShipmentDetailsPage = () => {
             if (editSection === 'sender') payload = { origin: editDraft.sender };
             else if (editSection === 'receiver') payload = { destination: editDraft.receiver };
             else if (editSection === 'content') {
+                const dg = editDraft.dangerousGoods || {};
+                if (Boolean(dg.contains)) {
+                    const requiredFields = ['code', 'serviceCode', 'contentId', 'properShippingName', 'customDescription'];
+                    const missingField = requiredFields.find((field) => !String(dg[field] || '').trim());
+                    if (missingField) {
+                        enqueueSnackbar(`Dangerous goods field "${missingField}" is required before saving.`, { variant: 'error' });
+                        setIsProcessing(false);
+                        return;
+                    }
+                }
                 payload = {
                     parcels: editDraft.parcels,
                     items: editDraft.items,
@@ -1647,8 +1657,8 @@ const ShipmentDetailsPage = () => {
                                         setParcels={(val) => setEditDraft({ ...editDraft, parcels: val })}
                                         items={editDraft.items || []}
                                         setItems={(val) => setEditDraft({ ...editDraft, items: val })}
-                                        dangerousGoods={editDraft.dangerousGoods}
-                                        setDangerousGoods={(val) => setEditDraft({ ...editDraft, dangerousGoods: val })}
+                                        dangerousGoods={editDraft.dangerousGoods || { contains: false }}
+                                        setDangerousGoods={(val) => setEditDraft((prev) => ({ ...prev, dangerousGoods: val || { contains: false } }))}
                                         packagingType={editDraft.packagingType}
                                         setPackagingType={(val) => setEditDraft({ ...editDraft, packagingType: val })}
                                         shipmentType={editDraft.shipmentType}

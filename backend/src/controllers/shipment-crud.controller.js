@@ -494,7 +494,8 @@ exports.updateShipment = async (req, res) => {
                 }
             } catch (pricingError) {
                 logger.error('Automatic re-rating failed:', pricingError);
-                return res.status(400).json({ success: false, error: 'Re-rating failed with new details.' });
+                // Keep the user edit flow resilient: persist non-pricing updates even if carrier re-rating fails.
+                // Existing price/snapshot remains unchanged in this case.
             }
         }
 
