@@ -543,7 +543,12 @@ const ShipmentDetailsPage = () => {
         if (!draft.sender && draft.origin) draft.sender = draft.origin;
         if (!draft.receiver && draft.destination) draft.receiver = draft.destination;
         if (draft.insuredValue === undefined || draft.insuredValue === null) {
-            draft.insuredValue = draft.origin?.insuredValue ?? draft.insuredValue ?? '';
+            draft.insuredValue =
+                draft.origin?.insuredValue
+                ?? draft.origin?.customer?.insuredValue
+                ?? draft.insuredValue
+                ?? shipment.insuredValue
+                ?? '';
         }
 
         setEditDraft(draft);
@@ -586,13 +591,18 @@ const ShipmentDetailsPage = () => {
                 const selectedFromOrigin = (shipment.origin?.optionalServices || shipment.optionalServices || [])
                     .map((s) => String(typeof s === 'string' ? s : (s?.serviceCode || s?.code || '')).toUpperCase())
                     .filter(Boolean);
-                const selected = selectedFromSnapshot.length > 0 ? selectedFromSnapshot : selectedFromOrigin;
+                const selected = [...new Set([...selectedFromSnapshot, ...selectedFromOrigin])];
                 setSelectedOptionalServiceCodes(selected);
                 if ((draft.insuredValue === '' || draft.insuredValue === null || draft.insuredValue === undefined) && selected.includes('II')) {
                     const declaredTotal = (shipment.items || []).reduce((sum, item) => {
                         return sum + (Number(item?.declaredValue || item?.value || 0) * Number(item?.quantity || 1));
                     }, 0);
-                    const inferredInsured = shipment.origin?.insuredValue ?? shipment.insuredValue ?? declaredTotal ?? 0;
+                    const inferredInsured =
+                        shipment.origin?.insuredValue
+                        ?? shipment.origin?.customer?.insuredValue
+                        ?? shipment.insuredValue
+                        ?? declaredTotal
+                        ?? 0;
                     setEditDraft((prev) => ({ ...prev, insuredValue: inferredInsured > 0 ? inferredInsured : '' }));
                 }
             }
@@ -1687,15 +1697,17 @@ const ShipmentDetailsPage = () => {
                                                 prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]
                                             );
                                         }}
-                                        insuredValue={
-                                            editDraft.insuredValue
-                                            ?? (selectedOptionalServiceCodes.includes('II')
-                                                ? Number((editDraft.items || []).reduce(
-                                                    (sum, item) => sum + (Number(item?.declaredValue || item?.value || 0) * Number(item?.quantity || 1)),
-                                                    0
-                                                ) || 0).toFixed(3)
-                                                : '')
-                                        }
+                                        insuredValue={(() => {
+                                            if (editDraft.insuredValue !== undefined && editDraft.insuredValue !== null && String(editDraft.insuredValue) !== '') {
+                                                return editDraft.insuredValue;
+                                            }
+                                            if (!selectedOptionalServiceCodes.includes('II')) return '';
+                                            const fallbackDeclared = Number((editDraft.items || []).reduce(
+                                                (sum, item) => sum + (Number(item?.declaredValue || item?.value || 0) * Number(item?.quantity || 1)),
+                                                0
+                                            ) || 0);
+                                            return fallbackDeclared > 0 ? fallbackDeclared.toFixed(3) : '';
+                                        })()}
                                         setInsuredValue={(val) => setEditDraft({ ...editDraft, insuredValue: val })}
                                         declaredCurrency={editDraft.currency || shipment?.currency || 'KWD'}
                                         billingCurrency={shipment?.pricingSnapshot?.billingCurrency || shipment?.currency || 'KWD'}
