@@ -153,13 +153,74 @@ class LogesTechsAdapter extends CarrierAdapter {
         return redact(value);
     }
 
+    _extractProviderMessage(payload) {
+        if (!payload) return null;
+        if (typeof payload === 'string') return payload;
+        if (typeof payload?.message === 'string') return payload.message;
+        if (typeof payload?.detail === 'string') return payload.detail;
+        if (typeof payload?.error === 'string') return payload.error;
+
+        const list = payload?.errors || payload?.messages || payload?.details;
+        if (Array.isArray(list) && list.length > 0) {
+            const first = list[0];
+            if (typeof first === 'string') return first;
+            return first?.message || first?.detail || first?.error || null;
+        }
+
+        return null;
+    }
+
+    async _enrichAddressWithVillageLookup(address = {}) {
+        if (address.cityId && address.regionId && address.villageId) {
+            return address;
+        }
+
+        const search = this._firstNonEmpty(
+            address.villageName,
+            address.cityName,
+            address.regionName,
+            address.addressLine1
+        );
+
+        if (!search || search === '.') {
+            return address;
+        }
+
+        try {
+            const response = await this.shipmentClient.get('/addresses/villages', {
+                headers: this._shipmentHeaders(),
+                params: { search }
+            });
+
+            const rows = Array.isArray(response?.data)
+                ? response.data
+                : (response?.data?.items || response?.data?.data || []);
+
+            const first = Array.isArray(rows) ? rows[0] : null;
+            if (!first) return address;
+
+            return {
+                ...address,
+                villageId: address.villageId || first.villageId || first.id || first?.village?.id,
+                cityId: address.cityId || first.cityId || first?.city?.id,
+                regionId: address.regionId || first.regionId || first?.region?.id
+            };
+        } catch (error) {
+            logger.warn('LogesTechs address enrichment failed', {
+                message: error?.message,
+                statusCode: error?.response?.status
+            });
+            return address;
+        }
+    }
+
     _normalizeProviderError(error, operation) {
         if (error?.statusCode && String(error.message || '').includes('Validation Failed')) {
             return error;
         }
         const statusCode = error?.response?.status || error?.statusCode || 500;
         const upstreamBody = error?.response?.data;
-        const upstreamMessage = upstreamBody?.message || upstreamBody?.detail || error?.message || 'Unknown provider error';
+        const upstreamMessage = this._extractProviderMessage(upstreamBody) || error?.message || 'Unknown provider error';
 
         logger.error(`LogesTechs ${operation} failed`, {
             statusCode,
@@ -200,13 +261,20 @@ class LogesTechsAdapter extends CarrierAdapter {
                 throw err;
             }
 
+            const destinationAddress = await this._enrichAddressWithVillageLookup(
+                this._toAddressPayload(normalizedShipment.receiver || normalizedShipment.destination || {}, 'destinationAddress')
+            );
+            const originAddress = await this._enrichAddressWithVillageLookup(
+                this._toAddressPayload(normalizedShipment.sender || normalizedShipment.origin || {}, 'originAddress')
+            );
+
             const payload = {
                 email: this.config.email,
                 password: this.config.password,
                 pkgUnitType: 'METRIC',
                 pkg: this._toPackagePayload(normalizedShipment),
-                destinationAddress: this._toAddressPayload(normalizedShipment.receiver || normalizedShipment.destination || {}, 'destinationAddress'),
-                originAddress: this._toAddressPayload(normalizedShipment.sender || normalizedShipment.origin || {}, 'originAddress')
+                destinationAddress,
+                originAddress
             };
 
             const response = await this.shipmentClient.post('/ship/request/by-email', payload, {

@@ -38,7 +38,8 @@ LOGESTECHS_EMAIL=
 ## Mapping and Validation Notes
 
 - Shipment payload uses `pkgUnitType: METRIC`.
-- `destinationAddress` and `originAddress` are mapped in best-effort mode from internal shipment fields (IDs when available, otherwise textual lines/city/state), so booking is not blocked locally when IDs are missing.
+- `destinationAddress` and `originAddress` are mapped in best-effort mode from internal shipment fields.
+- When IDs are missing, adapter attempts village lookup (`/addresses/villages?search=`) using textual address hints to auto-fill `villageId/cityId/regionId` before shipment create.
 - Status lookup requires either `barcode` or `id`.
 - Label PDF retrieval requires non-empty `ids` array.
 - Adapter preserves UTF-8 business/address strings (Arabic text is forwarded without transliteration).

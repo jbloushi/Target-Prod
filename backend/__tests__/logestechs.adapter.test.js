@@ -41,6 +41,9 @@ describe('LogesTechsAdapter', () => {
 
     it('accepts textual addresses when city/region/village IDs are not provided', async () => {
         const adapter = createAdapter();
+        shipmentClient.get.mockResolvedValue({
+            data: [{ id: 'v-10', cityId: 'c-10', regionId: 'r-10' }]
+        });
         shipmentClient.post.mockResolvedValue({
             data: { shipmentId: 'shp-124', barcode: 'BR-124' }
         });
@@ -54,6 +57,9 @@ describe('LogesTechsAdapter', () => {
             carrierShipmentId: 'shp-124',
             trackingNumber: 'BR-124'
         }));
+        expect(shipmentClient.post).toHaveBeenCalledWith('/ship/request/by-email', expect.objectContaining({
+            destinationAddress: expect.objectContaining({ villageId: 'v-10', cityId: 'c-10', regionId: 'r-10' })
+        }), expect.any(Object));
     });
 
     it('creates shipment and maps shipmentId/barcode fields', async () => {
@@ -109,6 +115,7 @@ describe('LogesTechsAdapter', () => {
 
     it('maps sparse addresses without blocking booking flow', async () => {
         const adapter = createAdapter();
+        shipmentClient.get.mockResolvedValue({ data: [] });
         shipmentClient.post.mockResolvedValue({
             data: { shipmentId: 'shp-126', barcode: 'BR-126' }
         });
@@ -122,6 +129,22 @@ describe('LogesTechsAdapter', () => {
             carrierShipmentId: 'shp-126',
             trackingNumber: 'BR-126'
         }));
+    });
+
+    it('exposes upstream provider message when createShipment fails', async () => {
+        const adapter = createAdapter();
+        shipmentClient.get.mockResolvedValue({ data: [] });
+        shipmentClient.post.mockRejectedValue({
+            response: {
+                status: 400,
+                data: { detail: 'villageId is invalid for selected city' }
+            }
+        });
+
+        await expect(adapter.createShipment({
+            sender: { addressLine1: 'S', city: 'Kuwait' },
+            receiver: { addressLine1: 'R', city: 'Riyadh' }
+        })).rejects.toThrow(/villageId is invalid for selected city/i);
     });
 
     it('requires barcode or id for getStatus', async () => {
