@@ -96,4 +96,71 @@ describe('shipment controllers', () => {
         expect(res.status).toHaveBeenCalledWith(403);
         expect(prisma.shipment.update).not.toHaveBeenCalled();
     });
+
+    it('maps legacy sender/receiver and billing fields into origin/destination on edit', async () => {
+        const controller = require('../src/controllers/shipment-crud.controller');
+        const shipment = {
+            id: 'shipment-2',
+            trackingNumber: 'DGR-1',
+            userId: 'client-1',
+            carrierCode: 'MANUAL',
+            manualShipment: true,
+            status: 'pending',
+            history: [],
+            currentLocation: { city: 'Kuwait City' },
+            origin: {
+                contactPerson: 'Old Sender',
+                labelSettings: { format: 'pdf' },
+                insuredValue: 10
+            },
+            destination: {
+                contactPerson: 'Old Receiver'
+            },
+            items: [],
+            parcels: []
+        };
+        const req = {
+            params: { trackingNumber: 'DGR-1' },
+            user: { id: 'client-1', role: 'client', name: 'Client' },
+            body: {
+                sender: { contactPerson: 'New Sender', city: 'Kuwait City' },
+                receiver: { contactPerson: 'New Receiver', city: 'Dubai' },
+                invoiceRemarks: 'Handle with care',
+                insuredValue: 75,
+                optionalServiceCodes: ['II'],
+                signatureName: 'John Doe',
+                signatureTitle: 'Manager',
+                labelFormat: 'zpl',
+                dangerousGoods: { contains: true, class: '3' }
+            }
+        };
+        const res = createMockRes();
+
+        prisma.shipment.findUnique.mockResolvedValue(shipment);
+        prisma.shipment.update.mockResolvedValue({ ...shipment });
+
+        await controller.updateShipment(req, res);
+
+        expect(prisma.shipment.update).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({
+                origin: expect.objectContaining({
+                    contactPerson: 'New Sender',
+                    remarks: 'Handle with care',
+                    insuredValue: 75,
+                    optionalServiceCodes: ['II'],
+                    dangerousGoods: { contains: true, class: '3' },
+                    labelSettings: expect.objectContaining({
+                        format: 'zpl',
+                        signatureName: 'John Doe',
+                        signatureTitle: 'Manager'
+                    })
+                }),
+                destination: expect.objectContaining({
+                    contactPerson: 'New Receiver',
+                    city: 'Dubai'
+                })
+            })
+        }));
+        expect(res.status).toHaveBeenCalledWith(200);
+    });
 });

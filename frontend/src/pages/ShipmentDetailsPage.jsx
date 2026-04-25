@@ -542,6 +542,28 @@ const ShipmentDetailsPage = () => {
         const draft = JSON.parse(JSON.stringify(shipment));
         if (!draft.sender && draft.origin) draft.sender = draft.origin;
         if (!draft.receiver && draft.destination) draft.receiver = draft.destination;
+        const originMeta = draft.origin || {};
+        const snapshotOptionalCodes = (draft.pricingSnapshot?.optionalServices || []).map(s => s.serviceCode);
+        const persistedOptionalCodes = Array.isArray(originMeta.optionalServiceCodes) ? originMeta.optionalServiceCodes : snapshotOptionalCodes;
+
+        draft.exportReason = draft.exportReason ?? originMeta.exportReason ?? 'permanent';
+        draft.incoterm = draft.incoterm ?? originMeta.incoterm ?? 'DAP';
+        draft.invoiceRemarks = draft.invoiceRemarks ?? originMeta.remarks ?? '';
+        draft.signatureName = draft.signatureName ?? originMeta.labelSettings?.signatureName ?? '';
+        draft.signatureTitle = draft.signatureTitle ?? originMeta.labelSettings?.signatureTitle ?? '';
+        draft.payerOfVat = draft.payerOfVat ?? originMeta.payerOfVat ?? 'receiver';
+        draft.gstPaid = draft.gstPaid ?? originMeta.gstPaid ?? false;
+        draft.shipperAccount = draft.shipperAccount ?? originMeta.shipperAccount ?? '';
+        draft.labelFormat = draft.labelFormat ?? originMeta.labelSettings?.format ?? 'pdf';
+        draft.palletCount = draft.palletCount ?? originMeta.palletCount ?? '';
+        draft.packageMarks = draft.packageMarks ?? originMeta.packageMarks ?? '';
+        draft.allowPublicLocationUpdate = draft.allowPublicLocationUpdate ?? originMeta.allowPublicLocationUpdate ?? false;
+        draft.allowPublicInfoUpdate = draft.allowPublicInfoUpdate ?? originMeta.allowPublicInfoUpdate ?? false;
+        draft.reference = draft.reference ?? originMeta.reference ?? '';
+        draft.dangerousGoods = draft.dangerousGoods ?? originMeta.dangerousGoods ?? { contains: false };
+        draft.insuredValue = draft.insuredValue ?? originMeta.insuredValue ?? '';
+        draft.optionalServiceCodes = persistedOptionalCodes;
+        draft.currency = draft.currency || draft.billingCurrency || originMeta.billingCurrency || 'KWD';
 
         setEditDraft(draft);
         setEditErrors({});
@@ -577,7 +599,7 @@ const ShipmentDetailsPage = () => {
                 }).catch(err => console.error('Failed to fetch optional services for edit:', err));
                 
                 // Initialize selected codes from shipment pricing snapshot or current state
-                const selected = (shipment.pricingSnapshot?.optionalServices || []).map(s => s.serviceCode);
+                const selected = Array.isArray(draft.optionalServiceCodes) ? draft.optionalServiceCodes : [];
                 setSelectedOptionalServiceCodes(selected);
             }
         }
@@ -615,7 +637,9 @@ const ShipmentDetailsPage = () => {
                     allowPublicLocationUpdate: editDraft.allowPublicLocationUpdate,
                     allowPublicInfoUpdate: editDraft.allowPublicInfoUpdate,
                     reference: editDraft.reference,
-                    optionalServiceCodes: selectedOptionalServiceCodes
+                    optionalServiceCodes: selectedOptionalServiceCodes,
+                    insuredValue: editDraft.insuredValue,
+                    billingCurrency: editDraft.billingCurrency || editDraft.currency
                 };
             }
             else if (editSection === 'status') {

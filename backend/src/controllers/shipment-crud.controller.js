@@ -333,7 +333,7 @@ exports.deleteShipment = async (req, res) => {
 exports.updateShipment = async (req, res) => {
     try {
         const { trackingNumber } = req.params;
-        const updates = req.body;
+        const updates = { ...(req.body || {}) };
         const { user } = req;
 
         const shipment = await prisma.shipment.findUnique({
@@ -347,12 +347,68 @@ exports.updateShipment = async (req, res) => {
         const isAdminOrStaff = ['admin', 'staff', 'manager', 'accounting'].includes(user.role);
         if (!isAdminOrStaff && !isOwner) return res.status(403).json({ success: false, error: 'Not authorized' });
 
-        const allowedFields = ['destination', 'origin', 'items', 'parcels', 'incoterm', 'currency', 'dangerousGoods', 'serviceCode', 'status', 'allowPublicLocationUpdate'];
+        // Backward-compatibility for legacy frontend payload shape.
+        if (!updates.origin && updates.sender) updates.origin = updates.sender;
+        if (!updates.destination && updates.receiver) updates.destination = updates.receiver;
+
+        const allowedFields = ['destination', 'origin', 'items', 'parcels', 'incoterm', 'currency', 'serviceCode', 'status', 'packagingType'];
         const manualEditableFields = ['price', 'costPrice', 'estimatedDelivery'];
         const updateData = {};
         let criticalChangesDetected = hasCriticalChanges(shipment, updates);
         const shipmentIsManual = isManualShipment(shipment);
         const canManageManualFields = shipmentIsManual && ['admin', 'manager', 'accounting'].includes(user.role);
+
+        const originFieldMappings = {
+            exportReason: 'exportReason',
+            invoiceRemarks: 'remarks',
+            remarks: 'remarks',
+            payerOfVat: 'payerOfVat',
+            gstPaid: 'gstPaid',
+            shipperAccount: 'shipperAccount',
+            palletCount: 'palletCount',
+            packageMarks: 'packageMarks',
+            allowPublicLocationUpdate: 'allowPublicLocationUpdate',
+            allowPublicInfoUpdate: 'allowPublicInfoUpdate',
+            reference: 'reference',
+            optionalServiceCodes: 'optionalServiceCodes',
+            insuredValue: 'insuredValue',
+            dangerousGoods: 'dangerousGoods',
+            pickupRequired: 'pickupRequired',
+            billingCurrency: 'billingCurrency',
+            incoterm: 'incoterm',
+            packagingType: 'packagingType'
+        };
+
+        const shouldPatchOrigin =
+            !!updates.origin
+            || Object.keys(originFieldMappings).some((k) => updates[k] !== undefined)
+            || updates.signatureName !== undefined
+            || updates.signatureTitle !== undefined
+            || updates.labelFormat !== undefined
+            || updates.labelSettings !== undefined;
+
+        if (shouldPatchOrigin) {
+            const mergedOrigin = { ...(shipment.origin || {}), ...(updates.origin || {}) };
+
+            Object.entries(originFieldMappings).forEach(([key, targetKey]) => {
+                if (updates[key] !== undefined) {
+                    mergedOrigin[targetKey] = updates[key];
+                }
+            });
+
+            const existingLabelSettings = {
+                ...(mergedOrigin.labelSettings || {}),
+                ...(updates.labelSettings || {})
+            };
+            if (updates.labelFormat !== undefined) existingLabelSettings.format = updates.labelFormat;
+            if (updates.signatureName !== undefined) existingLabelSettings.signatureName = updates.signatureName;
+            if (updates.signatureTitle !== undefined) existingLabelSettings.signatureTitle = updates.signatureTitle;
+            if (Object.keys(existingLabelSettings).length > 0) {
+                mergedOrigin.labelSettings = existingLabelSettings;
+            }
+
+            updateData.origin = mergedOrigin;
+        }
 
         if (updates.status && updates.status !== shipment.status) {
             const validStatuses = shipmentIsManual ? MANUAL_SHIPMENT_STATUSES : SHIPMENT_STATUSES;
@@ -366,6 +422,7 @@ exports.updateShipment = async (req, res) => {
 
         // Filter updates
         Object.keys(updates).forEach(key => {
+            if (key === 'origin' && updateData.origin) return;
             if (allowedFields.includes(key)) updateData[key] = updates[key];
             if (manualEditableFields.includes(key)) {
                 if (!canManageManualFields) return;
@@ -469,4 +526,3 @@ exports.updateShipment = async (req, res) => {
         res.status(500).json({ success: false, error: 'Server error' });
     }
 };
-

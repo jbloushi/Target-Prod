@@ -722,6 +722,60 @@ const ShipmentWizardV2 = () => {
     }, [isStaff]);
 
     useEffect(() => {
+        if (!isEditMode || !editTrackingNumber) return;
+
+        const hydrateForEdit = async () => {
+            setLoading(true);
+            try {
+                const res = await shipmentService.getShipment(editTrackingNumber);
+                const shipment = res?.data || res;
+                if (!shipment) return;
+
+                const origin = shipment.origin || {};
+                const destination = shipment.destination || {};
+                const originLabelSettings = origin.labelSettings || {};
+                const snapshotOptionalCodes = (shipment.pricingSnapshot?.optionalServices || []).map((s) => s.serviceCode);
+
+                setSender({ ...initialAddress, ...origin });
+                setReceiver({ ...initialAddress, ...destination });
+                setParcels(Array.isArray(shipment.parcels) && shipment.parcels.length ? shipment.parcels : [{ description: 'Package 01', weight: 1, length: 10, width: 10, height: 10, quantity: 1 }]);
+                setItems(Array.isArray(shipment.items) && shipment.items.length ? shipment.items : [{ description: 'General Cargo', quantity: 1, declaredValue: 10, currency: 'KWD', weight: 1, hsCode: '1234.56', countryOfOrigin: 'KW' }]);
+
+                setSelectedCarrier(shipment.carrierCode || 'DGR');
+                setShipmentType(shipment.shipmentType || 'package');
+                setCurrency(shipment.currency || shipment.pricingSnapshot?.declaredCurrency || 'KWD');
+                setBillingCurrency(origin.billingCurrency || shipment.pricingSnapshot?.billingCurrency || shipment.currency || 'KWD');
+                setDangerousGoods(origin.dangerousGoods || { contains: false });
+                setPackagingType(shipment.packagingType || origin.packagingType || 'user');
+                setExportReason(origin.exportReason || 'permanent');
+                setInvoiceRemarks(origin.remarks || '');
+                setIncoterm(shipment.incoterm || origin.incoterm || 'DAP');
+                setGstPaid(origin.gstPaid || false);
+                setPayerOfVat(origin.payerOfVat || 'receiver');
+                setShipperAccount(origin.shipperAccount || '');
+                setLabelFormat(originLabelSettings.format || 'pdf');
+                setSignatureName(originLabelSettings.signatureName || '');
+                setSignatureTitle(originLabelSettings.signatureTitle || '');
+                setPalletCount(origin.palletCount || '');
+                setPackageMarks(origin.packageMarks || '');
+                setPickupRequired(origin.pickupRequired || false);
+                setInsuredValue(origin.insuredValue || '');
+                setSelectedOptionalServiceCodes(Array.isArray(origin.optionalServiceCodes) ? origin.optionalServiceCodes : snapshotOptionalCodes);
+
+                if (shipment.serviceCode) {
+                    setSelectedService((prev) => ({ ...prev, serviceCode: shipment.serviceCode, serviceName: shipment.serviceCode }));
+                }
+            } catch (err) {
+                enqueueSnackbar(`Failed to load shipment ${editTrackingNumber} for edit`, { variant: 'error' });
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        hydrateForEdit();
+    }, [isEditMode, editTrackingNumber, enqueueSnackbar]);
+
+    useEffect(() => {
         if (!isStaff) return;
 
         shipmentService.getAvailableCarriers(selectedClient || undefined)
