@@ -38,14 +38,17 @@ LOGESTECHS_EMAIL=
 ## Mapping and Validation Notes
 
 - Shipment payload uses `pkgUnitType: METRIC`.
+- Shipment `email` is resolved as `LOGESTECHS_EMAIL` with fallback to `LOGESTECHS_USERNAME`.
 - `destinationAddress` and `originAddress` are mapped in best-effort mode from internal shipment fields.
 - When IDs are missing, adapter attempts village lookup (`/addresses/villages?search=`) using textual address hints to auto-fill `villageId/cityId/regionId` before shipment create.
+- Village lookup requests use `company-id` header as in provider examples.
 - Status lookup requires either `barcode` or `id`.
 - Label PDF retrieval requires non-empty `ids` array.
 - Adapter preserves UTF-8 business/address strings (Arabic text is forwarded without transliteration).
 - Carrier code is `OTE` (legacy `LOGESTECHS` values are treated as backward-compatible aliases).
 - Returned shipment object stores `carrierShipmentId` and `barcode`/`trackingNumber` when available.
 - If provider returns invalid login credentials (including Arabic auth errors), adapter returns an actionable message to verify `LOGESTECHS_EMAIL`, `LOGESTECHS_PASSWORD`, `LOGESTECHS_USERNAME`, and `LOGESTECHS_COMPANY_ID`.
+- Fulfillment product bulk requests are sent in `{ list: [...] }` shape per provider collection.
 
 ## Sample cURL
 

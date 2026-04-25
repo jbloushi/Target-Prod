@@ -30,13 +30,14 @@ describe('LogesTechsAdapter', () => {
         LogesTechsAdapter = require('../src/adapters/LogesTechsAdapter');
     });
 
-    const createAdapter = () => new LogesTechsAdapter({
+    const createAdapter = (overrides = {}) => new LogesTechsAdapter({
         shipmentBaseUrl: 'https://apisv2.logestechs.com/api',
         fulfillmentBaseUrl: 'https://apisv5.logestechs.com/api',
         companyId: 'cmp-1',
         username: 'user-1',
         password: 'secret-pass',
-        email: 'ops@example.com'
+        email: 'ops@example.com',
+        ...overrides
     });
 
     it('accepts textual addresses when city/region/village IDs are not provided', async () => {
@@ -108,6 +109,21 @@ describe('LogesTechsAdapter', () => {
         }));
     });
 
+    it('uses username as shipment email fallback when LOGESTECHS_EMAIL is not set', async () => {
+        const adapter = createAdapter({ email: '' });
+        shipmentClient.get.mockResolvedValue({ data: [] });
+        shipmentClient.post.mockResolvedValue({ data: { shipmentId: 'shp-127', barcode: 'BR-127' } });
+
+        await adapter.createShipment({
+            sender: { addressLine1: 'S', city: 'Kuwait' },
+            receiver: { addressLine1: 'R', city: 'Riyadh' }
+        });
+
+        expect(shipmentClient.post).toHaveBeenCalledWith('/ship/request/by-email', expect.objectContaining({
+            email: 'user-1'
+        }), expect.any(Object));
+    });
+
     it('requires ids array for getLabel', async () => {
         const adapter = createAdapter();
         await expect(adapter.getLabel()).rejects.toThrow(/ids array required/i);
@@ -175,10 +191,12 @@ describe('LogesTechsAdapter', () => {
 
         await adapter.getProducts({ page: 2, pageSize: 5 });
         await adapter.addFulfillmentOrder({ orderNo: 'O-1' });
+        await adapter.addOrUpdateProducts([{ sku: 'abc' }]);
 
         expect(fulfillmentClient.get).toHaveBeenCalledWith('/public/fulfillment/product', expect.objectContaining({
             params: { page: 2, pageSize: 5 }
         }));
         expect(fulfillmentClient.post).toHaveBeenCalledWith('/public/fulfillment/order', { orderNo: 'O-1' }, expect.any(Object));
+        expect(fulfillmentClient.post).toHaveBeenCalledWith('/public/fulfillment/product/bulk', { list: [{ sku: 'abc' }] }, expect.any(Object));
     });
 });

@@ -53,6 +53,18 @@ class LogesTechsAdapter extends CarrierAdapter {
         };
     }
 
+    _villageHeaders() {
+        this._assertCredentials(['companyId']);
+        return {
+            'company-id': this.config.companyId,
+            'content-type': 'application/json'
+        };
+    }
+
+    _shipmentAuthEmail() {
+        return this._firstNonEmpty(this.config.email, this.config.username);
+    }
+
     _fulfillmentHeaders() {
         return this._shipmentHeaders();
     }
@@ -188,7 +200,7 @@ class LogesTechsAdapter extends CarrierAdapter {
 
         try {
             const response = await this.shipmentClient.get('/addresses/villages', {
-                headers: this._shipmentHeaders(),
+                headers: this._villageHeaders(),
                 params: { search }
             });
 
@@ -247,7 +259,7 @@ class LogesTechsAdapter extends CarrierAdapter {
         if (!this.config.companyId) errors.push('company-id is required');
         if (!this.config.username) errors.push('username is required');
         if (!this.config.password) errors.push('password is required');
-        if (!this.config.email) errors.push('email is required');
+        if (!this._shipmentAuthEmail()) errors.push('email or username is required');
 
         return errors;
     }
@@ -258,7 +270,7 @@ class LogesTechsAdapter extends CarrierAdapter {
 
     async createShipment(normalizedShipment = {}) {
         try {
-            this._assertCredentials(['companyId', 'username', 'password', 'email']);
+            this._assertCredentials(['companyId', 'username', 'password']);
             const validationErrors = await this.validate(normalizedShipment);
             if (validationErrors.length > 0) {
                 const err = new Error(`Validation Failed: ${validationErrors.join('; ')}`);
@@ -273,8 +285,15 @@ class LogesTechsAdapter extends CarrierAdapter {
                 this._toAddressPayload(normalizedShipment.sender || normalizedShipment.origin || {}, 'originAddress')
             );
 
+            const shipmentEmail = this._shipmentAuthEmail();
+            if (!shipmentEmail) {
+                const err = new Error('Validation Failed: email or username is required for LogesTechs shipment create');
+                err.statusCode = 400;
+                throw err;
+            }
+
             const payload = {
-                email: this.config.email,
+                email: shipmentEmail,
                 password: this.config.password,
                 pkgUnitType: 'METRIC',
                 pkg: this._toPackagePayload(normalizedShipment),
@@ -294,9 +313,9 @@ class LogesTechsAdapter extends CarrierAdapter {
 
     async getVillages(search = '') {
         try {
-            this._assertCredentials();
+            this._assertCredentials(['companyId']);
             const response = await this.shipmentClient.get('/addresses/villages', {
-                headers: this._shipmentHeaders(),
+                headers: this._villageHeaders(),
                 params: { search: this._safeString(search) || '' }
             });
             return response.data;
@@ -392,7 +411,8 @@ class LogesTechsAdapter extends CarrierAdapter {
     async addOrUpdateProducts(products = []) {
         try {
             this._assertCredentials();
-            const response = await this.fulfillmentClient.post('/public/fulfillment/product/bulk', products, {
+            const payload = Array.isArray(products) ? { list: products } : products;
+            const response = await this.fulfillmentClient.post('/public/fulfillment/product/bulk', payload, {
                 headers: this._fulfillmentHeaders()
             });
             return response.data;
