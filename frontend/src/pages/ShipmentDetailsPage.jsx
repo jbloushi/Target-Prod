@@ -583,6 +583,7 @@ const ShipmentDetailsPage = () => {
         draft.insuredValue = resolveInsuredValue(draft);
         draft.optionalServiceCodes = persistedOptionalCodes;
         draft.currency = draft.currency || draft.billingCurrency || originMeta.billingCurrency || 'KWD';
+        draft.billingCurrency = draft.billingCurrency || originMeta.billingCurrency || draft.currency || 'KWD';
 
         setEditDraft(draft);
         setEditErrors({});
@@ -1710,6 +1711,11 @@ const ShipmentDetailsPage = () => {
                                                 prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]
                                             );
                                         }}
+                                        declaredCurrency={editDraft.currency}
+                                        billingCurrency={editDraft.billingCurrency || editDraft.currency}
+                                        insuredValue={editDraft.insuredValue ?? ''}
+                                        setInsuredValue={(val) => setEditDraft({ ...editDraft, insuredValue: val })}
+                                        errors={editErrors}
                                         currency={editDraft.currency}
                                         showMarkupDetails={isStaff}
                                     />
