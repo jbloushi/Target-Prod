@@ -423,6 +423,7 @@ const ShipmentDetailsPage = () => {
     const [availableCarriers, setAvailableCarriers] = useState([]);
     const [availableOptionalServices, setAvailableOptionalServices] = useState([]);
     const [selectedOptionalServiceCodes, setSelectedOptionalServiceCodes] = useState([]);
+    const [editInsuredValue, setEditInsuredValue] = useState('');
 
     const { user } = useAuth();
     const { enqueueSnackbar } = useSnackbar();
@@ -542,6 +543,10 @@ const ShipmentDetailsPage = () => {
         const draft = JSON.parse(JSON.stringify(shipment));
         if (!draft.sender && draft.origin) draft.sender = draft.origin;
         if (!draft.receiver && draft.destination) draft.receiver = draft.destination;
+        draft.dangerousGoods = {
+            contains: false,
+            ...(draft.dangerousGoods || {})
+        };
 
         setEditDraft(draft);
         setEditErrors({});
@@ -579,6 +584,18 @@ const ShipmentDetailsPage = () => {
                 // Initialize selected codes from shipment pricing snapshot or current state
                 const selected = (shipment.pricingSnapshot?.optionalServices || []).map(s => s.serviceCode);
                 setSelectedOptionalServiceCodes(selected);
+                const declaredValue = (shipment.items || []).reduce((sum, item) => {
+                    const itemValue = Number(item?.declaredValue || 0) * Number(item?.quantity || 1);
+                    return sum + itemValue;
+                }, 0);
+                const savedInsuredValue = shipment.insuredValue != null
+                    ? Number(shipment.insuredValue)
+                    : declaredValue;
+                setEditInsuredValue(
+                    selected.includes('II') && savedInsuredValue > 0
+                        ? String(savedInsuredValue)
+                        : ''
+                );
             }
         }
     };
@@ -615,7 +632,10 @@ const ShipmentDetailsPage = () => {
                     allowPublicLocationUpdate: editDraft.allowPublicLocationUpdate,
                     allowPublicInfoUpdate: editDraft.allowPublicInfoUpdate,
                     reference: editDraft.reference,
-                    optionalServiceCodes: selectedOptionalServiceCodes
+                    optionalServiceCodes: selectedOptionalServiceCodes,
+                    insuredValue: selectedOptionalServiceCodes.includes('II')
+                        ? Number(editInsuredValue || 0)
+                        : undefined
                 };
             }
             else if (editSection === 'status') {
@@ -1667,6 +1687,8 @@ const ShipmentDetailsPage = () => {
                                                 prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]
                                             );
                                         }}
+                                        insuredValue={editInsuredValue}
+                                        setInsuredValue={setEditInsuredValue}
                                         currency={editDraft.currency}
                                         showMarkupDetails={isStaff}
                                     />
