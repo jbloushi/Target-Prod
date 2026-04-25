@@ -408,10 +408,68 @@ class LogesTechsAdapter extends CarrierAdapter {
         };
     }
 
+    _mapFulfillmentProductsInput(products = []) {
+        const list = Array.isArray(products)
+            ? products
+            : (Array.isArray(products?.list) ? products.list : []);
+
+        return {
+            list: list.map((item = {}) => ({
+                externalId: item.externalId ?? null,
+                name: this._safeString(item.name) || '',
+                sku: this._safeString(item.sku) || '',
+                isExpiryBlock: Boolean(item.isExpiryBlock),
+                barcode: this._safeString(item.barcode) || '',
+                categoryId: item.categoryId ?? null,
+                price: Number(item.price || 0),
+                length: Number(item.length || 0),
+                width: Number(item.width || 0),
+                height: Number(item.height || 0),
+                weight: Number(item.weight || 0),
+                description: this._safeString(item.description) || '',
+                imageUrl: this._safeString(item.imageUrl) || '',
+                quantity: Number(item.quantity || 0)
+            }))
+        };
+    }
+
+    _mapFulfillmentOrderPayload(orderPayload = {}) {
+        const receiverAddress = orderPayload.receiverAddress || {};
+        return {
+            receiverName: this._safeString(orderPayload.receiverName) || '',
+            receiverPhone: this._safeString(orderPayload.receiverPhone) || '',
+            receiverPhone2: this._safeString(orderPayload.receiverPhone2) || '',
+            receiverAddress: {
+                village: this._safeString(receiverAddress.village) || '',
+                city: this._safeString(receiverAddress.city) || '',
+                region: this._safeString(receiverAddress.region) || '',
+                addressLine1: this._safeString(receiverAddress.addressLine1) || '',
+                addressLine2: this._safeString(receiverAddress.addressLine2) || ''
+            },
+            notes: this._safeString(orderPayload.notes) || '',
+            weight: Number(orderPayload.weight || 1),
+            receiverBusinessName: this._safeString(orderPayload.receiverBusinessName) || '',
+            shipmentType: this._safeString(orderPayload.shipmentType || 'REGULAR'),
+            codCollectionMethod: this._safeString(orderPayload.codCollectionMethod || 'PREPAID'),
+            cod: this._safeString(orderPayload.cod ?? '0'),
+            cost: Number(orderPayload.cost || 0),
+            items: Array.isArray(orderPayload.items)
+                ? orderPayload.items.map((item = {}) => ({
+                    externalId: item.externalId ?? null,
+                    productId: item.productId ?? null,
+                    sku: this._safeString(item.sku) || '',
+                    price: Number(item.price || 0),
+                    quantity: Number(item.quantity || 0)
+                }))
+                : [],
+            invoiceNumber: this._safeString(orderPayload.invoiceNumber) || ''
+        };
+    }
+
     async addOrUpdateProducts(products = []) {
         try {
             this._assertCredentials();
-            const payload = Array.isArray(products) ? { list: products } : products;
+            const payload = this._mapFulfillmentProductsInput(products);
             const response = await this.fulfillmentClient.post('/public/fulfillment/product/bulk', payload, {
                 headers: this._fulfillmentHeaders()
             });
@@ -450,7 +508,8 @@ class LogesTechsAdapter extends CarrierAdapter {
     async addFulfillmentOrder(orderPayload = {}) {
         try {
             this._assertCredentials();
-            const response = await this.fulfillmentClient.post('/public/fulfillment/order', orderPayload, {
+            const payload = this._mapFulfillmentOrderPayload(orderPayload);
+            const response = await this.fulfillmentClient.post('/public/fulfillment/order', payload, {
                 headers: this._fulfillmentHeaders()
             });
             return response.data;

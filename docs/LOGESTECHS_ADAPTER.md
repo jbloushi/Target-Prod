@@ -49,6 +49,7 @@ LOGESTECHS_EMAIL=
 - Returned shipment object stores `carrierShipmentId` and `barcode`/`trackingNumber` when available.
 - If provider returns invalid login credentials (including Arabic auth errors), adapter returns an actionable message to verify `LOGESTECHS_EMAIL`, `LOGESTECHS_PASSWORD`, `LOGESTECHS_USERNAME`, and `LOGESTECHS_COMPANY_ID`.
 - Fulfillment product bulk requests are sent in `{ list: [...] }` shape per provider collection.
+- Fulfillment order requests are normalized to provider fields (`receiverName`, `receiverPhone`, `receiverAddress`, `shipmentType`, `codCollectionMethod`, `cod`, `cost`, `items`, `invoiceNumber`) with safe defaults for omitted optional values.
 
 ## Sample cURL
 

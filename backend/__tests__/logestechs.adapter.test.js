@@ -190,13 +190,27 @@ describe('LogesTechsAdapter', () => {
         fulfillmentClient.post.mockResolvedValue({ data: { success: true } });
 
         await adapter.getProducts({ page: 2, pageSize: 5 });
-        await adapter.addFulfillmentOrder({ orderNo: 'O-1' });
+        await adapter.addFulfillmentOrder({
+            receiverName: 'Receiver',
+            receiverPhone: '00970',
+            receiverAddress: { city: 'Amman', region: 'Amman', village: 'Aappa', addressLine1: 'Main street' },
+            items: [{ sku: 'abc', price: 1, quantity: 2 }]
+        });
         await adapter.addOrUpdateProducts([{ sku: 'abc' }]);
 
         expect(fulfillmentClient.get).toHaveBeenCalledWith('/public/fulfillment/product', expect.objectContaining({
             params: { page: 2, pageSize: 5 }
         }));
-        expect(fulfillmentClient.post).toHaveBeenCalledWith('/public/fulfillment/order', { orderNo: 'O-1' }, expect.any(Object));
-        expect(fulfillmentClient.post).toHaveBeenCalledWith('/public/fulfillment/product/bulk', { list: [{ sku: 'abc' }] }, expect.any(Object));
+        expect(fulfillmentClient.post).toHaveBeenCalledWith('/public/fulfillment/order', expect.objectContaining({
+            receiverName: 'Receiver',
+            shipmentType: 'REGULAR',
+            codCollectionMethod: 'PREPAID',
+            cod: '0',
+            receiverAddress: expect.objectContaining({ city: 'Amman', region: 'Amman', village: 'Aappa' }),
+            items: [expect.objectContaining({ sku: 'abc', price: 1, quantity: 2 })]
+        }), expect.any(Object));
+        expect(fulfillmentClient.post).toHaveBeenCalledWith('/public/fulfillment/product/bulk', {
+            list: [expect.objectContaining({ sku: 'abc', quantity: 0, price: 0 })]
+        }, expect.any(Object));
     });
 });
