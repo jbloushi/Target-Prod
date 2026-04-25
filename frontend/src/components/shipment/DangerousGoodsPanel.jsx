@@ -29,7 +29,11 @@ const DangerousGoodsPanel = ({ dangerousGoods = { contains: false }, setDangerou
     const safeDangerousGoods = (dangerousGoods && typeof dangerousGoods === 'object' && !Array.isArray(dangerousGoods))
         ? dangerousGoods
         : { contains: false };
-    const containsDangerousGoods = Boolean(safeDangerousGoods.contains);
+    const [containsDangerousGoods, setContainsDangerousGoods] = React.useState(Boolean(safeDangerousGoods.contains));
+
+    React.useEffect(() => {
+        setContainsDangerousGoods(Boolean(safeDangerousGoods.contains));
+    }, [safeDangerousGoods.contains]);
 
     const handleChange = (field, value) => {
         const prev = safeDangerousGoods;
@@ -38,6 +42,7 @@ const DangerousGoodsPanel = ({ dangerousGoods = { contains: false }, setDangerou
         if (field === 'contains') {
             next.contains = Boolean(value);
             next.customDescription = value ? (prev.customDescription || DG_MARKS_DEFAULT) : prev.customDescription;
+            setContainsDangerousGoods(Boolean(value));
             setDangerousGoods(next);
             return;
         }

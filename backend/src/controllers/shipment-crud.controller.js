@@ -11,13 +11,14 @@ const { MANUAL_SHIPMENT_STATUSES, SHIPMENT_STATUSES } = require('../constants/st
 const { syncCarrierTrackingHistory, hasCriticalChanges, canUpdateShipmentStatus, isManualShipment } = require('./shipment.helpers');
 const shipmentEditDiagnosticsEnabled = process.env.DEBUG_SHIPMENT_EDIT === '1';
 
-const stripUndefinedDeep = (value) => {
-    if (Array.isArray(value)) return value.map(stripUndefinedDeep);
+const sanitizeJsonValueDeep = (value) => {
+    if (typeof value === 'number' && !Number.isFinite(value)) return null;
+    if (Array.isArray(value)) return value.map(sanitizeJsonValueDeep);
     if (!value || typeof value !== 'object') return value;
 
     return Object.entries(value).reduce((acc, [key, nested]) => {
         if (nested === undefined) return acc;
-        acc[key] = stripUndefinedDeep(nested);
+        acc[key] = sanitizeJsonValueDeep(nested);
         return acc;
     }, {});
 };
@@ -429,11 +430,14 @@ exports.updateShipment = async (req, res) => {
             }
         });
 
+        ['parcels', 'items', 'origin', 'destination', 'dangerousGoods'].forEach((key) => {
+            if (updateData[key] !== undefined) {
+                updateData[key] = sanitizeJsonValueDeep(updateData[key]);
+            }
+        });
+
         if (updateData.dangerousGoods && typeof updateData.dangerousGoods === 'object') {
-            updateData.dangerousGoods = {
-                ...stripUndefinedDeep(updateData.dangerousGoods),
-                contains: Boolean(updateData.dangerousGoods.contains)
-            };
+            updateData.dangerousGoods.contains = Boolean(updateData.dangerousGoods.contains);
         }
 
         if (canManageManualFields && updates.price !== undefined) {
