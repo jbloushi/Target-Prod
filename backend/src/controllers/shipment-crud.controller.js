@@ -9,6 +9,7 @@ const { handleControllerError } = require('../utils/controllerError');
 const { hasCapability, isPlatformRole } = require('../middleware/rbac.policy');
 const { MANUAL_SHIPMENT_STATUSES, SHIPMENT_STATUSES } = require('../constants/statusConstants');
 const { syncCarrierTrackingHistory, hasCriticalChanges, canUpdateShipmentStatus, isManualShipment } = require('./shipment.helpers');
+const shipmentEditDiagnosticsEnabled = process.env.DEBUG_SHIPMENT_EDIT === '1';
 
 const stripUndefinedDeep = (value) => {
     if (Array.isArray(value)) return value.map(stripUndefinedDeep);
@@ -512,6 +513,15 @@ exports.updateShipment = async (req, res) => {
                 }
             } catch (pricingError) {
                 logger.error('Automatic re-rating failed:', pricingError);
+                if (shipmentEditDiagnosticsEnabled) {
+                    logger.warn('Shipment edit diagnostics: rerating failure context', {
+                        trackingNumber,
+                        carrierCode: shipment.carrierCode,
+                        updateKeys: Object.keys(updates || {}),
+                        dangerousGoodsContains: Boolean(updates?.dangerousGoods?.contains),
+                        serviceCode: updates?.serviceCode || shipment.serviceCode
+                    });
+                }
                 // Keep the user edit flow resilient: persist non-pricing updates even if carrier re-rating fails.
                 // Existing price/snapshot remains unchanged in this case.
             }
@@ -525,6 +535,13 @@ exports.updateShipment = async (req, res) => {
         res.status(200).json({ success: true, data: updatedShipment });
     } catch (error) {
         logger.error('Error updating shipment:', error);
+        if (shipmentEditDiagnosticsEnabled) {
+            logger.error('Shipment edit diagnostics: update failed payload context', {
+                trackingNumber: req?.params?.trackingNumber,
+                updateKeys: Object.keys(req?.body || {}),
+                dangerousGoods: req?.body?.dangerousGoods || null
+            });
+        }
         res.status(500).json({ success: false, error: 'Server error' });
     }
 };

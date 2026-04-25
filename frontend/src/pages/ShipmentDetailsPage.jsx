@@ -406,6 +406,14 @@ const normalizePartyAddress = (party = {}) => {
 // --- Main Component ---
 
 const ShipmentDetailsPage = () => {
+    const isShipmentEditDiagnosticsEnabled = (() => {
+        try {
+            return localStorage.getItem('debug:shipment-edit') === '1';
+        } catch {
+            return false;
+        }
+    })();
+
     const { trackingNumber } = useParams();
     const navigate = useNavigate();
     const fetchedRef = useRef(false);
@@ -691,12 +699,27 @@ const ShipmentDetailsPage = () => {
             }
 
             const response = await shipmentService.updateShipmentDetails(shipment.trackingNumber, payload);
+            if (isShipmentEditDiagnosticsEnabled) {
+                console.debug('[ShipmentEditDiagnostics] PATCH payload', {
+                    trackingNumber: shipment.trackingNumber,
+                    editSection,
+                    payload
+                });
+                console.debug('[ShipmentEditDiagnostics] PATCH response', response);
+            }
             if (response.success) {
                 enqueueSnackbar(`${editSection.charAt(0).toUpperCase() + editSection.slice(1)} updated successfully`, { variant: 'success' });
                 setEditDrawerOpen(false);
                 getShipment(shipment.trackingNumber);
             }
         } catch (error) {
+            if (isShipmentEditDiagnosticsEnabled) {
+                console.debug('[ShipmentEditDiagnostics] PATCH error', {
+                    trackingNumber: shipment?.trackingNumber,
+                    editSection,
+                    error: error?.response?.data || error?.message || error
+                });
+            }
             console.error(`Error saving ${editSection} edit: `, error);
             enqueueSnackbar(error.message || `Failed to update ${editSection} `, { variant: 'error' });
         } finally {
