@@ -193,7 +193,7 @@ describe('LogesTechsAdapter', () => {
         await expect(adapter.createShipment({
             sender: { addressLine1: 'S', city: 'Kuwait' },
             receiver: { addressLine1: 'R', city: 'Riyadh' }
-        })).rejects.toThrow(/LOGESTECHS_SHIPMENT_EMAIL\/LOGESTECHS_SHIPMENT_PASSWORD/i);
+        })).rejects.toThrow(/LOGESTECHS_COMPANY_ID, LOGESTECHS_USERNAME, LOGESTECHS_PASSWORD/i);
     });
 
     it('requires barcode or id for getStatus', async () => {

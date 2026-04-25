@@ -18,6 +18,9 @@ LOGESTECHS_SHIPMENT_PASSWORD=
 ```
 
 > Never expose these values to frontend bundles. They are read only by backend runtime config.
+>
+> Required credentials are: `LOGESTECHS_COMPANY_ID`, `LOGESTECHS_USERNAME`, `LOGESTECHS_PASSWORD`.
+> `LOGESTECHS_EMAIL`, `LOGESTECHS_SHIPMENT_EMAIL`, and `LOGESTECHS_SHIPMENT_PASSWORD` are optional overrides.
 
 ## Supported Methods / Endpoints
 

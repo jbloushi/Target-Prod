@@ -250,7 +250,7 @@ class LogesTechsAdapter extends CarrierAdapter {
         const isCredentialError = /البريد الالكتروني او كلمة المرور غير صحيحة|incorrect email or password|invalid credentials/i
             .test(String(upstreamMessage || ''));
         const normalizedMessage = isCredentialError
-            ? 'OTE authentication failed. Verify LOGESTECHS_SHIPMENT_EMAIL/LOGESTECHS_SHIPMENT_PASSWORD (or LOGESTECHS_EMAIL/LOGESTECHS_PASSWORD), LOGESTECHS_USERNAME, and LOGESTECHS_COMPANY_ID.'
+            ? 'OTE authentication failed. Verify required credentials LOGESTECHS_COMPANY_ID, LOGESTECHS_USERNAME, LOGESTECHS_PASSWORD. Optional shipment overrides: LOGESTECHS_SHIPMENT_EMAIL, LOGESTECHS_SHIPMENT_PASSWORD.'
             : upstreamMessage;
 
         logger.error(`LogesTechs ${operation} failed`, {
