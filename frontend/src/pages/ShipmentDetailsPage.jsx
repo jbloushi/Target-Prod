@@ -543,9 +543,10 @@ const ShipmentDetailsPage = () => {
         const draft = JSON.parse(JSON.stringify(shipment));
         if (!draft.sender && draft.origin) draft.sender = draft.origin;
         if (!draft.receiver && draft.destination) draft.receiver = draft.destination;
+        const dangerousGoodsSource = draft.dangerousGoods || draft.origin?.dangerousGoods || {};
         draft.dangerousGoods = {
             contains: false,
-            ...(draft.dangerousGoods || {})
+            ...(dangerousGoodsSource || {})
         };
 
         setEditDraft(draft);
@@ -588,8 +589,9 @@ const ShipmentDetailsPage = () => {
                     const itemValue = Number(item?.declaredValue || 0) * Number(item?.quantity || 1);
                     return sum + itemValue;
                 }, 0);
-                const savedInsuredValue = shipment.insuredValue != null
-                    ? Number(shipment.insuredValue)
+                const savedInsuredValueRaw = shipment.insuredValue ?? shipment.origin?.insuredValue;
+                const savedInsuredValue = savedInsuredValueRaw != null
+                    ? Number(savedInsuredValueRaw)
                     : declaredValue;
                 setEditInsuredValue(
                     selected.includes('II') && savedInsuredValue > 0

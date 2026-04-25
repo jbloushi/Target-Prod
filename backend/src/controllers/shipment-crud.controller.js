@@ -347,9 +347,10 @@ exports.updateShipment = async (req, res) => {
         const isAdminOrStaff = ['admin', 'staff', 'manager', 'accounting'].includes(user.role);
         if (!isAdminOrStaff && !isOwner) return res.status(403).json({ success: false, error: 'Not authorized' });
 
-        const allowedFields = ['destination', 'origin', 'items', 'parcels', 'incoterm', 'currency', 'dangerousGoods', 'serviceCode', 'status', 'allowPublicLocationUpdate'];
+        const allowedFields = ['destination', 'origin', 'items', 'parcels', 'incoterm', 'currency', 'serviceCode', 'status', 'allowPublicLocationUpdate'];
         const manualEditableFields = ['price', 'costPrice', 'estimatedDelivery'];
         const updateData = {};
+        let nextOrigin = null;
         let criticalChangesDetected = hasCriticalChanges(shipment, updates);
         const shipmentIsManual = isManualShipment(shipment);
         const canManageManualFields = shipmentIsManual && ['admin', 'manager', 'accounting'].includes(user.role);
@@ -364,6 +365,23 @@ exports.updateShipment = async (req, res) => {
             }
         }
 
+        const currentOrigin = shipment.origin && typeof shipment.origin === 'object' ? shipment.origin : {};
+        if (updates.origin && typeof updates.origin === 'object') {
+            nextOrigin = { ...currentOrigin, ...updates.origin };
+        }
+        if (updates.dangerousGoods !== undefined) {
+            nextOrigin = nextOrigin || { ...currentOrigin };
+            nextOrigin.dangerousGoods = updates.dangerousGoods;
+        }
+        if (updates.insuredValue !== undefined) {
+            nextOrigin = nextOrigin || { ...currentOrigin };
+            nextOrigin.insuredValue = updates.insuredValue;
+        }
+        if (updates.optionalServiceCodes !== undefined) {
+            nextOrigin = nextOrigin || { ...currentOrigin };
+            nextOrigin.optionalServiceCodes = updates.optionalServiceCodes;
+        }
+
         // Filter updates
         Object.keys(updates).forEach(key => {
             if (allowedFields.includes(key)) updateData[key] = updates[key];
@@ -376,6 +394,10 @@ exports.updateShipment = async (req, res) => {
                 }
             }
         });
+
+        if (nextOrigin) {
+            updateData.origin = nextOrigin;
+        }
 
         if (canManageManualFields && updates.price !== undefined) {
             const price = Number(updates.price);
@@ -469,4 +491,3 @@ exports.updateShipment = async (req, res) => {
         res.status(500).json({ success: false, error: 'Server error' });
     }
 };
-
