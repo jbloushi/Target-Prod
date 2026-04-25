@@ -623,6 +623,36 @@ const ShipmentDetailsPage = () => {
                 };
             }
             else if (editSection === 'billing') {
+                const effectiveInsuredValue = selectedOptionalServiceCodes.includes('II')
+                    ? Number(editInsuredValue || 0)
+                    : undefined;
+
+                if (selectedOptionalServiceCodes.includes('II') && (!effectiveInsuredValue || effectiveInsuredValue <= 0)) {
+                    enqueueSnackbar('Insurance value must be greater than 0 when insurance service (II) is selected.', { variant: 'warning' });
+                    setIsProcessing(false);
+                    return;
+                }
+
+                const quotePayload = {
+                    sender: editDraft.sender || shipment.origin,
+                    receiver: editDraft.receiver || shipment.destination,
+                    parcels: editDraft.parcels || shipment.parcels,
+                    items: editDraft.items || shipment.items,
+                    carrierCode: shipment.carrierCode,
+                    serviceCode: shipment.serviceCode,
+                    shipmentType: editDraft.shipmentType || shipment.shipmentType || 'package',
+                    optionalServiceCodes: selectedOptionalServiceCodes,
+                    insuredValue: effectiveInsuredValue
+                };
+
+                const quoteResponse = await shipmentService.getQuotes(quotePayload);
+                if (quoteResponse.success && Array.isArray(quoteResponse.data)) {
+                    const activeQuote = quoteResponse.data.find(q => q.serviceCode === shipment.serviceCode) || quoteResponse.data[0];
+                    if (activeQuote) {
+                        setAvailableOptionalServices(activeQuote.optionalServices || []);
+                    }
+                }
+
                 payload = {
                     exportReason: editDraft.exportReason,
                     incoterm: editDraft.incoterm,
@@ -639,9 +669,7 @@ const ShipmentDetailsPage = () => {
                     allowPublicInfoUpdate: editDraft.allowPublicInfoUpdate,
                     reference: editDraft.reference,
                     optionalServiceCodes: selectedOptionalServiceCodes,
-                    insuredValue: selectedOptionalServiceCodes.includes('II')
-                        ? Number(editInsuredValue || 0)
-                        : undefined
+                    insuredValue: effectiveInsuredValue
                 };
             }
             else if (editSection === 'status') {
@@ -657,6 +685,7 @@ const ShipmentDetailsPage = () => {
                 };
             }
 
+            console.info('[ShipmentDetailsPage] Saving edit payload keys:', Object.keys(payload || {}));
             const response = await shipmentService.updateShipmentDetails(shipment.trackingNumber, payload);
             if (response.success) {
                 enqueueSnackbar(`${editSection.charAt(0).toUpperCase() + editSection.slice(1)} updated successfully`, { variant: 'success' });
