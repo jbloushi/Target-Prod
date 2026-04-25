@@ -40,6 +40,22 @@ const createSendToken = (user, statusCode, res) => {
 exports.signup = async (req, res) => {
     try {
         const { name, email, password, role: requestedRole, organizationName } = req.body;
+        const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+        const publicSignupEnabled = process.env.ALLOW_PUBLIC_SIGNUP === 'true';
+
+        // SECURITY: Disable self-service account creation by default.
+        // This helps prevent unauthorized users from creating accounts.
+        if (!publicSignupEnabled) {
+            return res.status(403).json({ success: false, error: 'Self-registration is disabled. Contact an administrator.' });
+        }
+
+        if (!name || !normalizedEmail || !password) {
+            return res.status(400).json({ success: false, error: 'Name, email, and password are required' });
+        }
+
+        if (password.length < 8) {
+            return res.status(400).json({ success: false, error: 'Password must be at least 8 characters' });
+        }
 
         // SECURITY: Public signup is restricted to org_agent accounts only.
         if (requestedRole && requestedRole !== 'org_agent') {
@@ -51,7 +67,7 @@ exports.signup = async (req, res) => {
 
         const newUser = await prisma.$transaction(async (tx) => {
             // Check if email already exists
-            const existingUser = await tx.user.findUnique({ where: { email: email.toLowerCase() } });
+            const existingUser = await tx.user.findUnique({ where: { email: normalizedEmail } });
             if (existingUser) throw new Error('Email already exists');
 
             // Optional: Create an Organization if provided, or use a default one
@@ -73,7 +89,7 @@ exports.signup = async (req, res) => {
 
             const userData = {
                 name,
-                email: email.toLowerCase(),
+                email: normalizedEmail,
                 password: hashedPassword,
                 role: role
             };
@@ -103,21 +119,32 @@ exports.signup = async (req, res) => {
 exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
+        const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
 
-        if (!email || !password) {
+        if (!normalizedEmail || !password) {
             return res.status(400).json({ success: false, error: 'Please provide email and password' });
         }
 
-        logger.debug(`Attempting login for: ${email}`);
+        logger.debug(`Attempting login for: ${normalizedEmail}`);
         
         // In Prisma, we pull the password explicitly if we want it, 
         // but here we just find the user.
         const user = await prisma.user.findUnique({
-            where: { email: email.toLowerCase() }
+            where: { email: normalizedEmail }
         });
 
         if (!user) {
-            logger.warn(`Login failed: No user found for email ${email}`);
+            logger.warn(`Login failed: No user found for email ${normalizedEmail}`);
+            return res.status(401).json({ success: false, error: 'Incorrect email or password' });
+        }
+
+        if (!user.active) {
+            logger.warn(`Login failed: Inactive account for ${normalizedEmail}`);
+            return res.status(401).json({ success: false, error: 'Incorrect email or password' });
+        }
+
+        if (!user.password) {
+            logger.warn(`Login failed: No local password set for ${normalizedEmail}`);
             return res.status(401).json({ success: false, error: 'Incorrect email or password' });
         }
 
@@ -125,7 +152,7 @@ exports.login = async (req, res) => {
         const isMatch = await comparePassword(password, user.password);
 
         if (!isMatch) {
-            logger.warn(`Login failed: Password mismatch for ${email}`);
+            logger.warn(`Login failed: Password mismatch for ${normalizedEmail}`);
             return res.status(401).json({ success: false, error: 'Incorrect email or password' });
         }
 
