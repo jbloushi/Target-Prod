@@ -353,7 +353,9 @@ exports.updateShipment = async (req, res) => {
         let nextOrigin = null;
         let criticalChangesDetected = hasCriticalChanges(shipment, updates);
         const shipmentIsManual = isManualShipment(shipment);
-        const canManageManualFields = shipmentIsManual && ['admin', 'manager', 'accounting'].includes(user.role);
+        const shipmentCarrier = String(shipment.carrierCode || '').toUpperCase();
+        const shipmentAllowsManualPricing = shipmentIsManual || ['OTE', 'LOGESTECHS'].includes(shipmentCarrier);
+        const canManageManualFields = shipmentAllowsManualPricing && ['admin', 'staff', 'manager', 'accounting'].includes(user.role);
 
         if (updates.status && updates.status !== shipment.status) {
             const validStatuses = shipmentIsManual ? MANUAL_SHIPMENT_STATUSES : SHIPMENT_STATUSES;
