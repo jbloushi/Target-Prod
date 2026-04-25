@@ -69,7 +69,8 @@ const ShipmentBilling = ({
     });
 
     const insuranceSelected = selectedOptionalServiceCodes.includes('II');
-    const insuranceAmount = Number(insuredValue || 0);
+    const normalizedInsuredValue = insuredValue === undefined || insuredValue === null ? '' : insuredValue;
+    const insuranceAmount = Number(normalizedInsuredValue || 0);
     const selectedOptionalServices = availableOptionalServices.filter(service =>
         selectedOptionalServiceCodes.includes(service.serviceCode)
     );
@@ -116,7 +117,7 @@ const ShipmentBilling = ({
                             size="small"
                             type="number"
                             label={`Insurance Value (${declaredCurrency})`}
-                            value={insuredValue}
+                            value={normalizedInsuredValue}
                             onClick={(e) => e.stopPropagation()}
                             onChange={(e) => setInsuredValue?.(e.target.value)}
                             inputProps={{ min: 0.001, step: 0.001 }}

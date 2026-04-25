@@ -542,6 +542,7 @@ const ShipmentDetailsPage = () => {
         const draft = JSON.parse(JSON.stringify(shipment));
         if (!draft.sender && draft.origin) draft.sender = draft.origin;
         if (!draft.receiver && draft.destination) draft.receiver = draft.destination;
+        draft.dangerousGoods = draft.dangerousGoods || { contains: false };
         if (draft.insuredValue === undefined || draft.insuredValue === null) {
             draft.insuredValue =
                 draft.origin?.insuredValue
@@ -586,7 +587,7 @@ const ShipmentDetailsPage = () => {
                 
                 // Initialize selected codes from shipment pricing snapshot or current state
                 const selectedFromSnapshot = (shipment.pricingSnapshot?.optionalServices || [])
-                    .map(s => String(s?.serviceCode || '').toUpperCase())
+                    .map((s) => String(typeof s === 'string' ? s : (s?.serviceCode || s?.code || '')).toUpperCase())
                     .filter(Boolean);
                 const selectedFromOrigin = (shipment.origin?.optionalServices || shipment.optionalServices || [])
                     .map((s) => String(typeof s === 'string' ? s : (s?.serviceCode || s?.code || '')).toUpperCase())
@@ -601,6 +602,7 @@ const ShipmentDetailsPage = () => {
                         shipment.origin?.insuredValue
                         ?? shipment.origin?.customer?.insuredValue
                         ?? shipment.insuredValue
+                        ?? shipment.pricingSnapshot?.insuredValue
                         ?? declaredTotal
                         ?? 0;
                     setEditDraft((prev) => ({ ...prev, insuredValue: inferredInsured > 0 ? inferredInsured : '' }));
@@ -620,7 +622,10 @@ const ShipmentDetailsPage = () => {
                 payload = {
                     parcels: editDraft.parcels,
                     items: editDraft.items,
-                    dangerousGoods: editDraft.dangerousGoods,
+                    dangerousGoods: {
+                        ...(editDraft.dangerousGoods || {}),
+                        contains: Boolean(editDraft.dangerousGoods?.contains)
+                    },
                     packagingType: editDraft.packagingType,
                     currency: editDraft.currency
                 };
