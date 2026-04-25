@@ -55,6 +55,24 @@ const LABEL_SX = {
 
 const VOLUME_FACTOR = 5000;
 
+const resolveInsuredValue = (shipment = {}) => {
+    const origin = shipment.origin || {};
+    const snapshot = shipment.pricingSnapshot || {};
+    const insuranceService = (snapshot.optionalServices || []).find(
+        (service) => String(service?.serviceCode || '').toUpperCase() === 'II'
+    ) || {};
+    const candidates = [
+        shipment.insuredValue,
+        origin.insuredValue,
+        snapshot.insuredValue,
+        snapshot.metadata?.insuredValue,
+        insuranceService.insuredValue,
+        insuranceService.metadata?.insuredValue
+    ];
+    const found = candidates.find((v) => v !== undefined && v !== null && String(v).trim() !== '');
+    return found ?? '';
+};
+
 const STEPS = [
     { key: 'Setup',   label: 'Addresses', sublabel: 'Origin & destination' },
     { key: 'Content', label: 'Contents',  sublabel: 'Items & parcels' },
@@ -745,7 +763,7 @@ const ShipmentWizardV2 = () => {
                 setShipmentType(shipment.shipmentType || 'package');
                 setCurrency(shipment.currency || shipment.pricingSnapshot?.declaredCurrency || 'KWD');
                 setBillingCurrency(origin.billingCurrency || shipment.pricingSnapshot?.billingCurrency || shipment.currency || 'KWD');
-                setDangerousGoods(origin.dangerousGoods || { contains: false });
+                setDangerousGoods(origin.dangerousGoods || shipment.dangerousGoods || { contains: false });
                 setPackagingType(shipment.packagingType || origin.packagingType || 'user');
                 setExportReason(origin.exportReason || 'permanent');
                 setInvoiceRemarks(origin.remarks || '');
@@ -759,7 +777,7 @@ const ShipmentWizardV2 = () => {
                 setPalletCount(origin.palletCount || '');
                 setPackageMarks(origin.packageMarks || '');
                 setPickupRequired(origin.pickupRequired || false);
-                setInsuredValue(origin.insuredValue || '');
+                setInsuredValue(resolveInsuredValue(shipment));
                 setSelectedOptionalServiceCodes(Array.isArray(origin.optionalServiceCodes) ? origin.optionalServiceCodes : snapshotOptionalCodes);
 
                 if (shipment.serviceCode) {

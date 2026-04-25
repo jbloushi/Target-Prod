@@ -62,6 +62,25 @@ const getShipmentTypeLabel = (shipmentType) => (
     shipmentType === 'documents' ? 'Document Express' : 'Standard Package'
 );
 
+const resolveInsuredValue = (shipmentLike = {}) => {
+    const origin = shipmentLike.origin || {};
+    const snapshot = shipmentLike.pricingSnapshot || {};
+    const insuranceService = (snapshot.optionalServices || []).find(
+        (service) => String(service?.serviceCode || '').toUpperCase() === 'II'
+    ) || {};
+    const candidates = [
+        shipmentLike.insuredValue,
+        origin.insuredValue,
+        snapshot.insuredValue,
+        snapshot.metadata?.insuredValue,
+        insuranceService.insuredValue,
+        insuranceService.metadata?.insuredValue
+    ];
+
+    const found = candidates.find((v) => v !== undefined && v !== null && String(v).trim() !== '');
+    return found ?? '';
+};
+
 // --- Styled Components ---
 
 const HeroSection = styled.div`
@@ -560,8 +579,8 @@ const ShipmentDetailsPage = () => {
         draft.allowPublicLocationUpdate = draft.allowPublicLocationUpdate ?? originMeta.allowPublicLocationUpdate ?? false;
         draft.allowPublicInfoUpdate = draft.allowPublicInfoUpdate ?? originMeta.allowPublicInfoUpdate ?? false;
         draft.reference = draft.reference ?? originMeta.reference ?? '';
-        draft.dangerousGoods = draft.dangerousGoods ?? originMeta.dangerousGoods ?? { contains: false };
-        draft.insuredValue = draft.insuredValue ?? originMeta.insuredValue ?? '';
+        draft.dangerousGoods = draft.dangerousGoods ?? originMeta.dangerousGoods ?? shipment.dangerousGoods ?? { contains: false };
+        draft.insuredValue = resolveInsuredValue(draft);
         draft.optionalServiceCodes = persistedOptionalCodes;
         draft.currency = draft.currency || draft.billingCurrency || originMeta.billingCurrency || 'KWD';
 

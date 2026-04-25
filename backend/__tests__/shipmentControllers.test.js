@@ -5,6 +5,9 @@ describe('shipment controllers', () => {
         shipment: {
             findUnique: jest.fn(),
             update: jest.fn()
+        },
+        user: {
+            findUnique: jest.fn()
         }
     };
 
@@ -159,6 +162,63 @@ describe('shipment controllers', () => {
                     contactPerson: 'New Receiver',
                     city: 'Dubai'
                 })
+            })
+        }));
+        expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it('writes markupAmount (not markup) after re-rating critical DGR edits', async () => {
+        jest.doMock('../src/services/CarrierFactory', () => ({
+            getAdapter: () => ({
+                getRates: jest.fn().mockResolvedValue([
+                    { serviceCode: 'P', totalPrice: 20, currency: 'KWD' }
+                ])
+            })
+        }));
+        jest.doMock('../src/services/pricing.service', () => ({
+            resolveMarkup: () => ({ markup: { type: 'PERCENTAGE', percentageValue: 10 }, source: 'org_default' }),
+            createSnapshot: () => ({ totalPrice: 22, carrierRate: 20, markup: 2, currency: 'KWD' })
+        }));
+
+        const controller = require('../src/controllers/shipment-crud.controller');
+        const shipment = {
+            id: 'shipment-3',
+            trackingNumber: 'DGR-CRIT-1',
+            userId: 'client-1',
+            organizationId: null,
+            carrierCode: 'DGR',
+            serviceCode: 'P',
+            status: 'pending',
+            history: [],
+            currentLocation: { city: 'Kuwait City' },
+            origin: { countryCode: 'KW', city: 'Kuwait City' },
+            destination: { countryCode: 'AE', city: 'Dubai' },
+            parcels: [{ weight: 1, dimensions: { length: 10, width: 10, height: 10 } }],
+            items: [{ weight: 1, quantity: 1 }],
+            pricingSnapshot: {},
+            price: 10
+        };
+        const req = {
+            params: { trackingNumber: 'DGR-CRIT-1' },
+            user: { id: 'staff-1', role: 'staff', name: 'Staff' },
+            body: {
+                origin: { countryCode: 'KW', city: 'Kuwait City' },
+                destination: { countryCode: 'SA', city: 'Riyadh' }
+            }
+        };
+        const res = createMockRes();
+
+        prisma.shipment.findUnique.mockResolvedValue(shipment);
+        prisma.user.findUnique.mockResolvedValue({ id: 'client-1', organization: null });
+        prisma.shipment.update.mockResolvedValue({ ...shipment });
+
+        await controller.updateShipment(req, res);
+
+        expect(prisma.shipment.update).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({
+                markupAmount: 2,
+                price: 22,
+                costPrice: 20
             })
         }));
         expect(res.status).toHaveBeenCalledWith(200);

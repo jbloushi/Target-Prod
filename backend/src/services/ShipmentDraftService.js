@@ -83,6 +83,9 @@ class ShipmentDraftService {
             // Override total if provided manually (TRUSTED sources only)
             if (data.price || data.totalPrice) snapshot.totalPrice = Number(data.price || data.totalPrice);
         }
+        if (selectedOptionalCodes.has('II')) {
+            snapshot.insuredValue = Number(cleanData.insuredValue || 0);
+        }
 
         // Helper to generate tracking number
         const trackingNumber = data.trackingNumber || (isManualShipment ? generateManualTrackingNumber() : generateDraftTrackingNumber());
