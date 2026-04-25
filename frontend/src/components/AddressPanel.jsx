@@ -235,11 +235,14 @@ const AddressPanel = ({
                             <Grid item xs={12}>
                                 <TextField
                                     fullWidth label="Contact Personnel"
+                                    id={`field-${type}-contactPerson`}
                                     value={value.contactPerson || ''}
                                     onChange={(e) => updateField('contactPerson', e.target.value)}
                                     required={isFieldRequired('contactPerson')}
                                     disabled={disabled}
                                     error={!!(isSender ? errors.senderContact : errors.receiverContact)}
+                                    helperText={isSender ? errors.senderContact : errors.receiverContact}
+                                    inputProps={{ 'data-field-path': `${type}.contactPerson` }}
                                     InputProps={{ startAdornment: <PersonIcon sx={{ mr: 1.5, fontSize: 20, color: 'text.secondary', opacity: 0.5 }} /> }}
                                 />
                             </Grid>
@@ -270,23 +273,29 @@ const AddressPanel = ({
                             <Grid item xs={12} md={7}>
                                 <TextField
                                     fullWidth label="Primary Number"
+                                    id={`field-${type}-phone`}
                                     value={value.phone || ''}
                                     onChange={(e) => updateField('phone', e.target.value.replace(/\D/g, ''))}
                                     required={isFieldRequired('phone')}
                                     disabled={disabled}
                                     error={!!(isSender ? errors.senderPhone : errors.receiverPhone)}
+                                    helperText={isSender ? errors.senderPhone : errors.receiverPhone}
+                                    inputProps={{ 'data-field-path': `${type}.phone` }}
                                     InputProps={{ startAdornment: <PhoneIcon sx={{ mr: 1.5, fontSize: 18, color: 'text.secondary', opacity: 0.5 }} /> }}
                                 />
                             </Grid>
                             <Grid item xs={12}>
                                 <TextField
                                     fullWidth label="Communication Email"
+                                    id={`field-${type}-email`}
                                     type="email"
                                     value={value.email || ''}
                                     onChange={(e) => updateField('email', e.target.value)}
                                     required={isFieldRequired('email')}
                                     disabled={disabled}
                                     error={!!(isSender ? errors.senderEmail : errors.receiverEmail)}
+                                    helperText={isSender ? errors.senderEmail : errors.receiverEmail}
+                                    inputProps={{ 'data-field-path': `${type}.email` }}
                                     InputProps={{ startAdornment: <EmailIcon sx={{ mr: 1.5, fontSize: 18, color: 'text.secondary', opacity: 0.5 }} /> }}
                                 />
                             </Grid>
@@ -331,11 +340,14 @@ const AddressPanel = ({
                             <Grid item xs={12}>
                                 <TextField
                                     fullWidth label="Unit Address Line 1"
+                                    id={`field-${type}-streetLines`}
                                     value={value.streetLines?.[0] || ''}
                                     onChange={(e) => updateField('streetLines', [e.target.value, value.streetLines?.[1] || ''])}
                                     required={isFieldRequired('streetLines')}
                                     disabled={disabled}
                                     error={!!(isSender ? errors.senderStreet : errors.receiverStreet)}
+                                    helperText={isSender ? errors.senderStreet : errors.receiverStreet}
+                                    inputProps={{ 'data-field-path': `${type}.streetLines` }}
                                     InputProps={{ startAdornment: <MapIcon sx={{ mr: 1.5, fontSize: 18, color: 'text.secondary', opacity: 0.5 }} /> }}
                                 />
                             </Grid>
@@ -349,19 +361,21 @@ const AddressPanel = ({
                                 <TextField fullWidth size="small" label="Area / Block" value={value.area || ''} onChange={(e) => updateField('area', e.target.value)} disabled={disabled} />
                             </Grid>
                             <Grid item xs={6}>
-                                <TextField fullWidth size="small" label="City" value={value.city || ''} onChange={(e) => updateField('city', e.target.value)} required={isFieldRequired('city')} disabled={disabled} error={!!(isSender ? errors.senderCity : errors.receiverCity)} />
+                                <TextField fullWidth size="small" label="City" id={`field-${type}-city`} value={value.city || ''} onChange={(e) => updateField('city', e.target.value)} required={isFieldRequired('city')} disabled={disabled} error={!!(isSender ? errors.senderCity : errors.receiverCity)} helperText={isSender ? errors.senderCity : errors.receiverCity} inputProps={{ 'data-field-path': `${type}.city` }} />
                             </Grid>
                             <Grid item xs={6}>
                                 <TextField
                                     fullWidth
                                     size="small"
                                     label="Postal Index"
+                                    id={`field-${type}-postalCode`}
                                     value={value.postalCode || ''}
                                     onChange={(e) => updateField('postalCode', e.target.value)}
                                     required={isFieldRequired('postalCode')}
                                     disabled={disabled}
                                     error={!!(isSender ? errors.senderPostal : errors.receiverPostal)}
                                     helperText={isSender ? errors.senderPostal : errors.receiverPostal}
+                                    inputProps={{ 'data-field-path': `${type}.postalCode` }}
                                 />
                             </Grid>
                             <Grid item xs={6}>

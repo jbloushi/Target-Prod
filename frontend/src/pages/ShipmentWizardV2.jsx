@@ -14,6 +14,8 @@ import ArrowForwardIcon      from '@mui/icons-material/ArrowForward';
 import ArrowBackIcon         from '@mui/icons-material/ArrowBack';
 import BusinessCenterIcon    from '@mui/icons-material/BusinessCenter';
 import LightbulbIcon         from '@mui/icons-material/Lightbulb';
+import ErrorOutlineIcon      from '@mui/icons-material/ErrorOutline';
+import WarningAmberIcon      from '@mui/icons-material/WarningAmber';
 
 import { useAuth } from '../context/AuthContext';
 import ShipmentSetup    from '../components/shipment/ShipmentSetup';
@@ -54,6 +56,8 @@ const LABEL_SX = {
 };
 
 const VOLUME_FACTOR = 5000;
+const ISSUE_LOG_STORAGE_KEY = 'shipment_wizard_issue_log_v1';
+const ISSUE_LOG_LIMIT = 200;
 
 const STEPS = [
     { key: 'Setup',   label: 'Addresses', sublabel: 'Origin & destination' },
@@ -69,13 +73,14 @@ const STEP_TIPS = {
     Review:  'Double-check all details before authorizing. Once dispatched, the manifest is submitted to the carrier network.',
 };
 
-const CARRIER_PROFILES = {
+const DEFAULT_CARRIER_CAPABILITIES = {
     DGR: {
-        supportsDangerousGoods: true,
+        dangerousGoods: { supported: true, templates: [] },
         requiredFields: {
             sender:   ['company','contactPerson','phone','email','streetLines','city','countryCode','postalCode','reference'],
             receiver: ['contactPerson','phone','streetLines','city','countryCode','postalCode','reference'],
         },
+        optionalServices: [{ code: 'II', category: 'insurance', requires: ['insuredValue'] }],
         packagingOptions: [
             { value: 'user', label: 'My Own Packaging' },
             { value: 'CP',   label: 'Custom Packaging' },
@@ -84,38 +89,42 @@ const CARRIER_PROFILES = {
         ],
     },
     DHL: {
-        supportsDangerousGoods: true,
+        dangerousGoods: { supported: true, templates: [] },
         requiredFields: {
             sender:   ['contactPerson','phone','streetLines','city','countryCode','postalCode'],
             receiver: ['contactPerson','phone','streetLines','city','countryCode','postalCode'],
         },
+        optionalServices: [{ code: 'II', category: 'insurance', requires: ['insuredValue'] }],
         packagingOptions: [
             { value: 'user', label: 'My Own Packaging' },
             { value: 'CP',   label: 'Custom Packaging' },
         ],
     },
     FEDEX: {
-        supportsDangerousGoods: false,
+        dangerousGoods: { supported: false, templates: [] },
         requiredFields: {
             sender:   ['contactPerson','phone','streetLines','city','countryCode','postalCode'],
             receiver: ['contactPerson','phone','streetLines','city','countryCode','postalCode'],
         },
+        optionalServices: [{ code: 'II', category: 'insurance', requires: ['insuredValue'] }],
         packagingOptions: [{ value: 'user', label: 'My Own Packaging' }],
     },
     UPS: {
-        supportsDangerousGoods: false,
+        dangerousGoods: { supported: false, templates: [] },
         requiredFields: {
             sender:   ['contactPerson','phone','streetLines','city','countryCode','postalCode'],
             receiver: ['contactPerson','phone','streetLines','city','countryCode','postalCode'],
         },
+        optionalServices: [{ code: 'II', category: 'insurance', requires: ['insuredValue'] }],
         packagingOptions: [{ value: 'user', label: 'My Own Packaging' }],
     },
     ARAMEX: {
-        supportsDangerousGoods: false,
+        dangerousGoods: { supported: false, templates: [] },
         requiredFields: {
             sender:   ['contactPerson','phone','streetLines','city','countryCode','postalCode'],
             receiver: ['contactPerson','phone','streetLines','city','countryCode','postalCode'],
         },
+        optionalServices: [{ code: 'II', category: 'insurance', requires: ['insuredValue'] }],
         packagingOptions: [
             { value: 'user',     label: 'My Own Packaging' },
             { value: 'box',      label: 'Aramex Generic Box' },
@@ -123,6 +132,63 @@ const CARRIER_PROFILES = {
         ],
     },
 };
+
+const PARTY_FIELD_CONFIG = {
+    contactPerson: { errorSuffix: 'Contact', label: 'contact person', action: 'Enter a contact person name for carrier handover and delivery calls.' },
+    phone: { errorSuffix: 'Phone', label: 'phone number', action: 'Enter a valid phone number so the carrier can coordinate pickup/delivery.' },
+    email: { errorSuffix: 'Email', label: 'email address', action: 'Enter an email address for shipment notifications and documentation.' },
+    streetLines: { errorSuffix: 'Street', label: 'street address', action: 'Enter address line 1 to route the shipment correctly.' },
+    city: { errorSuffix: 'City', label: 'city', action: 'Enter the city required by the selected carrier.' },
+    postalCode: { errorSuffix: 'Postal', label: 'postal code', action: 'Enter the postal code required for this route.' },
+    reference: { errorSuffix: 'Reference', label: 'reference', action: 'Enter the shipper/consignee reference required by this carrier.' },
+    countryCode: { errorSuffix: 'Country', label: 'country', action: 'Select the country so rates and compliance rules can be applied.' },
+};
+
+const buildIssue = ({
+    id,
+    severity = 'error',
+    step = 'Setup',
+    section = 'Shipment details',
+    fieldPath,
+    errorKey,
+    title,
+    message,
+    action,
+    source = 'client',
+    carrierCode,
+}) => ({
+    id,
+    severity,
+    step,
+    section,
+    fieldPath,
+    errorKey,
+    anchorId: fieldPath ? `field-${fieldPath.replace(/\./g, '-')}` : null,
+    title,
+    message,
+    action,
+    source,
+    carrierCode,
+});
+
+const issueMapToErrors = (issues = []) => (
+    issues.reduce((acc, issue) => {
+        if (issue.errorKey && !acc[issue.errorKey]) acc[issue.errorKey] = issue.message;
+        return acc;
+    }, {})
+);
+
+const buildIssueLogEntry = ({ event, issues = [], stepKey, carrierCode }) => ({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: new Date().toISOString(),
+    event,
+    step: stepKey,
+    carrierCode,
+    issueCount: issues.length,
+    blockingCount: issues.filter((issue) => issue.severity === 'error').length,
+    warningCount: issues.filter((issue) => issue.severity === 'warning').length,
+    issueIds: issues.map((issue) => issue.id),
+});
 
 // ─── Horizontal step tabs ─────────────────────────────────────────────────────
 const StepTabs = ({ activeStep, isEditMode, editTrackingNumber }) => (
@@ -235,12 +301,28 @@ const SummaryPanel = ({
     availableOptionalServices, selectedOptionalServiceCodes,
     optionalServicesTotal, estimatedShipmentTotal,
     activeStep, loading, fetchingRates, isStaff,
+    issues = [],
+    issueLog = [],
+    onDownloadIssueLog,
+    onIssueClick,
     onBack, onNext, onSubmit,
 }) => {
     const isReview   = activeStep === STEPS.length - 1;
     const hasPricing = Number(selectedService?.totalPrice || 0) > 0;
     const showMarkup = isStaff && selectedService?.basePrice != null;
     const tipText    = STEP_TIPS[STEPS[activeStep]?.key] || '';
+    const errorsCount = issues.filter(issue => issue.severity === 'error').length;
+    const warningsCount = issues.filter(issue => issue.severity === 'warning').length;
+    const issuesByStep = issues.reduce((acc, issue) => {
+        acc[issue.step] = acc[issue.step] || [];
+        acc[issue.step].push(issue);
+        return acc;
+    }, {});
+    const readinessTip = errorsCount > 0
+        ? `Fix ${errorsCount} blocking issue${errorsCount > 1 ? 's' : ''} before dispatch.`
+        : warningsCount > 0
+            ? `Review ${warningsCount} warning${warningsCount > 1 ? 's' : ''} before final submission.`
+            : tipText;
     const selectedOptionalServices = (availableOptionalServices || []).filter(
         service => (selectedOptionalServiceCodes || []).includes(service.serviceCode)
     );
@@ -469,6 +551,91 @@ const SummaryPanel = ({
                 )}
             </Box>
 
+            {(issues.length > 0) && (
+                <Box sx={{ ...CARD_SX, p: 2.5, mb: 2 }}>
+                    <Typography sx={{ ...LABEL_SX, mb: 1.5 }}>Shipment Issues</Typography>
+                    <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+                        <Box sx={{ px: 1.25, py: 0.5, borderRadius: '99px', bgcolor: 'rgba(211,47,47,0.1)', color: '#b3261e', fontSize: 11, fontWeight: 800 }}>
+                            {errorsCount} blocking
+                        </Box>
+                        <Box sx={{ px: 1.25, py: 0.5, borderRadius: '99px', bgcolor: 'rgba(237,108,2,0.1)', color: '#b45309', fontSize: 11, fontWeight: 800 }}>
+                            {warningsCount} warnings
+                        </Box>
+                    </Stack>
+
+                    <Stack spacing={1.25}>
+                        {Object.entries(issuesByStep).map(([step, grouped]) => (
+                            <Box key={step}>
+                                <Typography sx={{ fontSize: 11, fontWeight: 800, color: DS.outline, mb: 0.75 }}>
+                                    {step}
+                                </Typography>
+                                <Stack spacing={0.75}>
+                                    {grouped.map((issue) => (
+                                        <Box
+                                            key={issue.id}
+                                            onClick={() => onIssueClick?.(issue)}
+                                            sx={{
+                                                p: 1.25,
+                                                borderRadius: 2,
+                                                cursor: issue.fieldPath ? 'pointer' : 'default',
+                                                bgcolor: issue.severity === 'error' ? 'rgba(211,47,47,0.06)' : 'rgba(237,108,2,0.08)',
+                                                border: '1px solid',
+                                                borderColor: issue.severity === 'error' ? 'rgba(211,47,47,0.2)' : 'rgba(237,108,2,0.24)',
+                                            }}
+                                        >
+                                            <Stack direction="row" spacing={1} alignItems="flex-start">
+                                                {issue.severity === 'error'
+                                                    ? <ErrorOutlineIcon sx={{ fontSize: 16, color: '#b3261e', mt: 0.25 }} />
+                                                    : <WarningAmberIcon sx={{ fontSize: 16, color: '#b45309', mt: 0.25 }} />}
+                                                <Box>
+                                                    <Typography sx={{ fontSize: 12, fontWeight: 700, color: DS.onSurface }}>
+                                                        {issue.title}
+                                                    </Typography>
+                                                    <Typography sx={{ fontSize: 11, color: DS.outline, lineHeight: 1.5 }}>
+                                                        {issue.action || issue.message}
+                                                    </Typography>
+                                                </Box>
+                                            </Stack>
+                                        </Box>
+                                    ))}
+                                </Stack>
+                            </Box>
+                        ))}
+                    </Stack>
+                </Box>
+            )}
+
+            <Box sx={{ ...CARD_SX, p: 2.5, mb: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography sx={{ ...LABEL_SX, mb: 0 }}>Issue Log</Typography>
+                    <Button
+                        size="small"
+                        onClick={onDownloadIssueLog}
+                        sx={{ textTransform: 'none', fontSize: 11, minWidth: 0, px: 1 }}
+                    >
+                        Export JSON
+                    </Button>
+                </Box>
+                {issueLog.length === 0 ? (
+                    <Typography sx={{ fontSize: 12, color: DS.outline }}>
+                        No issue events recorded yet for this session.
+                    </Typography>
+                ) : (
+                    <Stack spacing={0.75}>
+                        {issueLog.slice(0, 5).map((entry) => (
+                            <Box key={entry.id} sx={{ p: 1, borderRadius: 2, bgcolor: DS.surfaceLow }}>
+                                <Typography sx={{ fontSize: 11, fontWeight: 700, color: DS.onSurface }}>
+                                    {entry.event} · {entry.blockingCount} blocking / {entry.warningCount} warnings
+                                </Typography>
+                                <Typography sx={{ fontSize: 10, color: DS.outline }}>
+                                    {new Date(entry.timestamp).toLocaleString('en-GB')} · {entry.step || 'N/A'} · {entry.carrierCode || 'N/A'}
+                                </Typography>
+                            </Box>
+                        ))}
+                    </Stack>
+                )}
+            </Box>
+
             {/* Tip card */}
             <Box sx={{
                 bgcolor: DS.primary, borderRadius: '12px', p: 3,
@@ -481,7 +648,7 @@ const SummaryPanel = ({
                     <LightbulbIcon sx={{ fontSize: 16 }} /> Quick Tip
                 </Typography>
                 <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontSize: 12, lineHeight: 1.65, fontFamily: "'Manrope', sans-serif" }}>
-                    {tipText}
+                    {readinessTip}
                 </Typography>
             </Box>
         </Box>
@@ -668,6 +835,9 @@ const ShipmentWizardV2 = () => {
     const [billingCurrency, setBillingCurrency] = useState('KWD');
     const [insuredValue,    setInsuredValue]    = useState('');
     const [errors,          setErrors]          = useState({});
+    const [wizardIssues,    setWizardIssues]    = useState([]);
+    const [apiIssues,       setApiIssues]       = useState([]);
+    const [issueLog,        setIssueLog]        = useState([]);
 
     const [selectedService,               setSelectedService]               = useState({ serviceName: '', serviceCode: '', totalPrice: '0', currency: 'KWD' });
     const [availableServices,             setAvailableServices]             = useState([]);
@@ -680,7 +850,17 @@ const ShipmentWizardV2 = () => {
     const [selectedClient,    setSelectedClient]    = useState('');
     const [createdShipment,   setCreatedShipment]   = useState(null);
 
-    const selectedCarrierProfile = useMemo(() => CARRIER_PROFILES[selectedCarrier] || CARRIER_PROFILES.DGR, [selectedCarrier]);
+    const selectedCarrierCapabilities = useMemo(() => {
+        const fallback = DEFAULT_CARRIER_CAPABILITIES[selectedCarrier] || DEFAULT_CARRIER_CAPABILITIES.DGR;
+        const carrierMeta = availableCarriers.find((carrier) => carrier.code === selectedCarrier) || {};
+        return {
+            carrierCode: selectedCarrier,
+            requiredFields: carrierMeta.requiredFields || fallback.requiredFields || { sender: [], receiver: [] },
+            optionalServices: carrierMeta.optionalServices || fallback.optionalServices || [],
+            dangerousGoods: carrierMeta.dangerousGoods || fallback.dangerousGoods || { supported: false, templates: [] },
+            packagingOptions: carrierMeta.packagingOptions || fallback.packagingOptions || [{ value: 'user', label: 'My Own Packaging' }],
+        };
+    }, [selectedCarrier, availableCarriers]);
 
     const totals = useMemo(() => {
         let pieces = 0, actualWeight = 0, volumetricWeight = 0, declaredValue = 0;
@@ -700,6 +880,72 @@ const ShipmentWizardV2 = () => {
         return acc + (Number(s?.totalPrice) || 0);
     }, 0);
     const estimatedShipmentTotal = Number(selectedService.totalPrice || 0) + optionalServicesTotal;
+    const insuranceServiceCode = useMemo(() => {
+        const selectedServiceInsurance = (availableOptionalServices || []).find((service) => {
+            const serviceName = String(service.serviceName || '').toLowerCase();
+            const serviceCode = String(service.serviceCode || '').toUpperCase();
+            return serviceCode === 'II' || serviceName.includes('insur');
+        });
+        const carrierInsurance = (selectedCarrierCapabilities.optionalServices || []).find((service) =>
+            Array.isArray(service.requires) && service.requires.includes('insuredValue')
+        );
+        return selectedServiceInsurance?.serviceCode || carrierInsurance?.code || 'II';
+    }, [availableOptionalServices, selectedCarrierCapabilities]);
+    const combinedIssues = useMemo(
+        () => [...wizardIssues, ...apiIssues],
+        [wizardIssues, apiIssues]
+    );
+
+    const appendIssueLog = ({ event, issues = combinedIssues, stepKey = STEPS[activeStep]?.key }) => {
+        setIssueLog((prev) => {
+            const next = [
+                buildIssueLogEntry({
+                    event,
+                    issues,
+                    stepKey,
+                    carrierCode: selectedCarrier,
+                }),
+                ...prev,
+            ].slice(0, ISSUE_LOG_LIMIT);
+            return next;
+        });
+    };
+
+    const handleDownloadIssueLog = () => {
+        const payload = {
+            exportedAt: new Date().toISOString(),
+            carrierCode: selectedCarrier,
+            entries: issueLog,
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `shipment-wizard-issue-log-${Date.now()}.json`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+    };
+
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem(ISSUE_LOG_STORAGE_KEY);
+            if (!raw) return;
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) setIssueLog(parsed.slice(0, ISSUE_LOG_LIMIT));
+        } catch {
+            // ignore local storage parsing errors
+        }
+    }, []);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(ISSUE_LOG_STORAGE_KEY, JSON.stringify(issueLog.slice(0, ISSUE_LOG_LIMIT)));
+        } catch {
+            // ignore local storage write errors
+        }
+    }, [issueLog]);
 
     useEffect(() => {
         const load = async () => {
@@ -738,6 +984,10 @@ const ShipmentWizardV2 = () => {
         setSelectedCarrier(code);
         setSelectedService({ serviceName: '', serviceCode: '', totalPrice: '0', currency });
         setAvailableServices([]);
+        setAvailableOptionalServices([]);
+        setSelectedOptionalServiceCodes([]);
+        setApiIssues([]);
+        appendIssueLog({ event: 'carrier_changed', issues: [] });
         if (code === 'MANUAL') {
             enqueueSnackbar('Switched to Manual Shipment', { variant: 'info' });
         } else {
@@ -758,6 +1008,80 @@ const ShipmentWizardV2 = () => {
         });
         setAvailableOptionalServices(s.optionalServices || []);
         setBillingCurrency(s.billingCurrency || s.currency || 'KWD');
+        setApiIssues([]);
+    };
+
+    const buildValidationIssues = (step) => {
+        const issues = [];
+        if (step === 0) {
+            const parties = [
+                { key: 'sender', value: sender, section: 'Shipper address', label: 'Shipper' },
+                { key: 'receiver', value: receiver, section: 'Consignee address', label: 'Receiver' },
+            ];
+            parties.forEach(({ key, value, section, label }) => {
+                const required = selectedCarrierCapabilities.requiredFields?.[key] || [];
+                required.forEach((field) => {
+                    const config = PARTY_FIELD_CONFIG[field];
+                    if (!config) return;
+                    const fieldValue = field === 'streetLines'
+                        ? (value.streetLines?.[0] || '')
+                        : (value[field] || '');
+                    if (String(fieldValue).trim()) return;
+                    const errorKey = `${key}${config.errorSuffix}`;
+                    issues.push(buildIssue({
+                        id: `${key}.${field}.required`,
+                        step: 'Setup',
+                        section,
+                        fieldPath: `${key}.${field}`,
+                        errorKey,
+                        title: `${label} ${config.label} is required`,
+                        message: `The selected carrier requires the ${label.toLowerCase()} ${config.label}.`,
+                        action: config.action,
+                        source: 'client',
+                        carrierCode: selectedCarrier,
+                    }));
+                });
+            });
+        }
+        if (step === 1) {
+            parcels.forEach((parcel, index) => {
+                if (!Number(parcel.weight || 0)) {
+                    issues.push(buildIssue({
+                        id: `parcels.${index}.weight.required`,
+                        step: 'Content',
+                        section: `Parcel ${index + 1}`,
+                        fieldPath: `parcels.${index}.weight`,
+                        errorKey: `parcel${index}weight`,
+                        title: `Parcel ${index + 1} weight is required`,
+                        message: 'Enter the parcel weight so rates and service eligibility can be calculated.',
+                        action: 'Add unit weight in kilograms for this parcel.',
+                        source: 'client',
+                        carrierCode: selectedCarrier,
+                    }));
+                }
+            });
+        }
+        if (step === 2) {
+            const selectedOptionalServices = selectedCarrierCapabilities.optionalServices || [];
+            const insuranceService = selectedOptionalServices.find(service => String(service.code || '').toUpperCase() === String(insuranceServiceCode || '').toUpperCase());
+            const insuranceSelected = selectedOptionalServiceCodes.includes(insuranceServiceCode);
+            const effectiveInsuredValue = Number(insuredValue || totals.declaredValue || 0);
+            if (insuranceService && insuranceSelected && effectiveInsuredValue <= 0) {
+                issues.push(buildIssue({
+                    id: 'billing.insuredValue.required',
+                    step: 'Billing',
+                    section: 'Optional services',
+                    fieldPath: 'billing.insuredValue',
+                    errorKey: 'insuredValue',
+                    title: 'Insurance value is required',
+                    message: `Enter the shipment value to insure. It must be greater than 0 ${currency}.`,
+                    action: 'Provide a valid insured value to keep insurance enabled.',
+                    source: 'client',
+                    carrierCode: selectedCarrier,
+                }));
+            }
+        }
+        return issues;
     };
 
     const fetchRates = async () => {
@@ -770,7 +1094,7 @@ const ShipmentWizardV2 = () => {
                 plannedDate,
                 currency,
                 optionalServiceCodes: selectedOptionalServiceCodes,
-                insuredValue: selectedOptionalServiceCodes.includes('II')
+                insuredValue: selectedOptionalServiceCodes.includes(insuranceServiceCode)
                     ? Number(insuredValue || totals.declaredValue || 0)
                     : undefined,
                 ...(shouldSendCarrierSelection ? {
@@ -786,11 +1110,41 @@ const ShipmentWizardV2 = () => {
                 const existing = res.data.find(s => s.serviceCode === selectedService.serviceCode);
                 if (res.data[0]?.carrier) setSelectedCarrier(res.data[0].carrier);
                 handleSelectService(existing || res.data[0]);
+                setApiIssues([]);
+                appendIssueLog({ event: 'rating_success', issues: [] });
                 enqueueSnackbar('Rates calculated', { variant: 'success' });
             } else {
+                const ratingIssues = [
+                    buildIssue({
+                        id: 'rating.noRates',
+                        step: 'Billing',
+                        section: 'Carrier rates',
+                        title: 'No rates are available',
+                        message: 'Rates could not be calculated for this route.',
+                        action: 'Review shipment addresses, parcel data, and selected service requirements then retry.',
+                        source: 'carrier',
+                        carrierCode: selectedCarrier,
+                    })
+                ];
+                setApiIssues(ratingIssues);
+                appendIssueLog({ event: 'rating_no_rates', issues: ratingIssues, stepKey: 'Billing' });
                 enqueueSnackbar('No rates available for this route.', { variant: 'warning' });
             }
         } catch (err) {
+            const ratingIssues = [
+                buildIssue({
+                    id: 'rating.error',
+                    step: 'Billing',
+                    section: 'Carrier rates',
+                    title: 'Rate lookup failed',
+                    message: err.message || 'Carrier rating failed.',
+                    action: 'Fix highlighted shipment issues and try calculating rates again.',
+                    source: 'carrier',
+                    carrierCode: selectedCarrier,
+                })
+            ];
+            setApiIssues(ratingIssues);
+            appendIssueLog({ event: 'rating_error', issues: ratingIssues, stepKey: 'Billing' });
             enqueueSnackbar(`Rating error: ${err.message}`, { variant: 'error' });
         } finally {
             setFetchingRates(false);
@@ -799,7 +1153,7 @@ const ShipmentWizardV2 = () => {
 
     useEffect(() => {
         if (activeStep !== 2) return;
-        if (!selectedOptionalServiceCodes.includes('II')) return;
+        if (!selectedOptionalServiceCodes.includes(insuranceServiceCode)) return;
         const effectiveInsuredValue = Number(insuredValue || totals.declaredValue || 0);
         if (effectiveInsuredValue <= 0) return;
 
@@ -808,29 +1162,31 @@ const ShipmentWizardV2 = () => {
         }, 350);
 
         return () => clearTimeout(timer);
-    }, [activeStep, insuredValue, totals.declaredValue, currency, selectedOptionalServiceCodes.join('|')]);
+    }, [activeStep, insuredValue, totals.declaredValue, currency, insuranceServiceCode, selectedOptionalServiceCodes.join('|')]);
+
+    useEffect(() => {
+        const liveIssues = buildValidationIssues(activeStep);
+        setWizardIssues(liveIssues);
+        setErrors(issueMapToErrors(liveIssues));
+    }, [
+        activeStep,
+        sender,
+        receiver,
+        parcels,
+        insuredValue,
+        totals.declaredValue,
+        selectedCarrier,
+        insuranceServiceCode,
+        selectedOptionalServiceCodes.join('|'),
+        selectedCarrierCapabilities
+    ]);
 
     const validateStep = (step) => {
-        const errs = {};
-        if (step === 0) {
-            if (!sender.contactPerson)   errs.senderContact   = 'Required';
-            if (!sender.phone)           errs.senderPhone     = 'Required';
-            if (!receiver.contactPerson) errs.receiverContact = 'Required';
-            if (!receiver.phone)         errs.receiverPhone   = 'Required';
-            if (!receiver.countryCode)   errs.receiverCountry = 'Required';
-        }
-        if (step === 1) {
-            parcels.forEach((p, i) => { if (!p.weight) errs[`parcel${i}weight`] = 'Required'; });
-        }
-        if (step === 2) {
-            const insuranceSelected = selectedOptionalServiceCodes.includes('II');
-            const effectiveInsuredValue = Number(insuredValue || totals.declaredValue || 0);
-            if (insuranceSelected && effectiveInsuredValue <= 0) {
-                errs.insuredValue = 'Insurance value must be greater than 0 when insurance service (II) is selected.';
-            }
-        }
-        setErrors(errs);
-        return Object.keys(errs).length === 0;
+        const stepIssues = buildValidationIssues(step);
+        setWizardIssues(stepIssues);
+        setErrors(issueMapToErrors(stepIssues));
+        appendIssueLog({ event: 'validation_run', issues: stepIssues, stepKey: STEPS[step]?.key });
+        return stepIssues.filter(issue => issue.severity === 'error').length === 0;
     };
 
     const handleNext = async () => {
@@ -845,7 +1201,22 @@ const ShipmentWizardV2 = () => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
+    const handleIssueClick = (issue) => {
+        const issueStepIndex = STEPS.findIndex(step => step.key === issue.step);
+        if (issueStepIndex >= 0 && issueStepIndex !== activeStep) {
+            setActiveStep(issueStepIndex);
+        }
+        window.requestAnimationFrame(() => {
+            if (!issue?.fieldPath) return;
+            const el = document.querySelector(`[data-field-path="${issue.fieldPath}"]`) || document.getElementById(issue.anchorId);
+            if (!el) return;
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (typeof el.focus === 'function') el.focus();
+        });
+    };
+
     const handleSubmit = async () => {
+        if (!validateStep(activeStep)) return;
         setLoading(true);
         try {
             const shouldSendCarrierSelection = isStaff && !selectedClient;
@@ -854,7 +1225,7 @@ const ShipmentWizardV2 = () => {
                 totalPrice:  estimatedShipmentTotal,
                 currency,
                 billingCurrency,
-                insuredValue: selectedOptionalServiceCodes.includes('II')
+                insuredValue: selectedOptionalServiceCodes.includes(insuranceServiceCode)
                     ? Number(insuredValue || totals.declaredValue || 0)
                     : undefined,
                 shipmentType,
@@ -882,10 +1253,26 @@ const ShipmentWizardV2 = () => {
                 : await shipmentService.createShipment(payload);
             if (res.success) {
                 setCreatedShipment(res.data);
+                setApiIssues([]);
+                appendIssueLog({ event: 'submit_success', issues: [] });
                 if (refreshUser) await refreshUser();
                 setActiveStep(STEPS.length);
             }
         } catch (err) {
+            const submitIssues = [
+                buildIssue({
+                    id: 'submit.error',
+                    step: 'Review',
+                    section: 'Shipment submission',
+                    title: 'Shipment could not be submitted',
+                    message: err.message || 'The shipment request failed.',
+                    action: 'Review highlighted fields and retry submission.',
+                    source: 'api',
+                    carrierCode: selectedCarrier,
+                })
+            ];
+            setApiIssues(submitIssues);
+            appendIssueLog({ event: 'submit_error', issues: submitIssues, stepKey: 'Review' });
             enqueueSnackbar(err.message, { variant: 'error' });
         } finally {
             setLoading(false);
@@ -920,7 +1307,7 @@ const ShipmentWizardV2 = () => {
                             availableCarriers={availableCarriers}
                             selectedCarrier={selectedCarrier}
                             onCarrierChange={handleCarrierChange}
-                            requiredFields={selectedCarrierProfile.requiredFields}
+                            requiredFields={selectedCarrierCapabilities.requiredFields}
                         />
                     </>
                 );
@@ -932,8 +1319,8 @@ const ShipmentWizardV2 = () => {
                         dangerousGoods={dangerousGoods} setDangerousGoods={setDangerousGoods}
                         packagingType={packagingType} setPackagingType={setPackagingType}
                         shipmentType={shipmentType} errors={errors}
-                        showDangerousGoods={selectedCarrierProfile.supportsDangerousGoods}
-                        packagingOptions={selectedCarrierProfile.packagingOptions}
+                        showDangerousGoods={selectedCarrierCapabilities.dangerousGoods?.supported}
+                        packagingOptions={selectedCarrierCapabilities.packagingOptions}
                         currency={currency} setCurrency={setCurrency}
                     />
                 );
@@ -960,7 +1347,7 @@ const ShipmentWizardV2 = () => {
                         }
                         declaredCurrency={currency}
                         billingCurrency={billingCurrency}
-                        insuredValue={insuredValue || (selectedOptionalServiceCodes.includes('II') ? Number(totals.declaredValue || 0).toFixed(3) : '')}
+                        insuredValue={insuredValue || (selectedOptionalServiceCodes.includes(insuranceServiceCode) ? Number(totals.declaredValue || 0).toFixed(3) : '')}
                         setInsuredValue={setInsuredValue}
                         errors={errors}
                         estimatedShipmentCost={Number(selectedService.totalPrice || 0)}
@@ -1067,6 +1454,10 @@ const ShipmentWizardV2 = () => {
                                 loading={loading}
                                 fetchingRates={fetchingRates}
                                 isStaff={isStaff}
+                                issues={combinedIssues}
+                                issueLog={issueLog}
+                                onDownloadIssueLog={handleDownloadIssueLog}
+                                onIssueClick={handleIssueClick}
                                 onBack={handleBack}
                                 onNext={handleNext}
                                 onSubmit={handleSubmit}

@@ -109,7 +109,7 @@ const DangerousGoodsPanel = ({ dangerousGoods, setDangerousGoods }) => {
                             color="error"
                         />
                     }
-                    label={<Typography variant="body2" fontWeight="800" color="text.secondary">Asset requires DGR handling</Typography>}
+                    label={<Typography variant="body2" fontWeight="800" color="text.secondary">Shipment requires dangerous-goods handling</Typography>}
                     labelPlacement="start"
                     sx={{ gap: 2 }}
                 />

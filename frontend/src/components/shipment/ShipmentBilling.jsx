@@ -57,7 +57,7 @@ const ShipmentBilling = ({
     const recommendedServices = availableOptionalServices.filter((service) => {
         const name = String(service.serviceName || '').toLowerCase();
         const code = String(service.serviceCode || '').toUpperCase();
-        return code === 'II' || name.includes('insur') || name.includes('sign');
+        return name.includes('insur') || name.includes('sign') || name.includes('protection');
     });
     const paidServices = availableOptionalServices.filter((service) => {
         const code = String(service.serviceCode || '').toUpperCase();
@@ -68,7 +68,15 @@ const ShipmentBilling = ({
         return Number(service.totalPrice || 0) === 0 && !recommendedServices.some((r) => r.serviceCode === code);
     });
 
-    const insuranceSelected = selectedOptionalServiceCodes.includes('II');
+    const insuranceServiceCode = useMemo(() => {
+        const match = availableOptionalServices.find((service) => {
+            const name = String(service.serviceName || '').toLowerCase();
+            const code = String(service.serviceCode || '').toUpperCase();
+            return code === 'II' || name.includes('insur');
+        });
+        return match?.serviceCode || 'II';
+    }, [availableOptionalServices]);
+    const insuranceSelected = selectedOptionalServiceCodes.includes(insuranceServiceCode);
     const insuranceAmount = Number(insuredValue || 0);
     const selectedOptionalServices = availableOptionalServices.filter(service =>
         selectedOptionalServiceCodes.includes(service.serviceCode)
@@ -76,7 +84,7 @@ const ShipmentBilling = ({
 
     const renderServiceRow = (service) => {
         const checked = selectedOptionalServiceCodes.includes(service.serviceCode);
-        const isInsurance = String(service.serviceCode || '').toUpperCase() === 'II';
+        const isInsurance = String(service.serviceCode || '').toUpperCase() === String(insuranceServiceCode || '').toUpperCase();
         return (
             <Box key={service.serviceCode}>
                 <Box
@@ -119,9 +127,10 @@ const ShipmentBilling = ({
                             value={insuredValue}
                             onClick={(e) => e.stopPropagation()}
                             onChange={(e) => setInsuredValue?.(e.target.value)}
-                            inputProps={{ min: 0.001, step: 0.001 }}
+                            id="field-billing-insuredValue"
+                            inputProps={{ min: 0.001, step: 0.001, 'data-field-path': 'billing.insuredValue' }}
                             error={insuranceAmount <= 0 || Boolean(errors.insuredValue)}
-                            helperText={errors.insuredValue || 'Required when insurance (II) is selected. Must be greater than 0.'}
+                            helperText={errors.insuredValue || `Enter the shipment value to insure. It must be greater than 0 ${declaredCurrency}.`}
                         />
                     </Box>
                 )}
@@ -140,14 +149,14 @@ const ShipmentBilling = ({
         {
             key: 'paid',
             title: 'Paid add-ons',
-            emptyLabel: 'No paid add-ons returned by DHL rating.',
+            emptyLabel: 'No paid add-ons are available for the selected service.',
             items: paidServices,
             defaultExpanded: false
         },
         {
             key: 'included',
             title: 'Included (0.000)',
-            emptyLabel: 'No included services returned by DHL rating.',
+            emptyLabel: 'No included add-ons are available for the selected service.',
             items: includedServices,
             defaultExpanded: false
         }
@@ -394,7 +403,7 @@ const ShipmentBilling = ({
                                                 : `Total ${Number(service.totalPrice || 0).toFixed(3)} ${billingCurrency}`
                                             }
                                         </Typography>
-                                        {String(service.serviceCode || '').toUpperCase() === 'II' && (
+                                        {String(service.serviceCode || '').toUpperCase() === String(insuranceServiceCode || '').toUpperCase() && (
                                             <Typography variant="caption" display="block" color="text.secondary">
                                                 Insurance Value: {Number(insuranceAmount || 0).toFixed(3)} {declaredCurrency}
                                             </Typography>

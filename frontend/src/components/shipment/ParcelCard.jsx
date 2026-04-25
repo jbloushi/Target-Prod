@@ -111,21 +111,22 @@ const ParcelCard = ({ parcel, index, onChange, onRemove, expanded, onToggle, err
                         <Grid item xs={6} md={3}>
                             <TextField
                                 fullWidth type="number" label="Unit Weight (kg)"
+                                id={`field-parcels-${index}-weight`}
                                 value={parcel.weight}
                                 onChange={(e) => onChange('weight', Number(e.target.value))}
-                                InputProps={{ inputProps: { min: 0 } }}
+                                InputProps={{ inputProps: { min: 0, 'data-field-path': `parcels.${index}.weight` } }}
                                 error={!!errors[`parcel${index}weight`]}
                                 helperText={errors[`parcel${index}weight`]}
                             />
                         </Grid>
                         <Grid item xs={6} md={2}>
-                            <TextField fullWidth type="number" label="Length" value={pLen || ''} onChange={(e) => updateDim('length', e.target.value)} error={!!errors[`parcel${index}length`]} />
+                            <TextField fullWidth type="number" label="Length" id={`field-parcels-${index}-length`} value={pLen || ''} onChange={(e) => updateDim('length', e.target.value)} error={!!errors[`parcel${index}length`]} helperText={errors[`parcel${index}length`]} inputProps={{ 'data-field-path': `parcels.${index}.length` }} />
                         </Grid>
                         <Grid item xs={6} md={2}>
-                            <TextField fullWidth type="number" label="Width" value={pWid || ''} onChange={(e) => updateDim('width', e.target.value)} error={!!errors[`parcel${index}width`]} />
+                            <TextField fullWidth type="number" label="Width" id={`field-parcels-${index}-width`} value={pWid || ''} onChange={(e) => updateDim('width', e.target.value)} error={!!errors[`parcel${index}width`]} helperText={errors[`parcel${index}width`]} inputProps={{ 'data-field-path': `parcels.${index}.width` }} />
                         </Grid>
                         <Grid item xs={6} md={2}>
-                            <TextField fullWidth type="number" label="Height" value={pHgt || ''} onChange={(e) => updateDim('height', e.target.value)} error={!!errors[`parcel${index}height`]} />
+                            <TextField fullWidth type="number" label="Height" id={`field-parcels-${index}-height`} value={pHgt || ''} onChange={(e) => updateDim('height', e.target.value)} error={!!errors[`parcel${index}height`]} helperText={errors[`parcel${index}height`]} inputProps={{ 'data-field-path': `parcels.${index}.height` }} />
                         </Grid>
                         <Grid item xs={6} md={3}>
                             <TextField
