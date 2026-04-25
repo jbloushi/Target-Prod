@@ -3,10 +3,10 @@ describe('CarrierFactory LogesTechs registration', () => {
         jest.resetModules();
     });
 
-    it('exposes LOGESTECHS in available carriers', () => {
+    it('exposes OTE in available carriers', () => {
         const CarrierFactory = require('../src/services/CarrierFactory');
         const carriers = CarrierFactory.getAvailableCarriers().map((c) => c.code);
-        expect(carriers).toContain('LOGESTECHS');
+        expect(carriers).toContain('OTE');
     });
 
     it('returns LogesTechs adapter instance', () => {
@@ -18,7 +18,7 @@ describe('CarrierFactory LogesTechs registration', () => {
             email: 'ops@example.com'
         });
 
-        expect(adapter.code).toBe('LOGESTECHS');
+        expect(adapter.code).toBe('OTE');
         expect(typeof adapter.createShipment).toBe('function');
         expect(typeof adapter.getVillages).toBe('function');
     });

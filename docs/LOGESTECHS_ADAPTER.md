@@ -1,6 +1,6 @@
 # LogesTechs Carrier Adapter
 
-This document describes the `LOGESTECHS` carrier/provider adapter added under `backend/src/adapters/LogesTechsAdapter.js`.
+This document describes the `OTE` carrier adapter (implemented on top of LogesTechs APIs) under `backend/src/adapters/LogesTechsAdapter.js`.
 
 ## Environment Variables
 
@@ -38,10 +38,13 @@ LOGESTECHS_EMAIL=
 ## Mapping and Validation Notes
 
 - Shipment payload uses `pkgUnitType: METRIC`.
-- `destinationAddress` and `originAddress` require: `regionId`, `cityId`, and `villageId`.
+- `destinationAddress` and `originAddress` accept either:
+  - structured IDs: `regionId`, `cityId`, `villageId`, or
+  - textual fallback: `addressLine1` plus `cityName`/`regionName`/`nationalAddress`.
 - Status lookup requires either `barcode` or `id`.
 - Label PDF retrieval requires non-empty `ids` array.
 - Adapter preserves UTF-8 business/address strings (Arabic text is forwarded without transliteration).
+- Carrier code is `OTE` (legacy `LOGESTECHS` values are treated as backward-compatible aliases).
 - Returned shipment object stores `carrierShipmentId` and `barcode`/`trackingNumber` when available.
 
 ## Sample cURL

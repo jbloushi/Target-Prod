@@ -39,13 +39,21 @@ describe('LogesTechsAdapter', () => {
         email: 'ops@example.com'
     });
 
-    it('validates required shipment address IDs for createShipment', async () => {
+    it('accepts textual addresses when city/region/village IDs are not provided', async () => {
         const adapter = createAdapter();
+        shipmentClient.post.mockResolvedValue({
+            data: { shipmentId: 'shp-124', barcode: 'BR-124' }
+        });
 
-        await expect(adapter.createShipment({
-            sender: { cityId: '1', regionId: '2', villageId: '3' },
-            receiver: { cityId: '1', regionId: '2' }
-        })).rejects.toThrow(/destinationAddress is missing required fields: villageId/i);
+        const result = await adapter.createShipment({
+            sender: { addressLine1: 'Block 1', city: 'Kuwait City', state: 'Capital' },
+            receiver: { addressLine1: 'Street 10', city: 'Riyadh', state: 'Riyadh' }
+        });
+
+        expect(result).toEqual(expect.objectContaining({
+            carrierShipmentId: 'shp-124',
+            trackingNumber: 'BR-124'
+        }));
     });
 
     it('creates shipment and maps shipmentId/barcode fields', async () => {
@@ -90,13 +98,21 @@ describe('LogesTechsAdapter', () => {
             carrierShipmentId: 'shp-123',
             barcode: 'BR-123',
             trackingNumber: 'BR-123',
-            carrierCode: 'LOGESTECHS'
+            carrierCode: 'OTE'
         }));
     });
 
     it('requires ids array for getLabel', async () => {
         const adapter = createAdapter();
         await expect(adapter.getLabel()).rejects.toThrow(/ids array required/i);
+    });
+
+    it('fails createShipment when address lacks both ids and textual location data', async () => {
+        const adapter = createAdapter();
+        await expect(adapter.createShipment({
+            sender: { addressLine1: 'Only line' },
+            receiver: { addressLine1: 'Only line' }
+        })).rejects.toThrow(/requires either \(cityId\+regionId\+villageId\) or addressLine1 with city\/region\/nationalAddress/i);
     });
 
     it('requires barcode or id for getStatus', async () => {

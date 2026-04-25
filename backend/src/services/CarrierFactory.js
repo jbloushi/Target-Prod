@@ -14,7 +14,7 @@ class CarrierFactory {
         return [
             { code: 'MANUAL', name: 'Manual Shipment', active: true },
             { code: 'DGR', name: 'DHL DGR', active: true },
-            { code: 'LOGESTECHS', name: 'LogesTechs', active: true },
+            { code: 'OTE', name: 'OTE', active: true },
             { code: 'ARAMEX', name: 'Aramex', active: true }, // <-- ADDED
             { code: 'FEDEX', name: 'FedEx', active: false }, // <-- DEACTIVATED
             { code: 'UPS', name: 'UPS', active: false }
@@ -39,6 +39,7 @@ class CarrierFactory {
                 return new AramexAdapter(config); // <-- NEW ADAPTER
 
             case 'LOGESTECHS':
+            case 'OTE':
                 return new LogesTechsAdapter(config);
 
             case 'FEDEX':

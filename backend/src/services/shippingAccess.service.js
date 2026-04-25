@@ -17,8 +17,11 @@ const SERVICE_LABELS = {
     ARAMEX: {
         P: 'Aramex Priority'
     },
+    OTE: {
+        STD: 'OTE Standard'
+    },
     LOGESTECHS: {
-        STD: 'LogesTechs Standard'
+        STD: 'OTE Standard'
     },
     FEDEX: {
         P: 'FedEx Priority'
@@ -32,7 +35,11 @@ const getAvailableCarrierCodes = () => CarrierFactory
     .getAvailableCarriers()
     .map((carrier) => carrier.code.toUpperCase());
 
-const normalizeCarrier = (carrierCode) => String(carrierCode || DEFAULT_CARRIER).toUpperCase();
+const normalizeCarrier = (carrierCode) => {
+    const normalized = String(carrierCode || DEFAULT_CARRIER).toUpperCase();
+    if (normalized === 'LOGESTECHS') return 'OTE';
+    return normalized;
+};
 
 const normalizeService = (serviceCode) => {
     if (serviceCode == null || serviceCode === '') return null;

@@ -28,8 +28,8 @@ class LogesTechsAdapter extends CarrierAdapter {
             email
         });
 
-        this.code = 'LOGESTECHS';
-        this.name = 'LogesTechs';
+        this.code = 'OTE';
+        this.name = 'OTE';
         this.shipmentClient = axios.create({ baseURL: shipmentBaseUrl, timeout: 30000 });
         this.fulfillmentClient = axios.create({ baseURL: fulfillmentBaseUrl, timeout: 30000 });
     }
@@ -62,6 +62,13 @@ class LogesTechsAdapter extends CarrierAdapter {
         return String(value).trim();
     }
 
+    _safeText(value) {
+        if (typeof value === 'string' || typeof value === 'number') {
+            return this._safeString(value);
+        }
+        return undefined;
+    }
+
     _firstNonEmpty(...values) {
         for (const value of values) {
             const normalized = this._safeString(value);
@@ -77,12 +84,19 @@ class LogesTechsAdapter extends CarrierAdapter {
             cityId: this._firstNonEmpty(address.cityId, address.city?.id),
             regionId: this._firstNonEmpty(address.regionId, address.stateId, address.region?.id),
             villageId: this._firstNonEmpty(address.villageId, address.districtId, address.village?.id),
+            cityName: this._firstNonEmpty(this._safeText(address.cityName), this._safeText(address.city)),
+            regionName: this._firstNonEmpty(this._safeText(address.regionName), this._safeText(address.state), this._safeText(address.province)),
+            villageName: this._firstNonEmpty(this._safeText(address.villageName), this._safeText(address.district)),
             nationalAddress: this._firstNonEmpty(address.nationalAddress)
         };
 
-        const missing = ['cityId', 'regionId', 'villageId'].filter((field) => !mapped[field]);
-        if (missing.length > 0) {
-            const err = new Error(`Validation Failed: ${role} is missing required fields: ${missing.join(', ')}`);
+        const hasStructuredIds = Boolean(mapped.cityId && mapped.regionId && mapped.villageId);
+        const hasTextualAddress = Boolean(mapped.addressLine1 && (mapped.cityName || mapped.regionName || mapped.nationalAddress));
+
+        if (!hasStructuredIds && !hasTextualAddress) {
+            const err = new Error(
+                `Validation Failed: ${role} requires either (cityId+regionId+villageId) or addressLine1 with city/region/nationalAddress`
+            );
             err.statusCode = 400;
             throw err;
         }
