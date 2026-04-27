@@ -43,8 +43,10 @@ const SAFE_ERROR_PATTERNS = [
  * @param {number} [defaultStatus=500] - Default HTTP status if error is unrecognized
  */
 exports.handleControllerError = (res, error, context = 'Operation', defaultStatus = 500) => {
-    // Always log the full error server-side
-    logger.error(`${context} failed:`, { message: error.message, stack: error.stack });
+    // Always log the full error server-side.
+    // Use `errorMessage` (instead of `message`) to avoid duplicated/awkward
+    // `${context} failed: ${context} failed: ...` rendering in structured log formatters.
+    logger.error(`${context} failed:`, { errorMessage: error.message, stack: error.stack });
 
     // Allow known, intentionally created user-facing errors
     const isSafe = SAFE_ERROR_PATTERNS.some(pattern => 
