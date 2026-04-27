@@ -167,7 +167,8 @@ describe('LogesTechsAdapter', () => {
 
         expect(shipmentClient.post).toHaveBeenCalledWith('/ship/request/by-email', expect.objectContaining({
             shipmentType: 'REGULAR',
-            serviceType: 'STANDARD'
+            serviceType: 'STANDARD',
+            model: expect.objectContaining({ shipmentType: 'REGULAR', serviceType: 'STANDARD' })
         }), expect.any(Object));
     });
 
@@ -186,6 +187,7 @@ describe('LogesTechsAdapter', () => {
         expect(shipmentClient.post).toHaveBeenCalledWith('/ship/request/by-email', expect.objectContaining({
             shipmentType: 'REGULAR',
             serviceType: 'STANDARD',
+            model: expect.objectContaining({ shipmentType: 'REGULAR', serviceType: 'STANDARD' }),
             pkg: expect.objectContaining({ shipmentType: 'REGULAR', serviceType: 'STANDARD' })
         }), expect.any(Object));
     });
