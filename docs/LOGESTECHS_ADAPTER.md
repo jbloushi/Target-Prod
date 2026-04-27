@@ -49,6 +49,8 @@ LOGESTECHS_SHIPMENT_PASSWORD=
 - Adapter emits a sanitized `createShipment payload summary` log (shipment/service type locations and key flags) to diagnose provider-side `model.shipmentType` validation failures without exposing credentials.
 - Placeholder string values like `"null"` / `"undefined"` are treated as missing and replaced by defaults to avoid provider `model.shipmentType null` validation failures.
 - Internal shipment/service values are normalized to OTE-safe enums before request send (unsupported values fall back to `REGULAR` / `STANDARD`) to prevent provider enum coercion to null.
+- Duplicate-shipment provider responses (e.g., Arabic `رقم الارسالية ... موجود مسبقا`) are tagged as `DUPLICATE_SHIPMENT` so booking flow can recover existing shipment status/label instead of hard-failing approval.
+- Booking persistence now supports `labelUrl`, `invoiceUrl`, and `awbUrl` when available from provider responses or recovery calls.
 - Shipment `email` is resolved as `LOGESTECHS_SHIPMENT_EMAIL` -> `LOGESTECHS_USERNAME` -> `LOGESTECHS_EMAIL`.
 - Shipment `password` is resolved as `LOGESTECHS_SHIPMENT_PASSWORD` -> `LOGESTECHS_PASSWORD`.
 - `destinationAddress` and `originAddress` are mapped in best-effort mode from internal shipment fields.

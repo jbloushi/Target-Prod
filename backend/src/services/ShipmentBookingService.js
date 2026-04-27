@@ -94,7 +94,16 @@ class ShipmentBookingService {
                 payload.optionalServices = optionalServiceCodes;
             }
 
-            carrierResult = await adapter.createShipment(payload, shipment.serviceCode);
+            try {
+                carrierResult = await adapter.createShipment(payload, shipment.serviceCode);
+            } catch (error) {
+                if (error?.code === 'DUPLICATE_SHIPMENT') {
+                    logger.warn(`Duplicate carrier shipment detected for ${shipment.trackingNumber}; attempting recovery via getStatus/getLabel.`);
+                    carrierResult = await this.recoverExistingCarrierShipment({ adapter, shipment, fallbackError: error });
+                } else {
+                    throw error;
+                }
+            }
         } catch (error) {
             await this.handleBookingFailure(shipment.id, attemptId, error.message);
             throw error;
@@ -131,6 +140,11 @@ class ShipmentBookingService {
                 updateData.documents.push(doc);
                 updateData.invoiceUrl = doc.url;
             }
+            if (carrierResult.awbUrl) {
+                const doc = await CarrierDocumentService.uploadDocument('awb', carrierResult.awbUrl, 'pdf', freshShipment.trackingNumber);
+                updateData.documents.push(doc);
+                updateData.awbUrl = doc.url;
+            }
 
             // Update in DB
             const finalizedShipment = await prisma.shipment.update({
@@ -160,6 +174,39 @@ class ShipmentBookingService {
             logger.error('Commit Failure After Carrier Success:', commitError);
             await this.handleBookingFailure(shipment.id, attemptId, `Commit Failed: ${commitError.message}`);
             throw new Error(`Critical: Carrier booked shipment, locally updated failed. Manual intervention required.`);
+        }
+    }
+
+    async recoverExistingCarrierShipment({ adapter, shipment, fallbackError }) {
+        try {
+            const status = await adapter.getStatus({ barcode: shipment.trackingNumber });
+            let normalized = adapter._normalizeShipmentResponse
+                ? adapter._normalizeShipmentResponse(status || {})
+                : {
+                    carrierShipmentId: status?.id || status?.shipmentId || status?.packageId || shipment.trackingNumber,
+                    trackingNumber: status?.barcode || shipment.trackingNumber,
+                    rawResponse: status
+                };
+
+            const statusId = status?.id || status?.shipmentId || status?.packageId;
+            if (!normalized.labelUrl && statusId && typeof adapter.getLabel === 'function') {
+                try {
+                    const label = await adapter.getLabel([statusId]);
+                    normalized = { ...normalized, labelUrl: label };
+                } catch (labelError) {
+                    logger.warn(`Failed to recover OTE label for existing shipment ${shipment.trackingNumber}: ${labelError.message}`);
+                }
+            }
+
+            return {
+                ...normalized,
+                trackingNumber: normalized?.trackingNumber || shipment.trackingNumber,
+                carrierShipmentId: normalized?.carrierShipmentId || statusId || shipment.trackingNumber,
+                recoveredFromDuplicate: true,
+                recoveryMessage: fallbackError?.message
+            };
+        } catch (recoveryError) {
+            throw fallbackError;
         }
     }
 

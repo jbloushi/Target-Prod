@@ -334,6 +334,41 @@ describe('LogesTechsAdapter', () => {
         })).rejects.toThrow(/LOGESTECHS_COMPANY_ID, LOGESTECHS_USERNAME, LOGESTECHS_PASSWORD/i);
     });
 
+    it('marks duplicate shipment provider errors with DUPLICATE_SHIPMENT code', async () => {
+        const adapter = createAdapter();
+        shipmentClient.get.mockResolvedValue({ data: [] });
+        shipmentClient.post.mockRejectedValue({
+            response: {
+                status: 403,
+                data: { error: 'رقم الارسالية DGR-VKLIWS4W موجود مسبقا' }
+            }
+        });
+
+        await expect(adapter.createShipment({
+            sender: { addressLine1: 'S', city: 'Kuwait' },
+            receiver: { addressLine1: 'R', city: 'Riyadh' }
+        })).rejects.toMatchObject({ code: 'DUPLICATE_SHIPMENT' });
+    });
+
+    it('normalizes shipment response with optional label/invoice/awb URLs', () => {
+        const adapter = createAdapter();
+        const normalized = adapter._normalizeShipmentResponse({
+            shipmentId: 'shp-200',
+            barcode: 'BR-200',
+            labelUrl: 'https://example.com/label.pdf',
+            invoiceUrl: 'https://example.com/invoice.pdf',
+            awbUrl: 'https://example.com/awb.pdf'
+        });
+
+        expect(normalized).toEqual(expect.objectContaining({
+            carrierShipmentId: 'shp-200',
+            trackingNumber: 'BR-200',
+            labelUrl: 'https://example.com/label.pdf',
+            invoiceUrl: 'https://example.com/invoice.pdf',
+            awbUrl: 'https://example.com/awb.pdf'
+        }));
+    });
+
     it('includes status code context when provider returns generic unknown error', async () => {
         const adapter = createAdapter();
         shipmentClient.get.mockResolvedValue({ data: [] });

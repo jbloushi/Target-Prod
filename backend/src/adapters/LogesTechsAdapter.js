@@ -241,11 +241,18 @@ class LogesTechsAdapter extends CarrierAdapter {
         // TODO(LogesTechs): Provider response schema is not fully documented; keep this mapper conservative.
         const shipmentId = raw.id || raw.shipmentId || raw.packageId || raw.data?.id || raw.data?.shipmentId || null;
         const barcode = raw.barcode || raw.awb || raw.trackingNumber || raw.data?.barcode || null;
+        const labelUrl = raw.labelUrl || raw.label || raw?.data?.labelUrl || null;
+        const invoiceUrl = raw.invoiceUrl || raw?.data?.invoiceUrl || null;
+        const awbUrl = raw.awbUrl || raw?.data?.awbUrl || raw.awb || null;
+
         return {
             carrierCode: this.code,
             carrierShipmentId: shipmentId,
             trackingNumber: barcode || shipmentId,
             barcode,
+            labelUrl,
+            invoiceUrl,
+            awbUrl,
             rawResponse: raw
         };
     }
@@ -388,8 +395,12 @@ class LogesTechsAdapter extends CarrierAdapter {
                 : `Unknown error (status ${statusCode})`;
         }
 
+        const providerMessageText = String(upstreamMessage || '');
         const isCredentialError = /البريد الالكتروني او كلمة المرور غير صحيحة|incorrect email or password|invalid credentials/i
-            .test(String(upstreamMessage || ''));
+            .test(providerMessageText);
+        const isDuplicateShipmentError = /رقم الارسالية.*موجود مسبقا|shipment number.*already exists|already exists/i
+            .test(providerMessageText);
+
         const normalizedMessage = isCredentialError
             ? 'OTE authentication failed. Verify required credentials LOGESTECHS_COMPANY_ID, LOGESTECHS_USERNAME, LOGESTECHS_PASSWORD. Optional shipment overrides: LOGESTECHS_SHIPMENT_EMAIL, LOGESTECHS_SHIPMENT_PASSWORD.'
             : upstreamMessage;
@@ -405,6 +416,7 @@ class LogesTechsAdapter extends CarrierAdapter {
         wrapped.isProviderError = true;
         wrapped.provider = this.code;
         wrapped.details = this._sanitizeForLogs(upstreamBody);
+        if (isDuplicateShipmentError) wrapped.code = 'DUPLICATE_SHIPMENT';
         return wrapped;
     }
 
