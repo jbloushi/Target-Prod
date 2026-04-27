@@ -48,6 +48,11 @@ exports.handleControllerError = (res, error, context = 'Operation', defaultStatu
     // `${context} failed: ${context} failed: ...` rendering in structured log formatters.
     logger.error(`${context} failed:`, { errorMessage: error.message, stack: error.stack });
 
+    // Explicit provider errors are already normalized/sanitized upstream (carrier adapters).
+    if (error?.isProviderError && error?.message) {
+        return res.status(error.statusCode || 502).json({ success: false, error: error.message });
+    }
+
     // Allow known, intentionally created user-facing errors
     const isSafe = SAFE_ERROR_PATTERNS.some(pattern => 
         error.message && error.message.toLowerCase().includes(pattern.toLowerCase())
