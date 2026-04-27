@@ -126,6 +126,21 @@ describe('LogesTechsAdapter', () => {
         }), expect.any(Object));
     });
 
+    it('prefers username over LOGESTECHS_EMAIL when shipment override is missing', async () => {
+        const adapter = createAdapter({ shipmentEmail: '', email: 'legacy-email@example.com' });
+        shipmentClient.get.mockResolvedValue({ data: [] });
+        shipmentClient.post.mockResolvedValue({ data: { shipmentId: 'shp-129', barcode: 'BR-129' } });
+
+        await adapter.createShipment({
+            sender: { addressLine1: 'S', city: 'Kuwait' },
+            receiver: { addressLine1: 'R', city: 'Riyadh' }
+        });
+
+        expect(shipmentClient.post).toHaveBeenCalledWith('/ship/request/by-email', expect.objectContaining({
+            email: 'user-1'
+        }), expect.any(Object));
+    });
+
     it('falls back to LOGESTECHS_PASSWORD when shipment password override is missing', async () => {
         const adapter = createAdapter({ shipmentPassword: '' });
         shipmentClient.get.mockResolvedValue({ data: [] });

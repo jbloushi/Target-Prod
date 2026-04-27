@@ -66,7 +66,10 @@ class LogesTechsAdapter extends CarrierAdapter {
     }
 
     _shipmentAuthEmail() {
-        return this._firstNonEmpty(this.config.shipmentEmail, this.config.email, this.config.username);
+        // Prefer explicit shipment override first, then account username.
+        // Some OTE tenants authenticate `/ship/request/by-email` with username-style handles,
+        // while `LOGESTECHS_EMAIL` may be unset or stale.
+        return this._firstNonEmpty(this.config.shipmentEmail, this.config.username, this.config.email);
     }
 
     _shipmentAuthPassword() {

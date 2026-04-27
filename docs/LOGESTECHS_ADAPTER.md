@@ -43,7 +43,7 @@ LOGESTECHS_SHIPMENT_PASSWORD=
 ## Mapping and Validation Notes
 
 - Shipment payload uses `pkgUnitType: METRIC`.
-- Shipment `email` is resolved as `LOGESTECHS_SHIPMENT_EMAIL` -> `LOGESTECHS_EMAIL` -> `LOGESTECHS_USERNAME`.
+- Shipment `email` is resolved as `LOGESTECHS_SHIPMENT_EMAIL` -> `LOGESTECHS_USERNAME` -> `LOGESTECHS_EMAIL`.
 - Shipment `password` is resolved as `LOGESTECHS_SHIPMENT_PASSWORD` -> `LOGESTECHS_PASSWORD`.
 - `destinationAddress` and `originAddress` are mapped in best-effort mode from internal shipment fields.
 - When IDs are missing, adapter attempts village lookup (`/addresses/villages?search=`) using textual address hints to auto-fill `villageId/cityId/regionId` before shipment create.
