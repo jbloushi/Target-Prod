@@ -45,6 +45,7 @@ LOGESTECHS_SHIPMENT_PASSWORD=
 - Shipment payload uses `pkgUnitType: METRIC`.
 - Shipment `pkg` now includes compatibility fields used by OTE create endpoint (`quantity`, sender/receiver names and phones, `serviceType`, `shipmentType`, `invoiceNumber`, and optional notes) when available.
 - Adapter also sends top-level `shipmentType`/`serviceType` defaults (`REGULAR`/`STANDARD`) because some OTE validations check model-level fields even when `pkg` includes them.
+- Placeholder string values like `"null"` / `"undefined"` are treated as missing and replaced by defaults to avoid provider `model.shipmentType null` validation failures.
 - Shipment `email` is resolved as `LOGESTECHS_SHIPMENT_EMAIL` -> `LOGESTECHS_USERNAME` -> `LOGESTECHS_EMAIL`.
 - Shipment `password` is resolved as `LOGESTECHS_SHIPMENT_PASSWORD` -> `LOGESTECHS_PASSWORD`.
 - `destinationAddress` and `originAddress` are mapped in best-effort mode from internal shipment fields.

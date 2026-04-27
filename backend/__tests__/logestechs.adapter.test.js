@@ -171,6 +171,25 @@ describe('LogesTechsAdapter', () => {
         }), expect.any(Object));
     });
 
+    it('treats string placeholders like "null" as missing and falls back to defaults', async () => {
+        const adapter = createAdapter();
+        shipmentClient.post.mockResolvedValue({ data: { shipmentId: 'shp-132', barcode: 'BR-132' } });
+
+        await adapter.createShipment({
+            shipmentType: 'null',
+            serviceType: 'undefined',
+            sender: { addressLine1: 'Origin', cityId: 1, regionId: 1, villageId: 1 },
+            receiver: { addressLine1: 'Destination', cityId: 1, regionId: 1, villageId: 1 },
+            parcels: [{ quantity: 1 }]
+        });
+
+        expect(shipmentClient.post).toHaveBeenCalledWith('/ship/request/by-email', expect.objectContaining({
+            shipmentType: 'REGULAR',
+            serviceType: 'STANDARD',
+            pkg: expect.objectContaining({ shipmentType: 'REGULAR', serviceType: 'STANDARD' })
+        }), expect.any(Object));
+    });
+
     it('uses username as shipment email fallback when LOGESTECHS_EMAIL is not set', async () => {
         const adapter = createAdapter({ shipmentEmail: '', email: '' });
         shipmentClient.get.mockResolvedValue({ data: [] });

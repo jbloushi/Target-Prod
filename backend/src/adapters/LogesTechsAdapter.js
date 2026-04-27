@@ -88,7 +88,10 @@ class LogesTechsAdapter extends CarrierAdapter {
 
     _safeString(value) {
         if (value == null) return undefined;
-        return String(value).trim();
+        const normalized = String(value).trim();
+        if (!normalized) return undefined;
+        if (['null', 'undefined', 'n/a', 'na'].includes(normalized.toLowerCase())) return undefined;
+        return normalized;
     }
 
     _safeText(value) {
