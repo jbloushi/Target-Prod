@@ -387,8 +387,8 @@ function TimelineTab({ status }) {
   );
 }
 
-function EventLogTab({ events }) {
-  if (events.length === 0) {
+function EventLogTab({ events, estimatedDelivery }) {
+  if (events.length === 0 && !estimatedDelivery) {
     return (
       <div style={styles.card}>
         <p style={{ color: '#66758a', textAlign: 'center', margin: '18px 0' }}>
@@ -400,6 +400,27 @@ function EventLogTab({ events }) {
 
   return (
     <div style={styles.card}>
+      {estimatedDelivery && (
+        <div
+          style={{
+            padding: '14px 0 18px',
+            borderBottom: events.length ? '1px solid #edf2f7' : 'none',
+            marginBottom: 2,
+          }}
+        >
+          <div style={{ color: '#102033', fontWeight: 800, fontSize: 14 }}>
+            Estimated delivery date
+          </div>
+          <div style={{ color: '#66758a', fontSize: 13, marginTop: 4 }}>
+            {fmt.date(estimatedDelivery)}
+          </div>
+        </div>
+      )}
+      {events.length === 0 && (
+        <p style={{ color: '#66758a', textAlign: 'center', margin: '16px 0 4px' }}>
+          No tracking events recorded yet. Check back soon.
+        </p>
+      )}
       {events.map((event, index) => (
         <div
           key={`${event.timestamp}-${index}`}
@@ -587,7 +608,7 @@ const PublicTrackingPage = () => {
           <section style={styles.content}>
             {activeTab === 'details' && <ShipmentDetailsTab shipment={shipment} />}
             {activeTab === 'timeline' && <TimelineTab status={shipment.status} />}
-            {activeTab === 'events' && <EventLogTab events={events} />}
+            {activeTab === 'events' && <EventLogTab events={events} estimatedDelivery={shipment.estimatedDelivery} />}
           </section>
         )}
       </main>
