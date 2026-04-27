@@ -205,12 +205,26 @@ class LogesTechsAdapter extends CarrierAdapter {
         return redact(value);
     }
 
+    _summarizeProviderBody(payload) {
+        if (!payload) return null;
+        if (typeof payload === 'string') return payload;
+
+        const sanitized = this._sanitizeForLogs(payload);
+        const serialized = JSON.stringify(sanitized);
+        if (!serialized || serialized === '{}' || serialized === '[]') return null;
+        return serialized.length > 300 ? `${serialized.slice(0, 300)}...` : serialized;
+    }
+
     _extractProviderMessage(payload) {
         if (!payload) return null;
         if (typeof payload === 'string') return payload;
         if (typeof payload?.message === 'string') return payload.message;
         if (typeof payload?.detail === 'string') return payload.detail;
         if (typeof payload?.error === 'string') return payload.error;
+        if (typeof payload?.title === 'string') return payload.title;
+        if (typeof payload?.reason === 'string') return payload.reason;
+        if (typeof payload?.description === 'string') return payload.description;
+        if (typeof payload?.data?.message === 'string') return payload.data.message;
 
         const list = payload?.errors || payload?.messages || payload?.details;
         if (Array.isArray(list) && list.length > 0) {
@@ -272,7 +286,21 @@ class LogesTechsAdapter extends CarrierAdapter {
         }
         const statusCode = error?.response?.status || error?.statusCode || 500;
         const upstreamBody = error?.response?.data;
-        const upstreamMessage = this._extractProviderMessage(upstreamBody) || error?.message || 'Unknown provider error';
+        const extractedProviderMessage = this._extractProviderMessage(upstreamBody);
+        const fallbackProviderMessage = error?.response?.statusText || error?.message;
+        let upstreamMessage = extractedProviderMessage || fallbackProviderMessage;
+
+        if (!upstreamMessage) {
+            upstreamMessage = `Provider request failed with status ${statusCode}`;
+        }
+
+        if (/^unknown error$/i.test(String(upstreamMessage).trim())) {
+            const bodySummary = this._summarizeProviderBody(upstreamBody);
+            upstreamMessage = bodySummary
+                ? `Unknown error (status ${statusCode}) - ${bodySummary}`
+                : `Unknown error (status ${statusCode})`;
+        }
+
         const isCredentialError = /البريد الالكتروني او كلمة المرور غير صحيحة|incorrect email or password|invalid credentials/i
             .test(String(upstreamMessage || ''));
         const normalizedMessage = isCredentialError

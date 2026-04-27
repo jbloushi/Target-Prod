@@ -55,6 +55,7 @@ LOGESTECHS_SHIPMENT_PASSWORD=
 - Carrier code is `OTE` (legacy `LOGESTECHS` values are treated as backward-compatible aliases).
 - Returned shipment object stores `carrierShipmentId` and `barcode`/`trackingNumber` when available.
 - If provider returns invalid login credentials (including Arabic auth errors), adapter returns actionable guidance to verify shipment credentials (`LOGESTECHS_SHIPMENT_EMAIL`/`LOGESTECHS_SHIPMENT_PASSWORD` or fallback values), plus `LOGESTECHS_USERNAME` and `LOGESTECHS_COMPANY_ID`.
+- If provider responds with generic `Unknown error`, adapter now appends HTTP status and sanitized payload context to make debugging production failures actionable.
 - Fulfillment product bulk requests are sent in `{ list: [...] }` shape per provider collection.
 - Fulfillment order requests are normalized to provider fields (`receiverName`, `receiverPhone`, `receiverAddress`, `shipmentType`, `codCollectionMethod`, `cod`, `cost`, `items`, `invoiceNumber`) with safe defaults for omitted optional values.
 - Manual `price`/`costPrice` override for existing OTE shipments is allowed only for platform roles (`admin`, `staff`, `manager`, `accounting`); client users cannot override these fields.

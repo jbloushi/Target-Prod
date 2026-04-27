@@ -211,6 +211,38 @@ describe('LogesTechsAdapter', () => {
         })).rejects.toThrow(/LOGESTECHS_COMPANY_ID, LOGESTECHS_USERNAME, LOGESTECHS_PASSWORD/i);
     });
 
+    it('includes status code context when provider returns generic unknown error', async () => {
+        const adapter = createAdapter();
+        shipmentClient.get.mockResolvedValue({ data: [] });
+        shipmentClient.post.mockRejectedValue({
+            response: {
+                status: 500,
+                data: { error: 'Unknown error' }
+            }
+        });
+
+        await expect(adapter.createShipment({
+            sender: { addressLine1: 'S', city: 'Kuwait' },
+            receiver: { addressLine1: 'R', city: 'Riyadh' }
+        })).rejects.toThrow(/Unknown error \(status 500\)/i);
+    });
+
+    it('extracts provider title/reason fields for clearer booking failures', async () => {
+        const adapter = createAdapter();
+        shipmentClient.get.mockResolvedValue({ data: [] });
+        shipmentClient.post.mockRejectedValue({
+            response: {
+                status: 422,
+                data: { title: 'Validation failed', reason: 'invalid destination region' }
+            }
+        });
+
+        await expect(adapter.createShipment({
+            sender: { addressLine1: 'S', city: 'Kuwait' },
+            receiver: { addressLine1: 'R', city: 'Riyadh' }
+        })).rejects.toThrow(/Validation failed/i);
+    });
+
     it('requires barcode or id for getStatus', async () => {
         const adapter = createAdapter();
         await expect(adapter.getStatus({})).rejects.toThrow(/barcode or id required/i);
