@@ -48,6 +48,7 @@ LOGESTECHS_SHIPMENT_PASSWORD=
 - Adapter now centralizes OTE create payload normalization in dedicated helper methods (`_normalizeCarrierModelFields`, `_buildCreateShipmentPayload`) to keep carrier-specific payload rules explicit and maintainable.
 - Adapter emits a sanitized `createShipment payload summary` log (shipment/service type locations and key flags) to diagnose provider-side `model.shipmentType` validation failures without exposing credentials.
 - Placeholder string values like `"null"` / `"undefined"` are treated as missing and replaced by defaults to avoid provider `model.shipmentType null` validation failures.
+- Internal shipment/service values are normalized to OTE-safe enums before request send (unsupported values fall back to `REGULAR` / `STANDARD`) to prevent provider enum coercion to null.
 - Shipment `email` is resolved as `LOGESTECHS_SHIPMENT_EMAIL` -> `LOGESTECHS_USERNAME` -> `LOGESTECHS_EMAIL`.
 - Shipment `password` is resolved as `LOGESTECHS_SHIPMENT_PASSWORD` -> `LOGESTECHS_PASSWORD`.
 - `destinationAddress` and `originAddress` are mapped in best-effort mode from internal shipment fields.

@@ -172,9 +172,25 @@ class LogesTechsAdapter extends CarrierAdapter {
         return Object.fromEntries(Object.entries(pkg).filter(([, value]) => value !== undefined && value !== null && value !== ''));
     }
 
+    _normalizeOteShipmentType(value) {
+        const normalized = this._safeString(value)?.toUpperCase();
+        const allowed = new Set(['REGULAR', 'RETURN', 'EXCHANGE']);
+        return allowed.has(normalized) ? normalized : 'REGULAR';
+    }
+
+    _normalizeOteServiceType(value) {
+        const normalized = this._safeString(value)?.toUpperCase();
+        const allowed = new Set(['STANDARD', 'EXPRESS', 'SAME_DAY']);
+        return allowed.has(normalized) ? normalized : 'STANDARD';
+    }
+
     _normalizeCarrierModelFields(shipment = {}, packagePayload = {}) {
-        const shipmentType = this._firstNonEmpty(shipment.shipmentType, packagePayload.shipmentType, 'REGULAR') || 'REGULAR';
-        const serviceType = this._firstNonEmpty(shipment.serviceType, shipment.serviceCode, packagePayload.serviceType, 'STANDARD') || 'STANDARD';
+        const shipmentType = this._normalizeOteShipmentType(
+            this._firstNonEmpty(shipment.shipmentType, packagePayload.shipmentType, 'REGULAR')
+        );
+        const serviceType = this._normalizeOteServiceType(
+            this._firstNonEmpty(shipment.serviceType, shipment.serviceCode, packagePayload.serviceType, 'STANDARD')
+        );
 
         return {
             shipmentType,
@@ -197,8 +213,8 @@ class LogesTechsAdapter extends CarrierAdapter {
             ...normalizedFields,
             pkg: {
                 ...packagePayload,
-                shipmentType: this._firstNonEmpty(packagePayload.shipmentType, normalizedFields.shipmentType, 'REGULAR') || 'REGULAR',
-                serviceType: this._firstNonEmpty(packagePayload.serviceType, normalizedFields.serviceType, 'STANDARD') || 'STANDARD'
+                shipmentType: this._normalizeOteShipmentType(this._firstNonEmpty(packagePayload.shipmentType, normalizedFields.shipmentType, 'REGULAR')),
+                serviceType: this._normalizeOteServiceType(this._firstNonEmpty(packagePayload.serviceType, normalizedFields.serviceType, 'STANDARD'))
             },
             destinationAddress,
             originAddress

@@ -183,6 +183,20 @@ describe('LogesTechsAdapter', () => {
         });
     });
 
+    it('maps unsupported internal shipment/service types to OTE-safe defaults', () => {
+        const adapter = createAdapter();
+        const normalized = adapter._normalizeCarrierModelFields(
+            { shipmentType: 'DOCUMENT', serviceType: 'ground' },
+            { shipmentType: 'DOCUMENT', serviceType: 'ground' }
+        );
+
+        expect(normalized).toEqual({
+            shipmentType: 'REGULAR',
+            serviceType: 'STANDARD',
+            model: { shipmentType: 'REGULAR', serviceType: 'STANDARD' }
+        });
+    });
+
     it('builds debug summary for key model and pkg shipment fields', () => {
         const adapter = createAdapter();
         const summary = adapter._createPayloadDebugSummary({
