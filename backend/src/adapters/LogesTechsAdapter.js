@@ -381,11 +381,14 @@ class LogesTechsAdapter extends CarrierAdapter {
                 throw err;
             }
 
+            const packagePayload = this._toPackagePayload(normalizedShipment);
             const payload = {
                 email: shipmentEmail,
                 password: shipmentPassword,
                 pkgUnitType: 'METRIC',
-                pkg: this._toPackagePayload(normalizedShipment),
+                shipmentType: this._firstNonEmpty(normalizedShipment.shipmentType, packagePayload.shipmentType, 'REGULAR'),
+                serviceType: this._firstNonEmpty(normalizedShipment.serviceType, normalizedShipment.serviceCode, packagePayload.serviceType, 'STANDARD'),
+                pkg: packagePayload,
                 destinationAddress,
                 originAddress
             };

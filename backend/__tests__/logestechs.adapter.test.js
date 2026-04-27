@@ -154,6 +154,23 @@ describe('LogesTechsAdapter', () => {
         }), expect.any(Object));
     });
 
+    it('sends top-level shipmentType/serviceType defaults required by OTE model validation', async () => {
+        const adapter = createAdapter();
+        shipmentClient.post.mockResolvedValue({ data: { shipmentId: 'shp-131', barcode: 'BR-131' } });
+
+        await adapter.createShipment({
+            trackingNumber: 'DGR-NULL-SHIPMENT-TYPE',
+            sender: { addressLine1: 'Origin', cityId: 1, regionId: 1, villageId: 1 },
+            receiver: { addressLine1: 'Destination', cityId: 1, regionId: 1, villageId: 1 },
+            parcels: [{ quantity: 1 }]
+        });
+
+        expect(shipmentClient.post).toHaveBeenCalledWith('/ship/request/by-email', expect.objectContaining({
+            shipmentType: 'REGULAR',
+            serviceType: 'STANDARD'
+        }), expect.any(Object));
+    });
+
     it('uses username as shipment email fallback when LOGESTECHS_EMAIL is not set', async () => {
         const adapter = createAdapter({ shipmentEmail: '', email: '' });
         shipmentClient.get.mockResolvedValue({ data: [] });
