@@ -49,6 +49,7 @@ LOGESTECHS_SHIPMENT_PASSWORD=
 - When IDs are missing, adapter attempts village lookup (`/addresses/villages?search=`) using textual address hints to auto-fill `villageId/cityId/regionId` before shipment create.
 - Village lookup requests use `company-id` header as in provider examples.
 - Status lookup requires either `barcode` or `id`.
+- Tracking normalization supports both provider `events` arrays and `deliveryRoute` responses, so shipment history sync can consume OTE status timelines.
 - Label PDF retrieval requires non-empty `ids` array.
 - Adapter preserves UTF-8 business/address strings (Arabic text is forwarded without transliteration).
 - Carrier code is `OTE` (legacy `LOGESTECHS` values are treated as backward-compatible aliases).

@@ -163,6 +163,29 @@ class LogesTechsAdapter extends CarrierAdapter {
         };
     }
 
+    _extractTrackingEvents(raw = {}) {
+        if (Array.isArray(raw?.events) && raw.events.length > 0) {
+            return raw.events.map((event = {}) => ({
+                statusCode: event.statusCode || event.status || raw?.status || raw?.enStatus,
+                description: event.description || event.message || event.enStatus || event.arabicName || event.arStatus || raw?.enStatus || raw?.status,
+                timestamp: event.timestamp || event.date || event.deliveryDate || event.createdDate || raw?.lastStatusDate || raw?.createdDate,
+                location: event.location || event.city || event.nextDestination || raw?.nextDestination || raw?.destinationCity || raw?.destinationVillage || null
+            }));
+        }
+
+        const route = Array.isArray(raw?.deliveryRoute) ? raw.deliveryRoute : [];
+        if (route.length > 0) {
+            return route.map((event = {}) => ({
+                statusCode: event.status || event.typeKey || event.name || raw?.status,
+                description: event.arabicName || event.name || raw?.enStatus || raw?.status || 'Carrier update',
+                timestamp: event.deliveryDate || event.timestamp || raw?.lastStatusDate || raw?.createdDate,
+                location: event.location || event.city || raw?.nextDestination || raw?.destinationCity || raw?.destinationVillage || null
+            }));
+        }
+
+        return [];
+    }
+
     _sanitizeForLogs(value) {
         const redact = (input) => {
             if (Array.isArray(input)) return input.map(redact);
@@ -422,12 +445,14 @@ class LogesTechsAdapter extends CarrierAdapter {
 
     async getTracking(trackingNumber) {
         const data = await this.getStatus({ barcode: trackingNumber });
+        const events = this._extractTrackingEvents(data);
+
         return {
             carrierCode: this.code,
             trackingNumber,
-            status: data?.status || data?.currentStatus || 'UNKNOWN',
-            description: data?.description || data?.message || 'No status description',
-            events: Array.isArray(data?.events) ? data.events : []
+            status: data?.status || data?.currentStatus || data?.enStatus || 'UNKNOWN',
+            description: data?.description || data?.message || data?.enStatus || 'No status description',
+            events
         };
     }
 

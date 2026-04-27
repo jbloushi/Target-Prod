@@ -216,6 +216,50 @@ describe('LogesTechsAdapter', () => {
         await expect(adapter.getStatus({})).rejects.toThrow(/barcode or id required/i);
     });
 
+    it('maps provider deliveryRoute into tracking events history', async () => {
+        const adapter = createAdapter();
+        shipmentClient.get.mockResolvedValue({
+            data: {
+                status: 'PENDING_CUSTOMER_CARE_APPROVAL',
+                enStatus: 'Pending Customer Care Approval',
+                nextDestination: 'Nablus',
+                deliveryRoute: [
+                    {
+                        name: 'Pending',
+                        arabicName: 'طلب جديد',
+                        deliveryDate: '2026-04-27T14:09:48.821+0000'
+                    }
+                ]
+            }
+        });
+
+        const tracking = await adapter.getTracking('100448960604');
+
+        expect(tracking.status).toBe('PENDING_CUSTOMER_CARE_APPROVAL');
+        expect(tracking.events).toEqual([
+            expect.objectContaining({
+                statusCode: 'Pending',
+                description: 'طلب جديد',
+                location: 'Nablus'
+            })
+        ]);
+    });
+
+    it('keeps canonical event list when provider already returns events', async () => {
+        const adapter = createAdapter();
+        shipmentClient.get.mockResolvedValue({
+            data: {
+                status: 'IN_TRANSIT',
+                events: [{ statusCode: 'IN_TRANSIT', description: 'Left hub', timestamp: '2026-04-27T10:00:00Z' }]
+            }
+        });
+
+        const tracking = await adapter.getTracking('TRK-1');
+        expect(tracking.events).toEqual([
+            expect.objectContaining({ statusCode: 'IN_TRANSIT', description: 'Left hub' })
+        ]);
+    });
+
     it('uses fulfillment API base client for products and orders', async () => {
         const adapter = createAdapter();
         fulfillmentClient.get.mockResolvedValue({ data: { items: [] } });
