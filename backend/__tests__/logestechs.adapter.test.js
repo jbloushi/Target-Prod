@@ -111,6 +111,49 @@ describe('LogesTechsAdapter', () => {
         }));
     });
 
+    it('includes sender/receiver and service metadata in pkg payload for OTE create request', async () => {
+        const adapter = createAdapter();
+        shipmentClient.post.mockResolvedValue({ data: { shipmentId: 'shp-130', barcode: 'BR-130' } });
+
+        await adapter.createShipment({
+            trackingNumber: 'DGR-VKLIWS4W',
+            shipmentType: 'REGULAR',
+            serviceType: 'STANDARD',
+            notes: 'Connection test',
+            sender: {
+                contactPerson: 'Target Logistics',
+                phone: '966500000000',
+                addressLine1: 'Origin',
+                cityId: 1,
+                regionId: 1,
+                villageId: 1
+            },
+            receiver: {
+                contactPerson: 'Test Receiver',
+                phone: '971500000000',
+                addressLine1: 'Destination',
+                cityId: 1,
+                regionId: 1,
+                villageId: 1
+            },
+            parcels: [{ quantity: 1 }]
+        });
+
+        expect(shipmentClient.post).toHaveBeenCalledWith('/ship/request/by-email', expect.objectContaining({
+            pkg: expect.objectContaining({
+                quantity: 1,
+                senderName: 'Target Logistics',
+                senderPhone: '966500000000',
+                receiverName: 'Test Receiver',
+                receiverPhone: '971500000000',
+                serviceType: 'STANDARD',
+                shipmentType: 'REGULAR',
+                notes: 'Connection test',
+                invoiceNumber: 'DGR-VKLIWS4W'
+            })
+        }), expect.any(Object));
+    });
+
     it('uses username as shipment email fallback when LOGESTECHS_EMAIL is not set', async () => {
         const adapter = createAdapter({ shipmentEmail: '', email: '' });
         shipmentClient.get.mockResolvedValue({ data: [] });

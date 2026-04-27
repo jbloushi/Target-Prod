@@ -139,15 +139,30 @@ class LogesTechsAdapter extends CarrierAdapter {
         const parcel = Array.isArray(shipment.parcels) ? shipment.parcels[0] || {} : {};
         const dimensions = parcel.dimensions || {};
         const weightValue = parcel.weight?.value ?? parcel.weight ?? shipment.chargeableWeight ?? 0;
+        const sender = shipment.sender || shipment.origin || {};
+        const receiver = shipment.receiver || shipment.destination || {};
 
-        return {
-            piecesCount: Number(parcel.quantity || shipment.totalBoxes || 1),
+        const quantity = Number(parcel.quantity || shipment.totalBoxes || 1);
+        const pkg = {
+            piecesCount: quantity,
+            quantity,
             weight: Number(weightValue || 0),
             length: Number(dimensions.length || parcel.length || 0),
             width: Number(dimensions.width || parcel.width || 0),
             height: Number(dimensions.height || parcel.height || 0),
-            description: this._firstNonEmpty(parcel.description, shipment.description, shipment.commodity)
+            description: this._firstNonEmpty(parcel.description, shipment.description, shipment.commodity),
+            notes: this._firstNonEmpty(shipment.notes, shipment.specialInstructions),
+            invoiceNumber: this._firstNonEmpty(shipment.invoiceNumber, shipment.reference, shipment.trackingNumber),
+            senderName: this._firstNonEmpty(sender.contactPerson, sender.name, shipment.customer?.name),
+            senderPhone: this._firstNonEmpty(sender.phone, sender.phoneNumber, sender.mobile),
+            receiverName: this._firstNonEmpty(receiver.contactPerson, receiver.name, shipment.customer?.name),
+            receiverPhone: this._firstNonEmpty(receiver.phone, receiver.phoneNumber, receiver.mobile),
+            serviceType: this._firstNonEmpty(shipment.serviceType, shipment.serviceCode, 'STANDARD'),
+            shipmentType: this._firstNonEmpty(shipment.shipmentType, 'REGULAR'),
+            cod: String(Number(shipment.codAmount ?? shipment.cod ?? 0))
         };
+
+        return Object.fromEntries(Object.entries(pkg).filter(([, value]) => value !== undefined && value !== null && value !== ''));
     }
 
     _normalizeShipmentResponse(raw = {}) {
