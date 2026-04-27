@@ -14,14 +14,18 @@ const {
 
 class LogesTechsAdapter extends CarrierAdapter {
     constructor(configOverrides = {}) {
-        const shipmentBaseUrl = configOverrides.shipmentBaseUrl || logesTechsShipmentBaseUrl;
-        const fulfillmentBaseUrl = configOverrides.fulfillmentBaseUrl || logesTechsFulfillmentBaseUrl;
-        const companyId = configOverrides.companyId || logesTechsCompanyId;
-        const username = configOverrides.username || logesTechsUsername;
-        const password = configOverrides.password || logesTechsPassword;
-        const email = configOverrides.email || logesTechsEmail;
-        const shipmentEmail = configOverrides.shipmentEmail || logesTechsShipmentEmail;
-        const shipmentPassword = configOverrides.shipmentPassword || logesTechsShipmentPassword;
+        const pick = (key, fallback) => Object.prototype.hasOwnProperty.call(configOverrides, key)
+            ? configOverrides[key]
+            : fallback;
+
+        const shipmentBaseUrl = pick('shipmentBaseUrl', logesTechsShipmentBaseUrl);
+        const fulfillmentBaseUrl = pick('fulfillmentBaseUrl', logesTechsFulfillmentBaseUrl);
+        const companyId = pick('companyId', logesTechsCompanyId);
+        const username = pick('username', logesTechsUsername);
+        const password = pick('password', logesTechsPassword);
+        const email = pick('email', logesTechsEmail);
+        const shipmentEmail = pick('shipmentEmail', logesTechsShipmentEmail);
+        const shipmentPassword = pick('shipmentPassword', logesTechsShipmentPassword);
 
         super({
             shipmentBaseUrl,
