@@ -205,6 +205,21 @@ class LogesTechsAdapter extends CarrierAdapter {
         };
     }
 
+    _createPayloadDebugSummary(payload = {}) {
+        return {
+            shipmentType: payload?.shipmentType,
+            serviceType: payload?.serviceType,
+            modelShipmentType: payload?.model?.shipmentType,
+            modelServiceType: payload?.model?.serviceType,
+            pkgShipmentType: payload?.pkg?.shipmentType,
+            pkgServiceType: payload?.pkg?.serviceType,
+            pkgQuantity: payload?.pkg?.quantity,
+            invoiceNumber: payload?.pkg?.invoiceNumber,
+            hasSenderName: Boolean(payload?.pkg?.senderName),
+            hasReceiverName: Boolean(payload?.pkg?.receiverName)
+        };
+    }
+
 
     _normalizeShipmentResponse(raw = {}) {
         // TODO(LogesTechs): Provider response schema is not fully documented; keep this mapper conservative.
@@ -429,6 +444,8 @@ class LogesTechsAdapter extends CarrierAdapter {
                 destinationAddress,
                 originAddress
             });
+
+            logger.info('LogesTechs createShipment payload summary', this._createPayloadDebugSummary(payload));
 
             const response = await this.shipmentClient.post('/ship/request/by-email', payload, {
                 headers: this._shipmentHeaders()

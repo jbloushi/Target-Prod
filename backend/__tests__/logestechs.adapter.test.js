@@ -183,6 +183,23 @@ describe('LogesTechsAdapter', () => {
         });
     });
 
+    it('builds debug summary for key model and pkg shipment fields', () => {
+        const adapter = createAdapter();
+        const summary = adapter._createPayloadDebugSummary({
+            shipmentType: 'REGULAR',
+            serviceType: 'STANDARD',
+            model: { shipmentType: 'REGULAR', serviceType: 'STANDARD' },
+            pkg: { shipmentType: 'REGULAR', serviceType: 'STANDARD', quantity: 1 }
+        });
+
+        expect(summary).toEqual(expect.objectContaining({
+            shipmentType: 'REGULAR',
+            modelShipmentType: 'REGULAR',
+            pkgShipmentType: 'REGULAR',
+            pkgQuantity: 1
+        }));
+    });
+
     it('treats string placeholders like "null" as missing and falls back to defaults', async () => {
         const adapter = createAdapter();
         shipmentClient.post.mockResolvedValue({ data: { shipmentId: 'shp-132', barcode: 'BR-132' } });
