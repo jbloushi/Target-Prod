@@ -172,6 +172,40 @@ class LogesTechsAdapter extends CarrierAdapter {
         return Object.fromEntries(Object.entries(pkg).filter(([, value]) => value !== undefined && value !== null && value !== ''));
     }
 
+    _normalizeCarrierModelFields(shipment = {}, packagePayload = {}) {
+        const shipmentType = this._firstNonEmpty(shipment.shipmentType, packagePayload.shipmentType, 'REGULAR') || 'REGULAR';
+        const serviceType = this._firstNonEmpty(shipment.serviceType, shipment.serviceCode, packagePayload.serviceType, 'STANDARD') || 'STANDARD';
+
+        return {
+            shipmentType,
+            serviceType,
+            model: {
+                shipmentType,
+                serviceType
+            }
+        };
+    }
+
+    _buildCreateShipmentPayload({ shipment = {}, shipmentEmail, shipmentPassword, destinationAddress, originAddress }) {
+        const packagePayload = this._toPackagePayload(shipment);
+        const normalizedFields = this._normalizeCarrierModelFields(shipment, packagePayload);
+
+        return {
+            email: shipmentEmail,
+            password: shipmentPassword,
+            pkgUnitType: 'METRIC',
+            ...normalizedFields,
+            pkg: {
+                ...packagePayload,
+                shipmentType: this._firstNonEmpty(packagePayload.shipmentType, normalizedFields.shipmentType, 'REGULAR') || 'REGULAR',
+                serviceType: this._firstNonEmpty(packagePayload.serviceType, normalizedFields.serviceType, 'STANDARD') || 'STANDARD'
+            },
+            destinationAddress,
+            originAddress
+        };
+    }
+
+
     _normalizeShipmentResponse(raw = {}) {
         // TODO(LogesTechs): Provider response schema is not fully documented; keep this mapper conservative.
         const shipmentId = raw.id || raw.shipmentId || raw.packageId || raw.data?.id || raw.data?.shipmentId || null;
@@ -388,27 +422,13 @@ class LogesTechsAdapter extends CarrierAdapter {
                 throw err;
             }
 
-            const packagePayload = this._toPackagePayload(normalizedShipment);
-            const shipmentType = this._firstNonEmpty(normalizedShipment.shipmentType, packagePayload.shipmentType, 'REGULAR') || 'REGULAR';
-            const serviceType = this._firstNonEmpty(normalizedShipment.serviceType, normalizedShipment.serviceCode, packagePayload.serviceType, 'STANDARD') || 'STANDARD';
-            const payload = {
-                email: shipmentEmail,
-                password: shipmentPassword,
-                pkgUnitType: 'METRIC',
-                shipmentType,
-                serviceType,
-                model: {
-                    shipmentType,
-                    serviceType
-                },
-                pkg: {
-                    ...packagePayload,
-                    shipmentType: this._firstNonEmpty(packagePayload.shipmentType, shipmentType, 'REGULAR') || 'REGULAR',
-                    serviceType: this._firstNonEmpty(packagePayload.serviceType, serviceType, 'STANDARD') || 'STANDARD'
-                },
+            const payload = this._buildCreateShipmentPayload({
+                shipment: normalizedShipment,
+                shipmentEmail,
+                shipmentPassword,
                 destinationAddress,
                 originAddress
-            };
+            });
 
             const response = await this.shipmentClient.post('/ship/request/by-email', payload, {
                 headers: this._shipmentHeaders()

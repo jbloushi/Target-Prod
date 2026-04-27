@@ -172,6 +172,17 @@ describe('LogesTechsAdapter', () => {
         }), expect.any(Object));
     });
 
+    it('normalizes carrier model fields via dedicated payload normalizer helper', () => {
+        const adapter = createAdapter();
+        const normalized = adapter._normalizeCarrierModelFields({ shipmentType: 'null', serviceType: '' }, { shipmentType: 'REGULAR' });
+
+        expect(normalized).toEqual({
+            shipmentType: 'REGULAR',
+            serviceType: 'STANDARD',
+            model: { shipmentType: 'REGULAR', serviceType: 'STANDARD' }
+        });
+    });
+
     it('treats string placeholders like "null" as missing and falls back to defaults', async () => {
         const adapter = createAdapter();
         shipmentClient.post.mockResolvedValue({ data: { shipmentId: 'shp-132', barcode: 'BR-132' } });
