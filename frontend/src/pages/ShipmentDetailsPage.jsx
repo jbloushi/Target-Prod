@@ -859,7 +859,16 @@ const ShipmentDetailsPage = () => {
     const receiver = normalizePartyAddress(shipment.destination || shipment.receiver || {});
     const parcels = shipment.parcels || [];
     const items = shipment.items || [];
-    const rawDocuments = shipment.documents || [];
+    const rawDocuments = Array.isArray(shipment.documents) ? shipment.documents : [];
+    const extractDocumentUrl = (value) => {
+        if (!value) return null;
+        if (typeof value === 'string') return value;
+        if (typeof value === 'object') {
+            const candidate = value.url || value.href || value.path || value.link;
+            return typeof candidate === 'string' ? candidate : null;
+        }
+        return null;
+    };
 
     // Robust document resolving for Labels and Invoices, especially when standard backend URLs fall back to the generic documents array
     // Ignore blob URLs as they are temporary local drafts that expire on page refresh. 
@@ -868,10 +877,19 @@ const ShipmentDetailsPage = () => {
         ? shipment.labelUrl
         : `/api/shipments/${shipment.trackingNumber}/label`;
 
-    const resolvedInvoiceUrl = shipment.invoiceUrl || rawDocuments.find(d => d.type?.toLowerCase() === 'invoice' || d.url?.toLowerCase().includes('invoice'))?.url;
+    const invoiceDocument = rawDocuments.find((d) => {
+        const type = String(d?.type || '').toLowerCase();
+        const url = String(extractDocumentUrl(d?.url) || extractDocumentUrl(d) || '').toLowerCase();
+        return type === 'invoice' || url.includes('invoice');
+    });
+    const resolvedInvoiceUrl = shipment.invoiceUrl
+        || extractDocumentUrl(invoiceDocument?.url)
+        || extractDocumentUrl(invoiceDocument);
 
     // Filter out resolved documents from the general stack
-    const documents = rawDocuments.filter(d => d.url !== resolvedLabelUrl && d.url !== resolvedInvoiceUrl);
+    const documents = rawDocuments
+        .map((doc) => ({ ...doc, resolvedUrl: extractDocumentUrl(doc?.url) || extractDocumentUrl(doc) }))
+        .filter((doc) => doc.resolvedUrl && doc.resolvedUrl !== resolvedLabelUrl && doc.resolvedUrl !== resolvedInvoiceUrl);
 
     const totalWeight = parcels.reduce((sum, p) => sum + (Number(p.weight) || 0), 0);
     const totalPieces = parcels.reduce((sum, p) => sum + (Number(p.quantity) || 1), 0);
@@ -1377,7 +1395,7 @@ const ShipmentDetailsPage = () => {
 
                                 {/* Other Documents */}
                                 {documents.map((doc, index) => (
-                                    doc.url && (
+                                    doc.resolvedUrl && (
                                         <div key={`doc-${index}`} style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
                                             <div style={{ color: '#3b82f6', background: 'rgba(59,130,246,0.1)', padding: '8px', borderRadius: '6px' }}>
                                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1392,7 +1410,7 @@ const ShipmentDetailsPage = () => {
                                                 <div style={{ color: 'var(--text-primary)', fontWeight: 600, textTransform: 'capitalize' }}>{doc.type}</div>
                                                 <div style={{ color: 'var(--text-secondary)', fontSize: '12px', textTransform: 'uppercase' }}>{doc.format || 'doc'}</div>
                                             </div>
-                                            <Button variant="secondary" onClick={() => handleOpenPdf(doc.url)} style={{ padding: '6px 16px', fontSize: '13px', minHeight: 'auto' }}>
+                                            <Button variant="secondary" onClick={() => handleOpenPdf(doc.resolvedUrl)} style={{ padding: '6px 16px', fontSize: '13px', minHeight: 'auto' }}>
                                                 View
                                             </Button>
                                         </div>
