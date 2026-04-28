@@ -138,8 +138,11 @@ class ShipmentBookingService {
                     updateData[targetField] = doc.url;
                 } catch (docError) {
                     logger.warn(`Document upload skipped for ${freshShipment.trackingNumber} (${type}): ${docError.message}`);
-                    // Keep original provider value as fallback so operations can still access it.
-                    updateData[targetField] = updateData[targetField] || sourceValue;
+                    // Only persist safe URL-like fallbacks; avoid writing raw/base64 blobs into URL DB fields.
+                    const sourceText = typeof sourceValue === 'string' ? sourceValue.trim() : '';
+                    if (/^https?:\/\//i.test(sourceText)) {
+                        updateData[targetField] = updateData[targetField] || sourceText;
+                    }
                 }
             };
 
