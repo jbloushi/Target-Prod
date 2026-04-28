@@ -1,6 +1,7 @@
 const DgrAdapter = require('../adapters/DgrAdapter');
 const FedexAdapter = require('../adapters/FedexAdapter');
 const AramexAdapter = require('../adapters/AramexAdapter');
+const LogesTechsAdapter = require('../adapters/LogesTechsAdapter');
 
 /**
  * Factory class to get the appropriate carrier adapter
@@ -13,6 +14,7 @@ class CarrierFactory {
         return [
             { code: 'MANUAL', name: 'Manual Shipment', active: true },
             { code: 'DGR', name: 'DHL DGR', active: true },
+            { code: 'OTE', name: 'OTE', active: true },
             { code: 'ARAMEX', name: 'Aramex', active: true }, // <-- ADDED
             { code: 'FEDEX', name: 'FedEx', active: false }, // <-- DEACTIVATED
             { code: 'UPS', name: 'UPS', active: false }
@@ -35,6 +37,10 @@ class CarrierFactory {
 
             case 'ARAMEX':
                 return new AramexAdapter(config); // <-- NEW ADAPTER
+
+            case 'LOGESTECHS':
+            case 'OTE':
+                return new LogesTechsAdapter(config);
 
             case 'FEDEX':
                 return new FedexAdapter(config);

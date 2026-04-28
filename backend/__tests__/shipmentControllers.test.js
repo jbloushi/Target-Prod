@@ -199,4 +199,96 @@ describe('shipment controllers', () => {
         }));
         expect(res.status).toHaveBeenCalledWith(200);
     });
+
+    it('allows staff/admin/accounting to manually set OTE shipment price and cost', async () => {
+        const controller = require('../src/controllers/shipment-crud.controller');
+        const shipment = {
+            id: 'shipment-ote-1',
+            trackingNumber: 'OTE-1',
+            userId: 'client-1',
+            carrierCode: 'OTE',
+            status: 'pending',
+            history: [],
+            currentLocation: { city: 'Amman' },
+            pricingSnapshot: { currency: 'KWD' },
+            currency: 'KWD',
+            costPrice: 4,
+            price: 6,
+            origin: {},
+            destination: {},
+            items: [],
+            parcels: []
+        };
+
+        prisma.shipment.findUnique.mockResolvedValue(shipment);
+        prisma.shipment.update.mockResolvedValue({ ...shipment, price: 30, costPrice: 20 });
+
+        const req = {
+            params: { trackingNumber: 'OTE-1' },
+            user: { id: 'staff-1', role: 'staff', name: 'Staff' },
+            body: { price: '30', costPrice: '20' }
+        };
+        const res = createMockRes();
+
+        await controller.updateShipment(req, res);
+
+        expect(prisma.shipment.update).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({
+                price: 30,
+                costPrice: 20,
+                pricingSnapshot: expect.objectContaining({
+                    policySource: 'manual',
+                    rulesVersion: 'manual',
+                    carrierRate: 20,
+                    totalPrice: 30
+                })
+            })
+        }));
+        expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it('does not allow clients to manually set OTE shipment price/cost fields', async () => {
+        const controller = require('../src/controllers/shipment-crud.controller');
+        const shipment = {
+            id: 'shipment-ote-2',
+            trackingNumber: 'OTE-2',
+            userId: 'client-1',
+            carrierCode: 'OTE',
+            status: 'pending',
+            history: [],
+            currentLocation: { city: 'Amman' },
+            pricingSnapshot: { currency: 'KWD' },
+            currency: 'KWD',
+            costPrice: 4,
+            price: 6,
+            origin: {},
+            destination: {},
+            items: [],
+            parcels: []
+        };
+
+        prisma.shipment.findUnique.mockResolvedValue(shipment);
+        prisma.user.findUnique.mockResolvedValue({
+            id: 'client-1',
+            organization: { id: 'org-1' }
+        });
+        prisma.shipment.update.mockResolvedValue({ ...shipment });
+
+        const req = {
+            params: { trackingNumber: 'OTE-2' },
+            user: { id: 'client-1', role: 'client', name: 'Client' },
+            body: { price: '99', costPrice: '88' }
+        };
+        const res = createMockRes();
+
+        await controller.updateShipment(req, res);
+
+        expect(prisma.shipment.update).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.not.objectContaining({
+                price: 99,
+                costPrice: 88
+            })
+        }));
+        expect(res.status).toHaveBeenCalledWith(200);
+    });
 });

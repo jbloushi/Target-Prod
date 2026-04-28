@@ -8,6 +8,7 @@ This folder contains maintained product and engineering documentation for Target
 | --- | --- | --- |
 | [PLATFORM_FEATURES.md](PLATFORM_FEATURES.md) | Product/engineering | Any user role, shipment, carrier, finance, public tracking, API, or platform capability changes. |
 | [CARRIER_ADAPTER_ONBOARDING.md](CARRIER_ADAPTER_ONBOARDING.md) | Engineering | Adding/updating carrier adapters, service labels, or assignment visibility behavior. |
+| [LOGESTECHS_ADAPTER.md](LOGESTECHS_ADAPTER.md) | Engineering | Updating LogesTechs shipment/fulfillment integration, payload mapping, or required credentials. |
 
 ## Root Docs
 

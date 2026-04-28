@@ -91,7 +91,9 @@ exports.getQuotes = async (req, res) => {
         }
 
         const markupQuotes = visibleQuotes.map(quote => {
-            const basePrice = Number(quote.totalPrice);
+            const policy = PricingService.resolveCarrierPricingPolicy(targetUser, carrierCode, quote.currency || req.body.currency || 'KWD');
+            const quoteCurrency = quote.currency || policy.currency || 'KWD';
+            const basePrice = PricingService.applyCarrierBasePricePolicy(quote.totalPrice, targetUser, carrierCode);
             const calculation = PricingService.calculateFinalPrice(basePrice, markup);
             
             const optionalServices = (quote.optionalServices || []).map(service => ({
@@ -99,7 +101,7 @@ exports.getQuotes = async (req, res) => {
                 serviceName: service.serviceName,
                 ...(() => {
                     const carrierAmount = Number(Number(service.totalPrice || 0).toFixed(3));
-                    const currency = service.currency || quote.currency || 'KWD';
+                    const currency = service.currency || quoteCurrency || 'KWD';
                     const { markup: optionalMarkup, source: optionalMarkupSource } =
                         PricingService.resolveOptionalServiceMarkup(targetUser, targetUser.organization, carrierCode, service.serviceCode);
                     if (!optionalMarkup) {
@@ -127,9 +129,9 @@ exports.getQuotes = async (req, res) => {
                 totalPrice: estimatedShipmentCost,
                 estimatedShipmentCost,
                 optionalServices,
-                declaredCurrency: req.body.currency || quote.currency || 'KWD',
-                billingCurrency: quote.currency || 'KWD',
-                currency: quote.currency || 'KWD',
+                declaredCurrency: req.body.currency || quoteCurrency || 'KWD',
+                billingCurrency: quoteCurrency || 'KWD',
+                currency: quoteCurrency || 'KWD',
                 pricingPolicySource: policySource,
                 basePrice: basePrice,
                 markupAmount: calculation.markupAmount
