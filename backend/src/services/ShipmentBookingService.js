@@ -129,22 +129,23 @@ class ShipmentBookingService {
                 documents: freshShipment.documents || []
             };
 
-            // Document Processing: Move base64 to File Storage
-            if (carrierResult.labelUrl) {
-                const doc = await CarrierDocumentService.uploadDocument('label', carrierResult.labelUrl, 'pdf', freshShipment.trackingNumber);
-                updateData.documents.push(doc);
-                updateData.labelUrl = doc.url;
-            }
-            if (carrierResult.invoiceUrl) {
-                const doc = await CarrierDocumentService.uploadDocument('invoice', carrierResult.invoiceUrl, 'pdf', freshShipment.trackingNumber);
-                updateData.documents.push(doc);
-                updateData.invoiceUrl = doc.url;
-            }
-            if (carrierResult.awbUrl) {
-                const doc = await CarrierDocumentService.uploadDocument('awb', carrierResult.awbUrl, 'pdf', freshShipment.trackingNumber);
-                updateData.documents.push(doc);
-                updateData.awbUrl = doc.url;
-            }
+            // Document Processing: non-fatal upload (booking should succeed even if document storage fails)
+            const tryAttachDocument = async (type, sourceValue, targetField) => {
+                if (!sourceValue) return;
+                try {
+                    const doc = await CarrierDocumentService.uploadDocument(type, sourceValue, 'pdf', freshShipment.trackingNumber);
+                    updateData.documents.push(doc);
+                    updateData[targetField] = doc.url;
+                } catch (docError) {
+                    logger.warn(`Document upload skipped for ${freshShipment.trackingNumber} (${type}): ${docError.message}`);
+                    // Keep original provider value as fallback so operations can still access it.
+                    updateData[targetField] = updateData[targetField] || sourceValue;
+                }
+            };
+
+            await tryAttachDocument('label', carrierResult.labelUrl, 'labelUrl');
+            await tryAttachDocument('invoice', carrierResult.invoiceUrl, 'invoiceUrl');
+            await tryAttachDocument('awb', carrierResult.awbUrl, 'awbUrl');
 
             // Update in DB
             const finalizedShipment = await prisma.shipment.update({
