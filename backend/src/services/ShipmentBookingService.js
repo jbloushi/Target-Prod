@@ -168,7 +168,12 @@ class ShipmentBookingService {
                     description: `Charge for ${finalizedShipment.trackingNumber}`,
                     reference: finalizedShipment.trackingNumber,
                     createdBy: payingUser?.id,
-                    metadata: { attemptId }
+                    metadata: {
+                        attemptId,
+                        carrierCode: finalizedShipment.carrierCode,
+                        currency: finalizedShipment.currency || finalizedShipment.pricingSnapshot?.currency || 'KWD',
+                        fixedFeeApplied: finalizedShipment.carrierCode === 'OTE'
+                    }
                 });
             }
 
@@ -264,10 +269,13 @@ class ShipmentBookingService {
         const selectedQuote = quotes.find((q) => q.serviceCode === shipment.serviceCode) || quotes[0];
         const { markup, source } = PricingService.resolveMarkup(payingUser, organization, carrierCode);
 
+        const carrierPolicy = PricingService.resolveCarrierPricingPolicy(payingUser, carrierCode, selectedQuote.currency || shipment.currency || 'KWD');
+        const rateCurrency = selectedQuote.currency || carrierPolicy.currency || shipment.currency || 'KWD';
+        const carrierRate = PricingService.applyCarrierBasePricePolicy(Number(selectedQuote.totalPrice || 0), payingUser, carrierCode);
         const snapshot = PricingService.createSnapshot(
-            Number(selectedQuote.totalPrice || 0),
+            carrierRate,
             markup,
-            selectedQuote.currency || shipment.currency || 'KWD',
+            rateCurrency,
             source
         );
 

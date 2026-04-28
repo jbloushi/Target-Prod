@@ -230,7 +230,10 @@ exports.updateShipment = async (req, res) => {
             const selected = quotes.find(q => q.serviceCode === shipment.serviceCode) || quotes[0];
             const { markup, source } = PricingService.resolveMarkup(shipment.user, shipment.user.organization, (tempState.carrierCode || 'DGR').toUpperCase());
 
-            finalSnapshot = PricingService.createSnapshot(Number(selected.totalPrice), markup, selected.currency || 'KWD', source);
+            const ratingCarrier = (tempState.carrierCode || 'DGR').toUpperCase();
+            const policy = PricingService.resolveCarrierPricingPolicy(shipment.user, ratingCarrier, selected.currency || 'KWD');
+            const carrierRate = PricingService.applyCarrierBasePricePolicy(Number(selected.totalPrice), shipment.user, ratingCarrier);
+            finalSnapshot = PricingService.createSnapshot(carrierRate, markup, selected.currency || policy.currency || 'KWD', source);
             finalPrice = Number(finalSnapshot.totalPrice);
 
             // Audit Price Difference

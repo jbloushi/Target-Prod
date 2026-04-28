@@ -10,6 +10,43 @@ const crypto = require('crypto');
 const { evaluate } = require('mathjs');
 
 class PricingService {
+    static resolveCarrierPricingPolicy(user, carrierCode, fallbackCurrency = 'KWD') {
+        const normalizedCarrier = String(carrierCode || '').toUpperCase();
+        const byCarrier = user?.carrierConfig?.pricingByCarrier || user?.agentPolicy?.carrierPricing || {};
+        const carrierPolicy = byCarrier?.[normalizedCarrier] || {};
+
+        const defaultPolicy = normalizedCarrier === 'OTE'
+            ? { fixedFee: 25, currency: 'AED' }
+            : { fixedFee: null, currency: fallbackCurrency || 'KWD' };
+
+        const parsedFixedFee = Number(carrierPolicy.fixedFee);
+        const fixedFee = Number.isFinite(parsedFixedFee) && parsedFixedFee >= 0
+            ? parsedFixedFee
+            : defaultPolicy.fixedFee;
+
+        const policyCurrency = String(carrierPolicy.currency || defaultPolicy.currency || fallbackCurrency || 'KWD')
+            .trim()
+            .toUpperCase()
+            .substring(0, 3);
+
+        return {
+            fixedFee,
+            currency: policyCurrency || 'KWD'
+        };
+    }
+
+    static applyCarrierBasePricePolicy(basePrice, user, carrierCode) {
+        const normalizedCarrier = String(carrierCode || '').toUpperCase();
+        const normalizedBasePrice = Number(basePrice || 0);
+
+        if (normalizedCarrier !== 'OTE') return normalizedBasePrice;
+
+        const policy = this.resolveCarrierPricingPolicy(user, normalizedCarrier, 'AED');
+        if (policy.fixedFee === null || policy.fixedFee === undefined) return normalizedBasePrice;
+
+        return Number(policy.fixedFee);
+    }
+
     static normalizeMarkupConfig(markup) {
         if (!markup || typeof markup !== 'object') return null;
         if (!markup.type) return null;

@@ -686,6 +686,7 @@ const ShipmentWizardV2 = () => {
     const [packageMarks,    setPackageMarks]    = useState('');
     const [shipmentType,    setShipmentType]    = useState('package');
     const [plannedDate,     setPlannedDate]     = useState(new Date().toISOString().split('T')[0]);
+    const defaultCurrencyForCarrier = (carrierCode) => (String(carrierCode || '').toUpperCase() === 'OTE' ? 'AED' : 'KWD');
     const [currency,        setCurrency]        = useState('KWD');
     const [billingCurrency, setBillingCurrency] = useState('KWD');
     const [insuredValue,    setInsuredValue]    = useState('');
@@ -750,15 +751,22 @@ const ShipmentWizardV2 = () => {
             .then(res => {
                 if (res.success && res.data?.length) {
                     setAvailableCarriers(res.data);
-                    setSelectedCarrier(res.data[0].code);
+                    const initialCarrier = res.data[0].code;
+                    setSelectedCarrier(initialCarrier);
+                    const defaultCurrency = defaultCurrencyForCarrier(initialCarrier);
+                    setCurrency(defaultCurrency);
+                    setBillingCurrency(defaultCurrency);
                 }
             })
             .catch(() => {});
     }, [isStaff, selectedClient]);
 
     const handleCarrierChange = (code) => {
+        const defaultCurrency = defaultCurrencyForCarrier(code);
         setSelectedCarrier(code);
-        setSelectedService({ serviceName: '', serviceCode: '', totalPrice: '0', currency });
+        setCurrency(defaultCurrency);
+        setBillingCurrency(defaultCurrency);
+        setSelectedService({ serviceName: '', serviceCode: '', totalPrice: '0', currency: defaultCurrency });
         setAvailableServices([]);
         if (code === 'MANUAL') {
             enqueueSnackbar('Switched to Manual Shipment', { variant: 'info' });
@@ -779,7 +787,7 @@ const ShipmentWizardV2 = () => {
             deliveryDate:        s.deliveryDate,
         });
         setAvailableOptionalServices(s.optionalServices || []);
-        setBillingCurrency(s.billingCurrency || s.currency || 'KWD');
+        setBillingCurrency(s.billingCurrency || s.currency || defaultCurrencyForCarrier(selectedCarrier));
     };
 
     const fetchRates = async () => {
