@@ -43,8 +43,20 @@ const SAFE_ERROR_PATTERNS = [
  * @param {number} [defaultStatus=500] - Default HTTP status if error is unrecognized
  */
 exports.handleControllerError = (res, error, context = 'Operation', defaultStatus = 500) => {
-    // Always log the full error server-side
-    logger.error(`${context} failed:`, { message: error.message, stack: error.stack });
+    // Always log the full error server-side.
+    // Use `errorMessage` (instead of `message`) to avoid duplicated/awkward
+    // `${context} failed: ${context} failed: ...` rendering in structured log formatters.
+    logger.error(`${context} failed:`, { errorMessage: error.message, stack: error.stack });
+
+    // Carrier booking failures should surface actionable details to frontend operations UI.
+    if (['Carrier booking', 'DHL submission'].includes(context) && error?.message) {
+        return res.status(error.statusCode || 500).json({ success: false, error: error.message });
+    }
+
+    // Explicit provider errors are already normalized/sanitized upstream (carrier adapters).
+    if (error?.isProviderError && error?.message) {
+        return res.status(error.statusCode || 502).json({ success: false, error: error.message });
+    }
 
     // Allow known, intentionally created user-facing errors
     const isSafe = SAFE_ERROR_PATTERNS.some(pattern => 

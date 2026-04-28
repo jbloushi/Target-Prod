@@ -39,6 +39,15 @@ DATABASE_URL="mysql://USER:PASSWORD@127.0.0.1:3306/target_logistics"
 JWT_SECRET="replace-with-a-long-secret"
 JWT_EXPIRES_IN=7d
 CORS_ORIGIN=http://localhost:3000
+LOGESTECHS_SHIPMENT_BASE_URL=https://apisv2.logestechs.com/api
+LOGESTECHS_FULFILLMENT_BASE_URL=https://apisv5.logestechs.com/api
+LOGESTECHS_COMPANY_ID=
+LOGESTECHS_USERNAME=
+LOGESTECHS_PASSWORD=
+# Optional shipment auth overrides
+LOGESTECHS_EMAIL=
+LOGESTECHS_SHIPMENT_EMAIL=
+LOGESTECHS_SHIPMENT_PASSWORD=
 ADMIN_ORGANIZATION_NAME=Target Logistics
 ADMIN_NAME=System Admin
 ADMIN_EMAIL=admin@target.local

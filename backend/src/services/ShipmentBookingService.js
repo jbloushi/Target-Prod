@@ -94,7 +94,16 @@ class ShipmentBookingService {
                 payload.optionalServices = optionalServiceCodes;
             }
 
-            carrierResult = await adapter.createShipment(payload, shipment.serviceCode);
+            try {
+                carrierResult = await adapter.createShipment(payload, shipment.serviceCode);
+            } catch (error) {
+                if (error?.code === 'DUPLICATE_SHIPMENT') {
+                    logger.warn(`Duplicate carrier shipment detected for ${shipment.trackingNumber}; attempting recovery via getStatus/getLabel.`);
+                    carrierResult = await this.recoverExistingCarrierShipment({ adapter, shipment, fallbackError: error });
+                } else {
+                    throw error;
+                }
+            }
         } catch (error) {
             await this.handleBookingFailure(shipment.id, attemptId, error.message);
             throw error;
@@ -120,17 +129,26 @@ class ShipmentBookingService {
                 documents: freshShipment.documents || []
             };
 
-            // Document Processing: Move base64 to File Storage
-            if (carrierResult.labelUrl) {
-                const doc = await CarrierDocumentService.uploadDocument('label', carrierResult.labelUrl, 'pdf', freshShipment.trackingNumber);
-                updateData.documents.push(doc);
-                updateData.labelUrl = doc.url;
-            }
-            if (carrierResult.invoiceUrl) {
-                const doc = await CarrierDocumentService.uploadDocument('invoice', carrierResult.invoiceUrl, 'pdf', freshShipment.trackingNumber);
-                updateData.documents.push(doc);
-                updateData.invoiceUrl = doc.url;
-            }
+            // Document Processing: non-fatal upload (booking should succeed even if document storage fails)
+            const tryAttachDocument = async (type, sourceValue, targetField) => {
+                if (!sourceValue) return;
+                try {
+                    const doc = await CarrierDocumentService.uploadDocument(type, sourceValue, 'pdf', freshShipment.trackingNumber);
+                    updateData.documents.push(doc);
+                    updateData[targetField] = doc.url;
+                } catch (docError) {
+                    logger.warn(`Document upload skipped for ${freshShipment.trackingNumber} (${type}): ${docError.message}`);
+                    // Only persist safe URL-like fallbacks; avoid writing raw/base64 blobs into URL DB fields.
+                    const sourceText = typeof sourceValue === 'string' ? sourceValue.trim() : '';
+                    if (/^https?:\/\//i.test(sourceText)) {
+                        updateData[targetField] = updateData[targetField] || sourceText;
+                    }
+                }
+            };
+
+            await tryAttachDocument('label', carrierResult.labelUrl, 'labelUrl');
+            await tryAttachDocument('invoice', carrierResult.invoiceUrl, 'invoiceUrl');
+            await tryAttachDocument('awb', carrierResult.awbUrl, 'awbUrl');
 
             // Update in DB
             const finalizedShipment = await prisma.shipment.update({
@@ -150,7 +168,12 @@ class ShipmentBookingService {
                     description: `Charge for ${finalizedShipment.trackingNumber}`,
                     reference: finalizedShipment.trackingNumber,
                     createdBy: payingUser?.id,
-                    metadata: { attemptId }
+                    metadata: {
+                        attemptId,
+                        carrierCode: finalizedShipment.carrierCode,
+                        currency: finalizedShipment.currency || finalizedShipment.pricingSnapshot?.currency || 'KWD',
+                        fixedFeeApplied: finalizedShipment.carrierCode === 'OTE'
+                    }
                 });
             }
 
@@ -160,6 +183,39 @@ class ShipmentBookingService {
             logger.error('Commit Failure After Carrier Success:', commitError);
             await this.handleBookingFailure(shipment.id, attemptId, `Commit Failed: ${commitError.message}`);
             throw new Error(`Critical: Carrier booked shipment, locally updated failed. Manual intervention required.`);
+        }
+    }
+
+    async recoverExistingCarrierShipment({ adapter, shipment, fallbackError }) {
+        try {
+            const status = await adapter.getStatus({ barcode: shipment.trackingNumber });
+            let normalized = adapter._normalizeShipmentResponse
+                ? adapter._normalizeShipmentResponse(status || {})
+                : {
+                    carrierShipmentId: status?.id || status?.shipmentId || status?.packageId || shipment.trackingNumber,
+                    trackingNumber: status?.barcode || shipment.trackingNumber,
+                    rawResponse: status
+                };
+
+            const statusId = status?.id || status?.shipmentId || status?.packageId;
+            if (!normalized.labelUrl && statusId && typeof adapter.getLabel === 'function') {
+                try {
+                    const label = await adapter.getLabel([statusId]);
+                    normalized = { ...normalized, labelUrl: label };
+                } catch (labelError) {
+                    logger.warn(`Failed to recover OTE label for existing shipment ${shipment.trackingNumber}: ${labelError.message}`);
+                }
+            }
+
+            return {
+                ...normalized,
+                trackingNumber: normalized?.trackingNumber || shipment.trackingNumber,
+                carrierShipmentId: normalized?.carrierShipmentId || statusId || shipment.trackingNumber,
+                recoveredFromDuplicate: true,
+                recoveryMessage: fallbackError?.message
+            };
+        } catch (recoveryError) {
+            throw fallbackError;
         }
     }
 
@@ -213,10 +269,13 @@ class ShipmentBookingService {
         const selectedQuote = quotes.find((q) => q.serviceCode === shipment.serviceCode) || quotes[0];
         const { markup, source } = PricingService.resolveMarkup(payingUser, organization, carrierCode);
 
+        const carrierPolicy = PricingService.resolveCarrierPricingPolicy(payingUser, carrierCode, selectedQuote.currency || shipment.currency || 'KWD');
+        const rateCurrency = selectedQuote.currency || carrierPolicy.currency || shipment.currency || 'KWD';
+        const carrierRate = PricingService.applyCarrierBasePricePolicy(Number(selectedQuote.totalPrice || 0), payingUser, carrierCode);
         const snapshot = PricingService.createSnapshot(
-            Number(selectedQuote.totalPrice || 0),
+            carrierRate,
             markup,
-            selectedQuote.currency || shipment.currency || 'KWD',
+            rateCurrency,
             source
         );
 

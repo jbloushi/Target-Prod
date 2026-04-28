@@ -200,6 +200,8 @@ class ShipmentDraftService {
             throw new Error(`Service ${serviceCode} not available from ${carrierCode}`);
         }
 
+        const carrierPricingPolicy = PricingService.resolveCarrierPricingPolicy(user, carrierCode, quote.currency || data.currency || 'KWD');
+        const quoteCurrency = quote.currency || carrierPricingPolicy.currency || 'KWD';
         const selectedOptionalCodes = new Set(
             (data.optionalServiceCodes || [])
                 .map(code => String(code))
@@ -210,7 +212,7 @@ class ShipmentDraftService {
             .filter(service => selectedOptionalCodes.has(service.serviceCode))
             .map(service => {
                 const carrierAmount = Number(PricingService.normalizeAmount(service.totalPrice || 0).toFixed(3));
-                const currency = service.currency || quote.currency || 'KWD';
+                const currency = service.currency || quoteCurrency || 'KWD';
                 const { markup: optionalMarkup, source: optionalMarkupSource } =
                     PricingService.resolveOptionalServiceMarkup(user, user.organization, carrierCode, service.serviceCode);
 
@@ -244,14 +246,15 @@ class ShipmentDraftService {
 
         // 3. Resolve Markup & Create Snapshot
         const { markup, source } = PricingService.resolveMarkup(user, user.organization, carrierCode);
+        const baseCarrierRate = PricingService.applyCarrierBasePricePolicy(quote.totalPrice, user, carrierCode);
         const snapshot = PricingService.createSnapshot(
-            quote.totalPrice,
+            baseCarrierRate,
             markup,
-            quote.currency,
+            quoteCurrency,
             source
         );
-        snapshot.billingCurrency = quote.currency || 'KWD';
-        snapshot.declaredCurrency = data.currency || quote.currency || 'KWD';
+        snapshot.billingCurrency = quoteCurrency || 'KWD';
+        snapshot.declaredCurrency = data.currency || quoteCurrency || 'KWD';
 
         snapshot.optionalServices = optionalServices;
         snapshot.optionalServicesTotal = Number(optionalServicesTotal.toFixed(3));

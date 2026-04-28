@@ -63,6 +63,9 @@ const CARRIER_SERVICE_OPTIONS = {
     ],
     FEDEX: [
         { serviceCode: 'P', serviceName: 'FedEx Priority' }
+    ],
+    OTE: [
+        { serviceCode: 'STD', serviceName: 'OTE Standard' }
     ]
 };
 
@@ -152,7 +155,13 @@ const AdminUsersPage = () => {
         // Init Form Data
         const initialData = user ? { ...user } : {
             role: 'org_agent',
-            carrierConfig: { preferredCarrier: 'DGR', traderType: 'business' },
+            carrierConfig: {
+                preferredCarrier: 'DGR',
+                traderType: 'business',
+                pricingByCarrier: {
+                    OTE: { fixedFee: 25, currency: 'AED' }
+                }
+            },
             shippingAccess: { mode: 'carrier', carrierCode: 'DGR', serviceCode: '', serviceName: 'Any Available Service' },
             markup: { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 },
             optionalServiceMarkup: {
@@ -162,6 +171,10 @@ const AdminUsersPage = () => {
 
         // Ensure nested objects
         if (!initialData.carrierConfig) initialData.carrierConfig = { preferredCarrier: 'DGR', traderType: 'business' };
+        if (!initialData.carrierConfig.pricingByCarrier) initialData.carrierConfig.pricingByCarrier = {};
+        if (!initialData.carrierConfig.pricingByCarrier.OTE) {
+            initialData.carrierConfig.pricingByCarrier.OTE = { fixedFee: 25, currency: 'AED' };
+        }
         initialData.shippingAccess = normalizeShippingAccess(initialData);
         if (!initialData.markup) initialData.markup = { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 };
         if (!initialData.optionalServiceMarkup) {
@@ -221,6 +234,13 @@ const AdminUsersPage = () => {
                         : 'Any Available Service'
                 };
             }
+            if (!payload.carrierConfig) payload.carrierConfig = {};
+            if (!payload.carrierConfig.pricingByCarrier) payload.carrierConfig.pricingByCarrier = {};
+            const currentOtePricing = payload.carrierConfig.pricingByCarrier.OTE || {};
+            payload.carrierConfig.pricingByCarrier.OTE = {
+                fixedFee: Number(currentOtePricing.fixedFee || 25),
+                currency: String(currentOtePricing.currency || 'AED').toUpperCase().slice(0, 3)
+            };
 
             if (editingUser?.id) {
                 await userService.updateUser(editingUser.id, payload);
@@ -599,6 +619,45 @@ const AdminUsersPage = () => {
                                         value={formData.carrierConfig?.vatNo || ''}
                                         onChange={e => updateNested('carrierConfig', 'vatNo', e.target.value)}
                                     />
+                                    <Input
+                                        label="OTE Fixed Fee"
+                                        type="number"
+                                        value={formData.carrierConfig?.pricingByCarrier?.OTE?.fixedFee ?? 25}
+                                        onChange={e => setFormData(prev => ({
+                                            ...prev,
+                                            carrierConfig: {
+                                                ...(prev.carrierConfig || {}),
+                                                pricingByCarrier: {
+                                                    ...(prev.carrierConfig?.pricingByCarrier || {}),
+                                                    OTE: {
+                                                        ...(prev.carrierConfig?.pricingByCarrier?.OTE || {}),
+                                                        fixedFee: e.target.value
+                                                    }
+                                                }
+                                            }
+                                        }))}
+                                    />
+                                    <Select
+                                        label="OTE Billing Currency"
+                                        value={(formData.carrierConfig?.pricingByCarrier?.OTE?.currency || 'AED').toUpperCase()}
+                                        onChange={e => setFormData(prev => ({
+                                            ...prev,
+                                            carrierConfig: {
+                                                ...(prev.carrierConfig || {}),
+                                                pricingByCarrier: {
+                                                    ...(prev.carrierConfig?.pricingByCarrier || {}),
+                                                    OTE: {
+                                                        ...(prev.carrierConfig?.pricingByCarrier?.OTE || {}),
+                                                        currency: e.target.value
+                                                    }
+                                                }
+                                            }
+                                        }))}
+                                    >
+                                        <option value="AED">AED</option>
+                                        <option value="KWD">KWD</option>
+                                        <option value="USD">USD</option>
+                                    </Select>
                                 </div>
                             </Card>
                         </div>
