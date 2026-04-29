@@ -73,19 +73,27 @@ class ShipmentDraftService {
             }
         } else {
             // Fallback for manual shipments / other carriers
-            const { markup, source } = PricingService.resolveMarkup(targetUser, targetUser.organization, isManualShipment ? 'MANUAL' : (cleanData.carrierCode || 'DGR'));
-            snapshot = PricingService.createSnapshot(
-                data.costPrice || data.price || data.totalPrice || 0,
-                markup,
-                data.currency || 'KWD',
-                source
-            );
-            // Override total if provided manually (TRUSTED sources only)
-            if (data.price || data.totalPrice) snapshot.totalPrice = Number(data.price || data.totalPrice);
+            // Use the already-resolved carrierCode (which incorporates assignedAccess), not raw cleanData.carrierCode
+            const effectiveCarrier = isManualShipment ? 'MANUAL' : (carrierCode || 'DGR');
+            const { markup, source } = PricingService.resolveMarkup(targetUser, targetUser.organization, effectiveCarrier);
+
+            // Fixed-rate carriers: fee and billing currency always come from user policy, never the request
+            const isFixedRateCarrier = ['OTE', 'LOGESTECHS'].includes(String(effectiveCarrier).toUpperCase());
+            let basePrice = data.costPrice || data.price || data.totalPrice || 0;
+            let snapshotCurrency = data.currency || 'KWD';
+            if (isFixedRateCarrier) {
+                const carrierPolicy = PricingService.resolveCarrierPricingPolicy(targetUser, effectiveCarrier, 'AED');
+                if (carrierPolicy.fixedFee) basePrice = carrierPolicy.fixedFee;
+                snapshotCurrency = carrierPolicy.currency || 'AED';
+            }
+
+            snapshot = PricingService.createSnapshot(basePrice, markup, snapshotCurrency, source);
+            // Override total if provided manually (TRUSTED sources only — not for fixed-rate carriers)
+            if (!isFixedRateCarrier && (data.price || data.totalPrice)) snapshot.totalPrice = Number(data.price || data.totalPrice);
         }
 
-        // Helper to generate tracking number
-        const trackingNumber = data.trackingNumber || (isManualShipment ? generateManualTrackingNumber() : generateDraftTrackingNumber());
+        // Helper to generate tracking number — prefix matches the carrier (TRG for OTE, DGR for DHL, MNL for manual)
+        const trackingNumber = data.trackingNumber || (isManualShipment ? generateManualTrackingNumber() : generateDraftTrackingNumber(carrierCode || 'DGR'));
         const estimatedDelivery = data.estimatedDelivery || new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
         const requestedStatus = cleanData.status || (isManualShipment ? 'draft' : 'ready_for_pickup');
         if (!SHIPMENT_STATUSES.includes(requestedStatus)) {
@@ -129,7 +137,7 @@ class ShipmentDraftService {
                 price: snapshot.totalPrice,
                 costPrice: snapshot.carrierRate,
                 markupAmount: snapshot.markup, // Mapped to markupAmount natively
-                currency: cleanData.currency || snapshot.currency,
+                currency: snapshot.currency || cleanData.currency,
                 pricingSnapshot: snapshot,
                 
                 // Relations

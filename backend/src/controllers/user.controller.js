@@ -232,13 +232,14 @@ exports.updateProfile = async (req, res) => {
 exports.updateUser = async (req, res) => {
     try {
         const userId = req.params.id;
-        const { name, email, phone, role, organizationId, organization, carrierConfig, markup, optionalServiceMarkup, creditLimit, shippingAccess } = req.body;
+        const { name, email, phone, role, organizationId, organization, carrierConfig, markup, optionalServiceMarkup, creditLimit, shippingAccess, password } = req.body;
 
         const targetOrgId = organizationId || organization;
 
         const updateData = {};
         if (name !== undefined) updateData.name = name;
         if (email !== undefined) updateData.email = email.toLowerCase();
+        if (password) updateData.password = await hashPassword(password);
         if (phone !== undefined) updateData.phone = phone;
         if (role !== undefined) updateData.role = role;
         const existingUser = await prisma.user.findUnique({ where: { id: userId }, include: { organization: true } });

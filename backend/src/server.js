@@ -144,8 +144,10 @@ const financeRoutes = require('./routes/finance.routes');
 const organizationRoutes = require('./routes/organization.routes');
 
 const shipmentPublicRoutes = require('./routes/shipment-public.routes');
+const logestechsWebhookRoutes = require('./routes/logestechs-webhook.routes');
 
 // Standard API Route Mounting
+app.use('/api/webhooks/logestechs', logestechsWebhookRoutes);
 app.use('/api/public/shipments', shipmentPublicRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/finance', financeRoutes);

@@ -493,10 +493,8 @@ const ShipmentDetailsPage = () => {
             try {
                 const accountingResponse = await financeService.getShipmentAccounting(shipmentId);
                 setAccounting(accountingResponse.data);
-                if (organizationId) {
-                    const paymentResponse = await financeService.listPayments(organizationId);
-                    setPayments(paymentResponse.data || []);
-                }
+                // allocations are already filtered by shipmentId inside getShipmentAccounting
+                setPayments(accountingResponse.data?.allocations || []);
             } catch (error) {
                 console.error('Failed to load shipment accounting:', error);
             }
@@ -509,6 +507,7 @@ const ShipmentDetailsPage = () => {
         if (!shipmentId) return;
         const accountingResponse = await financeService.getShipmentAccounting(shipmentId);
         setAccounting(accountingResponse.data);
+        setPayments(accountingResponse.data?.allocations || []);
     };
 
     const handleAllocatePayment = async () => {
@@ -922,6 +921,10 @@ const ShipmentDetailsPage = () => {
         status: fallbackRemainingBalance <= 0.001 && fallbackTotalCharge > 0 ? 'paid' : 'unpaid',
         allocations: []
     };
+    // Billing currency rule: OTE/LOGESTECHS = AED, everything else = KWD.
+    // Never derive from pricingSnapshot.currency or shipment.currency — those reflect declared value currency, not billing.
+    const _carrierUpper = (shipment.carrierCode || '').toUpperCase();
+    const billingCurrency = shipment.billingCurrency || (['OTE', 'LOGESTECHS'].includes(_carrierUpper) ? 'AED' : 'KWD');
 
     const publicTrackingUrl = `${window.location.origin}/track/${shipment.trackingNumber}`;
 
@@ -1520,16 +1523,16 @@ const ShipmentDetailsPage = () => {
                             <tbody>
                                 <tr>
                                     <td>Total Charge</td>
-                                    <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(accountingSummary.totalCharge || 0).toFixed(3)} {shipment.currency || 'KWD'}</td>
+                                    <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(accountingSummary.totalCharge || 0).toFixed(3)} {billingCurrency}</td>
                                 </tr>
                                 <tr>
                                     <td>Total Paid</td>
-                                    <td style={{ textAlign: 'right', color: 'var(--primary)', fontWeight: '800' }}>{Number(accountingSummary.totalPaid || 0).toFixed(3)} {shipment.currency || 'KWD'}</td>
+                                    <td style={{ textAlign: 'right', color: 'var(--primary)', fontWeight: '800' }}>{Number(accountingSummary.totalPaid || 0).toFixed(3)} {billingCurrency}</td>
                                 </tr>
                                 <tr>
                                     <td>Remaining</td>
                                     <td style={{ textAlign: 'right', color: accountingSummary.remainingBalance > 0 ? '#b31b25' : 'var(--primary)', fontWeight: '800' }}>
-                                        {Number(accountingSummary.remainingBalance || 0).toFixed(3)} {shipment.currency || 'KWD'}
+                                        {Number(accountingSummary.remainingBalance || 0).toFixed(3)} {billingCurrency}
                                     </td>
                                 </tr>
                                 <tr>
@@ -1565,7 +1568,7 @@ const ShipmentDetailsPage = () => {
                                         sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'var(--surface-container-low)' } }}
                                     />
                                     <TextField
-                                        label={`Amount (${shipment.currency || 'KWD'})`}
+                                        label={`Amount (${billingCurrency})`}
                                         type="number"
                                         value={allocationForm.amount}
                                         onChange={(e) => setAllocationForm({ ...allocationForm, amount: e.target.value })}
@@ -1592,15 +1595,18 @@ const ShipmentDetailsPage = () => {
                                             <circle cx="12" cy="12" r="10"></circle>
                                             <polyline points="12 6 12 12 16 14"></polyline>
                                         </svg>
-                                        Allocation History
+                                        Payment History
                                     </div>
                                 </CardHeader>
+                                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 12px', lineHeight: 1.5 }}>
+                                    Payments manually allocated to this shipment by staff. Each entry reduces the outstanding balance.
+                                </p>
                                 {payments.length > 0 ? (
                                     <Table>
                                         <thead>
                                             <tr>
                                                 <th>Date</th>
-                                                <th>Amount</th>
+                                                <th>Amount ({billingCurrency})</th>
                                                 <th>Status</th>
                                                 <th>Action</th>
                                             </tr>
@@ -1914,7 +1920,7 @@ const ShipmentDetailsPage = () => {
                                     </Grid>
                                     <Grid item xs={6}>
                                         <Typography variant="caption" display="block" color="text.secondary" sx={{ fontWeight: 700, mb: 0.5 }}>REVENUE EST.</Typography>
-                                        <Typography variant="body2" color="var(--primary)" fontWeight="800" sx={{ fontFamily: 'Manrope' }}>{Number(accountingSummary.totalCharge).toFixed(3)} KD</Typography>
+                                        <Typography variant="body2" color="var(--primary)" fontWeight="800" sx={{ fontFamily: 'Manrope' }}>{Number(accountingSummary.totalCharge).toFixed(3)} {billingCurrency}</Typography>
                                         <Typography variant="caption" color="text.secondary">{carrierCode}</Typography>
                                     </Grid>
                                 </Grid>

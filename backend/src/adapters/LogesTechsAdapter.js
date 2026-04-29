@@ -135,7 +135,8 @@ class LogesTechsAdapter extends CarrierAdapter {
             villageId: this._firstNonEmpty(address.villageId, address.districtId, address.village?.id),
             cityName: this._firstNonEmpty(this._safeText(address.cityName), this._safeText(address.city)),
             regionName: this._firstNonEmpty(this._safeText(address.regionName), this._safeText(address.state), this._safeText(address.province)),
-            villageName: this._firstNonEmpty(this._safeText(address.villageName), this._safeText(address.district)),
+            villageName: this._firstNonEmpty(this._safeText(address.villageName), this._safeText(address.district), this._safeText(address.area)),
+            countryCode: this._firstNonEmpty(this._safeText(address.countryCode), this._safeText(address.country)),
             nationalAddress: this._firstNonEmpty(address.nationalAddress)
         };
 
@@ -238,17 +239,23 @@ class LogesTechsAdapter extends CarrierAdapter {
 
 
     _normalizeShipmentResponse(raw = {}) {
-        // TODO(LogesTechs): Provider response schema is not fully documented; keep this mapper conservative.
+        const extractUrlString = (value) => {
+            if (!value) return null;
+            if (typeof value === 'string') return value || null;
+            if (typeof value === 'object') return value.url || value.link || value.href || null;
+            return null;
+        };
+
         const shipmentId = raw.id || raw.shipmentId || raw.packageId || raw.data?.id || raw.data?.shipmentId || null;
         const barcode = raw.barcode || raw.awb || raw.trackingNumber || raw.data?.barcode || null;
-        const labelUrl = raw.labelUrl || raw.label || raw?.data?.labelUrl || null;
-        const invoiceUrl = raw.invoiceUrl || raw?.data?.invoiceUrl || null;
-        const awbUrl = raw.awbUrl || raw?.data?.awbUrl || raw.awb || null;
+        const labelUrl = extractUrlString(raw.labelUrl || raw.label || raw?.data?.labelUrl);
+        const invoiceUrl = extractUrlString(raw.invoiceUrl || raw?.data?.invoiceUrl);
+        const awbUrl = extractUrlString(raw.awbUrl || raw?.data?.awbUrl || raw.awb);
 
         return {
             carrierCode: this.code,
-            carrierShipmentId: shipmentId,
-            trackingNumber: barcode || shipmentId,
+            carrierShipmentId: shipmentId != null ? String(shipmentId) : null,
+            trackingNumber: barcode || (shipmentId != null ? String(shipmentId) : null),
             barcode,
             labelUrl,
             invoiceUrl,
@@ -330,48 +337,103 @@ class LogesTechsAdapter extends CarrierAdapter {
         return null;
     }
 
+    _countryCodeToRegionPatterns(code) {
+        const map = {
+            KW: [/kuwait/i],
+            AE: [/united arab emirates/i, /\buae\b/i, /dubai/i, /abu dhabi/i, /sharjah/i],
+            SA: [/saudi arabia/i, /riyadh/i, /jeddah/i, /makkah/i, /mecca/i],
+            JO: [/jordan/i, /amman/i],
+            BH: [/bahrain/i],
+            QA: [/qatar/i],
+            OM: [/oman/i, /muscat/i],
+            EG: [/egypt/i, /cairo/i],
+            IQ: [/iraq/i],
+            LB: [/lebanon/i],
+            PS: [/palestine/i, /west bank/i, /gaza/i]
+        };
+        return map[String(code || '').toUpperCase()] || [];
+    }
+
+    _pickBestVillageMatch(rows, { searchTerm, countryCode }) {
+        if (!Array.isArray(rows) || rows.length === 0) return null;
+
+        const patterns = this._countryCodeToRegionPatterns(countryCode);
+        const inCountry = patterns.length > 0
+            ? rows.filter((r) => patterns.some((p) => p.test(String(r?.regionName || ''))))
+            : rows;
+
+        const candidates = inCountry.length > 0 ? inCountry : rows;
+
+        const search = this._safeString(searchTerm)?.toLowerCase();
+        if (search) {
+            const exact = candidates.find((r) => String(r?.englishName || r?.name || '').toLowerCase() === search);
+            if (exact) return exact;
+            const cityExact = candidates.find((r) => String(r?.cityName || '').toLowerCase() === search);
+            if (cityExact) return cityExact;
+        }
+        return candidates[0];
+    }
+
     async _enrichAddressWithVillageLookup(address = {}) {
         if (address.cityId && address.regionId && address.villageId) {
             return address;
         }
 
-        const search = this._firstNonEmpty(
+        const candidates = [
             address.villageName,
             address.cityName,
-            address.regionName,
-            address.addressLine1
-        );
+            address.regionName
+        ].map((v) => this._safeString(v)).filter((v) => v && v !== '.');
 
-        if (!search || search === '.') {
-            return address;
+        if (candidates.length === 0) return address;
+
+        for (const search of candidates) {
+            try {
+                const response = await this.shipmentClient.get('/addresses/villages', {
+                    headers: this._villageHeaders(),
+                    params: { search }
+                });
+
+                const rows = Array.isArray(response?.data)
+                    ? response.data
+                    : (response?.data?.items || response?.data?.data || []);
+
+                const match = this._pickBestVillageMatch(rows, {
+                    searchTerm: search,
+                    countryCode: address.countryCode
+                });
+
+                if (!match) continue;
+
+                logger.info('LogesTechs village lookup matched', {
+                    search,
+                    countryCode: address.countryCode,
+                    matchedId: match.id,
+                    matchedName: match.englishName || match.name,
+                    matchedRegion: match.regionName,
+                    cityId: match.cityId
+                });
+
+                return {
+                    ...address,
+                    villageId: address.villageId || match.villageId || match.id || match?.village?.id,
+                    cityId: address.cityId || match.cityId || match?.city?.id,
+                    regionId: address.regionId || match.regionId || match?.region?.id
+                };
+            } catch (error) {
+                logger.warn('LogesTechs address enrichment failed', {
+                    search,
+                    message: error?.message,
+                    statusCode: error?.response?.status
+                });
+            }
         }
 
-        try {
-            const response = await this.shipmentClient.get('/addresses/villages', {
-                headers: this._villageHeaders(),
-                params: { search }
-            });
-
-            const rows = Array.isArray(response?.data)
-                ? response.data
-                : (response?.data?.items || response?.data?.data || []);
-
-            const first = Array.isArray(rows) ? rows[0] : null;
-            if (!first) return address;
-
-            return {
-                ...address,
-                villageId: address.villageId || first.villageId || first.id || first?.village?.id,
-                cityId: address.cityId || first.cityId || first?.city?.id,
-                regionId: address.regionId || first.regionId || first?.region?.id
-            };
-        } catch (error) {
-            logger.warn('LogesTechs address enrichment failed', {
-                message: error?.message,
-                statusCode: error?.response?.status
-            });
-            return address;
-        }
+        logger.warn('LogesTechs village lookup yielded no match', {
+            countryCode: address.countryCode,
+            tried: candidates
+        });
+        return address;
     }
 
     _normalizeProviderError(error, operation) {
@@ -435,6 +497,16 @@ class LogesTechsAdapter extends CarrierAdapter {
         return [];
     }
 
+    _extractLabelUrl(labelResponse) {
+        if (!labelResponse) return null;
+        if (typeof labelResponse === 'string') return labelResponse || null;
+        if (typeof labelResponse === 'object') {
+            return labelResponse.url || labelResponse.link || labelResponse.href
+                || labelResponse.data?.url || labelResponse.data?.link || null;
+        }
+        return null;
+    }
+
     async createShipment(normalizedShipment = {}) {
         try {
             this._assertCredentials(['companyId']);
@@ -479,7 +551,27 @@ class LogesTechsAdapter extends CarrierAdapter {
                 headers: this._shipmentHeaders()
             });
 
-            return this._normalizeShipmentResponse(response.data);
+            const normalized = this._normalizeShipmentResponse(response.data);
+
+            // OTE createShipment response does not include a label/AWB URL.
+            // Always fetch the label PDF immediately after creation using the returned shipment ID.
+            const shipmentId = normalized.carrierShipmentId;
+            if (shipmentId) {
+                try {
+                    const labelResponse = await this.getLabel([Number(shipmentId)]);
+                    const labelUrl = this._extractLabelUrl(labelResponse);
+                    if (labelUrl) {
+                        normalized.labelUrl = labelUrl;
+                        normalized.awbUrl = labelUrl;
+                    } else {
+                        logger.warn(`OTE label fetch returned no URL for shipment ${shipmentId}`);
+                    }
+                } catch (labelError) {
+                    logger.warn(`OTE label fetch failed after createShipment for ${shipmentId}: ${labelError.message}`);
+                }
+            }
+
+            return normalized;
         } catch (error) {
             throw this._normalizeProviderError(error, 'createShipment');
         }

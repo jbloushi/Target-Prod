@@ -80,6 +80,30 @@ exports.getQuotes = async (req, res) => {
             });
         }
 
+        if (carrierCode === 'OTE' || carrierCode === 'LOGESTECHS') {
+            const policy = PricingService.resolveCarrierPricingPolicy(targetUser, carrierCode, req.body.currency || 'AED');
+            const basePrice = policy.fixedFee || 0;
+            if (!basePrice) {
+                return res.status(400).json({ success: false, error: 'OTE fixed rate is not configured for this user.' });
+            }
+            const calculation = PricingService.calculateFinalPrice(basePrice, markup);
+            return res.status(200).json({
+                success: true,
+                data: [{
+                    serviceName: 'OTE Standard',
+                    serviceCode: 'STD',
+                    carrier: 'OTE',
+                    totalPrice: Number(calculation.finalPrice.toFixed(3)),
+                    estimatedShipmentCost: Number(calculation.finalPrice.toFixed(3)),
+                    optionalServices: [],
+                    currency: policy.currency || 'AED',
+                    pricingPolicySource: policySource,
+                    basePrice,
+                    markupAmount: calculation.markupAmount
+                }]
+            });
+        }
+
         const carrier = CarrierFactory.getAdapter(carrierCode);
         const rawQuotes = await carrier.getRates({ ...req.body, carrierCode, serviceCode });
         const visibleQuotes = serviceCode

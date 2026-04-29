@@ -16,10 +16,23 @@ exports.generateTrackingNumber = () => {
  * Generates a draft tracking number prefix for internal use.
  * @returns {string} Draft Tracking Number
  */
-exports.generateDraftTrackingNumber = () => {
-    return `DGR-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+const CARRIER_PREFIX_MAP = {
+    DGR: 'DGR',
+    DHL: 'DGR',
+    OTE: 'TRG',
+    LOGESTECHS: 'TRG',
+    ARAMEX: 'ARX',
+    FEDEX: 'FDX',
+    MANUAL: 'MNL'
+};
+
+const randomSuffix = () => Math.random().toString(36).substring(2, 10).toUpperCase();
+
+exports.generateDraftTrackingNumber = (carrierCode = 'DGR') => {
+    const prefix = CARRIER_PREFIX_MAP[String(carrierCode).toUpperCase()] || 'DGR';
+    return `${prefix}-${randomSuffix()}`;
 };
 
 exports.generateManualTrackingNumber = () => {
-    return `MAN-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+    return `MNL-${randomSuffix()}`;
 };

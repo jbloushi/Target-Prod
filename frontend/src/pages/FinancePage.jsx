@@ -738,10 +738,10 @@ const FinancePage = () => {
                                                     </ItemInfo>
                                                     <div style={{ textAlign: 'right' }}>
                                                         <div style={{ fontWeight: 800, fontSize: '15px' }}>
-                                                            {fmtKD(s.paid ? 0 : (s.remainingBalance !== undefined ? s.remainingBalance : (parseFloat(s.pricingSnapshot?.totalPrice || s.price || 0) - parseFloat(s.totalPaid || 0))))} KD
+                                                            {fmtKD(s.paid ? 0 : (s.remainingBalance !== undefined ? s.remainingBalance : (parseFloat(s.pricingSnapshot?.totalPrice || s.price || 0) - parseFloat(s.totalPaid || 0))))} {['OTE','LOGESTECHS'].includes((s.carrierCode||'').toUpperCase()) ? 'AED' : 'KWD'}
                                                         </div>
                                                         <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
-                                                            Total: {fmtKD(s.pricingSnapshot?.totalPrice || s.price || 0)} KD
+                                                            Total: {fmtKD(s.pricingSnapshot?.totalPrice || s.price || 0)} {['OTE','LOGESTECHS'].includes((s.carrierCode||'').toUpperCase()) ? 'AED' : 'KWD'}
                                                         </div>
                                                         <div style={{
                                                             fontSize: '10px',

@@ -125,7 +125,7 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
             where: { trackingNumber },
             include: {
                 user: {
-                    select: { id: true, name: true, email: true, role: true }
+                    select: { id: true, name: true, email: true, role: true, carrierConfig: true, agentPolicy: true }
                 },
                 organization: {
                     select: { id: true, name: true }
@@ -160,6 +160,18 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
             });
             shipment.history = updates.history;
             shipment.status = updates.status;
+        }
+
+        // Resolve authoritative billing currency — for fixed-rate carriers (OTE/LOGESTECHS) the
+        // declared/items currency on the shipment is irrelevant; billing is always in the carrier policy currency.
+        const carrierCodeUpper = String(shipment.carrierCode || '').toUpperCase();
+        const isFixedRateCarrier = ['OTE', 'LOGESTECHS'].includes(carrierCodeUpper);
+        if (isFixedRateCarrier && shipment.user) {
+            const PricingService = require('../services/pricing.service');
+            const carrierPolicy = PricingService.resolveCarrierPricingPolicy(shipment.user, carrierCodeUpper, 'AED');
+            shipment.billingCurrency = carrierPolicy.currency || 'AED';
+        } else {
+            shipment.billingCurrency = shipment.pricingSnapshot?.currency || shipment.currency || 'KWD';
         }
 
         res.status(200).json({ success: true, data: shipment });

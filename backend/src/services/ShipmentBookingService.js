@@ -130,18 +130,23 @@ class ShipmentBookingService {
             };
 
             // Document Processing: non-fatal upload (booking should succeed even if document storage fails)
+            const resolveUrlString = (value) => {
+                if (!value) return null;
+                if (typeof value === 'string') return value;
+                if (typeof value === 'object') return value.url || value.link || value.href || null;
+                return null;
+            };
             const tryAttachDocument = async (type, sourceValue, targetField) => {
-                if (!sourceValue) return;
+                const resolvedUrl = resolveUrlString(sourceValue);
+                if (!resolvedUrl) return;
                 try {
-                    const doc = await CarrierDocumentService.uploadDocument(type, sourceValue, 'pdf', freshShipment.trackingNumber);
-                    updateData.documents.push(doc);
-                    updateData[targetField] = doc.url;
+                    const doc = await CarrierDocumentService.uploadDocument(type, resolvedUrl, 'pdf', freshShipment.trackingNumber);
+                    updateData.documents.push({ ...doc, url: resolveUrlString(doc.url) || doc.url });
+                    updateData[targetField] = resolveUrlString(doc.url) || null;
                 } catch (docError) {
                     logger.warn(`Document upload skipped for ${freshShipment.trackingNumber} (${type}): ${docError.message}`);
-                    // Only persist safe URL-like fallbacks; avoid writing raw/base64 blobs into URL DB fields.
-                    const sourceText = typeof sourceValue === 'string' ? sourceValue.trim() : '';
-                    if (/^https?:\/\//i.test(sourceText)) {
-                        updateData[targetField] = updateData[targetField] || sourceText;
+                    if (/^https?:\/\//i.test(resolvedUrl)) {
+                        updateData[targetField] = updateData[targetField] || resolvedUrl;
                     }
                 }
             };
@@ -171,7 +176,7 @@ class ShipmentBookingService {
                     metadata: {
                         attemptId,
                         carrierCode: finalizedShipment.carrierCode,
-                        currency: finalizedShipment.currency || finalizedShipment.pricingSnapshot?.currency || 'KWD',
+                        currency: finalizedShipment.pricingSnapshot?.currency || finalizedShipment.currency || 'KWD',
                         fixedFeeApplied: finalizedShipment.carrierCode === 'OTE'
                     }
                 });
@@ -261,17 +266,27 @@ class ShipmentBookingService {
      */
     async refreshPricingSnapshotForBooking({ shipment, carrierCode, payingUser, organization }) {
         const { Decimal } = require('decimal.js');
-        const adapter = CarrierFactory.getAdapter(carrierCode);
-        const quotes = await adapter.getRates(this.mapToCarrierPayload(shipment));
-
-        if (!Array.isArray(quotes) || quotes.length === 0) throw new Error('No valid rates available for refresh.');
-
-        const selectedQuote = quotes.find((q) => q.serviceCode === shipment.serviceCode) || quotes[0];
         const { markup, source } = PricingService.resolveMarkup(payingUser, organization, carrierCode);
 
-        const carrierPolicy = PricingService.resolveCarrierPricingPolicy(payingUser, carrierCode, selectedQuote.currency || shipment.currency || 'KWD');
-        const rateCurrency = selectedQuote.currency || carrierPolicy.currency || shipment.currency || 'KWD';
-        const carrierRate = PricingService.applyCarrierBasePricePolicy(Number(selectedQuote.totalPrice || 0), payingUser, carrierCode);
+        // Fixed-rate carriers (OTE/LOGESTECHS) have no live rating API — derive rate from user policy
+        const normalizedCarrier = String(carrierCode).toUpperCase();
+        let rateCurrency, carrierRate;
+        if (normalizedCarrier === 'OTE' || normalizedCarrier === 'LOGESTECHS') {
+            const carrierPolicy = PricingService.resolveCarrierPricingPolicy(payingUser, normalizedCarrier, 'AED');
+            rateCurrency = carrierPolicy.currency || 'AED';
+            carrierRate = carrierPolicy.fixedFee || 0;
+            if (!carrierRate) throw new Error(`${normalizedCarrier} fixed rate is not configured for this user.`);
+        } else {
+            const adapter = CarrierFactory.getAdapter(carrierCode);
+            const quotes = await adapter.getRates(this.mapToCarrierPayload(shipment));
+
+            if (!Array.isArray(quotes) || quotes.length === 0) throw new Error('No valid rates available for refresh.');
+
+            const selectedQuote = quotes.find((q) => q.serviceCode === shipment.serviceCode) || quotes[0];
+            const carrierPolicy = PricingService.resolveCarrierPricingPolicy(payingUser, carrierCode, selectedQuote.currency || shipment.currency || 'KWD');
+            rateCurrency = selectedQuote.currency || carrierPolicy.currency || shipment.currency || 'KWD';
+            carrierRate = PricingService.applyCarrierBasePricePolicy(Number(selectedQuote.totalPrice || 0), payingUser, carrierCode);
+        }
         const snapshot = PricingService.createSnapshot(
             carrierRate,
             markup,

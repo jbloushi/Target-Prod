@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { useSnackbar } from 'notistack';
 import { userService, organizationService, shipmentService } from '../services/api';
@@ -47,6 +47,12 @@ const ActionButton = styled.button`
     &:hover { color: var(--text-primary); transform: scale(1.1); }
 `;
 
+const EmptyState = styled.div`
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--text-secondary);
+`;
+
 const CARRIER_SERVICE_OPTIONS = {
     DGR: [
         { serviceCode: 'P', serviceName: 'DHL Express Worldwide' },
@@ -66,8 +72,13 @@ const CARRIER_SERVICE_OPTIONS = {
     ],
     OTE: [
         { serviceCode: 'STD', serviceName: 'OTE Standard' }
+    ],
+    LOGESTECHS: [
+        { serviceCode: 'STD', serviceName: 'LogesTechs Standard' }
     ]
 };
+
+const DHL_CARRIERS = new Set(['DGR', 'DHL']);
 
 const normalizeShippingAccess = (user = {}) => {
     const existing = user.agentPolicy?.shippingAccess;
@@ -85,6 +96,10 @@ const normalizeShippingAccess = (user = {}) => {
     return { mode: 'carrier', carrierCode, serviceCode, serviceName };
 };
 
+// Markup lives in agentPolicy.markupOverride on the server; fall back to top-level markup for legacy records
+const resolveUserMarkup = (user) =>
+    user?.agentPolicy?.markupOverride || user?.markup || { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 };
+
 const AdminUsersPage = () => {
     const { enqueueSnackbar } = useSnackbar();
     const [users, setUsers] = useState([]);
@@ -94,9 +109,11 @@ const AdminUsersPage = () => {
     const [openDialog, setOpenDialog] = useState(false);
     const [editingUser, setEditingUser] = useState(null);
     const [activeTab, setActiveTab] = useState('profile');
+    const [isDirty, setIsDirty] = useState(false);
 
     // Filter State
     const [roleFilter, setRoleFilter] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
 
     // Form Data
     const [formData, setFormData] = useState({});
@@ -152,7 +169,6 @@ const AdminUsersPage = () => {
     const handleOpenDialog = (user = null) => {
         setEditingUser(user);
 
-        // Init Form Data
         const initialData = user ? { ...user } : {
             role: 'org_agent',
             carrierConfig: {
@@ -176,7 +192,12 @@ const AdminUsersPage = () => {
             initialData.carrierConfig.pricingByCarrier.OTE = { fixedFee: 25, currency: 'AED' };
         }
         initialData.shippingAccess = normalizeShippingAccess(initialData);
-        if (!initialData.markup) initialData.markup = { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 };
+
+        // Markup lives in agentPolicy.markupOverride — normalize it into the form's markup field
+        if (!initialData.markup) {
+            initialData.markup = resolveUserMarkup(initialData);
+        }
+
         if (!initialData.optionalServiceMarkup) {
             initialData.optionalServiceMarkup = {
                 insurance: { enabled: false, type: 'PERCENTAGE', percentageValue: 0, flatValue: 0 }
@@ -191,18 +212,22 @@ const AdminUsersPage = () => {
 
         setFormData(initialData);
         setActiveTab('profile');
+        setIsDirty(false);
         setOpenDialog(true);
+    };
+
+    const handleCloseDialog = () => {
+        if (isDirty && !window.confirm('You have unsaved changes. Close anyway?')) return;
+        setOpenDialog(false);
+        setIsDirty(false);
     };
 
     // Handle Save
     const handleSave = async () => {
         try {
             const payload = { ...formData };
-            // Ensure numbers
             if (payload.creditLimit !== undefined) payload.creditLimit = Number(payload.creditLimit);
-            // Fix organization mapping for backend
             if (payload.organization && !payload.organizationId) payload.organizationId = payload.organization;
-            // Cleanup markup
             if (payload.markup) {
                 payload.markup.percentageValue = Number(payload.markup.percentageValue || 0);
                 payload.markup.flatValue = Number(payload.markup.flatValue || 0);
@@ -243,6 +268,7 @@ const AdminUsersPage = () => {
             };
 
             if (editingUser?.id) {
+                if (!payload.password) delete payload.password;
                 await userService.updateUser(editingUser.id, payload);
                 enqueueSnackbar('User updated successfully', { variant: 'success' });
             } else {
@@ -250,6 +276,7 @@ const AdminUsersPage = () => {
                 enqueueSnackbar('User created successfully', { variant: 'success' });
             }
             setOpenDialog(false);
+            setIsDirty(false);
             fetchUsers();
         } catch (error) {
             console.error(error);
@@ -270,15 +297,18 @@ const AdminUsersPage = () => {
         }
     };
 
-
-    // Helper to update form
-    const updateField = (field, value) => setFormData(prev => ({ ...prev, [field]: value }));
-    const updateNested = (parent, field, value) => setFormData(prev => ({
-        ...prev,
-        [parent]: { ...prev[parent], [field]: value }
-    }));
+    // Helper to update form (marks dirty)
+    const updateField = (field, value) => {
+        setIsDirty(true);
+        setFormData(prev => ({ ...prev, [field]: value }));
+    };
+    const updateNested = (parent, field, value) => {
+        setIsDirty(true);
+        setFormData(prev => ({ ...prev, [parent]: { ...prev[parent], [field]: value } }));
+    };
 
     const updateShippingAccess = (field, value) => {
+        setIsDirty(true);
         setFormData(prev => {
             const current = prev.shippingAccess || normalizeShippingAccess(prev);
             const next = { ...current, [field]: value };
@@ -311,13 +341,27 @@ const AdminUsersPage = () => {
         return `${access.carrierCode} / ${access.serviceName}`;
     };
 
-    // Render Markup Pill
     const renderMarkupInfo = (user) => {
-        const m = user.markup || { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 };
+        const m = resolveUserMarkup(user);
         if (m.type === 'PERCENTAGE') return <StatusPill status="info" text={`${m.percentageValue}%`} />;
         if (m.type === 'FLAT') return <StatusPill status="info" text={`${m.flatValue} KD`} />;
         return <StatusPill status="warning" text={`${m.percentageValue}% + ${m.flatValue}K`} />;
     };
+
+    // Filtered user list
+    const filteredUsers = users.filter(user => {
+        if (!searchQuery) return true;
+        const q = searchQuery.toLowerCase();
+        return (
+            user.name?.toLowerCase().includes(q) ||
+            user.email?.toLowerCase().includes(q) ||
+            user.phone?.includes(q)
+        );
+    });
+
+    const assignedCarrier = formData.shippingAccess?.carrierCode || 'DGR';
+    const isOteCarrier = assignedCarrier === 'OTE' || assignedCarrier === 'LOGESTECHS';
+    const isDhlCarrier = DHL_CARRIERS.has(assignedCarrier);
 
     return (
         <div>
@@ -337,7 +381,15 @@ const AdminUsersPage = () => {
             />
 
             <FilterBar>
-                <div style={{ width: '250px' }}>
+                <div style={{ width: '280px' }}>
+                    <Input
+                        label="Search"
+                        placeholder="Name, email or phone..."
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                    />
+                </div>
+                <div style={{ width: '220px' }}>
                     <Select
                         label="Filter by Role"
                         value={roleFilter}
@@ -373,7 +425,17 @@ const AdminUsersPage = () => {
                         <Tbody>
                             {loading ? (
                                 <Tr><Td colSpan={7} style={{ textAlign: 'center' }}>Loading...</Td></Tr>
-                            ) : users.map(user => (
+                            ) : filteredUsers.length === 0 ? (
+                                <Tr>
+                                    <Td colSpan={7}>
+                                        <EmptyState>
+                                            {searchQuery || roleFilter
+                                                ? 'No users match the current filters.'
+                                                : 'No users yet. Click "Add New User" to get started.'}
+                                        </EmptyState>
+                                    </Td>
+                                </Tr>
+                            ) : filteredUsers.map(user => (
                                 <Tr key={user.id}>
                                     <Td>
                                         <div style={{ fontWeight: 'bold' }}>{user.name}</div>
@@ -396,9 +458,7 @@ const AdminUsersPage = () => {
                                             </div>
                                         ) : <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>Solo Account</span>}
                                     </Td>
-                                    <Td>
-                                        {renderShippingAccess(user)}
-                                    </Td>
+                                    <Td>{renderShippingAccess(user)}</Td>
                                     <Td>{renderMarkupInfo(user)}</Td>
                                     <Td>
                                         {user.organization ? (
@@ -434,12 +494,12 @@ const AdminUsersPage = () => {
 
             <Modal
                 isOpen={openDialog}
-                onClose={() => setOpenDialog(false)}
-                title={editingUser ? 'Edit User' : 'Create New User'}
+                onClose={handleCloseDialog}
+                title={editingUser ? `Edit User — ${editingUser.name}` : 'Create New User'}
                 width="800px"
                 footer={
                     <>
-                        <Button variant="secondary" onClick={() => setOpenDialog(false)}>Cancel</Button>
+                        <Button variant="secondary" onClick={handleCloseDialog}>Cancel</Button>
                         <Button variant="primary" onClick={handleSave}>Save User</Button>
                     </>
                 }
@@ -470,9 +530,12 @@ const AdminUsersPage = () => {
                                 <option value="client">Client</option>
                             </Select>
 
-                            {!editingUser && (
-                                <Input label="Password *" type="password" value={formData.password || ''} onChange={e => updateField('password', e.target.value)} />
-                            )}
+                            <Input
+                                label={editingUser ? 'New Password (leave blank to keep current)' : 'Password *'}
+                                type="password"
+                                value={formData.password || ''}
+                                onChange={e => updateField('password', e.target.value)}
+                            />
                         </div>
                     )}
 
@@ -498,7 +561,13 @@ const AdminUsersPage = () => {
                         <div style={{ display: 'grid', gap: '24px' }}>
                             <Card title="Financial Settings" variant="subtle">
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                                    <Input label="Credit Limit (KWD)" type="number" value={formData.creditLimit || 0} onChange={e => updateField('creditLimit', e.target.value)} />
+                                    <Input
+                                        label="Credit Limit (KWD)"
+                                        type="number"
+                                        value={formData.creditLimit || 0}
+                                        onChange={e => updateField('creditLimit', e.target.value)}
+                                        hint={formData.organizationId ? 'Updates the organization credit limit' : undefined}
+                                    />
                                 </div>
                             </Card>
 
@@ -516,63 +585,14 @@ const AdminUsersPage = () => {
                                     <Input
                                         label="Percentage %"
                                         type="number"
-                                        value={formData.markup?.percentageValue || 0}
+                                        value={formData.markup?.percentageValue ?? 0}
                                         onChange={e => updateNested('markup', 'percentageValue', e.target.value)}
                                     />
                                     <Input
                                         label="Flat Value"
                                         type="number"
-                                        value={formData.markup?.flatValue || 0}
+                                        value={formData.markup?.flatValue ?? 0}
                                         onChange={e => updateNested('markup', 'flatValue', e.target.value)}
-                                    />
-                                </div>
-                            </Card>
-
-                            <Card title="Insurance Markup (Service II)" variant="subtle">
-                                <Alert severity="info" style={{ marginBottom: '12px' }}>
-                                    Configure how insurance (II) is marked up for this user during DHL quoting and booking.
-                                </Alert>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '16px' }}>
-                                    <Select
-                                        label="Enabled"
-                                        value={formData.optionalServiceMarkup?.insurance?.enabled ? 'yes' : 'no'}
-                                        onChange={e => updateNested('optionalServiceMarkup', 'insurance', {
-                                            ...(formData.optionalServiceMarkup?.insurance || {}),
-                                            enabled: e.target.value === 'yes'
-                                        })}
-                                    >
-                                        <option value="yes">Yes</option>
-                                        <option value="no">No</option>
-                                    </Select>
-                                    <Select
-                                        label="Markup Type"
-                                        value={formData.optionalServiceMarkup?.insurance?.type || 'PERCENTAGE'}
-                                        onChange={e => updateNested('optionalServiceMarkup', 'insurance', {
-                                            ...(formData.optionalServiceMarkup?.insurance || {}),
-                                            type: e.target.value
-                                        })}
-                                    >
-                                        <option value="PERCENTAGE">% Only</option>
-                                        <option value="FLAT">Flat Only</option>
-                                        <option value="COMBINED">Combined</option>
-                                    </Select>
-                                    <Input
-                                        label="Insurance %"
-                                        type="number"
-                                        value={formData.optionalServiceMarkup?.insurance?.percentageValue || 0}
-                                        onChange={e => updateNested('optionalServiceMarkup', 'insurance', {
-                                            ...(formData.optionalServiceMarkup?.insurance || {}),
-                                            percentageValue: e.target.value
-                                        })}
-                                    />
-                                    <Input
-                                        label="Insurance Flat"
-                                        type="number"
-                                        value={formData.optionalServiceMarkup?.insurance?.flatValue || 0}
-                                        onChange={e => updateNested('optionalServiceMarkup', 'insurance', {
-                                            ...(formData.optionalServiceMarkup?.insurance || {}),
-                                            flatValue: e.target.value
-                                        })}
                                     />
                                 </div>
                             </Card>
@@ -584,7 +604,7 @@ const AdminUsersPage = () => {
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                                     <Select
                                         label="Assigned Network"
-                                        value={formData.shippingAccess?.carrierCode || 'DGR'}
+                                        value={assignedCarrier}
                                         onChange={e => updateShippingAccess('carrierCode', e.target.value)}
                                     >
                                         {(availableCarriers.length ? availableCarriers : [
@@ -598,74 +618,138 @@ const AdminUsersPage = () => {
                                             </option>
                                         ))}
                                     </Select>
-                                    {formData.shippingAccess?.carrierCode !== 'MANUAL' ? (
+                                    {assignedCarrier !== 'MANUAL' ? (
                                         <Select
-                                            label="Assigned Shipment Method"
+                                            label="Assigned Service"
                                             value={formData.shippingAccess?.serviceCode || ''}
                                             onChange={e => updateShippingAccess('serviceCode', e.target.value)}
                                         >
                                             <option value="">Any Available Service</option>
-                                            {(CARRIER_SERVICE_OPTIONS[formData.shippingAccess?.carrierCode || 'DGR'] || CARRIER_SERVICE_OPTIONS.DGR).map(service => (
+                                            {(CARRIER_SERVICE_OPTIONS[assignedCarrier] || CARRIER_SERVICE_OPTIONS.DGR).map(service => (
                                                 <option key={service.serviceCode} value={service.serviceCode}>
                                                     {service.serviceName}
                                                 </option>
                                             ))}
                                         </Select>
                                     ) : (
-                                        <Input label="Assigned Shipment Method" value="Manual Shipment" disabled />
+                                        <Input label="Assigned Service" value="Manual Shipment" disabled />
                                     )}
                                     <Input
                                         label="Tax / VAT ID"
                                         value={formData.carrierConfig?.vatNo || ''}
                                         onChange={e => updateNested('carrierConfig', 'vatNo', e.target.value)}
                                     />
-                                    <Input
-                                        label="OTE Fixed Fee"
-                                        type="number"
-                                        value={formData.carrierConfig?.pricingByCarrier?.OTE?.fixedFee ?? 25}
-                                        onChange={e => setFormData(prev => ({
-                                            ...prev,
-                                            carrierConfig: {
-                                                ...(prev.carrierConfig || {}),
-                                                pricingByCarrier: {
-                                                    ...(prev.carrierConfig?.pricingByCarrier || {}),
-                                                    OTE: {
-                                                        ...(prev.carrierConfig?.pricingByCarrier?.OTE || {}),
-                                                        fixedFee: e.target.value
-                                                    }
-                                                }
-                                            }
-                                        }))}
-                                    />
-                                    <Select
-                                        label="OTE Billing Currency"
-                                        value={(formData.carrierConfig?.pricingByCarrier?.OTE?.currency || 'AED').toUpperCase()}
-                                        onChange={e => setFormData(prev => ({
-                                            ...prev,
-                                            carrierConfig: {
-                                                ...(prev.carrierConfig || {}),
-                                                pricingByCarrier: {
-                                                    ...(prev.carrierConfig?.pricingByCarrier || {}),
-                                                    OTE: {
-                                                        ...(prev.carrierConfig?.pricingByCarrier?.OTE || {}),
-                                                        currency: e.target.value
-                                                    }
-                                                }
-                                            }
-                                        }))}
-                                    >
-                                        <option value="AED">AED</option>
-                                        <option value="KWD">KWD</option>
-                                        <option value="USD">USD</option>
-                                    </Select>
                                 </div>
                             </Card>
+
+                            {isOteCarrier && (
+                                <Card title={`${assignedCarrier} Pricing`} variant="subtle">
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                                        <Input
+                                            label="Fixed Fee per Shipment"
+                                            type="number"
+                                            value={formData.carrierConfig?.pricingByCarrier?.OTE?.fixedFee ?? 25}
+                                            onChange={e => {
+                                                setIsDirty(true);
+                                                setFormData(prev => ({
+                                                    ...prev,
+                                                    carrierConfig: {
+                                                        ...(prev.carrierConfig || {}),
+                                                        pricingByCarrier: {
+                                                            ...(prev.carrierConfig?.pricingByCarrier || {}),
+                                                            OTE: {
+                                                                ...(prev.carrierConfig?.pricingByCarrier?.OTE || {}),
+                                                                fixedFee: e.target.value
+                                                            }
+                                                        }
+                                                    }
+                                                }));
+                                            }}
+                                        />
+                                        <Select
+                                            label="Billing Currency"
+                                            value={(formData.carrierConfig?.pricingByCarrier?.OTE?.currency || 'AED').toUpperCase()}
+                                            onChange={e => {
+                                                setIsDirty(true);
+                                                setFormData(prev => ({
+                                                    ...prev,
+                                                    carrierConfig: {
+                                                        ...(prev.carrierConfig || {}),
+                                                        pricingByCarrier: {
+                                                            ...(prev.carrierConfig?.pricingByCarrier || {}),
+                                                            OTE: {
+                                                                ...(prev.carrierConfig?.pricingByCarrier?.OTE || {}),
+                                                                currency: e.target.value
+                                                            }
+                                                        }
+                                                    }
+                                                }));
+                                            }}
+                                        >
+                                            <option value="AED">AED</option>
+                                            <option value="KWD">KWD</option>
+                                            <option value="SAR">SAR</option>
+                                            <option value="USD">USD</option>
+                                        </Select>
+                                    </div>
+                                </Card>
+                            )}
+
+                            {isDhlCarrier && (
+                                <Card title="Insurance Markup (Service II)" variant="subtle">
+                                    <Alert severity="info" style={{ marginBottom: '12px' }}>
+                                        Configure how insurance (II) is marked up for this user during DHL quoting and booking.
+                                    </Alert>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '16px' }}>
+                                        <Select
+                                            label="Enabled"
+                                            value={formData.optionalServiceMarkup?.insurance?.enabled ? 'yes' : 'no'}
+                                            onChange={e => updateNested('optionalServiceMarkup', 'insurance', {
+                                                ...(formData.optionalServiceMarkup?.insurance || {}),
+                                                enabled: e.target.value === 'yes'
+                                            })}
+                                        >
+                                            <option value="yes">Yes</option>
+                                            <option value="no">No</option>
+                                        </Select>
+                                        <Select
+                                            label="Markup Type"
+                                            value={formData.optionalServiceMarkup?.insurance?.type || 'PERCENTAGE'}
+                                            onChange={e => updateNested('optionalServiceMarkup', 'insurance', {
+                                                ...(formData.optionalServiceMarkup?.insurance || {}),
+                                                type: e.target.value
+                                            })}
+                                        >
+                                            <option value="PERCENTAGE">% Only</option>
+                                            <option value="FLAT">Flat Only</option>
+                                            <option value="COMBINED">Combined</option>
+                                        </Select>
+                                        <Input
+                                            label="Insurance %"
+                                            type="number"
+                                            value={formData.optionalServiceMarkup?.insurance?.percentageValue ?? 0}
+                                            onChange={e => updateNested('optionalServiceMarkup', 'insurance', {
+                                                ...(formData.optionalServiceMarkup?.insurance || {}),
+                                                percentageValue: e.target.value
+                                            })}
+                                        />
+                                        <Input
+                                            label="Insurance Flat"
+                                            type="number"
+                                            value={formData.optionalServiceMarkup?.insurance?.flatValue ?? 0}
+                                            onChange={e => updateNested('optionalServiceMarkup', 'insurance', {
+                                                ...(formData.optionalServiceMarkup?.insurance || {}),
+                                                flatValue: e.target.value
+                                            })}
+                                        />
+                                    </div>
+                                </Card>
+                            )}
                         </div>
                     )}
                 </div>
             </Modal>
 
-            {/* Delete User Confirmation Modal */}
             <Modal
                 isOpen={!!deleteConfirmId}
                 onClose={() => setDeleteConfirmId(null)}
