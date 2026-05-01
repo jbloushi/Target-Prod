@@ -5,7 +5,7 @@
 const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
 const CarrierFactory = require('../services/CarrierFactory');
-const { syncCarrierTrackingHistory, compactHistory } = require('./shipment.helpers');
+const { syncCarrierTrackingHistory, compactHistory, buildDisplayHistory } = require('./shipment.helpers');
 const { normalizeStatus } = require('../constants/statusConstants');
 
 /**
@@ -35,7 +35,7 @@ exports.getPublicShipment = async (req, res) => {
             logger.warn(`Public tracking: carrier sync failed for ${trackingNumber}: ${err.message}`);
         }
 
-        let events = [];
+        let rawEvents = [];
         const carrierTrackingNumber = shipment?.carrierShipmentId || shipment?.dhlTrackingNumber;
         const carrierCode = (shipment?.carrier || shipment?.carrierCode || 'DGR').toUpperCase();
 
@@ -51,16 +51,16 @@ exports.getPublicShipment = async (req, res) => {
                     timestamp: event.timestamp,
                     location: event.location || ''
                 }));
-                events = compactHistory(carrierEvents)
+                rawEvents = compactHistory(carrierEvents)
                     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             } catch (carrierError) {
                 logger.warn(`Public tracking: carrier event fetch failed for ${trackingNumber}: ${carrierError.message}`);
             }
         }
 
-        if (events.length === 0) {
+        if (rawEvents.length === 0) {
             // Fallback to persisted merged history if carrier feed is unavailable.
-            events = compactHistory(shipment.history || []).map(h => ({
+            rawEvents = compactHistory(shipment.history || []).map(h => ({
                 source: h.source || 'platform',
                 status: normalizeStatus(typeof h.status === 'object' ? (h.status?.status || 'booked') : (h.status || 'booked')),
                 description: h.description || '',
@@ -68,6 +68,7 @@ exports.getPublicShipment = async (req, res) => {
                 location: h.location?.formattedAddress || h.location?.city || ''
             })).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         }
+        const events = buildDisplayHistory(rawEvents).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
         res.status(200).json({
             success: true,
@@ -104,6 +105,7 @@ exports.getPublicShipment = async (req, res) => {
 
                 // Unified events
                 events,
+                rawEvents,
 
                 // Public update settings
                 allowPublicLocationUpdate: shipment.allowPublicLocationUpdate || false,

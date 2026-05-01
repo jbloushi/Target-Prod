@@ -8,7 +8,7 @@ const ShipmentDraftService = require('../services/ShipmentDraftService');
 const { handleControllerError } = require('../utils/controllerError');
 const { hasCapability, isPlatformRole } = require('../middleware/rbac.policy');
 const { MANUAL_SHIPMENT_STATUSES, SHIPMENT_STATUSES } = require('../constants/statusConstants');
-const { syncCarrierTrackingHistory, hasCriticalChanges, canUpdateShipmentStatus, isManualShipment } = require('./shipment.helpers');
+const { syncCarrierTrackingHistory, hasCriticalChanges, canUpdateShipmentStatus, isManualShipment, buildDisplayHistory } = require('./shipment.helpers');
 
 /**
  * Get shipment statistics (Status counts and Monthly volume)
@@ -162,7 +162,9 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
             shipment.status = updates.status;
         }
 
-        res.status(200).json({ success: true, data: shipment });
+        const rawHistory = Array.isArray(shipment.history) ? shipment.history : [];
+        const displayHistory = buildDisplayHistory(rawHistory);
+        res.status(200).json({ success: true, data: { ...shipment, rawHistory, displayHistory, history: displayHistory } });
     } catch (error) {
         logger.error('Error fetching shipment:', error);
         res.status(500).json({ success: false, error: 'Failed to fetch shipment' });
