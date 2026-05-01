@@ -509,6 +509,7 @@ const PublicTrackingPage = () => {
 
   const events = useMemo(() => mergeEvents(shipment), [shipment]);
   const rawEvents = useMemo(() => rawEventsForLog(shipment), [shipment]);
+  const timelineEvents = events.length > 0 ? events : rawEvents;
   const lastEvent = events[0];
   const stepIndex = shipment ? getPublicStepIndex(shipment.status) : 0;
   const normalizedStatus = normalizeStatus(shipment?.status);
@@ -609,7 +610,7 @@ const PublicTrackingPage = () => {
         {!loading && shipment && (
           <section style={styles.content}>
             {activeTab === 'details' && <ShipmentDetailsTab shipment={shipment} />}
-            {activeTab === 'timeline' && <TimelineTab events={events} />}
+            {activeTab === 'timeline' && <TimelineTab events={timelineEvents} />}
             {activeTab === 'events' && <EventLogTab events={rawEvents} />}
           </section>
         )}
