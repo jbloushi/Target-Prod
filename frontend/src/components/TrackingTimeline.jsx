@@ -20,7 +20,7 @@ import { dedupeTrackingEvents } from '../utils/dedupeTrackingEvents';
  */
 
 const statusConfig = {
-    'created': { icon: InventoryIcon, color: '#00d9b8', label: 'Created' },
+    'created': { icon: InventoryIcon, color: '#0b5bd3', label: 'Created' },
     'pickup_scheduled': { icon: AccessTimeIcon, color: '#00d9b8', label: 'Pickup Scheduled' },
     'ready_for_pickup': { icon: InventoryIcon, color: '#00d9b8', label: 'Ready for Pickup' },
     'picked_up': { icon: LocalShippingIcon, color: '#00d9b8', label: 'Picked Up' },
@@ -30,7 +30,7 @@ const statusConfig = {
     'exception': { icon: AccessTimeIcon, color: '#00d9b8', label: 'Exception' },
     'pending': { icon: AccessTimeIcon, color: '#00d9b8', label: 'Pending' },
     'updated': { icon: AccessTimeIcon, color: '#00d9b8', label: 'Updated (Review)' },
-    'default': { icon: AccessTimeIcon, color: '#00d9b8', label: 'Update' }
+    'default': { icon: AccessTimeIcon, color: '#0b5bd3', label: 'Update' }
 };
 
 const getStatusConfig = (status) => {
@@ -142,7 +142,7 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                             variant="subtitle2"
                             fontWeight="800"
                             sx={{
-                                color: isLatestDate ? 'var(--accent-primary, #00bfa5)' : 'var(--on-surface-variant, #575c60)',
+                                color: isLatestDate ? '#0b5bd3' : 'var(--on-surface-variant, #575c60)',
                                 mb: 3,
                                 textTransform: 'uppercase',
                                 letterSpacing: '1px',
@@ -197,10 +197,10 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                                                 width: 10,
                                                 height: 10,
                                                 borderRadius: '50%',
-                                                bgcolor: '#00d9b8',
-                                                border: '2px solid rgba(0,217,184,0.3)',
+                                                bgcolor: '#0b5bd3',
+                                                border: '2px solid rgba(11,91,211,0.28)',
                                                 zIndex: 1,
-                                                boxShadow: '0 0 10px rgba(0,217,184,0.2)',
+                                                boxShadow: '0 0 10px rgba(11,91,211,0.2)',
                                                 transition: 'all 0.3s ease'
                                             }}
                                         />
@@ -226,7 +226,7 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                                                         </Typography>
                                                     )}
                                                     <Box sx={{ width: 4, height: 4, borderRadius: '50%', bgcolor: 'rgba(87, 92, 96, 0.28)' }} />
-                                                    <Typography variant="caption" sx={{ color: isFirst ? 'var(--accent-primary, #00bfa5)' : 'var(--on-surface-variant, #575c60)', fontWeight: 600 }}>
+                                                    <Typography variant="caption" sx={{ color: isFirst ? '#0b5bd3' : 'var(--on-surface-variant, #575c60)', fontWeight: 600 }}>
                                                         {source}
                                                     </Typography>
                                                 </Box>
@@ -242,8 +242,8 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                                                                 px: 0.75,
                                                                 py: '2px',
                                                                 borderRadius: '999px',
-                                                                bgcolor: 'rgba(0,191,165,0.12)',
-                                                                color: 'var(--accent-primary, #00bfa5)',
+                                                                bgcolor: 'rgba(11,91,211,0.12)',
+                                                                color: '#0b5bd3',
                                                                 lineHeight: 1.4,
                                                             }}
                                                         >
