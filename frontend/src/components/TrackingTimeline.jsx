@@ -8,7 +8,7 @@ import InventoryIcon from '@mui/icons-material/Inventory';
 import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import { dedupeTrackingEvents } from '../utils/dedupeTrackingEvents';
-import { formatLocationWithFlag } from '../utils/locationDisplay';
+import LocationLabel from './LocationLabel';
 import { getEventDisplayMessage } from '../utils/shipmentDisplay';
 
 /**
@@ -179,7 +179,6 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                                 const { time } = formatDate(event.timestamp);
                                 const isFirst = dateIndex === 0 && eventIndex === 0;
                                 const source = event.source === 'carrier' ? 'Global Network' : 'Logistics Center';
-                                const locationText = formatLocationWithFlag(event.location);
                                 const displayMessage = getEventDisplayMessage(event, statusStr || config.label);
 
                                 return (
@@ -223,11 +222,10 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                                                 </Typography>
 
                                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 0.5 }}>
-                                                    {locationText && (
-                                                        <Typography variant="caption" sx={{ color: 'var(--on-surface-variant, #575c60)', display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                                            {locationText}
-                                                        </Typography>
-                                                    )}
+                                                    <LocationLabel
+                                                        location={event.location}
+                                                        style={{ color: 'var(--on-surface-variant, #575c60)', fontSize: 12 }}
+                                                    />
                                                     <Box sx={{ width: 4, height: 4, borderRadius: '50%', bgcolor: 'var(--border-color, #d9dee4)' }} />
                                                     <Typography variant="caption" sx={{ color: isFirst ? '#0b5bd3' : 'var(--on-surface-variant, #575c60)', fontWeight: 600 }}>
                                                         {source}

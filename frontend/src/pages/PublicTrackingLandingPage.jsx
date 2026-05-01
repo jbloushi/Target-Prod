@@ -3,7 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 import { getApiBaseUrl } from '../utils/env';
 import { dedupeTrackingEvents } from '../utils/dedupeTrackingEvents';
-import { formatLocationWithFlag, getCountryFlag } from '../utils/locationDisplay';
+import LocationLabel from '../components/LocationLabel';
+import { getCountryCode, getFlagImageUrl } from '../utils/locationDisplay';
 import { getEventDisplayMessage } from '../utils/shipmentDisplay';
 import {
   STATUS_HEADLINE,
@@ -262,9 +263,20 @@ function rawEventsForLog(shipment) {
 function placeLabel(place) {
   if (!place) return '';
   const country = place.countryCode || place.country || '';
-  const label = [place.city, country].filter(Boolean).join(' - ');
-  const flag = getCountryFlag(place);
-  return flag && label ? `${flag} ${label}` : label;
+  return [place.city, country].filter(Boolean).join(' - ');
+}
+
+function RoutePlaceLabel({ place, fallback }) {
+  const label = placeLabel(place) || fallback;
+  const flagUrl = getFlagImageUrl(place);
+  const countryCode = getCountryCode(place);
+
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+      {flagUrl && <img src={flagUrl} alt={`${countryCode} flag`} width="18" height="13" loading="lazy" style={{ borderRadius: 2, boxShadow: '0 0 0 1px rgba(0,0,0,0.08)' }} />}
+      <span>{label}</span>
+    </span>
+  );
 }
 
 function RouteProgressBar({ originCity, destCity, stepIndex }) {
@@ -274,7 +286,7 @@ function RouteProgressBar({ originCity, destCity, stepIndex }) {
   return (
     <div className="tracking-route">
       <div style={styles.routeBar}>
-        <div style={styles.routePlace}>{originCity || 'Origin'}</div>
+        <div style={styles.routePlace}>{originCity}</div>
         <div style={styles.track}>
           <div style={{
             position: 'absolute',
@@ -317,7 +329,7 @@ function RouteProgressBar({ originCity, destCity, stepIndex }) {
             );
           })}
         </div>
-        <div style={styles.routeDest}>{destCity || 'Destination'}</div>
+        <div style={styles.routeDest}>{destCity}</div>
       </div>
       <div className="route-labels">
         {PUBLIC_PROGRESS_STEPS.map((step, index) => (
@@ -386,13 +398,12 @@ function TimelineTab({ events = [] }) {
         <div key={date} style={{ marginBottom: 16 }}>
           <div style={{ fontWeight: 800, fontSize: 13, color: '#0b5bd3', marginBottom: 8 }}>{date}</div>
           {dayEvents.map((event, index) => {
-            const locationLabel = formatLocationWithFlag(event.normalizedLocation || event.location);
             const displayMessage = getEventDisplayMessage(event, EVENT_LABELS[event.canonicalStatus] || 'Tracking update');
             return (
               <div key={`${event.timestamp}-${index}`} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 220px', gap: 10, padding: '8px 0', borderBottom: '1px solid #eef3fa' }}>
                 <div style={{ color: '#66758a', fontSize: 12 }}>{fmt.time(event.timestamp)}</div>
                 <div style={{ fontSize: 13, color: '#102033', fontWeight: 700 }}>{displayMessage}</div>
-                <div style={{ color: '#66758a', fontSize: 12 }}>{locationLabel}</div>
+                <LocationLabel location={event.normalizedLocation || event.location} style={{ color: '#66758a', fontSize: 12 }} />
               </div>
             );
           })}
@@ -416,7 +427,6 @@ function EventLogTab({ events }) {
   return (
     <div style={styles.card}>
       {events.map((event, index) => {
-        const locationLabel = formatLocationWithFlag(event.location);
         const displayMessage = getEventDisplayMessage(event);
         return (
           <div
@@ -458,9 +468,9 @@ function EventLogTab({ events }) {
                 </span>
               )}
             </div>
-            {locationLabel && (
-              <div style={{ color: '#66758a', fontSize: 13, marginTop: 4 }}>{locationLabel}</div>
-            )}
+            <div style={{ color: '#66758a', fontSize: 13, marginTop: 4 }}>
+              <LocationLabel location={event.location} />
+            </div>
             <div style={{ color: '#7a899d', fontSize: 12, marginTop: 5 }}>
               {event.source === 'carrier' ? 'Carrier network' : 'Target Logistics'}
             </div>
@@ -591,8 +601,8 @@ const PublicTrackingPage = () => {
                 </div>
 
                 <RouteProgressBar
-                  originCity={placeLabel(shipment.origin)}
-                  destCity={placeLabel(shipment.destination)}
+                  originCity={<RoutePlaceLabel place={shipment.origin} fallback="Origin" />}
+                  destCity={<RoutePlaceLabel place={shipment.destination} fallback="Destination" />}
                   stepIndex={stepIndex}
                 />
               </>

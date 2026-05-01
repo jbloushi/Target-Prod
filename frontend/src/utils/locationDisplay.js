@@ -15,10 +15,9 @@ const COUNTRY_NAME_TO_CODE = {
 
 const normalizeText = (value = '') => String(value).trim().replace(/\s+/g, ' ');
 
-const countryCodeToFlag = (countryCode) => {
+const isCountryCode = (countryCode) => {
   const code = normalizeText(countryCode).toUpperCase();
-  if (!/^[A-Z]{2}$/.test(code)) return '';
-  return String.fromCodePoint(...[...code].map((char) => char.charCodeAt(0) + 127397));
+  return /^[A-Z]{2}$/.test(code);
 };
 
 const locationToText = (location) => {
@@ -61,18 +60,16 @@ const inferCountryCode = (location) => {
   }
 
   const codeMatch = text.match(/(?:^|[^A-Z])([A-Z]{2})(?:$|[^A-Z])/);
-  if (codeMatch && countryCodeToFlag(codeMatch[1])) return codeMatch[1];
+  if (codeMatch && isCountryCode(codeMatch[1])) return codeMatch[1];
 
   return '';
 };
 
-export const formatLocationWithFlag = (location) => {
-  const text = locationToText(location);
-  if (!text) return '';
+export const getLocationText = locationToText;
 
-  const flag = countryCodeToFlag(inferCountryCode(location));
-  if (!flag || text.includes(flag)) return text;
-  return `${flag} ${text}`;
+export const getCountryCode = (location) => inferCountryCode(location);
+
+export const getFlagImageUrl = (location) => {
+  const countryCode = getCountryCode(location);
+  return countryCode ? `https://flagcdn.com/24x18/${countryCode.toLowerCase()}.png` : '';
 };
-
-export const getCountryFlag = (location) => countryCodeToFlag(inferCountryCode(location));
