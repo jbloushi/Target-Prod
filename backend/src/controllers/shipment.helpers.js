@@ -102,6 +102,61 @@ const buildHistoryKey = (event) => {
 };
 
 /**
+ * Normalizes and compacts history events across all carriers.
+ * Keeps milestone diversity while collapsing repetitive jitter/noise updates.
+ */
+const compactHistory = (history = []) => {
+    if (!Array.isArray(history) || history.length === 0) return [];
+
+    const prepared = history
+        .filter(Boolean)
+        .map((event) => {
+            const timestamp = event?.timestamp ? new Date(event.timestamp) : null;
+            const locationRaw = event?.location?.formattedAddress
+                || event?.location?.address
+                || event?.location?.city
+                || event?.location
+                || '';
+            const statusRaw = typeof event?.status === 'object'
+                ? (event?.status?.status || event?.status?.code || '')
+                : (event?.status || '');
+
+            return {
+                ...event,
+                status: String(statusRaw).trim().toLowerCase(),
+                description: String(event?.description || '').trim(),
+                source: String(event?.source || 'platform').trim().toLowerCase(),
+                __timestamp: (timestamp && !Number.isNaN(timestamp.getTime())) ? timestamp : new Date(0),
+                __minuteBucket: (timestamp && !Number.isNaN(timestamp.getTime()))
+                    ? Math.floor(timestamp.getTime() / 60000)
+                    : '',
+                __location: String(locationRaw).trim().toLowerCase()
+            };
+        })
+        .sort((a, b) => a.__timestamp.getTime() - b.__timestamp.getTime());
+
+    const byKey = new Map();
+    for (const event of prepared) {
+        const dedupeKey = [
+            event.source,
+            event.status,
+            event.description.toLowerCase(),
+            event.__minuteBucket,
+            event.__location
+        ].join('|');
+
+        const prior = byKey.get(dedupeKey);
+        if (!prior || event.__timestamp > prior.__timestamp) {
+            byKey.set(dedupeKey, event);
+        }
+    }
+
+    return Array.from(byKey.values())
+        .sort((a, b) => a.__timestamp.getTime() - b.__timestamp.getTime())
+        .map(({ __timestamp, __minuteBucket, __location, ...event }) => event);
+};
+
+/**
  * Fetches latest tracking from carrier and returns updated history/status.
  * Note: Persistence (Prisma update) must be handled by the caller.
  */
@@ -123,7 +178,7 @@ const syncCarrierTrackingHistory = async (shipment) => {
         const events = tracking?.events || [];
         if (events.length === 0) return null;
 
-        const currentHistory = Array.isArray(shipment.history) ? shipment.history : [];
+        const currentHistory = compactHistory(Array.isArray(shipment.history) ? shipment.history : []);
         const existingKeys = new Set(
             currentHistory.map((entry) => buildHistoryKey(entry))
         );
@@ -171,10 +226,11 @@ const syncCarrierTrackingHistory = async (shipment) => {
             hasUpdates = true;
         }
 
-        if (hasUpdates) {
-            newHistory.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        const compactedHistory = compactHistory(newHistory);
+        if (hasUpdates || compactedHistory.length !== currentHistory.length) {
+            compactedHistory.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
             return {
-                history: newHistory,
+                history: compactedHistory,
                 status: currentStatus
             };
         }
@@ -292,6 +348,7 @@ module.exports = {
     hasMarkupShape,
     resolveEffectiveCarrierPolicy,
     buildHistoryKey,
+    compactHistory,
     syncCarrierTrackingHistory,
     calculateEstimatedDelivery,
     hasCriticalChanges,

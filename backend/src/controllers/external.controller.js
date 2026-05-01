@@ -1,5 +1,6 @@
 const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
+const { compactHistory } = require('./shipment.helpers');
 
 // POST /api/client/pickups
 exports.createPickup = async (req, res) => {
@@ -111,7 +112,7 @@ exports.getUnifiedTracking = async (req, res) => {
             return res.status(404).json({ success: false, error: 'Shipment not found' });
         }
 
-        const history = Array.isArray(shipment.history) ? shipment.history : [];
+        const history = compactHistory(Array.isArray(shipment.history) ? shipment.history : []);
         let unifiedEvents = history.map(h => ({
             status: h.status,
             description: h.description,
@@ -139,7 +140,23 @@ exports.getUnifiedTracking = async (req, res) => {
             }
         }
 
-        unifiedEvents.sort((a, b) => b.timestamp - a.timestamp);
+        const mergedByKey = new Map();
+        unifiedEvents.forEach((event) => {
+            const minuteBucket = event?.timestamp && !Number.isNaN(event.timestamp.getTime())
+                ? Math.floor(event.timestamp.getTime() / 60000)
+                : '';
+            const key = [
+                String(event?.source || '').toLowerCase(),
+                String(event?.status || '').toLowerCase(),
+                String(event?.description || '').trim().toLowerCase(),
+                minuteBucket,
+                String(event?.location || '').trim().toLowerCase()
+            ].join('|');
+            const prior = mergedByKey.get(key);
+            if (!prior || event.timestamp > prior.timestamp) mergedByKey.set(key, event);
+        });
+
+        unifiedEvents = Array.from(mergedByKey.values()).sort((a, b) => b.timestamp - a.timestamp);
 
         res.status(200).json({
             success: true,
