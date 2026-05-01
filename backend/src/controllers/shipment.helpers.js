@@ -161,8 +161,18 @@ const compactHistory = (history = []) => {
  * Note: Persistence (Prisma update) must be handled by the caller.
  */
 const syncCarrierTrackingHistory = async (shipment) => {
+    const originalHistory = Array.isArray(shipment.history) ? shipment.history : [];
+    const compactedOriginalHistory = compactHistory(originalHistory);
     const trackingNumber = shipment?.carrierShipmentId || shipment?.dhlTrackingNumber;
-    if (!trackingNumber) return null;
+    if (!trackingNumber) {
+        if (compactedOriginalHistory.length !== originalHistory.length) {
+            return {
+                history: compactedOriginalHistory,
+                status: shipment.status
+            };
+        }
+        return null;
+    }
 
     const carrierCode = (shipment?.carrier || shipment?.carrierCode || 'DGR').toUpperCase();
     let carrier;
@@ -176,9 +186,17 @@ const syncCarrierTrackingHistory = async (shipment) => {
     try {
         const tracking = await carrier.getTracking(trackingNumber);
         const events = tracking?.events || [];
-        if (events.length === 0) return null;
+        if (events.length === 0) {
+            if (compactedOriginalHistory.length !== originalHistory.length) {
+                return {
+                    history: compactedOriginalHistory,
+                    status: shipment.status
+                };
+            }
+            return null;
+        }
 
-        const currentHistory = compactHistory(Array.isArray(shipment.history) ? shipment.history : []);
+        const currentHistory = compactedOriginalHistory;
         const existingKeys = new Set(
             currentHistory.map((entry) => buildHistoryKey(entry))
         );

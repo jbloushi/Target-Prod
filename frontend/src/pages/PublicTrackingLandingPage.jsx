@@ -421,7 +421,7 @@ function EventLogTab({ events }) {
             gridTemplateColumns: '18px 1fr minmax(120px, auto)',
             gap: 14,
             padding: '16px 0',
-            borderBottom: index === events.length - 1 ? 'none' : '1px solid #edf2f7',
+            borderBottom: index === events.length - 1 ? 'none' : '1px solid #dfe8f5',
           }}
           className="event-row"
         >
@@ -429,7 +429,7 @@ function EventLogTab({ events }) {
             width: 10,
             height: 10,
             borderRadius: '50%',
-            background: index === 0 ? '#0b5bd3' : '#9aabc0',
+            background: index === 0 ? '#0b5bd3' : '#7f93ad',
             marginTop: 5,
             boxShadow: index === 0 ? '0 0 0 5px rgba(11, 91, 211, 0.12)' : 'none',
           }}
@@ -445,7 +445,7 @@ function EventLogTab({ events }) {
                     fontWeight: 700,
                     padding: '2px 6px',
                     borderRadius: 999,
-                    background: 'rgba(11, 91, 211, 0.1)',
+                    background: 'rgba(11, 91, 211, 0.12)',
                     color: '#0b5bd3',
                   }}
                 >
