@@ -134,6 +134,7 @@ const buildDisplayHistory = (events = [], options = {}) => {
     const originLocation = normalizeLocationLabel(options?.originLocation || '');
     const movementStatuses = new Set(['created', 'pickup', 'arrived_facility', 'processed', 'departed_facility']);
     const lowSignalStatuses = new Set(['customs_update', 'hold']);
+    const originReplayStatuses = new Set(['pickup', 'arrived_facility', 'processed', 'customs_update', 'hold']);
     const prepared = (Array.isArray(events) ? events : []).map((event) => {
         const timestamp = event?.timestamp ? new Date(event.timestamp) : null;
         if (!timestamp || Number.isNaN(timestamp.getTime())) return null;
@@ -160,17 +161,40 @@ const buildDisplayHistory = (events = [], options = {}) => {
         }
     });
 
-    return Array.from(byKey.values())
+    const displayEvents = Array.from(byKey.values())
         .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
         .filter((event) => movementStatuses.has(event.canonicalStatus) || lowSignalStatuses.has(event.canonicalStatus))
-        .map(({ dayBucket, ...event }) => event)
-        .filter((event, index, arr) => {
-            if (!originLocation) return true;
-            if (!lowSignalStatuses.has(event.canonicalStatus)) return true;
-            const departedAtOrigin = arr.find((entry) => entry.canonicalStatus === 'departed_facility' && entry.normalizedLocation === originLocation);
-            if (!departedAtOrigin) return true;
-            return !(event.normalizedLocation === originLocation && new Date(event.timestamp) > new Date(departedAtOrigin.timestamp));
-        });
+        .map(({ dayBucket, ...event }) => event);
+
+    const departedAtOrigin = originLocation
+        ? displayEvents.find((entry) => entry.canonicalStatus === 'departed_facility' && entry.normalizedLocation === originLocation)
+        : null;
+    const seenLowSignalLocations = new Set();
+    let hasOriginPickup = false;
+
+    return displayEvents.filter((event) => {
+        if (originLocation && event.normalizedLocation === originLocation) {
+            if (event.canonicalStatus === 'pickup') {
+                if (hasOriginPickup) return false;
+                hasOriginPickup = true;
+            }
+
+            if (
+                departedAtOrigin
+                && originReplayStatuses.has(event.canonicalStatus)
+                && new Date(event.timestamp) > new Date(departedAtOrigin.timestamp)
+            ) {
+                return false;
+            }
+        }
+
+        if (lowSignalStatuses.has(event.canonicalStatus)) {
+            if (seenLowSignalLocations.has(event.normalizedLocation)) return false;
+            seenLowSignalLocations.add(event.normalizedLocation);
+        }
+
+        return true;
+    });
 };
 
 /**
