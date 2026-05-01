@@ -676,17 +676,51 @@ class DgrAdapter extends CarrierAdapter {
             const shipment = res.data.shipments?.[0];
             if (!shipment) throw new Error('No tracking data found.');
 
+            const rawEvents = (shipment.events || []).map(e => ({
+                statusCode: e.statusCode,
+                description: e.description,
+                timestamp: e.timestamp,
+                location: e.serviceArea?.[0]?.description || e.location?.description || 'Unknown'
+            }));
+
+            // Dedupe within DHL's own response. The 'all-checkpoints' view sometimes
+            // replays the same checkpoint from multiple data sources, producing exact
+            // (or sub-minute) repeats. Bucket to the minute and key on
+            // statusCode + description + location so genuine distinct events survive.
+            const seen = new Map();
+            for (const ev of rawEvents) {
+                const t = ev.timestamp ? new Date(ev.timestamp) : null;
+                const minuteBucket = t && !Number.isNaN(t.getTime())
+                    ? Math.floor(t.getTime() / 60000)
+                    : '';
+                const key = [
+                    ev.statusCode || '',
+                    (ev.description || '').trim().toLowerCase(),
+                    minuteBucket,
+                    (ev.location || '').trim().toLowerCase()
+                ].join('|');
+                const prior = seen.get(key);
+                if (!prior || new Date(ev.timestamp) > new Date(prior.timestamp)) {
+                    seen.set(key, ev);
+                }
+            }
+            const dedupedEvents = Array.from(seen.values())
+                .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+            const droppedDuplicates = rawEvents.length - dedupedEvents.length;
+            if (droppedDuplicates > 0) {
+                console.warn(
+                    `[DgrAdapter.getTracking] DHL returned ${droppedDuplicates} duplicate checkpoint(s) for ${trackingNumber} ` +
+                    `(received ${rawEvents.length}, kept ${dedupedEvents.length})`
+                );
+            }
+
             return {
                 status: shipment.status?.statusCode || 'UNKNOWN',
                 description: shipment.status?.description || 'No status description',
                 carrierCode: 'DGR',
                 trackingNumber,
-                events: (shipment.events || []).map(e => ({
-                    statusCode: e.statusCode,
-                    description: e.description,
-                    timestamp: e.timestamp,
-                    location: e.serviceArea?.[0]?.description || e.location?.description || 'Unknown'
-                })).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+                events: dedupedEvents
             };
         } catch (error) {
             throw new Error(`DHL Tracking Error: ${error.response?.data?.detail || error.message}`);

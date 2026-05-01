@@ -1,12 +1,13 @@
 import React from 'react';
 import {
-    Box, Typography
+    Box, Tooltip, Typography
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import { dedupeTrackingEvents } from '../utils/dedupeTrackingEvents';
 
 /**
  * DGR-Style Tracking Timeline Component
@@ -95,9 +96,17 @@ const groupEventsByDate = (events) => {
     return groups;
 };
 
+const normalizeText = (v) => String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+const timelineDedupKey = (event) => {
+    const desc = normalizeText(event?.description);
+    const loc = normalizeText(formatLocation(event?.location));
+    return `${desc}|${loc}`;
+};
+
 const TrackingTimeline = ({ history = [], currentStatus }) => {
-    // Sort history newest first
-    const sortedHistory = [...history].sort((a, b) =>
+    // Collapse adjacent duplicate carrier checkpoints, then sort newest first
+    const dedupedHistory = dedupeTrackingEvents(history, timelineDedupKey);
+    const sortedHistory = [...dedupedHistory].sort((a, b) =>
         new Date(b.timestamp) - new Date(a.timestamp)
     );
 
@@ -222,17 +231,36 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                                                     </Typography>
                                                 </Box>
                                             </Box>
-                                            <Typography
-                                                variant="caption"
-                                                sx={{
-                                                    color: isFirst ? 'var(--on-surface, #2a2f32)' : 'var(--on-surface-variant, #575c60)',
-                                                    whiteSpace: 'nowrap',
-                                                    ml: 2,
-                                                    fontWeight: isFirst ? 700 : 500
-                                                }}
-                                            >
-                                                {time}
-                                            </Typography>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, ml: 2, whiteSpace: 'nowrap' }}>
+                                                {event.occurrences > 1 && (
+                                                    <Tooltip title={`Repeated ${event.occurrences} times — first at ${formatDate(event.firstTimestamp).time}`}>
+                                                        <Box
+                                                            component="span"
+                                                            sx={{
+                                                                fontSize: '10px',
+                                                                fontWeight: 700,
+                                                                px: 0.75,
+                                                                py: '2px',
+                                                                borderRadius: '999px',
+                                                                bgcolor: 'rgba(0,191,165,0.12)',
+                                                                color: 'var(--accent-primary, #00bfa5)',
+                                                                lineHeight: 1.4,
+                                                            }}
+                                                        >
+                                                            ×{event.occurrences}
+                                                        </Box>
+                                                    </Tooltip>
+                                                )}
+                                                <Typography
+                                                    variant="caption"
+                                                    sx={{
+                                                        color: isFirst ? 'var(--on-surface, #2a2f32)' : 'var(--on-surface-variant, #575c60)',
+                                                        fontWeight: isFirst ? 700 : 500
+                                                    }}
+                                                >
+                                                    {time}
+                                                </Typography>
+                                            </Box>
                                         </Box>
                                     </Box>
                                 );
