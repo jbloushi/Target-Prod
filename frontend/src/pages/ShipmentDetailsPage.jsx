@@ -924,6 +924,14 @@ const ShipmentDetailsPage = () => {
     };
 
     const publicTrackingUrl = `${window.location.origin}/track/${shipment.trackingNumber}`;
+    const shipmentCarrierText = [
+        shipment.carrierCode,
+        shipment.carrier,
+        shipment.carrierName,
+        shipment.pricingSnapshot?.carrierCode,
+        shipment.pricingSnapshot?.carrier
+    ].filter(Boolean).join(' ').toUpperCase();
+    const billingCurrency = shipmentCarrierText.includes('OTE') || shipmentCarrierText.includes('LOGESTECHS') ? 'AED' : 'KWD';
 
     const handleCopyTrackingLink = () => {
         navigator.clipboard.writeText(publicTrackingUrl);
@@ -1520,16 +1528,16 @@ const ShipmentDetailsPage = () => {
                             <tbody>
                                 <tr>
                                     <td>Total Charge</td>
-                                    <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(accountingSummary.totalCharge || 0).toFixed(3)} {shipment.currency || 'KWD'}</td>
+                                    <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(accountingSummary.totalCharge || 0).toFixed(3)} {billingCurrency}</td>
                                 </tr>
                                 <tr>
                                     <td>Total Paid</td>
-                                    <td style={{ textAlign: 'right', color: 'var(--primary)', fontWeight: '800' }}>{Number(accountingSummary.totalPaid || 0).toFixed(3)} {shipment.currency || 'KWD'}</td>
+                                    <td style={{ textAlign: 'right', color: 'var(--primary)', fontWeight: '800' }}>{Number(accountingSummary.totalPaid || 0).toFixed(3)} {billingCurrency}</td>
                                 </tr>
                                 <tr>
                                     <td>Remaining</td>
                                     <td style={{ textAlign: 'right', color: accountingSummary.remainingBalance > 0 ? '#b31b25' : 'var(--primary)', fontWeight: '800' }}>
-                                        {Number(accountingSummary.remainingBalance || 0).toFixed(3)} {shipment.currency || 'KWD'}
+                                        {Number(accountingSummary.remainingBalance || 0).toFixed(3)} {billingCurrency}
                                     </td>
                                 </tr>
                                 <tr>
@@ -1565,7 +1573,7 @@ const ShipmentDetailsPage = () => {
                                         sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'var(--surface-container-low)' } }}
                                     />
                                     <TextField
-                                        label={`Amount (${shipment.currency || 'KWD'})`}
+                                        label={`Amount (${billingCurrency})`}
                                         type="number"
                                         value={allocationForm.amount}
                                         onChange={(e) => setAllocationForm({ ...allocationForm, amount: e.target.value })}

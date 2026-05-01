@@ -3,6 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 import { getApiBaseUrl } from '../utils/env';
 import { dedupeTrackingEvents } from '../utils/dedupeTrackingEvents';
+import { formatLocationWithFlag, getCountryFlag } from '../utils/locationDisplay';
+import { getEventDisplayMessage } from '../utils/shipmentDisplay';
 import {
   STATUS_HEADLINE,
   STATUS_LABELS,
@@ -260,7 +262,9 @@ function rawEventsForLog(shipment) {
 function placeLabel(place) {
   if (!place) return '';
   const country = place.countryCode || place.country || '';
-  return [place.city, country].filter(Boolean).join(' - ');
+  const label = [place.city, country].filter(Boolean).join(' - ');
+  const flag = getCountryFlag(place);
+  return flag && label ? `${flag} ${label}` : label;
 }
 
 function RouteProgressBar({ originCity, destCity, stepIndex }) {
@@ -381,13 +385,17 @@ function TimelineTab({ events = [] }) {
       {Object.entries(grouped).map(([date, dayEvents]) => (
         <div key={date} style={{ marginBottom: 16 }}>
           <div style={{ fontWeight: 800, fontSize: 13, color: '#0b5bd3', marginBottom: 8 }}>{date}</div>
-          {dayEvents.map((event, index) => (
-            <div key={`${event.timestamp}-${index}`} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 220px', gap: 10, padding: '8px 0', borderBottom: '1px solid #eef3fa' }}>
-              <div style={{ color: '#66758a', fontSize: 12 }}>{fmt.time(event.timestamp)}</div>
-              <div style={{ fontSize: 13, color: '#102033', fontWeight: 700 }}>{EVENT_LABELS[event.canonicalStatus] || event.description || event.status}</div>
-              <div style={{ color: '#66758a', fontSize: 12 }}>{event.normalizedLocation || event.location}</div>
-            </div>
-          ))}
+          {dayEvents.map((event, index) => {
+            const locationLabel = formatLocationWithFlag(event.normalizedLocation || event.location);
+            const displayMessage = getEventDisplayMessage(event, EVENT_LABELS[event.canonicalStatus] || 'Tracking update');
+            return (
+              <div key={`${event.timestamp}-${index}`} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 220px', gap: 10, padding: '8px 0', borderBottom: '1px solid #eef3fa' }}>
+                <div style={{ color: '#66758a', fontSize: 12 }}>{fmt.time(event.timestamp)}</div>
+                <div style={{ fontSize: 13, color: '#102033', fontWeight: 700 }}>{displayMessage}</div>
+                <div style={{ color: '#66758a', fontSize: 12 }}>{locationLabel}</div>
+              </div>
+            );
+          })}
         </div>
       ))}
     </div>
@@ -407,30 +415,33 @@ function EventLogTab({ events }) {
 
   return (
     <div style={styles.card}>
-      {events.map((event, index) => (
-        <div
-          key={`${event.timestamp}-${index}`}
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '18px 1fr minmax(120px, auto)',
-            gap: 14,
-            padding: '16px 0',
-            borderBottom: index === events.length - 1 ? 'none' : '1px solid #dfe8f5',
-          }}
-          className="event-row"
-        >
-          <span style={{
-            width: 10,
-            height: 10,
-            borderRadius: '50%',
-            background: index === 0 ? '#0b5bd3' : '#7f93ad',
-            marginTop: 5,
-            boxShadow: index === 0 ? '0 0 0 5px rgba(11, 91, 211, 0.12)' : 'none',
-          }}
-          />
-          <div>
-            <div style={{ color: '#102033', fontWeight: index === 0 ? 850 : 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span>{event.description || event.status || 'Tracking update'}</span>
+      {events.map((event, index) => {
+        const locationLabel = formatLocationWithFlag(event.location);
+        const displayMessage = getEventDisplayMessage(event);
+        return (
+          <div
+            key={`${event.timestamp}-${index}`}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '18px 1fr minmax(120px, auto)',
+              gap: 14,
+              padding: '16px 0',
+              borderBottom: index === events.length - 1 ? 'none' : '1px solid #dfe8f5',
+            }}
+            className="event-row"
+          >
+            <span style={{
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              background: index === 0 ? '#0b5bd3' : '#7f93ad',
+              marginTop: 5,
+              boxShadow: index === 0 ? '0 0 0 5px rgba(11, 91, 211, 0.12)' : 'none',
+            }}
+            />
+            <div>
+              <div style={{ color: '#102033', fontWeight: index === 0 ? 850 : 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>{displayMessage}</span>
               {event.occurrences > 1 && (
                 <span
                   title={`Repeated ${event.occurrences} times — first at ${fmt.time(event.firstTimestamp)}`}
@@ -447,8 +458,8 @@ function EventLogTab({ events }) {
                 </span>
               )}
             </div>
-            {event.location && (
-              <div style={{ color: '#66758a', fontSize: 13, marginTop: 4 }}>{event.location}</div>
+            {locationLabel && (
+              <div style={{ color: '#66758a', fontSize: 13, marginTop: 4 }}>{locationLabel}</div>
             )}
             <div style={{ color: '#7a899d', fontSize: 12, marginTop: 5 }}>
               {event.source === 'carrier' ? 'Carrier network' : 'Target Logistics'}
@@ -458,8 +469,9 @@ function EventLogTab({ events }) {
             <div>{fmt.date(event.timestamp)}</div>
             <div>{fmt.time(event.timestamp)}</div>
           </div>
-        </div>
-      ))}
+          </div>
+        );
+      })}
     </div>
   );
 }

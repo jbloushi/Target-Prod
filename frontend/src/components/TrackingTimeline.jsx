@@ -8,6 +8,8 @@ import InventoryIcon from '@mui/icons-material/Inventory';
 import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import { dedupeTrackingEvents } from '../utils/dedupeTrackingEvents';
+import { formatLocationWithFlag } from '../utils/locationDisplay';
+import { getEventDisplayMessage } from '../utils/shipmentDisplay';
 
 /**
  * DGR-Style Tracking Timeline Component
@@ -153,7 +155,7 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                             }}
                         >
                             {dateKey}
-                            <Box sx={{ flex: 1, height: '1px', background: 'linear-gradient(to right, rgba(87, 92, 96, 0.18), transparent)' }} />
+                            <Box sx={{ flex: 1, height: '1px', background: 'var(--border-color, #d9dee4)' }} />
                         </Typography>
 
                         {/* Events for this date */}
@@ -166,7 +168,7 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                                     top: 0,
                                     bottom: -20,
                                     width: 1,
-                                    background: 'linear-gradient(to bottom, rgba(87, 92, 96, 0.2), transparent)',
+                                    background: 'var(--border-color, #d9dee4)',
                                     zIndex: 0
                                 }}
                             />
@@ -177,7 +179,8 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                                 const { time } = formatDate(event.timestamp);
                                 const isFirst = dateIndex === 0 && eventIndex === 0;
                                 const source = event.source === 'carrier' ? 'Global Network' : 'Logistics Center';
-                                const locationText = formatLocation(event.location);
+                                const locationText = formatLocationWithFlag(event.location);
+                                const displayMessage = getEventDisplayMessage(event, statusStr || config.label);
 
                                 return (
                                     <Box
@@ -198,9 +201,9 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                                                 height: 10,
                                                 borderRadius: '50%',
                                                 bgcolor: '#0b5bd3',
-                                                border: '2px solid rgba(11,91,211,0.28)',
+                                                border: '2px solid var(--surface-container-lowest, #ffffff)',
                                                 zIndex: 1,
-                                                boxShadow: '0 0 10px rgba(11,91,211,0.2)',
+                                                boxShadow: 'none',
                                                 transition: 'all 0.3s ease'
                                             }}
                                         />
@@ -216,7 +219,7 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                                                         fontSize: '14px'
                                                     }}
                                                 >
-                                                    {event.description || statusStr || config.label}
+                                                    {displayMessage}
                                                 </Typography>
 
                                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 0.5 }}>
@@ -225,7 +228,7 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                                                             {locationText}
                                                         </Typography>
                                                     )}
-                                                    <Box sx={{ width: 4, height: 4, borderRadius: '50%', bgcolor: 'rgba(87, 92, 96, 0.28)' }} />
+                                                    <Box sx={{ width: 4, height: 4, borderRadius: '50%', bgcolor: 'var(--border-color, #d9dee4)' }} />
                                                     <Typography variant="caption" sx={{ color: isFirst ? '#0b5bd3' : 'var(--on-surface-variant, #575c60)', fontWeight: 600 }}>
                                                         {source}
                                                     </Typography>
