@@ -98,8 +98,25 @@ describe('buildDisplayHistory', () => {
     expect(out.map((e) => `${e.canonicalStatus}:${e.normalizedLocation}`)).toEqual([
       'pickup:KUWAIT-KW',
       'arrived_facility:ABU DHABI-AE',
-      'departed_facility:KUWAIT-KW',
       'processed:DUBAI-AE'
+    ]);
+  });
+
+  it('suppresses origin departure replay in the same timestamp batch as destination movements', () => {
+    const events = [
+      { status: 'Shipment picked up', description: 'Shipment picked up', location: 'Kuwait-KW', timestamp: '2026-04-27T14:55:00Z' },
+      { status: 'Shipment has departed from a DHL facility KUWAIT-KUWAIT', description: 'Shipment has departed from a DHL facility KUWAIT-KUWAIT', location: 'KUWAIT-KUWAIT', timestamp: '2026-04-29T01:53:00Z' },
+      { status: 'Shipment has departed from a DHL facility KUWAIT-KUWAIT', description: 'Shipment has departed from a DHL facility KUWAIT-KUWAIT', location: 'KUWAIT-KUWAIT', timestamp: '2026-05-01T20:57:00Z' },
+      { status: 'Arrived at DHL Sort Facility ABU DHABI-UNITED ARAB EMIRATES', description: 'Arrived at DHL Sort Facility ABU DHABI-UNITED ARAB EMIRATES', location: 'ABU DHABI-UNITED ARAB EMIRATES', timestamp: '2026-05-01T20:57:00Z' },
+      { status: 'Processed at DUBAI-UNITED ARAB EMIRATES', description: 'Processed at DUBAI-UNITED ARAB EMIRATES', location: 'DUBAI-UNITED ARAB EMIRATES', timestamp: '2026-05-01T20:57:00Z' }
+    ];
+
+    const out = buildDisplayHistory(events, { originLocation: 'KUWAIT-KW' });
+    expect(out.map((e) => `${e.canonicalStatus}:${e.normalizedLocation}:${e.timestamp}`)).toEqual([
+      'pickup:KUWAIT-KW:2026-04-27T14:55:00.000Z',
+      'departed_facility:KUWAIT-KW:2026-04-29T01:53:00.000Z',
+      'arrived_facility:ABU DHABI-AE:2026-05-01T20:57:00.000Z',
+      'processed:DUBAI-AE:2026-05-01T20:57:00.000Z'
     ]);
   });
 });

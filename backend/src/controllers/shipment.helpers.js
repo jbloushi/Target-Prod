@@ -134,7 +134,7 @@ const buildDisplayHistory = (events = [], options = {}) => {
     const providedOriginLocation = normalizeLocationLabel(options?.originLocation || '');
     const movementStatuses = new Set(['created', 'pickup', 'arrived_facility', 'processed', 'departed_facility']);
     const lowSignalStatuses = new Set(['customs_update', 'hold']);
-    const originReplayStatuses = new Set(['pickup', 'arrived_facility', 'processed', 'customs_update', 'hold']);
+    const originReplayStatuses = new Set(['pickup', 'arrived_facility', 'processed', 'departed_facility', 'customs_update', 'hold']);
     const prepared = (Array.isArray(events) ? events : []).map((event) => {
         const timestamp = event?.timestamp ? new Date(event.timestamp) : null;
         if (!timestamp || Number.isNaN(timestamp.getTime())) return null;
@@ -191,6 +191,14 @@ const buildDisplayHistory = (events = [], options = {}) => {
             if (event.canonicalStatus === 'pickup') {
                 if (hasOriginPickup) return false;
                 hasOriginPickup = true;
+            }
+
+            if (
+                movedBeyondOrigin
+                && originReplayStatuses.has(event.canonicalStatus)
+                && new Date(event.timestamp) >= new Date(movedBeyondOrigin.timestamp)
+            ) {
+                return false;
             }
 
             if (
