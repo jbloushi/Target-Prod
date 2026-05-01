@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 import { getApiBaseUrl } from '../utils/env';
+import { dedupeTrackingEvents } from '../utils/dedupeTrackingEvents';
 import {
   STATUS_HEADLINE,
   STATUS_LABELS,
@@ -231,9 +232,21 @@ const styles = {
   },
 };
 
+const normalizeEventText = (v) => String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+const publicEventKey = (event) => {
+  const desc = normalizeEventText(event?.description || event?.status);
+  const loc = normalizeEventText(
+    typeof event?.location === 'string'
+      ? event.location
+      : (event?.location?.formattedAddress || event?.location?.city || placeLabel(event?.location))
+  );
+  return `${desc}|${loc}`;
+};
+
 function mergeEvents(shipment) {
-  return [...(shipment?.carrierEvents || []), ...(shipment?.internalEvents || [])]
-    .filter((event) => event?.timestamp)
+  const merged = [...(shipment?.carrierEvents || []), ...(shipment?.internalEvents || [])]
+    .filter((event) => event?.timestamp);
+  return dedupeTrackingEvents(merged, publicEventKey)
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 }
 
@@ -422,8 +435,23 @@ function EventLogTab({ events }) {
           }}
           />
           <div>
-            <div style={{ color: '#102033', fontWeight: index === 0 ? 850 : 700, fontSize: 14 }}>
-              {event.description || event.status || 'Tracking update'}
+            <div style={{ color: '#102033', fontWeight: index === 0 ? 850 : 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>{event.description || event.status || 'Tracking update'}</span>
+              {event.occurrences > 1 && (
+                <span
+                  title={`Repeated ${event.occurrences} times — first at ${fmt.time(event.firstTimestamp)}`}
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    padding: '2px 6px',
+                    borderRadius: 999,
+                    background: 'rgba(11, 91, 211, 0.1)',
+                    color: '#0b5bd3',
+                  }}
+                >
+                  ×{event.occurrences}
+                </span>
+              )}
             </div>
             {event.location && (
               <div style={{ color: '#66758a', fontSize: 13, marginTop: 4 }}>{event.location}</div>

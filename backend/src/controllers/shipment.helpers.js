@@ -90,10 +90,15 @@ const resolveEffectiveCarrierPolicy = ({ targetUser, carrierCode, availableCarri
  * Creates a unique string key for a history event to prevent duplicates
  */
 const buildHistoryKey = (event) => {
-    const time = event?.timestamp ? new Date(event.timestamp).toISOString() : '';
+    const time = event?.timestamp ? new Date(event.timestamp) : null;
+    // Bucket to the minute — DHL re-emits the same checkpoint with sub-minute jitter
+    const minuteBucket = time && !Number.isNaN(time.getTime())
+        ? Math.floor(time.getTime() / 60000)
+        : '';
     const status = event?.status || '';
+    const description = (event?.description || '').trim().toLowerCase();
     const location = event?.location?.formattedAddress || event?.location?.address || event?.location || '';
-    return `${status}|${time}|${location}`;
+    return `${status}|${description}|${minuteBucket}|${location}`;
 };
 
 /**
