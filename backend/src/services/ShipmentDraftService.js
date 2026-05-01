@@ -152,7 +152,7 @@ class ShipmentDraftService {
                 history: [
                     {
                         status: requestedStatus,
-                        description: isManualShipment ? 'Manual shipment created' : 'Shipment draft created',
+                        description: isManualShipment ? 'Manual shipment created' : 'Shipment Created',
                         timestamp: new Date(),
                         location: cleanData.origin
                     }

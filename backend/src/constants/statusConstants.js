@@ -47,18 +47,23 @@ const DHL_STATUS_MAP = {
 const LEGACY_STATUS_MAP = {
     'updated': 'pending',
     'created': 'booked',
-    'ready_for_pickup': 'booked',
     'pickup_scheduled': 'booked',
 };
 
+// Lateral / non-progressive statuses — valid but not part of the linear pipeline.
+// Already included in SHIPMENT_STATUSES; this constant documents intent for callers
+// that need to distinguish "progressed to" from "moved laterally to".
+const LATERAL_STATUSES = ['exception'];
+
 /**
  * Normalize any raw status string to a canonical pipeline status.
- * Handles: current statuses, legacy statuses, DHL codes, and freeform strings.
+ * Handles: current statuses, lateral statuses, legacy statuses, DHL codes, and freeform strings.
  */
 function normalizeStatus(raw) {
     if (!raw) return 'draft';
     const s = String(raw).toLowerCase().replace(/\s+/g, '_');
     if (SHIPMENT_STATUSES.includes(s)) return s;
+    if (LATERAL_STATUSES.includes(s)) return s;
     if (LEGACY_STATUS_MAP[s]) return LEGACY_STATUS_MAP[s];
     if (DHL_STATUS_MAP[s] != null) return DHL_STATUS_MAP[s];
     return 'in_transit'; // safe fallback for unknown carrier codes
@@ -85,6 +90,7 @@ function isStatusAhead(statusA, statusB) {
 module.exports = {
     SHIPMENT_STATUSES,
     MANUAL_SHIPMENT_STATUSES,
+    LATERAL_STATUSES,
     STATUS_LABELS,
     DHL_STATUS_MAP,
     LEGACY_STATUS_MAP,

@@ -57,15 +57,41 @@ export const STATUS_HEADLINE = {
     in_transit: 'In transit',
     out_for_delivery: 'Out for delivery',
     delivered: 'Delivered',
-    exception: 'We are checking this shipment',
+    exception: 'Action required — shipment exception',
     cancelled: 'Shipment cancelled',
 };
+
+export const STATUS_ALERT_CONFIG = {
+    exception: {
+        severity: 'error',
+        title: 'Shipment Exception',
+        message: 'There is an issue with your shipment that requires attention. Our team has been notified and is investigating.',
+        cta: 'Contact Support',
+        ctaHref: 'mailto:support@targetlogistics.com',
+    },
+    on_hold: {
+        severity: 'warning',
+        title: 'Shipment On Hold',
+        message: 'Your shipment is temporarily on hold. This is usually resolved within 24 hours. Contact us if you need assistance.',
+        cta: 'Contact Support',
+        ctaHref: 'mailto:support@targetlogistics.com',
+    },
+    cancelled: {
+        severity: 'neutral',
+        title: 'Shipment Cancelled',
+        message: 'This shipment has been cancelled. Please contact us if you believe this is an error.',
+        cta: null,
+        ctaHref: null,
+    },
+};
+
+// Lateral / non-progressive statuses — valid but not part of STATUS_ORDER pipeline
+export const LATERAL_STATUSES = ['exception'];
 
 // Legacy status mapping — keeps old data rendering correctly
 const LEGACY_STATUS_MAP = {
     updated: 'pending',
     created: 'booked',
-    ready_for_pickup: 'booked',
     pickup_scheduled: 'booked',
 };
 
@@ -73,7 +99,7 @@ export function normalizeStatus(raw) {
     if (!raw) return 'draft';
     const s = String(raw).toLowerCase().replace(/\s+/g, '_');
     if (STATUS_ORDER.includes(s)) return s;
-    if (s === 'exception') return 'exception';
+    if (LATERAL_STATUSES.includes(s)) return s;
     if (LEGACY_STATUS_MAP[s]) return LEGACY_STATUS_MAP[s];
     return 'in_transit'; // safe fallback for unknown carrier codes
 }

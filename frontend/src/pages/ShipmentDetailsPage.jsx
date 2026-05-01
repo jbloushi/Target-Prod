@@ -1425,8 +1425,37 @@ const ShipmentDetailsPage = () => {
 
                     {/* Track History Section */}
                     <SectionCard>
-                        <SectionTitle>Track History</SectionTitle>
-                        <div style={{ padding: '12px 0' }}>
+                        <CardHeader>
+                            <div className="header-label">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                                </svg>
+                                Track History
+                            </div>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                {(() => {
+                                    const history = shipment.history || [];
+                                    const carrierCount = history.filter(h => h.source === 'carrier').length;
+                                    return (
+                                        <>
+                                            {carrierCount > 0 && (
+                                                <Chip
+                                                    label={`${carrierCount} carrier`}
+                                                    size="small"
+                                                    sx={{ fontSize: '11px', height: 22, bgcolor: '#eff6ff', color: '#0b5bd3', border: '1px solid #bfdbfe', fontWeight: 700 }}
+                                                />
+                                            )}
+                                            <Chip
+                                                label={`${history.length} total`}
+                                                size="small"
+                                                sx={{ fontSize: '11px', height: 22, bgcolor: 'rgba(0,80,212,0.06)', color: 'var(--primary)', fontWeight: 700 }}
+                                            />
+                                        </>
+                                    );
+                                })()}
+                            </Box>
+                        </CardHeader>
+                        <div style={{ padding: '4px 0' }}>
                             <TrackingTimeline history={shipment.history || []} currentStatus={shipment.status} />
                         </div>
                     </SectionCard>

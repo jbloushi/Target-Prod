@@ -87,13 +87,16 @@ const resolveEffectiveCarrierPolicy = ({ targetUser, carrierCode, availableCarri
 };
 
 /**
- * Creates a unique string key for a history event to prevent duplicates
+ * Creates a unique string key for a history event to prevent duplicates.
+ * Uses minute-precision timestamps to collapse near-duplicate carrier polling events
+ * (e.g., DHL returning the same checkpoint scan with a 1-second offset on each poll).
  */
 const buildHistoryKey = (event) => {
-    const time = event?.timestamp ? new Date(event.timestamp).toISOString() : '';
-    const status = event?.status || '';
-    const location = event?.location?.formattedAddress || event?.location?.address || event?.location || '';
-    return `${status}|${time}|${location}`;
+    const time = event?.timestamp ? new Date(event.timestamp).toISOString().substring(0, 16) : '';
+    const status = (event?.status || '').toLowerCase();
+    const desc = (event?.description || '').toLowerCase().substring(0, 60);
+    const location = (event?.location?.formattedAddress || event?.location?.address || String(event?.location || '')).toLowerCase();
+    return `${status}|${time}|${desc}|${location}`;
 };
 
 /**
@@ -135,14 +138,15 @@ const syncCarrierTrackingHistory = async (shipment) => {
             const rawStatus = event.statusCode || tracking.status || 'transit';
             const normalizedStatus = normalizeStatus(rawStatus);
 
+            const locationStr = event.location && event.location !== 'Unknown' ? event.location : null;
             const historyEntry = {
                 status: normalizedStatus,
                 description: event.description || 'Carrier update',
                 source: 'carrier',
                 timestamp: event.timestamp ? new Date(event.timestamp) : new Date(),
                 location: {
-                    formattedAddress: event.location || 'Unknown',
-                    city: event.location || undefined,
+                    formattedAddress: locationStr || null,
+                    city: locationStr || null,
                     contactPerson: fallbackContact,
                     phone: fallbackPhone
                 }

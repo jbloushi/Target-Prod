@@ -685,7 +685,8 @@ class DgrAdapter extends CarrierAdapter {
                     statusCode: e.statusCode,
                     description: e.description,
                     timestamp: e.timestamp,
-                    location: e.serviceArea?.[0]?.description || e.location?.description || 'Unknown'
+                    location: e.serviceArea?.[0]?.description || e.location?.address?.addressLocality || e.location?.description || null,
+                    serviceArea: e.serviceArea || [],
                 })).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
             };
         } catch (error) {

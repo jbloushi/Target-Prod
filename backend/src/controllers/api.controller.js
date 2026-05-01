@@ -131,7 +131,7 @@ exports.createShipment = async (req, res) => {
                 history: [{
                     status: 'booked',
                     timestamp: new Date().toISOString(),
-                    description: 'Shipment booked with carrier via API',
+                    description: 'Shipment Created',
                     location: normalized.sender
                 }]
             }

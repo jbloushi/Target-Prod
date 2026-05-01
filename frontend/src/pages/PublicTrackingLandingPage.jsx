@@ -6,6 +6,7 @@ import {
   STATUS_HEADLINE,
   STATUS_LABELS,
   STATUS_ORDER,
+  STATUS_ALERT_CONFIG,
   PUBLIC_PROGRESS_LABELS,
   PUBLIC_PROGRESS_STEPS,
   getPublicStepIndex,
@@ -30,6 +31,47 @@ const fmt = {
     ts ? new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''
   ),
   dateTime: (ts) => (ts ? `${fmt.date(ts)} at ${fmt.time(ts)}` : 'Not available'),
+};
+
+// Semantic event colors — mirrors StatusPill.jsx + TrackingTimeline
+const EVENT_STATUS_COLORS = {
+  draft:            '#b36b00',
+  pending:          '#b36b00',
+  updated:          '#b36b00',
+  on_hold:          '#b36b00',
+  created:          '#006573',
+  pickup_scheduled: '#006573',
+  ready_for_pickup: '#006573',
+  booked:           '#0050d4',
+  picked_up:        '#0050d4',
+  in_transit:       '#0050d4',
+  out_for_delivery: '#0050d4',
+  delivered:        '#2e7d32',
+  exception:        '#b31b25',
+  failed:           '#b31b25',
+  cancelled:        '#b31b25',
+  default:          '#575c60',
+};
+
+const getEventColor = (status) => {
+  if (!status) return EVENT_STATUS_COLORS.default;
+  const key = String(status).toLowerCase().replace(/\s+/g, '_');
+  return EVENT_STATUS_COLORS[key] || EVENT_STATUS_COLORS.default;
+};
+
+// Active dot color for TimelineTab — matches StatusPill
+const getActiveStepColor = (normalizedStatus) => {
+  if (['exception', 'cancelled', 'failed'].includes(normalizedStatus)) return '#b31b25';
+  if (normalizedStatus === 'delivered') return '#2e7d32';
+  if (['draft', 'pending', 'on_hold', 'updated'].includes(normalizedStatus)) return '#b36b00';
+  if (['created', 'pickup_scheduled', 'ready_for_pickup'].includes(normalizedStatus)) return '#006573';
+  return '#0050d4'; // brand blue for booked / picked_up / in_transit / out_for_delivery
+};
+
+const ALERT_PALETTE = {
+  error:   { bg: '#fff5f5', border: '#fca5a5', titleColor: '#b31b25', textColor: '#7f1d1d', btnBg: '#b31b25' },
+  warning: { bg: '#fffbeb', border: '#fcd34d', titleColor: '#b36b00', textColor: '#78350f', btnBg: '#b36b00' },
+  neutral: { bg: '#f8fafc', border: '#cbd5e1', titleColor: '#575c60', textColor: '#334155', btnBg: '#575c60' },
 };
 
 const styles = {
@@ -130,7 +172,7 @@ const styles = {
     letterSpacing: 0,
   },
   statusHeadline: {
-    margin: '0 0 10px',
+    margin: '0 0 6px',
     maxWidth: 760,
     fontSize: 36,
     lineHeight: 1.12,
@@ -140,7 +182,13 @@ const styles = {
   lastUpdate: {
     color: '#66758a',
     fontSize: 14,
-    marginBottom: 28,
+    marginBottom: 6,
+  },
+  carrierDetail: {
+    color: '#4b5f76',
+    fontSize: 15,
+    marginBottom: 24,
+    fontStyle: 'italic',
   },
   routeBar: {
     display: 'grid',
@@ -231,9 +279,68 @@ const styles = {
   },
 };
 
+function AlertBanner({ config }) {
+  const c = ALERT_PALETTE[config.severity] || ALERT_PALETTE.neutral;
+  return (
+    <div style={{
+      background: c.bg,
+      border: `1px solid ${c.border}`,
+      borderRadius: 8,
+      padding: '16px 20px',
+      marginBottom: 24,
+      display: 'flex',
+      alignItems: 'flex-start',
+      gap: 14,
+      flexWrap: 'wrap',
+    }}>
+      <div style={{ flex: 1, minWidth: 200 }}>
+        <div style={{ fontWeight: 800, color: c.titleColor, fontSize: 14, marginBottom: 4 }}>
+          {config.title}
+        </div>
+        <div style={{ color: c.textColor, fontSize: 13, lineHeight: 1.5 }}>
+          {config.message}
+        </div>
+      </div>
+      {config.cta && (
+        <a
+          href={config.ctaHref}
+          style={{
+            padding: '9px 20px',
+            borderRadius: 6,
+            background: c.btnBg,
+            color: '#fff',
+            fontSize: 13,
+            fontWeight: 700,
+            textDecoration: 'none',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+            alignSelf: 'center',
+          }}
+        >
+          {config.cta}
+        </a>
+      )}
+    </div>
+  );
+}
+
 function mergeEvents(shipment) {
-  return [...(shipment?.carrierEvents || []), ...(shipment?.internalEvents || [])]
-    .filter((event) => event?.timestamp)
+  // Backend returns unified `events`; legacy fields kept as fallback
+  const combined = [
+    ...(shipment?.events || []),
+    ...(shipment?.carrierEvents || []),
+    ...(shipment?.internalEvents || []),
+  ];
+  // Deduplicate by timestamp + status in case sources overlap
+  const seen = new Set();
+  return combined
+    .filter((event) => {
+      if (!event?.timestamp) return false;
+      const key = `${event.timestamp}-${event.status}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 }
 
@@ -334,52 +441,167 @@ function ShipmentDetailsTab({ shipment }) {
   );
 }
 
-function TimelineTab({ status }) {
-  const currentIdx = getStepIndex(status);
-  const visibleSteps = STATUS_ORDER.filter((step) => step !== 'draft');
+function TimelineTab({ status, normalizedStatus, events, shipment }) {
+  // DHL-style: group all actual events by date, show full detail per event
+  const fmtFullDate = (ts) => {
+    if (!ts) return '';
+    const d = new Date(ts);
+    return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  };
+  const fmtTimeWithTz = (ts) => {
+    if (!ts) return '';
+    const d = new Date(ts);
+    const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const offset = -d.getTimezoneOffset();
+    const sign = offset >= 0 ? '+' : '-';
+    const hrs = String(Math.floor(Math.abs(offset) / 60)).padStart(2, '0');
+    const mins = String(Math.abs(offset) % 60).padStart(2, '0');
+    return `${time} (LT, ${sign}${hrs}:${mins})`;
+  };
+
+  const groups = useMemo(() => {
+    const map = {};
+    events.forEach((event) => {
+      const dateKey = fmtFullDate(event.timestamp);
+      if (!map[dateKey]) map[dateKey] = [];
+      map[dateKey].push(event);
+    });
+    return map;
+  }, [events]);
+  const dateKeys = Object.keys(groups);
+
+  // Piece / tracking info
+  const pieceCount = shipment?.totalPieces || 1;
+  const carrierTrackingNo = shipment?.dhlTrackingNumber || shipment?.trackingNumber || '';
+
+  if (events.length === 0) {
+    return (
+      <div style={styles.card}>
+        <p style={{ color: '#66758a', textAlign: 'center', margin: '24px 0', fontSize: 14 }}>
+          No tracking events recorded yet. Updates will appear here once the shipment is processed.
+        </p>
+      </div>
+    );
+  }
+
+  let globalIdx = 0;
 
   return (
     <div style={styles.card}>
-      {visibleSteps.map((step, index) => {
-        const statusIndex = STATUS_ORDER.indexOf(step);
-        const done = statusIndex <= currentIdx;
-        const active = statusIndex === currentIdx;
-        const isLast = index === visibleSteps.length - 1;
+      {dateKeys.map((dateKey, dateIndex) => {
+        const dayEvents = groups[dateKey];
+        const isLatestDay = dateIndex === 0;
 
         return (
-          <div key={step} style={{ display: 'grid', gridTemplateColumns: '28px 1fr', columnGap: 14 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div key={dateKey} style={{ marginBottom: dateIndex < dateKeys.length - 1 ? 8 : 0 }}>
+            {/* ── Date header (DHL-style) ── */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 12, padding: '14px 0 10px',
+              borderBottom: '1px solid #edf2f7',
+            }}>
               <div style={{
-                width: active ? 16 : 12,
-                height: active ? 16 : 12,
-                borderRadius: '50%',
-                marginTop: 2,
-                background: done ? '#0b5bd3' : '#ffffff',
-                border: `2px solid ${done ? '#0b5bd3' : '#c6d2e2'}`,
-                boxShadow: active ? '0 0 0 6px rgba(11, 91, 211, 0.12)' : 'none',
-              }}
-              />
-              {!isLast && (
-                <div style={{
-                  width: 2,
-                  flex: 1,
-                  minHeight: 34,
-                  background: statusIndex < currentIdx ? '#0b5bd3' : '#d8e1ed',
-                  margin: '6px 0',
-                }}
-                />
-              )}
+                width: 12, height: 12, borderRadius: '50%', flexShrink: 0,
+                background: isLatestDay ? getEventColor(dayEvents[0]?.status) : '#c6d2e2',
+                boxShadow: isLatestDay ? `0 0 0 4px ${getEventColor(dayEvents[0]?.status)}20` : 'none',
+              }} />
+              <span style={{
+                fontSize: 15, fontWeight: 800, color: '#102033',
+                fontFamily: "'Manrope', sans-serif",
+              }}>
+                {dateKey}
+              </span>
             </div>
-            <div style={{ paddingBottom: isLast ? 0 : 20 }}>
-              <div style={{ color: done ? '#102033' : '#66758a', fontWeight: active ? 850 : 700, fontSize: 14 }}>
-                {STATUS_LABELS[step]}
-              </div>
-              {active && (
-                <div style={{ color: '#66758a', fontSize: 13, marginTop: 4 }}>
-                  Current shipment status
+
+            {/* ── Events for this day ── */}
+            {dayEvents.map((event, dayIdx) => {
+              const isFirst = globalIdx === 0;
+              globalIdx++;
+              const eventColor = getEventColor(event.status);
+              const isCarrier = event.source === 'carrier';
+              const location = event.location && event.location !== 'Unknown' ? event.location : null;
+              const isLast = dayIdx === dayEvents.length - 1 && dateIndex === dateKeys.length - 1;
+
+              return (
+                <div
+                  key={`${event.timestamp}-${dayIdx}`}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '12px 1fr',
+                    columnGap: 16,
+                    position: 'relative',
+                  }}
+                >
+                  {/* Vertical connector + dot */}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    {/* Connector line above dot */}
+                    <div style={{
+                      width: 2, height: 16,
+                      background: (dayIdx === 0 && dateIndex === 0) ? 'transparent' : '#d8e1ed',
+                    }} />
+                    {/* Dot */}
+                    <div style={{
+                      width: isFirst ? 10 : 8,
+                      height: isFirst ? 10 : 8,
+                      borderRadius: '50%',
+                      background: eventColor,
+                      flexShrink: 0,
+                      boxShadow: isFirst ? `0 0 0 4px ${eventColor}20` : 'none',
+                    }} />
+                    {/* Connector line below dot */}
+                    {!isLast && (
+                      <div style={{ width: 2, flex: 1, minHeight: 20, background: '#d8e1ed' }} />
+                    )}
+                  </div>
+
+                  {/* Event content */}
+                  <div style={{
+                    padding: '8px 0 16px',
+                    borderBottom: isLast ? 'none' : '1px solid #f5f7fa',
+                  }}>
+                    {/* Time + Location row */}
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                      fontSize: 13, color: '#5a6a7d', marginBottom: 4,
+                    }}>
+                      <span style={{ fontWeight: 600 }}>{fmtTimeWithTz(event.timestamp)}</span>
+                      {location && (
+                        <>
+                          <span style={{ color: '#c6d2e2' }}>|</span>
+                          <span style={{ fontWeight: 600, textTransform: 'uppercase' }}>{location}</span>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Description */}
+                    <div style={{
+                      fontSize: 14, fontWeight: isFirst ? 800 : 700,
+                      color: '#102033', lineHeight: 1.5, marginBottom: 4,
+                    }}>
+                      {event.description || STATUS_LABELS[event.status] || 'Tracking update'}
+                    </div>
+
+                    {/* Piece ID + source row */}
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                      fontSize: 12, color: '#8296a8',
+                    }}>
+                      <span>
+                        {pieceCount} Piece{pieceCount > 1 ? 's' : ''} ID: ({carrierTrackingNo})
+                      </span>
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em',
+                        color: isCarrier ? '#0b5bd3' : '#64748b',
+                        background: isCarrier ? '#eff6ff' : '#f8fafc',
+                        border: `1px solid ${isCarrier ? '#bfdbfe' : '#e2e8f0'}`,
+                        borderRadius: 3, padding: '1px 6px',
+                      }}>
+                        {isCarrier ? 'Carrier' : 'Platform'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              )}
-            </div>
+              );
+            })}
           </div>
         );
       })}
@@ -398,46 +620,115 @@ function EventLogTab({ events }) {
     );
   }
 
+  // Group events by calendar date
+  const groups = {};
+  events.forEach((event) => {
+    const dateKey = fmt.date(event.timestamp);
+    if (!groups[dateKey]) groups[dateKey] = [];
+    groups[dateKey].push(event);
+  });
+  const dateKeys = Object.keys(groups);
+  let globalIndex = 0;
+
   return (
     <div style={styles.card}>
-      {events.map((event, index) => (
-        <div
-          key={`${event.timestamp}-${index}`}
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '18px 1fr minmax(120px, auto)',
-            gap: 14,
-            padding: '16px 0',
-            borderBottom: index === events.length - 1 ? 'none' : '1px solid #edf2f7',
-          }}
-          className="event-row"
-        >
-          <span style={{
-            width: 10,
-            height: 10,
-            borderRadius: '50%',
-            background: index === 0 ? '#0b5bd3' : '#9aabc0',
-            marginTop: 5,
-            boxShadow: index === 0 ? '0 0 0 5px rgba(11, 91, 211, 0.12)' : 'none',
-          }}
-          />
-          <div>
-            <div style={{ color: '#102033', fontWeight: index === 0 ? 850 : 700, fontSize: 14 }}>
-              {event.description || event.status || 'Tracking update'}
+      {dateKeys.map((dateKey, dateIndex) => {
+        const dayEvents = groups[dateKey];
+        const isLatestDay = dateIndex === 0;
+
+        return (
+          <div key={dateKey} style={{ marginBottom: dateIndex < dateKeys.length - 1 ? 24 : 0 }}>
+            {/* Date divider */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <span style={{
+                fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em',
+                color: isLatestDay ? '#0b5bd3' : '#8296a8', whiteSpace: 'nowrap',
+              }}>
+                {dateKey}
+              </span>
+              <div style={{ flex: 1, height: 1, background: '#edf2f7' }} />
+              <span style={{ fontSize: 11, color: '#9aabc0', whiteSpace: 'nowrap' }}>
+                {dayEvents.length} {dayEvents.length === 1 ? 'event' : 'events'}
+              </span>
             </div>
-            {event.location && (
-              <div style={{ color: '#66758a', fontSize: 13, marginTop: 4 }}>{event.location}</div>
-            )}
-            <div style={{ color: '#7a899d', fontSize: 12, marginTop: 5 }}>
-              {event.source === 'carrier' ? 'Carrier network' : 'Target Logistics'}
-            </div>
+
+            {/* Events for this day */}
+            {dayEvents.map((event, dayIdx) => {
+              const isLatest = globalIndex === 0;
+              globalIndex++;
+              const eventColor = getEventColor(event.status);
+              const isCarrier = event.source === 'carrier';
+              const location = event.location && event.location !== 'Unknown' ? event.location : null;
+
+              return (
+                <div
+                  key={`${event.timestamp}-${dayIdx}`}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '14px 1fr auto',
+                    columnGap: 14,
+                    paddingBottom: dayIdx < dayEvents.length - 1 ? 14 : 0,
+                    marginBottom: dayIdx < dayEvents.length - 1 ? 14 : 0,
+                    borderBottom: dayIdx < dayEvents.length - 1 ? '1px solid #f0f4f8' : 'none',
+                  }}
+                >
+                  {/* Status dot */}
+                  <div style={{ paddingTop: 4 }}>
+                    <div style={{
+                      width: isLatest ? 12 : 8,
+                      height: isLatest ? 12 : 8,
+                      borderRadius: '50%',
+                      background: eventColor,
+                      boxShadow: isLatest ? `0 0 0 4px ${eventColor}22` : 'none',
+                    }} />
+                  </div>
+
+                  {/* Content */}
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                      <span style={{
+                        color: '#102033', fontWeight: isLatest ? 800 : 600, fontSize: 14, lineHeight: 1.4,
+                      }}>
+                        {event.description || event.status || 'Tracking update'}
+                      </span>
+                      {isLatest && (
+                        <span style={{
+                          fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em',
+                          color: '#fff', background: eventColor, borderRadius: 3, padding: '2px 6px',
+                        }}>
+                          LATEST
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      {location && (
+                        <span style={{ color: '#66758a', fontSize: 12 }}>
+                          📍 {location}
+                        </span>
+                      )}
+                      {location && <span style={{ color: '#d0d9e4', fontSize: 10 }}>•</span>}
+                      <span style={{
+                        fontSize: 11, fontWeight: 600,
+                        color: isCarrier ? '#0b5bd3' : '#64748b',
+                        background: isCarrier ? '#eff6ff' : '#f8fafc',
+                        border: `1px solid ${isCarrier ? '#bfdbfe' : '#e2e8f0'}`,
+                        borderRadius: 4, padding: '1px 7px',
+                      }}>
+                        {isCarrier ? 'Carrier' : 'Platform'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Time */}
+                  <div style={{ textAlign: 'right', flexShrink: 0, color: isLatest ? eventColor : '#8296a8', fontSize: 12, fontWeight: isLatest ? 700 : 400, paddingTop: 2 }}>
+                    {fmt.time(event.timestamp)}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          <div style={{ textAlign: 'right', color: '#66758a', fontSize: 12 }}>
-            <div>{fmt.date(event.timestamp)}</div>
-            <div>{fmt.time(event.timestamp)}</div>
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -489,6 +780,15 @@ const PublicTrackingPage = () => {
   const lastEvent = events[0];
   const stepIndex = shipment ? getPublicStepIndex(shipment.status) : 0;
   const normalizedStatus = normalizeStatus(shipment?.status);
+  const alertConfig = STATUS_ALERT_CONFIG[normalizedStatus] || null;
+
+  // Latest meaningful description from any event (carrier preferred, platform fallback)
+  const latestDescription = useMemo(() => {
+    if (!lastEvent?.description) return null;
+    const statusLabel = String(normalizedStatus).replace(/_/g, ' ');
+    if (lastEvent.description.toLowerCase() === statusLabel.toLowerCase()) return null;
+    return lastEvent.description;
+  }, [lastEvent, normalizedStatus]);
 
   const handleSearch = (event) => {
     event.preventDefault();
@@ -548,11 +848,49 @@ const PublicTrackingPage = () => {
                   {STATUS_HEADLINE[normalizedStatus] || 'Tracking update available'}
                 </h1>
 
-                <div style={styles.lastUpdate}>
-                  {lastEvent
-                    ? `Last update: ${fmt.dateTime(lastEvent.timestamp)}${lastEvent.location ? `, ${lastEvent.location}` : ''}`
-                    : 'Tracking events will appear here once the shipment starts moving.'}
-                </div>
+                {/* Date + location + description under status headline */}
+                {lastEvent ? (
+                  <div style={{ marginBottom: alertConfig ? 20 : 28 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
+                      <span style={{ color: '#66758a', fontSize: 14 }}>
+                        {fmt.dateTime(lastEvent.timestamp)}
+                      </span>
+                      {lastEvent.location && (
+                        <>
+                          <span style={{ color: '#c5d0dc', fontSize: 12 }}>·</span>
+                          <span style={{ color: '#4b6278', fontSize: 14, fontWeight: 600 }}>
+                            📍 {lastEvent.location}
+                          </span>
+                        </>
+                      )}
+                      <span style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.06em',
+                        color: lastEvent.source === 'carrier' ? '#0b5bd3' : '#64748b',
+                        background: lastEvent.source === 'carrier' ? '#eff6ff' : '#f1f5f9',
+                        border: `1px solid ${lastEvent.source === 'carrier' ? '#bfdbfe' : '#e2e8f0'}`,
+                        borderRadius: 4,
+                        padding: '2px 7px',
+                      }}>
+                        {lastEvent.source === 'carrier' ? 'Carrier' : 'Platform'}
+                      </span>
+                    </div>
+                    {latestDescription && (
+                      <div style={{ color: '#4b5f76', fontSize: 15, fontStyle: 'italic' }}>
+                        "{latestDescription}"
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ ...styles.lastUpdate, marginBottom: 28 }}>
+                    Tracking events will appear here once the shipment starts moving.
+                  </div>
+                )}
+
+                {/* Alert banner for actionable statuses */}
+                {alertConfig && <AlertBanner config={alertConfig} />}
 
                 <RouteProgressBar
                   originCity={placeLabel(shipment.origin)}
@@ -586,7 +924,9 @@ const PublicTrackingPage = () => {
         {!loading && shipment && (
           <section style={styles.content}>
             {activeTab === 'details' && <ShipmentDetailsTab shipment={shipment} />}
-            {activeTab === 'timeline' && <TimelineTab status={shipment.status} />}
+            {activeTab === 'timeline' && (
+              <TimelineTab status={shipment.status} normalizedStatus={normalizedStatus} events={events} shipment={shipment} />
+            )}
             {activeTab === 'events' && <EventLogTab events={events} />}
           </section>
         )}
