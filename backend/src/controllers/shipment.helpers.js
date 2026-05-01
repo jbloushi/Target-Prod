@@ -130,6 +130,11 @@ const compactHistory = (history = []) => {
                 __minuteBucket: (timestamp && !Number.isNaN(timestamp.getTime()))
                     ? Math.floor(timestamp.getTime() / 60000)
                     : '',
+                // Carrier feeds can replay same checkpoint many times over short windows.
+                // Use a wider bucket to collapse noisy repeats while preserving movement transitions.
+                __carrierWindowBucket: (timestamp && !Number.isNaN(timestamp.getTime()))
+                    ? Math.floor(timestamp.getTime() / (6 * 60 * 60 * 1000))
+                    : '',
                 __location: String(locationRaw).trim().toLowerCase()
             };
         })
@@ -137,11 +142,12 @@ const compactHistory = (history = []) => {
 
     const byKey = new Map();
     for (const event of prepared) {
+        const timeBucket = event.source === 'carrier' ? event.__carrierWindowBucket : event.__minuteBucket;
         const dedupeKey = [
             event.source,
             event.status,
             event.description.toLowerCase(),
-            event.__minuteBucket,
+            timeBucket,
             event.__location
         ].join('|');
 
@@ -153,7 +159,7 @@ const compactHistory = (history = []) => {
 
     return Array.from(byKey.values())
         .sort((a, b) => a.__timestamp.getTime() - b.__timestamp.getTime())
-        .map(({ __timestamp, __minuteBucket, __location, ...event }) => event);
+        .map(({ __timestamp, __minuteBucket, __carrierWindowBucket, __location, ...event }) => event);
 };
 
 /**

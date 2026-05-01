@@ -4,7 +4,8 @@
  */
 const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
-const { syncCarrierTrackingHistory } = require('./shipment.helpers');
+const CarrierFactory = require('../services/CarrierFactory');
+const { syncCarrierTrackingHistory, compactHistory } = require('./shipment.helpers');
 const { normalizeStatus } = require('../constants/statusConstants');
 
 /**
@@ -34,14 +35,39 @@ exports.getPublicShipment = async (req, res) => {
             logger.warn(`Public tracking: carrier sync failed for ${trackingNumber}: ${err.message}`);
         }
 
-        // Build unified events array from the merged history
-        const events = (shipment.history || []).map(h => ({
-            source: h.source || 'platform',
-            status: normalizeStatus(typeof h.status === 'object' ? (h.status?.status || 'booked') : (h.status || 'booked')),
-            description: h.description || '',
-            timestamp: h.timestamp,
-            location: h.location?.formattedAddress || h.location?.city || ''
-        })).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        let events = [];
+        const carrierTrackingNumber = shipment?.carrierShipmentId || shipment?.dhlTrackingNumber;
+        const carrierCode = (shipment?.carrier || shipment?.carrierCode || 'DGR').toUpperCase();
+
+        // Public page should mirror carrier history whenever carrier data exists.
+        if (carrierTrackingNumber) {
+            try {
+                const carrier = CarrierFactory.getAdapter(carrierCode);
+                const tracking = await carrier.getTracking(carrierTrackingNumber);
+                const carrierEvents = (tracking?.events || []).map((event) => ({
+                    source: 'carrier',
+                    status: normalizeStatus(event.statusCode || tracking?.status || shipment.status || 'booked'),
+                    description: event.description || '',
+                    timestamp: event.timestamp,
+                    location: event.location || ''
+                }));
+                events = compactHistory(carrierEvents)
+                    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            } catch (carrierError) {
+                logger.warn(`Public tracking: carrier event fetch failed for ${trackingNumber}: ${carrierError.message}`);
+            }
+        }
+
+        if (events.length === 0) {
+            // Fallback to persisted merged history if carrier feed is unavailable.
+            events = compactHistory(shipment.history || []).map(h => ({
+                source: h.source || 'platform',
+                status: normalizeStatus(typeof h.status === 'object' ? (h.status?.status || 'booked') : (h.status || 'booked')),
+                description: h.description || '',
+                timestamp: h.timestamp,
+                location: h.location?.formattedAddress || h.location?.city || ''
+            })).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        }
 
         res.status(200).json({
             success: true,
