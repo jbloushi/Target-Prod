@@ -18,6 +18,7 @@ describe('buildDisplayHistory', () => {
     expect(normalizeLocationLabel('KUWAIT-KUWAIT')).toBe('KUWAIT-KW');
     expect(normalizeLocationLabel('Abu Dhabi-UNITED ARAB EMIRATES')).toBe('ABU DHABI-AE');
     expect(normalizeLocationLabel('Dubai-AE')).toBe('DUBAI-AE');
+    expect(normalizeLocationLabel('Cincinnati Hub - Ohio - USA')).toBe('CINCINNATI-US');
   });
 
   it('collapses customs/hold to max once per day/location/status and preserves chronological order', () => {
@@ -33,5 +34,17 @@ describe('buildDisplayHistory', () => {
     expect(out[0].collapsedCount).toBe(2);
     expect(out[1].collapsedCount).toBe(2);
     expect(new Date(out[0].timestamp).getTime()).toBeLessThan(new Date(out[1].timestamp).getTime());
+  });
+
+  it('hides low-signal origin events after origin departure', () => {
+    const events = [
+      { status: 'Shipment picked up', description: 'Shipment picked up', location: 'Kuwait-KW', timestamp: '2026-04-27T10:00:00Z' },
+      { status: 'Shipment has departed from a DHL facility KUWAIT-KUWAIT', description: 'Shipment has departed from a DHL facility KUWAIT-KUWAIT', location: 'KUWAIT-KUWAIT', timestamp: '2026-04-27T12:00:00Z' },
+      { status: 'Shipment is on hold', description: 'Shipment is on hold', location: 'Kuwait-KW', timestamp: '2026-04-27T13:00:00Z' },
+      { status: 'Customs clearance status updated', description: 'Customs clearance status updated', location: 'Kuwait-KW', timestamp: '2026-04-27T14:00:00Z' },
+      { status: 'Processed at ABU DHABI-UNITED ARAB EMIRATES', description: 'Processed at ABU DHABI-UNITED ARAB EMIRATES', location: 'ABU DHABI-UNITED ARAB EMIRATES', timestamp: '2026-04-27T16:00:00Z' }
+    ];
+    const out = buildDisplayHistory(events, { originLocation: 'KUWAIT-KW' });
+    expect(out.map((e) => e.canonicalStatus)).toEqual(['pickup', 'departed_facility', 'processed']);
   });
 });
