@@ -163,7 +163,8 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
         }
 
         const rawHistory = Array.isArray(shipment.history) ? shipment.history : [];
-        const displayHistory = buildDisplayHistory(rawHistory);
+        const originLocation = shipment.origin?.formattedAddress || shipment.origin?.city || '';
+        const displayHistory = buildDisplayHistory(rawHistory, { originLocation });
         res.status(200).json({ success: true, data: { ...shipment, rawHistory, displayHistory, history: displayHistory } });
     } catch (error) {
         logger.error('Error fetching shipment:', error);

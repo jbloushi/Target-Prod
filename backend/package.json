@@ -11,6 +11,7 @@
     "db:generate": "prisma generate",
     "db:migrate:deploy": "prisma migrate deploy",
     "deploy:prepare": "npm run db:generate && npm run db:migrate:deploy",
+    "tracking:repair-display-history": "node scripts/repair-display-history.js",
     "format": "prettier --write .",
     "seed": "node prisma-seed.js"
   },

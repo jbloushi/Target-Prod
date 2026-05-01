@@ -68,7 +68,8 @@ exports.getPublicShipment = async (req, res) => {
                 location: h.location?.formattedAddress || h.location?.city || ''
             })).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         }
-        let events = buildDisplayHistory(rawEvents).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        const originLocation = shipment.origin?.formattedAddress || shipment.origin?.city || '';
+        let events = buildDisplayHistory(rawEvents, { originLocation }).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         if (events.length === 0 && Array.isArray(shipment.history) && shipment.history.length > 0) {
             const fallbackRaw = compactHistory(shipment.history || []).map(h => ({
                 source: h.source || 'platform',
@@ -77,7 +78,7 @@ exports.getPublicShipment = async (req, res) => {
                 timestamp: h.timestamp,
                 location: h.location?.formattedAddress || h.location?.city || ''
             }));
-            events = buildDisplayHistory(fallbackRaw).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            events = buildDisplayHistory(fallbackRaw, { originLocation }).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             if (rawEvents.length === 0) rawEvents = fallbackRaw;
         }
 
