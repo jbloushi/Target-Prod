@@ -131,7 +131,7 @@ const normalizeLocationLabel = (location) => {
 };
 
 const buildDisplayHistory = (events = [], options = {}) => {
-    const originLocation = normalizeLocationLabel(options?.originLocation || '');
+    const providedOriginLocation = normalizeLocationLabel(options?.originLocation || '');
     const movementStatuses = new Set(['created', 'pickup', 'arrived_facility', 'processed', 'departed_facility']);
     const lowSignalStatuses = new Set(['customs_update', 'hold']);
     const originReplayStatuses = new Set(['pickup', 'arrived_facility', 'processed', 'customs_update', 'hold']);
@@ -166,9 +166,23 @@ const buildDisplayHistory = (events = [], options = {}) => {
         .filter((event) => movementStatuses.has(event.canonicalStatus) || lowSignalStatuses.has(event.canonicalStatus))
         .map(({ dayBucket, ...event }) => event);
 
+    const inferredOriginLocation = displayEvents.find((entry) => entry.canonicalStatus === 'pickup')?.normalizedLocation
+        || displayEvents.find((entry) => entry.canonicalStatus === 'departed_facility')?.normalizedLocation
+        || null;
+    const originLocation = providedOriginLocation !== 'UNKNOWN' ? providedOriginLocation : inferredOriginLocation;
     const departedAtOrigin = originLocation
         ? displayEvents.find((entry) => entry.canonicalStatus === 'departed_facility' && entry.normalizedLocation === originLocation)
         : null;
+    const movedBeyondOrigin = originLocation
+        ? displayEvents.find((entry) => (
+            entry.normalizedLocation !== originLocation
+            && entry.canonicalStatus !== 'created'
+            && movementStatuses.has(entry.canonicalStatus)
+        ))
+        : null;
+    const leftOriginAt = [departedAtOrigin, movedBeyondOrigin]
+        .filter(Boolean)
+        .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))[0];
     const seenLowSignalLocations = new Set();
     let hasOriginPickup = false;
 
@@ -180,9 +194,9 @@ const buildDisplayHistory = (events = [], options = {}) => {
             }
 
             if (
-                departedAtOrigin
+                leftOriginAt
                 && originReplayStatuses.has(event.canonicalStatus)
-                && new Date(event.timestamp) > new Date(departedAtOrigin.timestamp)
+                && new Date(event.timestamp) > new Date(leftOriginAt.timestamp)
             ) {
                 return false;
             }
