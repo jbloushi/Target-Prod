@@ -47,4 +47,40 @@ describe('buildDisplayHistory', () => {
     const out = buildDisplayHistory(events, { originLocation: 'KUWAIT-KW' });
     expect(out.map((e) => e.canonicalStatus)).toEqual(['pickup', 'departed_facility', 'processed']);
   });
+
+  it('suppresses repeated origin pickup and processing replay after departure', () => {
+    const events = [
+      { status: 'Shipment picked up', description: 'Shipment picked up', location: 'Kuwait-KW', timestamp: '2026-04-27T10:00:00Z' },
+      { status: 'Shipment has departed from a DHL facility KUWAIT-KUWAIT', description: 'Shipment has departed from a DHL facility KUWAIT-KUWAIT', location: 'KUWAIT-KUWAIT', timestamp: '2026-04-27T12:00:00Z' },
+      { status: 'Shipment picked up', description: 'Shipment picked up', location: 'Kuwait-KW', timestamp: '2026-04-28T09:00:00Z' },
+      { status: 'Processed at KUWAIT-KUWAIT', description: 'Processed at KUWAIT-KUWAIT', location: 'KUWAIT-KUWAIT', timestamp: '2026-04-28T09:05:00Z' },
+      { status: 'Arrived at DHL Sort Facility KUWAIT-KUWAIT', description: 'Arrived at DHL Sort Facility KUWAIT-KUWAIT', location: 'KUWAIT-KUWAIT', timestamp: '2026-04-28T09:10:00Z' },
+      { status: 'Processed at ABU DHABI-UNITED ARAB EMIRATES', description: 'Processed at ABU DHABI-UNITED ARAB EMIRATES', location: 'ABU DHABI-UNITED ARAB EMIRATES', timestamp: '2026-04-28T12:00:00Z' }
+    ];
+
+    const out = buildDisplayHistory(events, { originLocation: 'KUWAIT-KW' });
+    expect(out.map((e) => `${e.canonicalStatus}:${e.normalizedLocation}`)).toEqual([
+      'pickup:KUWAIT-KW',
+      'departed_facility:KUWAIT-KW',
+      'processed:ABU DHABI-AE'
+    ]);
+  });
+
+  it('keeps first pickup and first low-signal event per location', () => {
+    const events = [
+      { status: 'Shipment picked up', description: 'Shipment picked up', location: 'Kuwait-KW', timestamp: '2026-04-27T10:00:00Z' },
+      { status: 'Shipment picked up', description: 'Shipment picked up', location: 'Kuwait-KW', timestamp: '2026-04-28T10:00:00Z' },
+      { status: 'Shipment is on hold', description: 'Shipment is on hold', location: 'Kuwait-KW', timestamp: '2026-04-28T11:00:00Z' },
+      { status: 'Customs clearance status updated', description: 'Customs clearance status updated', location: 'KUWAIT-KUWAIT', timestamp: '2026-04-28T12:00:00Z' },
+      { status: 'Customs clearance status updated', description: 'Customs clearance status updated', location: 'Cincinnati Hub-US', timestamp: '2026-04-28T13:00:00Z' },
+      { status: 'Shipment is on hold', description: 'Shipment is on hold', location: 'CINCINNATI HUB - Ohio - USA', timestamp: '2026-04-28T14:00:00Z' }
+    ];
+
+    const out = buildDisplayHistory(events, { originLocation: 'KUWAIT-KW' });
+    expect(out.map((e) => `${e.canonicalStatus}:${e.normalizedLocation}`)).toEqual([
+      'pickup:KUWAIT-KW',
+      'hold:KUWAIT-KW',
+      'customs_update:CINCINNATI-US'
+    ]);
+  });
 });
