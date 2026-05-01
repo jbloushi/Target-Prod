@@ -244,10 +244,17 @@ const publicEventKey = (event) => {
 };
 
 function mergeEvents(shipment) {
-  const merged = [...(shipment?.carrierEvents || []), ...(shipment?.internalEvents || [])]
-    .filter((event) => event?.timestamp);
+  const merged = (
+    shipment?.events
+    || [...(shipment?.carrierEvents || []), ...(shipment?.internalEvents || [])]
+  ).filter((event) => event?.timestamp);
   return dedupeTrackingEvents(merged, publicEventKey)
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+}
+
+function rawEventsForLog(shipment) {
+  const raw = shipment?.rawEvents || shipment?.events || [];
+  return [...raw].filter((event) => event?.timestamp).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 }
 
 function placeLabel(place) {
@@ -514,6 +521,7 @@ const PublicTrackingPage = () => {
   }, [fetchShipment, paramTrackingNumber]);
 
   const events = useMemo(() => mergeEvents(shipment), [shipment]);
+  const rawEvents = useMemo(() => rawEventsForLog(shipment), [shipment]);
   const lastEvent = events[0];
   const stepIndex = shipment ? getPublicStepIndex(shipment.status) : 0;
   const normalizedStatus = normalizeStatus(shipment?.status);
@@ -615,7 +623,7 @@ const PublicTrackingPage = () => {
           <section style={styles.content}>
             {activeTab === 'details' && <ShipmentDetailsTab shipment={shipment} />}
             {activeTab === 'timeline' && <TimelineTab status={shipment.status} />}
-            {activeTab === 'events' && <EventLogTab events={events} />}
+            {activeTab === 'events' && <EventLogTab events={rawEvents} />}
           </section>
         )}
       </main>

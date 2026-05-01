@@ -101,6 +101,65 @@ const buildHistoryKey = (event) => {
     return `${status}|${description}|${minuteBucket}|${location}`;
 };
 
+const normalizeText = (value = '') => String(value)
+    .toLowerCase()
+    .trim()
+    .replace(/[.,|()[\]{}]+/g, ' ')
+    .replace(/\s+/g, ' ');
+
+const canonicalStatusFromDescription = (status, description) => {
+    const text = normalizeText(`${status || ''} ${description || ''}`);
+    if (text.includes('shipment draft created') || text.includes('draft created')) return 'created';
+    if (text.includes('shipment picked up')) return 'pickup';
+    if (text.includes('arrived at dhl sort facility') || text.startsWith('arrived at')) return 'arrived_facility';
+    if (text.includes('processed at')) return 'processed';
+    if (text.includes('shipment has departed from a dhl facility') || text.includes('has departed from a dhl facility')) return 'departed_facility';
+    if (text.includes('customs clearance status updated')) return 'customs_update';
+    if (text.includes('shipment is on hold') || text.endsWith(' on hold')) return 'hold';
+    return normalizeText(status || description || 'updated').replace(/\s+/g, '_');
+};
+
+const normalizeLocationLabel = (location) => {
+    const text = normalizeText(location).toUpperCase();
+    if (!text) return 'UNKNOWN';
+    if (text.includes('KUWAIT')) return 'KUWAIT-KW';
+    if (text.includes('ABU DHABI')) return 'ABU DHABI-AE';
+    if (text.includes('DUBAI')) return 'DUBAI-AE';
+    if (text.includes('CINCINNATI')) return 'CINCINNATI HUB-US';
+    return text.replace(/UNITED ARAB EMIRATES/g, 'AE').replace(/\s+/g, ' ').trim();
+};
+
+const buildDisplayHistory = (events = []) => {
+    const prepared = (Array.isArray(events) ? events : []).map((event) => {
+        const timestamp = event?.timestamp ? new Date(event.timestamp) : new Date(0);
+        const location = event?.location?.formattedAddress || event?.location?.address || event?.location?.city || event?.location || '';
+        const canonicalStatus = canonicalStatusFromDescription(event?.status, event?.description);
+        const dayBucket = Number.isNaN(timestamp.getTime()) ? '0' : timestamp.toISOString().slice(0, 10);
+        return {
+            ...event,
+            timestamp,
+            canonicalStatus,
+            normalizedLocation: normalizeLocationLabel(location),
+            dayBucket
+        };
+    }).sort((a, b) => a.timestamp - b.timestamp);
+
+    const byKey = new Map();
+    prepared.forEach((event) => {
+        const key = `${event.canonicalStatus}|${event.normalizedLocation}|${event.dayBucket}`;
+        const prior = byKey.get(key);
+        if (!prior) {
+            byKey.set(key, { ...event, collapsedCount: 1 });
+        } else {
+            prior.collapsedCount += 1;
+        }
+    });
+
+    return Array.from(byKey.values())
+        .sort((a, b) => a.timestamp - b.timestamp)
+        .map(({ dayBucket, ...event }) => event);
+};
+
 /**
  * Normalizes and compacts history events across all carriers.
  * Keeps milestone diversity while collapsing repetitive jitter/noise updates.
@@ -372,6 +431,9 @@ module.exports = {
     hasMarkupShape,
     resolveEffectiveCarrierPolicy,
     buildHistoryKey,
+    buildDisplayHistory,
+    canonicalStatusFromDescription,
+    normalizeLocationLabel,
     compactHistory,
     syncCarrierTrackingHistory,
     calculateEstimatedDelivery,
