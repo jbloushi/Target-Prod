@@ -354,55 +354,42 @@ function ShipmentDetailsTab({ shipment }) {
   );
 }
 
-function TimelineTab({ status }) {
-  const currentIdx = getStepIndex(status);
-  const visibleSteps = STATUS_ORDER.filter((step) => step !== 'draft');
+const EVENT_LABELS = {
+  created: 'Shipment created',
+  pickup: 'Shipment picked up',
+  arrived_facility: 'Arrived at facility',
+  processed: 'Processed at facility',
+  departed_facility: 'Departed facility',
+  customs_update: 'Customs clearance updated',
+  hold: 'Shipment on hold'
+};
+
+function TimelineTab({ events = [] }) {
+  if (!events.length) {
+    return <div style={styles.card}><p style={{ color: '#66758a', margin: 0 }}>No timeline events available yet.</p></div>;
+  }
+
+  const grouped = events.reduce((acc, event) => {
+    const key = fmt.date(event.timestamp);
+    acc[key] = acc[key] || [];
+    acc[key].push(event);
+    return acc;
+  }, {});
 
   return (
     <div style={styles.card}>
-      {visibleSteps.map((step, index) => {
-        const statusIndex = STATUS_ORDER.indexOf(step);
-        const done = statusIndex <= currentIdx;
-        const active = statusIndex === currentIdx;
-        const isLast = index === visibleSteps.length - 1;
-
-        return (
-          <div key={step} style={{ display: 'grid', gridTemplateColumns: '28px 1fr', columnGap: 14 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <div style={{
-                width: active ? 16 : 12,
-                height: active ? 16 : 12,
-                borderRadius: '50%',
-                marginTop: 2,
-                background: done ? '#0b5bd3' : '#ffffff',
-                border: `2px solid ${done ? '#0b5bd3' : '#c6d2e2'}`,
-                boxShadow: active ? '0 0 0 6px rgba(11, 91, 211, 0.12)' : 'none',
-              }}
-              />
-              {!isLast && (
-                <div style={{
-                  width: 2,
-                  flex: 1,
-                  minHeight: 34,
-                  background: statusIndex < currentIdx ? '#0b5bd3' : '#d8e1ed',
-                  margin: '6px 0',
-                }}
-                />
-              )}
+      {Object.entries(grouped).map(([date, dayEvents]) => (
+        <div key={date} style={{ marginBottom: 16 }}>
+          <div style={{ fontWeight: 800, fontSize: 13, color: '#0b5bd3', marginBottom: 8 }}>{date}</div>
+          {dayEvents.map((event, index) => (
+            <div key={`${event.timestamp}-${index}`} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 220px', gap: 10, padding: '8px 0', borderBottom: '1px solid #eef3fa' }}>
+              <div style={{ color: '#66758a', fontSize: 12 }}>{fmt.time(event.timestamp)}</div>
+              <div style={{ fontSize: 13, color: '#102033', fontWeight: 700 }}>{EVENT_LABELS[event.canonicalStatus] || event.description || event.status}</div>
+              <div style={{ color: '#66758a', fontSize: 12 }}>{event.normalizedLocation || event.location}</div>
             </div>
-            <div style={{ paddingBottom: isLast ? 0 : 20 }}>
-              <div style={{ color: done ? '#102033' : '#66758a', fontWeight: active ? 850 : 700, fontSize: 14 }}>
-                {STATUS_LABELS[step]}
-              </div>
-              {active && (
-                <div style={{ color: '#66758a', fontSize: 13, marginTop: 4 }}>
-                  Current shipment status
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })}
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
@@ -622,7 +609,7 @@ const PublicTrackingPage = () => {
         {!loading && shipment && (
           <section style={styles.content}>
             {activeTab === 'details' && <ShipmentDetailsTab shipment={shipment} />}
-            {activeTab === 'timeline' && <TimelineTab status={shipment.status} />}
+            {activeTab === 'timeline' && <TimelineTab events={events} />}
             {activeTab === 'events' && <EventLogTab events={rawEvents} />}
           </section>
         )}

@@ -131,18 +131,19 @@ const normalizeLocationLabel = (location) => {
 
 const buildDisplayHistory = (events = []) => {
     const prepared = (Array.isArray(events) ? events : []).map((event) => {
-        const timestamp = event?.timestamp ? new Date(event.timestamp) : new Date(0);
+        const timestamp = event?.timestamp ? new Date(event.timestamp) : null;
+        if (!timestamp || Number.isNaN(timestamp.getTime())) return null;
         const location = event?.location?.formattedAddress || event?.location?.address || event?.location?.city || event?.location || '';
         const canonicalStatus = canonicalStatusFromDescription(event?.status, event?.description);
-        const dayBucket = Number.isNaN(timestamp.getTime()) ? '0' : timestamp.toISOString().slice(0, 10);
+        const dayBucket = timestamp.toISOString().slice(0, 10);
         return {
             ...event,
-            timestamp,
+            timestamp: timestamp.toISOString(),
             canonicalStatus,
             normalizedLocation: normalizeLocationLabel(location),
             dayBucket
         };
-    }).sort((a, b) => a.timestamp - b.timestamp);
+    }).filter(Boolean).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
     const byKey = new Map();
     prepared.forEach((event) => {
@@ -156,7 +157,7 @@ const buildDisplayHistory = (events = []) => {
     });
 
     return Array.from(byKey.values())
-        .sort((a, b) => a.timestamp - b.timestamp)
+        .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
         .map(({ dayBucket, ...event }) => event);
 };
 
