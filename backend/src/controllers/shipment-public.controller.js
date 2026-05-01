@@ -51,7 +51,8 @@ exports.getPublicShipment = async (req, res) => {
                     timestamp: event.timestamp,
                     location: event.location || ''
                 }));
-                rawEvents = compactHistory(carrierEvents)
+                rawEvents = carrierEvents
+                    .filter((event) => event.timestamp)
                     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             } catch (carrierError) {
                 logger.warn(`Public tracking: carrier event fetch failed for ${trackingNumber}: ${carrierError.message}`);
