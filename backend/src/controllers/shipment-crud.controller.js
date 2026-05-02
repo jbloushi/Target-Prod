@@ -9,6 +9,7 @@ const { handleControllerError } = require('../utils/controllerError');
 const { hasCapability, isPlatformRole } = require('../middleware/rbac.policy');
 const { MANUAL_SHIPMENT_STATUSES, SHIPMENT_STATUSES } = require('../constants/statusConstants');
 const { syncCarrierTrackingHistory, hasCriticalChanges, canUpdateShipmentStatus, isManualShipment, buildDisplayHistory } = require('./shipment.helpers');
+const chatwootNotificationService = require('../services/chatwootNotificationService');
 
 /**
  * Get shipment statistics (Status counts and Monthly volume)
@@ -103,6 +104,7 @@ exports.createShipment = async (req, res) => {
     try {
         const shipment = await ShipmentDraftService.createDraft(req.body, req.user);
         logger.info(`Shipment ${shipment.trackingNumber} created (Draft).`);
+        chatwootNotificationService.triggerShipmentNotification('shipment_created', shipment);
         res.status(200).json({ success: true, data: shipment, message: 'Shipment created successfully' });
     } catch (error) {
         return handleControllerError(res, error, 'Shipment creation');
@@ -129,6 +131,26 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
                 },
                 organization: {
                     select: { id: true, name: true }
+                },
+                notificationLogs: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 20,
+                    select: {
+                        id: true,
+                        eventType: true,
+                        recipientRole: true,
+                        recipientName: true,
+                        recipientPhone: true,
+                        provider: true,
+                        chatwootContactId: true,
+                        chatwootConversationId: true,
+                        templateName: true,
+                        status: true,
+                        errorMessage: true,
+                        sentAt: true,
+                        createdAt: true,
+                        updatedAt: true
+                    }
                 }
             }
         });
@@ -535,6 +557,16 @@ exports.updateShipment = async (req, res) => {
             where: { id: shipment.id },
             data: updateData
         });
+
+        if (updates.status && updates.status !== shipment.status) {
+            const eventType = chatwootNotificationService.mapStatusToNotificationEvent(
+                updates.status,
+                updates.statusDescription || updates.description
+            );
+            if (eventType) {
+                chatwootNotificationService.triggerShipmentNotification(eventType, updatedShipment);
+            }
+        }
 
         res.status(200).json({ success: true, data: updatedShipment });
     } catch (error) {

@@ -6,13 +6,39 @@ import {
     Divider, Alert
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import { organizationService } from '../../services/api';
+import LockResetIcon from '@mui/icons-material/LockReset';
+import { organizationService, userService } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import { useSnackbar } from 'notistack';
 
 const UserManagementDialog = ({ open, onClose, user, onSave, refreshTrigger }) => {
     const { enqueueSnackbar } = useSnackbar();
+    const { user: currentUser } = useAuth();
     const [tabIndex, setTabIndex] = useState(0);
     const [formData, setFormData] = useState({});
+    const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
+    const [newPassword, setNewPassword] = useState('');
+    const [resetLoading, setResetLoading] = useState(false);
+
+    const canResetPassword = user?._id && ['admin', 'accounting'].includes(currentUser?.role);
+
+    const handleResetPassword = async () => {
+        if (!newPassword || newPassword.length < 8) {
+            enqueueSnackbar('Password must be at least 8 characters', { variant: 'error' });
+            return;
+        }
+        setResetLoading(true);
+        try {
+            await userService.resetUserPassword(user._id, newPassword);
+            enqueueSnackbar('Password reset successfully', { variant: 'success' });
+            setResetPasswordOpen(false);
+            setNewPassword('');
+        } catch (err) {
+            enqueueSnackbar(err?.response?.data?.error || 'Failed to reset password', { variant: 'error' });
+        } finally {
+            setResetLoading(false);
+        }
+    };
 
     // Org Data
     const [organizations, setOrganizations] = useState([]);
@@ -43,6 +69,8 @@ const UserManagementDialog = ({ open, onClose, user, onSave, refreshTrigger }) =
             setTabIndex(0);
             setIsCreatingOrg(false);
             setNewOrgName('');
+            setResetPasswordOpen(false);
+            setNewPassword('');
         }
     }, [open, user]);
 
@@ -414,7 +442,36 @@ const UserManagementDialog = ({ open, onClose, user, onSave, refreshTrigger }) =
                     </Box>
                 )}
             </DialogContent>
+            {resetPasswordOpen && (
+                <Box sx={{ px: 3, pb: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+                    <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Reset Password for {user?.name}</Typography>
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                        <TextField
+                            label="New Password" type="password" size="small"
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleResetPassword()}
+                            helperText="Minimum 8 characters"
+                            sx={{ flex: 1 }}
+                        />
+                        <Button variant="contained" color="warning" onClick={handleResetPassword} disabled={resetLoading}>
+                            {resetLoading ? 'Saving…' : 'Confirm Reset'}
+                        </Button>
+                        <Button onClick={() => { setResetPasswordOpen(false); setNewPassword(''); }}>Cancel</Button>
+                    </Box>
+                </Box>
+            )}
             <DialogActions>
+                {canResetPassword && !resetPasswordOpen && (
+                    <Button
+                        startIcon={<LockResetIcon />}
+                        color="warning"
+                        onClick={() => setResetPasswordOpen(true)}
+                        sx={{ mr: 'auto' }}
+                    >
+                        Reset Password
+                    </Button>
+                )}
                 <Button onClick={onClose}>Cancel</Button>
                 <Button variant="contained" onClick={handleSave}>Save User</Button>
             </DialogActions>

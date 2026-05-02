@@ -493,6 +493,38 @@ export const shipmentService = {
   }
 };
 
+export const integrationService = {
+  previewChatwootShipmentMessage: async ({ trackingNumber, eventType = 'shipment_created', recipientRole }) => {
+    try {
+      const response = await api.get(`integrations/chatwoot/shipments/${trackingNumber}/preview`, {
+        params: {
+          eventType,
+          recipientRole
+        }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error previewing Chatwoot shipment message:', error);
+      throw error;
+    }
+  },
+
+  sendChatwootTestMessage: async ({ trackingNumber, eventType = 'shipment_created', recipientRole, force = true }) => {
+    try {
+      const response = await api.post('integrations/chatwoot/test-message', {
+        trackingNumber,
+        eventType,
+        recipientRole,
+        force
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error sending Chatwoot test message:', error);
+      throw error;
+    }
+  }
+};
+
 export const financeService = {
   getBalance: async () => {
     try {
@@ -634,6 +666,16 @@ export const userService = {
       return response.data;
     } catch (error) {
       console.error('Error deleting user:', error);
+      throw error;
+    }
+  },
+
+  resetUserPassword: async (id, newPassword) => {
+    try {
+      const response = await api.post(`users/${id}/reset-password`, { password: newPassword });
+      return response.data;
+    } catch (error) {
+      console.error('Error resetting user password:', error);
       throw error;
     }
   },

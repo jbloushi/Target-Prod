@@ -14,8 +14,6 @@ class AramexAdapter {
      * @param {Object} payload 
      */
     async rate(payload) {
-        console.log('Aramex Mock: Calculating rates for payload:', JSON.stringify(payload, null, 2));
-
         // Simulate network delay
         await new Promise(resolve => setTimeout(resolve, 800));
 
@@ -52,8 +50,6 @@ class AramexAdapter {
      * @param {Object} payload 
      */
     async book(payload) {
-        console.log('Aramex Mock: Booking shipment for payload:', JSON.stringify(payload, null, 2));
-
         // Simulate network delay
         await new Promise(resolve => setTimeout(resolve, 1500));
 

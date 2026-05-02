@@ -44,6 +44,7 @@ exports.getPublicShipment = async (req, res) => {
             timezoneOffset: h.timezoneOffset || null,
             location: h.location?.formattedAddress || h.location?.city || ''
         })).filter((event) => event.timestamp);
+
         let rawEvents = [];
         const carrierTrackingNumber = shipment?.carrierShipmentId || shipment?.dhlTrackingNumber;
         const carrierCode = (shipment?.carrier || shipment?.carrierCode || 'DGR').toUpperCase();
