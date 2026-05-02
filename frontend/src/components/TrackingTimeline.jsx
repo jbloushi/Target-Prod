@@ -40,7 +40,28 @@ const getStatusConfig = (status) => {
     return statusConfig[normalized] || statusConfig.default;
 };
 
-const formatDate = (timestamp) => {
+const toDisplayTimestamp = (eventOrTimestamp) => {
+    if (eventOrTimestamp && typeof eventOrTimestamp === 'object') {
+        return eventOrTimestamp.localTimestamp || eventOrTimestamp.timestamp;
+    }
+    return eventOrTimestamp;
+};
+
+const formatDate = (eventOrTimestamp) => {
+    const timestamp = toDisplayTimestamp(eventOrTimestamp);
+    const localMatch = String(timestamp || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+    if (localMatch) {
+        const [, year, month, day, hour, minute] = localMatch;
+        const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+        const hourNumber = Number(hour);
+        const hour12 = hourNumber % 12 || 12;
+        const suffix = hourNumber >= 12 ? 'PM' : 'AM';
+        return {
+            date: date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }),
+            time: `${String(hour12).padStart(2, '0')}:${minute} ${suffix}`,
+            shortDate: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+        };
+    }
     const date = new Date(timestamp);
     return {
         date: date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
@@ -89,7 +110,7 @@ const formatLocation = (location) => {
 const groupEventsByDate = (events) => {
     const groups = {};
     events?.forEach(event => {
-        const { date } = formatDate(event.timestamp);
+        const { date } = formatDate(event);
         if (!groups[date]) {
             groups[date] = [];
         }
@@ -176,9 +197,10 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                             {events.map((event, eventIndex) => {
                                 const statusStr = typeof event.status === 'object' ? (event.status?.status || event.status?.name || 'Update') : event.status;
                                 const config = getStatusConfig(statusStr);
-                                const { time } = formatDate(event.timestamp);
-                                const previousTime = eventIndex > 0 ? formatDate(events[eventIndex - 1].timestamp).time : null;
+                                const { time } = formatDate(event);
+                                const previousTime = eventIndex > 0 ? formatDate(events[eventIndex - 1]).time : null;
                                 const showTime = eventIndex === 0 || previousTime !== time;
+                                const startsTimeGroup = showTime && eventIndex > 0;
                                 const isFirst = dateIndex === 0 && eventIndex === 0;
                                 const source = event.source === 'carrier' ? 'Global Network' : 'Logistics Center';
                                 const displayMessage = getEventDisplayMessage(event, statusStr || config.label);
@@ -188,7 +210,10 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                                         key={eventIndex}
                                         sx={{
                                             position: 'relative',
+                                            mt: startsTimeGroup ? 2 : 0,
+                                            pt: startsTimeGroup ? 2 : 0,
                                             pb: 4,
+                                            borderTop: startsTimeGroup ? '1px solid var(--border-color, #d9dee4)' : 'none',
                                             '&:last-child': { pb: 0 }
                                         }}
                                     >
@@ -236,7 +261,7 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                                             </Box>
                                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, ml: 2, whiteSpace: 'nowrap' }}>
                                                 {event.occurrences > 1 && (
-                                                    <Tooltip title={`Repeated ${event.occurrences} times — first at ${formatDate(event.firstTimestamp).time}`}>
+                                                    <Tooltip title={`Repeated ${event.occurrences} times - first at ${formatDate(event.firstTimestamp).time}`}>
                                                         <Box
                                                             component="span"
                                                             sx={{
@@ -250,7 +275,7 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                                                                 lineHeight: 1.4,
                                                             }}
                                                         >
-                                                            ×{event.occurrences}
+                                                            x{event.occurrences}
                                                         </Box>
                                                     </Tooltip>
                                                 )}

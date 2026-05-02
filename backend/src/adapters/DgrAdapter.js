@@ -11,6 +11,66 @@ const CarrierAdapter = require('./CarrierAdapter');
 const { normalizeShipment } = require('../utils/shipmentNormalizer');
 const { dhlApiKey, dhlApiSecret, dhlAccountNumber, dhlApiUrl } = require('../config/config');
 
+const firstNonEmpty = (...values) => values.find((value) => value !== undefined && value !== null && String(value).trim() !== '');
+
+const normalizeTimestampValue = (value) => {
+    if (!value) return null;
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
+    const text = String(value).trim();
+    if (!text) return null;
+    const parsed = new Date(text);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+};
+
+const normalizeOffset = (value) => {
+    if (!value) return '';
+    const text = String(value).trim().replace(/^UTC\s*/i, '').replace(/^GMT\s*/i, '');
+    const match = text.match(/^([+-])(\d{1,2})(?::?(\d{2}))?$/);
+    if (!match) return '';
+    const hours = match[2].padStart(2, '0');
+    const minutes = (match[3] || '00').padStart(2, '0');
+    return `${match[1]}${hours}:${minutes}`;
+};
+
+const combineDateTime = (dateValue, timeValue, offsetValue) => {
+    if (!dateValue || !timeValue) return '';
+    const date = String(dateValue).trim();
+    const time = String(timeValue).trim();
+    if (!date || !time) return '';
+    const normalizedDate = date.includes('T') ? date.split('T')[0] : date;
+    const normalizedTime = time.replace(/\.\d+$/, '');
+    const offset = normalizeOffset(offsetValue);
+    return `${normalizedDate}T${normalizedTime}${offset}`;
+};
+
+const extractTrackingTimestamp = (event = {}) => {
+    const localTimestamp = firstNonEmpty(
+        event.localTimestamp,
+        event.timestampWithOffset,
+        event.timestampWithTimezone,
+        event.eventTimestampWithOffset,
+        event.eventTimestampWithTimezone,
+        event.checkpointTimestampWithOffset,
+        combineDateTime(
+            firstNonEmpty(event.date, event.eventDate, event.checkpointDate),
+            firstNonEmpty(event.time, event.eventTime, event.checkpointTime),
+            firstNonEmpty(event.gmtOffset, event.GMTOffset, event.timezoneOffset, event.utcOffset)
+        ),
+        event.timestamp,
+        event.eventTimestamp,
+        event.dateTime,
+        event.eventDateTime,
+        event.checkpointTimestamp
+    );
+    const timestamp = normalizeTimestampValue(localTimestamp);
+
+    return {
+        timestamp,
+        localTimestamp: localTimestamp ? String(localTimestamp).trim() : null,
+        timezoneOffset: normalizeOffset(firstNonEmpty(event.gmtOffset, event.GMTOffset, event.timezoneOffset, event.utcOffset))
+    };
+};
+
 class DgrAdapter extends CarrierAdapter {
     /**
      * @param {Object} configOverrides - Optional credential overrides
@@ -676,12 +736,17 @@ class DgrAdapter extends CarrierAdapter {
             const shipment = res.data.shipments?.[0];
             if (!shipment) throw new Error('No tracking data found.');
 
-            const rawEvents = (shipment.events || []).map(e => ({
-                statusCode: e.statusCode,
-                description: e.description,
-                timestamp: e.timestamp,
-                location: e.serviceArea?.[0]?.description || e.location?.description || 'Unknown'
-            }));
+            const rawEvents = (shipment.events || []).map(e => {
+                const trackingTimestamp = extractTrackingTimestamp(e);
+                return {
+                    statusCode: e.statusCode,
+                    description: e.description,
+                    timestamp: trackingTimestamp.timestamp,
+                    localTimestamp: trackingTimestamp.localTimestamp,
+                    timezoneOffset: trackingTimestamp.timezoneOffset,
+                    location: e.serviceArea?.[0]?.description || e.location?.description || 'Unknown'
+                };
+            }).filter((event) => event.timestamp);
 
             // Dedupe within DHL's own response. The 'all-checkpoints' view sometimes
             // replays the same checkpoint from multiple data sources, producing exact
@@ -700,7 +765,8 @@ class DgrAdapter extends CarrierAdapter {
                     (ev.location || '').trim().toLowerCase()
                 ].join('|');
                 const prior = seen.get(key);
-                if (!prior || new Date(ev.timestamp) > new Date(prior.timestamp)) {
+                // Prefer the earliest carrier scan when duplicate sources replay a checkpoint.
+                if (!prior || new Date(ev.timestamp) < new Date(prior.timestamp)) {
                     seen.set(key, ev);
                 }
             }
@@ -727,5 +793,7 @@ class DgrAdapter extends CarrierAdapter {
         }
     }
 }
+
+DgrAdapter.extractTrackingTimestamp = extractTrackingTimestamp;
 
 module.exports = DgrAdapter;
