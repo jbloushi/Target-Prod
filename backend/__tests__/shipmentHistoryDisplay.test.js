@@ -119,4 +119,28 @@ describe('buildDisplayHistory', () => {
       'processed:DUBAI-AE:2026-05-01T20:57:00.000Z'
     ]);
   });
+
+  it('keeps the earliest scan time when DHL replays the same movement checkpoints later', () => {
+    const events = [
+      { status: 'Arrived at DHL Sort Facility ABU DHABI-UNITED ARAB EMIRATES', description: 'Arrived at DHL Sort Facility ABU DHABI-UNITED ARAB EMIRATES', location: 'ABU DHABI-UNITED ARAB EMIRATES', timestamp: '2026-04-30T10:14:00Z' },
+      { status: 'Processed at ABU DHABI-UNITED ARAB EMIRATES', description: 'Processed at ABU DHABI-UNITED ARAB EMIRATES', location: 'ABU DHABI-UNITED ARAB EMIRATES', timestamp: '2026-04-30T10:35:00Z' },
+      { status: 'Shipment has departed from a DHL facility ABU DHABI-UNITED ARAB EMIRATES', description: 'Shipment has departed from a DHL facility ABU DHABI-UNITED ARAB EMIRATES', location: 'ABU DHABI-UNITED ARAB EMIRATES', timestamp: '2026-04-30T13:55:00Z' },
+      { status: 'Arrived at DHL Sort Facility DUBAI-UNITED ARAB EMIRATES', description: 'Arrived at DHL Sort Facility DUBAI-UNITED ARAB EMIRATES', location: 'DUBAI-UNITED ARAB EMIRATES', timestamp: '2026-04-30T20:30:00Z' },
+      { status: 'Processed at DUBAI-UNITED ARAB EMIRATES', description: 'Processed at DUBAI-UNITED ARAB EMIRATES', location: 'DUBAI-UNITED ARAB EMIRATES', timestamp: '2026-04-30T22:58:00Z' },
+      { status: 'Arrived at DHL Sort Facility ABU DHABI-UNITED ARAB EMIRATES', description: 'Arrived at DHL Sort Facility ABU DHABI-UNITED ARAB EMIRATES', location: 'ABU DHABI-UNITED ARAB EMIRATES', timestamp: '2026-05-02T05:10:00Z' },
+      { status: 'Processed at ABU DHABI-UNITED ARAB EMIRATES', description: 'Processed at ABU DHABI-UNITED ARAB EMIRATES', location: 'ABU DHABI-UNITED ARAB EMIRATES', timestamp: '2026-05-02T05:10:00Z' },
+      { status: 'Shipment has departed from a DHL facility ABU DHABI-UNITED ARAB EMIRATES', description: 'Shipment has departed from a DHL facility ABU DHABI-UNITED ARAB EMIRATES', location: 'ABU DHABI-UNITED ARAB EMIRATES', timestamp: '2026-05-02T05:10:00Z' },
+      { status: 'Arrived at DHL Sort Facility DUBAI-UNITED ARAB EMIRATES', description: 'Arrived at DHL Sort Facility DUBAI-UNITED ARAB EMIRATES', location: 'DUBAI-UNITED ARAB EMIRATES', timestamp: '2026-05-02T05:10:00Z' },
+      { status: 'Processed at DUBAI-UNITED ARAB EMIRATES', description: 'Processed at DUBAI-UNITED ARAB EMIRATES', location: 'DUBAI-UNITED ARAB EMIRATES', timestamp: '2026-05-02T05:10:00Z' }
+    ];
+
+    const out = buildDisplayHistory(events);
+    expect(out.map((e) => `${e.canonicalStatus}:${e.normalizedLocation}:${e.timestamp}`)).toEqual([
+      'arrived_facility:ABU DHABI-AE:2026-04-30T10:14:00.000Z',
+      'processed:ABU DHABI-AE:2026-04-30T10:35:00.000Z',
+      'departed_facility:ABU DHABI-AE:2026-04-30T13:55:00.000Z',
+      'arrived_facility:DUBAI-AE:2026-04-30T20:30:00.000Z',
+      'processed:DUBAI-AE:2026-04-30T22:58:00.000Z'
+    ]);
+  });
 });
