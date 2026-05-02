@@ -177,6 +177,8 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                                 const statusStr = typeof event.status === 'object' ? (event.status?.status || event.status?.name || 'Update') : event.status;
                                 const config = getStatusConfig(statusStr);
                                 const { time } = formatDate(event.timestamp);
+                                const previousTime = eventIndex > 0 ? formatDate(events[eventIndex - 1].timestamp).time : null;
+                                const showTime = eventIndex === 0 || previousTime !== time;
                                 const isFirst = dateIndex === 0 && eventIndex === 0;
                                 const source = event.source === 'carrier' ? 'Global Network' : 'Logistics Center';
                                 const displayMessage = getEventDisplayMessage(event, statusStr || config.label);
@@ -259,7 +261,7 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
                                                         fontWeight: isFirst ? 700 : 500
                                                     }}
                                                 >
-                                                    {time}
+                                                    {showTime ? time : ''}
                                                 </Typography>
                                             </Box>
                                         </Box>
