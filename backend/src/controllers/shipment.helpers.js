@@ -150,9 +150,12 @@ const buildDisplayHistory = (events = [], options = {}) => {
         };
     }).filter(Boolean).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
+    const replayStableStatuses = new Set(['pickup', 'arrived_facility', 'processed', 'departed_facility']);
     const byKey = new Map();
     prepared.forEach((event) => {
-        const key = `${event.canonicalStatus}|${event.normalizedLocation}|${event.dayBucket}`;
+        const key = replayStableStatuses.has(event.canonicalStatus)
+            ? `${event.canonicalStatus}|${event.normalizedLocation}`
+            : `${event.canonicalStatus}|${event.normalizedLocation}|${event.dayBucket}`;
         const prior = byKey.get(key);
         if (!prior) {
             byKey.set(key, { ...event, collapsedCount: 1 });

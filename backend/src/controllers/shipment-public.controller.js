@@ -35,6 +35,13 @@ exports.getPublicShipment = async (req, res) => {
             logger.warn(`Public tracking: carrier sync failed for ${trackingNumber}: ${err.message}`);
         }
 
+        const persistedEvents = compactHistory(shipment.history || []).map(h => ({
+            source: h.source || 'platform',
+            status: normalizeStatus(typeof h.status === 'object' ? (h.status?.status || 'booked') : (h.status || 'booked')),
+            description: h.description || '',
+            timestamp: h.timestamp,
+            location: h.location?.formattedAddress || h.location?.city || ''
+        })).filter((event) => event.timestamp);
         let rawEvents = [];
         const carrierTrackingNumber = shipment?.carrierShipmentId || shipment?.dhlTrackingNumber;
         const carrierCode = (shipment?.carrier || shipment?.carrierCode || 'DGR').toUpperCase();
@@ -51,7 +58,7 @@ exports.getPublicShipment = async (req, res) => {
                     timestamp: event.timestamp,
                     location: event.location || ''
                 }));
-                rawEvents = carrierEvents
+                rawEvents = [...persistedEvents, ...carrierEvents]
                     .filter((event) => event.timestamp)
                     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             } catch (carrierError) {
@@ -61,13 +68,7 @@ exports.getPublicShipment = async (req, res) => {
 
         if (rawEvents.length === 0) {
             // Fallback to persisted merged history if carrier feed is unavailable.
-            rawEvents = compactHistory(shipment.history || []).map(h => ({
-                source: h.source || 'platform',
-                status: normalizeStatus(typeof h.status === 'object' ? (h.status?.status || 'booked') : (h.status || 'booked')),
-                description: h.description || '',
-                timestamp: h.timestamp,
-                location: h.location?.formattedAddress || h.location?.city || ''
-            })).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            rawEvents = persistedEvents.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         }
         const originLocation = shipment.origin?.formattedAddress || shipment.origin?.city || '';
         let events = buildDisplayHistory(rawEvents, { originLocation }).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
