@@ -1,0 +1,73 @@
+{
+  "name": "tracker-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@emotion/react": "^11.11.3",
+    "@emotion/styled": "^11.11.0",
+    "@mui/icons-material": "^5.15.10",
+    "@mui/material": "^5.15.10",
+    "@mui/x-date-pickers": "^6.19.4",
+    "@react-google-maps/api": "^2.20.8",
+    "@tailwindcss/postcss": "^4.2.2",
+    "@testing-library/jest-dom": "^5.17.0",
+    "@testing-library/react": "^13.4.0",
+    "@testing-library/user-event": "^13.5.0",
+    "autosuggest-highlight": "^3.3.4",
+    "axios": "^1.6.7",
+    "date-fns": "^2.30.0",
+    "jspdf": "^4.0.0",
+    "jspdf-autotable": "^5.0.7",
+    "mapbox-gl": "^3.12.0",
+    "notistack": "^3.0.1",
+    "qrcode": "^1.5.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-qr-scanner": "^1.0.0-alpha.11",
+    "react-router-dom": "^6.22.1",
+    "styled-components": "^6.3.8",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
+    "swr": "^2.4.0",
+    "use-places-autocomplete": "^4.0.1",
+    "web-vitals": "^2.1.4"
+  },
+  "scripts": {
+    "start": "vite --host 0.0.0.0",
+    "dev": "vite --host 0.0.0.0",
+    "check:merge-markers": "node scripts/check-merge-markers.mjs",
+    "lint": "eslint . --max-warnings=0",
+    "test": "vitest run",
+    "build": "npm run check:merge-markers && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "verify": "npm run lint && npm run test && npm run build && npm audit"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@tailwindcss/container-queries": "^0.1.1",
+    "@tailwindcss/forms": "^0.5.11",
+    "@vitejs/plugin-react": "^6.0.1",
+    "autoprefixer": "^10.4.27",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.5.0",
+    "jsdom": "^29.0.2",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^3.4.17",
+    "vite": "^8.0.8",
+    "vitest": "^4.1.4"
+  }
+}

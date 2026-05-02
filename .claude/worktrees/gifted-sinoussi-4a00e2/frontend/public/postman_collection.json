@@ -1,0 +1,194 @@
+{
+  "info": {
+    "name": "Target Logistics API",
+    "description": "Live-verified API collection for Target Logistics. Supports carrier-backed quote + shipment flow and manual shipment flow. Set the `api_key` variable before use.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "2.2.0"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      { "key": "key", "value": "x-api-key", "type": "string" },
+      { "key": "value", "value": "{{api_key}}", "type": "string" },
+      { "key": "in", "value": "header", "type": "string" }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://3pl-api.mawthook.io/api",
+      "description": "Production API base URL"
+    },
+    {
+      "key": "api_key",
+      "value": "",
+      "description": "Your API key from Settings → General & API"
+    },
+    {
+      "key": "tracking_number",
+      "value": "2042595203",
+      "description": "Replace with a real shipment tracking number"
+    },
+    {
+      "key": "manual_tracking_number",
+      "value": "MAN-OYXH39LR",
+      "description": "Replace with a real manual shipment tracking number"
+    },
+    {
+      "key": "carrier_service_code",
+      "value": "P",
+      "description": "Use the serviceCode returned from /v1/quotes"
+    }
+  ],
+  "item": [
+    {
+      "name": "Carrier Flow (Quote First)",
+      "description": "Use this flow for carrier-backed API users. Quote first, then create shipment using the returned serviceCode.",
+      "item": [
+        {
+          "name": "Get Rate Quote (KW to AE - verified)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/quotes",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "quotes"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sender\": {\n    \"company\": \"My Warehouse Co.\",\n    \"contactPerson\": \"Ahmed Al-Rashid\",\n    \"phone\": \"96512345678\",\n    \"phoneCountryCode\": \"+965\",\n    \"email\": \"warehouse@mycompany.com\",\n    \"countryCode\": \"KW\",\n    \"city\": \"Kuwait City\",\n    \"postalCode\": \"13001\",\n    \"streetLines\": [\"Industrial Area, Block 4\"]\n  },\n  \"receiver\": {\n    \"contactPerson\": \"Sara Al-Mutairi\",\n    \"phone\": \"96598765432\",\n    \"phoneCountryCode\": \"+965\",\n    \"email\": \"sara@gmail.com\",\n    \"countryCode\": \"AE\",\n    \"city\": \"Dubai\",\n    \"postalCode\": \"00000\",\n    \"streetLines\": [\"Dubai Marina, Tower 5\"]\n  },\n  \"parcels\": [\n    { \"weight\": 5.0, \"length\": 40, \"width\": 30, \"height\": 20, \"description\": \"Clothing Box\" }\n  ],\n  \"items\": [\n    {\n      \"description\": \"Clothing\",\n      \"quantity\": 3,\n      \"unitValue\": 50,\n      \"currency\": \"KWD\",\n      \"countryOfOrigin\": \"KW\",\n      \"hsCode\": \"610910\",\n      \"weight\": 5.0\n    }\n  ],\n  \"currency\": \"KWD\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Live-verified quote example. Returns DGR/P for KW -> AE under the tested API configuration. Always quote first for carrier-backed shipments."
+          }
+        },
+        {
+          "name": "Create Shipment (KW to AE - verified)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/shipments",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "shipments"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"carrierCode\": \"DGR\",\n  \"serviceCode\": \"{{carrier_service_code}}\",\n  \"sender\": {\n    \"company\": \"My Warehouse Co.\",\n    \"contactPerson\": \"Ahmed Al-Rashid\",\n    \"phone\": \"96512345678\",\n    \"phoneCountryCode\": \"+965\",\n    \"email\": \"warehouse@mycompany.com\",\n    \"countryCode\": \"KW\",\n    \"city\": \"Kuwait City\",\n    \"postalCode\": \"13001\",\n    \"streetLines\": [\"Industrial Area, Block 4\"]\n  },\n  \"receiver\": {\n    \"contactPerson\": \"Sara Al-Mutairi\",\n    \"phone\": \"96598765432\",\n    \"phoneCountryCode\": \"+965\",\n    \"email\": \"sara@gmail.com\",\n    \"countryCode\": \"AE\",\n    \"city\": \"Dubai\",\n    \"postalCode\": \"00000\",\n    \"streetLines\": [\"Dubai Marina, Tower 5\"]\n  },\n  \"parcels\": [\n    { \"weight\": 5.0, \"length\": 40, \"width\": 30, \"height\": 20, \"description\": \"Clothing Box\" }\n  ],\n  \"items\": [\n    {\n      \"description\": \"Clothing\",\n      \"quantity\": 3,\n      \"unitValue\": 50,\n      \"currency\": \"KWD\",\n      \"countryOfOrigin\": \"KW\",\n      \"hsCode\": \"610910\",\n      \"weight\": 5.0\n    }\n  ],\n  \"currency\": \"KWD\",\n  \"incoterm\": \"DAP\",\n  \"exportReason\": \"Sale\",\n  \"remarks\": \"Handle with care\",\n  \"reference\": \"ORDER-2026-001\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Live-verified shipment creation example. Use the serviceCode returned from the quote response for the same route."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Manual Flow",
+      "description": "Use this only when the API user is configured in Manual Shipment mode. No carrier quote or booking occurs.",
+      "item": [
+        {
+          "name": "Create Manual Shipment (verified)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/shipments",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "shipments"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sender\": {\n    \"company\": \"My Warehouse Co.\",\n    \"contactPerson\": \"Ahmed Al-Rashid\",\n    \"phone\": \"96512345678\",\n    \"email\": \"warehouse@mycompany.com\",\n    \"countryCode\": \"KW\",\n    \"city\": \"Kuwait City\",\n    \"postalCode\": \"13001\",\n    \"streetLines\": [\"Industrial Area, Block 4, Street 12\"]\n  },\n  \"receiver\": {\n    \"contactPerson\": \"Sara Al-Mutairi\",\n    \"phone\": \"96598765432\",\n    \"email\": \"sara@gmail.com\",\n    \"countryCode\": \"KW\",\n    \"city\": \"Salmiya\",\n    \"postalCode\": \"22001\",\n    \"streetLines\": [\"Block 12, Building 45, Apartment 3\"]\n  },\n  \"parcels\": [\n    {\n      \"weight\": 2.5,\n      \"length\": 30,\n      \"width\": 20,\n      \"height\": 10,\n      \"description\": \"Manual shipment box\"\n    }\n  ],\n  \"items\": [\n    {\n      \"description\": \"Manual shipment item\",\n      \"quantity\": 1,\n      \"unitValue\": 25,\n      \"currency\": \"KWD\"\n    }\n  ],\n  \"currency\": \"KWD\",\n  \"reference\": \"MANUAL-ORDER-001\",\n  \"remarks\": \"Create internal shipment only\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Live-verified manual shipment example. Requires the API user to be assigned to Manual Shipment mode. No carrier quotation or carrier booking is performed."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Address Book",
+      "item": [
+        {
+          "name": "List Addresses",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/addresses",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "addresses"]
+            },
+            "description": "Returns all addresses saved in your account's address book. Verified working."
+          }
+        },
+        {
+          "name": "Add Address",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/addresses",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "addresses"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Main Warehouse\",\n  \"company\": \"My Warehouse Co.\",\n  \"contactPerson\": \"Ahmed Al-Rashid\",\n  \"phone\": \"96512345678\",\n  \"email\": \"warehouse@mycompany.com\",\n  \"streetLines\": [\"Industrial Area, Block 4, Street 12\"],\n  \"city\": \"Kuwait City\",\n  \"postalCode\": \"13001\",\n  \"countryCode\": \"KW\",\n  \"taxId\": \"\",\n  \"vatNumber\": \"\",\n  \"eoriNumber\": \"\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Add a new address to your account's address book."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tracking",
+      "item": [
+        {
+          "name": "Track Shipment (v1)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/tracking/{{tracking_number}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "tracking", "{{tracking_number}}"]
+            },
+            "description": "Get status and history of a shipment using the internal tracking number."
+          }
+        },
+        {
+          "name": "Public Shipment Tracking",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/shipments/{{tracking_number}}",
+              "host": ["{{base_url}}"],
+              "path": ["public", "shipments", "{{tracking_number}}"]
+            },
+            "description": "Public tracking endpoint. No authentication required. Use a real tracking number."
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,304 @@
+import React from 'react';
+import {
+    Box, Tooltip, Typography
+} from '@mui/material';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import LocalShippingIcon from '@mui/icons-material/LocalShipping';
+import InventoryIcon from '@mui/icons-material/Inventory';
+import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import { dedupeTrackingEvents } from '../utils/dedupeTrackingEvents';
+import LocationLabel from './LocationLabel';
+import { getEventDisplayMessage } from '../utils/shipmentDisplay';
+
+/**
+ * DGR-Style Tracking Timeline Component
+ * 
+ * Displays shipment history as a vertical timeline with:
+ * - Date grouping
+ * - Status icons
+ * - Location and description
+ * - Color-coded status indicators
+ */
+
+const statusConfig = {
+    'created': { icon: InventoryIcon, color: '#0b5bd3', label: 'Created' },
+    'pickup_scheduled': { icon: AccessTimeIcon, color: '#00d9b8', label: 'Pickup Scheduled' },
+    'ready_for_pickup': { icon: InventoryIcon, color: '#00d9b8', label: 'Ready for Pickup' },
+    'picked_up': { icon: LocalShippingIcon, color: '#00d9b8', label: 'Picked Up' },
+    'in_transit': { icon: FlightTakeoffIcon, color: '#00d9b8', label: 'In Transit' },
+    'out_for_delivery': { icon: LocalShippingIcon, color: '#00d9b8', label: 'Out for Delivery' },
+    'delivered': { icon: CheckCircleIcon, color: '#00d9b8', label: 'Delivered' },
+    'exception': { icon: AccessTimeIcon, color: '#00d9b8', label: 'Exception' },
+    'pending': { icon: AccessTimeIcon, color: '#00d9b8', label: 'Pending' },
+    'updated': { icon: AccessTimeIcon, color: '#00d9b8', label: 'Updated (Review)' },
+    'default': { icon: AccessTimeIcon, color: '#0b5bd3', label: 'Update' }
+};
+
+const getStatusConfig = (status) => {
+    const normalized = status?.toLowerCase()?.replace(/\s+/g, '_') || 'default';
+    return statusConfig[normalized] || statusConfig.default;
+};
+
+const toDisplayTimestamp = (eventOrTimestamp) => {
+    if (eventOrTimestamp && typeof eventOrTimestamp === 'object') {
+        return eventOrTimestamp.localTimestamp || eventOrTimestamp.timestamp;
+    }
+    return eventOrTimestamp;
+};
+
+const formatDate = (eventOrTimestamp) => {
+    const timestamp = toDisplayTimestamp(eventOrTimestamp);
+    const localMatch = String(timestamp || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+    if (localMatch) {
+        const [, year, month, day, hour, minute] = localMatch;
+        const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+        const hourNumber = Number(hour);
+        const hour12 = hourNumber % 12 || 12;
+        const suffix = hourNumber >= 12 ? 'PM' : 'AM';
+        return {
+            date: date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }),
+            time: `${String(hour12).padStart(2, '0')}:${minute} ${suffix}`,
+            shortDate: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+        };
+    }
+    const date = new Date(timestamp);
+    return {
+        date: date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+        time: date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        shortDate: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    };
+};
+
+const toText = (value) => {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string' || typeof value === 'number') return String(value);
+    return '';
+};
+
+const formatAddressObject = (address) => {
+    if (!address || typeof address !== 'object') return '';
+
+    const street = Array.isArray(address.streetLines)
+        ? address.streetLines.filter(Boolean).join(', ')
+        : toText(address.streetLines || address.line1 || address.addressLine1);
+    const city = toText(address.city);
+    const postalCode = toText(address.postalCode);
+    const countryCode = toText(address.countryCode);
+
+    return [street, [city, postalCode].filter(Boolean).join(' '), countryCode]
+        .filter(Boolean)
+        .join(', ');
+};
+
+const formatLocation = (location) => {
+    if (!location) return '';
+    if (typeof location === 'string' || typeof location === 'number') return String(location);
+    if (Array.isArray(location)) return location.map(toText).filter(Boolean).join(', ');
+    if (typeof location !== 'object') return '';
+
+    return (
+        toText(location.formattedAddress)
+        || toText(location.address)
+        || formatAddressObject(location.addressObject)
+        || formatAddressObject(location.address)
+        || formatAddressObject(location)
+    );
+};
+
+// Group events by date
+const groupEventsByDate = (events) => {
+    const groups = {};
+    events?.forEach(event => {
+        const { date } = formatDate(event);
+        if (!groups[date]) {
+            groups[date] = [];
+        }
+        groups[date].push(event);
+    });
+    return groups;
+};
+
+const normalizeText = (v) => String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+const timelineDedupKey = (event) => {
+    const desc = normalizeText(event?.description);
+    const loc = normalizeText(formatLocation(event?.location));
+    return `${desc}|${loc}`;
+};
+
+const TrackingTimeline = ({ history = [], currentStatus }) => {
+    // Collapse adjacent duplicate carrier checkpoints, then sort newest first
+    const dedupedHistory = dedupeTrackingEvents(history, timelineDedupKey);
+    const sortedHistory = [...dedupedHistory].sort((a, b) =>
+        new Date(b.timestamp) - new Date(a.timestamp)
+    );
+
+    const groupedEvents = groupEventsByDate(sortedHistory);
+    const dateKeys = Object.keys(groupedEvents);
+
+    if (!history || history.length === 0) {
+        return (
+            <Box sx={{
+                p: 4,
+                borderRadius: '16px',
+                background: 'var(--surface-container-low, #ecf1f6)',
+                border: '1px dashed var(--border-color, #d9dee4)',
+                textAlign: 'center'
+            }}>
+                <Typography sx={{ color: 'var(--on-surface-variant, #575c60)', fontSize: '14px' }}>
+                    No tracking events recorded yet. Check back soon for updates.
+                </Typography>
+            </Box>
+        );
+    }
+
+    return (
+        <Box sx={{ p: 1 }}>
+            {dateKeys.map((dateKey, dateIndex) => {
+                const events = groupedEvents[dateKey];
+                const isLatestDate = dateIndex === 0;
+
+                return (
+                    <Box key={dateKey} sx={{ mb: 4 }}>
+                        {/* Date Header */}
+                        <Typography
+                            variant="subtitle2"
+                            fontWeight="800"
+                            sx={{
+                                color: isLatestDate ? '#0b5bd3' : 'var(--on-surface-variant, #575c60)',
+                                mb: 3,
+                                textTransform: 'uppercase',
+                                letterSpacing: '1px',
+                                fontSize: '12px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 2
+                            }}
+                        >
+                            {dateKey}
+                            <Box sx={{ flex: 1, height: '1px', background: 'var(--border-color, #d9dee4)' }} />
+                        </Typography>
+
+                        {/* Events for this date */}
+                        <Box sx={{ position: 'relative', pl: 4 }}>
+                            {/* Vertical Timeline Line */}
+                            <Box
+                                sx={{
+                                    position: 'absolute',
+                                    left: 12,
+                                    top: 0,
+                                    bottom: -20,
+                                    width: 1,
+                                    background: 'var(--border-color, #d9dee4)',
+                                    zIndex: 0
+                                }}
+                            />
+
+                            {events.map((event, eventIndex) => {
+                                const statusStr = typeof event.status === 'object' ? (event.status?.status || event.status?.name || 'Update') : event.status;
+                                const config = getStatusConfig(statusStr);
+                                const { time } = formatDate(event);
+                                const previousTime = eventIndex > 0 ? formatDate(events[eventIndex - 1]).time : null;
+                                const showTime = eventIndex === 0 || previousTime !== time;
+                                const startsTimeGroup = showTime && eventIndex > 0;
+                                const isFirst = dateIndex === 0 && eventIndex === 0;
+                                const source = event.source === 'carrier' ? 'Global Network' : 'Logistics Center';
+                                const displayMessage = getEventDisplayMessage(event, statusStr || config.label);
+
+                                return (
+                                    <Box
+                                        key={eventIndex}
+                                        sx={{
+                                            position: 'relative',
+                                            mt: startsTimeGroup ? 2 : 0,
+                                            pt: startsTimeGroup ? 2 : 0,
+                                            pb: 4,
+                                            borderTop: startsTimeGroup ? '1px solid var(--border-color, #d9dee4)' : 'none',
+                                            '&:last-child': { pb: 0 }
+                                        }}
+                                    >
+                                        {/* Timeline Dot/Icon */}
+                                        <Box
+                                            sx={{
+                                                position: 'absolute',
+                                                left: -32,
+                                                top: 0,
+                                                width: 10,
+                                                height: 10,
+                                                borderRadius: '50%',
+                                                bgcolor: '#0b5bd3',
+                                                border: '2px solid var(--surface-container-lowest, #ffffff)',
+                                                zIndex: 1,
+                                                boxShadow: 'none',
+                                                transition: 'all 0.3s ease'
+                                            }}
+                                        />
+
+                                        {/* Event Content */}
+                                        <Box display="flex" justifyContent="space-between" alignItems="flex-start" sx={{ ml: 1 }}>
+                                            <Box>
+                                                <Typography
+                                                    variant="body2"
+                                                    fontWeight={isFirst ? 700 : 500}
+                                                    sx={{
+                                                        color: 'var(--on-surface, #2a2f32)',
+                                                        fontSize: '14px'
+                                                    }}
+                                                >
+                                                    {displayMessage}
+                                                </Typography>
+
+                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 0.5 }}>
+                                                    <LocationLabel
+                                                        location={event.location}
+                                                        style={{ color: 'var(--on-surface-variant, #575c60)', fontSize: 12 }}
+                                                    />
+                                                    <Box sx={{ width: 4, height: 4, borderRadius: '50%', bgcolor: 'var(--border-color, #d9dee4)' }} />
+                                                    <Typography variant="caption" sx={{ color: isFirst ? '#0b5bd3' : 'var(--on-surface-variant, #575c60)', fontWeight: 600 }}>
+                                                        {source}
+                                                    </Typography>
+                                                </Box>
+                                            </Box>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, ml: 2, whiteSpace: 'nowrap' }}>
+                                                {event.occurrences > 1 && (
+                                                    <Tooltip title={`Repeated ${event.occurrences} times - first at ${formatDate(event.firstTimestamp).time}`}>
+                                                        <Box
+                                                            component="span"
+                                                            sx={{
+                                                                fontSize: '10px',
+                                                                fontWeight: 700,
+                                                                px: 0.75,
+                                                                py: '2px',
+                                                                borderRadius: '999px',
+                                                                bgcolor: 'rgba(11,91,211,0.12)',
+                                                                color: '#0b5bd3',
+                                                                lineHeight: 1.4,
+                                                            }}
+                                                        >
+                                                            x{event.occurrences}
+                                                        </Box>
+                                                    </Tooltip>
+                                                )}
+                                                <Typography
+                                                    variant="caption"
+                                                    sx={{
+                                                        color: isFirst ? 'var(--on-surface, #2a2f32)' : 'var(--on-surface-variant, #575c60)',
+                                                        fontWeight: isFirst ? 700 : 500
+                                                    }}
+                                                >
+                                                    {showTime ? time : ''}
+                                                </Typography>
+                                            </Box>
+                                        </Box>
+                                    </Box>
+                                );
+                            })}
+                        </Box>
+                    </Box>
+                );
+            })}
+        </Box>
+    );
+};
+
+export default TrackingTimeline;

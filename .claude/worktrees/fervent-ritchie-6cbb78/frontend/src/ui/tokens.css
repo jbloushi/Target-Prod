@@ -1,0 +1,237 @@
+/* ======================================================
+   KINETIC HORIZON — Design Tokens
+   Target Logistics Design System
+   ====================================================== */
+
+:root {
+  /* ── Primary ── */
+  --primary: #0050d4;
+  --primary-dim: #0046bb;
+  --primary-container: #7b9cff;
+  --primary-fixed: #7b9cff;
+  --primary-fixed-dim: #658eff;
+  --on-primary: #f1f2ff;
+  --on-primary-container: #001e5a;
+  --on-primary-fixed: #000000;
+  --on-primary-fixed-variant: #00266e;
+
+  /* ── Secondary ── */
+  --secondary: #00628c;
+  --secondary-dim: #00557b;
+  --secondary-container: #a4d8ff;
+  --on-secondary: #e9f4ff;
+  --on-secondary-container: #004c6f;
+  --on-secondary-fixed: #003853;
+
+  /* ── Tertiary (Cyan Glow) ── */
+  --tertiary: #006573;
+  --tertiary-dim: #005865;
+  --tertiary-container: #3adffa;
+  --tertiary-fixed: #3adffa;
+  --tertiary-fixed-dim: #1ad0eb;
+  --on-tertiary: #daf8ff;
+  --on-tertiary-container: #004b56;
+  --on-tertiary-fixed: #00363e;
+  --on-tertiary-fixed-variant: #005561;
+
+  /* ── Error ── */
+  --error: #b31b25;
+  --error-dim: #9f0519;
+  --error-container: #fb5151;
+  --on-error: #ffefee;
+  --on-error-container: #570008;
+
+  /* ── Surface Hierarchy ── */
+  --surface: #f3f7fb;
+  --surface-dim: #ced5db;
+  --surface-bright: #f3f7fb;
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #ecf1f6;
+  --surface-container: #e3e9ee;
+  --surface-container-high: #dde3e8;
+  --surface-container-highest: #d7dee3;
+  --surface-variant: #d7dee3;
+  --surface-tint: #0050d4;
+
+  /* ── On Surface ── */
+  --on-surface: #2a2f32;
+  --on-surface-variant: #575c60;
+  --on-background: #2a2f32;
+  --inverse-surface: #0a0f12;
+  --inverse-on-surface: #999da1;
+  --inverse-primary: #618bff;
+
+  /* ── Outline ── */
+  --outline: #73777b;
+  --outline-variant: #a9aeb1;
+
+  /* ── Semantic Aliases (Legacy compat) ── */
+  --bg-primary: var(--surface);
+  --bg-secondary: var(--surface-container-lowest);
+  --bg-tertiary: var(--surface-container-low);
+  --border-color: transparent;
+  --accent-primary: var(--primary);
+  --accent-secondary: var(--secondary);
+  --accent-info: var(--tertiary);
+  --accent-warning: #e68a00;
+  --accent-error: var(--error);
+  --text-primary: var(--on-surface);
+  --text-secondary: var(--on-surface-variant);
+
+  /* ── Spacing ── */
+  --sidebar-width: 240px;
+  --border-radius-base: 0.375rem;
+  --border-radius-card: 1rem;
+  --border-radius-pill: 9999px;
+
+  /* ── Transitions ── */
+  --transition-base: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ── Glassmorphism ── */
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-blur: blur(24px);
+  --glass-border: rgba(169, 174, 177, 0.15);
+
+  /* ── Shadows (On-Surface Tinted) ── */
+  --shadow-ambient: 0 12px 32px -4px rgba(42, 47, 50, 0.06);
+  --shadow-elevated: 0 20px 48px -8px rgba(42, 47, 50, 0.1);
+  --shadow-glow-primary: 0 4px 20px rgba(0, 80, 212, 0.15);
+  --shadow-glow-cyan: 0 4px 16px rgba(58, 223, 250, 0.25);
+
+  /* ── Gradients ── */
+  --gradient-primary: linear-gradient(135deg, #0EA5E9 0%, #2563EB 100%);
+  --gradient-primary-hover: linear-gradient(135deg, #38bdf8 0%, #3b82f6 100%);
+}
+
+/* ── KINETIC HORIZON DARK MODE ── */
+.dark-mode {
+  /* ── Primary Override ── */
+  --primary: #4e92ff;
+  --primary-dim: #3a75e0;
+  --on-primary: #001e5a;
+  --primary-container: #00308f;
+  --on-primary-container: #d6e2ff;
+
+  /* ── Secondary Override ── */
+  --secondary: #64b5f6;
+  --secondary-container: #004c6f;
+  --on-secondary-container: #b9e3ff;
+
+  /* ── Tertiary Override ── */
+  --tertiary: #5df2ff;
+  --tertiary-container: #004b56;
+  --on-tertiary-container: #a2f2ff;
+
+  /* ── Surface Hierarchy (Dark) ── */
+  --surface: #0a0e14;
+  --surface-dim: #05070a;
+  --surface-bright: #1c2128;
+  --surface-container-lowest: #0d1117;
+  --surface-container-low: #1c2128;
+  --surface-container: #21262d;
+  --surface-container-high: #30363d;
+  --surface-container-highest: #3e444d;
+  --surface-variant: #444c56;
+  --surface-tint: #4e92ff;
+
+  /* ── On Surface (Dark) ── */
+  --on-surface: #e6edf3;
+  --on-surface-variant: #8b949e;
+  --on-background: #e6edf3;
+  --inverse-surface: #f3f7fb;
+  --inverse-on-surface: #2a2f32;
+  --inverse-primary: #0050d4;
+
+  /* ── Outline (Dark) ── */
+  --outline: #484f58;
+  --outline-variant: #30363d;
+
+  /* ── Glassmorphism (Dark) ── */
+  --glass-bg: rgba(13, 17, 23, 0.7);
+  --glass-border: rgba(48, 54, 61, 0.5);
+
+  /* ── Shadows (Dark-Tuned) ── */
+  --shadow-ambient: 0 12px 32px -4px rgba(0, 0, 0, 0.5);
+  --shadow-elevated: 0 20px 48px -8px rgba(0, 0, 0, 0.7);
+}
+
+/* ── Global Theme Transition ── */
+.theme-transition,
+.theme-transition *,
+.theme-transition *:before,
+.theme-transition *:after {
+  transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+/* ── Base Reset & Typography ── */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Manrope', 'Inter', 'Segoe UI', sans-serif;
+  background-color: var(--surface);
+  color: var(--on-surface);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.6;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Manrope', sans-serif;
+  margin: 0;
+  color: var(--on-surface);
+  font-weight: 700;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+button {
+  font-family: 'Manrope', sans-serif;
+}
+
+/* ── Utility Classes ── */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+}
+
+.kinetic-gradient {
+  background: var(--gradient-primary);
+}
+
+.kinetic-gradient:hover {
+  background: var(--gradient-primary-hover);
+}
+
+/* ── Label Style (Manifest) ── */
+.label-manifest {
+  font-family: 'Manrope', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--on-surface-variant);
+}
+
+/* ── Motion Lines ── */
+.motion-line {
+  width: 1px;
+  background: linear-gradient(to bottom, var(--primary), transparent);
+  opacity: 0.15;
+}
+
+.motion-line-h {
+  height: 1px;
+  background: linear-gradient(to right, var(--primary), transparent);
+  opacity: 0.15;
+}

@@ -1,0 +1,17 @@
+.env
+.DS_Store
+node_modules
+logs
+uploads/*
+!uploads/documents/
+uploads/documents/*
+!uploads/documents/.gitkeep
+*.log
+test-*.js
+verify-*.js
+
+# Production user files (may contain sensitive credentials)
+scripts/*users.json
+scripts/production-*.json
+!scripts/users.example.json
+/src/generated/prisma

@@ -1,0 +1,377 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider   = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ========================================
+// ENUMS
+// ========================================
+
+enum Role {
+  staff
+  admin
+  driver
+  accounting
+  manager
+  org_manager
+  org_agent
+  client
+}
+
+enum EntryType {
+  DEBIT
+  CREDIT
+}
+
+// ========================================
+// CORE MODELS
+// ========================================
+
+model Organization {
+  id               String     @id @default(uuid())
+  name             String     @unique
+  type             String     @default("BUSINESS")
+  taxId            String?
+  balance          Decimal    @default(0.0) @db.Decimal(18, 4)
+  creditLimit      Decimal    @default(0.0) @db.Decimal(18, 4)
+  unappliedBalance Decimal    @default(0.0) @db.Decimal(18, 4)
+  currency         String     @default("KWD")
+  
+  // JSON Blobs
+  markup           Json?
+  allowedCarriers  Json?
+  addresses        Json?
+  
+  active           Boolean    @default(true)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  // Relations
+  members          User[]
+  shipments        Shipment[]
+  payments         Payment[]
+  ledgerEntries    OrganizationLedger[]
+  allocations     PaymentAllocation[]
+  webhooks         WebhookSubscription[]
+  pickupRequests   PickupRequest[]
+}
+
+model User {
+  id               String       @id @default(uuid())
+  organizationId   String?
+  organization     Organization? @relation(fields: [organizationId], references: [id])
+  
+  name             String
+  email            String       @unique
+  phone            String?      @unique
+  role             Role         @default(org_agent)
+  password         String
+  
+  // JSON Blobs
+  carrierConfig    Json?
+  agentPolicy      Json?
+  addresses        Json?
+  otp              Json?
+  
+  balance          Decimal      @default(0.0) @db.Decimal(18, 4)
+  creditLimit      Decimal      @default(0.0) @db.Decimal(18, 4)
+  
+  apiKeyHash       String?
+  apiKeyLast4      String?
+  
+  active           Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  // Relations
+  shipments          Shipment[]          @relation("UserShipments")
+  assignedShipments   Shipment[]          @relation("AssignedStaff")
+  drivenShipments    Shipment[]          @relation("AssignedDriver")
+  payments           Payment[]
+  createdAllocations  PaymentAllocation[]
+  pickupRequests     PickupRequest[]     @relation("UserPickups")
+  drivenPickups      PickupRequest[]     @relation("PickupDriver")
+  auditLogs          SystemAuditLog[]
+
+  @@index([organizationId, role, active], map: "User_org_role_active_idx")
+  @@index([role, active], map: "User_role_active_idx")
+}
+
+model Shipment {
+  id               String       @id @default(uuid())
+  trackingNumber   String       @unique
+  
+  userId           String
+  user             User         @relation("UserShipments", fields: [userId], references: [id])
+  organizationId   String?
+  organization     Organization? @relation(fields: [organizationId], references: [id])
+  
+  assignedStaffId  String?
+  assignedStaff    User?        @relation("AssignedStaff", fields: [assignedStaffId], references: [id])
+  assignedDriverId String?
+  assignedDriver   User?        @relation("AssignedDriver", fields: [assignedDriverId], references: [id])
+
+  status           String       @default("draft")
+  estimatedDelivery DateTime?
+  
+  carrierCode      String       @default("DGR")
+  serviceCode      String?
+  shipmentType     String       @default("package")
+  
+  // Financials
+  price            Decimal?     @db.Decimal(18, 4)
+  costPrice        Decimal?     @db.Decimal(18, 4)
+  markupAmount     Decimal?     @db.Decimal(18, 4)
+  currency         String       @default("KWD")
+  paid             Boolean      @default(false)
+  totalPaid        Decimal      @default(0.0) @db.Decimal(18, 4)
+  remainingBalance Decimal      @default(0.0) @db.Decimal(18, 4)
+  
+  // JSON Blobs
+  origin           Json
+  destination      Json
+  customer         Json?
+  currentLocation  Json?
+  checkpoints      Json?
+  history          Json?
+  parcels          Json?
+  items            Json?
+  pricingSnapshot  Json?
+  bookingAttempts  Json?
+  documents        Json?
+  financeHold      Json?
+  
+  // Carrier Specifics
+  packagingType    String       @default("user")
+  incoterm         String?      @default("DAP")
+  
+  // Carrier Specifics
+  dhlTrackingNumber String?
+  dhlConfirmed      Boolean     @default(false)
+  carrierShipmentId String?
+  labelUrl          String?
+  awbUrl            String?
+  invoiceUrl        String?
+  
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  // Relations
+  allocations      PaymentAllocation[]
+  pickupRequests   PickupRequest[]
+
+  @@index([userId, status, createdAt], map: "Shipment_user_status_created_idx")
+  @@index([organizationId, status, createdAt], map: "Shipment_org_status_created_idx")
+  @@index([organizationId, paid, createdAt], map: "Shipment_org_paid_created_idx")
+  @@index([assignedDriverId, status, createdAt], map: "Shipment_driver_status_created_idx")
+  @@index([carrierCode, serviceCode], map: "Shipment_carrier_service_idx")
+  @@index([createdAt], map: "Shipment_createdAt_idx")
+  @@index([updatedAt], map: "Shipment_updatedAt_idx")
+}
+
+model OrganizationLedger {
+  id               String       @id @default(uuid())
+  organizationId   String?
+  organization     Organization? @relation(fields: [organizationId], references: [id])
+  
+  amount           Decimal      @db.Decimal(18, 4)
+  entryType        EntryType
+  category         String
+  description      String
+  reference        String?
+  sourceRepo       String?
+  sourceId         String?
+  parentEntryId    String?
+  balanceAfter     Decimal      @db.Decimal(18, 4)
+  
+  createdBy        String?
+  metadata         Json?
+  
+  createdAt        DateTime     @default(now())
+
+  @@index([organizationId, createdAt], map: "Ledger_org_created_idx")
+  @@index([organizationId, entryType], map: "Ledger_org_entryType_idx")
+  @@index([sourceRepo, sourceId], map: "Ledger_source_idx")
+  @@index([reference], map: "Ledger_reference_idx")
+}
+
+model Payment {
+  id               String       @id @default(uuid())
+  organizationId   String?
+  organization     Organization? @relation(fields: [organizationId], references: [id])
+  
+  amount           Decimal      @db.Decimal(18, 4)
+  currency         String       @default("KWD")
+  status           String       @default("UNAPPLIED")
+  method           String       @default("manual")
+  reference        String?
+  notes            String?      @db.Text
+  
+  createdById      String?
+  createdBy        User?        @relation(fields: [createdById], references: [id])
+  
+  metadata         Json?
+  postedAt         DateTime     @default(now())
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  // Relations
+  allocations      PaymentAllocation[]
+
+  @@index([organizationId, status, postedAt], map: "Payment_org_status_posted_idx")
+  @@index([createdById, postedAt], map: "Payment_createdBy_posted_idx")
+  @@index([reference], map: "Payment_reference_idx")
+}
+
+model PaymentAllocation {
+  id               String       @id @default(uuid())
+  organizationId   String?
+  organization     Organization? @relation(fields: [organizationId], references: [id])
+  
+  paymentId        String
+  payment          Payment      @relation(fields: [paymentId], references: [id])
+  
+  shipmentId       String
+  shipment         Shipment     @relation(fields: [shipmentId], references: [id])
+  
+  amount           Decimal      @db.Decimal(18, 4)
+  status           String       @default("ACTIVE")
+  isFifo           Boolean      @default(false)
+  
+  createdBy        String?
+  createdByUser    User?        @relation(fields: [createdBy], references: [id])
+  
+  reversedAt       DateTime?
+  reversedBy       String?
+  reversalReason   String?
+  
+  createdAt        DateTime     @default(now())
+
+  @@index([shipmentId, status], map: "Allocation_shipment_status_idx")
+  @@index([paymentId, status], map: "Allocation_payment_status_idx")
+  @@index([organizationId, status, createdAt], map: "Allocation_org_status_created_idx")
+  @@index([createdBy, createdAt], map: "Allocation_createdBy_created_idx")
+}
+
+model WebhookSubscription {
+  id               String       @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  
+  targetUrl        String
+  secret           String
+  events           Json         // Array of event names
+  isActive         Boolean      @default(true)
+  
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  // Relations
+  deliveryEvents   WebhookEvent[]
+
+  @@index([organizationId, isActive], map: "WebhookSubscription_org_active_idx")
+}
+
+model WebhookEvent {
+  id               String       @id @default(uuid())
+  subscriptionId   String
+  subscription     WebhookSubscription @relation(fields: [subscriptionId], references: [id])
+  
+  event            String
+  payload          Json
+  status           String       @default("pending")
+  attempts         Int          @default(0)
+  lastAttemptAt    DateTime?
+  lastError        String?      @db.Text
+  
+  createdAt        DateTime     @default(now())
+
+  @@index([subscriptionId, status, createdAt], map: "WebhookEvent_subscription_status_created_idx")
+}
+
+model PickupRequest {
+  id               String       @id @default(uuid())
+  organizationId   String?
+  organization     Organization? @relation(fields: [organizationId], references: [id])
+  
+  userId           String
+  user             User         @relation("UserPickups", fields: [userId], references: [id])
+  
+  shipmentId       String?
+  shipment         Shipment?    @relation(fields: [shipmentId], references: [id])
+  
+  status           String       @default("pending") // pending, assigned, completed, cancelled
+  pickupLocation   Json
+  pickupTime       DateTime?
+  
+  assignedDriverId String?
+  assignedDriver   User?        @relation("PickupDriver", fields: [assignedDriverId], references: [id])
+  
+  notes            String?      @db.Text
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([organizationId, status, createdAt], map: "Pickup_org_status_created_idx")
+  @@index([userId, status, createdAt], map: "Pickup_user_status_created_idx")
+  @@index([assignedDriverId, status, createdAt], map: "Pickup_driver_status_created_idx")
+  @@index([shipmentId], map: "Pickup_shipment_idx")
+}
+
+model CarrierLog {
+  id               String       @id @default(uuid())
+  carrierCode      String
+  requestType      String       // quote, book, track
+  requestPayload   Json
+  responsePayload  Json?
+  statusCode       Int?
+  durationMs       Int?
+  
+  trackingNumber   String?
+  organizationId   String?
+  
+  createdAt        DateTime     @default(now())
+
+  @@index([carrierCode, requestType, createdAt], map: "CarrierLog_carrier_request_created_idx")
+  @@index([trackingNumber], map: "CarrierLog_tracking_idx")
+  @@index([organizationId, createdAt], map: "CarrierLog_org_created_idx")
+}
+
+model SystemAuditLog {
+  id               String       @id @default(uuid())
+  userId           String?
+  user             User?        @relation(fields: [userId], references: [id])
+  
+  action           String
+  resource         String
+  resourceId       String?
+  oldValues        Json?
+  newValues        Json?
+  
+  ipAddress        String?
+  userAgent        String?
+  
+  createdAt        DateTime     @default(now())
+
+  @@index([userId, createdAt], map: "SystemAuditLog_user_created_idx")
+  @@index([resource, resourceId, createdAt], map: "SystemAuditLog_resource_created_idx")
+}
+
+model IdempotencyKey {
+  id             String   @id @default(uuid())
+  key            String   @unique
+  status         String   @default("PROCESSING") // PROCESSING | COMPLETED
+  responseStatus Int?
+  responseBody   Json?
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+
+  @@index([key])
+  @@index([expiresAt])
+}
