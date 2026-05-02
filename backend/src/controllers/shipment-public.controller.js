@@ -40,6 +40,8 @@ exports.getPublicShipment = async (req, res) => {
             status: normalizeStatus(typeof h.status === 'object' ? (h.status?.status || 'booked') : (h.status || 'booked')),
             description: h.description || '',
             timestamp: h.timestamp,
+            localTimestamp: h.localTimestamp || null,
+            timezoneOffset: h.timezoneOffset || null,
             location: h.location?.formattedAddress || h.location?.city || ''
         })).filter((event) => event.timestamp);
         let rawEvents = [];
@@ -56,6 +58,8 @@ exports.getPublicShipment = async (req, res) => {
                     status: normalizeStatus(event.statusCode || tracking?.status || shipment.status || 'booked'),
                     description: event.description || '',
                     timestamp: event.timestamp,
+                    localTimestamp: event.localTimestamp || null,
+                    timezoneOffset: event.timezoneOffset || null,
                     location: event.location || ''
                 }));
                 rawEvents = [...persistedEvents, ...carrierEvents]

@@ -324,9 +324,10 @@ const syncCarrierTrackingHistory = async (shipment) => {
         }
 
         const currentHistory = compactedOriginalHistory;
-        const existingKeys = new Set(
-            currentHistory.map((entry) => buildHistoryKey(entry))
+        const existingByKey = new Map(
+            currentHistory.map((entry) => [buildHistoryKey(entry), entry])
         );
+        const existingKeys = new Set(existingByKey.keys());
 
         const fallbackContact = shipment.origin?.contactPerson || 'Carrier';
         const fallbackPhone = shipment.origin?.phone || '0000000';
@@ -345,6 +346,8 @@ const syncCarrierTrackingHistory = async (shipment) => {
                 description: event.description || 'Carrier update',
                 source: 'carrier',
                 timestamp: event.timestamp ? new Date(event.timestamp) : new Date(),
+                localTimestamp: event.localTimestamp || null,
+                timezoneOffset: event.timezoneOffset || null,
                 location: {
                     formattedAddress: event.location || 'Unknown',
                     city: event.location || undefined,
@@ -357,7 +360,15 @@ const syncCarrierTrackingHistory = async (shipment) => {
             if (!existingKeys.has(key)) {
                 newHistory.push(historyEntry);
                 existingKeys.add(key);
+                existingByKey.set(key, historyEntry);
                 hasUpdates = true;
+            } else {
+                const existingEntry = existingByKey.get(key);
+                if (existingEntry && event.localTimestamp && !existingEntry.localTimestamp) {
+                    existingEntry.localTimestamp = event.localTimestamp;
+                    existingEntry.timezoneOffset = event.timezoneOffset || existingEntry.timezoneOffset || null;
+                    hasUpdates = true;
+                }
             }
 
             if (!highestCarrierStatus || isStatusAhead(highestCarrierStatus, normalizedStatus)) {

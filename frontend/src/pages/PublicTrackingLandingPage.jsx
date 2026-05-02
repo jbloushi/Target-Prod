@@ -35,6 +35,33 @@ const fmt = {
   dateTime: (ts) => (ts ? `${fmt.date(ts)} at ${fmt.time(ts)}` : 'Not available'),
 };
 
+const getDisplayTimestamp = (eventOrTimestamp) => {
+  if (eventOrTimestamp && typeof eventOrTimestamp === 'object') {
+    return eventOrTimestamp.localTimestamp || eventOrTimestamp.timestamp;
+  }
+  return eventOrTimestamp;
+};
+
+const formatDisplayDateParts = (eventOrTimestamp) => {
+  const timestamp = getDisplayTimestamp(eventOrTimestamp);
+  const localMatch = String(timestamp || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (localMatch) {
+    const [, year, month, day, hour, minute] = localMatch;
+    const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+    const hourNumber = Number(hour);
+    const hour12 = hourNumber % 12 || 12;
+    const suffix = hourNumber >= 12 ? 'PM' : 'AM';
+    return {
+      date: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }),
+      time: `${String(hour12).padStart(2, '0')}:${minute} ${suffix}`
+    };
+  }
+  return {
+    date: fmt.date(timestamp),
+    time: fmt.time(timestamp)
+  };
+};
+
 const styles = {
   page: {
     minHeight: '100vh',
@@ -382,7 +409,7 @@ function TimelineTab({ events = [] }) {
   }
 
   const grouped = events.reduce((acc, event) => {
-    const key = fmt.date(event.timestamp);
+    const key = formatDisplayDateParts(event).date;
     acc[key] = acc[key] || [];
     acc[key].push(event);
     return acc;
@@ -395,11 +422,12 @@ function TimelineTab({ events = [] }) {
           <div style={{ fontWeight: 800, fontSize: 13, color: '#0b5bd3', marginBottom: 8 }}>{date}</div>
           {dayEvents.map((event, index) => {
             const displayMessage = getEventDisplayMessage(event, EVENT_LABELS[event.canonicalStatus] || 'Tracking update');
-            const eventTime = fmt.time(event.timestamp);
-            const previousTime = index > 0 ? fmt.time(dayEvents[index - 1].timestamp) : null;
+            const eventTime = formatDisplayDateParts(event).time;
+            const previousTime = index > 0 ? formatDisplayDateParts(dayEvents[index - 1]).time : null;
             const showTime = index === 0 || previousTime !== eventTime;
+            const startsTimeGroup = showTime && index > 0;
             return (
-              <div key={`${event.timestamp}-${index}`} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 220px', gap: 10, padding: '8px 0', borderBottom: '1px solid #eef3fa' }}>
+              <div key={`${event.timestamp}-${index}`} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 220px', gap: 10, padding: startsTimeGroup ? '14px 0 8px' : '8px 0', borderTop: startsTimeGroup ? '1px solid #dfe8f5' : 'none', borderBottom: '1px solid #eef3fa' }}>
                 <div style={{ color: '#66758a', fontSize: 12 }}>{showTime ? eventTime : ''}</div>
                 <div style={{ fontSize: 13, color: '#102033', fontWeight: 700 }}>{displayMessage}</div>
                 <LocationLabel location={event.normalizedLocation || event.location} style={{ color: '#66758a', fontSize: 12 }} />
@@ -424,7 +452,7 @@ function EventLogTab({ events }) {
   }
 
   const grouped = events.reduce((acc, event) => {
-    const key = fmt.date(event.timestamp);
+    const key = formatDisplayDateParts(event).date;
     acc[key] = acc[key] || [];
     acc[key].push(event);
     return acc;
@@ -438,9 +466,10 @@ function EventLogTab({ events }) {
           <div style={{ fontWeight: 800, fontSize: 13, color: '#0b5bd3', marginBottom: 8 }}>{date}</div>
           {dayEvents.map((event, index) => {
             const displayMessage = getEventDisplayMessage(event);
-            const eventTime = fmt.time(event.timestamp);
-            const previousTime = index > 0 ? fmt.time(dayEvents[index - 1].timestamp) : null;
+            const eventTime = formatDisplayDateParts(event).time;
+            const previousTime = index > 0 ? formatDisplayDateParts(dayEvents[index - 1]).time : null;
             const showTime = index === 0 || previousTime !== eventTime;
+            const startsTimeGroup = showTime && index > 0;
             const isLatest = date === groupDates[0] && index === 0;
             return (
               <div
@@ -449,7 +478,8 @@ function EventLogTab({ events }) {
                   display: 'grid',
                   gridTemplateColumns: '18px 1fr minmax(84px, auto)',
                   gap: 14,
-                  padding: '16px 0',
+                  padding: startsTimeGroup ? '22px 0 16px' : '16px 0',
+                  borderTop: startsTimeGroup ? '1px solid #dfe8f5' : 'none',
                   borderBottom: index === dayEvents.length - 1 ? 'none' : '1px solid #dfe8f5',
                 }}
                 className="event-row"
