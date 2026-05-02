@@ -633,7 +633,7 @@ const PublicTrackingPage = () => {
           <section style={styles.content}>
             {activeTab === 'details' && <ShipmentDetailsTab shipment={shipment} />}
             {activeTab === 'timeline' && <TimelineTab events={timelineEvents} />}
-            {activeTab === 'events' && <EventLogTab events={rawEvents} />}
+            {activeTab === 'events' && <EventLogTab events={timelineEvents} />}
           </section>
         )}
       </main>
