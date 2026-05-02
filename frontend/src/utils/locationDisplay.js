@@ -68,8 +68,3 @@ const inferCountryCode = (location) => {
 export const getLocationText = locationToText;
 
 export const getCountryCode = (location) => inferCountryCode(location);
-
-export const getFlagImageUrl = (location) => {
-  const countryCode = getCountryCode(location);
-  return countryCode ? `https://flagcdn.com/24x18/${countryCode.toLowerCase()}.png` : '';
-};

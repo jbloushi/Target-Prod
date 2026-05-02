@@ -4,7 +4,6 @@ import axios from 'axios';
 import { getApiBaseUrl } from '../utils/env';
 import { dedupeTrackingEvents } from '../utils/dedupeTrackingEvents';
 import LocationLabel from '../components/LocationLabel';
-import { getCountryCode, getFlagImageUrl } from '../utils/locationDisplay';
 import { getEventDisplayMessage } from '../utils/shipmentDisplay';
 import {
   STATUS_HEADLINE,
@@ -268,13 +267,10 @@ function placeLabel(place) {
 
 function RoutePlaceLabel({ place, fallback }) {
   const label = placeLabel(place) || fallback;
-  const flagUrl = getFlagImageUrl(place);
-  const countryCode = getCountryCode(place);
 
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-      {flagUrl && <img src={flagUrl} alt={`${countryCode} flag`} width="18" height="13" loading="lazy" style={{ borderRadius: 2, boxShadow: '0 0 0 1px rgba(0,0,0,0.08)' }} />}
-      <span>{label}</span>
+      <LocationLabel location={{ ...(place || {}), formattedAddress: label }} />
     </span>
   );
 }
@@ -399,9 +395,12 @@ function TimelineTab({ events = [] }) {
           <div style={{ fontWeight: 800, fontSize: 13, color: '#0b5bd3', marginBottom: 8 }}>{date}</div>
           {dayEvents.map((event, index) => {
             const displayMessage = getEventDisplayMessage(event, EVENT_LABELS[event.canonicalStatus] || 'Tracking update');
+            const eventTime = fmt.time(event.timestamp);
+            const previousTime = index > 0 ? fmt.time(dayEvents[index - 1].timestamp) : null;
+            const showTime = index === 0 || previousTime !== eventTime;
             return (
               <div key={`${event.timestamp}-${index}`} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 220px', gap: 10, padding: '8px 0', borderBottom: '1px solid #eef3fa' }}>
-                <div style={{ color: '#66758a', fontSize: 12 }}>{fmt.time(event.timestamp)}</div>
+                <div style={{ color: '#66758a', fontSize: 12 }}>{showTime ? eventTime : ''}</div>
                 <div style={{ fontSize: 13, color: '#102033', fontWeight: 700 }}>{displayMessage}</div>
                 <LocationLabel location={event.normalizedLocation || event.location} style={{ color: '#66758a', fontSize: 12 }} />
               </div>
@@ -424,64 +423,80 @@ function EventLogTab({ events }) {
     );
   }
 
+  const grouped = events.reduce((acc, event) => {
+    const key = fmt.date(event.timestamp);
+    acc[key] = acc[key] || [];
+    acc[key].push(event);
+    return acc;
+  }, {});
+  const groupDates = Object.keys(grouped);
+
   return (
     <div style={styles.card}>
-      {events.map((event, index) => {
-        const displayMessage = getEventDisplayMessage(event);
-        return (
-          <div
-            key={`${event.timestamp}-${index}`}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '18px 1fr minmax(120px, auto)',
-              gap: 14,
-              padding: '16px 0',
-              borderBottom: index === events.length - 1 ? 'none' : '1px solid #dfe8f5',
-            }}
-            className="event-row"
-          >
-            <span style={{
-              width: 10,
-              height: 10,
-              borderRadius: '50%',
-              background: index === 0 ? '#0b5bd3' : '#7f93ad',
-              marginTop: 5,
-              boxShadow: index === 0 ? '0 0 0 5px rgba(11, 91, 211, 0.12)' : 'none',
-            }}
-            />
-            <div>
-              <div style={{ color: '#102033', fontWeight: index === 0 ? 850 : 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span>{displayMessage}</span>
-              {event.occurrences > 1 && (
-                <span
-                  title={`Repeated ${event.occurrences} times — first at ${fmt.time(event.firstTimestamp)}`}
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    padding: '2px 6px',
-                    borderRadius: 999,
-                    background: 'rgba(11, 91, 211, 0.12)',
-                    color: '#0b5bd3',
-                  }}
-                >
-                  ×{event.occurrences}
-                </span>
-              )}
-            </div>
-            <div style={{ color: '#66758a', fontSize: 13, marginTop: 4 }}>
-              <LocationLabel location={event.location} />
-            </div>
-            <div style={{ color: '#7a899d', fontSize: 12, marginTop: 5 }}>
-              {event.source === 'carrier' ? 'Carrier network' : 'Target Logistics'}
-            </div>
-          </div>
-          <div style={{ textAlign: 'right', color: '#66758a', fontSize: 12 }}>
-            <div>{fmt.date(event.timestamp)}</div>
-            <div>{fmt.time(event.timestamp)}</div>
-          </div>
-          </div>
-        );
-      })}
+      {Object.entries(grouped).map(([date, dayEvents]) => (
+        <div key={date} style={{ marginBottom: 16 }}>
+          <div style={{ fontWeight: 800, fontSize: 13, color: '#0b5bd3', marginBottom: 8 }}>{date}</div>
+          {dayEvents.map((event, index) => {
+            const displayMessage = getEventDisplayMessage(event);
+            const eventTime = fmt.time(event.timestamp);
+            const previousTime = index > 0 ? fmt.time(dayEvents[index - 1].timestamp) : null;
+            const showTime = index === 0 || previousTime !== eventTime;
+            const isLatest = date === groupDates[0] && index === 0;
+            return (
+              <div
+                key={`${event.timestamp}-${index}`}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '18px 1fr minmax(84px, auto)',
+                  gap: 14,
+                  padding: '16px 0',
+                  borderBottom: index === dayEvents.length - 1 ? 'none' : '1px solid #dfe8f5',
+                }}
+                className="event-row"
+              >
+                <span style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: '50%',
+                  background: isLatest ? '#0b5bd3' : '#7f93ad',
+                  marginTop: 5,
+                  boxShadow: isLatest ? '0 0 0 5px rgba(11, 91, 211, 0.12)' : 'none',
+                }}
+                />
+                <div>
+                  <div style={{ color: '#102033', fontWeight: isLatest ? 850 : 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span>{displayMessage}</span>
+                    {event.occurrences > 1 && (
+                      <span
+                        title={`Repeated ${event.occurrences} times - first at ${fmt.time(event.firstTimestamp)}`}
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: '2px 6px',
+                          borderRadius: 999,
+                          background: 'rgba(11, 91, 211, 0.12)',
+                          color: '#0b5bd3',
+                        }}
+                      >
+                        x{event.occurrences}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ color: '#66758a', fontSize: 13, marginTop: 4 }}>
+                    <LocationLabel location={event.location} />
+                  </div>
+                  <div style={{ color: '#7a899d', fontSize: 12, marginTop: 5 }}>
+                    {event.source === 'carrier' ? 'Carrier network' : 'Target Logistics'}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right', color: '#66758a', fontSize: 12 }}>
+                  {showTime ? eventTime : ''}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
     </div>
   );
 }
