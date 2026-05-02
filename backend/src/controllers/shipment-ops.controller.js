@@ -10,6 +10,7 @@ const path = require('path');
 const fs = require('fs');
 const { SHIPMENT_STATUSES, MANUAL_SHIPMENT_STATUSES } = require('../constants/statusConstants');
 const { canUpdateShipmentStatus, isManualShipment } = require('./shipment.helpers');
+const chatwootNotificationService = require('../services/chatwootNotificationService');
 
 exports.updateShipmentStatus = async (req, res) => {
     try {
@@ -49,6 +50,10 @@ exports.updateShipmentStatus = async (req, res) => {
         });
 
         logger.info(`Shipment ${trackingNumber} status updated to ${status}`);
+        const eventType = chatwootNotificationService.mapStatusToNotificationEvent(status, description);
+        if (eventType) {
+            chatwootNotificationService.triggerShipmentNotification(eventType, updated);
+        }
         res.status(200).json({ success: true, data: updated, message: 'Shipment status updated successfully' });
     } catch (error) {
         logger.error('Error updating shipment status:', error);

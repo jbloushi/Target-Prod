@@ -53,14 +53,7 @@ const corsOptions = {
       return callback(null, true);
     }
 
-    // IMPORTANT: wildcard '*' is incompatible with credentials:true in browsers.
-    // When CORS_ORIGIN=* we reflect the actual request origin so credentialed
-    // requests (Authorization, cookies, x-api-key) work correctly.
-    if (corsOrigin === '*') {
-      return callback(null, origin);
-    }
-
-    const allowedOrigins = corsOrigin.split(',').map(o => o.trim().replace(/\/$/, ''));
+    const allowedOrigins = corsOrigin.split(',').map(o => o.trim().replace(/\/$/, '')).filter(Boolean);
 
     if (allowedOrigins.includes(cleanOrigin)) {
       callback(null, true);
@@ -120,7 +113,7 @@ if (rateLimitEnabled) {
 
 
 // Body parser middleware
-app.use(express.json({ limit: '10kb' }));
+app.use(express.json({ limit: '10kb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
 // Logging middleware (verbose logs in production can noticeably impact throughput)
@@ -142,6 +135,7 @@ const externalRoutes = require('./routes/external.routes');
 const apiRoutes = require('./routes/api.routes');
 const financeRoutes = require('./routes/finance.routes');
 const organizationRoutes = require('./routes/organization.routes');
+const integrationRoutes = require('./routes/integration.routes');
 
 const shipmentPublicRoutes = require('./routes/shipment-public.routes');
 
@@ -151,6 +145,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/organizations', organizationRoutes);
+app.use('/api/integrations', integrationRoutes);
 app.use('/api/pickups', pickupRoutes);
 app.use('/api/client', externalRoutes);
 app.use('/api/v1', apiRoutes);

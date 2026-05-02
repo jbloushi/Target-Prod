@@ -5,7 +5,7 @@ require('dotenv').config();
  */
 const validateProductionEnv = () => {
   if (process.env.NODE_ENV === 'production') {
-    const required = ['DATABASE_URL', 'JWT_SECRET', 'API_KEY_SECRET', 'ENCRYPTION_KEY', 'DHL_API_KEY', 'DHL_API_SECRET'];
+    const required = ['DATABASE_URL', 'JWT_SECRET', 'API_KEY_SECRET', 'ENCRYPTION_KEY', 'DHL_API_KEY', 'DHL_API_SECRET', 'CORS_ORIGIN'];
     const missing = required.filter(key => !process.env[key]);
 
     if (missing.length > 0) {
@@ -35,8 +35,10 @@ module.exports = {
   // Security & Authentication
   jwtSecret: process.env.JWT_SECRET || 'dev-secret-key-change-in-production',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
-  corsOrigin: process.env.CORS_ORIGIN || '*',
+  corsOrigin: process.env.CORS_ORIGIN || '',
   frontendUrl: process.env.FRONTEND_URL || 'https://target-logistics.com',
+  publicTrackingBaseUrl: process.env.PUBLIC_TRACKING_BASE_URL || process.env.FRONTEND_URL || 'https://target-logistics.com',
+  supportWhatsappPhone: process.env.SUPPORT_WHATSAPP_PHONE || '96597691271',
 
   // API Keys (will be validated in adapters)
   dhlApiKey: process.env.DHL_API_KEY,
@@ -56,6 +58,19 @@ module.exports = {
   googleMapsDetailsUrl: process.env.GOOGLE_MAPS_DETAILS_URL || 'https://maps.googleapis.com/maps/api/place/details/json',
   googleMapsValidationUrl: process.env.GOOGLE_MAPS_VALIDATION_URL || 'https://addressvalidation.googleapis.com/v1:validateAddress',
 
+  chatwoot: {
+    enabled: process.env.CHATWOOT_ENABLED === 'true',
+    baseUrl: process.env.CHATWOOT_BASE_URL,
+    accountId: process.env.CHATWOOT_ACCOUNT_ID,
+    inboxId: process.env.CHATWOOT_INBOX_ID,
+    apiAccessToken: process.env.CHATWOOT_API_ACCESS_TOKEN,
+    allowPlainTextFallback: process.env.CHATWOOT_ALLOW_PLAIN_TEXT_FALLBACK !== 'false',
+    templateConfig: process.env.CHATWOOT_TEMPLATE_CONFIG
+      ? safeJsonParse(process.env.CHATWOOT_TEMPLATE_CONFIG, {})
+      : {},
+    webhookSecret: process.env.CHATWOOT_WEBHOOK_SECRET || null
+  },
+
   // Logging Configuration
   logLevel: process.env.LOG_LEVEL || 'info',
   logToFile: process.env.LOG_TO_FILE === 'true',
@@ -68,3 +83,11 @@ module.exports = {
   rateLimitAuthMax: parseInt(process.env.RATE_LIMIT_AUTH_MAX, 10) || 20,
   maxUploadSize: parseInt(process.env.MAX_UPLOAD_SIZE, 10) || 10485760, // 10MB default
 };
+
+function safeJsonParse(value, fallback) {
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    return fallback;
+  }
+}

@@ -36,11 +36,13 @@ import SaveIcon from '@mui/icons-material/Save';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ShareIcon from '@mui/icons-material/Share';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import WhatsAppIcon from '@mui/icons-material/WhatsApp';
+import SearchIcon from '@mui/icons-material/Search';
 import TrackingTimeline from '../components/TrackingTimeline';
 import AddressPanel from '../components/AddressPanel';
 import ShipmentContent from '../components/shipment/ShipmentContent';
 import ShipmentBilling from '../components/shipment/ShipmentBilling';
-import { financeService, shipmentService, userService } from '../services/api';
+import { financeService, integrationService, shipmentService, userService } from '../services/api';
 import api from '../services/api'; // Use the default api instance for generic get requests
 import {
     STATUS_ORDER, STATUS_LABELS, MANUAL_SHIPMENT_STATUSES, getStepIndex
@@ -373,10 +375,80 @@ const EmptyState = styled.div`
     text-align: center;
 `;
 
+const WhatsAppLogGrid = styled.div`
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+
+    @media (max-width: 768px) {
+        grid-template-columns: 1fr;
+    }
+`;
+
+const WhatsAppLogEntry = styled.div`
+    border: 1px solid rgba(169, 174, 177, 0.16);
+    border-radius: 12px;
+    padding: 16px;
+    background: var(--surface-container-low, #ecf1f6);
+`;
+
+const WhatsAppLogRole = styled.div`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+`;
+
+const WhatsAppLogMeta = styled.div`
+    display: grid;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--on-surface-variant, #575c60);
+
+    strong {
+        color: var(--on-surface, #2a2f32);
+        font-weight: 700;
+    }
+`;
+
+const WhatsAppPreview = styled.pre`
+    margin: 14px 0 0;
+    padding: 14px;
+    border-radius: 10px;
+    background: #ffffff;
+    border: 1px solid rgba(169, 174, 177, 0.16);
+    color: var(--on-surface, #2a2f32);
+    font: 600 12px/1.55 'Manrope', sans-serif;
+    white-space: pre-wrap;
+    word-break: break-word;
+`;
+
 const toDisplayText = (value) => {
     if (value === null || value === undefined) return '';
     if (typeof value === 'string' || typeof value === 'number') return String(value);
     return '';
+};
+
+const formatPartyPhone = (phone, phoneCountryCode) => {
+    const rawPhone = toDisplayText(phone).trim();
+    if (!rawPhone) return '';
+
+    const rawCode = toDisplayText(phoneCountryCode).trim();
+    if (rawPhone.startsWith('+')) return rawPhone;
+    if (!rawCode || rawCode === 'OTHER') return rawPhone;
+
+    const codeDigits = rawCode.replace(/\D/g, '');
+    const phoneDigits = rawPhone.replace(/\D/g, '');
+    if (!codeDigits || !phoneDigits) return rawPhone;
+
+    const localDigits = phoneDigits.startsWith(codeDigits)
+        ? phoneDigits.slice(codeDigits.length)
+        : phoneDigits.startsWith('0') && codeDigits !== '1'
+            ? phoneDigits.slice(1)
+            : phoneDigits;
+
+    return `+${codeDigits} ${localDigits}`;
 };
 
 const normalizePartyAddress = (party = {}) => {
@@ -386,6 +458,9 @@ const normalizePartyAddress = (party = {}) => {
         : Array.isArray(nestedAddress.streetLines)
             ? nestedAddress.streetLines
             : [];
+
+    const phone = toDisplayText(party.phone || nestedAddress.phone);
+    const phoneCountryCode = toDisplayText(party.phoneCountryCode || nestedAddress.phoneCountryCode);
 
     return {
         ...party,
@@ -397,10 +472,199 @@ const normalizePartyAddress = (party = {}) => {
         postalCode: toDisplayText(party.postalCode || nestedAddress.postalCode),
         countryCode: toDisplayText(party.countryCode || nestedAddress.countryCode),
         email: toDisplayText(party.email || nestedAddress.email),
-        phone: toDisplayText(party.phone || nestedAddress.phone),
+        phone,
+        phoneCountryCode,
+        displayPhone: formatPartyPhone(phone, phoneCountryCode),
         company: toDisplayText(party.company || nestedAddress.company),
         contactPerson: toDisplayText(party.contactPerson || nestedAddress.contactPerson)
     };
+};
+
+const WHATSAPP_EVENT_LABELS = {
+    shipment_created: 'Shipment Created',
+    on_hold_customs_issue: 'On Hold / Customs Issue',
+    documents_needed: 'Documents Needed',
+    delivery_attempt: 'Delivery Attempt',
+    out_for_delivery: 'Out for Delivery'
+};
+
+const getWhatsAppStatusColor = (status) => {
+    if (status === 'delivered' || status === 'read') return { color: '#087f5b', background: 'rgba(8, 127, 91, 0.1)' };
+    if (status === 'sent' || status === 'submitted') return { color: '#0050d4', background: 'rgba(0, 80, 212, 0.1)' };
+    if (status === 'failed') return { color: '#b31b25', background: 'rgba(179, 27, 37, 0.1)' };
+    if (status === 'skipped') return { color: '#575c60', background: 'rgba(87, 92, 96, 0.1)' };
+    return { color: '#9a6700', background: 'rgba(154, 103, 0, 0.1)' };
+};
+
+const formatWhatsAppTime = (value) => {
+    if (!value) return 'Not submitted yet';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Not submitted yet';
+    return date.toLocaleString();
+};
+
+const getLatestWhatsAppLog = (logs, role) => {
+    const roleLogs = (logs || [])
+        .filter(log => log.provider === 'chatwoot' && log.recipientRole === role)
+        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    return roleLogs[0] || null;
+};
+
+const getWhatsAppStatusLabel = (status) => {
+    if (status === 'submitted') return 'SUBMITTED';
+    if (status === 'sent') return 'SENT ✓';
+    if (status === 'delivered') return 'DELIVERED ✓✓';
+    if (status === 'read') return 'READ ✓✓';
+    return String(status || 'pending').toUpperCase();
+};
+
+const WhatsAppLogCard = ({ logs = [], previews = {}, previewLoading = false, sendingRole = null, onSendRole }) => {
+    const [expandedPreviews, setExpandedPreviews] = useState({});
+    const roles = [
+        { key: 'sender', label: 'Sender' },
+        { key: 'receiver', label: 'Receiver' }
+    ];
+    const totalRecords = logs.filter(log => log.provider === 'chatwoot').length;
+
+    return (
+        <SectionCard>
+            <CardHeader>
+                <div className="header-label">
+                    <WhatsAppIcon />
+                    WhatsApp Log
+                </div>
+                <Chip
+                    size="small"
+                    label={`${totalRecords} record${totalRecords === 1 ? '' : 's'}`}
+                    sx={{ fontWeight: 800, fontSize: '11px' }}
+                />
+            </CardHeader>
+
+            <WhatsAppLogGrid>
+                {roles.map((role) => {
+                    const roleLogs = (logs || [])
+                        .filter(log => log.provider === 'chatwoot' && log.recipientRole === role.key)
+                        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+                    const latestLog = roleLogs[0] || null;
+                    const latestStatus = latestLog?.status || 'pending';
+                    const statusStyle = getWhatsAppStatusColor(latestStatus);
+                    const confirmed = latestStatus === 'delivered' || latestStatus === 'read';
+                    const sent = ['submitted', 'sent', 'delivered', 'read'].includes(latestStatus);
+                    const latestEventType = latestLog?.eventType || 'shipment_created';
+                    const preview = previews[role.key];
+                    const previewExpanded = Boolean(expandedPreviews[role.key]);
+                    const canSend = Boolean(onSendRole) && !sent;
+                    const isSending = sendingRole === role.key;
+                    const actionLabel = latestLog ? 'Retry Send' : 'Send Now';
+
+                    return (
+                        <WhatsAppLogEntry key={role.key}>
+                            <WhatsAppLogRole>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 800, color: 'var(--on-surface)', fontFamily: 'Manrope' }}>
+                                    {role.label}
+                                </Typography>
+                                <Chip
+                                    size="small"
+                                    icon={confirmed ? <CheckCircleOutlineIcon /> : undefined}
+                                    label={latestLog ? getWhatsAppStatusLabel(latestStatus) : 'NOT QUEUED'}
+                                    sx={{
+                                        color: statusStyle.color,
+                                        bgcolor: statusStyle.background,
+                                        fontWeight: 800,
+                                        '& .MuiChip-icon': { color: statusStyle.color }
+                                    }}
+                                />
+                            </WhatsAppLogRole>
+
+                            {roleLogs.length === 0 ? (
+                                <EmptyState style={{ padding: '16px', fontSize: '13px' }}>
+                                    No WhatsApp message record yet for this role.
+                                </EmptyState>
+                            ) : (
+                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 1 }}>
+                                    {roleLogs.map((log, idx) => {
+                                        const logStatus = log.status || 'pending';
+                                        const logStatusStyle = getWhatsAppStatusColor(logStatus);
+                                        const isLatest = idx === 0;
+                                        return (
+                                            <Box
+                                                key={log.id || idx}
+                                                sx={{
+                                                    borderLeft: `3px solid ${isLatest ? logStatusStyle.color : 'var(--border-color, #d9dee4)'}`,
+                                                    pl: 1.5,
+                                                    py: 0.5,
+                                                    opacity: isLatest ? 1 : 0.65,
+                                                }}
+                                            >
+                                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                                                    <Typography variant="caption" sx={{ fontWeight: 800, color: 'var(--on-surface)', fontSize: '12px' }}>
+                                                        {WHATSAPP_EVENT_LABELS[log.eventType] || log.eventType}
+                                                    </Typography>
+                                                    <Chip
+                                                        size="small"
+                                                        label={getWhatsAppStatusLabel(logStatus)}
+                                                        sx={{ color: logStatusStyle.color, bgcolor: logStatusStyle.background, fontWeight: 800, fontSize: '10px', height: '20px' }}
+                                                    />
+                                                </Box>
+                                                <WhatsAppLogMeta>
+                                                    <div>Recipient: <strong>{log.recipientName || role.label}</strong></div>
+                                                    <div>Phone: <strong>{log.recipientPhone || 'Masked'}</strong></div>
+                                                    <div>Queued: <strong>{formatWhatsAppTime(log.createdAt)}</strong></div>
+                                                    {log.sentAt && <div>Submitted: <strong>{formatWhatsAppTime(log.sentAt)}</strong></div>}
+                                                    {log.chatwootConversationId && <div>Conversation: <strong>#{log.chatwootConversationId}</strong></div>}
+                                                    {log.errorMessage && <div style={{ color: '#c0392b' }}>Error: <strong>{log.errorMessage}</strong></div>}
+                                                </WhatsAppLogMeta>
+                                            </Box>
+                                        );
+                                    })}
+                                </Box>
+                            )}
+
+                            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 2 }}>
+                                <Typography variant="caption" sx={{ color: 'var(--on-surface-variant)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                                    Message Review
+                                </Typography>
+                                <MuiIconButton
+                                    size="small"
+                                    onClick={() => setExpandedPreviews(prev => ({ ...prev, [role.key]: !prev[role.key] }))}
+                                    sx={{ color: 'var(--primary)', bgcolor: 'rgba(0,80,212,0.06)', borderRadius: '8px', p: 0.8 }}
+                                    title={previewExpanded ? 'Hide message preview' : 'Review message preview'}
+                                >
+                                    <SearchIcon fontSize="small" />
+                                </MuiIconButton>
+                            </Stack>
+
+                            {previewExpanded && (
+                                <>
+                                    <WhatsAppPreview>
+                                        {previewLoading && !preview?.content
+                                            ? 'Loading preview...'
+                                            : preview?.content || 'Preview unavailable. Check sender/receiver phone and shipment data.'}
+                                    </WhatsAppPreview>
+                                    {preview?.templateName && (
+                                        <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'var(--on-surface-variant)' }}>
+                                            Template: {preview.templateName}
+                                        </Typography>
+                                    )}
+                                </>
+                            )}
+
+                            {canSend && (
+                                <Button
+                                    variant="secondary"
+                                    onClick={() => onSendRole(role.key, latestEventType)}
+                                    disabled={isSending}
+                                    style={{ marginTop: '14px', width: '100%', minHeight: '36px' }}
+                                >
+                                    {isSending ? 'Sending...' : actionLabel}
+                                </Button>
+                            )}
+                        </WhatsAppLogEntry>
+                    );
+                })}
+            </WhatsAppLogGrid>
+        </SectionCard>
+    );
 };
 
 // --- Main Component ---
@@ -410,8 +674,6 @@ const ShipmentDetailsPage = () => {
     const navigate = useNavigate();
     const fetchedRef = useRef(false);
     const [accounting, setAccounting] = useState(null);
-    const [payments, setPayments] = useState([]);
-    const [allocationForm, setAllocationForm] = useState({ paymentId: '', amount: '' });
     const [approvalDrawerOpen, setApprovalDrawerOpen] = useState(false);
     const [approvalComment, setApprovalComment] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
@@ -424,6 +686,9 @@ const ShipmentDetailsPage = () => {
     const [availableOptionalServices, setAvailableOptionalServices] = useState([]);
     const [selectedOptionalServiceCodes, setSelectedOptionalServiceCodes] = useState([]);
     const [editInsuredValue, setEditInsuredValue] = useState('');
+    const [sendingWhatsAppRole, setSendingWhatsAppRole] = useState(null);
+    const [whatsAppPreviews, setWhatsAppPreviews] = useState({});
+    const [whatsAppPreviewLoading, setWhatsAppPreviewLoading] = useState(false);
 
     const { user } = useAuth();
     const { enqueueSnackbar } = useSnackbar();
@@ -493,10 +758,6 @@ const ShipmentDetailsPage = () => {
             try {
                 const accountingResponse = await financeService.getShipmentAccounting(shipmentId);
                 setAccounting(accountingResponse.data);
-                if (organizationId) {
-                    const paymentResponse = await financeService.listPayments(organizationId);
-                    setPayments(paymentResponse.data || []);
-                }
             } catch (error) {
                 console.error('Failed to load shipment accounting:', error);
             }
@@ -505,25 +766,38 @@ const ShipmentDetailsPage = () => {
         loadAccounting();
     }, [shipmentId, organizationId]);
 
+    useEffect(() => {
+        const loadWhatsAppPreviews = async () => {
+            if (!shipment?.trackingNumber || !isStaff) return;
+            setWhatsAppPreviewLoading(true);
+            try {
+                const roleConfigs = ['sender', 'receiver'];
+                const previewPairs = await Promise.all(roleConfigs.map(async (role) => {
+                    const latestLog = getLatestWhatsAppLog(shipment.notificationLogs || [], role);
+                    const eventType = latestLog?.eventType || 'shipment_created';
+                    const response = await integrationService.previewChatwootShipmentMessage({
+                        trackingNumber: shipment.trackingNumber,
+                        eventType,
+                        recipientRole: role
+                    });
+                    return [role, response.data?.[0] || null];
+                }));
+                setWhatsAppPreviews(Object.fromEntries(previewPairs));
+            } catch (error) {
+                console.error('Failed to load WhatsApp previews:', error);
+                setWhatsAppPreviews({});
+            } finally {
+                setWhatsAppPreviewLoading(false);
+            }
+        };
+
+        loadWhatsAppPreviews();
+    }, [shipment?.trackingNumber, shipment?.notificationLogs, isStaff]);
+
     const refreshAccounting = async () => {
         if (!shipmentId) return;
         const accountingResponse = await financeService.getShipmentAccounting(shipmentId);
         setAccounting(accountingResponse.data);
-    };
-
-    const handleAllocatePayment = async () => {
-        if (!allocationForm.paymentId || !allocationForm.amount) return;
-        try {
-            await financeService.allocatePaymentManual(organizationId, {
-                paymentId: allocationForm.paymentId,
-                shipmentId,
-                amount: parseFloat(allocationForm.amount)
-            });
-            setAllocationForm({ paymentId: '', amount: '' });
-            await refreshAccounting();
-        } catch (error) {
-            console.error('Failed to allocate payment:', error);
-        }
     };
 
     const handleReverseAllocation = async (allocationId) => {
@@ -532,6 +806,38 @@ const ShipmentDetailsPage = () => {
             await refreshAccounting();
         } catch (error) {
             console.error('Failed to reverse allocation:', error);
+        }
+    };
+
+    const handleSendWhatsAppRole = async (recipientRole, eventType = 'shipment_created') => {
+        if (!shipment?.trackingNumber || !recipientRole) return;
+        setSendingWhatsAppRole(recipientRole);
+        try {
+            const result = await integrationService.sendChatwootTestMessage({
+                trackingNumber: shipment.trackingNumber,
+                eventType,
+                recipientRole,
+                force: true
+            });
+            const responseData = result?.data || {};
+            const resultItems = responseData.results || [];
+            const failed = resultItems.some(item => item.status === 'failed');
+            const skipped = responseData.skipped || resultItems.some(item => item.status === 'skipped');
+            const skippedReason = responseData.reason || resultItems.find(item => item.status === 'skipped')?.reason;
+
+            enqueueSnackbar(
+                failed
+                    ? `WhatsApp ${recipientRole} message failed. Check the log.`
+                    : skipped
+                        ? `WhatsApp ${recipientRole} message skipped${skippedReason ? `: ${skippedReason}` : '.'}`
+                        : `WhatsApp ${recipientRole} message submitted to Chatwoot.`,
+                { variant: failed || skipped ? 'warning' : 'success' }
+            );
+            await getShipment(shipment.trackingNumber);
+        } catch (error) {
+            enqueueSnackbar(error.message || `Failed to send WhatsApp message to ${recipientRole}`, { variant: 'error' });
+        } finally {
+            setSendingWhatsAppRole(null);
         }
     };
 
@@ -922,6 +1228,9 @@ const ShipmentDetailsPage = () => {
         status: fallbackRemainingBalance <= 0.001 && fallbackTotalCharge > 0 ? 'paid' : 'unpaid',
         allocations: []
     };
+    const allocationHistory = Array.isArray(accountingSummary.allocations)
+        ? accountingSummary.allocations
+        : [];
 
     const publicTrackingUrl = `${window.location.origin}/track/${shipment.trackingNumber}`;
     const shipmentCarrierText = [
@@ -1114,7 +1423,7 @@ const ShipmentDetailsPage = () => {
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
                                     </svg>
-                                    {sender.phone || 'No phone'}
+                                    {sender.displayPhone || sender.phone || 'No phone'}
                                 </ContactInfo>
                                 <ContactInfo>
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1163,7 +1472,7 @@ const ShipmentDetailsPage = () => {
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
                                     </svg>
-                                    {receiver.phone || 'No phone'}
+                                    {receiver.displayPhone || receiver.phone || 'No phone'}
                                 </ContactInfo>
                                 <ContactInfo>
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1469,7 +1778,6 @@ const ShipmentDetailsPage = () => {
                         </Table>
                     </SectionCard>
 
-
                     {/* Shipment Settings Section */}
                     <SectionCard style={{ margin: 0 }}>
                         <CardHeader>
@@ -1552,46 +1860,13 @@ const ShipmentDetailsPage = () => {
                     {/* Accounting Management Section (Staff Only) */}
                     {isStaff && (
                         <>
-                            <SectionCard style={{ margin: 0 }}>
-                                <CardHeader>
-                                    <div className="header-label">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
-                                            <line x1="1" y1="10" x2="23" y2="10"></line>
-                                        </svg>
-                                        Allocate Payment
-                                    </div>
-                                </CardHeader>
-                                <Box sx={{ p: 0 }}>
-                                    <TextField
-                                        label="Payment Reference ID"
-                                        value={allocationForm.paymentId}
-                                        onChange={(e) => setAllocationForm({ ...allocationForm, paymentId: e.target.value })}
-                                        fullWidth
-                                        margin="normal"
-                                        size="small"
-                                        sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'var(--surface-container-low)' } }}
-                                    />
-                                    <TextField
-                                        label={`Amount (${billingCurrency})`}
-                                        type="number"
-                                        value={allocationForm.amount}
-                                        onChange={(e) => setAllocationForm({ ...allocationForm, amount: e.target.value })}
-                                        fullWidth
-                                        margin="normal"
-                                        size="small"
-                                        sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'var(--surface-container-low)' } }}
-                                    />
-                                    <Button
-                                        variant="primary"
-                                        onClick={handleAllocatePayment}
-                                        disabled={!allocationForm.paymentId || !allocationForm.amount || isProcessing}
-                                        style={{ marginTop: '16px', width: '100%' }}
-                                    >
-                                        {isProcessing ? 'Processing...' : 'Allocate Payment'}
-                                    </Button>
-                                </Box>
-                            </SectionCard>
+                            <WhatsAppLogCard
+                                logs={shipment.notificationLogs || []}
+                                previews={whatsAppPreviews}
+                                previewLoading={whatsAppPreviewLoading}
+                                sendingRole={sendingWhatsAppRole}
+                                onSendRole={handleSendWhatsAppRole}
+                            />
 
                             <SectionCard style={{ margin: 0 }}>
                                 <CardHeader>
@@ -1603,27 +1878,36 @@ const ShipmentDetailsPage = () => {
                                         Allocation History
                                     </div>
                                 </CardHeader>
-                                {payments.length > 0 ? (
+                                {allocationHistory.length > 0 ? (
                                     <Table>
                                         <thead>
                                             <tr>
                                                 <th>Date</th>
+                                                <th>Payment</th>
                                                 <th>Amount</th>
                                                 <th>Status</th>
                                                 <th>Action</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {payments.map(allocation => (
+                                            {allocationHistory.map(allocation => (
                                                 <tr key={allocation.id}>
                                                     <td>{new Date(allocation.createdAt).toLocaleDateString()}</td>
+                                                    <td>
+                                                        {allocation.payment?.reference || allocation.paymentId || '—'}
+                                                        {allocation.payment?.postedAt && (
+                                                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                                                Posted {new Date(allocation.payment.postedAt).toLocaleDateString()}
+                                                            </div>
+                                                        )}
+                                                    </td>
                                                     <td>{Number(allocation.amount || 0).toFixed(3)}</td>
                                                     <td>
                                                         <StatusPill status={allocation.status} />
                                                     </td>
                                                     <td>
                                                         {allocation.status === 'ACTIVE' ? (
-                                                            <Button variant="secondary" onClick={() => handleReverseAllocation(allocation._id)} style={{ padding: '4px 8px', fontSize: '11px' }}>
+                                                            <Button variant="secondary" onClick={() => handleReverseAllocation(allocation.id)} style={{ padding: '4px 8px', fontSize: '11px' }}>
                                                                 Reverse
                                                             </Button>
                                                         ) : (

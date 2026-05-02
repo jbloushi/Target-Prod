@@ -23,12 +23,17 @@ const sortedCountries = [...countries].sort((a, b) => a.name.localeCompare(b.nam
 const phoneCodes = sortedCountries
     .filter(c => c.dialCode)
     .map(c => ({
+        isoCode: c.code,
         code: c.dialCode,
         country: c.name,
         flag: c.flag
     }));
 
-phoneCodes.push({ code: 'OTHER', country: 'Other', flag: '🌍' });
+phoneCodes.push({ isoCode: 'OTHER', code: 'OTHER', country: 'Other', flag: '🌍' });
+
+const findPhoneCodeOption = (value) => (
+    phoneCodes.find(c => c.code === value) || phoneCodes.find(c => c.isoCode === 'KW') || phoneCodes[0]
+);
 
 const AddressPanel = ({
     type = 'sender',
@@ -244,7 +249,39 @@ const AddressPanel = ({
                                 />
                             </Grid>
                             <Grid item xs={12} md={5}>
-                                <FormControl fullWidth size="small">
+                                <Autocomplete
+                                    size="small"
+                                    options={phoneCodes}
+                                    value={findPhoneCodeOption(value.phoneCountryCode || '+965')}
+                                    onChange={(_, selected) => updateField('phoneCountryCode', selected?.code || '+965')}
+                                    disabled={disabled}
+                                    autoHighlight
+                                    isOptionEqualToValue={(option, selected) => option.code === selected.code}
+                                    getOptionLabel={(option) => `${option.code} ${option.country}`}
+                                    filterOptions={(options, state) => {
+                                        const term = state.inputValue.trim().toLowerCase().replace(/^\+/, '');
+                                        if (!term) return options;
+                                        return options.filter(option => (
+                                            option.country.toLowerCase().includes(term)
+                                            || String(option.isoCode || '').toLowerCase().includes(term)
+                                            || option.code.replace(/\D/g, '').includes(term)
+                                            || option.code.toLowerCase().includes(term)
+                                        ));
+                                    }}
+                                    renderInput={(params) => (
+                                        <TextField {...params} label="Dial Code" size="small" />
+                                    )}
+                                    renderOption={(props, option) => {
+                                        const { key, ...rest } = props;
+                                        return (
+                                            <li key={key} {...rest}>
+                                                <Box component="img" src={`https://flagcdn.com/w20/${(option.isoCode || 'KW').toLowerCase()}.png`} sx={{ mr: 1, width: 20 }} />
+                                                <Typography variant="body2">{option.code} - {option.country} ({option.isoCode})</Typography>
+                                            </li>
+                                        );
+                                    }}
+                                />
+                                <FormControl fullWidth size="small" sx={{ display: 'none' }}>
                                     <InputLabel>Dial Code</InputLabel>
                                     <Select
                                         value={value.phoneCountryCode || '+965'}

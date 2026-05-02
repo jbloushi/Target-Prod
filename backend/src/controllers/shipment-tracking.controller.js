@@ -1,6 +1,7 @@
 const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
 const { calculateDistance, canUpdateShipmentStatus } = require('./shipment.helpers');
+const chatwootNotificationService = require('../services/chatwootNotificationService');
 
 /**
  * Update shipment location
@@ -40,6 +41,13 @@ exports.updateShipmentLocation = async (req, res) => {
                 history: updatedHistory
             }
         });
+
+        if (status && status !== shipment.status) {
+            const eventType = chatwootNotificationService.mapStatusToNotificationEvent(status, description);
+            if (eventType) {
+                chatwootNotificationService.triggerShipmentNotification(eventType, updated);
+            }
+        }
 
         res.status(200).json({ success: true, data: updated });
     } catch (error) {

@@ -166,6 +166,7 @@ model Shipment {
   // Relations
   allocations      PaymentAllocation[]
   pickupRequests   PickupRequest[]
+  notificationLogs ShipmentNotificationLog[]
 
   @@index([userId, status, createdAt], map: "Shipment_user_status_created_idx")
   @@index([organizationId, status, createdAt], map: "Shipment_org_status_created_idx")
@@ -174,6 +175,36 @@ model Shipment {
   @@index([carrierCode, serviceCode], map: "Shipment_carrier_service_idx")
   @@index([createdAt], map: "Shipment_createdAt_idx")
   @@index([updatedAt], map: "Shipment_updatedAt_idx")
+}
+
+model ShipmentNotificationLog {
+  id                     String    @id @default(uuid())
+  shipmentId             String
+  shipment               Shipment  @relation(fields: [shipmentId], references: [id])
+  trackingNumber         String
+  eventType              String
+  recipientRole          String
+  recipientName          String?
+  recipientPhone         String?
+  provider               String    @default("chatwoot")
+  chatwootAccountId      String?
+  chatwootInboxId        String?
+  chatwootContactId      String?
+  chatwootConversationId String?
+  chatwootMessageId      String?
+  templateName           String?
+  payloadJson            Json?
+  responseJson           Json?
+  status                 String    @default("pending")
+  errorMessage           String?   @db.Text
+  sentAt                 DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@unique([shipmentId, eventType, recipientRole, provider], map: "ShipmentNotification_unique_event")
+  @@index([trackingNumber], map: "ShipmentNotification_tracking_idx")
+  @@index([eventType, status, createdAt], map: "ShipmentNotification_event_status_created_idx")
+  @@index([provider, status, createdAt], map: "ShipmentNotification_provider_status_created_idx")
 }
 
 model OrganizationLedger {

@@ -20,4 +20,7 @@ router.patch('/:id', authorize('MANAGE_USERS'), userController.updateUser);
 router.delete('/:id', authorize('MANAGE_USERS'), userController.deleteUser);
 router.patch('/:id/password', authorize('MANAGE_USERS'), authController.resetUserPassword);
 
+// Password reset by admin or accounting — does not require full MANAGE_USERS
+router.post('/:id/reset-password', authController.restrictTo('admin', 'accounting'), authController.resetUserPassword);
+
 module.exports = router;
