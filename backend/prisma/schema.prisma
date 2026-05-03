@@ -25,6 +25,11 @@ enum Role {
   client
 }
 
+enum UserAccessScopeType {
+  COMPANY_ALL_USERS
+  CLIENT_USER
+}
+
 enum EntryType {
   DEBIT
   CREDIT
@@ -55,8 +60,10 @@ model Organization {
 
   // Relations
   members          User[]
+  userAccessScopes UserAccessScope[]
   shipments        Shipment[]
   payments         Payment[]
+  invoices         Invoice[]
   ledgerEntries    OrganizationLedger[]
   allocations     PaymentAllocation[]
   webhooks         WebhookSubscription[]
@@ -95,13 +102,36 @@ model User {
   assignedShipments   Shipment[]          @relation("AssignedStaff")
   drivenShipments    Shipment[]          @relation("AssignedDriver")
   payments           Payment[]
+  createdInvoices    Invoice[]             @relation("InvoiceCreatedBy")
   createdAllocations  PaymentAllocation[]
   pickupRequests     PickupRequest[]     @relation("UserPickups")
   drivenPickups      PickupRequest[]     @relation("PickupDriver")
   auditLogs          SystemAuditLog[]
+  accessScopes       UserAccessScope[]    @relation("UserGrantedAccessScopes")
+  clientAccessScopes UserAccessScope[]    @relation("ClientUserAccessScopes")
 
   @@index([organizationId, role, active], map: "User_org_role_active_idx")
   @@index([role, active], map: "User_role_active_idx")
+}
+
+model UserAccessScope {
+  id                  String              @id @default(uuid())
+  userId              String
+  user                User                @relation("UserGrantedAccessScopes", fields: [userId], references: [id])
+  organizationId      String?
+  organization        Organization?       @relation(fields: [organizationId], references: [id])
+  clientUserId        String?
+  clientUser          User?               @relation("ClientUserAccessScopes", fields: [clientUserId], references: [id])
+  scopeType           UserAccessScopeType
+  canCreateOnBehalf   Boolean             @default(false)
+  canViewShipments    Boolean             @default(true)
+  active              Boolean             @default(true)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@index([userId, active], map: "UserAccessScope_user_active_idx")
+  @@index([organizationId, active], map: "UserAccessScope_org_active_idx")
+  @@index([clientUserId, active], map: "UserAccessScope_client_active_idx")
 }
 
 model Shipment {
@@ -110,6 +140,7 @@ model Shipment {
   
   userId           String
   user             User         @relation("UserShipments", fields: [userId], references: [id])
+  createdOnBehalfOfUserId String?
   organizationId   String?
   organization     Organization? @relation(fields: [organizationId], references: [id])
   
@@ -167,14 +198,63 @@ model Shipment {
   allocations      PaymentAllocation[]
   pickupRequests   PickupRequest[]
   notificationLogs ShipmentNotificationLog[]
+  invoiceLines     InvoiceLine[]
 
   @@index([userId, status, createdAt], map: "Shipment_user_status_created_idx")
+  @@index([createdOnBehalfOfUserId, createdAt], map: "Shipment_on_behalf_created_idx")
   @@index([organizationId, status, createdAt], map: "Shipment_org_status_created_idx")
   @@index([organizationId, paid, createdAt], map: "Shipment_org_paid_created_idx")
   @@index([assignedDriverId, status, createdAt], map: "Shipment_driver_status_created_idx")
   @@index([carrierCode, serviceCode], map: "Shipment_carrier_service_idx")
   @@index([createdAt], map: "Shipment_createdAt_idx")
   @@index([updatedAt], map: "Shipment_updatedAt_idx")
+}
+
+model Invoice {
+  id              String       @id @default(uuid())
+  organizationId  String?
+  organization    Organization? @relation(fields: [organizationId], references: [id])
+  invoiceNumber   String       @unique
+  periodStart     DateTime
+  periodEnd       DateTime
+  subtotal        Decimal      @db.Decimal(18, 4)
+  vat             Decimal      @default(0.0) @db.Decimal(18, 4)
+  total           Decimal      @db.Decimal(18, 4)
+  currency        String       @default("KWD")
+  status          String       @default("draft")
+  dueDate         DateTime?
+  sentAt          DateTime?
+  paidAt          DateTime?
+  notes           String?      @db.Text
+  createdById     String?
+  createdBy       User?        @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  lines           InvoiceLine[]
+
+  @@index([organizationId, status, createdAt], map: "Invoice_org_status_created_idx")
+  @@index([periodStart, periodEnd], map: "Invoice_period_idx")
+}
+
+model InvoiceLine {
+  id             String       @id @default(uuid())
+  invoiceId      String
+  invoice        Invoice      @relation(fields: [invoiceId], references: [id])
+  shipmentId     String
+  shipment       Shipment     @relation(fields: [shipmentId], references: [id])
+  ledgerEntryId  String       @unique
+  trackingNumber String
+  shipmentDate   DateTime?
+  amount         Decimal      @db.Decimal(18, 4)
+  currency       String       @default("KWD")
+  paid           Boolean      @default(false)
+  totalPaid      Decimal      @default(0.0) @db.Decimal(18, 4)
+  remainingBalance Decimal    @default(0.0) @db.Decimal(18, 4)
+  createdAt      DateTime     @default(now())
+
+  @@index([invoiceId], map: "InvoiceLine_invoice_idx")
+  @@index([shipmentId], map: "InvoiceLine_shipment_idx")
 }
 
 model ShipmentNotificationLog {
