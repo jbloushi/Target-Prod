@@ -20,7 +20,10 @@ export default defineConfig(({ mode }) => {
       // Add the allowedHosts property here
       allowedHosts: ['3pl.mawthook.io'], 
       proxy: {
-        '/api': 'http://localhost:8899'
+        '^/api(?:/|$)': {
+          target: 'http://127.0.0.1:8899',
+          changeOrigin: true
+        }
       }
     },
     build: {

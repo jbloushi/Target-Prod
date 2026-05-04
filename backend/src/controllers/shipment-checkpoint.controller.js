@@ -5,6 +5,7 @@
 const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
 const crypto = require('crypto');
+const { canAccessShipment } = require('../middleware/authorize.middleware');
 
 // Add a checkpoint to shipment
 exports.addCheckpoint = async (req, res) => {
@@ -19,6 +20,7 @@ exports.addCheckpoint = async (req, res) => {
 
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
+        if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
 
         const checkpoints = Array.isArray(shipment.checkpoints) ? shipment.checkpoints : [];
         const newCheckpoint = {
@@ -53,6 +55,7 @@ exports.updateCheckpoint = async (req, res) => {
 
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
+        if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
 
         const checkpoints = Array.isArray(shipment.checkpoints) ? [...shipment.checkpoints] : [];
         const checkpointIndex = checkpoints.findIndex(c => c.id === checkpointId || c._id === checkpointId);
@@ -106,6 +109,7 @@ exports.deleteCheckpoint = async (req, res) => {
         
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
+        if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
 
         const checkpoints = Array.isArray(shipment.checkpoints) ? shipment.checkpoints : [];
         const initialLength = checkpoints.length;

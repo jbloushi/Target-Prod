@@ -8,6 +8,10 @@ const financeLedgerService = require('./financeLedger.service');
 const { getAssignedShippingAccess, normalizeCarrier } = require('./shippingAccess.service');
 
 class ShipmentBookingService {
+    normalizeCarrierIdentifier(value, fallback = null) {
+        if (value === undefined || value === null || value === '') return fallback;
+        return String(value);
+    }
 
     /**
      * Executes the full booking workflow for a single shipment.
@@ -85,8 +89,9 @@ class ShipmentBookingService {
         });
 
         let carrierResult;
+        let carrierAdapter;
         try {
-            const adapter = CarrierFactory.getAdapter(carrierCode);
+            carrierAdapter = CarrierFactory.getAdapter(carrierCode);
             const payload = this.mapToCarrierPayload(shipment);
             
             // Integrate optional services passed from the controller
@@ -95,11 +100,11 @@ class ShipmentBookingService {
             }
 
             try {
-                carrierResult = await adapter.createShipment(payload, shipment.serviceCode);
+                carrierResult = await carrierAdapter.createShipment(payload, shipment.serviceCode);
             } catch (error) {
                 if (error?.code === 'DUPLICATE_SHIPMENT') {
                     logger.warn(`Duplicate carrier shipment detected for ${shipment.trackingNumber}; attempting recovery via getStatus/getLabel.`);
-                    carrierResult = await this.recoverExistingCarrierShipment({ adapter, shipment, fallbackError: error });
+                    carrierResult = await this.recoverExistingCarrierShipment({ adapter: carrierAdapter, shipment, fallbackError: error });
                 } else {
                     throw error;
                 }
@@ -117,13 +122,16 @@ class ShipmentBookingService {
             if (attemptIndex === -1) throw new Error('Critical Error: Booking attempt context lost.');
 
             freshAttempts[attemptIndex].status = 'succeeded';
-            freshAttempts[attemptIndex].carrierShipmentId = carrierResult.trackingNumber;
+            const carrierTrackingNumber = this.normalizeCarrierIdentifier(carrierResult.trackingNumber, shipment.trackingNumber);
+            const carrierShipmentId = this.normalizeCarrierIdentifier(carrierResult.carrierShipmentId, carrierTrackingNumber);
+
+            freshAttempts[attemptIndex].carrierShipmentId = carrierTrackingNumber;
             freshAttempts[attemptIndex].updatedAt = new Date();
 
             const updateData = {
                 dhlConfirmed: true,
-                carrierShipmentId: carrierResult.carrierShipmentId || carrierResult.trackingNumber,
-                dhlTrackingNumber: carrierResult.trackingNumber,
+                carrierShipmentId,
+                dhlTrackingNumber: carrierTrackingNumber,
                 status: 'booked',
                 bookingAttempts: freshAttempts,
                 documents: freshShipment.documents || []
@@ -146,6 +154,16 @@ class ShipmentBookingService {
                 }
             };
 
+            if (carrierCode === 'OTE' && (!carrierResult.labelUrl || !carrierResult.awbUrl) && carrierShipmentId && typeof carrierAdapter?.getLabel === 'function') {
+                try {
+                    const pdfDocument = await carrierAdapter.getLabel([carrierShipmentId]);
+                    carrierResult.labelUrl = carrierResult.labelUrl || pdfDocument;
+                    carrierResult.awbUrl = carrierResult.awbUrl || pdfDocument;
+                } catch (labelError) {
+                    logger.warn(`OTE PDF fetch skipped for ${freshShipment.trackingNumber}: ${labelError.message}`);
+                }
+            }
+
             await tryAttachDocument('label', carrierResult.labelUrl, 'labelUrl');
             await tryAttachDocument('invoice', carrierResult.invoiceUrl, 'invoiceUrl');
             await tryAttachDocument('awb', carrierResult.awbUrl, 'awbUrl');
@@ -163,6 +181,7 @@ class ShipmentBookingService {
                     sourceRepo: 'Shipment',
                     sourceId: finalizedShipment.id,
                     amount: finalPrice,
+                    currency: finalizedShipment.currency || finalizedShipment.pricingSnapshot?.currency || 'KWD',
                     entryType: 'DEBIT',
                     category: 'SHIPMENT_CHARGE',
                     description: `Charge for ${finalizedShipment.trackingNumber}`,

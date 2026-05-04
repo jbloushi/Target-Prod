@@ -37,8 +37,8 @@
     "dev": "vite --host 0.0.0.0",
     "check:merge-markers": "node scripts/check-merge-markers.mjs",
     "lint": "eslint . --max-warnings=0",
-    "test": "vitest run",
-    "build": "npm run check:merge-markers && vite build",
+    "test": "vitest --configLoader native --pool threads run",
+    "build": "npm run check:merge-markers && vite build --configLoader native",
     "preview": "vite preview --host 0.0.0.0",
     "verify": "npm run lint && npm run test && npm run build && npm audit"
   },

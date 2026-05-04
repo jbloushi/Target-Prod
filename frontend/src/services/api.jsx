@@ -566,6 +566,36 @@ export const financeService = {
     }
   },
 
+  listInvoices: async (orgId, params = {}) => {
+    try {
+      const response = await api.get(`finance/organizations/${orgId}/invoices`, { params });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching invoices:', error);
+      throw error;
+    }
+  },
+
+  createInvoice: async (orgId, payload) => {
+    try {
+      const response = await api.post(`finance/organizations/${orgId}/invoices`, payload);
+      return response.data;
+    } catch (error) {
+      console.error('Error creating invoice:', error);
+      throw error;
+    }
+  },
+
+  updateInvoiceStatus: async (invoiceId, status) => {
+    try {
+      const response = await api.patch(`finance/invoices/${invoiceId}/status`, { status });
+      return response.data;
+    } catch (error) {
+      console.error('Error updating invoice status:', error);
+      throw error;
+    }
+  },
+
   postPayment: async (orgId, payload) => {
     try {
       const response = await api.post(`finance/organizations/${orgId}/payments`, payload);
@@ -640,6 +670,16 @@ export const userService = {
     }
   },
 
+  getAssignableClients: async () => {
+    try {
+      const response = await api.get('users/assignable-clients');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching assignable clients:', error);
+      throw error;
+    }
+  },
+
   createUser: async (userData) => {
     try {
       const response = await api.post('users', userData);
@@ -656,6 +696,26 @@ export const userService = {
       return response.data;
     } catch (error) {
       console.error('Error updating user:', error);
+      throw error;
+    }
+  },
+
+  getAccessScopes: async (id) => {
+    try {
+      const response = await api.get(`users/${id}/access-scopes`);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching user access scopes:', error);
+      throw error;
+    }
+  },
+
+  replaceAccessScopes: async (id, scopes) => {
+    try {
+      const response = await api.put(`users/${id}/access-scopes`, { scopes });
+      return response.data;
+    } catch (error) {
+      console.error('Error updating user access scopes:', error);
       throw error;
     }
   },

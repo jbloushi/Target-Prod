@@ -47,6 +47,11 @@ import api from '../services/api'; // Use the default api instance for generic g
 import {
     STATUS_ORDER, STATUS_LABELS, MANUAL_SHIPMENT_STATUSES, getStepIndex
 } from '../constants/statusConfig';
+import {
+    buildShipmentDeleteBlockedMessage,
+    canDeleteShipmentStatus,
+    getShipmentDeleteErrorMessage
+} from '../utils/shipmentDeletionPolicy';
 
 const getAllowedStatusOptions = (user, shipment) => {
     if (!user || !shipment) return [];
@@ -1240,7 +1245,11 @@ const ShipmentDetailsPage = () => {
         shipment.pricingSnapshot?.carrierCode,
         shipment.pricingSnapshot?.carrier
     ].filter(Boolean).join(' ').toUpperCase();
-    const billingCurrency = shipmentCarrierText.includes('OTE') || shipmentCarrierText.includes('LOGESTECHS') ? 'AED' : 'KWD';
+    const normalizeCurrencyCode = (currency, fallback = 'KWD') => String(currency || fallback || 'KWD').trim().toUpperCase().slice(0, 3);
+    const billingCurrency = normalizeCurrencyCode(
+        accountingSummary?.currency || shipment.currency || shipment.pricingSnapshot?.currency,
+        shipmentCarrierText.includes('OTE') || shipmentCarrierText.includes('LOGESTECHS') ? 'AED' : 'KWD'
+    );
 
     const handleCopyTrackingLink = () => {
         navigator.clipboard.writeText(publicTrackingUrl);
@@ -1275,23 +1284,31 @@ const ShipmentDetailsPage = () => {
                             Print Label
                         </Button>
                         {user?.role === 'admin' && (
-                            <Button
-                                variant="secondary"
-                                onClick={async () => {
-                                    if (window.confirm('Are you sure you want to delete this shipment?')) {
-                                        try {
-                                            await shipmentService.deleteShipment(shipment.trackingNumber);
-                                            enqueueSnackbar('Shipment deleted successfully', { variant: 'success' });
-                                            navigate('/shipments');
-                                        } catch (error) {
-                                            enqueueSnackbar('Failed to delete shipment', { variant: 'error' });
+                            <span title={!canDeleteShipmentStatus(shipment.status) ? buildShipmentDeleteBlockedMessage(shipment.status).tooltip : ''}>
+                                <Button
+                                    variant="secondary"
+                                    disabled={!canDeleteShipmentStatus(shipment.status)}
+                                    onClick={async () => {
+                                        if (!canDeleteShipmentStatus(shipment.status)) {
+                                            enqueueSnackbar(buildShipmentDeleteBlockedMessage(shipment.status).short, { variant: 'warning' });
+                                            return;
                                         }
-                                    }
-                                }}
-                                style={{ color: '#ff4d4d', borderColor: '#ff4d4d', marginLeft: '8px' }}
-                            >
-                                Delete
-                            </Button>
+
+                                        if (window.confirm(`Delete shipment ${shipment.trackingNumber}? This is only allowed while the shipment is still in an early pre-processing state and cannot be undone.`)) {
+                                            try {
+                                                await shipmentService.deleteShipment(shipment.trackingNumber);
+                                                enqueueSnackbar('Shipment deleted successfully', { variant: 'success' });
+                                                navigate('/shipments');
+                                            } catch (error) {
+                                                enqueueSnackbar(getShipmentDeleteErrorMessage(error, shipment.status), { variant: 'warning' });
+                                            }
+                                        }
+                                    }}
+                                    style={{ color: '#ff4d4d', borderColor: '#ff4d4d', marginLeft: '8px' }}
+                                >
+                                    Delete
+                                </Button>
+                            </span>
                         )}
                     </>
                 }
@@ -2206,7 +2223,7 @@ const ShipmentDetailsPage = () => {
                                     </Grid>
                                     <Grid item xs={6}>
                                         <Typography variant="caption" display="block" color="text.secondary" sx={{ fontWeight: 700, mb: 0.5 }}>REVENUE EST.</Typography>
-                                        <Typography variant="body2" color="var(--primary)" fontWeight="800" sx={{ fontFamily: 'Manrope' }}>{Number(accountingSummary.totalCharge).toFixed(3)} KD</Typography>
+                                        <Typography variant="body2" color="var(--primary)" fontWeight="800" sx={{ fontFamily: 'Manrope' }}>{Number(accountingSummary.totalCharge).toFixed(3)} {billingCurrency}</Typography>
                                         <Typography variant="caption" color="text.secondary">{carrierCode}</Typography>
                                     </Grid>
                                 </Grid>

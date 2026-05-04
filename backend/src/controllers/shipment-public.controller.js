@@ -7,6 +7,7 @@ const logger = require('../utils/logger');
 const CarrierFactory = require('../services/CarrierFactory');
 const { syncCarrierTrackingHistory, compactHistory, buildDisplayHistory } = require('./shipment.helpers');
 const { normalizeStatus } = require('../constants/statusConstants');
+const { canAccessShipment } = require('../middleware/authorize.middleware');
 
 /**
  * Public tracking view for customers
@@ -195,6 +196,7 @@ exports.updatePublicSettings = async (req, res) => {
 
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
+        if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
 
         await prisma.shipment.update({
             where: { id: shipment.id },

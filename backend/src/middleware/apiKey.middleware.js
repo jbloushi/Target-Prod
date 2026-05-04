@@ -41,7 +41,18 @@ exports.validateApiKey = async (req, res, next) => {
                 role: true,
                 organizationId: true,
                 apiKeyHash: true,
-                active: true
+                active: true,
+                accessScopes: {
+                    where: { active: true },
+                    select: {
+                        scopeType: true,
+                        organizationId: true,
+                        clientUserId: true,
+                        canCreateOnBehalf: true,
+                        canViewShipments: true,
+                        active: true
+                    }
+                }
             }
         });
 

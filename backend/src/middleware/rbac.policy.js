@@ -15,6 +15,7 @@ const CAPABILITIES = Object.freeze({
 
     // Finance
     VIEW_FINANCE: 'VIEW_FINANCE',
+    VIEW_INVOICES: 'VIEW_INVOICES',
     MANAGE_PAYMENTS: 'MANAGE_PAYMENTS',
     REVERSE_PAYMENTS: 'REVERSE_PAYMENTS',
 
@@ -23,11 +24,14 @@ const CAPABILITIES = Object.freeze({
     APPROVE_SHIPMENTS: 'APPROVE_SHIPMENTS',
     BOOK_CARRIERS: 'BOOK_CARRIERS',
     VIEW_DOCUMENTS: 'VIEW_DOCUMENTS',
+    UPDATE_SHIPMENT_LOCATION: 'UPDATE_SHIPMENT_LOCATION',
+    MANAGE_SHIPMENT_CHECKPOINTS: 'MANAGE_SHIPMENT_CHECKPOINTS',
 
     // Shared
     CREATE_SHIPMENTS: 'CREATE_SHIPMENTS',
     VIEW_OWN_SHIPMENTS: 'VIEW_OWN_SHIPMENTS',
     GENERATE_API_KEY: 'GENERATE_API_KEY',
+    MANAGE_ORG_USERS: 'MANAGE_ORG_USERS',
 
     // Driver
     DRIVER_OPS: 'DRIVER_OPS',
@@ -35,8 +39,9 @@ const CAPABILITIES = Object.freeze({
 
 /**
  * Role → Capabilities mapping
- * Platform roles: admin, accounting, manager, staff, driver
- * Organization roles: org_manager, org_agent
+ * Platform-wide roles: admin, accounting, manager
+ * Assignment-scoped roles: staff, driver
+ * Organization roles: org_manager, org_agent, client
  * Legacy: client (treated as org_agent)
  */
 const ROLE_CAPABILITIES = Object.freeze({
@@ -47,47 +52,65 @@ const ROLE_CAPABILITIES = Object.freeze({
         CAPABILITIES.MANAGE_CARRIERS,
         CAPABILITIES.VIEW_COST_DATA,
         CAPABILITIES.VIEW_FINANCE,
+        CAPABILITIES.VIEW_INVOICES,
         CAPABILITIES.MANAGE_PAYMENTS,
         CAPABILITIES.REVERSE_PAYMENTS,
         CAPABILITIES.VIEW_ALL_SHIPMENTS,
         CAPABILITIES.APPROVE_SHIPMENTS,
         CAPABILITIES.BOOK_CARRIERS,
         CAPABILITIES.VIEW_DOCUMENTS,
+        CAPABILITIES.UPDATE_SHIPMENT_LOCATION,
+        CAPABILITIES.MANAGE_SHIPMENT_CHECKPOINTS,
         CAPABILITIES.CREATE_SHIPMENTS,
         CAPABILITIES.VIEW_OWN_SHIPMENTS,
         CAPABILITIES.GENERATE_API_KEY,
     ],
 
     accounting: [
+        CAPABILITIES.MANAGE_USERS,
+        CAPABILITIES.MANAGE_ORGS,
+        CAPABILITIES.MANAGE_PRICING,
+        CAPABILITIES.MANAGE_CARRIERS,
+        CAPABILITIES.VIEW_COST_DATA,
         CAPABILITIES.VIEW_FINANCE,
+        CAPABILITIES.VIEW_INVOICES,
         CAPABILITIES.MANAGE_PAYMENTS,
         CAPABILITIES.REVERSE_PAYMENTS,
         CAPABILITIES.VIEW_ALL_SHIPMENTS,
         CAPABILITIES.APPROVE_SHIPMENTS,
         CAPABILITIES.BOOK_CARRIERS,
         CAPABILITIES.VIEW_DOCUMENTS,
+        CAPABILITIES.UPDATE_SHIPMENT_LOCATION,
+        CAPABILITIES.MANAGE_SHIPMENT_CHECKPOINTS,
         CAPABILITIES.CREATE_SHIPMENTS,
         CAPABILITIES.VIEW_OWN_SHIPMENTS,
         CAPABILITIES.GENERATE_API_KEY,
     ],
 
     manager: [
+        CAPABILITIES.MANAGE_USERS,
+        CAPABILITIES.MANAGE_ORGS,
+        CAPABILITIES.MANAGE_PRICING,
+        CAPABILITIES.MANAGE_CARRIERS,
         CAPABILITIES.VIEW_FINANCE,
+        CAPABILITIES.VIEW_INVOICES,
         CAPABILITIES.VIEW_ALL_SHIPMENTS,
         CAPABILITIES.APPROVE_SHIPMENTS,
         CAPABILITIES.BOOK_CARRIERS,
         CAPABILITIES.VIEW_DOCUMENTS,
+        CAPABILITIES.UPDATE_SHIPMENT_LOCATION,
+        CAPABILITIES.MANAGE_SHIPMENT_CHECKPOINTS,
         CAPABILITIES.CREATE_SHIPMENTS,
         CAPABILITIES.VIEW_OWN_SHIPMENTS,
         CAPABILITIES.GENERATE_API_KEY,
     ],
 
     staff: [
-        CAPABILITIES.VIEW_FINANCE,
-        CAPABILITIES.VIEW_ALL_SHIPMENTS,
         CAPABILITIES.APPROVE_SHIPMENTS,
         CAPABILITIES.BOOK_CARRIERS,
         CAPABILITIES.VIEW_DOCUMENTS,
+        CAPABILITIES.UPDATE_SHIPMENT_LOCATION,
+        CAPABILITIES.MANAGE_SHIPMENT_CHECKPOINTS,
         CAPABILITIES.CREATE_SHIPMENTS,
         CAPABILITIES.VIEW_OWN_SHIPMENTS,
         CAPABILITIES.GENERATE_API_KEY,
@@ -95,7 +118,6 @@ const ROLE_CAPABILITIES = Object.freeze({
 
     driver: [
         CAPABILITIES.DRIVER_OPS,
-        CAPABILITIES.VIEW_ALL_SHIPMENTS,
         CAPABILITIES.VIEW_OWN_SHIPMENTS,
     ],
 
@@ -103,30 +125,39 @@ const ROLE_CAPABILITIES = Object.freeze({
         CAPABILITIES.CREATE_SHIPMENTS,
         CAPABILITIES.VIEW_OWN_SHIPMENTS,
         CAPABILITIES.GENERATE_API_KEY,
+        CAPABILITIES.VIEW_INVOICES,
+        CAPABILITIES.MANAGE_ORG_USERS,
     ],
 
     org_agent: [
         CAPABILITIES.CREATE_SHIPMENTS,
         CAPABILITIES.VIEW_OWN_SHIPMENTS,
         CAPABILITIES.GENERATE_API_KEY,
+        CAPABILITIES.VIEW_INVOICES,
     ],
 
     client: [
         CAPABILITIES.CREATE_SHIPMENTS,
         CAPABILITIES.VIEW_OWN_SHIPMENTS,
         CAPABILITIES.GENERATE_API_KEY,
+        CAPABILITIES.VIEW_INVOICES,
     ],
 });
 
 /**
  * Roles that can see data across all organizations (platform-level visibility).
  */
-const PLATFORM_ROLES = Object.freeze(['admin', 'accounting', 'manager', 'staff', 'driver']);
+const PLATFORM_ROLES = Object.freeze(['admin', 'accounting', 'manager']);
 
 /**
  * Roles scoped to their own organization's data.
  */
 const ORG_ROLES = Object.freeze(['org_manager', 'org_agent', 'client']);
+
+/**
+ * Organization/client company roles with company-wide shipment visibility.
+ */
+const COMPANY_MANAGER_ROLES = Object.freeze(['org_manager']);
 
 /**
  * Check if a role has a specific capability.
@@ -172,8 +203,10 @@ module.exports = {
     ROLE_CAPABILITIES,
     PLATFORM_ROLES,
     ORG_ROLES,
+    COMPANY_MANAGER_ROLES,
     hasCapability,
     getCapabilities,
     isPlatformRole,
     isOrgRole,
+    isCompanyManagerRole: (role) => COMPANY_MANAGER_ROLES.includes(role),
 };

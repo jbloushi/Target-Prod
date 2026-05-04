@@ -8,6 +8,7 @@ const ShipmentBookingService = require('../services/ShipmentBookingService');
 const logger = require('../utils/logger');
 const { handleControllerError } = require('../utils/controllerError');
 const { isPlatformRole } = require('../middleware/rbac.policy');
+const { canAccessShipment } = require('../middleware/authorize.middleware');
 const { resolveEffectiveCarrierPolicy } = require('./shipment.helpers');
 const {
     getAssignedShippingAccess,
@@ -92,7 +93,7 @@ exports.getQuotes = async (req, res) => {
 
         const markupQuotes = visibleQuotes.map(quote => {
             const policy = PricingService.resolveCarrierPricingPolicy(targetUser, carrierCode, quote.currency || req.body.currency || 'KWD');
-            const quoteCurrency = quote.currency || policy.currency || 'KWD';
+            const quoteCurrency = policy.currency || quote.currency || 'KWD';
             const basePrice = PricingService.applyCarrierBasePricePolicy(quote.totalPrice, targetUser, carrierCode);
             const calculation = PricingService.calculateFinalPrice(basePrice, markup);
             
@@ -218,8 +219,7 @@ exports.getBookingOptions = async (req, res) => {
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
-        // Authorization check (simplistic for now, should use middleware)
-        if (shipment.userId !== req.user.id && !['admin', 'staff'].includes(req.user.role)) {
+        if (!canAccessShipment(req, shipment)) {
             return res.status(403).json({ success: false, error: 'Permission denied' });
         }
 
@@ -276,7 +276,7 @@ exports.bookWithCarrier = async (req, res) => {
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
-        if (shipment.userId !== req.user.id && !['admin', 'staff'].includes(req.user.role)) {
+        if (!canAccessShipment(req, shipment)) {
             return res.status(403).json({ success: false, error: 'Permission denied' });
         }
 

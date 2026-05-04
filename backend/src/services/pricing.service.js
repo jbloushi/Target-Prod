@@ -12,14 +12,20 @@ const { evaluate } = require('mathjs');
 class PricingService {
     static resolveCarrierPricingPolicy(user, carrierCode, fallbackCurrency = 'KWD') {
         const normalizedCarrier = String(carrierCode || '').toUpperCase();
-        const byCarrier = user?.carrierConfig?.pricingByCarrier || user?.agentPolicy?.carrierPricing || {};
+        const carrierConfigPricing = user?.carrierConfig?.pricingByCarrier || {};
+        const agentPolicyPricing = user?.agentPolicy?.carrierPricing || {};
+        const byCarrier = {
+            ...agentPolicyPricing,
+            ...carrierConfigPricing
+        };
         const carrierPolicy = byCarrier?.[normalizedCarrier] || {};
 
         const defaultPolicy = normalizedCarrier === 'OTE'
             ? { fixedFee: 25, currency: 'AED' }
             : { fixedFee: null, currency: fallbackCurrency || 'KWD' };
 
-        const parsedFixedFee = Number(carrierPolicy.fixedFee);
+        const hasFixedFee = carrierPolicy.fixedFee !== undefined && carrierPolicy.fixedFee !== null && carrierPolicy.fixedFee !== '';
+        const parsedFixedFee = hasFixedFee ? Number(carrierPolicy.fixedFee) : NaN;
         const fixedFee = Number.isFinite(parsedFixedFee) && parsedFixedFee >= 0
             ? parsedFixedFee
             : defaultPolicy.fixedFee;

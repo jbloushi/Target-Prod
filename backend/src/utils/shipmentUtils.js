@@ -16,8 +16,17 @@ exports.generateTrackingNumber = () => {
  * Generates a draft tracking number prefix for internal use.
  * @returns {string} Draft Tracking Number
  */
-exports.generateDraftTrackingNumber = () => {
-    return `DGR-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+const getDraftTrackingPrefix = (carrierCode) => {
+    const normalizedCarrier = String(carrierCode || 'DGR').toUpperCase();
+    if (['OTE', 'LOGESTECHS'].includes(normalizedCarrier)) return 'TRG';
+    if (['DHL', 'DGR'].includes(normalizedCarrier)) return 'DGR';
+    return normalizedCarrier.replace(/[^A-Z0-9]/g, '').substring(0, 3) || 'DGR';
+};
+
+exports.getDraftTrackingPrefix = getDraftTrackingPrefix;
+
+exports.generateDraftTrackingNumber = (carrierCode = 'DGR') => {
+    return `${getDraftTrackingPrefix(carrierCode)}-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
 };
 
 exports.generateManualTrackingNumber = () => {

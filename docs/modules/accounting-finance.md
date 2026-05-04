@@ -1,6 +1,6 @@
 # Accounting & Finance Module
 
-> **Real implementation documentation.** Based on source code as of 2026-05-02.
+> **Real implementation documentation.** Based on source code as of 2026-05-03.
 
 ---
 
@@ -11,6 +11,7 @@ The finance system uses a double-entry-style immutable ledger. Every financial e
 **Key files:**
 ```
 backend/src/
+  services/financeInvoice.service.js  - Invoice snapshot logic
   services/financeLedger.service.js   — All finance logic
   controllers/finance.controller.js   — HTTP handlers
   routes/finance.routes.js            — Route definitions
@@ -80,6 +81,34 @@ Links a payment to a specific shipment. One payment can be spread across many sh
 | `isFifo` | Whether this allocation was created by the FIFO auto-allocator |
 | `reversedAt`, `reversedBy`, `reversalReason` | Set when reversed |
 
+### Invoice
+
+A billing document snapshot for uninvoiced shipment-charge ledger entries in a billing period. Creating an invoice does not create a new ledger entry because the shipment charges are already posted.
+
+| Field | Notes |
+|---|---|
+| `organizationId` | Nullable. `null` means solo shippers / no org |
+| `invoiceNumber` | Unique generated reference like `INV-YYYYMMDD-XXXXXX` |
+| `periodStart`, `periodEnd` | Billing period included in the invoice |
+| `subtotal`, `vat`, `total` | Invoice totals, stored as Decimal |
+| `currency` | Usually organization currency or line currency |
+| `status` | `draft`, `sent`, `paid`, `overdue`, `disputed`, `void` |
+| `dueDate`, `sentAt`, `paidAt` | Lifecycle timestamps |
+| `createdById` | User who generated the invoice |
+
+### InvoiceLine
+
+Each invoice line links one shipment charge ledger entry to one invoice.
+
+| Field | Notes |
+|---|---|
+| `invoiceId` | FK to Invoice |
+| `shipmentId` | FK to Shipment |
+| `ledgerEntryId` | Unique reference to the `OrganizationLedger` shipment charge entry |
+| `trackingNumber`, `shipmentDate` | Snapshot fields for stable invoice output |
+| `amount`, `currency` | Snapshot amount and currency |
+| `paid`, `totalPaid`, `remainingBalance` | Payment snapshot at invoice generation time |
+
 ---
 
 ## Data Flow
@@ -145,7 +174,18 @@ Two modes:
 - Applies each payment to shipments in order until payment is exhausted or shipments are covered
 - Each allocation is created with `isFifo: true`
 
-### 4. Reversal
+### 4. Invoice generated
+
+Triggered by `POST /api/finance/organizations/:orgId/invoices`:
+
+1. Accounting selects a billing period.
+2. `financeInvoiceService.createInvoiceFromPeriod()` queries `OrganizationLedger` for uninvoiced `SHIPMENT_CHARGE` DEBIT rows in that period.
+3. Existing `InvoiceLine.ledgerEntryId` values are excluded so the same shipment charge cannot be invoiced twice.
+4. The invoice is created in `draft` status with one line per shipment charge.
+
+Invoices are billing snapshots. The ledger remains the source of truth for balances.
+
+### 5. Reversal
 
 **Reverse an allocation** (`POST /api/finance/allocations/:allocationId/reverse`):
 - Sets allocation `status: 'REVERSED'`
@@ -255,6 +295,14 @@ GET  /api/finance/shipments/:shipmentId/accounting     — VIEW_FINANCE
 POST /api/finance/allocations/:allocationId/reverse    — REVERSE_PAYMENTS
 ```
 
+Additional invoice routes:
+
+```
+GET   /api/finance/organizations/:orgId/invoices       - VIEW_FINANCE
+POST  /api/finance/organizations/:orgId/invoices       - MANAGE_PAYMENTS
+PATCH /api/finance/invoices/:invoiceId/status          - MANAGE_PAYMENTS
+```
+
 The `:orgId` parameter accepts `'none'` to query solo shippers (users with no org). Only `admin` can access the `'none'` org.
 
 ---
@@ -278,3 +326,6 @@ There is no finance logic triggered when a shipment is cancelled. If a shipment 
 
 ### 6. Unapplied balance for solo shippers
 For shipments with no org (`organizationId = null`), the unapplied balance calculation fetches all null-org payments and allocations into memory and computes manually. This is an O(n) in-memory scan that does not scale.
+
+### 7. Invoice MVP limitations
+Invoices are stored and status-trackable, but PDF generation, WhatsApp/email sending, invoice payment matching, invoice-level audit events, and Phenix export/import reconciliation are not implemented yet.

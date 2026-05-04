@@ -10,6 +10,7 @@ const path = require('path');
 const fs = require('fs');
 const { SHIPMENT_STATUSES, MANUAL_SHIPMENT_STATUSES } = require('../constants/statusConstants');
 const { canUpdateShipmentStatus, isManualShipment } = require('./shipment.helpers');
+const { canAccessShipment } = require('../middleware/authorize.middleware');
 const chatwootNotificationService = require('../services/chatwootNotificationService');
 
 exports.updateShipmentStatus = async (req, res) => {
@@ -23,6 +24,7 @@ exports.updateShipmentStatus = async (req, res) => {
 
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
+        if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
 
         if (isManualShipment(shipment) && !MANUAL_SHIPMENT_STATUSES.includes(status)) {
             return res.status(400).json({ success: false, error: `Invalid manual shipment status '${status}'. Valid: ${MANUAL_SHIPMENT_STATUSES.join(', ')}` });
@@ -66,6 +68,7 @@ exports.generateLabel = async (req, res) => {
         const { trackingNumber } = req.params;
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).send('Shipment not found');
+        if (!canAccessShipment(req, shipment)) return res.status(403).send('Permission denied');
 
         const html = `<!DOCTYPE html><html><head><title>Label - ${trackingNumber}</title>
 <style>body{font-family:'Arial',sans-serif;background:#f5f5f5;display:flex;justify-content:center;padding:20px}.label-container{width:400px;height:600px;background:#fff;padding:20px;border:2px solid #000;position:relative}.header{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:20px}.logo{font-size:24px;font-weight:bold;color:#d32f2f}.tracking{font-size:14px;font-weight:bold}.barcode{margin:20px 0;text-align:center;border:1px dashed #ccc;padding:10px}.details{margin-bottom:20px}.section-title{font-size:12px;font-weight:bold;color:#666;text-transform:uppercase;margin-bottom:5px}.address-box{border:1px solid #000;padding:10px;margin-bottom:15px}.address-text{font-size:14px;line-height:1.4}.footer{position:absolute;bottom:20px;left:20px;right:20px;text-align:center;font-size:12px;color:#666}.print-btn{position:fixed;bottom:20px;right:20px;padding:10px 20px;background:#000;color:#fff;border:none;cursor:pointer;border-radius:5px}@media print{body{background:#fff;padding:0}.print-btn{display:none}.label-container{border:none;width:100%;height:100%}}</style></head>
@@ -121,6 +124,7 @@ exports.pickupShipment = async (req, res) => {
         }
 
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
+        if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
 
         if (shipment.status === 'picked_up' || shipment.status === 'in_transit') {
             return res.status(200).json({ success: true, data: shipment, message: 'Shipment already picked up' });
@@ -161,6 +165,7 @@ exports.processWarehouseScan = async (req, res) => {
 
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
+        if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
         if (!['admin', 'staff'].includes(user.role)) return res.status(403).json({ success: false, error: 'Only Staff or Admin can process warehouse scans.' });
 
         const allowedStatuses = ['picked_up', 'booked', 'ready_for_pickup'];
@@ -223,6 +228,7 @@ exports.serveDocument = async (req, res) => {
 
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
+        if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Unauthorized to view documents for this shipment' });
 
         const isStaff = ['admin', 'staff', 'manager', 'accounting'].includes(user.role);
         const isMember = user.organizationId && shipment.organizationId && user.organizationId === shipment.organizationId;

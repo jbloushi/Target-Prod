@@ -219,9 +219,11 @@ const ApiKeyPanel = () => {
                         sx={{ flex: 1, fontFamily: 'monospace', fontSize: 12, color: DS.onSurface }}
                     />
                     <Tooltip title={show ? 'Hide' : 'Show'}>
+                        <span>
                         <IconButton size="small" onClick={() => setShow(s => !s)} disabled={!apiKey}>
                             <Typography sx={{ fontSize: 10 }}>{show ? '🙈' : '👁'}</Typography>
                         </IconButton>
+                        </span>
                     </Tooltip>
                 </Box>
                 <Button

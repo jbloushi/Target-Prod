@@ -32,6 +32,11 @@ const SAFE_ERROR_PATTERNS = [
     'restricted for this account',
     'not allowed',
     'does not allow',
+    'Currency mismatch',
+    'matching payment',
+    'shipment charges found',
+    'mixed currencies',
+    'one invoice per currency',
     'A booking request is currently being processed',
 ];
 

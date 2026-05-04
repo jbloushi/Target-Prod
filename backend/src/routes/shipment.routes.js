@@ -113,6 +113,7 @@ router.patch(
 // Update shipment location
 router.patch(
   '/:trackingNumber/location',
+  authorize('UPDATE_SHIPMENT_LOCATION'),
   [
     param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
     body('coordinates').isArray({ min: 2, max: 2 }).withMessage('Invalid coordinates'),
@@ -181,6 +182,7 @@ router.get(
 // Update shipment location manually
 router.patch(
   '/:trackingNumber/location/manual',
+  authorize('UPDATE_SHIPMENT_LOCATION'),
   [
     param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
     body('coordinates').isArray({ min: 2, max: 2 }).withMessage('Invalid coordinates'),
@@ -195,6 +197,7 @@ router.patch(
 // Add a checkpoint to shipment
 router.post(
   '/:trackingNumber/checkpoints',
+  authorize('MANAGE_SHIPMENT_CHECKPOINTS'),
   [
     param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
     body('location').isObject().withMessage('Location is required'),
@@ -251,6 +254,7 @@ router.post(
 // Update a checkpoint
 router.patch(
   '/:trackingNumber/checkpoints/:checkpointId',
+  authorize('MANAGE_SHIPMENT_CHECKPOINTS'),
   [
     param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
     param('checkpointId').isString().notEmpty().withMessage('Valid checkpoint ID is required'),
@@ -262,6 +266,7 @@ router.patch(
 // Delete a checkpoint
 router.delete(
   '/:trackingNumber/checkpoints/:checkpointId',
+  authorize('MANAGE_SHIPMENT_CHECKPOINTS'),
   [
     param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
     param('checkpointId').isString().notEmpty().withMessage('Valid checkpoint ID is required'),

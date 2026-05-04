@@ -1,11 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { useNavigate } from 'react-router-dom';
+import { useSnackbar } from 'notistack';
 import { shipmentService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useShipments } from '../utils/useShipments';
 import { useShipmentStats } from '../utils/useShipmentStats';
 import { TableWrapper, Table, Thead, Tbody, Tr, Th, Td, Button, Input, StatusPill } from '../ui';
+import {
+  buildShipmentDeleteBlockedMessage,
+  canDeleteShipmentStatus,
+  getShipmentDeleteErrorMessage
+} from '../utils/shipmentDeletionPolicy';
 
 import { Menu, MenuItem, Divider, ListItemIcon, ListItemText, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions } from '@mui/material';
 
@@ -158,6 +164,7 @@ const DEBOUNCE_MS = 350;
 const ShipmentList = () => {
   const navigate = useNavigate();
   const { isStaff } = useAuth();
+  const { enqueueSnackbar } = useSnackbar();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
@@ -221,6 +228,10 @@ const ShipmentList = () => {
     setActiveShipment(null);
   };
 
+  const handleMenuClosePreserveShipment = () => {
+    setMenuAnchorEl(null);
+  };
+
   const handleDownloadLabel = async () => {
     if (activeShipment) {
       const { generateWaybillPDF } = await import('../utils/pdfGenerator');
@@ -256,17 +267,24 @@ const ShipmentList = () => {
 
   const handleDelete = async () => {
     if (!activeShipment) return;
+    if (!canDeleteShipmentStatus(activeShipment.status)) {
+      enqueueSnackbar(buildShipmentDeleteBlockedMessage(activeShipment.status).short, { variant: 'warning' });
+      handleMenuClose();
+      return;
+    }
     setDeleteConfirmOpen(true);
-    handleMenuClose();
+    handleMenuClosePreserveShipment();
   };
 
   const handleDeleteConfirmed = async () => {
     if (!activeShipment) return;
     try {
       await shipmentService.deleteShipment(activeShipment.trackingNumber);
+      enqueueSnackbar('Shipment deleted successfully', { variant: 'success' });
       mutate();
     } catch (e) {
       console.error('Delete failed', e);
+      enqueueSnackbar(getShipmentDeleteErrorMessage(e, activeShipment?.status), { variant: 'warning' });
     } finally {
       setDeleteConfirmOpen(false);
       setActiveShipment(null);
@@ -518,13 +536,23 @@ const ShipmentList = () => {
             </div>
           )}
 
-          {activeShipment && ['pending', 'draft'].includes(activeShipment.status) && (
+          {activeShipment && (
             <div>
               <Divider sx={{ my: 0.5, borderColor: 'var(--border-color)', opacity: 0.5 }} />
-              <MenuItem onClick={handleDelete} sx={{ color: 'var(--accent-error)' }}>
-                <ListItemIcon><DeleteIcon fontSize="small" sx={{ color: 'var(--accent-error)' }} /></ListItemIcon>
-                <ListItemText>Delete</ListItemText>
-              </MenuItem>
+              <span title={!canDeleteShipmentStatus(activeShipment.status) ? buildShipmentDeleteBlockedMessage(activeShipment.status).tooltip : ''}>
+                <MenuItem
+                  disabled={!canDeleteShipmentStatus(activeShipment.status)}
+                  onClick={handleDelete}
+                  sx={{ color: 'var(--accent-error)' }}
+                >
+                  <ListItemIcon><DeleteIcon fontSize="small" sx={{ color: 'var(--accent-error)' }} /></ListItemIcon>
+                  <ListItemText
+                    primary="Delete"
+                    secondary={!canDeleteShipmentStatus(activeShipment.status) ? buildShipmentDeleteBlockedMessage(activeShipment.status).tooltip : undefined}
+                    secondaryTypographyProps={{ sx: { color: 'var(--text-secondary)', fontSize: '11px', maxWidth: 240 } }}
+                  />
+                </MenuItem>
+              </span>
             </div>
           )}
         </Menu>
@@ -560,7 +588,9 @@ const ShipmentList = () => {
         <DialogTitle>Delete Shipment?</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Are you sure you want to permanently delete shipment <strong>{activeShipment?.trackingNumber}</strong>? This action cannot be undone.
+            {activeShipment && canDeleteShipmentStatus(activeShipment.status)
+              ? <>Delete shipment <strong>{activeShipment.trackingNumber}</strong>? This is only allowed while the shipment is still in an early pre-processing state and cannot be undone.</>
+              : buildShipmentDeleteBlockedMessage(activeShipment?.status).medium}
           </DialogContentText>
         </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1 }}>

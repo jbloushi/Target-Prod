@@ -122,6 +122,25 @@ exports.createInvoice = async (req, res) => {
 2. `authorize('CAPABILITY_NAME')` — checks RBAC capability (or a role check if simpler)
 3. Input validation via `express-validator` for any user-supplied data
 
+For shipment or finance data, capability checks are not enough. Apply the shared access helpers from `backend/src/middleware/authorize.middleware.js`:
+
+- `scopeShipmentWhere(req, where)` for shipment list/stat queries.
+- `canAccessShipment(req, shipment)` before returning or mutating a shipment by ID/tracking number.
+- `canAccessOrganization(req, organizationId)` before returning or mutating organization finance data.
+
+Current client shipment visibility:
+
+- `org_manager` can view all shipments for their company.
+- `org_agent` and `client` can view only shipments they created or shipments created on their behalf through `createdOnBehalfOfUserId`.
+- `staff` and `driver` can view only directly assigned shipments or shipments allowed by active `UserAccessScope` rows.
+- `UserAccessScope.scopeType = CLIENT_USER` grants access to one selected client user's shipments and shipments created on behalf of that client user.
+- `UserAccessScope.scopeType = COMPANY_ALL_USERS` grants access to all users' shipments for one selected company.
+- Scope assignment is managed through `GET /api/users/:id/access-scopes` and `PUT /api/users/:id/access-scopes`, both protected by `MANAGE_USERS`.
+- Shipment Wizard client-account dropdowns must use `GET /api/users/assignable-clients`, not the broad user list, so staff/drivers only see client users allowed by active creation scopes.
+- `canCreateOnBehalf` controls whether staff/drivers can create shipments for the selected client user or company; `ShipmentDraftService` must enforce it before accepting `userId` from the request body.
+- Platform-wide roles (`admin`, `accounting`, `manager`) can view across companies when the route capability allows it.
+- Product labels should use `Company Manager` for `org_manager` and `Company Client` for `org_agent`.
+
 ```javascript
 const express = require('express');
 const router = express.Router();

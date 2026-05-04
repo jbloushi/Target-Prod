@@ -189,11 +189,33 @@ const PageBtn = styled.button`
     &:hover:not(:disabled) { background: var(--bg-tertiary); }
 `;
 
+const INVOICE_STATUS_OPTIONS = ['draft', 'sent', 'paid', 'overdue', 'disputed', 'void'];
+
+const toDateInputValue = (date) => {
+    const d = date ? new Date(date) : new Date();
+    if (Number.isNaN(d.getTime())) return '';
+    return format(d, 'yyyy-MM-dd');
+};
+
+const getDefaultInvoicePeriod = () => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    return {
+        periodStart: toDateInputValue(firstDay),
+        periodEnd: toDateInputValue(now),
+        dueDate: toDateInputValue(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 14)),
+        vatRate: '0',
+        notes: ''
+    };
+};
+
 const FinancePage = () => {
     const { user, refreshUser, can } = useAuth();
     const { enqueueSnackbar } = useSnackbar();
 
-    const fmtKD = (val) => parseFloat(val || 0).toFixed(3);
+    const normalizeCurrencyCode = (currency, fallback = 'KWD') => String(currency || fallback || 'KWD').trim().toUpperCase().slice(0, 3);
+    const fmtAmount = (val) => parseFloat(val || 0).toFixed(3);
+    const money = (val, currency) => `${fmtAmount(val)} ${normalizeCurrencyCode(currency, currentCurrency)}`;
 
     // Ledger State
     const [ledger, setLedger] = useState([]);
@@ -210,6 +232,11 @@ const FinancePage = () => {
     const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'manual', reference: '', notes: '' });
     const [selectedPaymentId, setSelectedPaymentId] = useState('');
 
+    // Invoice State
+    const [invoices, setInvoices] = useState([]);
+    const [invoiceForm, setInvoiceForm] = useState(getDefaultInvoicePeriod);
+    const [invoiceLoading, setInvoiceLoading] = useState(false);
+
     // Shipment & Allocation State
     const [shipments, setShipments] = useState([]);
     const [selectedShipmentsMap, setSelectedShipmentsMap] = useState({}); // { [id]: shipmentObject }
@@ -224,7 +251,7 @@ const FinancePage = () => {
     const [shipmentsLoading, setShipmentsLoading] = useState(false);
     const [debouncedSearch, setDebouncedSearch] = useState('');
 
-    const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'reports'
+    const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'reports' | 'invoices'
 
     // Debounce Search
     useEffect(() => {
@@ -310,6 +337,7 @@ const FinancePage = () => {
         setPagination(prev => ({ ...prev, page: 1 }));
         setLedger([]);
         setPayments([]);
+        setInvoices([]);
         setShipments([]);
         setSelectedPaymentId('');
         // We DO NOT clear selectedShipmentsMap here? Ideally yes, new org = new context.
@@ -320,6 +348,9 @@ const FinancePage = () => {
     const currentOrgName = selectedOrgId === 'none'
         ? 'Solo Shippers (Unorganized)'
         : organizations.find(o => o.id === selectedOrgId)?.name || 'Selected Organization';
+    const currentCurrency = normalizeCurrencyCode(
+        overview?.currency || organizations.find(o => o.id === selectedOrgId)?.currency || user?.organization?.currency
+    );
 
     const isFirstOrgLoad = useRef(true);
 
@@ -351,10 +382,11 @@ const FinancePage = () => {
         try {
             setLoading(true);
             if (can('VIEW_FINANCE')) {
-                const [ledgerRes, overviewRes, paymentsRes] = await Promise.all([
+                const [ledgerRes, overviewRes, paymentsRes, invoicesRes] = await Promise.all([
                     financeService.getLedger({ page: pagination.page, orgId: selectedOrgId }),
                     financeService.getOrganizationOverview(selectedOrgId),
                     financeService.listPayments(selectedOrgId),
+                    financeService.listInvoices(selectedOrgId),
                     // Shipments are now fetched separately via fetchShipments
                 ]);
 
@@ -364,8 +396,13 @@ const FinancePage = () => {
 
                 const unappliedPayments = (paymentsRes.data || []).filter(p => p.status !== 'APPLIED');
                 setPayments(unappliedPayments);
+                setInvoices(invoicesRes.data || []);
             } else {
-                await fetchLedger(selectedOrgId);
+                setLedger([]);
+                if (can('VIEW_INVOICES')) {
+                    const invoicesRes = await financeService.listInvoices(selectedOrgId);
+                    setInvoices(invoicesRes.data || []);
+                }
                 const balanceResponse = await financeService.getBalance();
                 setOverview({
                     balance: balanceResponse.data?.balance || 0,
@@ -373,7 +410,8 @@ const FinancePage = () => {
                     availableCredit: balanceResponse.data?.availableCredit || 0,
                     unappliedCash: balanceResponse.data?.unappliedCash || 0,
                     totalUnpaid: 0,
-                    agingBuckets: { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 }
+                    agingBuckets: { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 },
+                    currency: normalizeCurrencyCode(balanceResponse.data?.currency)
                 });
             }
         } catch (err) {
@@ -392,13 +430,54 @@ const FinancePage = () => {
         try {
             await financeService.postPayment(selectedOrgId, {
                 ...paymentForm,
-                amount: parseFloat(paymentForm.amount)
+                amount: parseFloat(paymentForm.amount),
+                currency: currentCurrency
             });
             enqueueSnackbar('Payment posted successfully', { variant: 'success' });
             setPaymentForm({ amount: '', method: 'manual', reference: '', notes: '' });
             loadFinance();
         } catch (error) {
             enqueueSnackbar('Failed to post payment', { variant: 'error' });
+        }
+    };
+
+    const handleCreateInvoice = async () => {
+        if (!invoiceForm.periodStart || !invoiceForm.periodEnd) {
+            enqueueSnackbar('Invoice period is required', { variant: 'warning' });
+            return;
+        }
+
+        setInvoiceLoading(true);
+        try {
+            await financeService.createInvoice(selectedOrgId, {
+                periodStart: invoiceForm.periodStart,
+                periodEnd: invoiceForm.periodEnd,
+                dueDate: invoiceForm.dueDate || null,
+                vatRate: parseFloat(invoiceForm.vatRate || 0),
+                notes: invoiceForm.notes,
+                currency: currentCurrency
+            });
+            enqueueSnackbar('Draft invoice created', { variant: 'success' });
+            setInvoiceForm(getDefaultInvoicePeriod());
+            await loadFinance();
+            setActiveTab('invoices');
+        } catch (error) {
+            enqueueSnackbar(error.message || 'Failed to create invoice', { variant: 'error' });
+        } finally {
+            setInvoiceLoading(false);
+        }
+    };
+
+    const handleInvoiceStatusChange = async (invoiceId, status) => {
+        setInvoiceLoading(true);
+        try {
+            await financeService.updateInvoiceStatus(invoiceId, status);
+            enqueueSnackbar('Invoice status updated', { variant: 'success' });
+            await loadFinance();
+        } catch (error) {
+            enqueueSnackbar(error.message || 'Failed to update invoice', { variant: 'error' });
+        } finally {
+            setInvoiceLoading(false);
         }
     };
 
@@ -437,6 +516,15 @@ const FinancePage = () => {
             return;
         }
 
+        const paymentCurrency = normalizeCurrencyCode(payment.currency, currentCurrency);
+        const hasCurrencyMismatch = Object.values(selectedShipmentsMap).some(shipment =>
+            normalizeCurrencyCode(shipment.currency || shipment.pricingSnapshot?.billingCurrency || shipment.pricingSnapshot?.currency, currentCurrency) !== paymentCurrency
+        );
+        if (hasCurrencyMismatch) {
+            enqueueSnackbar(`Select only ${paymentCurrency} shipments for this payment, or post a payment in the shipment currency.`, { variant: 'warning' });
+            return;
+        }
+
         setAllocationLoading(true);
         try {
             await financeService.allocatePaymentManual(selectedOrgId, {
@@ -458,6 +546,14 @@ const FinancePage = () => {
 
     const toggleShipmentSelection = (shipment) => {
         if (shipment.paid) return;
+        if (selectedPayment) {
+            const paymentCurrency = normalizeCurrencyCode(selectedPayment.currency, currentCurrency);
+            const shipmentCurrency = normalizeCurrencyCode(shipment.currency || shipment.pricingSnapshot?.billingCurrency || shipment.pricingSnapshot?.currency, currentCurrency);
+            if (shipmentCurrency !== paymentCurrency) {
+                enqueueSnackbar(`This shipment is ${shipmentCurrency}; select a ${shipmentCurrency} payment or keep this allocation in ${paymentCurrency}.`, { variant: 'info' });
+                return;
+            }
+        }
         setSelectedShipmentsMap(prev => {
             const next = { ...prev };
             if (next[shipment.id]) {
@@ -470,19 +566,35 @@ const FinancePage = () => {
     };
 
     const selectedPayment = payments.find(p => p.id === selectedPaymentId);
+    const selectedPaymentCurrency = normalizeCurrencyCode(selectedPayment?.currency, currentCurrency);
+    const isShipmentCurrencyMismatch = (shipment) => {
+        if (!selectedPayment) return false;
+        return normalizeCurrencyCode(shipment.currency || shipment.pricingSnapshot?.billingCurrency || shipment.pricingSnapshot?.currency, currentCurrency) !== selectedPaymentCurrency;
+    };
 
     // Calculate total from selected map
     const selectedShipmentsTotal = Object.values(selectedShipmentsMap).reduce((sum, s) => {
         const outstanding = s.paid ? 0 : (s.remainingBalance !== undefined ? s.remainingBalance : (s.pricingSnapshot?.totalPrice || s.price || 0) - (s.totalPaid || 0));
         return sum + outstanding;
     }, 0);
+    const selectedShipmentCurrencies = [...new Set(Object.values(selectedShipmentsMap)
+        .map(s => normalizeCurrencyCode(s.currency || s.pricingSnapshot?.currency || currentCurrency))
+    )];
+    const selectedShipmentsCurrency = selectedShipmentCurrencies.length === 1 ? selectedShipmentCurrencies[0] : currentCurrency;
+    const formatCurrencyBreakdown = (amounts = {}) => Object.entries(amounts)
+        .filter(([, amount]) => Math.abs(parseFloat(amount || 0)) > 0.0005)
+        .map(([currency, amount]) => money(amount, currency))
+        .join(' | ');
 
     const summary = overview || {
         balance: 0,
         creditLimit: 0,
         availableCredit: 0,
         unappliedCash: 0,
+        balancesByCurrency: {},
+        unappliedCashByCurrency: {},
         totalUnpaid: 0,
+        totalUnpaidByCurrency: {},
         agingBuckets: { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 }
     };
 
@@ -503,12 +615,22 @@ const FinancePage = () => {
                             >
                                 Overview
                             </Button>
-                            <Button
-                                variant={activeTab === 'reports' ? 'primary' : 'secondary'}
-                                onClick={() => setActiveTab('reports')}
-                            >
-                                Reports
-                            </Button>
+                            {can('VIEW_FINANCE') && (
+                                <Button
+                                    variant={activeTab === 'reports' ? 'primary' : 'secondary'}
+                                    onClick={() => setActiveTab('reports')}
+                                >
+                                    Reports
+                                </Button>
+                            )}
+                            {can('VIEW_INVOICES') && (
+                                <Button
+                                    variant={activeTab === 'invoices' ? 'primary' : 'secondary'}
+                                    onClick={() => setActiveTab('invoices')}
+                                >
+                                    Invoices
+                                </Button>
+                            )}
                             <Button variant="outline" onClick={() => { loadFinance(); fetchShipments(); }}>
                                 Refresh
                             </Button>
@@ -516,8 +638,140 @@ const FinancePage = () => {
                     }
                 />
 
-                {activeTab === 'reports' ? (
+                {activeTab === 'reports' && can('VIEW_FINANCE') ? (
                     <FinanceReports ledger={ledger} shipments={shipments} organizations={organizations} />
+                ) : activeTab === 'invoices' ? (
+                    <>
+                        {can('VIEW_FINANCE') && (
+                            <Card style={{ marginBottom: '24px' }}>
+                                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                                    <div style={{ minWidth: '240px' }}>
+                                        <Select
+                                            label="Organization"
+                                            value={selectedOrgId}
+                                            onChange={(e) => setSelectedOrgId(e.target.value)}
+                                        >
+                                            <option value="none" style={{ fontWeight: 'bold', color: 'var(--accent-primary)' }}>
+                                                Solo Shippers (Unorganized)
+                                            </option>
+                                            {organizations.map((org) => (
+                                                <option key={org.id} value={org.id}>{org.name}</option>
+                                            ))}
+                                        </Select>
+                                    </div>
+                                    <Alert severity="info" style={{ margin: 0 }}>
+                                        Draft invoices snapshot uninvoiced shipment charges from the ledger. The ledger remains the source of truth.
+                                    </Alert>
+                                </div>
+                            </Card>
+                        )}
+
+                        {can('MANAGE_PAYMENTS') && (
+                            <Card title={`Create Draft Invoice: ${currentOrgName}`} style={{ marginBottom: '24px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', alignItems: 'end' }}>
+                                    <Input
+                                        label="Period Start"
+                                        type="date"
+                                        value={invoiceForm.periodStart}
+                                        onChange={(e) => setInvoiceForm({ ...invoiceForm, periodStart: e.target.value })}
+                                    />
+                                    <Input
+                                        label="Period End"
+                                        type="date"
+                                        value={invoiceForm.periodEnd}
+                                        onChange={(e) => setInvoiceForm({ ...invoiceForm, periodEnd: e.target.value })}
+                                    />
+                                    <Input
+                                        label="Due Date"
+                                        type="date"
+                                        value={invoiceForm.dueDate}
+                                        onChange={(e) => setInvoiceForm({ ...invoiceForm, dueDate: e.target.value })}
+                                    />
+                                    <Input
+                                        label="VAT %"
+                                        type="number"
+                                        min="0"
+                                        step="0.001"
+                                        value={invoiceForm.vatRate}
+                                        onChange={(e) => setInvoiceForm({ ...invoiceForm, vatRate: e.target.value })}
+                                    />
+                                    <Input
+                                        label="Notes"
+                                        value={invoiceForm.notes}
+                                        onChange={(e) => setInvoiceForm({ ...invoiceForm, notes: e.target.value })}
+                                    />
+                                    <Button
+                                        variant="primary"
+                                        onClick={handleCreateInvoice}
+                                        disabled={invoiceLoading || !invoiceForm.periodStart || !invoiceForm.periodEnd}
+                                    >
+                                        {invoiceLoading ? 'Creating...' : 'Create Invoice'}
+                                    </Button>
+                                </div>
+                            </Card>
+                        )}
+
+                        <Card title={`Invoices: ${currentOrgName}`}>
+                            <TableWrapper>
+                                <Table>
+                                    <Thead>
+                                        <Tr>
+                                            <Th>Invoice</Th>
+                                            <Th>Period</Th>
+                                            <Th>Lines</Th>
+                                            <Th>Status</Th>
+                                            <Th>Due</Th>
+                                            <Th style={{ textAlign: 'right' }}>Total</Th>
+                                            {can('MANAGE_PAYMENTS') && <Th>Action</Th>}
+                                        </Tr>
+                                    </Thead>
+                                    <Tbody>
+                                        {loading ? (
+                                            <Tr><Td colSpan={can('MANAGE_PAYMENTS') ? 7 : 6} style={{ textAlign: 'center' }}><Loader /></Td></Tr>
+                                        ) : invoices.length > 0 ? invoices.map((invoice) => (
+                                            <Tr key={invoice.id}>
+                                                <Td>
+                                                    <div style={{ fontWeight: 700 }}>{invoice.invoiceNumber}</div>
+                                                    {invoice.organization?.name && (
+                                                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{invoice.organization.name}</div>
+                                                    )}
+                                                </Td>
+                                                <Td>
+                                                    {format(new Date(invoice.periodStart), 'MMM dd, yyyy')} - {format(new Date(invoice.periodEnd), 'MMM dd, yyyy')}
+                                                </Td>
+                                                <Td>{invoice.lines?.length || 0}</Td>
+                                                <Td><StatusPill status={invoice.status} /></Td>
+                                                <Td>{invoice.dueDate ? format(new Date(invoice.dueDate), 'MMM dd, yyyy') : '-'}</Td>
+                                                <Td style={{ textAlign: 'right', fontWeight: 800 }}>
+                                                    {money(invoice.total, invoice.currency)}
+                                                </Td>
+                                                {can('MANAGE_PAYMENTS') && (
+                                                    <Td>
+                                                        <Select
+                                                            value={invoice.status}
+                                                            onChange={(e) => handleInvoiceStatusChange(invoice.id, e.target.value)}
+                                                            disabled={invoiceLoading}
+                                                            style={{ margin: 0, minWidth: '130px' }}
+                                                        >
+                                                            {INVOICE_STATUS_OPTIONS.map(status => (
+                                                                <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>
+                                                            ))}
+                                                        </Select>
+                                                    </Td>
+                                                )}
+                                            </Tr>
+                                        )) : (
+                                            <Tr>
+                                                <Td colSpan={can('MANAGE_PAYMENTS') ? 7 : 6} style={{ textAlign: 'center', padding: '24px' }}>
+                                                    No invoices found
+                                                </Td>
+                                            </Tr>
+                                        )}
+                                    </Tbody>
+                                </Table>
+                            </TableWrapper>
+                        </Card>
+                    </>
                 ) : (
                     <>
                         {can('VIEW_FINANCE') && (
@@ -549,8 +803,11 @@ const FinancePage = () => {
                                 <div>
                                     <StatLabel>Outstanding Balance</StatLabel>
                                     <StatValue>
-                                        {loading ? <Loader /> : fmtKD(summary.balance)} <span>KD</span>
+                                        {loading ? <Loader /> : fmtAmount(summary.balance)} <span>{currentCurrency}</span>
                                     </StatValue>
+                                    {formatCurrencyBreakdown(summary.balancesByCurrency) && (
+                                        <ItemSub style={{ marginTop: '8px' }}>All currencies: {formatCurrencyBreakdown(summary.balancesByCurrency)}</ItemSub>
+                                    )}
                                 </div>
                             </StatCard>
 
@@ -558,9 +815,12 @@ const FinancePage = () => {
                                 <div>
                                     <StatLabel>Unapplied Cash</StatLabel>
                                     <StatValue $highlight>
-                                        {loading ? <Loader /> : fmtKD(summary.unappliedCash)} <span>KD</span>
+                                        {loading ? <Loader /> : fmtAmount(summary.unappliedCash)} <span>{currentCurrency}</span>
                                     </StatValue>
                                     <ItemSub style={{ marginTop: '8px' }}>Available funds for allocation</ItemSub>
+                                    {formatCurrencyBreakdown(summary.unappliedCashByCurrency) && (
+                                        <ItemSub>By currency: {formatCurrencyBreakdown(summary.unappliedCashByCurrency)}</ItemSub>
+                                    )}
                                 </div>
                             </StatCard>
 
@@ -569,9 +829,9 @@ const FinancePage = () => {
                                 <div>
                                     <StatLabel>Available Credit</StatLabel>
                                     <StatValue>
-                                        {loading ? <Loader /> : fmtKD(summary.availableCredit)} <span>KD</span>
+                                        {loading ? <Loader /> : fmtAmount(summary.availableCredit)} <span>{currentCurrency}</span>
                                     </StatValue>
-                                    <ItemSub style={{ marginTop: '8px' }}>Limit: {fmtKD(summary.creditLimit)} KD</ItemSub>
+                                    <ItemSub style={{ marginTop: '8px' }}>Limit: {money(summary.creditLimit, currentCurrency)}</ItemSub>
                                 </div>
                             </StatCard>
 
@@ -579,8 +839,11 @@ const FinancePage = () => {
                                 <div>
                                     <StatLabel>Total Unpaid Shipments</StatLabel>
                                     <StatValue>
-                                        {fmtKD(summary.totalUnpaid)} <span>KD</span>
+                                        {fmtAmount(summary.totalUnpaid)} <span>{currentCurrency}</span>
                                     </StatValue>
+                                    {formatCurrencyBreakdown(summary.totalUnpaidByCurrency) && (
+                                        <ItemSub style={{ marginTop: '8px' }}>By currency: {formatCurrencyBreakdown(summary.totalUnpaidByCurrency)}</ItemSub>
+                                    )}
                                 </div>
                             </StatCard>
 
@@ -589,10 +852,10 @@ const FinancePage = () => {
                                     <div>
                                         <StatLabel>Aging Buckets</StatLabel>
                                         <StatValue style={{ fontSize: '18px', display: 'flex', gap: '16px', marginTop: '12px' }}>
-                                            <div><div style={{ fontSize: '10px', opacity: 0.7 }}>0–30</div>{fmtKD(summary.agingBuckets['0-30'])}</div>
-                                            <div><div style={{ fontSize: '10px', opacity: 0.7 }}>31–60</div>{fmtKD(summary.agingBuckets['31-60'])}</div>
-                                            <div><div style={{ fontSize: '10px', opacity: 0.7 }}>61–90</div>{fmtKD(summary.agingBuckets['61-90'])}</div>
-                                            <div><div style={{ fontSize: '10px', opacity: 0.7 }}>90+</div>{fmtKD(summary.agingBuckets['90+'])}</div>
+                                            <div><div style={{ fontSize: '10px', opacity: 0.7 }}>0–30</div>{fmtAmount(summary.agingBuckets['0-30'])}</div>
+                                            <div><div style={{ fontSize: '10px', opacity: 0.7 }}>31–60</div>{fmtAmount(summary.agingBuckets['31-60'])}</div>
+                                            <div><div style={{ fontSize: '10px', opacity: 0.7 }}>61–90</div>{fmtAmount(summary.agingBuckets['61-90'])}</div>
+                                            <div><div style={{ fontSize: '10px', opacity: 0.7 }}>90+</div>{fmtAmount(summary.agingBuckets['90+'])}</div>
                                         </StatValue>
                                     </div>
                                 </div>
@@ -604,7 +867,7 @@ const FinancePage = () => {
                                 <Card title={`Posting Payment: ${currentOrgName}`} style={{ marginBottom: '24px' }}>
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', alignItems: 'end' }}>
                                         <Input
-                                            label="Amount (KD)"
+                                            label={`Amount (${currentCurrency})`}
                                             type="number"
                                             min="0.001"
                                             step="0.001"
@@ -661,7 +924,10 @@ const FinancePage = () => {
                                                 <ListItem
                                                     key={p.id}
                                                     $selected={selectedPaymentId === p.id}
-                                                    onClick={() => setSelectedPaymentId(p.id)}
+                                                    onClick={() => {
+                                                        setSelectedPaymentId(p.id);
+                                                        setSelectedShipmentsMap({});
+                                                    }}
                                                 >
                                                     <ItemInfo>
                                                         <ItemTitle>{p.reference || 'No Reference'}</ItemTitle>
@@ -671,10 +937,10 @@ const FinancePage = () => {
                                                     </ItemInfo>
                                                     <div style={{ textAlign: 'right' }}>
                                                         <div style={{ fontWeight: 800, color: 'var(--accent-primary)', fontSize: '15px' }}>
-                                                            {fmtKD(parseFloat(p.amount) - parseFloat(p.allocatedAmount || 0))} KD
+                                                            {money(parseFloat(p.amount) - parseFloat(p.allocatedAmount || 0), p.currency)}
                                                         </div>
                                                         <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
-                                                            Total: {fmtKD(p.amount)} KD
+                                                            Total: {money(p.amount, p.currency)}
                                                         </div>
                                                     </div>
                                                 </ListItem>
@@ -723,13 +989,21 @@ const FinancePage = () => {
                                         <ScrollableList>
                                             {shipmentsLoading ? (
                                                 <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}><Loader /></div>
-                                            ) : shipments.length > 0 ? shipments.map(s => (
-                                                <ListItem
-                                                    key={s.id}
-                                                    $selected={!!selectedShipmentsMap[s.id]}
-                                                    $disabled={s.paid}
-                                                    onClick={() => toggleShipmentSelection(s)}
-                                                >
+                                            ) : shipments.length > 0 ? shipments.map(s => {
+                                                const currencyMismatch = isShipmentCurrencyMismatch(s);
+                                                const disabledReason = s.paid
+                                                    ? 'Already paid'
+                                                    : currencyMismatch
+                                                        ? `Currency mismatch: selected payment is ${selectedPaymentCurrency}`
+                                                        : '';
+                                                return (
+                                                    <ListItem
+                                                        key={s.id}
+                                                        $selected={!!selectedShipmentsMap[s.id]}
+                                                        $disabled={s.paid || currencyMismatch}
+                                                        title={disabledReason}
+                                                        onClick={() => toggleShipmentSelection(s)}
+                                                    >
                                                     <ItemInfo>
                                                         <ItemTitle>{s.trackingNumber}</ItemTitle>
                                                         <ItemSub>
@@ -738,10 +1012,10 @@ const FinancePage = () => {
                                                     </ItemInfo>
                                                     <div style={{ textAlign: 'right' }}>
                                                         <div style={{ fontWeight: 800, fontSize: '15px' }}>
-                                                            {fmtKD(s.paid ? 0 : (s.remainingBalance !== undefined ? s.remainingBalance : (parseFloat(s.pricingSnapshot?.totalPrice || s.price || 0) - parseFloat(s.totalPaid || 0))))} KD
+                                                            {money(s.paid ? 0 : (s.remainingBalance !== undefined ? s.remainingBalance : (parseFloat(s.pricingSnapshot?.totalPrice || s.price || 0) - parseFloat(s.totalPaid || 0))), s.currency || s.pricingSnapshot?.currency)}
                                                         </div>
                                                         <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
-                                                            Total: {fmtKD(s.pricingSnapshot?.totalPrice || s.price || 0)} KD
+                                                            Total: {money(s.pricingSnapshot?.totalPrice || s.price || 0, s.currency || s.pricingSnapshot?.currency)}
                                                         </div>
                                                         <div style={{
                                                             fontSize: '10px',
@@ -752,7 +1026,8 @@ const FinancePage = () => {
                                                         </div>
                                                     </div>
                                                 </ListItem>
-                                            )) : (
+                                                );
+                                            }) : (
                                                 <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                                                     No shipments found
                                                 </div>
@@ -783,10 +1058,10 @@ const FinancePage = () => {
                                         <AllocationFooter>
                                             <div style={{ fontSize: '14px' }}>
                                                 {selectedPayment && (
-                                                    <span>Allocating From: <strong>({fmtKD(parseFloat(selectedPayment.amount) - parseFloat(selectedPayment.allocatedAmount || 0))} KD)</strong></span>
+                                                    <span>Allocating From: <strong>({money(parseFloat(selectedPayment.amount) - parseFloat(selectedPayment.allocatedAmount || 0), selectedPayment.currency)})</strong></span>
                                                 )}
                                                 {selectedShipmentsTotal > 0 && (
-                                                    <span style={{ marginLeft: '16px' }}>To Pay: <strong>({fmtKD(selectedShipmentsTotal)} KD)</strong></span>
+                                                    <span style={{ marginLeft: '16px' }}>To Pay: <strong>({money(selectedShipmentsTotal, selectedShipmentsCurrency)})</strong></span>
                                                 )}
                                             </div>
                                             <Button
@@ -812,6 +1087,7 @@ const FinancePage = () => {
                                             Category: l.category,
                                             Type: l.entryType,
                                             Amount: l.amount,
+                                            Currency: normalizeCurrencyCode(l.currency),
                                             BalanceAfter: l.balanceAfter,
                                             Reference: l.reference || ''
                                         }))}
@@ -851,10 +1127,10 @@ const FinancePage = () => {
                                                     </StatusPill>
                                                 </Td>
                                                 <Td style={{ textAlign: 'right', fontWeight: 'bold', color: entry.entryType === 'CREDIT' ? 'var(--accent-success)' : 'inherit' }}>
-                                                    {entry.entryType === 'CREDIT' ? '+' : '-'}{parseFloat(entry.amount).toFixed(3)}
+                                                    {entry.entryType === 'CREDIT' ? '+' : '-'}{money(entry.amount, entry.currency)}
                                                 </Td>
                                                 <Td style={{ textAlign: 'right' }}>
-                                                    {parseFloat(entry.balanceAfter).toFixed(3)}
+                                                    {money(entry.balanceAfter, entry.currency)}
                                                 </Td>
                                             </Tr>
                                         )) : (

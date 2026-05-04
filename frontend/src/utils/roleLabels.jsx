@@ -4,8 +4,9 @@ export const ROLE_LABELS = {
   driver: 'Driver',
   accounting: 'Accounting',
   manager: 'Manager',
-  org_manager: 'Organization Manager',
-  org_agent: 'Organization Agent'
+  org_manager: 'Company Manager',
+  org_agent: 'Company Client',
+  client: 'Company Client'
 };
 
 export const getRoleLabel = (role) => ROLE_LABELS[role] || role || 'Unknown';

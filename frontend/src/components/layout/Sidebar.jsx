@@ -19,13 +19,13 @@ const Sidebar = ({ isCollapsed, toggleCollapse }) => {
         { text: 'Dashboard', icon: 'speed', path: '/dashboard' },
         { text: 'Shipments', icon: 'local_shipping', path: '/shipments' },
         { text: 'Organizations', icon: 'corporate_fare', path: '/admin/organizations', roles: ['admin', 'staff', 'manager'] },
-        { text: 'Users', icon: 'people', path: '/admin/users', roles: ['admin'] },
+        { text: 'Users', icon: 'people', path: '/admin/users', roles: ['admin', 'org_manager'] },
         { text: 'Analytics', icon: 'analytics', path: '/analytics', roles: ['admin', 'accounting', 'manager'] },
         { text: 'Fleet Ops', icon: 'directions_bus', path: '/fleets', roles: ['admin', 'accounting', 'manager'] },
         { text: 'Inventory', icon: 'inventory_2', path: '/warehouse/scan', roles: ['admin', 'staff', 'manager'] },
         { text: 'Address Book', icon: 'menu_book', path: '/address-book' },
         { text: 'API Docs', icon: 'api', path: '/api-docs' },
-        { text: 'Financials', icon: 'account_balance_wallet', path: '/finance', roles: ['admin', 'accounting', 'manager', 'staff'] },
+        { text: 'Financials', icon: 'account_balance_wallet', path: '/finance', roles: ['admin', 'accounting', 'manager', 'staff', 'org_manager', 'org_agent', 'client'] },
         { text: 'Settings', icon: 'settings', path: '/settings' },
     ];
 

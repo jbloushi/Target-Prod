@@ -2,6 +2,7 @@ import React, { useCallback, useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useSnackbar } from 'notistack';
 import { userService, organizationService, shipmentService } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import {
     PageHeader,
     Card,
@@ -87,6 +88,8 @@ const normalizeShippingAccess = (user = {}) => {
 
 const AdminUsersPage = () => {
     const { enqueueSnackbar } = useSnackbar();
+    const { user: currentUser } = useAuth();
+    const isOrgManager = currentUser?.role === 'org_manager';
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(false);
 
@@ -103,6 +106,7 @@ const AdminUsersPage = () => {
 
     // Aux Data
     const [organizations, setOrganizations] = useState([]);
+    const [clientUsers, setClientUsers] = useState([]);
     const [availableCarriers, setAvailableCarriers] = useState([]);
     const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
@@ -120,9 +124,22 @@ const AdminUsersPage = () => {
     }, [enqueueSnackbar, roleFilter]);
 
     const fetchOrgs = async () => {
+        if (isOrgManager) {
+            setOrganizations(currentUser?.organization ? [currentUser.organization] : []);
+            return;
+        }
         try {
             const res = await organizationService.getOrganizations();
             setOrganizations(res.data);
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const fetchClientUsers = async () => {
+        try {
+            const res = await userService.getUsers('org');
+            setClientUsers(res.data || []);
         } catch (err) {
             console.error(err);
         }
@@ -145,6 +162,7 @@ const AdminUsersPage = () => {
         if (openDialog) {
             fetchOrgs();
             fetchCarriers();
+            fetchClientUsers();
         }
     }, [openDialog]);
 
@@ -154,7 +172,8 @@ const AdminUsersPage = () => {
 
         // Init Form Data
         const initialData = user ? { ...user } : {
-            role: 'org_agent',
+            role: isOrgManager ? 'org_agent' : 'org_agent',
+            organizationId: isOrgManager ? currentUser?.organizationId : undefined,
             carrierConfig: {
                 preferredCarrier: 'DGR',
                 traderType: 'business',
@@ -185,9 +204,13 @@ const AdminUsersPage = () => {
         if (!initialData.optionalServiceMarkup.insurance) {
             initialData.optionalServiceMarkup.insurance = { enabled: false, type: 'PERCENTAGE', percentageValue: 0, flatValue: 0 };
         }
-        if (typeof initialData.organization === 'object' && initialData.organization) {
+        if (isOrgManager) {
+            initialData.organizationId = currentUser?.organizationId;
+            initialData.organization = currentUser?.organization || initialData.organization;
+        } else if (typeof initialData.organization === 'object' && initialData.organization) {
             initialData.organizationId = initialData.organization.id;
         }
+        initialData.accessScopes = initialData.accessScopes || [];
 
         setFormData(initialData);
         setActiveTab('profile');
@@ -198,6 +221,16 @@ const AdminUsersPage = () => {
     const handleSave = async () => {
         try {
             const payload = { ...formData };
+            const accessScopes = payload.accessScopes || [];
+            delete payload.accessScopes;
+            if (isOrgManager) {
+                payload.organizationId = currentUser?.organizationId;
+                if (!['org_manager', 'org_agent', 'client'].includes(payload.role)) {
+                    payload.role = 'org_agent';
+                }
+                delete payload.creditLimit;
+                delete payload.accessScopes;
+            }
             // Ensure numbers
             if (payload.creditLimit !== undefined) payload.creditLimit = Number(payload.creditLimit);
             // Fix organization mapping for backend
@@ -244,9 +277,15 @@ const AdminUsersPage = () => {
 
             if (editingUser?.id) {
                 await userService.updateUser(editingUser.id, payload);
+                if (!isOrgManager && ['staff', 'driver'].includes(payload.role)) {
+                    await userService.replaceAccessScopes(editingUser.id, accessScopes);
+                }
                 enqueueSnackbar('User updated successfully', { variant: 'success' });
             } else {
-                await userService.createUser(payload);
+                const created = await userService.createUser(payload);
+                if (!isOrgManager && ['staff', 'driver'].includes(payload.role) && created.data?.id) {
+                    await userService.replaceAccessScopes(created.data.id, accessScopes);
+                }
                 enqueueSnackbar('User created successfully', { variant: 'success' });
             }
             setOpenDialog(false);
@@ -305,10 +344,58 @@ const AdminUsersPage = () => {
         });
     };
 
+    const updateAccessScope = (index, field, value) => {
+        setFormData(prev => {
+            const accessScopes = [...(prev.accessScopes || [])];
+            const current = { ...accessScopes[index], [field]: value };
+
+            if (field === 'scopeType') {
+                current.clientUserId = '';
+                current.organizationId = '';
+            }
+
+            accessScopes[index] = current;
+            return { ...prev, accessScopes };
+        });
+    };
+
+    const addAccessScope = (scopeType = 'CLIENT_USER') => {
+        setFormData(prev => ({
+            ...prev,
+            accessScopes: [
+                ...(prev.accessScopes || []),
+                {
+                    scopeType,
+                    clientUserId: '',
+                    organizationId: '',
+                    canViewShipments: true,
+                    canCreateOnBehalf: false
+                }
+            ]
+        }));
+    };
+
+    const removeAccessScope = (index) => {
+        setFormData(prev => ({
+            ...prev,
+            accessScopes: (prev.accessScopes || []).filter((_, scopeIndex) => scopeIndex !== index)
+        }));
+    };
+
     const renderShippingAccess = (user) => {
         const access = normalizeShippingAccess(user);
         if (access.mode === 'manual') return 'Manual Shipment';
         return `${access.carrierCode} / ${access.serviceName}`;
+    };
+
+    const renderAccessScopeSummary = (user) => {
+        if (!['staff', 'driver'].includes(user.role)) return null;
+        const count = user.accessScopes?.length || 0;
+        return (
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                {count ? `${count} access scope${count === 1 ? '' : 's'}` : 'No client scope'}
+            </div>
+        );
     };
 
     // Render Markup Pill
@@ -344,11 +431,11 @@ const AdminUsersPage = () => {
                         onChange={(e) => setRoleFilter(e.target.value)}
                     >
                         <option value="">All Roles</option>
-                        <option value="staff">Platform Staff</option>
-                        <option value="admin">Platform Admin</option>
-                        <option value="driver">Driver</option>
-                        <option value="manager">Manager</option>
-                        <option value="accounting">Accounting</option>
+                        {!isOrgManager && <option value="staff">Platform Staff</option>}
+                        {!isOrgManager && <option value="admin">Platform Admin</option>}
+                        {!isOrgManager && <option value="driver">Driver</option>}
+                        {!isOrgManager && <option value="manager">Manager</option>}
+                        {!isOrgManager && <option value="accounting">Accounting</option>}
                         <option value="org_manager">Organization Manager</option>
                         <option value="org_agent">Organization Agent</option>
                         <option value="client">Client</option>
@@ -398,6 +485,7 @@ const AdminUsersPage = () => {
                                     </Td>
                                     <Td>
                                         {renderShippingAccess(user)}
+                                        {renderAccessScopeSummary(user)}
                                     </Td>
                                     <Td>{renderMarkupInfo(user)}</Td>
                                     <Td>
@@ -446,8 +534,11 @@ const AdminUsersPage = () => {
             >
                 <Tabs>
                     <Tab active={activeTab === 'profile'} onClick={() => setActiveTab('profile')}>Profile</Tab>
-                    <Tab active={activeTab === 'org'} onClick={() => setActiveTab('org')}>Organization</Tab>
-                    <Tab active={activeTab === 'config'} onClick={() => setActiveTab('config')}>Config & Financials</Tab>
+                    {!isOrgManager && <Tab active={activeTab === 'org'} onClick={() => setActiveTab('org')}>Organization</Tab>}
+                    {!isOrgManager && ['staff', 'driver'].includes(formData.role) && (
+                        <Tab active={activeTab === 'access'} onClick={() => setActiveTab('access')}>Access</Tab>
+                    )}
+                    {!isOrgManager && <Tab active={activeTab === 'config'} onClick={() => setActiveTab('config')}>Config & Financials</Tab>}
                 </Tabs>
 
                 <div style={{ marginTop: '24px' }}>
@@ -460,11 +551,11 @@ const AdminUsersPage = () => {
                             <Input label="Phone" value={formData.phone || ''} onChange={e => updateField('phone', e.target.value)} />
 
                             <Select label="Role" value={formData.role || 'org_agent'} onChange={e => updateField('role', e.target.value)}>
-                                <option value="staff">Staff</option>
-                                <option value="admin">Admin</option>
-                                <option value="driver">Driver</option>
-                                <option value="manager">Manager</option>
-                                <option value="accounting">Accounting</option>
+                                {!isOrgManager && <option value="staff">Staff</option>}
+                                {!isOrgManager && <option value="admin">Admin</option>}
+                                {!isOrgManager && <option value="driver">Driver</option>}
+                                {!isOrgManager && <option value="manager">Manager</option>}
+                                {!isOrgManager && <option value="accounting">Accounting</option>}
                                 <option value="org_manager">Organization Manager</option>
                                 <option value="org_agent">Organization Agent</option>
                                 <option value="client">Client</option>
@@ -491,6 +582,86 @@ const AdminUsersPage = () => {
                                     <option key={org.id} value={org.id}>{org.name} ({org.type})</option>
                                 ))}
                             </Select>
+                        </div>
+                    )}
+
+                    {activeTab === 'access' && ['staff', 'driver'].includes(formData.role) && (
+                        <div style={{ display: 'grid', gap: '16px' }}>
+                            <Alert severity="info" title="Client Visibility Scope">
+                                Select client users or whole companies this user can work on. Drivers and staff do not receive platform-wide shipment access from their role alone.
+                            </Alert>
+
+                            {(formData.accessScopes || []).map((scope, index) => (
+                                <div
+                                    key={`${scope.scopeType}-${index}`}
+                                    style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: '180px minmax(220px, 1fr) 160px 110px',
+                                        gap: '12px',
+                                        alignItems: 'end',
+                                        padding: '12px',
+                                        border: '1px solid var(--border-color)',
+                                        borderRadius: '8px'
+                                    }}
+                                >
+                                    <Select
+                                        label="Scope Type"
+                                        value={scope.scopeType || 'CLIENT_USER'}
+                                        onChange={e => updateAccessScope(index, 'scopeType', e.target.value)}
+                                    >
+                                        <option value="CLIENT_USER">Client User</option>
+                                        <option value="COMPANY_ALL_USERS">Company</option>
+                                    </Select>
+
+                                    {scope.scopeType === 'COMPANY_ALL_USERS' ? (
+                                        <Select
+                                            label="Company"
+                                            value={scope.organizationId || ''}
+                                            onChange={e => updateAccessScope(index, 'organizationId', e.target.value)}
+                                        >
+                                            <option value="">Select company</option>
+                                            {organizations.map(org => (
+                                                <option key={org.id} value={org.id}>{org.name}</option>
+                                            ))}
+                                        </Select>
+                                    ) : (
+                                        <Select
+                                            label="Client User"
+                                            value={scope.clientUserId || ''}
+                                            onChange={e => updateAccessScope(index, 'clientUserId', e.target.value)}
+                                        >
+                                            <option value="">Select client user</option>
+                                            {clientUsers.map(client => (
+                                                <option key={client.id} value={client.id}>
+                                                    {client.name} {client.organization?.name ? `(${client.organization.name})` : ''}
+                                                </option>
+                                            ))}
+                                        </Select>
+                                    )}
+
+                                    <Select
+                                        label="Create On Behalf"
+                                        value={scope.canCreateOnBehalf ? 'yes' : 'no'}
+                                        onChange={e => updateAccessScope(index, 'canCreateOnBehalf', e.target.value === 'yes')}
+                                    >
+                                        <option value="no">No</option>
+                                        <option value="yes">Yes</option>
+                                    </Select>
+
+                                    <Button variant="secondary" onClick={() => removeAccessScope(index)}>
+                                        Remove
+                                    </Button>
+                                </div>
+                            ))}
+
+                            <div style={{ display: 'flex', gap: '12px' }}>
+                                <Button variant="secondary" onClick={() => addAccessScope('CLIENT_USER')}>
+                                    Add Client User
+                                </Button>
+                                <Button variant="secondary" onClick={() => addAccessScope('COMPANY_ALL_USERS')}>
+                                    Add Company
+                                </Button>
+                            </div>
                         </div>
                     )}
 

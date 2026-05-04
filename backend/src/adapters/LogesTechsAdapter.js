@@ -40,8 +40,8 @@ class LogesTechsAdapter extends CarrierAdapter {
 
         this.code = 'OTE';
         this.name = 'OTE';
-        this.shipmentClient = axios.create({ baseURL: shipmentBaseUrl, timeout: 30000 });
-        this.fulfillmentClient = axios.create({ baseURL: fulfillmentBaseUrl, timeout: 30000 });
+        this.shipmentClient = axios.create({ baseURL: shipmentBaseUrl, timeout: 30000, proxy: false });
+        this.fulfillmentClient = axios.create({ baseURL: fulfillmentBaseUrl, timeout: 30000, proxy: false });
     }
 
     _assertCredentials(required = ['companyId']) {
@@ -257,6 +257,80 @@ class LogesTechsAdapter extends CarrierAdapter {
         };
     }
 
+    _looksLikeBase64Pdf(value) {
+        const normalized = this._safeString(value);
+        if (!normalized) return false;
+        return /^JVBER/i.test(normalized) || /^data:application\/pdf;base64,/i.test(normalized);
+    }
+
+    _extractDocumentValue(payload) {
+        if (!payload) return null;
+        if (typeof payload === 'string') return payload;
+        if (Buffer.isBuffer(payload)) return payload;
+        if (payload instanceof ArrayBuffer) return Buffer.from(payload);
+        if (ArrayBuffer.isView(payload)) return Buffer.from(payload.buffer, payload.byteOffset, payload.byteLength);
+        if (typeof payload !== 'object') return null;
+
+        const candidates = [
+            payload.url,
+            payload.labelUrl,
+            payload.awbUrl,
+            payload.pdfUrl,
+            payload.fileUrl,
+            payload.label,
+            payload.awb,
+            payload.pdf,
+            payload.file,
+            payload.content,
+            payload.base64,
+            payload.pdfBase64,
+            payload.data
+        ];
+
+        for (const candidate of candidates) {
+            const extracted = this._extractDocumentValue(candidate);
+            if (extracted) return extracted;
+        }
+
+        return null;
+    }
+
+    _normalizePdfDocumentResponse(data, headers = {}) {
+        const contentType = String(headers['content-type'] || headers['Content-Type'] || '').toLowerCase();
+        let payload = data;
+
+        if (Buffer.isBuffer(payload) || payload instanceof ArrayBuffer || ArrayBuffer.isView(payload)) {
+            const buffer = Buffer.isBuffer(payload)
+                ? payload
+                : payload instanceof ArrayBuffer
+                    ? Buffer.from(payload)
+                    : Buffer.from(payload.buffer, payload.byteOffset, payload.byteLength);
+            const asText = buffer.toString('utf8').trim();
+
+            if (contentType.includes('json') || asText.startsWith('{') || asText.startsWith('[')) {
+                try {
+                    payload = JSON.parse(asText);
+                } catch (_) {
+                    payload = buffer;
+                }
+            } else {
+                return `data:application/pdf;base64,${buffer.toString('base64')}`;
+            }
+        }
+
+        const extracted = this._extractDocumentValue(payload);
+        if (!extracted) return null;
+
+        if (Buffer.isBuffer(extracted)) {
+            return `data:application/pdf;base64,${extracted.toString('base64')}`;
+        }
+
+        const text = String(extracted).trim();
+        if (/^https?:\/\//i.test(text) || /^data:application\/pdf;base64,/i.test(text)) return text;
+        if (this._looksLikeBase64Pdf(text)) return `data:application/pdf;base64,${text}`;
+        return text;
+    }
+
     _extractTrackingEvents(raw = {}) {
         if (Array.isArray(raw?.events) && raw.events.length > 0) {
             return raw.events.map((event = {}) => ({
@@ -432,7 +506,15 @@ class LogesTechsAdapter extends CarrierAdapter {
     }
 
     async getRates() {
-        return [];
+        return [{
+            serviceName: 'OTE Standard',
+            serviceCode: 'STD',
+            carrier: this.code,
+            totalPrice: 0,
+            currency: 'AED',
+            deliveryDate: null,
+            optionalServices: []
+        }];
     }
 
     async createShipment(normalizedShipment = {}) {
@@ -510,10 +592,13 @@ class LogesTechsAdapter extends CarrierAdapter {
             const response = await this.shipmentClient.post(
                 `/guests/${this.config.companyId}/packages/pdf`,
                 { ids },
-                { headers: this._shipmentHeaders() }
+                {
+                    headers: this._shipmentHeaders(),
+                    responseType: 'arraybuffer'
+                }
             );
 
-            return response.data;
+            return this._normalizePdfDocumentResponse(response.data, response.headers) || response.data;
         } catch (error) {
             throw this._normalizeProviderError(error, 'getLabel');
         }

@@ -7,7 +7,9 @@ const logger = require('../utils/logger');
 const ShipmentDraftService = require('../services/ShipmentDraftService');
 const { handleControllerError } = require('../utils/controllerError');
 const { hasCapability, isPlatformRole } = require('../middleware/rbac.policy');
+const { canAccessShipment, scopeShipmentWhere } = require('../middleware/authorize.middleware');
 const { MANUAL_SHIPMENT_STATUSES, SHIPMENT_STATUSES } = require('../constants/statusConstants');
+const { DELETABLE_SHIPMENT_STATUSES, buildShipmentDeleteBlockedMessage } = require('../utils/shipmentDeletionPolicy');
 const { syncCarrierTrackingHistory, hasCriticalChanges, canUpdateShipmentStatus, isManualShipment, buildDisplayHistory } = require('./shipment.helpers');
 const chatwootNotificationService = require('../services/chatwootNotificationService');
 
@@ -20,9 +22,11 @@ exports.getShipmentStats = async (req, res) => {
         const { organizationId } = req.query;
         const where = {};
 
-        if (organizationId) {
+        if (isPlatformRole(req.user.role) && organizationId) {
             where.organizationId = organizationId === 'none' ? null : organizationId;
         }
+
+        scopeShipmentWhere(req, where);
 
         // 1. Group by Status
         const statusGroups = await prisma.shipment.groupBy({
@@ -37,31 +41,19 @@ exports.getShipmentStats = async (req, res) => {
         const sixMonthsAgo = new Date();
         sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
         
-        let monthlyStats;
-        if (organizationId) {
-            if (organizationId === 'none') {
-                monthlyStats = await prisma.$queryRaw`
-                    SELECT MONTH(createdAt) as month, YEAR(createdAt) as year, COUNT(*) as count
-                    FROM Shipment
-                    WHERE createdAt >= ${sixMonthsAgo} AND organizationId IS NULL
-                    GROUP BY year, month ORDER BY year ASC, month ASC
-                `;
-            } else {
-                monthlyStats = await prisma.$queryRaw`
-                    SELECT MONTH(createdAt) as month, YEAR(createdAt) as year, COUNT(*) as count
-                    FROM Shipment
-                    WHERE createdAt >= ${sixMonthsAgo} AND organizationId = ${organizationId}
-                    GROUP BY year, month ORDER BY year ASC, month ASC
-                `;
+        const monthlyShipments = await prisma.shipment.findMany({
+            where: { ...where, createdAt: { gte: sixMonthsAgo } },
+            select: { createdAt: true }
+        });
+        const monthlyStats = Object.values(monthlyShipments.reduce((acc, shipment) => {
+            const createdAt = new Date(shipment.createdAt);
+            const key = `${createdAt.getFullYear()}-${createdAt.getMonth() + 1}`;
+            if (!acc[key]) {
+                acc[key] = { year: createdAt.getFullYear(), month: createdAt.getMonth() + 1, count: 0 };
             }
-        } else {
-            monthlyStats = await prisma.$queryRaw`
-                SELECT MONTH(createdAt) as month, YEAR(createdAt) as year, COUNT(*) as count
-                FROM Shipment
-                WHERE createdAt >= ${sixMonthsAgo}
-                GROUP BY year, month ORDER BY year ASC, month ASC
-            `;
-        }
+            acc[key].count += 1;
+            return acc;
+        }, {})).sort((a, b) => (a.year - b.year) || (a.month - b.month));
 
         const result = {
             total: 0,
@@ -159,6 +151,10 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
             return res.status(404).json({ success: false, error: 'Shipment not found' });
         }
 
+        if (!canAccessShipment(req, shipment)) {
+            return res.status(403).json({ success: false, error: 'Permission denied' });
+        }
+
         // Capability checks
         if (!hasCapability(req.user.role, 'VIEW_COST_DATA')) { 
             shipment.costPrice = null; 
@@ -216,13 +212,6 @@ exports.getAllShipments = async (req, res) => {
             if (organizationId) {
                 where.organizationId = organizationId === 'none' ? null : organizationId;
             }
-        } else {
-            // Org users are hard-scoped to their own organization / user ID
-            if (req.user.organizationId) {
-                where.organizationId = req.user.organizationId;
-            } else {
-                where.userId = req.user.id;
-            }
         }
 
         // 3. Payment Filter
@@ -239,6 +228,8 @@ exports.getAllShipments = async (req, res) => {
                 { destination: { path: '$.city', string_contains: q } }
             ];
         }
+
+        scopeShipmentWhere(req, where);
 
         // 5. Pagination & Sorting
         const parsedLimit = Math.min(Math.max(parseInt(limit) || 50, 1), 100);
@@ -335,12 +326,19 @@ exports.deleteShipment = async (req, res) => {
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
-        const isOwner = shipment.userId === user.id;
         const isAdminOrStaff = ['admin', 'staff', 'manager', 'accounting'].includes(user.role);
-        if (!isAdminOrStaff && !isOwner) return res.status(403).json({ success: false, error: 'Not authorized' });
+        if (!isAdminOrStaff && !canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Not authorized' });
 
-        if (shipment.status !== 'draft' && shipment.status !== 'ready_for_pickup') {
-            return res.status(400).json({ success: false, error: 'Cannot delete shipment that is beyond draft/ready status' });
+        if (!DELETABLE_SHIPMENT_STATUSES.includes(shipment.status)) {
+            const message = buildShipmentDeleteBlockedMessage(shipment.status);
+            return res.status(409).json({
+                success: false,
+                code: 'SHIPMENT_DELETE_NOT_ALLOWED',
+                error: message.short,
+                message,
+                status: shipment.status,
+                allowedStatuses: DELETABLE_SHIPMENT_STATUSES
+            });
         }
 
         await prisma.shipment.delete({ where: { id: shipment.id } });
@@ -368,9 +366,8 @@ exports.updateShipment = async (req, res) => {
         
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
-        const isOwner = shipment.userId === user.id;
         const isAdminOrStaff = ['admin', 'staff', 'manager', 'accounting'].includes(user.role);
-        if (!isAdminOrStaff && !isOwner) return res.status(403).json({ success: false, error: 'Not authorized' });
+        if (!isAdminOrStaff && !canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Not authorized' });
 
         const allowedFields = ['destination', 'origin', 'items', 'parcels', 'incoterm', 'currency', 'serviceCode', 'status', 'allowPublicLocationUpdate'];
         const manualEditableFields = ['price', 'costPrice', 'estimatedDelivery'];

@@ -1,6 +1,7 @@
 const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
 const { calculateDistance, canUpdateShipmentStatus } = require('./shipment.helpers');
+const { canAccessShipment, scopeShipmentWhere } = require('../middleware/authorize.middleware');
 const chatwootNotificationService = require('../services/chatwootNotificationService');
 
 /**
@@ -13,6 +14,7 @@ exports.updateShipmentLocation = async (req, res) => {
 
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Not found' });
+        if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
 
         if (status && status !== shipment.status && !canUpdateShipmentStatus(req.user, shipment, status)) {
             return res.status(403).json({ success: false, error: 'Permission denied to update shipment status' });
@@ -72,9 +74,16 @@ exports.getShipmentHistory = async (req, res) => {
         const { trackingNumber } = req.params;
         const shipment = await prisma.shipment.findUnique({
             where: { trackingNumber },
-            select: { history: true }
+            select: {
+                history: true,
+                userId: true,
+                organizationId: true,
+                createdOnBehalfOfUserId: true,
+                assignedDriverId: true
+            }
         });
         if (!shipment) return res.status(404).json({ success: false, error: 'Not found' });
+        if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
         res.status(200).json({ success: true, data: shipment.history });
     } catch (error) {
         res.status(500).json({ success: false, error: 'Failed' });
@@ -89,6 +98,7 @@ exports.getShipmentETA = async (req, res) => {
         const { trackingNumber } = req.params;
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ error: 'Not found' });
+        if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
 
         const curr = shipment.currentLocation;
         const dest = shipment.destination;
@@ -111,6 +121,7 @@ exports.getShipmentRouteDistance = async (req, res) => {
         const { trackingNumber } = req.params;
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Not found' });
+        if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
 
         const origin = shipment.origin;
         const curr = shipment.currentLocation;
@@ -142,8 +153,9 @@ exports.getNearbyShipments = async (req, res) => {
     try {
         // Spatial queries in MySQL require specific indexes. 
         // For now, we return limited results based on organization.
+        const where = scopeShipmentWhere(req, {});
         const shipments = await prisma.shipment.findMany({
-            where: { organizationId: req.user.organizationId },
+            where,
             take: 20
         });
         res.status(200).json({ success: true, data: shipments });

@@ -1,8 +1,92 @@
 const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
 const financeLedgerService = require('../services/financeLedger.service');
+const financeInvoiceService = require('../services/financeInvoice.service');
 const { isOrgRole } = require('../middleware/rbac.policy');
+const { canAccessOrganization } = require('../middleware/authorize.middleware');
 const { handleControllerError } = require('../utils/controllerError');
+
+const normalizeOrgParam = (orgId) => orgId === 'none' ? null : orgId;
+const normalizeCurrencyCode = (currency, fallback = 'KWD') => String(currency || fallback || 'KWD').trim().toUpperCase().slice(0, 3);
+
+const currencyFromLedgerEntry = (entry, fallback = 'KWD') => normalizeCurrencyCode(
+    entry?.currency || entry?.metadata?.currency || entry?.metadata?.billingCurrency || entry?.metadata?.declaredCurrency,
+    fallback
+);
+
+const assertFinanceOrgAccess = (req, res, organizationId) => {
+    if (!canAccessOrganization(req, organizationId)) {
+        res.status(403).json({ success: false, error: 'Unauthorized' });
+        return false;
+    }
+    return true;
+};
+
+exports.listOrganizationInvoices = async (req, res) => {
+    try {
+        const organizationId = normalizeOrgParam(req.params.orgId);
+        if (!assertFinanceOrgAccess(req, res, organizationId)) return;
+
+        const result = await financeInvoiceService.listInvoices({
+            organizationId,
+            status: req.query.status,
+            page: req.query.page,
+            limit: req.query.limit
+        });
+
+        res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        return handleControllerError(res, error, 'Invoice listing');
+    }
+};
+
+exports.createOrganizationInvoice = async (req, res) => {
+    try {
+        const organizationId = normalizeOrgParam(req.params.orgId);
+        if (!assertFinanceOrgAccess(req, res, organizationId)) return;
+
+        const { periodStart, periodEnd, dueDate, notes, vatRate } = req.body;
+        if (!periodStart || !periodEnd) {
+            return res.status(400).json({ success: false, error: 'periodStart and periodEnd are required' });
+        }
+
+        const invoice = await financeInvoiceService.createInvoiceFromPeriod({
+            organizationId,
+            periodStart,
+            periodEnd,
+            dueDate,
+            notes,
+            vatRate,
+            currency: req.body.currency,
+            createdBy: req.user.id
+        });
+
+        res.status(201).json({ success: true, data: invoice });
+    } catch (error) {
+        return handleControllerError(res, error, 'Invoice creation');
+    }
+};
+
+exports.updateInvoiceStatus = async (req, res) => {
+    try {
+        const invoice = await prisma.invoice.findUnique({
+            where: { id: req.params.invoiceId },
+            select: { id: true, organizationId: true }
+        });
+        if (!invoice) return res.status(404).json({ success: false, error: 'Invoice not found' });
+        if (!assertFinanceOrgAccess(req, res, invoice.organizationId)) return;
+
+        const result = await financeInvoiceService.updateInvoiceStatus({
+            invoiceId: req.params.invoiceId,
+            status: req.body.status,
+            updatedBy: req.user.id
+        });
+
+        res.status(200).json({ success: true, data: result });
+    } catch (error) {
+        return handleControllerError(res, error, 'Invoice status update');
+    }
+};
 
 /**
  * Get current user balance
@@ -27,9 +111,10 @@ exports.getBalance = async (req, res) => {
         }
 
         const org = user.organization;
-        const balance = await financeLedgerService.getOrganizationBalance(org.id);
+        const currency = normalizeCurrencyCode(org.currency);
+        const balance = await financeLedgerService.getOrganizationBalance(org.id, currency);
         const availableCredit = Number(org.creditLimit || 0) - Number(balance);
-        const unappliedCash = await financeLedgerService.getUnappliedCash(org.id);
+        const unappliedCash = await financeLedgerService.getUnappliedCash(org.id, currency);
 
         res.status(200).json({
             success: true,
@@ -38,7 +123,7 @@ exports.getBalance = async (req, res) => {
                 creditLimit: Number(org.creditLimit || 0),
                 availableCredit: Number(availableCredit),
                 unappliedCash: Number(unappliedCash),
-                currency: org.currency || 'KWD'
+                currency
             }
         });
     } catch (error) {
@@ -69,6 +154,11 @@ exports.getLedger = async (req, res) => {
         const parsedPage = Math.max(parseInt(page) || 1, 1);
         const skip = (parsedPage - 1) * parsedLimit;
 
+        const organization = organizationId
+            ? await prisma.organization.findUnique({ where: { id: organizationId }, select: { currency: true } })
+            : null;
+        const fallbackCurrency = normalizeCurrencyCode(organization?.currency);
+
         const [transactions, total] = await Promise.all([
             prisma.organizationLedger.findMany({
                 where: { organizationId },
@@ -79,9 +169,14 @@ exports.getLedger = async (req, res) => {
             prisma.organizationLedger.count({ where: { organizationId } })
         ]);
 
+        const data = transactions.map(entry => ({
+            ...entry,
+            currency: currencyFromLedgerEntry(entry, fallbackCurrency)
+        }));
+
         res.status(200).json({
             success: true,
-            data: transactions,
+            data,
             pagination: {
                 total,
                 page: parsedPage,
@@ -101,10 +196,9 @@ exports.getLedger = async (req, res) => {
 exports.getOrganizationOverview = async (req, res) => {
     try {
         const isNone = req.params.orgId === 'none';
+        const orgId = normalizeOrgParam(req.params.orgId);
 
-        if (isNone && req.user.role !== 'admin') {
-            return res.status(403).json({ success: false, error: 'Unauthorized' });
-        }
+        if (!assertFinanceOrgAccess(req, res, orgId)) return;
 
         let organization = null;
         if (!isNone) {
@@ -112,12 +206,17 @@ exports.getOrganizationOverview = async (req, res) => {
             if (!organization) return res.status(404).json({ success: false, error: 'Not found' });
         }
 
-        const orgId = organization ? organization.id : null;
         const creditLimit = organization ? Number(organization.creditLimit) : 0;
 
-        const overview = await financeLedgerService.getOrganizationOverview(orgId, creditLimit);
+        const overview = await financeLedgerService.getOrganizationOverview(orgId, creditLimit, organization?.currency);
 
-        res.status(200).json({ success: true, data: overview });
+        res.status(200).json({
+            success: true,
+            data: {
+                ...overview,
+                currency: normalizeCurrencyCode(overview.currency || organization?.currency)
+            }
+        });
     } catch (error) {
         logger.error('Error getting organization overview:', error);
         res.status(500).json({ success: false, error: 'Failed' });
@@ -131,12 +230,13 @@ exports.getShipmentAccounting = async (req, res) => {
     try {
         const accounting = await financeLedgerService.getShipmentAccounting(req.params.shipmentId);
         if (!accounting) return res.status(404).json({ success: false, error: 'Shipment not found' });
+        if (!assertFinanceOrgAccess(req, res, accounting.shipment?.organizationId || null)) return;
 
         const allocations = await prisma.paymentAllocation.findMany({
             where: { shipmentId: req.params.shipmentId },
             include: {
                 payment: {
-                    select: { reference: true, amount: true, postedAt: true }
+                    select: { reference: true, amount: true, currency: true, postedAt: true }
                 }
             },
             orderBy: { createdAt: 'desc' }
@@ -144,7 +244,11 @@ exports.getShipmentAccounting = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            data: { ...accounting, allocations }
+            data: {
+                ...accounting,
+                currency: normalizeCurrencyCode(accounting.shipment?.currency),
+                allocations
+            }
         });
     } catch (error) {
         logger.error('Error getting shipment accounting:', error);
@@ -157,15 +261,15 @@ exports.getShipmentAccounting = async (req, res) => {
  */
 exports.listPayments = async (req, res) => {
     try {
-        const isNone = req.params.orgId === 'none';
-        const organizationId = isNone ? null : req.params.orgId;
+        const organizationId = normalizeOrgParam(req.params.orgId);
+        if (!assertFinanceOrgAccess(req, res, organizationId)) return;
 
         const payments = await prisma.payment.findMany({
             where: { organizationId },
             include: {
                 allocations: {
                     where: { status: 'ACTIVE' },
-                    select: { amount: true }
+                    select: { amount: true, currency: true }
                 }
             },
             orderBy: { postedAt: 'desc' }
@@ -173,7 +277,10 @@ exports.listPayments = async (req, res) => {
 
         // Add virtual field for allocatedAmount
         const data = payments.map(p => {
-            const allocatedAmount = p.allocations.reduce((sum, a) => sum + Number(a.amount), 0);
+            const paymentCurrency = normalizeCurrencyCode(p.currency);
+            const allocatedAmount = p.allocations
+                .filter(a => normalizeCurrencyCode(a.currency, paymentCurrency) === paymentCurrency)
+                .reduce((sum, a) => sum + Number(a.amount), 0);
             return { ...p, allocatedAmount };
         });
 
@@ -190,10 +297,11 @@ exports.listPayments = async (req, res) => {
 exports.postPayment = async (req, res) => {
     try {
         const { amount, method, reference, notes } = req.body;
-        const isNone = req.params.orgId === 'none';
-        const organizationId = isNone ? null : req.params.orgId;
+        const organizationId = normalizeOrgParam(req.params.orgId);
+        if (!assertFinanceOrgAccess(req, res, organizationId)) return;
 
         if (amount <= 0) return res.status(400).json({ success: false, error: 'Invalid amount' });
+        const currency = normalizeCurrencyCode(req.body.currency);
 
         const result = await prisma.$transaction(async (tx) => {
             // 1. Create Payment
@@ -201,6 +309,7 @@ exports.postPayment = async (req, res) => {
                 data: {
                     organizationId,
                     amount: Number(amount),
+                    currency,
                     method,
                     reference,
                     notes,
@@ -217,17 +326,23 @@ exports.postPayment = async (req, res) => {
                 category: 'PAYMENT',
                 description: `Payment posted${reference ? ` (${reference})` : ''}`,
                 reference,
-                createdBy: req.user.id
+                createdBy: req.user.id,
+                metadata: { currency }
             }, tx);
 
-            // 3. Update Organization Balance
             if (organizationId) {
-                await tx.organization.update({
+                const org = await tx.organization.findUnique({
                     where: { id: organizationId },
-                    data: {
-                        unappliedBalance: { increment: Number(amount) }
-                    }
+                    select: { currency: true }
                 });
+                if (normalizeCurrencyCode(org?.currency) === currency) {
+                    await tx.organization.update({
+                        where: { id: organizationId },
+                        data: {
+                            unappliedBalance: { increment: Number(amount) }
+                        }
+                    });
+                }
             }
 
             return payment;
@@ -246,10 +361,38 @@ exports.postPayment = async (req, res) => {
 exports.allocatePaymentManual = async (req, res) => {
     try {
         const { paymentId, shipmentIds, amount } = req.body;
-        const orgId = req.params.orgId === 'none' ? null : req.params.orgId;
+        const orgId = normalizeOrgParam(req.params.orgId);
+        if (!assertFinanceOrgAccess(req, res, orgId)) return;
 
         if (!paymentId || !shipmentIds || !amount) {
             return res.status(400).json({ success: false, error: 'Missing fields' });
+        }
+
+        const payment = await prisma.payment.findUnique({
+            where: { id: paymentId },
+            select: { id: true, organizationId: true, currency: true }
+        });
+        if (!payment || payment.organizationId !== orgId) {
+            return res.status(403).json({ success: false, error: 'Payment is not accessible for this organization' });
+        }
+
+        const shipmentOrgChecks = await prisma.shipment.findMany({
+            where: { id: { in: shipmentIds } },
+            select: { id: true, organizationId: true, currency: true, pricingSnapshot: true }
+        });
+        if (shipmentOrgChecks.length !== shipmentIds.length || shipmentOrgChecks.some(shipment => shipment.organizationId !== orgId)) {
+            return res.status(403).json({ success: false, error: 'One or more shipments are not accessible for this organization' });
+        }
+        const paymentCurrency = normalizeCurrencyCode(payment.currency);
+        const mismatchedShipment = shipmentOrgChecks.find(shipment => {
+            const shipmentCurrency = normalizeCurrencyCode(shipment.currency || shipment.pricingSnapshot?.billingCurrency || shipment.pricingSnapshot?.currency);
+            return shipmentCurrency !== paymentCurrency;
+        });
+        if (mismatchedShipment) {
+            return res.status(400).json({
+                success: false,
+                error: `Currency mismatch: ${paymentCurrency} payment cannot be allocated to ${normalizeCurrencyCode(mismatchedShipment.currency || mismatchedShipment.pricingSnapshot?.currency)} shipment. Select shipments in ${paymentCurrency} or post a matching payment.`
+            });
         }
 
         let remainingToAllocate = parseFloat(amount);
@@ -290,7 +433,8 @@ exports.allocatePaymentManual = async (req, res) => {
  */
 exports.allocatePaymentsFifo = async (req, res) => {
     try {
-        const orgId = req.params.orgId === 'none' ? null : req.params.orgId;
+        const orgId = normalizeOrgParam(req.params.orgId);
+        if (!assertFinanceOrgAccess(req, res, orgId)) return;
         const allocations = await financeLedgerService.allocatePaymentsFifo({
             organizationId: orgId,
             createdBy: req.user.id
@@ -308,6 +452,13 @@ exports.allocatePaymentsFifo = async (req, res) => {
  */
 exports.reverseAllocation = async (req, res) => {
     try {
+        const existingAllocation = await prisma.paymentAllocation.findUnique({
+            where: { id: req.params.allocationId },
+            select: { organizationId: true }
+        });
+        if (!existingAllocation) return res.status(404).json({ success: false, error: 'Not found' });
+        if (!assertFinanceOrgAccess(req, res, existingAllocation.organizationId)) return;
+
         const allocation = await financeLedgerService.reverseAllocation({
             allocationId: req.params.allocationId,
             reversedBy: req.user.id,

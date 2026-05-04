@@ -293,6 +293,7 @@ model OrganizationLedger {
   organization     Organization? @relation(fields: [organizationId], references: [id])
   
   amount           Decimal      @db.Decimal(18, 4)
+  currency         String       @default("KWD")
   entryType        EntryType
   category         String
   description      String
@@ -308,6 +309,7 @@ model OrganizationLedger {
   createdAt        DateTime     @default(now())
 
   @@index([organizationId, createdAt], map: "Ledger_org_created_idx")
+  @@index([organizationId, currency, createdAt], map: "Ledger_org_currency_created_idx")
   @@index([organizationId, entryType], map: "Ledger_org_entryType_idx")
   @@index([sourceRepo, sourceId], map: "Ledger_source_idx")
   @@index([reference], map: "Ledger_reference_idx")
@@ -353,6 +355,7 @@ model PaymentAllocation {
   shipment         Shipment     @relation(fields: [shipmentId], references: [id])
   
   amount           Decimal      @db.Decimal(18, 4)
+  currency         String       @default("KWD")
   status           String       @default("ACTIVE")
   isFifo           Boolean      @default(false)
   
@@ -368,6 +371,7 @@ model PaymentAllocation {
   @@index([shipmentId, status], map: "Allocation_shipment_status_idx")
   @@index([paymentId, status], map: "Allocation_payment_status_idx")
   @@index([organizationId, status, createdAt], map: "Allocation_org_status_created_idx")
+  @@index([organizationId, currency, status], map: "Allocation_org_currency_status_idx")
   @@index([createdBy, createdAt], map: "Allocation_createdBy_created_idx")
 }
 

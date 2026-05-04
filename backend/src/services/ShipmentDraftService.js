@@ -9,7 +9,7 @@ const {
     assertRequestedAccessAllowed,
     shouldEnforceAssignedAccess
 } = require('./shippingAccess.service');
-const { isPlatformRole } = require('../middleware/rbac.policy');
+const { canCreateShipmentForUser } = require('../middleware/authorize.middleware');
 
 class ShipmentDraftService {
 
@@ -21,10 +21,7 @@ class ShipmentDraftService {
      */
     async createDraft(data, user) {
         // 1. Determine Target User (The paying entity/owner)
-        let targetUserId = user.id;
-        if (isPlatformRole(user.role) && data.userId) {
-            targetUserId = data.userId;
-        }
+        const targetUserId = data.userId || user.id;
 
         // Fetch target user with organization details via Prisma
         const targetUser = await prisma.user.findUnique({
@@ -33,6 +30,11 @@ class ShipmentDraftService {
         });
         
         if (!targetUser) throw new Error('Target user not found');
+        if (targetUserId !== user.id && !canCreateShipmentForUser({ user }, targetUser)) {
+            const error = new Error('Not authorized to create shipments for this user');
+            error.statusCode = 403;
+            throw error;
+        }
 
         // 2. Sanitize & Normalize Data
         const cleanData = this.sanitizePayload(data);
@@ -62,7 +64,8 @@ class ShipmentDraftService {
         }
 
         let snapshot;
-        const needsCarrier = !isManualShipment && (cleanData.carrierCode === 'DGR' || cleanData.carrierCode === 'DHL' || !cleanData.carrierCode) && serviceCode;
+        const carrierNeedsPricing = ['DGR', 'DHL', 'OTE', 'LOGESTECHS'].includes(carrierCode) || !carrierCode;
+        const needsCarrier = !isManualShipment && carrierNeedsPricing && serviceCode;
 
         if (needsCarrier) {
             try {
@@ -85,7 +88,7 @@ class ShipmentDraftService {
         }
 
         // Helper to generate tracking number
-        const trackingNumber = data.trackingNumber || (isManualShipment ? generateManualTrackingNumber() : generateDraftTrackingNumber());
+        const trackingNumber = data.trackingNumber || (isManualShipment ? generateManualTrackingNumber() : generateDraftTrackingNumber(carrierCode));
         const estimatedDelivery = data.estimatedDelivery || new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
         const requestedStatus = cleanData.status || (isManualShipment ? 'draft' : 'ready_for_pickup');
         if (!SHIPMENT_STATUSES.includes(requestedStatus)) {
@@ -129,11 +132,12 @@ class ShipmentDraftService {
                 price: snapshot.totalPrice,
                 costPrice: snapshot.carrierRate,
                 markupAmount: snapshot.markup, // Mapped to markupAmount natively
-                currency: cleanData.currency || snapshot.currency,
+                currency: snapshot.billingCurrency || snapshot.currency || cleanData.currency || 'KWD',
                 pricingSnapshot: snapshot,
                 
                 // Relations
                 userId: targetUserId,
+                createdOnBehalfOfUserId: targetUserId !== user.id ? targetUserId : null,
                 organizationId: targetUser.organizationId,
 
                 // Metadata
@@ -164,6 +168,7 @@ class ShipmentDraftService {
                     sourceRepo: 'Shipment',
                     sourceId: shipment.id,
                     amount: 0,
+                    currency: shipment.currency || snapshot.billingCurrency || snapshot.currency || 'KWD',
                     entryType: 'DEBIT',
                     category: 'SHIPMENT_CHARGE',
                     description: `Initial Pre-booking Snapshot: ${trackingNumber} (Price: ${snapshot.totalPrice})`,
@@ -171,7 +176,8 @@ class ShipmentDraftService {
                     createdBy: user.id,
                     metadata: {
                         event: 'DRAFT_CREATION',
-                        price: snapshot.totalPrice.toString()
+                        price: snapshot.totalPrice.toString(),
+                        currency: shipment.currency || snapshot.billingCurrency || snapshot.currency || 'KWD'
                     }
                 });
             } catch (ledgeError) {
@@ -201,7 +207,7 @@ class ShipmentDraftService {
         }
 
         const carrierPricingPolicy = PricingService.resolveCarrierPricingPolicy(user, carrierCode, quote.currency || data.currency || 'KWD');
-        const quoteCurrency = quote.currency || carrierPricingPolicy.currency || 'KWD';
+        const quoteCurrency = carrierPricingPolicy.currency || quote.currency || 'KWD';
         const selectedOptionalCodes = new Set(
             (data.optionalServiceCodes || [])
                 .map(code => String(code))

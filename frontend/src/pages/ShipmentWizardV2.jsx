@@ -728,7 +728,16 @@ const ShipmentWizardV2 = () => {
         const load = async () => {
             try {
                 const res = await shipmentService.getAvailableCarriers();
-                if (res.success && res.data?.length) setAvailableCarriers(res.data);
+                if (res.success && res.data?.length) {
+                    setAvailableCarriers(res.data);
+                    if (!isStaff) {
+                        const initialCarrier = res.data[0].code;
+                        setSelectedCarrier(initialCarrier);
+                        const defaultCurrency = defaultCurrencyForCarrier(initialCarrier);
+                        setCurrency(defaultCurrency);
+                        setBillingCurrency(defaultCurrency);
+                    }
+                }
             } catch { /* ignore */ }
             if (user?.addresses?.length) {
                 const def = user.addresses.find(a => a.isDefault) || user.addresses[0];
@@ -740,7 +749,7 @@ const ShipmentWizardV2 = () => {
 
     useEffect(() => {
         if (isStaff) {
-            userService.getUsers('org').then(res => setClients(res.data || [])).catch(() => {});
+            userService.getAssignableClients().then(res => setClients(res.data || [])).catch(() => setClients([]));
         }
     }, [isStaff]);
 

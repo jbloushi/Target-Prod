@@ -61,6 +61,11 @@ import {
 
 import { useShipment } from '../context/ShipmentContext';
 import { useAuth } from '../context/AuthContext';
+import {
+  buildShipmentDeleteBlockedMessage,
+  canDeleteShipmentStatus,
+  getShipmentDeleteErrorMessage
+} from '../utils/shipmentDeletionPolicy';
 import axios from 'axios';
 import LocationPicker from './LocationPicker';
 
@@ -279,12 +284,17 @@ const ShipmentDetails = ({ shipment, onUpdateLocation, updatingLocation, locatio
   };
 
   const handleDelete = async () => {
-    if (window.confirm('Delete this shipment permanently?')) {
+    if (!canDeleteShipmentStatus(shipment.status)) {
+      alert(buildShipmentDeleteBlockedMessage(shipment.status).medium);
+      return;
+    }
+
+    if (window.confirm(`Delete shipment ${shipment.trackingNumber}? This is only allowed while the shipment is still in an early pre-processing state and cannot be undone.`)) {
       try {
         await deleteShipment(shipment.trackingNumber);
         navigate('/shipments');
       } catch (err) {
-        alert('Delete failed: ' + err.message);
+        alert(getShipmentDeleteErrorMessage(err, shipment.status, 'medium'));
       }
     }
   };
