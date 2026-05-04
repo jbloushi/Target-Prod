@@ -11,6 +11,12 @@ const {
 } = require('./shippingAccess.service');
 const { canCreateShipmentForUser } = require('../middleware/authorize.middleware');
 
+const defaultServiceCodeForCarrier = (carrierCode) => {
+    const normalized = String(carrierCode || '').toUpperCase();
+    if (['OTE', 'LOGESTECHS'].includes(normalized)) return 'STD';
+    return 'P';
+};
+
 class ShipmentDraftService {
 
     /**
@@ -56,7 +62,7 @@ class ShipmentDraftService {
             || carrierCode === 'MANUAL';
 
         // 3. Rate Shopping & Pricing Snapshot
-        const serviceCode = isManualShipment ? null : (cleanData.serviceCode || 'P');
+        const serviceCode = isManualShipment ? null : (cleanData.serviceCode || defaultServiceCodeForCarrier(carrierCode));
         logger.debug(`ShipmentDraftService: Creating draft for user ${targetUserId}, service ${serviceCode}`);
         const selectedOptionalCodes = new Set((cleanData.optionalServiceCodes || []).map(code => String(code).toUpperCase()));
         if (selectedOptionalCodes.has('II') && Number(cleanData.insuredValue || 0) <= 0) {
@@ -193,8 +199,8 @@ class ShipmentDraftService {
      * Fetches fresh rates from carrier and creates a pricing snapshot.
      */
     async getSecurePricing(data, user) {
-        const serviceCode = data.serviceCode || 'P';
         const carrierCode = data.carrierCode || 'DGR';
+        const serviceCode = data.serviceCode || defaultServiceCodeForCarrier(carrierCode);
 
         // 1. Call Carrier
         const carrier = CarrierFactory.getAdapter(carrierCode);
