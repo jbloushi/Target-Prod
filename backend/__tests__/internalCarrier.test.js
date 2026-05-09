@@ -281,4 +281,9 @@ describe('Internal carrier architecture', () => {
         const CarrierFactory = require('../src/services/CarrierFactory');
         expect(CarrierFactory.getAdapter).toHaveBeenCalledWith('OTE');
     });
+
+    it('wires shipment routes without depending on barrel booking exports for conversion endpoints', () => {
+        const router = require('../src/routes/shipment.routes');
+        expect(typeof router).toBe('function');
+    });
 });

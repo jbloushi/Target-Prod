@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { body, param, query, validationResult } = require('express-validator');
 const shipmentController = require('../controllers/shipment.controller');
+const shipmentBookingController = require('../controllers/shipment-booking.controller');
 const { check } = require('express-validator');
 const logger = require('../utils/logger');
 const authController = require('../controllers/auth.controller');
@@ -52,13 +53,13 @@ router.get('/stats', (req, res, next) => {
 router.get('/carriers', (req, res, next) => {
   logger.info(`[DEBUG] Routing to getAvailableCarriers`);
   next();
-}, shipmentController.getAvailableCarriers);
+}, shipmentBookingController.getAvailableCarriers);
 
 // Get all shipments (Standard list)
 router.get('/', shipmentController.getAllShipments);
 
 // Get rate quotes
-router.post('/quote', shipmentController.getQuotes);
+router.post('/quote', shipmentBookingController.getQuotes);
 
 
 // Get shipments near a location
@@ -237,7 +238,7 @@ router.get(
     param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
     validate
   ],
-  shipmentController.getBookingOptions
+  shipmentBookingController.getBookingOptions
 );
 
 // List conversion target carriers for an internal shipment
@@ -248,7 +249,7 @@ router.get(
     param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
     validate
   ],
-  shipmentController.getInternalShipmentConversionTargets
+  shipmentBookingController.getInternalShipmentConversionTargets
 );
 
 // Convert an internal shipment to a new carrier-backed shipment
@@ -261,7 +262,7 @@ router.post(
     body('serviceCode').optional().isString(),
     validate
   ],
-  shipmentController.convertInternalShipmentToCarrier
+  shipmentBookingController.convertInternalShipmentToCarrier
 );
 
 // Submit to Carrier (platform staff with booking capability)
@@ -272,7 +273,7 @@ router.post(
     param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
     validate
   ],
-  shipmentController.bookWithCarrier
+  shipmentBookingController.bookWithCarrier
 );
 
 // Update a checkpoint
