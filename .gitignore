@@ -1,0 +1,7 @@
+
+# local/server artifacts
+backend-old/
+frontend/.env.production
+frontend/build/
+node_modules/
+*.zip
