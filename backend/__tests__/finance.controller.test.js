@@ -3,10 +3,12 @@ const { createMockRes } = require('../testUtils');
 describe('finance controller', () => {
     const tx = {
         payment: { create: jest.fn() },
-        organization: { update: jest.fn() }
+        organization: { findUnique: jest.fn(), update: jest.fn() }
     };
     const prisma = {
         $transaction: jest.fn(),
+        payment: { findUnique: jest.fn() },
+        shipment: { findMany: jest.fn() },
         paymentAllocation: { findMany: jest.fn() }
     };
     const financeLedgerService = {
@@ -48,6 +50,7 @@ describe('finance controller', () => {
         const res = createMockRes();
 
         tx.payment.create.mockResolvedValue({ id: 'payment-1', amount: 100 });
+        tx.organization.findUnique.mockResolvedValue({ currency: 'KWD' });
 
         await controller.postPayment(req, res);
 
@@ -86,6 +89,15 @@ describe('finance controller', () => {
         financeLedgerService.allocatePayment
             .mockResolvedValueOnce({ shipmentId: 's1', amount: 50 })
             .mockResolvedValueOnce({ shipmentId: 's2', amount: 25 });
+        prisma.payment.findUnique.mockResolvedValue({
+            id: 'payment-1',
+            organizationId: 'org-1',
+            currency: 'KWD'
+        });
+        prisma.shipment.findMany.mockResolvedValue([
+            { id: 's1', organizationId: 'org-1', currency: 'KWD', pricingSnapshot: { currency: 'KWD' } },
+            { id: 's2', organizationId: 'org-1', currency: 'KWD', pricingSnapshot: { currency: 'KWD' } }
+        ]);
 
         await controller.allocatePaymentManual(req, res);
 
@@ -100,5 +112,43 @@ describe('finance controller', () => {
             amount: 25
         }), tx);
         expect(res.status).toHaveBeenCalledWith(201);
+    });
+
+    it('returns billing currency for shipment accounting when shipment declared currency differs', async () => {
+        const controller = require('../src/controllers/finance.controller');
+        const req = {
+            params: { shipmentId: 'shipment-1' },
+            user: { id: 'accounting-1', role: 'accounting' }
+        };
+        const res = createMockRes();
+
+        financeLedgerService.getShipmentAccounting.mockResolvedValue({
+            shipment: {
+                id: 'shipment-1',
+                organizationId: null,
+                currency: 'USD',
+                pricingSnapshot: {
+                    billingCurrency: 'KWD',
+                    declaredCurrency: 'USD'
+                }
+            },
+            currency: 'KWD',
+            totalCharge: 12.5,
+            totalPaid: 0,
+            remainingBalance: 12.5,
+            status: 'unpaid',
+            daysOutstanding: 0
+        });
+        prisma.paymentAllocation.findMany.mockResolvedValue([]);
+
+        await controller.getShipmentAccounting(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+            success: true,
+            data: expect.objectContaining({
+                currency: 'KWD'
+            })
+        }));
     });
 });

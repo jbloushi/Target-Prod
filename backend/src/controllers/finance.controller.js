@@ -8,6 +8,10 @@ const { handleControllerError } = require('../utils/controllerError');
 
 const normalizeOrgParam = (orgId) => orgId === 'none' ? null : orgId;
 const normalizeCurrencyCode = (currency, fallback = 'KWD') => String(currency || fallback || 'KWD').trim().toUpperCase().slice(0, 3);
+const getShipmentBillingCurrency = (shipment, fallback = 'KWD') => normalizeCurrencyCode(
+    shipment?.pricingSnapshot?.billingCurrency || shipment?.pricingSnapshot?.currency || shipment?.currency,
+    fallback
+);
 
 const currencyFromLedgerEntry = (entry, fallback = 'KWD') => normalizeCurrencyCode(
     entry?.currency || entry?.metadata?.currency || entry?.metadata?.billingCurrency || entry?.metadata?.declaredCurrency,
@@ -246,7 +250,7 @@ exports.getShipmentAccounting = async (req, res) => {
             success: true,
             data: {
                 ...accounting,
-                currency: normalizeCurrencyCode(accounting.shipment?.currency),
+                currency: getShipmentBillingCurrency(accounting.shipment, accounting.currency),
                 allocations
             }
         });
@@ -385,13 +389,13 @@ exports.allocatePaymentManual = async (req, res) => {
         }
         const paymentCurrency = normalizeCurrencyCode(payment.currency);
         const mismatchedShipment = shipmentOrgChecks.find(shipment => {
-            const shipmentCurrency = normalizeCurrencyCode(shipment.currency || shipment.pricingSnapshot?.billingCurrency || shipment.pricingSnapshot?.currency);
+            const shipmentCurrency = getShipmentBillingCurrency(shipment, paymentCurrency);
             return shipmentCurrency !== paymentCurrency;
         });
         if (mismatchedShipment) {
             return res.status(400).json({
                 success: false,
-                error: `Currency mismatch: ${paymentCurrency} payment cannot be allocated to ${normalizeCurrencyCode(mismatchedShipment.currency || mismatchedShipment.pricingSnapshot?.currency)} shipment. Select shipments in ${paymentCurrency} or post a matching payment.`
+                error: `Currency mismatch: ${paymentCurrency} payment cannot be allocated to ${getShipmentBillingCurrency(mismatchedShipment, paymentCurrency)} shipment. Select shipments in ${paymentCurrency} or post a matching payment.`
             });
         }
 

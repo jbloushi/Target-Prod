@@ -351,6 +351,10 @@ const FinancePage = () => {
     const currentCurrency = normalizeCurrencyCode(
         overview?.currency || organizations.find(o => o.id === selectedOrgId)?.currency || user?.organization?.currency
     );
+    const getShipmentBillingCurrency = useCallback((shipment, fallback = currentCurrency) => normalizeCurrencyCode(
+        shipment?.pricingSnapshot?.billingCurrency || shipment?.pricingSnapshot?.currency || shipment?.currency,
+        fallback
+    ), [currentCurrency]);
 
     const isFirstOrgLoad = useRef(true);
 
@@ -518,7 +522,7 @@ const FinancePage = () => {
 
         const paymentCurrency = normalizeCurrencyCode(payment.currency, currentCurrency);
         const hasCurrencyMismatch = Object.values(selectedShipmentsMap).some(shipment =>
-            normalizeCurrencyCode(shipment.currency || shipment.pricingSnapshot?.billingCurrency || shipment.pricingSnapshot?.currency, currentCurrency) !== paymentCurrency
+            getShipmentBillingCurrency(shipment, currentCurrency) !== paymentCurrency
         );
         if (hasCurrencyMismatch) {
             enqueueSnackbar(`Select only ${paymentCurrency} shipments for this payment, or post a payment in the shipment currency.`, { variant: 'warning' });
@@ -548,7 +552,7 @@ const FinancePage = () => {
         if (shipment.paid) return;
         if (selectedPayment) {
             const paymentCurrency = normalizeCurrencyCode(selectedPayment.currency, currentCurrency);
-            const shipmentCurrency = normalizeCurrencyCode(shipment.currency || shipment.pricingSnapshot?.billingCurrency || shipment.pricingSnapshot?.currency, currentCurrency);
+            const shipmentCurrency = getShipmentBillingCurrency(shipment, currentCurrency);
             if (shipmentCurrency !== paymentCurrency) {
                 enqueueSnackbar(`This shipment is ${shipmentCurrency}; select a ${shipmentCurrency} payment or keep this allocation in ${paymentCurrency}.`, { variant: 'info' });
                 return;
@@ -569,7 +573,7 @@ const FinancePage = () => {
     const selectedPaymentCurrency = normalizeCurrencyCode(selectedPayment?.currency, currentCurrency);
     const isShipmentCurrencyMismatch = (shipment) => {
         if (!selectedPayment) return false;
-        return normalizeCurrencyCode(shipment.currency || shipment.pricingSnapshot?.billingCurrency || shipment.pricingSnapshot?.currency, currentCurrency) !== selectedPaymentCurrency;
+        return getShipmentBillingCurrency(shipment, currentCurrency) !== selectedPaymentCurrency;
     };
 
     // Calculate total from selected map
@@ -578,7 +582,7 @@ const FinancePage = () => {
         return sum + outstanding;
     }, 0);
     const selectedShipmentCurrencies = [...new Set(Object.values(selectedShipmentsMap)
-        .map(s => normalizeCurrencyCode(s.currency || s.pricingSnapshot?.currency || currentCurrency))
+        .map(s => getShipmentBillingCurrency(s, currentCurrency))
     )];
     const selectedShipmentsCurrency = selectedShipmentCurrencies.length === 1 ? selectedShipmentCurrencies[0] : currentCurrency;
     const formatCurrencyBreakdown = (amounts = {}) => Object.entries(amounts)
@@ -1012,10 +1016,10 @@ const FinancePage = () => {
                                                     </ItemInfo>
                                                     <div style={{ textAlign: 'right' }}>
                                                         <div style={{ fontWeight: 800, fontSize: '15px' }}>
-                                                            {money(s.paid ? 0 : (s.remainingBalance !== undefined ? s.remainingBalance : (parseFloat(s.pricingSnapshot?.totalPrice || s.price || 0) - parseFloat(s.totalPaid || 0))), s.currency || s.pricingSnapshot?.currency)}
+                                                            {money(s.paid ? 0 : (s.remainingBalance !== undefined ? s.remainingBalance : (parseFloat(s.pricingSnapshot?.totalPrice || s.price || 0) - parseFloat(s.totalPaid || 0))), getShipmentBillingCurrency(s, currentCurrency))}
                                                         </div>
                                                         <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
-                                                            Total: {money(s.pricingSnapshot?.totalPrice || s.price || 0, s.currency || s.pricingSnapshot?.currency)}
+                                                            Total: {money(s.pricingSnapshot?.totalPrice || s.price || 0, getShipmentBillingCurrency(s, currentCurrency))}
                                                         </div>
                                                         <div style={{
                                                             fontSize: '10px',

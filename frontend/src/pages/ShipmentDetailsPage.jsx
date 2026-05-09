@@ -1348,8 +1348,15 @@ const ShipmentDetailsPage = () => {
     ].filter(Boolean).join(' ').toUpperCase();
     const normalizeCurrencyCode = (currency, fallback = 'KWD') => String(currency || fallback || 'KWD').trim().toUpperCase().slice(0, 3);
     const billingCurrency = normalizeCurrencyCode(
-        accountingSummary?.currency || shipment.currency || shipment.pricingSnapshot?.currency,
+        accountingSummary?.currency
+        || shipment.pricingSnapshot?.billingCurrency
+        || shipment.pricingSnapshot?.currency
+        || shipment.currency,
         shipmentCarrierText.includes('OTE') || shipmentCarrierText.includes('LOGESTECHS') ? 'AED' : 'KWD'
+    );
+    const declaredCurrency = normalizeCurrencyCode(
+        shipment.pricingSnapshot?.declaredCurrency || shipment.currency,
+        billingCurrency
     );
 
     const handleCopyTrackingLink = () => {
@@ -1733,7 +1740,7 @@ const ShipmentDetailsPage = () => {
                                                 </svg>
                                             </div>
                                             <div style={{ flex: 1, color: 'var(--text-primary)' }}>{item.description || 'Item'} (x{item.quantity || 1})</div>
-                                            <div style={{ color: 'var(--text-secondary)' }}>{item.declaredValue != null ? `${item.declaredValue} ${shipment.currency || ''}` : ''}</div>
+                                            <div style={{ color: 'var(--text-secondary)' }}>{item.declaredValue != null ? `${item.declaredValue} ${declaredCurrency}` : ''}</div>
                                             <div style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>HS: {item.hsCode || '—'}</div>
                                         </div>
                                     ))}
