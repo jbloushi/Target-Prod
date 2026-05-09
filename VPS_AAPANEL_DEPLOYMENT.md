@@ -117,8 +117,8 @@ Enable HTTPS and force HTTPS in aaPanel.
 - `https://your-domain.com/track` loads public tracking.
 - Login works.
 - Shipment creation works for a platform user.
-- A client API key can call `/api/v1/quotes` and receives only the assigned service/manual result.
-- Manual Shipment creation does not call a carrier booking adapter.
+- A client API key can call `/api/v1/quotes` and receives only the assigned service/internal result.
+- Internal shipment creation does not call a carrier booking adapter.
 - Generated documents are written to `backend/uploads/documents` and are not committed.
 
 ## Maintenance Notes

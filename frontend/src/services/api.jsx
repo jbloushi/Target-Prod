@@ -289,6 +289,16 @@ export const shipmentService = {
     }
   },
 
+  getInternalShipmentConversionTargets: async (trackingNumber) => {
+    try {
+      const response = await api.get(`shipments/${trackingNumber}/conversion-targets`);
+      return response.data;
+    } catch (error) {
+      console.error(`Error fetching conversion targets for shipment ${trackingNumber}:`, error);
+      throw error;
+    }
+  },
+
   // Submit to Carrier (Generic Carrier Booking)
   bookShipment: async (trackingNumber, carrierCode = 'DGR', optionalServiceCodes = []) => {
     try {
@@ -297,6 +307,16 @@ export const shipmentService = {
       return response.data;
     } catch (error) {
       console.error(`Error submitting shipment ${trackingNumber} to ${carrierCode}:`, error);
+      throw error;
+    }
+  },
+
+  convertInternalShipment: async (trackingNumber, payload) => {
+    try {
+      const response = await api.post(`shipments/${trackingNumber}/convert-carrier`, payload);
+      return response.data;
+    } catch (error) {
+      console.error(`Error converting internal shipment ${trackingNumber}:`, error);
       throw error;
     }
   },

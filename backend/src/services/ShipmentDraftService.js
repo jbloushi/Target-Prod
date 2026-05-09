@@ -2,8 +2,8 @@ const { prisma } = require('../config/database');
 const PricingService = require('./pricing.service');
 const CarrierFactory = require('./CarrierFactory');
 const logger = require('../utils/logger');
-const { generateDraftTrackingNumber, generateManualTrackingNumber } = require('../utils/shipmentUtils');
-const { SHIPMENT_STATUSES, MANUAL_SHIPMENT_STATUSES } = require('../constants/statusConstants');
+const { generateUniqueCarrierTrackingNumber } = require('../utils/shipmentUtils');
+const { SHIPMENT_STATUSES, INTERNAL_SHIPMENT_STATUSES } = require('../constants/statusConstants');
 const {
     getAssignedShippingAccess,
     assertRequestedAccessAllowed,
@@ -12,10 +12,23 @@ const {
 const { canCreateShipmentForUser } = require('../middleware/authorize.middleware');
 
 const defaultServiceCodeForCarrier = (carrierCode) => {
-    const normalized = String(carrierCode || '').toUpperCase();
-    if (['OTE', 'LOGESTECHS'].includes(normalized)) return 'STD';
-    return 'P';
+    const metadata = CarrierFactory.getCarrierMetadata(carrierCode);
+    return metadata?.defaultServiceCode || 'P';
 };
+
+const buildInternalPricingSnapshot = (currency = 'KWD') => ({
+    carrierRate: 0,
+    markup: 0,
+    totalPrice: 0,
+    currency,
+    billingCurrency: currency,
+    policySource: 'manual',
+    rulesVersion: 'manual-pricing-scaffold',
+    rateType: 'INTERNAL',
+    requiresManualPricing: true,
+    internallyManaged: true,
+    expiresAt: new Date(Date.now() + 86400000)
+});
 
 class ShipmentDraftService {
 
@@ -54,15 +67,16 @@ class ShipmentDraftService {
             });
             cleanData.carrierCode = assignedAccess.carrierCode;
             cleanData.serviceCode = assignedAccess.serviceCode;
-            cleanData.manualShipment = assignedAccess.mode === 'manual';
+            cleanData.internallyManaged = assignedAccess.carrierCode === 'INTERNAL';
         }
 
         const carrierCode = String(cleanData.carrierCode || assignedAccess.carrierCode || '').toUpperCase();
-        const isManualShipment = cleanData.manualShipment === true
-            || carrierCode === 'MANUAL';
+        const carrierCapabilities = CarrierFactory.getCarrierCapabilities(carrierCode) || {};
+        const isInternalShipment = carrierCode === 'INTERNAL';
+        const isInternalManaged = cleanData.internallyManaged === true || isInternalShipment;
 
         // 3. Rate Shopping & Pricing Snapshot
-        const serviceCode = isManualShipment ? null : (cleanData.serviceCode || defaultServiceCodeForCarrier(carrierCode));
+        const serviceCode = isInternalShipment ? null : (cleanData.serviceCode || defaultServiceCodeForCarrier(carrierCode));
         logger.debug(`ShipmentDraftService: Creating draft for user ${targetUserId}, service ${serviceCode}`);
         const selectedOptionalCodes = new Set((cleanData.optionalServiceCodes || []).map(code => String(code).toUpperCase()));
         if (selectedOptionalCodes.has('II') && Number(cleanData.insuredValue || 0) <= 0) {
@@ -70,10 +84,11 @@ class ShipmentDraftService {
         }
 
         let snapshot;
-        const carrierNeedsPricing = ['DGR', 'DHL', 'OTE', 'LOGESTECHS'].includes(carrierCode) || !carrierCode;
-        const needsCarrier = !isManualShipment && carrierNeedsPricing && serviceCode;
+        const needsCarrier = !isInternalShipment && carrierCapabilities.supportsRating && serviceCode;
 
-        if (needsCarrier) {
+        if (isInternalShipment) {
+            snapshot = buildInternalPricingSnapshot(data.currency || 'KWD');
+        } else if (needsCarrier) {
             try {
                 snapshot = await this.getSecurePricing(cleanData, targetUser);
             } catch (err) {
@@ -81,8 +96,8 @@ class ShipmentDraftService {
                 throw err;
             }
         } else {
-            // Fallback for manual shipments / other carriers
-            const { markup, source } = PricingService.resolveMarkup(targetUser, targetUser.organization, isManualShipment ? 'MANUAL' : (cleanData.carrierCode || 'DGR'));
+            // Fallback for locally managed shipments / other carriers
+            const { markup, source } = PricingService.resolveMarkup(targetUser, targetUser.organization, cleanData.carrierCode || 'DGR');
             snapshot = PricingService.createSnapshot(
                 data.costPrice || data.price || data.totalPrice || 0,
                 markup,
@@ -94,14 +109,17 @@ class ShipmentDraftService {
         }
 
         // Helper to generate tracking number
-        const trackingNumber = data.trackingNumber || (isManualShipment ? generateManualTrackingNumber() : generateDraftTrackingNumber(carrierCode));
+        const trackingNumber = data.trackingNumber || await generateUniqueCarrierTrackingNumber(
+            prisma,
+            carrierCode
+        );
         const estimatedDelivery = data.estimatedDelivery || new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-        const requestedStatus = cleanData.status || (isManualShipment ? 'draft' : 'ready_for_pickup');
+        const requestedStatus = cleanData.status || (isInternalShipment ? 'draft' : 'ready_for_pickup');
         if (!SHIPMENT_STATUSES.includes(requestedStatus)) {
             throw new Error(`Invalid shipment status '${requestedStatus}'`);
         }
-        if (isManualShipment && !MANUAL_SHIPMENT_STATUSES.includes(requestedStatus)) {
-            throw new Error(`Invalid manual shipment status '${requestedStatus}'`);
+        if (isInternalShipment && !INTERNAL_SHIPMENT_STATUSES.includes(requestedStatus)) {
+            throw new Error(`Invalid internal shipment status '${requestedStatus}'`);
         }
 
         // 4. Create Shipment in MySQL
@@ -110,7 +128,7 @@ class ShipmentDraftService {
                 trackingNumber,
                 status: requestedStatus,
                 serviceCode,
-                carrierCode: isManualShipment ? 'MANUAL' : (cleanData.carrierCode || 'DGR'),
+                carrierCode: isInternalShipment ? 'INTERNAL' : (cleanData.carrierCode || 'DGR'),
                 
                 // Address & Customer Info (JSON)
                 origin: { 
@@ -154,7 +172,8 @@ class ShipmentDraftService {
                 history: [
                     {
                         status: requestedStatus,
-                        description: isManualShipment ? 'Manual shipment created' : 'Shipment draft created',
+                        description: isInternalShipment ? 'Shipment Created' : 'Shipment draft created',
+                        source: 'platform',
                         timestamp: new Date(),
                         location: cleanData.origin
                     }
@@ -210,6 +229,10 @@ class ShipmentDraftService {
         const quote = quotes.find(q => q.serviceCode === serviceCode);
         if (!quote) {
             throw new Error(`Service ${serviceCode} not available from ${carrierCode}`);
+        }
+
+        if (quote.requiresManualPricing) {
+            return buildManualPricingSnapshot(quote.currency || data.currency || 'KWD');
         }
 
         const carrierPricingPolicy = PricingService.resolveCarrierPricingPolicy(user, carrierCode, quote.currency || data.currency || 'KWD');

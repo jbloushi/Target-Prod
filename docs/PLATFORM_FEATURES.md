@@ -6,17 +6,17 @@ Last reviewed: 2026-04-14
 
 ## Product Summary
 
-Target Logistics is a shipment operations platform that supports internal platform users, client users, API clients, carrier-backed shipments, Manual Shipments, pickup operations, public tracking, and finance/accounting workflows.
+Target Logistics is a shipment operations platform that supports internal platform users, client users, API clients, carrier-backed shipments, internal shipments, pickup operations, public tracking, and finance/accounting workflows.
 
 ## Core Invariants
 
 - There are only two shipment types: `package` (`Standard Package`) and `documents` (`Document Express`).
-- A client user has exactly one shipping access assignment: one carrier/service pair or Manual Shipment.
+- A client user has exactly one shipping access assignment: one carrier/service pair or the internal carrier.
 - Client API callers should not send carrier or service fields. The backend derives access from the API key owner.
-- Manual Shipments use `carrierCode: MANUAL`, have no carrier service code, and are not booked with a 3PL carrier.
-- Manual Shipments do not show or use the Manage Approval / carrier booking action.
-- Manual Shipment price, cost, currency, and estimated delivery can be edited inside shipment editing by authorized platform roles.
-- Manual status changes are allowed only for `admin`, `manager`, and `accounting` roles.
+- Internal shipments use `carrierCode: INTERNAL`, service code `STD`, and tracking prefix `TGR`. They book locally through the carrier adapter without a 3PL API call.
+- Internal shipments do not show or use the Manage Approval / carrier booking action.
+- Internal shipment price, cost, currency, and estimated delivery can be edited inside shipment editing by authorized platform roles.
+- Internal status changes are allowed only for `admin`, `manager`, and `accounting` roles.
 - Automated status movement still occurs through carrier booking, carrier tracking sync, pickup scans, and warehouse scans where those flows apply.
 - Public tracking is customer-facing, light by default, and branded as Target Logistics.
 
@@ -43,7 +43,7 @@ Sources of truth:
 
 Client users are assigned one of these options during user creation or user editing:
 
-- Manual Shipment.
+- The internal carrier.
 - DGR/DHL with one service code such as `P`, `Y`, or `H`.
 - Another carrier/service option if enabled by the platform.
 
@@ -63,18 +63,18 @@ Shipment creation normalizes addresses, parcels, items, shipment type, currency,
 
 For platform-created shipments, platform roles can create shipments on behalf of selected users. For client users and API clients, carrier/service selection is enforced from the assigned access policy.
 
-## Manual Shipments
+## Internal Shipments
 
-Manual Shipment is used when Target Logistics needs to create and manage a shipment inside the platform without registering it with a 3PL carrier.
+Internal shipments are used when Target Logistics needs to create and manage a shipment inside the platform without registering it with a 3PL carrier.
 
-Manual Shipment behavior:
+Internal shipment behavior:
 
-- Carrier code is `MANUAL`.
-- Service code is `null`.
-- Tracking numbers are generated with the manual tracking number path.
-- Carrier booking is skipped.
+- `INTERNAL` service code is `STD`.
+- `INTERNAL` tracking numbers use `TGR`.
+- Carrier booking is local-only and handled by `InternalAdapter`.
 - Carrier labels/invoices are not expected from a 3PL adapter.
-- Manual cost, sale price, currency, and estimated delivery can be maintained in shipment editing.
+- Pricing currently shows "Manual pricing required" and stores a scaffold for future pricing expansion.
+- Internal cost, sale price, currency, and estimated delivery can be maintained in shipment editing.
 - Public tracking still works.
 - Status can be updated through the platform by `admin`, `manager`, and `accounting`.
 
@@ -86,7 +86,7 @@ Current carrier list:
 
 | Carrier | Status | Notes |
 | --- | --- | --- |
-| `MANUAL` | Active | Internal/manual shipments. |
+| `INTERNAL` | Active | Internal shipments. No external API dependency. |
 | `DGR` | Active | DHL/DGR adapter path. |
 | `DHL` | Compatibility | Backward-compatible alias handled by DGR adapter paths. |
 | `OTE` | Active | OTE carrier adapter using LogesTechs shipment (v2) + fulfillment (v5) APIs with credentialed header auth. |
@@ -129,7 +129,7 @@ Frontend display source of truth: `frontend/src/constants/statusConfig.jsx`.
 
 Editable shipment fields include route/address data, parcels, items, incoterm, currency, dangerous goods, customer/reference fields, public location setting, and status where authorized.
 
-Carrier-backed shipments re-rate when critical shipment details change. Manual Shipments do not call carrier rating and can accept manually maintained commercial values.
+Carrier-backed shipments re-rate when critical shipment details change. Internal shipments do not call carrier rating and can accept manually maintained commercial values.
 
 Manual-only commercial fields:
 
@@ -170,7 +170,7 @@ Routes include:
 
 Client API capabilities:
 
-- Create shipments using assigned carrier/service or Manual Shipment.
+- Create shipments using assigned carrier/service or the internal carrier.
 - Get assigned-service quotes.
 - Update editable shipment details before the shipment is too far along.
 - Track owned shipments.
@@ -201,7 +201,7 @@ The release gate is automated through `npm run verify` from the repository root.
 It covers:
 
 - Frontend ESLint checks.
-- Backend Jest tests for shipment access policy, API key auth, client API carrier/service enforcement, manual shipment editing, automatic carrier status promotion, finance payment posting, and manual payment allocation.
+- Backend Jest tests for shipment access policy, API key auth, client API carrier/service enforcement, internal shipment editing, automatic carrier status promotion, finance payment posting, and manual payment allocation.
 - Frontend Vitest tests for status rendering rules, client/platform capabilities, and CSV export behavior.
 - Vite production build.
 - npm audit checks for root, backend, and frontend packages.

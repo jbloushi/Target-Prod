@@ -17,7 +17,7 @@ npm run test:coverage
 npm run verify
 ```
 
-`npm test` runs the backend Jest suite for shipment access policy, API key authentication, client API carrier/service enforcement, manual shipment editing, automatic carrier status promotion, and finance workflows.
+`npm test` runs the backend Jest suite for shipment access policy, API key authentication, client API carrier/service enforcement, internal shipment editing, automatic carrier status promotion, and finance workflows.
 
 Prisma commands:
 
@@ -87,7 +87,7 @@ ADMIN_PASSWORD=replace-with-a-temporary-local-password
 - Prisma/MySQL is the active persistence path.
 - Client shipping access is enforced through `src/services/shippingAccess.service.js`.
 - Client API requests should not require carrier/service selection from the client.
-- Manual Shipments use `carrierCode: MANUAL` and skip carrier booking.
+- Internal shipments use `carrierCode: INTERNAL` and skip external carrier booking.
 - Manual status changes are limited to `admin`, `manager`, and `accounting`.
 - Canonical shipment statuses live in `src/constants/statusConstants.js`.
 - RBAC capabilities live in `src/middleware/rbac.policy.js` and must stay aligned with the frontend copy.

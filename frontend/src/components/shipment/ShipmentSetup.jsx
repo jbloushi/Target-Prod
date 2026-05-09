@@ -88,7 +88,7 @@ const ShipmentSetup = ({
                     >
                         {availableCarriers.map((carrier) => (
                             <option key={carrier.code} value={carrier.code} disabled={!carrier.active}>
-                                {carrier.code === 'MANUAL' ? 'Manual Shipment' : `${carrier.name} Network`} {!carrier.active && '(Service Suspended)'}
+                                {carrier.code === 'INTERNAL' ? 'Internal' : `${carrier.name} Network`} {!carrier.active && '(Service Suspended)'}
                             </option>
                         ))}
                     </Select>

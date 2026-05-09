@@ -23,11 +23,11 @@ const SERVICE_LABELS = {
     LOGESTECHS: {
         STD: 'OTE Standard'
     },
+    INTERNAL: {
+        STD: 'Internal Standard'
+    },
     FEDEX: {
         P: 'FedEx Priority'
-    },
-    MANUAL: {
-        MANUAL: 'Manual Shipment'
     }
 };
 
@@ -49,8 +49,8 @@ const normalizeService = (serviceCode) => {
 const getServiceName = (carrierCode, serviceCode) => {
     const carrier = normalizeCarrier(carrierCode);
 
-    if (carrier === 'MANUAL') {
-        return 'Manual Shipment';
+    if (carrier === 'INTERNAL') {
+        return SERVICE_LABELS.INTERNAL[normalizeService(serviceCode) || 'STD'];
     }
 
     if (!serviceCode) {
@@ -63,14 +63,14 @@ const getServiceName = (carrierCode, serviceCode) => {
 
 const normalizeShippingAccess = (value = {}) => {
     const carrierCode = normalizeCarrier(value.carrierCode || value.preferredCarrier);
-    const isManual = value.mode === 'manual' || carrierCode === 'MANUAL';
 
-    if (isManual) {
+    if (carrierCode === 'INTERNAL') {
+        const serviceCode = normalizeService(value.serviceCode || value.defaultServiceCode) || 'STD';
         return {
-            mode: 'manual',
-            carrierCode: 'MANUAL',
-            serviceCode: null,
-            serviceName: 'Manual Shipment'
+            mode: 'internal',
+            carrierCode: 'INTERNAL',
+            serviceCode,
+            serviceName: value.serviceName || getServiceName('INTERNAL', serviceCode)
         };
     }
 
@@ -114,9 +114,9 @@ const assertRequestedAccessAllowed = (assignedAccess, requested = {}) => {
         throw err;
     }
 
-    if (assignedAccess.mode === 'manual') {
+    if (assignedAccess.mode === 'internal') {
         if (requestedService) {
-            const err = new Error('Manual Shipment does not allow a carrier service code.');
+            const err = new Error('Internal shipments do not allow a carrier service code.');
             err.statusCode = 403;
             throw err;
         }
@@ -143,13 +143,6 @@ const shouldEnforceAssignedAccess = (actor, targetUser) => {
 
 const getServiceOptions = (carrierCode) => {
     const carrier = normalizeCarrier(carrierCode);
-
-    if (carrier === 'MANUAL') {
-        return [{
-            serviceCode: null,
-            serviceName: 'Manual Shipment'
-        }];
-    }
 
     return Object.entries(SERVICE_LABELS[carrier] || {})
         .map(([serviceCode, serviceName]) => ({

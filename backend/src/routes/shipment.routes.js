@@ -240,6 +240,30 @@ router.get(
   shipmentController.getBookingOptions
 );
 
+// List conversion target carriers for an internal shipment
+router.get(
+  '/:trackingNumber/conversion-targets',
+  authorize('BOOK_CARRIERS'),
+  [
+    param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
+    validate
+  ],
+  shipmentController.getInternalShipmentConversionTargets
+);
+
+// Convert an internal shipment to a new carrier-backed shipment
+router.post(
+  '/:trackingNumber/convert-carrier',
+  authorize('BOOK_CARRIERS'),
+  [
+    param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
+    body('carrierCode').isString().notEmpty().withMessage('Target carrier is required'),
+    body('serviceCode').optional().isString(),
+    validate
+  ],
+  shipmentController.convertInternalShipmentToCarrier
+);
+
 // Submit to Carrier (platform staff with booking capability)
 router.post(
   '/:trackingNumber/book',

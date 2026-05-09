@@ -20,6 +20,7 @@ import ShipmentSetup    from '../components/shipment/ShipmentSetup';
 import ShipmentContent  from '../components/shipment/ShipmentContent';
 import ShipmentBilling  from '../components/shipment/ShipmentBilling';
 import { formatPartyAddress } from '../utils/addressFormatter';
+import { getCarrierDisplayName, requiresManualPricing } from '../utils/shipmentDisplay';
 import { shipmentService, userService } from '../services/api';
 
 // ─── Design system tokens ─────────────────────────────────────────────────────
@@ -144,6 +145,17 @@ const CARRIER_PROFILES = {
             { value: 'box',  label: 'Standard Box' },
         ],
     },
+    INTERNAL: {
+        supportsDangerousGoods: false,
+        requiredFields: {
+            sender:   ['contactPerson','phone','streetLines','city','countryCode'],
+            receiver: ['contactPerson','phone','streetLines','city','countryCode'],
+        },
+        packagingOptions: [
+            { value: 'user', label: 'My Own Packaging' },
+            { value: 'box',  label: 'Standard Box' },
+        ],
+    },
 };
 
 // ─── Horizontal step tabs ─────────────────────────────────────────────────────
@@ -239,7 +251,7 @@ const BookingCard = ({ clients, selectedClient, onClientChange, availableCarrier
                     >
                         {availableCarriers.map(c => (
                             <MenuItem key={c.code} value={c.code} disabled={!c.active} sx={{ fontSize: 13, fontFamily: "'Manrope', sans-serif" }}>
-                                {c.code === 'MANUAL' ? 'Manual Shipment' : c.name}{c.serviceName ? ` / ${c.serviceName}` : ''}{!c.active ? ' (Suspended)' : ''}
+                                {getCarrierDisplayName(c.code, c.name)}{c.serviceName ? ` / ${c.serviceName}` : ''}{!c.active ? ' (Suspended)' : ''}
                             </MenuItem>
                         ))}
                     </Select>
@@ -260,7 +272,8 @@ const SummaryPanel = ({
     onBack, onNext, onSubmit,
 }) => {
     const isReview   = activeStep === STEPS.length - 1;
-    const hasPricing = Number(selectedService?.totalPrice || 0) > 0;
+    const manualPricingRequired = requiresManualPricing(selectedService);
+    const hasPricing = !manualPricingRequired && Number(selectedService?.totalPrice || 0) > 0;
     const showMarkup = isStaff && selectedService?.basePrice != null;
     const tipText    = STEP_TIPS[STEPS[activeStep]?.key] || '';
     const selectedOptionalServices = (availableOptionalServices || []).filter(
@@ -355,7 +368,7 @@ const SummaryPanel = ({
                                                 {s.serviceName}
                                             </Typography>
                                             <Typography sx={{ fontSize: 12, fontWeight: 800, color: active ? DS.primary : DS.onSurface, fontFamily: "'Manrope', sans-serif" }}>
-                                                {Number(s.totalPrice).toFixed(3)}
+                                                {requiresManualPricing(s) ? 'Manual pricing required' : Number(s.totalPrice || 0).toFixed(3)}
                                             </Typography>
                                         </Box>
                                         {s.deliveryDate && (
@@ -395,7 +408,9 @@ const SummaryPanel = ({
                             )}
                             <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                                 <Typography sx={{ fontSize: 12, color: DS.outline, fontFamily: "'Manrope', sans-serif" }}>Freight Rate</Typography>
-                                <Typography sx={{ fontSize: 12, fontWeight: 700, fontFamily: "'Manrope', sans-serif" }}>{Number(selectedService.totalPrice || 0).toFixed(3)} {billingCurrency}</Typography>
+                                <Typography sx={{ fontSize: 12, fontWeight: 700, fontFamily: "'Manrope', sans-serif" }}>
+                                    {manualPricingRequired ? 'Manual pricing required' : `${Number(selectedService.totalPrice || 0).toFixed(3)} ${billingCurrency}`}
+                                </Typography>
                             </Box>
                             {optionalServicesTotal > 0 && (
                                 <>
@@ -622,8 +637,8 @@ const SuccessScreen = ({ createdShipment, selectedCarrier, onView, onNew }) => (
             {createdShipment?.trackingNumber || 'PENDING'}
         </Typography>
         <Typography sx={{ fontSize: 14, color: DS.outline, mb: 5, maxWidth: 460, lineHeight: 1.7, fontFamily: "'Manrope', sans-serif" }}>
-            {selectedCarrier === 'MANUAL'
-                ? 'Manual Shipment created. Status can be managed from the shipment dashboard.'
+            {String(selectedCarrier || '').toUpperCase() === 'INTERNAL'
+                ? 'Internal shipment created. Status and pricing can be managed from the shipment dashboard.'
                 : `Registered with the ${selectedCarrier} network. Labels and documents are ready in the shipment dashboard.`}
         </Typography>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
@@ -722,7 +737,9 @@ const ShipmentWizardV2 = () => {
         const s = availableOptionalServices.find(os => os.serviceCode === code);
         return acc + (Number(s?.totalPrice) || 0);
     }, 0);
-    const estimatedShipmentTotal = Number(selectedService.totalPrice || 0) + optionalServicesTotal;
+    const estimatedShipmentTotal = requiresManualPricing(selectedService)
+        ? null
+        : Number(selectedService.totalPrice || 0) + optionalServicesTotal;
 
     useEffect(() => {
         const load = async () => {
@@ -777,8 +794,8 @@ const ShipmentWizardV2 = () => {
         setBillingCurrency(defaultCurrency);
         setSelectedService({ serviceName: '', serviceCode: '', totalPrice: '0', currency: defaultCurrency });
         setAvailableServices([]);
-        if (code === 'MANUAL') {
-            enqueueSnackbar('Switched to Manual Shipment', { variant: 'info' });
+        if (String(code || '').toUpperCase() === 'INTERNAL') {
+            enqueueSnackbar(`Switched to ${getCarrierDisplayName(code)}`, { variant: 'info' });
         } else {
             enqueueSnackbar(`Switched to ${code} network`, { variant: 'info' });
         }
@@ -788,12 +805,14 @@ const ShipmentWizardV2 = () => {
         setSelectedService({
             serviceName:         s.serviceName,
             serviceCode:         s.serviceCode,
-            totalPrice:          s.totalPrice.toString(),
+            totalPrice:          s.totalPrice == null ? null : s.totalPrice.toString(),
             currency:            s.currency,
             basePrice:           s.basePrice,
             markupAmount:        s.markupAmount,
             pricingPolicySource: s.pricingPolicySource,
             deliveryDate:        s.deliveryDate,
+            requiresManualPricing: s.requiresManualPricing,
+            rateType:            s.rateType,
         });
         setAvailableOptionalServices(s.optionalServices || []);
         setBillingCurrency(s.billingCurrency || s.currency || defaultCurrencyForCarrier(selectedCarrier));
@@ -815,7 +834,6 @@ const ShipmentWizardV2 = () => {
                 ...(shouldSendCarrierSelection ? {
                     carrierCode: selectedCarrier,
                     serviceCode: selectedService.serviceCode || undefined,
-                    ...(selectedCarrier === 'MANUAL' ? { manualShipment: true } : {})
                 } : {}),
                 ...(isStaff && selectedClient ? { userId: selectedClient } : {}),
             };
@@ -912,7 +930,6 @@ const ShipmentWizardV2 = () => {
                 ...(shouldSendCarrierSelection ? {
                     carrierCode: selectedCarrier,
                     serviceCode: selectedService.serviceCode,
-                    ...(selectedCarrier === 'MANUAL' ? { manualShipment: true } : {})
                 } : {}),
                 ...(isStaff && selectedClient ? { userId: selectedClient } : {}),
             };

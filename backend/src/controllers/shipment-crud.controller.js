@@ -8,9 +8,9 @@ const ShipmentDraftService = require('../services/ShipmentDraftService');
 const { handleControllerError } = require('../utils/controllerError');
 const { hasCapability, isPlatformRole } = require('../middleware/rbac.policy');
 const { canAccessShipment, scopeShipmentWhere } = require('../middleware/authorize.middleware');
-const { MANUAL_SHIPMENT_STATUSES, SHIPMENT_STATUSES } = require('../constants/statusConstants');
+const { INTERNAL_SHIPMENT_STATUSES, SHIPMENT_STATUSES } = require('../constants/statusConstants');
 const { DELETABLE_SHIPMENT_STATUSES, buildShipmentDeleteBlockedMessage } = require('../utils/shipmentDeletionPolicy');
-const { syncCarrierTrackingHistory, hasCriticalChanges, canUpdateShipmentStatus, isManualShipment, buildDisplayHistory } = require('./shipment.helpers');
+const { syncCarrierTrackingHistory, hasCriticalChanges, canUpdateShipmentStatus, isInternalShipment, buildDisplayHistory } = require('./shipment.helpers');
 const chatwootNotificationService = require('../services/chatwootNotificationService');
 
 /**
@@ -374,13 +374,13 @@ exports.updateShipment = async (req, res) => {
         const updateData = {};
         let nextOrigin = null;
         let criticalChangesDetected = hasCriticalChanges(shipment, updates);
-        const shipmentIsManual = isManualShipment(shipment);
+        const shipmentIsInternal = isInternalShipment(shipment);
         const shipmentCarrier = String(shipment.carrierCode || '').toUpperCase();
-        const shipmentAllowsManualPricing = shipmentIsManual || ['OTE', 'LOGESTECHS'].includes(shipmentCarrier);
-        const canManageManualFields = shipmentAllowsManualPricing && ['admin', 'staff', 'manager', 'accounting'].includes(user.role);
+        const shipmentAllowsInternalPricing = shipmentIsInternal || ['OTE', 'LOGESTECHS'].includes(shipmentCarrier);
+        const canManageManualFields = shipmentAllowsInternalPricing && ['admin', 'staff', 'manager', 'accounting'].includes(user.role);
 
         if (updates.status && updates.status !== shipment.status) {
-            const validStatuses = shipmentIsManual ? MANUAL_SHIPMENT_STATUSES : SHIPMENT_STATUSES;
+            const validStatuses = shipmentIsInternal ? INTERNAL_SHIPMENT_STATUSES : SHIPMENT_STATUSES;
             if (!validStatuses.includes(updates.status)) {
                 return res.status(400).json({ success: false, error: `Invalid shipment status '${updates.status}'. Valid: ${validStatuses.join(', ')}` });
             }
@@ -454,7 +454,7 @@ exports.updateShipment = async (req, res) => {
         }
 
         // --- Dynamic Re-rating Logic ---
-        if (criticalChangesDetected && !shipmentIsManual) {
+        if (criticalChangesDetected && !shipmentIsInternal) {
             logger.info(`Critical changes detected for ${trackingNumber}. Initiating re-rating.`);
             try {
                 const PricingService = require('../services/pricing.service');

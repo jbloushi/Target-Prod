@@ -38,6 +38,7 @@ import ShareIcon from '@mui/icons-material/Share';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import SearchIcon from '@mui/icons-material/Search';
+import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import TrackingTimeline from '../components/TrackingTimeline';
 import AddressPanel from '../components/AddressPanel';
 import ShipmentContent from '../components/shipment/ShipmentContent';
@@ -45,13 +46,14 @@ import ShipmentBilling from '../components/shipment/ShipmentBilling';
 import { financeService, integrationService, shipmentService, userService } from '../services/api';
 import api from '../services/api'; // Use the default api instance for generic get requests
 import {
-    STATUS_ORDER, STATUS_LABELS, MANUAL_SHIPMENT_STATUSES, getStepIndex
+    STATUS_ORDER, STATUS_LABELS, INTERNAL_SHIPMENT_STATUSES, getStepIndex
 } from '../constants/statusConfig';
 import {
     buildShipmentDeleteBlockedMessage,
     canDeleteShipmentStatus,
     getShipmentDeleteErrorMessage
 } from '../utils/shipmentDeletionPolicy';
+import { getCarrierDisplayName, requiresManualPricing } from '../utils/shipmentDisplay';
 
 const getAllowedStatusOptions = (user, shipment) => {
     if (!user || !shipment) return [];
@@ -59,7 +61,7 @@ const getAllowedStatusOptions = (user, shipment) => {
     const role = user.role;
 
     if (['admin', 'manager', 'accounting'].includes(role)) {
-        return MANUAL_SHIPMENT_STATUSES;
+        return INTERNAL_SHIPMENT_STATUSES;
     }
 
     return [];
@@ -694,6 +696,13 @@ const ShipmentDetailsPage = () => {
     const [sendingWhatsAppRole, setSendingWhatsAppRole] = useState(null);
     const [whatsAppPreviews, setWhatsAppPreviews] = useState({});
     const [whatsAppPreviewLoading, setWhatsAppPreviewLoading] = useState(false);
+    const [conversionDrawerOpen, setConversionDrawerOpen] = useState(false);
+    const [conversionCarrierCode, setConversionCarrierCode] = useState('');
+    const [conversionServiceCode, setConversionServiceCode] = useState('');
+    const [conversionOptions, setConversionOptions] = useState(null);
+    const [conversionTargetCarriers, setConversionTargetCarriers] = useState([]);
+    const [conversionLoading, setConversionLoading] = useState(false);
+    const [conversionError, setConversionError] = useState('');
 
     const { user } = useAuth();
     const { enqueueSnackbar } = useSnackbar();
@@ -730,15 +739,26 @@ const ShipmentDetailsPage = () => {
     const isClient = user?.role === 'client';
     const approvalStatuses = ['pending', 'draft', 'updated', 'ready_for_pickup', 'picked_up'];
     const clientEditableStatuses = ['draft', 'pending', 'updated'];
-    const isManualShipment = shipment && (
-        String(shipment.carrierCode || '').toUpperCase() === 'MANUAL'
-        || shipment.manualShipment === true
+    const shipmentCarrierCode = String(shipment?.carrierCode || shipment?.carrier || '').toUpperCase();
+    const isInternalCarrierShipment = shipment && (
+        shipmentCarrierCode === 'INTERNAL'
+        || shipment.internallyManaged === true
+    );
+    const isInternalShipment = shipment && (
+        isInternalCarrierShipment
+        || requiresManualPricing(shipment)
     );
     const statusEditOptions = shipment ? getAllowedStatusOptions(user, shipment) : [];
     const canEditStatus = statusEditOptions.length > 0;
     const canManageApproval = canEditStatus && shipment && approvalStatuses.includes(shipment.status);
-    const canApprove = canManageApproval && !isManualShipment;
+    const canApprove = canManageApproval && !isInternalShipment;
     const canEdit = isClient && shipment && clientEditableStatuses.includes(shipment.status);
+    const isConvertedInternalShipment = Boolean(shipment?.pricingSnapshot?.conversion?.convertedToTrackingNumber);
+    const canConvertInternalShipment = isStaff
+        && isInternalCarrierShipment
+        && !isConvertedInternalShipment
+        && shipment
+        && !['cancelled', 'delivered'].includes(shipment.status);
 
     const canEditSection = (section) => {
         if (!shipment) return false;
@@ -814,6 +834,82 @@ const ShipmentDetailsPage = () => {
         }
     };
 
+    const loadConversionOptions = async (carrierCode, carrierList = conversionTargetCarriers) => {
+        if (!shipment?.trackingNumber || !carrierCode) return;
+        setConversionLoading(true);
+        setConversionError('');
+        try {
+            const response = await shipmentService.getBookingOptions(shipment.trackingNumber, carrierCode);
+            const options = response?.data || {};
+            const targetMetadata = carrierList.find(carrier => carrier.code === carrierCode);
+            const selectedService = options.selectedServiceCode
+                || options.services?.[0]?.serviceCode
+                || targetMetadata?.defaultServiceCode
+                || (carrierCode === 'OTE' ? 'STD' : 'P');
+
+            setConversionOptions(options);
+            setConversionServiceCode(selectedService);
+        } catch (error) {
+            setConversionOptions(null);
+            setConversionError(error.message || 'Could not load carrier options');
+        } finally {
+            setConversionLoading(false);
+        }
+    };
+
+    const handleOpenConversion = async () => {
+        setConversionDrawerOpen(true);
+        setConversionError('');
+
+        let carriers = conversionTargetCarriers;
+        try {
+            const response = await shipmentService.getInternalShipmentConversionTargets(shipment.trackingNumber);
+            carriers = response.data || [];
+            setConversionTargetCarriers(carriers);
+        } catch (error) {
+            setConversionError(error.message || 'Could not load conversion carriers');
+            return;
+        }
+
+        const target = carriers.find(carrier => (
+            carrier.active !== false
+            && carrier.capabilities?.supportsConversionTarget === true
+        ));
+        if (target) {
+            setConversionCarrierCode(target.code);
+            await loadConversionOptions(target.code, carriers);
+        }
+    };
+
+    const handleChangeConversionCarrier = async (carrierCode) => {
+        setConversionCarrierCode(carrierCode);
+        setConversionServiceCode('');
+        setConversionOptions(null);
+        await loadConversionOptions(carrierCode);
+    };
+
+    const handleConvertInternalShipment = async () => {
+        if (!conversionCarrierCode || !conversionServiceCode) {
+            enqueueSnackbar('Select a carrier and service before converting.', { variant: 'warning' });
+            return;
+        }
+
+        setIsProcessing(true);
+        try {
+            await shipmentService.convertInternalShipment(shipment.trackingNumber, {
+                carrierCode: conversionCarrierCode,
+                serviceCode: conversionServiceCode
+            });
+            enqueueSnackbar(`Carrier changed to ${conversionCarrierCode}`, { variant: 'success' });
+            setConversionDrawerOpen(false);
+            await getShipment(shipment.trackingNumber);
+        } catch (error) {
+            enqueueSnackbar(error.message || 'Failed to convert shipment', { variant: 'error' });
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
     const handleSendWhatsAppRole = async (recipientRole, eventType = 'shipment_created') => {
         if (!shipment?.trackingNumber || !recipientRole) return;
         setSendingWhatsAppRole(recipientRole);
@@ -875,24 +971,6 @@ const ShipmentDetailsPage = () => {
             
             // If editing billing, fetch quotes to get available optional services
             if (section === 'billing' && shipment) {
-                const quotePayload = {
-                    sender: shipment.origin,
-                    receiver: shipment.destination,
-                    parcels: shipment.parcels,
-                    items: shipment.items,
-                    carrierCode: shipment.carrierCode,
-                    serviceCode: shipment.serviceCode,
-                    shipmentType: shipment.shipmentType || 'package'
-                };
-                shipmentService.getQuotes(quotePayload).then(res => {
-                    if (res.success && Array.isArray(res.data)) {
-                        const active = res.data.find(q => q.serviceCode === shipment.serviceCode) || res.data[0];
-                        if (active) {
-                            setAvailableOptionalServices(active.optionalServices || []);
-                        }
-                    }
-                }).catch(err => console.error('Failed to fetch optional services for edit:', err));
-                
                 // Initialize selected codes from shipment pricing snapshot or current state
                 const selected = (shipment.pricingSnapshot?.optionalServices || []).map(s => s.serviceCode);
                 const selectedFallback = Array.isArray(shipment.origin?.optionalServiceCodes)
@@ -913,6 +991,28 @@ const ShipmentDetailsPage = () => {
                         ? String(savedInsuredValue)
                         : ''
                 );
+
+                if (isInternalCarrierShipment) {
+                    setAvailableOptionalServices([]);
+                } else {
+                    const quotePayload = {
+                        sender: shipment.origin,
+                        receiver: shipment.destination,
+                        parcels: shipment.parcels,
+                        items: shipment.items,
+                        carrierCode: shipment.carrierCode,
+                        serviceCode: shipment.serviceCode,
+                        shipmentType: shipment.shipmentType || 'package'
+                    };
+                    shipmentService.getQuotes(quotePayload).then(res => {
+                        if (res.success && Array.isArray(res.data)) {
+                            const active = res.data.find(q => q.serviceCode === shipment.serviceCode) || res.data[0];
+                            if (active) {
+                                setAvailableOptionalServices(active.optionalServices || []);
+                            }
+                        }
+                    }).catch(err => console.error('Failed to fetch optional services for edit:', err));
+                }
             }
         }
     };
@@ -987,7 +1087,7 @@ const ShipmentDetailsPage = () => {
                 payload = {
                     status: editDraft.status,
                     description: editDraft.statusDescription || `Status changed to ${STATUS_LABELS[editDraft.status] || editDraft.status}`,
-                    ...(isManualShipment ? {
+                    ...(isInternalShipment ? {
                         price: editDraft.price,
                         costPrice: editDraft.costPrice,
                         currency: editDraft.currency,
@@ -1017,16 +1117,16 @@ const ShipmentDetailsPage = () => {
             if (action === 'approve') {
                 const carrier = shipment.carrierCode || shipment.carrier;
                 const serviceCode = shipment.serviceCode;
-                const isManual = String(carrier || '').toUpperCase() === 'MANUAL'
-                    || shipment.manualShipment === true;
+                const isInternal = String(carrier || '').toUpperCase() === 'INTERNAL'
+                    || shipment.internallyManaged === true;
 
-                if (isManual) {
+                if (isInternal) {
                     await shipmentService.updateStatus(shipment.trackingNumber, {
                         status: 'ready_for_pickup',
-                        description: approvalComment || 'Manual Shipment approved for internal handling'
+                        description: approvalComment || 'Internal shipment approved for internal handling'
                     });
 
-                    enqueueSnackbar('Manual Shipment approved', { variant: 'success' });
+                    enqueueSnackbar('Internal shipment approved', { variant: 'success' });
                     setApprovalDrawerOpen(false);
                     getShipment(shipment.trackingNumber);
                     return;
@@ -1213,6 +1313,7 @@ const ShipmentDetailsPage = () => {
     }, 0);
     const carrierTrackingNumber = shipment.carrierShipmentId || shipment.dhlTrackingNumber;
     const carrierCode = (shipment.carrier || shipment.carrierCode || 'DGR').toUpperCase();
+    const carrierDisplayName = getCarrierDisplayName(carrierCode);
     const carrierTrackingUrl = carrierTrackingNumber && (carrierCode === 'DGR' || carrierCode === 'DHL')
         ? `https://www.dhl.com/global-en/home/tracking.html?tracking-id=${carrierTrackingNumber}`
         : null;
@@ -1271,10 +1372,19 @@ const ShipmentDetailsPage = () => {
                         {canManageApproval && (
                             <Button
                                 variant="primary"
-                                onClick={() => !isManualShipment && setApprovalDrawerOpen(true)}
-                                disabled={isManualShipment}
+                                onClick={() => !isInternalShipment && setApprovalDrawerOpen(true)}
+                                disabled={isInternalShipment}
                             >
                                 Manage Approval
+                            </Button>
+                        )}
+                        {canConvertInternalShipment && (
+                            <Button
+                                variant="primary"
+                                onClick={handleOpenConversion}
+                                icon={<LocalShippingIcon />}
+                            >
+                                Convert to Carrier
                             </Button>
                         )}
                         <Button
@@ -1329,7 +1439,7 @@ const ShipmentDetailsPage = () => {
                         <ShipmentMeta>
                             <span>Created: <strong>{new Date(shipment.createdAt).toLocaleDateString()}</strong></span>
                             <span>Type: <strong>{getShipmentTypeLabel(shipment.shipmentType)}</strong></span>
-                            {isStaff && <span>Carrier: <strong>{carrierCode}</strong></span>}
+                            {isStaff && <span>Carrier: <strong>{carrierDisplayName}</strong></span>}
                             <span>Total Weight: <strong>{totalWeight.toFixed(2)} KG</strong></span>
                         </ShipmentMeta>
 
@@ -1581,7 +1691,7 @@ const ShipmentDetailsPage = () => {
                                         </DetailIcon>
                                         <DetailContent>
                                             <DetailContentLabel>Carrier</DetailContentLabel>
-                                            <DetailContentValue>{carrierCode || '-'}</DetailContentValue>
+                                            <DetailContentValue>{carrierDisplayName || '-'}</DetailContentValue>
                                         </DetailContent>
                                     </DetailItem>
                                     <DetailItem>
@@ -1785,7 +1895,7 @@ const ShipmentDetailsPage = () => {
                                 </tr>
                                 <tr>
                                     <td>Status Source</td>
-                                    <td>{String(carrierCode).toUpperCase() === 'MANUAL' ? 'Manual Shipment' : 'Platform / Carrier'}</td>
+                                    <td>{isInternalShipment ? 'Internal' : 'Platform / Carrier'}</td>
                                 </tr>
                                 <tr>
                                     <td>Status Editing</td>
@@ -2087,11 +2197,11 @@ const ShipmentDetailsPage = () => {
                                             onChange={(event) => setEditDraft({ ...editDraft, statusDescription: event.target.value })}
                                         />
 
-                                        {isManualShipment && (
+                                        {isInternalShipment && (
                                             <>
                                                 <Divider />
                                                 <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 800 }}>
-                                                    Manual Shipment Details
+                                                    Internal Details
                                                 </Typography>
                                                 <Grid container spacing={2}>
                                                     <Grid item xs={12} sm={6}>
@@ -2224,7 +2334,7 @@ const ShipmentDetailsPage = () => {
                                     <Grid item xs={6}>
                                         <Typography variant="caption" display="block" color="text.secondary" sx={{ fontWeight: 700, mb: 0.5 }}>REVENUE EST.</Typography>
                                         <Typography variant="body2" color="var(--primary)" fontWeight="800" sx={{ fontFamily: 'Manrope' }}>{Number(accountingSummary.totalCharge).toFixed(3)} {billingCurrency}</Typography>
-                                        <Typography variant="caption" color="text.secondary">{carrierCode}</Typography>
+                                        <Typography variant="caption" color="text.secondary">{carrierDisplayName}</Typography>
                                     </Grid>
                                 </Grid>
                             </Box>
@@ -2303,6 +2413,123 @@ const ShipmentDetailsPage = () => {
                             Decision actions are logged for audit purposes.
                         </Typography>
                     </Box>
+                </Box>
+            </Drawer>
+
+            <Drawer
+                anchor="right"
+                open={conversionDrawerOpen}
+                onClose={() => setConversionDrawerOpen(false)}
+                PaperProps={{
+                    sx: {
+                        width: { xs: '100%', sm: 460 },
+                        background: 'var(--surface-container)',
+                        color: 'var(--on-surface)'
+                    }
+                }}
+            >
+                <Box sx={{ p: 4, height: '100%', display: 'flex', flexDirection: 'column' }}>
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+                        <Typography variant="h5" fontWeight="800" color="var(--primary)" sx={{ fontFamily: 'Manrope' }}>
+                            Convert to Carrier
+                        </Typography>
+                        <MuiIconButton onClick={() => setConversionDrawerOpen(false)} sx={{ color: 'text.secondary' }}>
+                            <CloseIcon />
+                        </MuiIconButton>
+                    </Box>
+
+                    <Alert type="info" style={{ marginBottom: 24 }}>
+                        This creates a new carrier shipment and closes the internal record with a conversion history event.
+                    </Alert>
+
+                    <Stack spacing={3} sx={{ flexGrow: 1 }}>
+                        <Box sx={{ bgcolor: 'var(--surface-container-low)', p: 3, borderRadius: '16px' }}>
+                            <Typography variant="caption" display="block" color="text.secondary" sx={{ fontWeight: 700, mb: 0.5 }}>SOURCE SHIPMENT</Typography>
+                            <Typography variant="body2" fontWeight="800" sx={{ fontFamily: 'Manrope' }}>{shipment.trackingNumber}</Typography>
+                            <Typography variant="caption" color="text.secondary">{carrierDisplayName}</Typography>
+                        </Box>
+
+                        <FormControl fullWidth>
+                            <InputLabel>Target Carrier</InputLabel>
+                            <Select
+                                value={conversionCarrierCode}
+                                label="Target Carrier"
+                                onChange={(event) => handleChangeConversionCarrier(event.target.value)}
+                            >
+                                {conversionTargetCarriers.map(carrier => (
+                                    <MenuItem key={carrier.code} value={carrier.code}>
+                                        {carrier.name || carrier.code}
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+
+                        {conversionLoading ? (
+                            <Loader size="32px" />
+                        ) : conversionOptions?.services?.length > 0 ? (
+                            <FormControl fullWidth>
+                                <InputLabel>Service</InputLabel>
+                                <Select
+                                    value={conversionServiceCode}
+                                    label="Service"
+                                    onChange={(event) => setConversionServiceCode(event.target.value)}
+                                >
+                                    {conversionOptions.services.map(service => (
+                                        <MenuItem key={service.serviceCode} value={service.serviceCode}>
+                                            {service.serviceName || service.serviceCode}
+                                            {service.totalPrice != null ? ` - ${Number(service.totalPrice).toFixed(3)} ${service.currency || 'KWD'}` : ''}
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                        ) : (
+                            <Alert type="warning">
+                                Manual pricing required
+                            </Alert>
+                        )}
+
+                        {conversionError && (
+                            <Alert type="error">
+                                {conversionError}
+                            </Alert>
+                        )}
+
+                        {conversionOptions?.services?.length > 0 && (
+                            <Box sx={{ bgcolor: 'var(--surface-container-low)', p: 3, borderRadius: '16px' }}>
+                                <Typography variant="caption" display="block" color="text.secondary" sx={{ fontWeight: 700, mb: 0.5 }}>PRICING</Typography>
+                                {(() => {
+                                    const selectedService = conversionOptions.services.find(service => service.serviceCode === conversionServiceCode);
+                                    return (
+                                        <Typography variant="body2" fontWeight="800">
+                                            {selectedService?.totalPrice != null
+                                                ? `${Number(selectedService.totalPrice).toFixed(3)} ${selectedService.currency || 'KWD'}`
+                                                : 'Manual pricing required'}
+                                        </Typography>
+                                    );
+                                })()}
+                            </Box>
+                        )}
+                    </Stack>
+
+                    <Stack spacing={2} sx={{ mt: 4 }}>
+                        <Button
+                            variant="primary"
+                            fullWidth
+                            onClick={handleConvertInternalShipment}
+                            disabled={isProcessing || conversionLoading || !conversionCarrierCode || !conversionServiceCode}
+                            icon={<LocalShippingIcon />}
+                        >
+                            {isProcessing ? 'Converting...' : 'Create Carrier Shipment'}
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            fullWidth
+                            onClick={() => setConversionDrawerOpen(false)}
+                            disabled={isProcessing}
+                        >
+                            Cancel
+                        </Button>
+                    </Stack>
                 </Box>
             </Drawer>
         </div >

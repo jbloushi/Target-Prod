@@ -8,7 +8,7 @@ const SHIPMENT_STATUSES = [
     'in_transit', 'out_for_delivery', 'delivered', 'exception', 'cancelled'
 ];
 
-const MANUAL_SHIPMENT_STATUSES = [
+const INTERNAL_SHIPMENT_STATUSES = [
     'draft',
     'pending',
     'booked',
@@ -84,7 +84,7 @@ function isStatusAhead(statusA, statusB) {
 
 module.exports = {
     SHIPMENT_STATUSES,
-    MANUAL_SHIPMENT_STATUSES,
+    INTERNAL_SHIPMENT_STATUSES,
     STATUS_LABELS,
     DHL_STATUS_MAP,
     LEGACY_STATUS_MAP,
