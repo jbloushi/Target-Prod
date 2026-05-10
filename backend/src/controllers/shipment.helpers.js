@@ -412,6 +412,10 @@ const syncCarrierTrackingHistory = async (shipment) => {
         
         return null;
     } catch (error) {
+        if (error?.code === 'TRACKING_PENDING') {
+            logger.info(`Carrier tracking pending at provider for ${shipment.trackingNumber}: ${error.message}`);
+            return null;
+        }
         logger.warn(`Failed to sync carrier tracking for ${shipment.trackingNumber}: ${error.message}`);
         return null;
     }

@@ -1,7 +1,13 @@
+jest.mock('../src/utils/logger', () => ({
+    warn: jest.fn(),
+    info: jest.fn(),
+    error: jest.fn()
+}));
+
 const {
     canUpdateShipmentStatus,
     getAllowedStatusUpdates,
-    isManualShipment,
+    isInternalShipment,
     syncCarrierTrackingHistory
 } = require('../src/controllers/shipment.helpers');
 
@@ -10,9 +16,10 @@ jest.mock('../src/services/CarrierFactory', () => ({
 }));
 
 const CarrierFactory = require('../src/services/CarrierFactory');
+const logger = require('../src/utils/logger');
 
 describe('shipment status policy', () => {
-    const shipment = { carrierCode: 'MANUAL', manualShipment: true, status: 'booked' };
+    const shipment = { carrierCode: 'INTERNAL', internallyManaged: true, status: 'booked' };
 
     it.each(['admin', 'manager', 'accounting'])('allows %s to change shipment status', (role) => {
         expect(canUpdateShipmentStatus({ role }, shipment, 'delivered')).toBe(true);
@@ -23,10 +30,10 @@ describe('shipment status policy', () => {
         expect(canUpdateShipmentStatus({ role }, shipment, 'delivered')).toBe(false);
     });
 
-    it('identifies manual shipments by carrier code or explicit flag', () => {
-        expect(isManualShipment({ carrierCode: 'manual' })).toBe(true);
-        expect(isManualShipment({ manualShipment: true })).toBe(true);
-        expect(isManualShipment({ carrierCode: 'DGR' })).toBe(false);
+    it('identifies internal shipments by carrier code or explicit flag', () => {
+        expect(isInternalShipment({ carrierCode: 'internal' })).toBe(true);
+        expect(isInternalShipment({ internallyManaged: true })).toBe(true);
+        expect(isInternalShipment({ carrierCode: 'DGR' })).toBe(false);
     });
 
     it('promotes standard shipment status from carrier tracking events automatically', async () => {
@@ -61,5 +68,27 @@ describe('shipment status policy', () => {
         expect(result.status).toBe('delivered');
         expect(result.history).toHaveLength(2);
         expect(result.history[0].source).toBe('carrier');
+    });
+
+    it('suppresses provider warnings when OTE tracking is not ready yet', async () => {
+        const error = new Error('Carrier tracking pending at provider: Package not found (45268816), company ID: 424');
+        error.code = 'TRACKING_PENDING';
+        error.provider = 'OTE';
+
+        CarrierFactory.getAdapter.mockReturnValue({
+            getTracking: jest.fn().mockRejectedValue(error)
+        });
+
+        const result = await syncCarrierTrackingHistory({
+            trackingNumber: 'TRG-MIENSKN1',
+            carrierCode: 'OTE',
+            carrierShipmentId: '45268816',
+            status: 'booked',
+            history: []
+        });
+
+        expect(result).toBeNull();
+        expect(logger.warn).not.toHaveBeenCalled();
+        expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('tracking pending at provider'));
     });
 });
