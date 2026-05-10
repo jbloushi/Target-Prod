@@ -5,6 +5,7 @@ const { prisma } = require('../config/database');
 const CarrierFactory = require('../services/CarrierFactory');
 const PricingService = require('../services/pricing.service');
 const ShipmentBookingService = require('../services/ShipmentBookingService');
+const InternalShipmentConversionService = require('../services/InternalShipmentConversionService');
 const logger = require('../utils/logger');
 const { handleControllerError } = require('../utils/controllerError');
 const { isPlatformRole } = require('../middleware/rbac.policy');
@@ -61,26 +62,6 @@ exports.getQuotes = async (req, res) => {
 
         const { markup, policySource } = resolveEffectiveCarrierPolicy({ targetUser, carrierCode, availableCarrierCodes: carrierCodes });
 
-        if (carrierCode === 'MANUAL') {
-            const basePrice = Number(req.body.costPrice || req.body.price || 0);
-            const calculation = PricingService.calculateFinalPrice(basePrice, markup);
-            return res.status(200).json({
-                success: true,
-                data: [{
-                    serviceName: 'Manual Shipment',
-                    serviceCode: null,
-                    carrier: 'MANUAL',
-                    totalPrice: Number(calculation.finalPrice.toFixed(3)),
-                    estimatedShipmentCost: Number(calculation.finalPrice.toFixed(3)),
-                    optionalServices: [],
-                    currency: req.body.currency || 'KWD',
-                    pricingPolicySource: policySource,
-                    basePrice,
-                    markupAmount: calculation.markupAmount
-                }]
-            });
-        }
-
         const carrier = CarrierFactory.getAdapter(carrierCode);
         const rawQuotes = await carrier.getRates({ ...req.body, carrierCode, serviceCode });
         const visibleQuotes = serviceCode
@@ -92,6 +73,16 @@ exports.getQuotes = async (req, res) => {
         }
 
         const markupQuotes = visibleQuotes.map(quote => {
+            if (quote.requiresManualPricing) {
+                return {
+                    ...quote,
+                    totalPrice: null,
+                    amount: null,
+                    currency: quote.currency || req.body.currency || 'KWD',
+                    pricingPolicySource: policySource
+                };
+            }
+
             const policy = PricingService.resolveCarrierPricingPolicy(targetUser, carrierCode, quote.currency || req.body.currency || 'KWD');
             const quoteCurrency = policy.currency || quote.currency || 'KWD';
             const basePrice = PricingService.applyCarrierBasePricePolicy(quote.totalPrice, targetUser, carrierCode);
@@ -223,10 +214,6 @@ exports.getBookingOptions = async (req, res) => {
             return res.status(403).json({ success: false, error: 'Permission denied' });
         }
 
-        if (String(shipment.carrierCode || carrierCode || '').toUpperCase() === 'MANUAL') {
-            return res.status(200).json({ success: true, data: { carrierCode: 'MANUAL', services: [], selectedServiceCode: null, optionalServices: [] } });
-        }
-
         const carrier = CarrierFactory.getAdapter(carrierCode);
         const rawQuotes = await carrier.getRates({
             sender: shipment.origin,
@@ -280,14 +267,65 @@ exports.bookWithCarrier = async (req, res) => {
             return res.status(403).json({ success: false, error: 'Permission denied' });
         }
 
-        if (String(shipment.carrierCode || carrierCode || '').toUpperCase() === 'MANUAL') {
-            return res.status(400).json({ success: false, error: 'Manual Shipment is managed inside the platform and cannot be booked with a 3PL carrier.' });
-        }
-
         const result = await ShipmentBookingService.bookShipment(trackingNumber, carrierCode, optionalServiceCodes, req.user.role);
         res.status(200).json({ success: true, data: result, message: `Shipment successfully booked` });
     } catch (error) {
         return handleControllerError(res, error, 'Carrier booking');
+    }
+};
+
+/**
+ * List conversion target carriers for an INTERNAL shipment.
+ */
+exports.getInternalShipmentConversionTargets = async (req, res) => {
+    try {
+        const { trackingNumber } = req.params;
+
+        const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
+        if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
+
+        if (!canAccessShipment(req, shipment)) {
+            return res.status(403).json({ success: false, error: 'Permission denied' });
+        }
+
+        if (String(shipment.carrierCode || '').toUpperCase() !== 'INTERNAL' && shipment.internallyManaged !== true) {
+            return res.status(400).json({ success: false, error: 'Conversion targets are only available for INTERNAL shipments' });
+        }
+
+        const carriers = InternalShipmentConversionService.getConversionTargetCarriers()
+            .map(carrier => ({
+                ...carrier,
+                serviceOptions: getServiceOptions(carrier.code)
+            }));
+
+        return res.status(200).json({ success: true, data: carriers });
+    } catch (error) {
+        return handleControllerError(res, error, 'Internal shipment conversion targets');
+    }
+};
+
+/**
+ * Convert an INTERNAL shipment into a new external carrier shipment.
+ */
+exports.convertInternalShipmentToCarrier = async (req, res) => {
+    try {
+        const { trackingNumber } = req.params;
+
+        const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
+        if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
+
+        if (!canAccessShipment(req, shipment)) {
+            return res.status(403).json({ success: false, error: 'Permission denied' });
+        }
+
+        const result = await InternalShipmentConversionService.convertToCarrier(trackingNumber, req.body, req.user);
+        return res.status(201).json({
+            success: true,
+            data: result,
+            message: `Shipment converted to ${result.carrierCode}`
+        });
+    } catch (error) {
+        return handleControllerError(res, error, 'Internal shipment conversion');
     }
 };
 
@@ -298,9 +336,6 @@ exports.submitToDhl = async (req, res) => {
     try {
         const { trackingNumber } = req.params;
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
-        if (String(shipment?.carrierCode || '').toUpperCase() === 'MANUAL') {
-            return res.status(400).json({ success: false, error: 'Manual Shipment is managed inside the platform and cannot be booked with a 3PL carrier.' });
-        }
         const result = await ShipmentBookingService.bookShipment(trackingNumber);
         res.status(200).json({ success: true, data: result.shipment, message: 'Shipment booked successfully' });
     } catch (error) {

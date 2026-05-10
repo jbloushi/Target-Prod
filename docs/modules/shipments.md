@@ -61,7 +61,7 @@ draft → pending → booked → ready_for_pickup → picked_up → in_transit �
 - `isStatusAhead(a, b)` — true if `b` is a forward step from `a`
 - `normalizeStatus(legacyStatus)` — maps old status names to current ones (e.g. `created` → `booked`, `updated` → `pending`)
 
-**Manual shipment statuses** use the same enum but restricted transitions. Manual shipments (carrier code `MANUAL`) follow the same pipeline but are never submitted to an external carrier.
+**Internal shipment statuses** use the same enum but restricted transitions. Internal shipments (carrier code `INTERNAL`) follow the same pipeline but are never submitted to an external carrier.
 
 ---
 
@@ -126,7 +126,7 @@ draft → pending → booked → ready_for_pickup → picked_up → in_transit �
 1. **Payload normalization:** `sanitizePayload()` — normalizes address format, validates origin/destination are present
 2. **Carrier access check:** Verifies user/org has access to the requested `carrierCode`
 3. **Pricing:** Calls `CarrierRateService.getQuotes()` → applies user/org markup → stores as `pricingSnapshot`
-4. **Manual shipments** (`MANUAL` carrier): price comes from the request body, no carrier call
+4. **Internal shipments** (`INTERNAL` carrier): price comes from the request body or local pricing scaffold, no carrier call
 5. **DB insert:** Shipment created with `status: 'draft'` (or `'ready_for_pickup'` for manual)
 6. **Initial history entry:** Records draft creation event in `history` JSON blob
 
@@ -159,6 +159,18 @@ Full flow:
    - Posts finance ledger debit (`SHIPMENT_CHARGE`)
 
 **Booking attempt record** (stored in `bookingAttempts[]`):
+
+---
+
+## Converting An Internal Shipment To A Carrier
+
+**Route:** `POST /api/shipments/:trackingNumber/convert-carrier`  
+**Permission:** `BOOK_CARRIERS` capability required  
+**Service:** `InternalShipmentConversionService.convertToCarrier()`
+
+This route is only for shipments with `carrierCode: INTERNAL`. It creates a new carrier-backed shipment for a conversion-enabled target carrier such as `DGR` or `OTE`, closes the original internal shipment, and links both records through history and `pricingSnapshot.conversion` metadata.
+
+Conversion does not book the external carrier directly. After conversion, the new shipment continues through the normal booking path.
 ```javascript
 {
   attemptId: UUID,
@@ -333,6 +345,7 @@ DELETE /api/shipments/:trackingNumber              — Delete (admin, MANAGE_USE
 POST   /api/shipments/quote                        — Get rate quotes with markup
 GET    /api/shipments/carriers                     — List carriers accessible to user
 GET    /api/shipments/:trackingNumber/booking-options  — Rate options at booking time
+POST   /api/shipments/:trackingNumber/convert-carrier   — Convert INTERNAL to a new carrier shipment (BOOK_CARRIERS)
 POST   /api/shipments/:trackingNumber/book         — Book with carrier (BOOK_CARRIERS)
 
 GET    /api/shipments/:trackingNumber/history      — Status change log

@@ -136,6 +136,14 @@ financeLedgerService.createLedgerEntry(organizationId, {
 
 For solo shippers (no org), `balanceAfter` is computed by reading the last ledger entry's `balanceAfter` and adding the new amount.
 
+### Internal Carrier Finance
+
+Internal shipments using `carrierCode: INTERNAL` are finance-compatible but do not assume an external carrier cost. Initial rating returns a manual-pricing scaffold and booking posts no shipment-charge debit while the amount is zero or unset. Authorized platform roles can later enter `price`, `costPrice`, `currency`, and estimated delivery from shipment editing; that entered price becomes the commercial value used by billing, invoices, accounting summaries, and reporting.
+
+When an internal shipment is converted to `DGR` or `OTE`, conversion creates a new shipment and does not post a ledger debit by itself. Billing should follow the new carrier-backed shipment. If the source internal shipment already has a posted positive `SHIPMENT_CHARGE` debit, conversion should block until finance reverses or resolves that charge.
+
+Future pricing engines can replace the manual scaffold with zone, route, customer, COD, weight-tier, city/area surcharge, contract, or override pricing without coupling those rules to booking.
+
 ### 2. Payment received → CREDIT posted
 
 Triggered by `POST /api/finance/organizations/:orgId/payments` (accounting role required):

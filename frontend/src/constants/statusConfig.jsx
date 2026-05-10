@@ -22,7 +22,7 @@ export const STATUS_LABELS = {
     cancelled: 'Cancelled',
 };
 
-export const MANUAL_SHIPMENT_STATUSES = [
+export const INTERNAL_SHIPMENT_STATUSES = [
     'draft',
     'pending',
     'booked',

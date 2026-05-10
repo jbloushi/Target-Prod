@@ -20,7 +20,25 @@ Update `backend/src/services/CarrierFactory.js`:
   - `code` (e.g. `UPS`)
   - `name`
   - `active` (`false` until production-ready)
+  - `trackingPrefix`
+  - `defaultServiceCode`
+  - `capabilities`
 - Add a `getAdapter` switch case for the new carrier.
+
+Carrier capabilities should describe whether the carrier uses external APIs:
+
+```js
+{
+  supportsBooking: true,
+  supportsRating: true,
+  supportsTracking: true,
+  supportsCancellation: false,
+  supportsLabelGeneration: true,
+  supportsExternalApi: true
+}
+```
+
+For local-only carriers such as `INTERNAL`, set `supportsExternalApi: false` and keep all booking/tracking behavior inside the adapter.
 
 `getAvailableCarriers()` is the single source used for:
 
@@ -56,7 +74,8 @@ At minimum, ensure the new carrier has sane defaults.
 
 The system uses single-assignment shipping access for client users:
 
-- One assigned carrier/service OR Manual Shipment.
+- One assigned carrier/service or the internal carrier.
+- New internal assignments should use `INTERNAL / STD`.
 
 When an admin saves a user:
 

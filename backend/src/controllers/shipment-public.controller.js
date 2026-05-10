@@ -48,7 +48,7 @@ exports.getPublicShipment = async (req, res) => {
 
         let rawEvents = [];
         const carrierTrackingNumber = shipment?.carrierShipmentId || shipment?.dhlTrackingNumber;
-        const carrierCode = (shipment?.carrier || shipment?.carrierCode || 'DGR').toUpperCase();
+        const carrierCode = (shipment?.carrierCode || shipment?.carrier || 'DGR').toUpperCase();
 
         // Public page should mirror carrier history whenever carrier data exists.
         if (carrierTrackingNumber) {

@@ -28,7 +28,7 @@ const makeClientError = (message, statusCode = 400, code = 'FINANCE_VALIDATION_E
 };
 
 const getShipmentCurrency = (shipment) => normalizeCurrencyCode(
-    shipment?.currency || shipment?.pricingSnapshot?.billingCurrency || shipment?.pricingSnapshot?.currency
+    shipment?.pricingSnapshot?.billingCurrency || shipment?.pricingSnapshot?.currency || shipment?.currency
 );
 
 const getShipmentChargeAmount = (shipment) => {

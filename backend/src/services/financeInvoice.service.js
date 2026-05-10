@@ -18,6 +18,17 @@ const invoiceInclude = {
     createdBy: { select: { id: true, name: true, email: true } }
 };
 
+function isMissingInvoiceSchemaError(error) {
+    const table = String(error?.meta?.table || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    return error?.code === 'P2021'
+        && (
+            table.includes('invoice')
+            || message.includes('table `invoice` does not exist')
+            || message.includes('table `invoiceline` does not exist')
+        );
+}
+
 function formatDatePart(date = new Date()) {
     const d = new Date(date);
     return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
@@ -163,16 +174,31 @@ async function listInvoices({ organizationId, status, page = 1, limit = 20 }) {
     const where = { organizationId: organizationId || null };
     if (status) where.status = status;
 
-    const [data, total] = await Promise.all([
-        prisma.invoice.findMany({
-            where,
-            include: invoiceInclude,
-            orderBy: { createdAt: 'desc' },
-            skip: (parsedPage - 1) * parsedLimit,
-            take: parsedLimit
-        }),
-        prisma.invoice.count({ where })
-    ]);
+    let data;
+    let total;
+    try {
+        [data, total] = await Promise.all([
+            prisma.invoice.findMany({
+                where,
+                include: invoiceInclude,
+                orderBy: { createdAt: 'desc' },
+                skip: (parsedPage - 1) * parsedLimit,
+                take: parsedLimit
+            }),
+            prisma.invoice.count({ where })
+        ]);
+    } catch (error) {
+        if (!isMissingInvoiceSchemaError(error)) throw error;
+        return {
+            data: [],
+            pagination: {
+                total: 0,
+                page: parsedPage,
+                limit: parsedLimit,
+                pages: 0
+            }
+        };
+    }
 
     return {
         data,

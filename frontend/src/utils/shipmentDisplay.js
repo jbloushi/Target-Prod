@@ -1,5 +1,18 @@
 export const normalizeCarrierDisplayText = (value = '') => (
-  String(value || '').replace(/\bDHL\b/gi, 'DGR')
+  String(value || '')
+    .replace(/\bDHL\b/gi, 'DGR')
+);
+
+export const getCarrierDisplayName = (carrierCode, fallback = '') => {
+  const code = String(carrierCode || fallback || '').toUpperCase();
+  if (code === 'INTERNAL') return 'Internal';
+  if (code === 'DGR' || code === 'DHL') return 'DHL DGR';
+  return carrierCode || fallback || '';
+};
+
+export const requiresManualPricing = (shipmentOrRate = {}) => (
+  shipmentOrRate?.requiresManualPricing === true
+  || shipmentOrRate?.pricingSnapshot?.requiresManualPricing === true
 );
 
 const LOCATION_SUFFIX_PATTERNS = [

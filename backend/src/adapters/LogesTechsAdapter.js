@@ -652,6 +652,25 @@ class LogesTechsAdapter extends CarrierAdapter {
 
             return response.data;
         } catch (error) {
+            const upstreamBody = error?.response?.data;
+            const upstreamMessage = this._extractProviderMessage(upstreamBody)
+                || error?.response?.statusText
+                || error?.message
+                || '';
+            if (/package not found/i.test(String(upstreamMessage))) {
+                logger.info('LogesTechs getStatus pending', {
+                    statusCode: error?.response?.status || error?.statusCode || 500,
+                    upstreamMessage,
+                    response: this._sanitizeForLogs(upstreamBody)
+                });
+                const pendingError = new Error(`Carrier tracking pending at provider: Package not found at provider yet. Tracking may become available shortly. ${upstreamMessage}`.trim());
+                pendingError.statusCode = error?.response?.status || error?.statusCode || 500;
+                pendingError.code = 'TRACKING_PENDING';
+                pendingError.provider = this.code;
+                pendingError.isProviderError = true;
+                pendingError.details = this._sanitizeForLogs(upstreamBody);
+                throw pendingError;
+            }
             throw this._normalizeProviderError(error, 'getStatus');
         }
     }

@@ -24,6 +24,7 @@ The carrier integration layer uses a strict adapter pattern. All carrier-specifi
 **Files:**
 ```
 backend/src/adapters/
+  InternalAdapter.js         - Internal shipments - ACTIVE, no external API
   CarrierAdapter.js          — Base class / interface contract
   DgrAdapter.js              — DHL Express Account 1 (DGR) — ACTIVE
   LogesTechsAdapter.js       — OTE/LogesTechs — ACTIVE
@@ -95,7 +96,6 @@ CarrierFactory.getAdapter('UPS')         → throws "not yet implemented"
 
 | Code | Name | Active | Notes |
 |---|---|---|---|
-| `MANUAL` | Manual Shipment | Yes | |
 | `DGR` | DHL Express (Account 1) | Yes | Existing account, code stays as DGR |
 | `DHLX` | DHL Express (Account 2) | **Pending** | New account — adapter not yet built |
 | `OTE` | OTE | Yes | |
@@ -204,6 +204,45 @@ HTTP Basic Auth: `Authorization: Basic Base64(${DHL_API_KEY}:${DHL_API_SECRET})`
 1. Calls `GET .../tracking?trackingView=all-checkpoints`
 2. **Deduplication:** DHL replays the same checkpoint from multiple data sources. The adapter deduplicates by grouping events into 1-minute buckets by `statusCode + description + location`, keeping the earliest scan per bucket.
 3. Returns normalized events array.
+
+---
+
+## Internal Carrier
+
+**File:** `backend/src/adapters/InternalAdapter.js`  
+**Carrier code:** `INTERNAL`  
+**Display name:** Internal  
+**Default service code:** `STD`  
+**Tracking prefix:** `TGR`  
+**Status:** Active
+
+`INTERNAL` is the first-class carrier for shipments managed by Target Logistics operations without booking through DHL/DGR, OTE/LogesTechs, Aramex, or any other external carrier API. It uses the same adapter contract as external carriers, so shipment creation, booking, tracking, finance, reporting, and public tracking can consume it through the normal carrier seams.
+
+Capabilities:
+
+```javascript
+{
+  code: "INTERNAL",
+  supportsBooking: true,
+  supportsRating: true,
+  supportsTracking: true,
+  supportsCancellation: false,
+  supportsLabelGeneration: false,
+  supportsExternalApi: false,
+  supportsConversionTarget: false
+}
+```
+
+Current behavior:
+
+- Rating returns a manual-pricing scaffold: `rateType: "INTERNAL"`, `requiresManualPricing: true`, `amount: null`, and `currency: "KWD"` by default.
+- Booking is local only. No HTTP request is made.
+- Booking stores the platform tracking number as the carrier shipment ID and appends `Awaiting Internal Processing` to shipment history.
+- Pricing snapshots are marked `internallyManaged: true` and `requiresManualPricing: true`.
+- Carrier labels, AWBs, and carrier invoices are not expected from this adapter.
+- Conversion out of `INTERNAL` is handled by `InternalShipmentConversionService`, which creates a new carrier-backed shipment and closes the original internal record.
+
+Future pricing should extend this adapter or a dedicated pricing engine for zone pricing, route pricing, customer contracts, COD, weight tiers, city/area surcharges, and manual overrides. New operational shipments should use `INTERNAL`.
 
 ---
 
@@ -324,6 +363,17 @@ ShipmentBookingService.bookShipment(trackingNumber, carrierCode, optionalService
   │   ├─ Update shipment: status→'booked', dhlConfirmed, dhlTrackingNumber, documents
   │   ├─ Mark booking attempt 'succeeded'
   │   └─ financeLedgerService.createLedgerEntry(DEBIT, SHIPMENT_CHARGE, amount)
+
+Internal shipment converted to carrier
+  │
+  ▼
+InternalShipmentConversionService.convertToCarrier(trackingNumber, { carrierCode, serviceCode }, user)
+  │   ├─ Validates source carrier is INTERNAL
+  │   ├─ Validates target carrier capabilities.supportsConversionTarget
+  │   ├─ Gets target-carrier rates/options through adapter.getRates()
+  │   ├─ Creates new shipment with target carrier tracking number
+  │   ├─ Adds reciprocal history/conversion metadata
+  │   └─ Does not call adapter.createShipment() or post finance debit
 
 Tracking update
   │

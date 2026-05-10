@@ -406,6 +406,21 @@ describe('LogesTechsAdapter', () => {
         await expect(adapter.getStatus({})).rejects.toThrow(/barcode or id required/i);
     });
 
+    it('marks provider package-not-found tracking lookups as TRACKING_PENDING', async () => {
+        const adapter = createAdapter();
+        shipmentClient.get.mockRejectedValue({
+            response: {
+                status: 403,
+                data: { error: 'Package not found (45268816), company ID: 424' }
+            }
+        });
+
+        await expect(adapter.getStatus({ barcode: '45268816' })).rejects.toMatchObject({
+            code: 'TRACKING_PENDING',
+            provider: 'OTE'
+        });
+    });
+
     it('maps provider deliveryRoute into tracking events history', async () => {
         const adapter = createAdapter();
         shipmentClient.get.mockResolvedValue({

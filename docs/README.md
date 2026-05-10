@@ -10,6 +10,8 @@ This folder contains maintained product and engineering documentation for Target
 | [ROLE_HIERARCHY_AND_ACCESS.md](ROLE_HIERARCHY_AND_ACCESS.md) | Product/engineering/security | Any role capability, shipment visibility, finance visibility, or user-management permission changes. |
 | [CARRIER_ADAPTER_ONBOARDING.md](CARRIER_ADAPTER_ONBOARDING.md) | Engineering | Adding/updating carrier adapters, service labels, or assignment visibility behavior. |
 | [LOGESTECHS_ADAPTER.md](LOGESTECHS_ADAPTER.md) | Engineering | Updating LogesTechs shipment/fulfillment integration, payload mapping, or required credentials. |
+| [modules/internal-shipment-conversion.md](modules/internal-shipment-conversion.md) | Product/engineering/operations | Internal shipment conversion behavior, supported target carriers, finance impact, or operational handoff rules. |
+| [ai-playbooks/internal-shipment-conversion-playbook.md](ai-playbooks/internal-shipment-conversion-playbook.md) | Engineering | Debugging or extending internal-to-carrier conversion. |
 
 ## Root Docs
 

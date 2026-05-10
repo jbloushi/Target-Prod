@@ -143,4 +143,34 @@ describe('buildDisplayHistory', () => {
       'processed:DUBAI-AE:2026-04-30T22:58:00.000Z'
     ]);
   });
+
+  it('preserves internal lifecycle and carrier conversion events on shipment detail timelines', () => {
+    const events = [
+      {
+        status: 'created',
+        description: 'Shipment Created',
+        location: 'Kuwait City, Kuwait',
+        timestamp: '2026-05-09T08:00:00Z'
+      },
+      {
+        status: 'ready_for_pickup',
+        description: 'Awaiting Internal Processing',
+        location: 'Kuwait City, Kuwait',
+        timestamp: '2026-05-09T08:05:00Z'
+      },
+      {
+        status: 'ready_for_pickup',
+        description: 'Carrier changed from INTERNAL to OTE',
+        location: 'Kuwait City, Kuwait',
+        timestamp: '2026-05-09T08:15:00Z'
+      }
+    ];
+
+    const out = buildDisplayHistory(events, { originLocation: 'Kuwait City, Kuwait' });
+    expect(out.map((e) => `${e.canonicalStatus}:${e.description}`)).toEqual([
+      'created:Shipment Created',
+      'ready_for_pickup:Awaiting Internal Processing',
+      'ready_for_pickup:Carrier changed from INTERNAL to OTE'
+    ]);
+  });
 });

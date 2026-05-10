@@ -134,6 +134,21 @@ const buildDisplayHistory = (events = [], options = {}) => {
     const providedOriginLocation = normalizeLocationLabel(options?.originLocation || '');
     const movementStatuses = new Set(['created', 'pickup', 'arrived_facility', 'processed', 'departed_facility']);
     const lowSignalStatuses = new Set(['customs_update', 'hold']);
+    const lifecycleStatuses = new Set([
+        'draft',
+        'pending',
+        'booked',
+        'ready_for_pickup',
+        'updated',
+        'picked_up',
+        'in_transit',
+        'out_for_delivery',
+        'delivered',
+        'exception',
+        'failed',
+        'returned',
+        'cancelled'
+    ]);
     const originReplayStatuses = new Set(['pickup', 'arrived_facility', 'processed', 'departed_facility', 'customs_update', 'hold']);
     const prepared = (Array.isArray(events) ? events : []).map((event) => {
         const timestamp = event?.timestamp ? new Date(event.timestamp) : null;
@@ -155,7 +170,7 @@ const buildDisplayHistory = (events = [], options = {}) => {
     prepared.forEach((event) => {
         const key = replayStableStatuses.has(event.canonicalStatus)
             ? `${event.canonicalStatus}|${event.normalizedLocation}`
-            : `${event.canonicalStatus}|${event.normalizedLocation}|${event.dayBucket}`;
+            : `${event.canonicalStatus}|${event.normalizedLocation}|${event.dayBucket}|${normalizeText(event.description || '')}`;
         const prior = byKey.get(key);
         if (!prior) {
             byKey.set(key, { ...event, collapsedCount: 1 });
@@ -166,7 +181,11 @@ const buildDisplayHistory = (events = [], options = {}) => {
 
     const displayEvents = Array.from(byKey.values())
         .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
-        .filter((event) => movementStatuses.has(event.canonicalStatus) || lowSignalStatuses.has(event.canonicalStatus))
+        .filter((event) => (
+            movementStatuses.has(event.canonicalStatus)
+            || lowSignalStatuses.has(event.canonicalStatus)
+            || lifecycleStatuses.has(event.canonicalStatus)
+        ))
         .map(({ dayBucket, ...event }) => event);
 
     const inferredOriginLocation = displayEvents.find((entry) => entry.canonicalStatus === 'pickup')?.normalizedLocation
@@ -301,7 +320,7 @@ const syncCarrierTrackingHistory = async (shipment) => {
         return null;
     }
 
-    const carrierCode = (shipment?.carrier || shipment?.carrierCode || 'DGR').toUpperCase();
+    const carrierCode = (shipment?.carrierCode || shipment?.carrier || 'DGR').toUpperCase();
     let carrier;
     try {
         carrier = CarrierFactory.getAdapter(carrierCode);
@@ -393,6 +412,10 @@ const syncCarrierTrackingHistory = async (shipment) => {
         
         return null;
     } catch (error) {
+        if (error?.code === 'TRACKING_PENDING') {
+            logger.info(`Carrier tracking pending at provider for ${shipment.trackingNumber}: ${error.message}`);
+            return null;
+        }
         logger.warn(`Failed to sync carrier tracking for ${shipment.trackingNumber}: ${error.message}`);
         return null;
     }
@@ -466,9 +489,9 @@ const hasCriticalChanges = (original, updates) => {
     return false;
 };
 
-const isManualShipment = (shipment) => {
-    return String(shipment?.carrierCode || '').toUpperCase() === 'MANUAL'
-        || shipment?.manualShipment === true;
+const isInternalShipment = (shipment) => {
+    return String(shipment?.carrierCode || '').toUpperCase() === 'INTERNAL'
+        || shipment?.internallyManaged === true;
 };
 
 const getAllowedStatusUpdates = (user, shipment) => {
@@ -511,7 +534,7 @@ module.exports = {
     syncCarrierTrackingHistory,
     calculateEstimatedDelivery,
     hasCriticalChanges,
-    isManualShipment,
+    isInternalShipment,
     getAllowedStatusUpdates,
     canUpdateShipmentStatus
 };

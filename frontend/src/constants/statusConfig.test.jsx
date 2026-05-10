@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MANUAL_SHIPMENT_STATUSES,
+  INTERNAL_SHIPMENT_STATUSES,
   getPublicStepIndex,
   getStepIndex,
   normalizeStatus,
@@ -13,8 +13,8 @@ describe('statusConfig', () => {
     expect(normalizeStatus('carrier-specific-in-flight')).toBe('in_transit');
   });
 
-  it('keeps manual shipment status options predefined and operational', () => {
-    expect(MANUAL_SHIPMENT_STATUSES).toEqual([
+  it('keeps internal shipment status options predefined and operational', () => {
+    expect(INTERNAL_SHIPMENT_STATUSES).toEqual([
       'draft',
       'pending',
       'booked',

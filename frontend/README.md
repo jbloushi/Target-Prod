@@ -45,8 +45,8 @@ REACT_APP_API_URL=http://localhost:8899/api
 - Shipment type options are limited to `Standard Package` and `Document Express`.
 - Client users should not be forced to select carrier or service in the wizard when their assigned access already determines it.
 - Public tracking must remain light, branded, and easy for customers to read.
-- Manual Shipment should not show the carrier approval/booking action.
-- Manual Shipment editing should expose authorized manual commercial fields where the user role allows it.
+- Internal shipment should not show the carrier approval/booking action.
+- Internal shipment editing should expose authorized commercial fields where the user role allows it.
 - Frontend status labels must stay aligned with backend status constants.
 
 ## Main Pages

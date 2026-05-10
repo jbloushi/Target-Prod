@@ -7,6 +7,19 @@ const crypto = require('crypto');
 const financeLedgerService = require('./financeLedger.service');
 const { getAssignedShippingAccess, normalizeCarrier } = require('./shippingAccess.service');
 
+const buildInternalPricingSnapshot = (shipment) => ({
+    ...(shipment.pricingSnapshot || {}),
+    carrierRate: Number(shipment.costPrice || shipment.pricingSnapshot?.carrierRate || 0),
+    totalPrice: Number(shipment.price || shipment.pricingSnapshot?.totalPrice || 0),
+    currency: shipment.currency || shipment.pricingSnapshot?.currency || 'KWD',
+    billingCurrency: shipment.currency || shipment.pricingSnapshot?.billingCurrency || shipment.pricingSnapshot?.currency || 'KWD',
+    policySource: shipment.pricingSnapshot?.policySource || 'manual',
+    rulesVersion: shipment.pricingSnapshot?.rulesVersion || 'manual-pricing-scaffold',
+    rateType: 'INTERNAL',
+    requiresManualPricing: true,
+    internallyManaged: true
+});
+
 class ShipmentBookingService {
     normalizeCarrierIdentifier(value, fallback = null) {
         if (value === undefined || value === null || value === '') return fallback;
@@ -29,15 +42,16 @@ class ShipmentBookingService {
         if (!shipment) throw new Error('Shipment record not found');
 
         const carrierCode = String(overrideCarrierCode || shipment.carrierCode || 'DGR').toUpperCase();
+        const carrierCapabilities = CarrierFactory.getCarrierCapabilities(carrierCode) || {};
         const payingUser = shipment.user;
         const organization = shipment.organization;
         const organizationId = shipment.organizationId;
 
         // Ensure Carrier is enabled for this account
-        this.ensureCarrierAllowed({ carrierCode, organization, payingUser });
+        this.ensureCarrierAllowed({ carrierCode, organization, payingUser, bookingUserRole });
 
         // Force a pricing refresh if the snapshot is expired or invalid
-        if (!PricingService.validateSnapshot(shipment.pricingSnapshot)) {
+        if (!PricingService.validateSnapshot(shipment.pricingSnapshot) && carrierCapabilities.supportsExternalApi !== false) {
             await this.refreshPricingSnapshotForBooking({ shipment, carrierCode, payingUser, organization });
         }
 
@@ -137,6 +151,20 @@ class ShipmentBookingService {
                 documents: freshShipment.documents || []
             };
 
+            if (carrierCapabilities.supportsExternalApi === false) {
+                updateData.pricingSnapshot = buildInternalPricingSnapshot(freshShipment);
+                updateData.history = [
+                    ...(Array.isArray(freshShipment.history) ? freshShipment.history : []),
+                    {
+                        status: 'booked',
+                        description: 'Awaiting Internal Processing',
+                        source: 'platform',
+                        timestamp: new Date(),
+                        location: freshShipment.currentLocation || freshShipment.origin || null
+                    }
+                ];
+            }
+
             // Document Processing: non-fatal upload (booking should succeed even if document storage fails)
             const tryAttachDocument = async (type, sourceValue, targetField) => {
                 if (!sourceValue) return;
@@ -164,9 +192,11 @@ class ShipmentBookingService {
                 }
             }
 
-            await tryAttachDocument('label', carrierResult.labelUrl, 'labelUrl');
-            await tryAttachDocument('invoice', carrierResult.invoiceUrl, 'invoiceUrl');
-            await tryAttachDocument('awb', carrierResult.awbUrl, 'awbUrl');
+            if (carrierCapabilities.supportsLabelGeneration !== false) {
+                await tryAttachDocument('label', carrierResult.labelUrl, 'labelUrl');
+                await tryAttachDocument('invoice', carrierResult.invoiceUrl, 'invoiceUrl');
+                await tryAttachDocument('awb', carrierResult.awbUrl, 'awbUrl');
+            }
 
             // Update in DB
             const finalizedShipment = await prisma.shipment.update({
@@ -242,8 +272,11 @@ class ShipmentBookingService {
      * Cross-references User and Org policies to authorize carrier usage.
      * @private
      */
-    ensureCarrierAllowed({ carrierCode, organization, payingUser }) {
+    ensureCarrierAllowed({ carrierCode, organization, payingUser, bookingUserRole }) {
         const normalizedCarrier = normalizeCarrier(carrierCode);
+        if (['admin', 'manager', 'staff', 'accounting'].includes(String(bookingUserRole || '').toLowerCase())) {
+            return;
+        }
         const policy = payingUser?.agentPolicy || {};
         const hasExplicitUserAssignment = Boolean(policy.shippingAccess)
             || (Array.isArray(policy.allowedCarriers) && policy.allowedCarriers.length === 1)
