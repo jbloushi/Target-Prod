@@ -802,10 +802,22 @@ const ShipmentWizardV2 = () => {
     };
 
     const handleSelectService = (s) => {
+        if (!s) {
+            setSelectedService({
+                serviceName: '',
+                serviceCode: '',
+                totalPrice: '0',
+                currency: defaultCurrencyForCarrier(selectedCarrier),
+            });
+            setAvailableOptionalServices([]);
+            setBillingCurrency(defaultCurrencyForCarrier(selectedCarrier));
+            return;
+        }
+
         setSelectedService({
             serviceName:         s.serviceName,
             serviceCode:         s.serviceCode,
-            totalPrice:          s.totalPrice == null ? null : s.totalPrice.toString(),
+            totalPrice:          s.totalPrice == null ? '0' : String(s.totalPrice),
             currency:            s.currency,
             basePrice:           s.basePrice,
             markupAmount:        s.markupAmount,

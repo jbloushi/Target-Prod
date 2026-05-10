@@ -30,6 +30,20 @@ const buildInternalPricingSnapshot = (currency = 'KWD') => ({
     expiresAt: new Date(Date.now() + 86400000)
 });
 
+const buildManualPricingSnapshot = (currency = 'KWD') => ({
+    carrierRate: 0,
+    markup: 0,
+    totalPrice: 0,
+    currency,
+    billingCurrency: currency,
+    policySource: 'manual',
+    rulesVersion: 'manual-pricing',
+    rateType: 'MANUAL',
+    requiresManualPricing: true,
+    internallyManaged: false,
+    expiresAt: new Date(Date.now() + 86400000)
+});
+
 class ShipmentDraftService {
 
     /**
@@ -201,7 +215,7 @@ class ShipmentDraftService {
                     createdBy: user.id,
                     metadata: {
                         event: 'DRAFT_CREATION',
-                        price: snapshot.totalPrice.toString(),
+                        price: String(snapshot.totalPrice ?? 0),
                         currency: shipment.currency || snapshot.billingCurrency || snapshot.currency || 'KWD'
                     }
                 });
