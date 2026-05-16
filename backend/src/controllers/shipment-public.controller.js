@@ -99,6 +99,9 @@ exports.getPublicShipment = async (req, res) => {
                 carrierCode: shipment.carrierCode || null,
                 serviceCode: shipment.serviceCode || null,
                 shipmentType: shipment.shipmentType || 'package',
+                codAmount: shipment.codAmount || null,
+                codCurrency: shipment.codCurrency || null,
+                codStatus: shipment.codStatus || null,
 
                 // Route
                 origin: {

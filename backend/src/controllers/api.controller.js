@@ -48,12 +48,12 @@ exports.createShipment = async (req, res) => {
         const assignedAccess = getAssignedShippingAccess(apiUser);
         assertRequestedAccessAllowed(assignedAccess, { carrierCode, serviceCode });
 
-        if (assignedAccess.mode === 'manual') {
+        if (assignedAccess.carrierCode === 'INTERNAL') {
             const shipment = await ShipmentDraftService.createDraft({
                 ...shipmentData,
-                carrierCode: 'MANUAL',
+                carrierCode: 'INTERNAL',
                 serviceCode: null,
-                manualShipment: true
+                internallyManaged: true
             }, apiUser);
 
             return res.status(201).json({
@@ -64,13 +64,43 @@ exports.createShipment = async (req, res) => {
                     serviceCode: shipment.serviceCode,
                     status: shipment.status,
                     price: shipment.price,
-                    currency: shipment.currency
+                    currency: shipment.currency,
+                    codAmount: shipment.codAmount || null,
+                    codCurrency: shipment.codCurrency || null,
+                    codStatus: shipment.codStatus || null
                 }
             });
         }
 
         const resolvedCarrierCode = assignedAccess.carrierCode;
         const resolvedServiceCode = serviceCode || assignedAccess.serviceCode || null;
+        const carrierCapabilities = typeof CarrierFactory.getCarrierCapabilities === 'function'
+            ? (CarrierFactory.getCarrierCapabilities(resolvedCarrierCode) || {})
+            : { supportsExternalApi: true };
+
+        if (carrierCapabilities.supportsExternalApi === false) {
+            const shipment = await ShipmentDraftService.createDraft({
+                ...shipmentData,
+                carrierCode: resolvedCarrierCode,
+                serviceCode: resolvedServiceCode
+            }, apiUser);
+
+            return res.status(201).json({
+                success: true,
+                data: {
+                    trackingNumber: shipment.trackingNumber,
+                    carrier: shipment.carrierCode,
+                    serviceCode: shipment.serviceCode,
+                    status: shipment.status,
+                    price: shipment.price,
+                    currency: shipment.currency,
+                    codAmount: shipment.codAmount || null,
+                    codCurrency: shipment.codCurrency || null,
+                    codStatus: shipment.codStatus || null,
+                    requiresManualPricing: shipment.pricingSnapshot?.requiresManualPricing === true
+                }
+            });
+        }
 
         if (!resolvedServiceCode) {
             return res.status(400).json({
@@ -82,6 +112,12 @@ exports.createShipment = async (req, res) => {
         // 1. Normalize
         const normalized = normalizeShipment(shipmentData);
         normalized.serviceCode = resolvedServiceCode;
+        if (resolvedCarrierCode === 'OTE') {
+            normalized.shipmentType = 'COD';
+            normalized.codAmount = 25;
+            normalized.codCurrency = 'AED';
+            normalized.codStatus = 'pending';
+        }
 
         // 2. Get Adapter
         const adapter = CarrierFactory.getAdapter(resolvedCarrierCode);
@@ -97,6 +133,9 @@ exports.createShipment = async (req, res) => {
             ...normalized,
             user: req.user.id
         }, resolvedServiceCode);
+        const carrierTrackingNumber = result.dhlTrackingNumber || result.trackingNumber || null;
+        const carrierShipmentId = result.carrierShipmentId || carrierTrackingNumber;
+        const bookingPrice = resolvedCarrierCode === 'OTE' ? 25 : (result.totalPrice || 0);
 
         // 5. Audit/Persist to MySQL
         const newShipment = await prisma.shipment.create({
@@ -124,10 +163,14 @@ exports.createShipment = async (req, res) => {
                     description: p.description
                 })),
                 items: normalized.items,
-                price: result.totalPrice || 0,
-                currency: 'KWD',
-                dhlTrackingNumber: result.dhlTrackingNumber || null,
-                dhlConfirmed: !!result.dhlTrackingNumber,
+                price: bookingPrice,
+                currency: resolvedCarrierCode === 'OTE' ? 'AED' : 'KWD',
+                codAmount: resolvedCarrierCode === 'OTE' ? 25 : null,
+                codCurrency: resolvedCarrierCode === 'OTE' ? 'AED' : null,
+                codStatus: resolvedCarrierCode === 'OTE' ? 'pending' : null,
+                dhlTrackingNumber: carrierTrackingNumber,
+                carrierShipmentId,
+                dhlConfirmed: Boolean(carrierTrackingNumber),
                 history: [{
                     status: 'booked',
                     timestamp: new Date().toISOString(),
@@ -145,7 +188,10 @@ exports.createShipment = async (req, res) => {
                 invoiceUrl: newShipment.invoiceUrl,
                 carrier: resolvedCarrierCode,
                 serviceCode: newShipment.serviceCode,
-                status: newShipment.status
+                status: newShipment.status,
+                codAmount: newShipment.codAmount || null,
+                codCurrency: newShipment.codCurrency || null,
+                codStatus: newShipment.codStatus || null
             }
         });
 
@@ -177,6 +223,9 @@ exports.trackShipment = async (req, res) => {
                 status: shipment.status,
                 carrier: shipment.carrierCode,
                 serviceCode: shipment.serviceCode,
+                codAmount: shipment.codAmount || null,
+                codCurrency: shipment.codCurrency || null,
+                codStatus: shipment.codStatus || null,
                 history: shipment.history,
                 estimatedDelivery: shipment.estimatedDelivery
             }
@@ -305,13 +354,13 @@ exports.getQuotation = async (req, res) => {
         const assignedAccess = getAssignedShippingAccess(user);
         assertRequestedAccessAllowed(assignedAccess, { carrierCode, serviceCode });
 
-        if (assignedAccess.mode === 'manual') {
+        if (assignedAccess.carrierCode === 'INTERNAL') {
             return res.status(200).json({
                 success: true,
                 data: [{
-                    serviceName: 'Manual Shipment',
-                    serviceCode: null,
-                    carrier: 'MANUAL',
+                    serviceName: 'Internal Standard',
+                    serviceCode: 'STD',
+                    carrier: 'INTERNAL',
                     totalPrice: 0,
                     currency: req.body.currency || 'KWD',
                     estimatedDelivery: null
@@ -339,6 +388,20 @@ exports.getQuotation = async (req, res) => {
         }
 
         const finalQuotes = visibleRates.map(rate => {
+            if (rate.requiresManualPricing) {
+                return {
+                    serviceName: rate.serviceName,
+                    serviceCode: rate.serviceCode,
+                    carrier: resolvedCarrierCode,
+                    rateType: 'INTERNAL',
+                    requiresManualPricing: true,
+                    amount: null,
+                    totalPrice: null,
+                    currency: rate.currency || 'KWD',
+                    estimatedDelivery: rate.estimatedDelivery
+                };
+            }
+
             const { markup } = PricingService.resolveMarkup(user, user.organization, resolvedCarrierCode);
             const calculation = PricingService.calculateFinalPrice(rate.totalPrice, markup, rate.currency);
             return {

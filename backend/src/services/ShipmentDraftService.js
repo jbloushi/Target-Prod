@@ -11,6 +11,9 @@ const {
 } = require('./shippingAccess.service');
 const { canCreateShipmentForUser } = require('../middleware/authorize.middleware');
 
+const OTE_DEFAULT_COD_AMOUNT = 25;
+const OTE_DEFAULT_COD_CURRENCY = 'AED';
+
 const defaultServiceCodeForCarrier = (carrierCode) => {
     const metadata = CarrierFactory.getCarrierMetadata(carrierCode);
     return metadata?.defaultServiceCode || 'P';
@@ -115,6 +118,10 @@ class ShipmentDraftService {
         );
         const estimatedDelivery = data.estimatedDelivery || new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
         const requestedStatus = cleanData.status || (isInternalShipment ? 'draft' : 'ready_for_pickup');
+        const isOteShipment = carrierCode === 'OTE' || carrierCode === 'LOGESTECHS';
+        const codAmount = isOteShipment ? OTE_DEFAULT_COD_AMOUNT : null;
+        const codCurrency = isOteShipment ? OTE_DEFAULT_COD_CURRENCY : null;
+        const codStatus = isOteShipment ? 'pending' : null;
         if (!SHIPMENT_STATUSES.includes(requestedStatus)) {
             throw new Error(`Invalid shipment status '${requestedStatus}'`);
         }
@@ -158,6 +165,9 @@ class ShipmentDraftService {
                 markupAmount: snapshot.markup, // Mapped to markupAmount natively
                 currency: snapshot.billingCurrency || snapshot.currency || cleanData.currency || 'KWD',
                 pricingSnapshot: snapshot,
+                codAmount,
+                codCurrency,
+                codStatus,
                 
                 // Relations
                 userId: targetUserId,

@@ -8,6 +8,7 @@ const router = express.Router();
 // Chatwoot webhook — no auth, called by Chatwoot on message status changes.
 // Configure in Chatwoot → Settings → Integrations → Webhooks, subscribe to message_updated.
 router.post('/chatwoot/webhook', integrationController.handleChatwootWebhook);
+router.post('/logestechs/webhook', integrationController.handleLogesTechsWebhook);
 
 router.use(authController.protect);
 

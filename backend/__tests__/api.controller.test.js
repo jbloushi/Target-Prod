@@ -60,7 +60,7 @@ describe('client API shipment workflows', () => {
         organization: { id: 'org-1', markup: { type: 'PERCENTAGE', percentageValue: 10 } }
     });
 
-    it('creates manual shipments without requiring carrier data from the API client', async () => {
+    it('creates internal shipments without requiring carrier data from the API client', async () => {
         const controller = require('../src/controllers/api.controller');
         const req = {
             user: { id: 'user-1', organizationId: 'org-1' },
@@ -68,11 +68,11 @@ describe('client API shipment workflows', () => {
         };
         const res = createMockRes();
 
-        prisma.user.findUnique.mockResolvedValue(apiUser({ carrierCode: 'MANUAL' }));
+        prisma.user.findUnique.mockResolvedValue(apiUser({ carrierCode: 'INTERNAL' }));
         createDraft.mockResolvedValue({
-            trackingNumber: 'MAN-1',
-            carrierCode: 'MANUAL',
-            serviceCode: null,
+            trackingNumber: 'TGR-1',
+            carrierCode: 'INTERNAL',
+            serviceCode: 'STD',
             status: 'draft',
             price: 0,
             currency: 'KWD'
@@ -81,14 +81,14 @@ describe('client API shipment workflows', () => {
         await controller.createShipment(req, res);
 
         expect(createDraft).toHaveBeenCalledWith(expect.objectContaining({
-            carrierCode: 'MANUAL',
+            carrierCode: 'INTERNAL',
             serviceCode: null,
-            manualShipment: true
+            internallyManaged: true
         }), expect.objectContaining({ id: 'user-1' }));
         expect(getAdapter).not.toHaveBeenCalled();
         expect(res.status).toHaveBeenCalledWith(201);
         expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-            data: expect.objectContaining({ carrier: 'MANUAL', status: 'draft' })
+            data: expect.objectContaining({ carrier: 'INTERNAL', status: 'draft' })
         }));
     });
 
@@ -152,6 +152,67 @@ describe('client API shipment workflows', () => {
             })
         }));
         expect(res.status).toHaveBeenCalledWith(201);
+    });
+
+    it('books OTE API shipments as fixed COD and persists carrier identifiers', async () => {
+        const controller = require('../src/controllers/api.controller');
+        const req = {
+            user: { id: 'user-1', organizationId: 'org-1' },
+            body: { origin: {}, destination: {}, parcels: [] }
+        };
+        const res = createMockRes();
+        const adapter = {
+            validate: jest.fn().mockResolvedValue([]),
+            createShipment: jest.fn().mockResolvedValue({
+                trackingNumber: '100368200545',
+                carrierShipmentId: '368200054'
+            })
+        };
+
+        prisma.user.findUnique.mockResolvedValue(apiUser({ carrierCode: 'OTE', serviceCode: 'STD' }));
+        getAdapter.mockReturnValue(adapter);
+        prisma.shipment.create.mockResolvedValue({
+            trackingNumber: '100368200545',
+            serviceCode: 'STD',
+            status: 'booked',
+            labelUrl: null,
+            invoiceUrl: null,
+            codAmount: 25,
+            codCurrency: 'AED',
+            codStatus: 'pending'
+        });
+
+        await controller.createShipment(req, res);
+
+        expect(adapter.createShipment).toHaveBeenCalledWith(expect.objectContaining({
+            serviceCode: 'STD',
+            shipmentType: 'COD',
+            codAmount: 25,
+            codCurrency: 'AED',
+            codStatus: 'pending'
+        }), 'STD');
+        expect(prisma.shipment.create).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({
+                carrierCode: 'OTE',
+                serviceCode: 'STD',
+                price: 25,
+                currency: 'AED',
+                codAmount: 25,
+                codCurrency: 'AED',
+                codStatus: 'pending',
+                dhlTrackingNumber: '100368200545',
+                carrierShipmentId: '368200054',
+                dhlConfirmed: true
+            })
+        }));
+        expect(res.status).toHaveBeenCalledWith(201);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({
+                codAmount: 25,
+                codCurrency: 'AED',
+                codStatus: 'pending'
+            })
+        }));
     });
 
     it('returns only the assigned service in quotation responses', async () => {

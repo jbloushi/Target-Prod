@@ -1,0 +1,4 @@
+ALTER TABLE `Shipment`
+  ADD COLUMN `codAmount` DECIMAL(18, 4) NULL,
+  ADD COLUMN `codCurrency` VARCHAR(191) NULL,
+  ADD COLUMN `codStatus` VARCHAR(191) NULL;

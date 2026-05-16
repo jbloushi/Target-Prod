@@ -148,6 +148,8 @@ class LogesTechsAdapter extends CarrierAdapter {
         const weightValue = parcel.weight?.value ?? parcel.weight ?? shipment.chargeableWeight ?? 0;
         const sender = shipment.sender || shipment.origin || {};
         const receiver = shipment.receiver || shipment.destination || {};
+        const codAmount = Number(shipment.codAmount ?? shipment.cod ?? 0);
+        const shipmentType = this._firstNonEmpty(shipment.shipmentType, codAmount > 0 ? 'COD' : 'REGULAR');
 
         const quantity = Number(parcel.quantity || shipment.totalBoxes || 1);
         const pkg = {
@@ -165,8 +167,8 @@ class LogesTechsAdapter extends CarrierAdapter {
             receiverName: this._firstNonEmpty(receiver.contactPerson, receiver.name, shipment.customer?.name),
             receiverPhone: this._firstNonEmpty(receiver.phone, receiver.phoneNumber, receiver.mobile),
             serviceType: this._firstNonEmpty(shipment.serviceType, shipment.serviceCode, 'STANDARD'),
-            shipmentType: this._firstNonEmpty(shipment.shipmentType, 'REGULAR'),
-            cod: String(Number(shipment.codAmount ?? shipment.cod ?? 0))
+            shipmentType,
+            cod: String(codAmount)
         };
 
         return Object.fromEntries(Object.entries(pkg).filter(([, value]) => value !== undefined && value !== null && value !== ''));
@@ -174,7 +176,7 @@ class LogesTechsAdapter extends CarrierAdapter {
 
     _normalizeOteShipmentType(value) {
         const normalized = this._safeString(value)?.toUpperCase();
-        const allowed = new Set(['REGULAR', 'RETURN', 'EXCHANGE']);
+        const allowed = new Set(['COD', 'REGULAR', 'SWAP', 'BRING', 'RETURN', 'EXCHANGE']);
         return allowed.has(normalized) ? normalized : 'REGULAR';
     }
 
@@ -186,7 +188,7 @@ class LogesTechsAdapter extends CarrierAdapter {
 
     _normalizeCarrierModelFields(shipment = {}, packagePayload = {}) {
         const shipmentType = this._normalizeOteShipmentType(
-            this._firstNonEmpty(shipment.shipmentType, packagePayload.shipmentType, 'REGULAR')
+            this._firstNonEmpty(shipment.shipmentType, packagePayload.shipmentType, Number(shipment.codAmount ?? shipment.cod ?? 0) > 0 ? 'COD' : 'REGULAR')
         );
         const serviceType = this._normalizeOteServiceType(
             this._firstNonEmpty(shipment.serviceType, shipment.serviceCode, packagePayload.serviceType, 'STANDARD')
@@ -349,6 +351,20 @@ class LogesTechsAdapter extends CarrierAdapter {
                 timestamp: event.deliveryDate || event.timestamp || raw?.lastStatusDate || raw?.createdDate,
                 location: event.location || event.city || raw?.nextDestination || raw?.destinationCity || raw?.destinationVillage || null
             }));
+        }
+
+        const status = raw?.status || raw?.currentStatus || raw?.newStatus || raw?.enStatus;
+        if (status) {
+            const timestampValue = raw?.lastStatusDate || raw?.updatedAt || raw?.createdDate || raw?.time || Date.now();
+            const timestamp = typeof timestampValue === 'number'
+                ? new Date(timestampValue).toISOString()
+                : timestampValue;
+            return [{
+                statusCode: status,
+                description: raw?.enStatus || raw?.description || raw?.message || status,
+                timestamp,
+                location: raw?.nextDestination || raw?.destinationCity || raw?.destinationVillage || null
+            }];
         }
 
         return [];
