@@ -103,6 +103,23 @@ describe('shipment status policy', () => {
         ]);
     });
 
+    it('prefers barcode-style tracking numbers over carrier shipment ids when syncing OTE', async () => {
+        const getTracking = jest.fn().mockResolvedValue({ events: [] });
+        CarrierFactory.getAdapter.mockReturnValue({ getTracking });
+
+        const result = await syncCarrierTrackingHistory({
+            trackingNumber: 'TRG-2',
+            carrierCode: 'OTE',
+            carrierShipmentId: '368200054',
+            dhlTrackingNumber: '100368200545',
+            status: 'booked',
+            history: []
+        });
+
+        expect(getTracking).toHaveBeenCalledWith('100368200545');
+        expect(result).toBeNull();
+    });
+
     it('suppresses provider warnings when OTE tracking is not ready yet', async () => {
         const error = new Error('Carrier tracking pending at provider: Package not found (45268816), company ID: 424');
         error.code = 'TRACKING_PENDING';

@@ -101,6 +101,14 @@ const buildHistoryKey = (event) => {
     return `${status}|${description}|${minuteBucket}|${location}`;
 };
 
+const resolveCarrierTrackingNumber = (shipment = {}) => {
+    const barcode = shipment?.dhlTrackingNumber;
+    const carrierShipmentId = shipment?.carrierShipmentId;
+    const trackingNumber = shipment?.trackingNumber;
+
+    return barcode || carrierShipmentId || trackingNumber || null;
+};
+
 const normalizeText = (value = '') => String(value)
     .toLowerCase()
     .trim()
@@ -309,7 +317,7 @@ const compactHistory = (history = []) => {
 const syncCarrierTrackingHistory = async (shipment) => {
     const originalHistory = Array.isArray(shipment.history) ? shipment.history : [];
     const compactedOriginalHistory = compactHistory(originalHistory);
-    const trackingNumber = shipment?.carrierShipmentId || shipment?.dhlTrackingNumber;
+    const trackingNumber = resolveCarrierTrackingNumber(shipment);
     if (!trackingNumber) {
         if (compactedOriginalHistory.length !== originalHistory.length) {
             return {
@@ -530,6 +538,7 @@ module.exports = {
     buildDisplayHistory,
     canonicalStatusFromDescription,
     normalizeLocationLabel,
+    resolveCarrierTrackingNumber,
     compactHistory,
     syncCarrierTrackingHistory,
     calculateEstimatedDelivery,
