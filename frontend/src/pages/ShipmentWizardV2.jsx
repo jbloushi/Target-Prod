@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSnackbar } from 'notistack';
 import {
@@ -55,6 +55,29 @@ const LABEL_SX = {
 };
 
 const VOLUME_FACTOR = 5000;
+
+const normalizeWizardCarrierCode = (carrierCode) => {
+    const normalized = String(carrierCode || '').trim().toUpperCase();
+    if (normalized === 'LOGESTECHS') return 'OTE';
+    return normalized;
+};
+
+const defaultCurrencyForCarrier = (carrierCode) => (normalizeWizardCarrierCode(carrierCode) === 'OTE' ? 'AED' : 'KWD');
+
+const getAssignedCarrierFromClient = (client) => {
+    const policy = client?.agentPolicy || {};
+    const access = policy.shippingAccess || {};
+    const singleAllowedCarrier = Array.isArray(policy.allowedCarriers) && policy.allowedCarriers.length === 1
+        ? policy.allowedCarriers[0]
+        : null;
+
+    return normalizeWizardCarrierCode(
+        access.carrierCode
+        || access.preferredCarrier
+        || singleAllowedCarrier
+        || client?.carrierConfig?.preferredCarrier
+    );
+};
 
 const STEPS = [
     { key: 'Setup',   label: 'Addresses', sublabel: 'Origin & destination' },
@@ -701,7 +724,6 @@ const ShipmentWizardV2 = () => {
     const [packageMarks,    setPackageMarks]    = useState('');
     const [shipmentType,    setShipmentType]    = useState('package');
     const [plannedDate,     setPlannedDate]     = useState(new Date().toISOString().split('T')[0]);
-    const defaultCurrencyForCarrier = (carrierCode) => (String(carrierCode || '').toUpperCase() === 'OTE' ? 'AED' : 'KWD');
     const [currency,        setCurrency]        = useState('KWD');
     const [billingCurrency, setBillingCurrency] = useState('KWD');
     const [insuredValue,    setInsuredValue]    = useState('');
@@ -719,6 +741,30 @@ const ShipmentWizardV2 = () => {
     const [createdShipment,   setCreatedShipment]   = useState(null);
 
     const selectedCarrierProfile = useMemo(() => CARRIER_PROFILES[selectedCarrier] || CARRIER_PROFILES.DGR, [selectedCarrier]);
+    const selectedClientRecord = useMemo(
+        () => clients.find(client => client.id === selectedClient) || null,
+        [clients, selectedClient]
+    );
+
+    const applyCarrierSelection = useCallback((code, { notify = false } = {}) => {
+        const normalizedCode = normalizeWizardCarrierCode(code) || 'DGR';
+        const defaultCurrency = defaultCurrencyForCarrier(normalizedCode);
+        setSelectedCarrier(normalizedCode);
+        setCurrency(defaultCurrency);
+        setBillingCurrency(defaultCurrency);
+        setSelectedService({ serviceName: '', serviceCode: '', totalPrice: '0', currency: defaultCurrency });
+        setAvailableServices([]);
+        setAvailableOptionalServices([]);
+        setSelectedOptionalServiceCodes([]);
+
+        if (notify) {
+            if (normalizedCode === 'INTERNAL') {
+                enqueueSnackbar(`Switched to ${getCarrierDisplayName(normalizedCode)}`, { variant: 'info' });
+            } else {
+                enqueueSnackbar(`Switched to ${normalizedCode} network`, { variant: 'info' });
+            }
+        }
+    }, [enqueueSnackbar]);
 
     const totals = useMemo(() => {
         let pieces = 0, actualWeight = 0, volumetricWeight = 0, declaredValue = 0;
@@ -773,32 +819,30 @@ const ShipmentWizardV2 = () => {
     useEffect(() => {
         if (!isStaff) return;
 
+        const assignedCarrier = getAssignedCarrierFromClient(selectedClientRecord);
+        if (selectedClient && assignedCarrier) {
+            setAvailableCarriers(prev => {
+                const list = Array.isArray(prev) ? prev : [];
+                return list.some(carrier => normalizeWizardCarrierCode(carrier.code) === assignedCarrier)
+                    ? list
+                    : [{ code: assignedCarrier, name: getCarrierDisplayName(assignedCarrier), active: true, assigned: true }, ...list];
+            });
+            applyCarrierSelection(assignedCarrier);
+        }
+
         shipmentService.getAvailableCarriers(selectedClient || undefined)
             .then(res => {
                 if (res.success && res.data?.length) {
                     setAvailableCarriers(res.data);
-                    const initialCarrier = res.data[0].code;
-                    setSelectedCarrier(initialCarrier);
-                    const defaultCurrency = defaultCurrencyForCarrier(initialCarrier);
-                    setCurrency(defaultCurrency);
-                    setBillingCurrency(defaultCurrency);
+                    const initialCarrier = normalizeWizardCarrierCode(res.data[0].code);
+                    applyCarrierSelection(initialCarrier);
                 }
             })
             .catch(() => {});
-    }, [isStaff, selectedClient]);
+    }, [applyCarrierSelection, isStaff, selectedClient, selectedClientRecord]);
 
     const handleCarrierChange = (code) => {
-        const defaultCurrency = defaultCurrencyForCarrier(code);
-        setSelectedCarrier(code);
-        setCurrency(defaultCurrency);
-        setBillingCurrency(defaultCurrency);
-        setSelectedService({ serviceName: '', serviceCode: '', totalPrice: '0', currency: defaultCurrency });
-        setAvailableServices([]);
-        if (String(code || '').toUpperCase() === 'INTERNAL') {
-            enqueueSnackbar(`Switched to ${getCarrierDisplayName(code)}`, { variant: 'info' });
-        } else {
-            enqueueSnackbar(`Switched to ${code} network`, { variant: 'info' });
-        }
+        applyCarrierSelection(code, { notify: true });
     };
 
     const handleSelectService = (s) => {
