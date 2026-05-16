@@ -5,7 +5,7 @@
 const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
 const CarrierFactory = require('../services/CarrierFactory');
-const { syncCarrierTrackingHistory, compactHistory, buildDisplayHistory } = require('./shipment.helpers');
+const { syncCarrierTrackingHistory, compactHistory, buildDisplayHistory, resolveCarrierTrackingNumber } = require('./shipment.helpers');
 const { normalizeStatus } = require('../constants/statusConstants');
 const { canAccessShipment } = require('../middleware/authorize.middleware');
 
@@ -47,7 +47,7 @@ exports.getPublicShipment = async (req, res) => {
         })).filter((event) => event.timestamp);
 
         let rawEvents = [];
-        const carrierTrackingNumber = shipment?.carrierShipmentId || shipment?.dhlTrackingNumber;
+        const carrierTrackingNumber = resolveCarrierTrackingNumber(shipment);
         const carrierCode = (shipment?.carrierCode || shipment?.carrier || 'DGR').toUpperCase();
 
         // Public page should mirror carrier history whenever carrier data exists.
