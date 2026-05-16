@@ -3,6 +3,8 @@ const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
 const config = require('../config/config');
 const chatwootNotificationService = require('../services/chatwootNotificationService');
+const { compactHistory } = require('./shipment.helpers');
+const { normalizeStatus } = require('../constants/statusConstants');
 
 // Chatwoot message statuses that map to our log statuses
 const CHATWOOT_STATUS_MAP = {
@@ -10,6 +12,118 @@ const CHATWOOT_STATUS_MAP = {
     delivered: 'delivered',
     read: 'read',
     failed: 'failed',
+};
+
+const safeTimingEqual = (left = '', right = '') => {
+    const leftBuffer = Buffer.from(String(left));
+    const rightBuffer = Buffer.from(String(right));
+    return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+};
+
+const normalizeLogesTechsTimestamp = (value) => {
+    if (!value) return new Date();
+    if (typeof value === 'number') return new Date(value);
+    const asNumber = Number(value);
+    if (Number.isFinite(asNumber) && String(value).trim().length >= 10) return new Date(asNumber);
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+};
+
+const buildLogesTechsDescription = (body = {}) => {
+    return body.newStatus || body.status || body.enStatus || body.message || 'LogesTechs status update';
+};
+
+const resolveLogesTechsCodStatus = (normalizedStatus, body = {}, shipment = {}) => {
+    const codAmount = Number(body.cod ?? shipment.codAmount ?? 0);
+    if (codAmount <= 0) return shipment.codStatus || null;
+    if (normalizedStatus === 'delivered') return 'collected';
+    if (['exception', 'cancelled'].includes(normalizedStatus)) return 'failed';
+    return shipment.codStatus || 'pending';
+};
+
+exports.handleLogesTechsWebhook = async (req, res) => {
+    const secret = config.logesTechsWebhookSecret;
+    if (secret) {
+        const provided = req.headers['x-logestechs-webhook-secret'] || req.headers['x-webhook-secret'] || req.query?.secret || '';
+        if (!safeTimingEqual(provided, secret)) {
+            logger.warn('[logestechs-webhook] invalid secret - request rejected');
+            return res.status(401).json({ ok: false });
+        }
+    }
+
+    const body = req.body || {};
+    const barcode = body.barcode || body.packageBarcode || body.trackingNumber;
+    const packageId = body.packageId != null ? String(body.packageId) : null;
+    const status = body.newStatus || body.status;
+
+    if (!barcode && !packageId) {
+        logger.warn('[logestechs-webhook] missing barcode/packageId');
+        return res.status(400).json({ ok: false, error: 'barcode or packageId is required' });
+    }
+
+    const lookupTerms = [barcode, packageId].filter(Boolean).map(String);
+    const shipment = await prisma.shipment.findFirst({
+        where: {
+            carrierCode: 'OTE',
+            OR: [
+                { trackingNumber: { in: lookupTerms } },
+                { dhlTrackingNumber: { in: lookupTerms } },
+                { carrierShipmentId: { in: lookupTerms } }
+            ]
+        }
+    });
+
+    if (!shipment) {
+        logger.warn('[logestechs-webhook] shipment not found', { barcode, packageId, status });
+        return res.status(202).json({ ok: true, matched: false });
+    }
+
+    const normalizedStatus = normalizeStatus(status || shipment.status);
+    const timestamp = normalizeLogesTechsTimestamp(body.time || body.timestamp || body.updatedAt);
+    const history = compactHistory([
+        ...(Array.isArray(shipment.history) ? shipment.history : []),
+        {
+            status: normalizedStatus,
+            source: 'carrier',
+            description: buildLogesTechsDescription(body),
+            timestamp,
+            location: {
+                formattedAddress: body.nextDestination || body.location || body.driverName || 'LogesTechs',
+                city: body.nextDestination || body.location || undefined,
+                contactPerson: body.driverName || undefined,
+                phone: body.driverPhone || undefined
+            },
+            carrierPayload: {
+                packageId: body.packageId || null,
+                barcode: barcode || null,
+                paymentType: body.paymentType || null
+            }
+        }
+    ]);
+
+    const updateData = {
+        history,
+        status: normalizedStatus,
+        codStatus: resolveLogesTechsCodStatus(normalizedStatus, body, shipment)
+    };
+    if (body.cod !== undefined && body.cod !== null && shipment.codAmount == null) {
+        updateData.codAmount = Number(body.cod);
+        updateData.codCurrency = shipment.codCurrency || 'AED';
+    }
+
+    await prisma.shipment.update({
+        where: { id: shipment.id },
+        data: updateData
+    });
+
+    logger.info('[logestechs-webhook] shipment status updated', {
+        trackingNumber: shipment.trackingNumber,
+        status: normalizedStatus,
+        barcode,
+        packageId
+    });
+
+    return res.status(200).json({ ok: true });
 };
 
 exports.handleChatwootWebhook = async (req, res) => {

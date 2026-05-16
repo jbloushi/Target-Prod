@@ -154,6 +154,43 @@ describe('LogesTechsAdapter', () => {
         }), expect.any(Object));
     });
 
+    it('sends OTE COD shipment fields when codAmount is provided', async () => {
+        const adapter = createAdapter();
+        shipmentClient.post.mockResolvedValue({ data: { shipmentId: 'shp-101', barcode: 'BR-101' } });
+
+        await adapter.createShipment({
+            trackingNumber: 'TRG-COD-25',
+            shipmentType: 'COD',
+            codAmount: 25,
+            codCurrency: 'AED',
+            sender: {
+                contactPerson: 'Target Logistics',
+                phone: '966500000000',
+                addressLine1: 'Origin',
+                cityId: 1,
+                regionId: 1,
+                villageId: 1
+            },
+            receiver: {
+                contactPerson: 'Test Receiver',
+                phone: '971500000000',
+                addressLine1: 'Destination',
+                cityId: 1,
+                regionId: 1,
+                villageId: 1
+            },
+            parcels: [{ quantity: 1, weight: 1 }]
+        });
+
+        const payload = shipmentClient.post.mock.calls[0][1];
+        expect(payload.shipmentType).toBe('COD');
+        expect(payload.model.shipmentType).toBe('COD');
+        expect(payload.pkg).toEqual(expect.objectContaining({
+            shipmentType: 'COD',
+            cod: '25'
+        }));
+    });
+
     it('sends top-level shipmentType/serviceType defaults required by OTE model validation', async () => {
         const adapter = createAdapter();
         shipmentClient.post.mockResolvedValue({ data: { shipmentId: 'shp-131', barcode: 'BR-131' } });
@@ -462,6 +499,28 @@ describe('LogesTechsAdapter', () => {
         const tracking = await adapter.getTracking('TRK-1');
         expect(tracking.events).toEqual([
             expect.objectContaining({ statusCode: 'IN_TRANSIT', description: 'Left hub' })
+        ]);
+    });
+
+    it('synthesizes a current-status event when OTE status lookup has no route history', async () => {
+        const adapter = createAdapter();
+        shipmentClient.get.mockResolvedValue({
+            data: {
+                status: 'DELIVERED_TO_RECIPIENT',
+                enStatus: 'Delivered',
+                nextDestination: 'Dubai',
+                id: 7624
+            }
+        });
+
+        const tracking = await adapter.getTracking('100448960604');
+
+        expect(tracking.events).toEqual([
+            expect.objectContaining({
+                statusCode: 'DELIVERED_TO_RECIPIENT',
+                description: 'Delivered',
+                location: 'Dubai'
+            })
         ]);
     });
 

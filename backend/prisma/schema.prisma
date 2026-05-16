@@ -53,6 +53,9 @@ model Organization {
   markup           Json?
   allowedCarriers  Json?
   addresses        Json?
+  billingContactName String?
+  billingWhatsappNumber String?
+  billingEmail     String?
   
   active           Boolean    @default(true)
   createdAt        DateTime   @default(now())
@@ -64,6 +67,7 @@ model Organization {
   shipments        Shipment[]
   payments         Payment[]
   invoices         Invoice[]
+  invoiceDeliveries InvoiceDeliveryLog[]
   ledgerEntries    OrganizationLedger[]
   allocations     PaymentAllocation[]
   webhooks         WebhookSubscription[]
@@ -103,6 +107,7 @@ model User {
   drivenShipments    Shipment[]          @relation("AssignedDriver")
   payments           Payment[]
   createdInvoices    Invoice[]             @relation("InvoiceCreatedBy")
+  invoiceDeliveriesSent InvoiceDeliveryLog[]
   createdAllocations  PaymentAllocation[]
   pickupRequests     PickupRequest[]     @relation("UserPickups")
   drivenPickups      PickupRequest[]     @relation("PickupDriver")
@@ -164,6 +169,9 @@ model Shipment {
   paid             Boolean      @default(false)
   totalPaid        Decimal      @default(0.0) @db.Decimal(18, 4)
   remainingBalance Decimal      @default(0.0) @db.Decimal(18, 4)
+  codAmount        Decimal?     @db.Decimal(18, 4)
+  codCurrency      String?
+  codStatus        String?
   
   // JSON Blobs
   origin           Json
@@ -226,15 +234,21 @@ model Invoice {
   sentAt          DateTime?
   paidAt          DateTime?
   notes           String?      @db.Text
+  pdfUrl          String?
+  pdfGeneratedAt  DateTime?
+  publicPdfToken  String?
+  publicPdfTokenExpiresAt DateTime?
   createdById     String?
   createdBy       User?        @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
   lines           InvoiceLine[]
+  deliveries      InvoiceDeliveryLog[]
 
   @@index([organizationId, status, createdAt], map: "Invoice_org_status_created_idx")
   @@index([periodStart, periodEnd], map: "Invoice_period_idx")
+  @@index([publicPdfToken], map: "Invoice_publicPdfToken_idx")
 }
 
 model InvoiceLine {
@@ -255,6 +269,35 @@ model InvoiceLine {
 
   @@index([invoiceId], map: "InvoiceLine_invoice_idx")
   @@index([shipmentId], map: "InvoiceLine_shipment_idx")
+}
+
+model InvoiceDeliveryLog {
+  id                   String       @id @default(uuid())
+  invoiceId            String
+  invoice              Invoice      @relation(fields: [invoiceId], references: [id])
+  organizationId       String?
+  organization         Organization? @relation(fields: [organizationId], references: [id])
+  sentById             String?
+  sentBy               User?        @relation(fields: [sentById], references: [id])
+  provider             String       @default("chatwoot")
+  recipientName        String?
+  recipientPhone       String?
+  recipientEmail       String?
+  templateName         String?
+  status               String       @default("pending")
+  chatwootContactId    String?
+  chatwootConversationId String?
+  chatwootMessageId    String?
+  payloadJson          Json?
+  responseJson         Json?
+  errorMessage         String?      @db.Text
+  sentAt               DateTime?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  @@index([invoiceId, createdAt], map: "InvoiceDelivery_invoice_created_idx")
+  @@index([organizationId, createdAt], map: "InvoiceDelivery_org_created_idx")
+  @@index([provider, status, createdAt], map: "InvoiceDelivery_provider_status_created_idx")
 }
 
 model ShipmentNotificationLog {

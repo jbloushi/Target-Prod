@@ -70,6 +70,39 @@ describe('shipment status policy', () => {
         expect(result.history[0].source).toBe('carrier');
     });
 
+    it('promotes OTE delivered status from LogesTechs carrier events', async () => {
+        CarrierFactory.getAdapter.mockReturnValue({
+            getTracking: jest.fn().mockResolvedValue({
+                events: [
+                    {
+                        statusCode: 'DELIVERED_TO_RECIPIENT',
+                        description: 'Delivered to recipient',
+                        timestamp: '2026-04-15T08:00:00.000Z',
+                        location: 'Dubai'
+                    }
+                ]
+            })
+        });
+
+        const result = await syncCarrierTrackingHistory({
+            trackingNumber: 'TRG-1',
+            carrierCode: 'OTE',
+            carrierShipmentId: '100448960604',
+            status: 'booked',
+            history: [],
+            origin: { contactPerson: 'Sender', phone: '123' }
+        });
+
+        expect(result.status).toBe('delivered');
+        expect(result.history).toEqual([
+            expect.objectContaining({
+                status: 'delivered',
+                source: 'carrier',
+                description: 'Delivered to recipient'
+            })
+        ]);
+    });
+
     it('suppresses provider warnings when OTE tracking is not ready yet', async () => {
         const error = new Error('Carrier tracking pending at provider: Package not found (45268816), company ID: 424');
         error.code = 'TRACKING_PENDING';

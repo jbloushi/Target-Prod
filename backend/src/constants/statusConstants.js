@@ -43,6 +43,28 @@ const DHL_STATUS_MAP = {
     'unknown': null, // no promotion
 };
 
+// Maps LogesTechs/OTE status codes → platform status
+const OTE_STATUS_MAP = {
+    'created': 'booked',
+    'pending_customer_care_approval': 'booked',
+    'approved_by_customer_care_and_waiting_for_dispatcher': 'ready_for_pickup',
+    'assigned_to_driver_and_pending_approval': 'ready_for_pickup',
+    'accepted_by_driver_and_pending_pickup': 'ready_for_pickup',
+    'arrived': 'picked_up',
+    'brought': 'picked_up',
+    'picked': 'picked_up',
+    'in_transit': 'in_transit',
+    'transferred_out': 'in_transit',
+    'out_for_delivery': 'out_for_delivery',
+    'delivered_to_recipient': 'delivered',
+    'completed': 'delivered',
+    'cancelled': 'cancelled',
+    'returned_by_recipient': 'exception',
+    'postponed_delivery': 'exception',
+    'damaged': 'exception',
+    'delayed': 'exception',
+};
+
 // Maps legacy/retired internal statuses → new canonical statuses
 const LEGACY_STATUS_MAP = {
     'updated': 'pending',
@@ -60,6 +82,7 @@ function normalizeStatus(raw) {
     const s = String(raw).toLowerCase().replace(/\s+/g, '_');
     if (SHIPMENT_STATUSES.includes(s)) return s;
     if (LEGACY_STATUS_MAP[s]) return LEGACY_STATUS_MAP[s];
+    if (OTE_STATUS_MAP[s]) return OTE_STATUS_MAP[s];
     if (DHL_STATUS_MAP[s] != null) return DHL_STATUS_MAP[s];
     return 'in_transit'; // safe fallback for unknown carrier codes
 }
@@ -87,6 +110,7 @@ module.exports = {
     INTERNAL_SHIPMENT_STATUSES,
     STATUS_LABELS,
     DHL_STATUS_MAP,
+    OTE_STATUS_MAP,
     LEGACY_STATUS_MAP,
     normalizeStatus,
     getStatusIndex,
