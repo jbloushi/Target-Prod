@@ -135,7 +135,7 @@ class ShipmentDraftService {
                 trackingNumber,
                 status: requestedStatus,
                 serviceCode,
-                carrierCode: isInternalShipment ? 'INTERNAL' : (cleanData.carrierCode || 'DGR'),
+                carrierCode: isInternalShipment ? 'INTERNAL' : (carrierCode || 'DGR'),
                 
                 // Address & Customer Info (JSON)
                 origin: { 
