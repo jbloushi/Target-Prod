@@ -378,8 +378,20 @@ class ShipmentBookingService {
      */
     mapToCarrierPayload(shipment) {
         const origin = shipment.origin || {};
+        const carrierCode = String(shipment.carrierCode || '').toUpperCase();
+        const isOteShipment = carrierCode === 'OTE' || carrierCode === 'LOGESTECHS';
+        const storedCodAmount = Number(shipment.codAmount ?? shipment.cod ?? 0);
+        const codAmount = isOteShipment ? (storedCodAmount > 0 ? storedCodAmount : 25) : storedCodAmount;
+
         return {
             ...shipment,
+            ...(isOteShipment ? {
+                shipmentType: 'COD',
+                codAmount,
+                cod: String(codAmount),
+                codCurrency: shipment.codCurrency || 'AED',
+                codStatus: shipment.codStatus || 'pending'
+            } : {}),
             sender: origin,
             receiver: shipment.destination,
             // Flatten carrier-specific fields from origin
