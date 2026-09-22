@@ -934,6 +934,250 @@ export const financeService = {
       console.error('Error updating exchange rates:', error);
       throw error;
     }
+  },
+
+  // --- Native Double-Entry General Ledger & Reports ---
+  getTrialBalance: async (params = {}) => {
+    try {
+      const response = await api.get('finance/reports/trial-balance', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching trial balance:', error);
+      throw error;
+    }
+  },
+
+  getBalanceSheet: async (params = {}) => {
+    try {
+      const response = await api.get('finance/reports/balance-sheet', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching balance sheet:', error);
+      throw error;
+    }
+  },
+
+  getIncomeStatement: async (params = {}) => {
+    try {
+      const response = await api.get('finance/reports/income-statement', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching income statement:', error);
+      throw error;
+    }
+  },
+
+  listAccounts: async (params = {}) => {
+    try {
+      const response = await api.get('finance/gl/accounts', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching GL accounts:', error);
+      throw error;
+    }
+  },
+
+  createAccount: async (data) => {
+    try {
+      const response = await api.post('finance/gl/accounts', data);
+      return response.data;
+    } catch (error) {
+      console.error('Error creating GL account:', error);
+      throw error;
+    }
+  },
+
+  listJournalEntries: async (params = {}) => {
+    try {
+      const response = await api.get('finance/gl/journal-entries', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching journal entries:', error);
+      throw error;
+    }
+  },
+
+  createJournalEntry: async (data) => {
+    try {
+      const response = await api.post('finance/gl/journal-entries', data);
+      return response.data;
+    } catch (error) {
+      console.error('Error creating journal entry:', error);
+      throw error;
+    }
+  },
+
+  reverseJournalEntry: async (id, data) => {
+    try {
+      const response = await api.post(`finance/gl/journal-entries/${id}/reverse`, data);
+      return response.data;
+    } catch (error) {
+      console.error('Error reversing journal entry:', error);
+      throw error;
+    }
+  },
+
+  getAccountLedger: async (params = {}) => {
+    try {
+      const response = await api.get('finance/gl/account-ledger', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching account ledger:', error);
+      throw error;
+    }
+  },
+
+  // --- Accounts Payable (AP) ---
+  listVendors: async (params = {}) => {
+    try {
+      const response = await api.get('finance/ap/vendors', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching vendors:', error);
+      throw error;
+    }
+  },
+
+  createVendor: async (data) => {
+    try {
+      const response = await api.post('finance/ap/vendors', data);
+      return response.data;
+    } catch (error) {
+      console.error('Error creating vendor:', error);
+      throw error;
+    }
+  },
+
+  listBills: async (params = {}) => {
+    try {
+      const response = await api.get('finance/ap/bills', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching bills:', error);
+      throw error;
+    }
+  },
+
+  createBill: async (data) => {
+    try {
+      const response = await api.post('finance/ap/bills', data);
+      return response.data;
+    } catch (error) {
+      console.error('Error creating bill:', error);
+      throw error;
+    }
+  },
+
+  payBill: async (id, data) => {
+    try {
+      const response = await api.post(`finance/ap/bills/${id}/pay`, data);
+      return response.data;
+    } catch (error) {
+      console.error('Error paying bill:', error);
+      throw error;
+    }
+  },
+
+  reconcileCarrierBill: async (data) => {
+    try {
+      const response = await api.post('finance/ap/reconcile', data);
+      return response.data;
+    } catch (error) {
+      console.error('Error reconciling carrier bill:', error);
+      throw error;
+    }
+  },
+
+  // --- Treasury & Banking ---
+  listBankAccounts: async (params = {}) => {
+    try {
+      const response = await api.get('finance/treasury/accounts', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching bank accounts:', error);
+      throw error;
+    }
+  },
+
+  createBankAccount: async (data) => {
+    try {
+      const response = await api.post('finance/treasury/accounts', data);
+      return response.data;
+    } catch (error) {
+      console.error('Error creating bank account:', error);
+      throw error;
+    }
+  },
+
+  getBankTransactions: async (params = {}) => {
+    try {
+      const response = await api.get('finance/treasury/transactions', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching bank transactions:', error);
+      throw error;
+    }
+  },
+
+  importBankStatement: async (data) => {
+    try {
+      const response = await api.post('finance/treasury/import-statement', data);
+      return response.data;
+    } catch (error) {
+      console.error('Error importing bank statement:', error);
+      throw error;
+    }
+  },
+
+  reconcileBankTransaction: async (data) => {
+    try {
+      const response = await api.post('finance/treasury/reconcile-transaction', data);
+      return response.data;
+    } catch (error) {
+      console.error('Error reconciling bank transaction:', error);
+      throw error;
+    }
+  },
+
+  getTreasurySummary: async () => {
+    try {
+      const response = await api.get('finance/treasury/summary');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching treasury summary:', error);
+      throw error;
+    }
+  },
+
+  // --- Accounting Periods ---
+  listAccountingPeriods: async () => {
+    try {
+      const response = await api.get('finance/periods');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching accounting periods:', error);
+      throw error;
+    }
+  },
+
+  closeAccountingPeriod: async (id) => {
+    try {
+      const response = await api.post(`finance/periods/${id}/close`);
+      return response.data;
+    } catch (error) {
+      console.error('Error closing accounting period:', error);
+      throw error;
+    }
+  },
+
+  reopenAccountingPeriod: async (id) => {
+    try {
+      const response = await api.post(`finance/periods/${id}/reopen`);
+      return response.data;
+    } catch (error) {
+      console.error('Error reopening accounting period:', error);
+      throw error;
+    }
   }
 };
 

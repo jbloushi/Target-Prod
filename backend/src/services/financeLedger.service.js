@@ -1086,6 +1086,22 @@ const confirmDriverCodRemittance = async ({ driverId, amount, currency, shipment
             tx
         );
 
+        // Post Double-Entry GL entry (Dr 1030 Hub Vault Safe, Cr 1020 Cash in Transit - Drivers COD)
+        try {
+            const generalLedgerService = require('./generalLedger.service');
+            await generalLedgerService.postDriverCodRemittanceEntry({
+                driverId,
+                driverName: driver.name,
+                amount: finalAmount,
+                currency: remitCurrency,
+                bagReference,
+                shipmentIds,
+                verifiedById: verifiedBy
+            }, tx);
+        } catch (glError) {
+            logger.warn(`[financeLedger] GL driver COD remittance warning: ${glError.message}`);
+        }
+
         return {
             success: true,
             status: 'CONFIRMED',

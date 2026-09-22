@@ -7,6 +7,9 @@ const currencyRateService = require('../services/currencyRate.service');
 const chatwootNotificationService = require('../services/chatwootNotificationService');
 const slaTrackerService = require('../services/slaTracker.service');
 const eomStatementCronService = require('../services/eomStatementCron.service');
+const generalLedgerService = require('../services/generalLedger.service');
+const accountsPayableService = require('../services/accountsPayable.service');
+const treasuryService = require('../services/treasury.service');
 const { isOrgRole } = require('../middleware/rbac.policy');
 const { canAccessOrganization } = require('../middleware/authorize.middleware');
 const { handleControllerError } = require('../utils/controllerError');
@@ -356,6 +359,21 @@ exports.postPayment = async (req, res) => {
                 createdBy: req.user.id,
                 metadata: { currency }
             }, tx);
+
+            // 3. Post Double-Entry GL Entry (Dr 1010 Bank/Cash, Cr 1100 AR)
+            try {
+                const generalLedgerService = require('../services/generalLedger.service');
+                await generalLedgerService.postPaymentReceiptEntry({
+                    paymentId: payment.id,
+                    reference: payment.reference,
+                    organizationId,
+                    amount: Number(amount),
+                    currency,
+                    createdById: req.user.id
+                }, tx);
+            } catch (glError) {
+                logger.warn(`[finance.controller] GL payment posting warning: ${glError.message}`);
+            }
 
             if (organizationId) {
                 const org = await tx.organization.findUnique({
@@ -1204,6 +1222,389 @@ exports.triggerEomStatements = async (req, res) => {
         return handleControllerError(res, error, 'Trigger EOM statements');
     }
 };
+
+// ==========================================
+// Double-Entry General Ledger & Chart of Accounts
+// ==========================================
+
+exports.listAccounts = async (req, res) => {
+    try {
+        const { type, activeOnly } = req.query;
+        const accounts = await generalLedgerService.listAccounts({
+            type: type || undefined,
+            activeOnly: activeOnly !== 'false'
+        });
+        res.status(200).json({ success: true, accounts });
+    } catch (error) {
+        return handleControllerError(res, error, 'List accounts');
+    }
+};
+
+exports.createAccount = async (req, res) => {
+    try {
+        const account = await generalLedgerService.createAccount(req.body);
+        await recordFinancialAuditLog({
+            userId: req.user.id,
+            action: 'CREATE_GL_ACCOUNT',
+            resource: 'Account',
+            resourceId: account.id,
+            details: req.body,
+            req
+        });
+        res.status(201).json({ success: true, account });
+    } catch (error) {
+        return handleControllerError(res, error, 'Create account');
+    }
+};
+
+exports.listJournalEntries = async (req, res) => {
+    try {
+        const { page = 1, limit = 20, sourceType, status, fromDate, toDate } = req.query;
+        const result = await generalLedgerService.listJournalEntries({
+            page: Number(page),
+            limit: Number(limit),
+            sourceType,
+            status,
+            fromDate,
+            toDate
+        });
+        res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        return handleControllerError(res, error, 'List journal entries');
+    }
+};
+
+exports.createJournalEntry = async (req, res) => {
+    try {
+        const entry = await generalLedgerService.postJournalEntry({
+            ...req.body,
+            createdById: req.user.id
+        });
+        await recordFinancialAuditLog({
+            userId: req.user.id,
+            action: 'CREATE_JOURNAL_ENTRY',
+            resource: 'JournalEntry',
+            resourceId: entry.id,
+            details: { entryNumber: entry.entryNumber, totalDebit: entry.totalDebit },
+            req
+        });
+        res.status(201).json({ success: true, entry });
+    } catch (error) {
+        return handleControllerError(res, error, 'Create journal entry');
+    }
+};
+
+exports.reverseJournalEntry = async (req, res) => {
+    try {
+        const reversal = await generalLedgerService.reverseJournalEntry(req.params.id, {
+            reason: req.body.reason,
+            reversedBy: req.user.id
+        });
+        await recordFinancialAuditLog({
+            userId: req.user.id,
+            action: 'REVERSE_JOURNAL_ENTRY',
+            resource: 'JournalEntry',
+            resourceId: req.params.id,
+            details: { reversalId: reversal.id, reason: req.body.reason },
+            req
+        });
+        res.status(200).json({ success: true, reversal });
+    } catch (error) {
+        return handleControllerError(res, error, 'Reverse journal entry');
+    }
+};
+
+exports.getAccountLedger = async (req, res) => {
+    try {
+        const { accountCode, fromDate, toDate, page = 1, limit = 50 } = req.query;
+        if (!accountCode) {
+            return res.status(400).json({ success: false, error: 'accountCode query parameter is required' });
+        }
+        const ledger = await generalLedgerService.getAccountLedger({
+            accountCode,
+            fromDate,
+            toDate,
+            page: Number(page),
+            limit: Number(limit)
+        });
+        res.status(200).json({ success: true, ...ledger });
+    } catch (error) {
+        return handleControllerError(res, error, 'Get account ledger');
+    }
+};
+
+// ==========================================
+// Financial Statements & Reports
+// ==========================================
+
+exports.getTrialBalance = async (req, res) => {
+    try {
+        const { asOfDate, currency } = req.query;
+        const report = await generalLedgerService.getTrialBalance({ asOfDate, currency });
+        res.status(200).json({ success: true, report });
+    } catch (error) {
+        return handleControllerError(res, error, 'Get trial balance');
+    }
+};
+
+exports.getBalanceSheet = async (req, res) => {
+    try {
+        const { asOfDate } = req.query;
+        const report = await generalLedgerService.getBalanceSheet({ asOfDate });
+        res.status(200).json({ success: true, report });
+    } catch (error) {
+        return handleControllerError(res, error, 'Get balance sheet');
+    }
+};
+
+exports.getIncomeStatement = async (req, res) => {
+    try {
+        const { fromDate, toDate } = req.query;
+        const report = await generalLedgerService.getIncomeStatement({ fromDate, toDate });
+        res.status(200).json({ success: true, report });
+    } catch (error) {
+        return handleControllerError(res, error, 'Get income statement');
+    }
+};
+
+// ==========================================
+// Accounts Payable (AP)
+// ==========================================
+
+exports.listVendors = async (req, res) => {
+    try {
+        const vendors = await accountsPayableService.listVendors({
+            activeOnly: req.query.activeOnly !== 'false'
+        });
+        res.status(200).json({ success: true, vendors });
+    } catch (error) {
+        return handleControllerError(res, error, 'List vendors');
+    }
+};
+
+exports.createVendor = async (req, res) => {
+    try {
+        const vendor = await accountsPayableService.createVendor(req.body);
+        await recordFinancialAuditLog({
+            userId: req.user.id,
+            action: 'CREATE_VENDOR',
+            resource: 'Vendor',
+            resourceId: vendor.id,
+            details: req.body,
+            req
+        });
+        res.status(201).json({ success: true, vendor });
+    } catch (error) {
+        return handleControllerError(res, error, 'Create vendor');
+    }
+};
+
+exports.listBills = async (req, res) => {
+    try {
+        const { vendorId, status, fromDate, toDate, page = 1, limit = 20 } = req.query;
+        const result = await accountsPayableService.listBills({
+            vendorId,
+            status,
+            fromDate,
+            toDate,
+            page: Number(page),
+            limit: Number(limit)
+        });
+        res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        return handleControllerError(res, error, 'List bills');
+    }
+};
+
+exports.createBill = async (req, res) => {
+    try {
+        const bill = await accountsPayableService.createBill(req.body, req.user.id);
+        await recordFinancialAuditLog({
+            userId: req.user.id,
+            action: 'CREATE_BILL',
+            resource: 'Bill',
+            resourceId: bill.id,
+            details: { billNumber: bill.billNumber, total: bill.total },
+            req
+        });
+        res.status(201).json({ success: true, bill });
+    } catch (error) {
+        return handleControllerError(res, error, 'Create bill');
+    }
+};
+
+exports.payBill = async (req, res) => {
+    try {
+        const result = await accountsPayableService.payBill({
+            billId: req.params.id,
+            bankAccountId: req.body.bankAccountId,
+            amount: req.body.amount,
+            paymentDate: req.body.paymentDate,
+            reference: req.body.reference,
+            method: req.body.method,
+            notes: req.body.notes,
+            userId: req.user.id
+        });
+        await recordFinancialAuditLog({
+            userId: req.user.id,
+            action: 'PAY_BILL',
+            resource: 'Bill',
+            resourceId: req.params.id,
+            details: { amount: req.body.amount, bankAccountId: req.body.bankAccountId },
+            req
+        });
+        res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        return handleControllerError(res, error, 'Pay bill');
+    }
+};
+
+exports.reconcileCarrierBill = async (req, res) => {
+    try {
+        const { vendorId, lines } = req.body;
+        if (!vendorId || !Array.isArray(lines)) {
+            return res.status(400).json({ success: false, error: 'vendorId and lines array are required' });
+        }
+        const result = await accountsPayableService.reconcileCarrierInvoice({ vendorId, csvLines: lines });
+        res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        return handleControllerError(res, error, 'Reconcile carrier bill');
+    }
+};
+
+// ==========================================
+// Treasury & Banking
+// ==========================================
+
+exports.listBankAccounts = async (req, res) => {
+    try {
+        const accounts = await treasuryService.listBankAccounts({
+            activeOnly: req.query.activeOnly !== 'false'
+        });
+        res.status(200).json({ success: true, accounts });
+    } catch (error) {
+        return handleControllerError(res, error, 'List bank accounts');
+    }
+};
+
+exports.createBankAccount = async (req, res) => {
+    try {
+        const account = await treasuryService.createBankAccount(req.body);
+        await recordFinancialAuditLog({
+            userId: req.user.id,
+            action: 'CREATE_BANK_ACCOUNT',
+            resource: 'BankAccount',
+            resourceId: account.id,
+            details: req.body,
+            req
+        });
+        res.status(201).json({ success: true, account });
+    } catch (error) {
+        return handleControllerError(res, error, 'Create bank account');
+    }
+};
+
+exports.getBankTransactions = async (req, res) => {
+    try {
+        const { bankAccountId, isReconciled, fromDate, toDate, page = 1, limit = 50 } = req.query;
+        const result = await treasuryService.getBankTransactions({
+            bankAccountId,
+            isReconciled: isReconciled !== undefined ? isReconciled === 'true' : undefined,
+            fromDate,
+            toDate,
+            page: Number(page),
+            limit: Number(limit)
+        });
+        res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        return handleControllerError(res, error, 'Get bank transactions');
+    }
+};
+
+exports.importBankStatement = async (req, res) => {
+    try {
+        const { bankAccountId, lines } = req.body;
+        if (!bankAccountId || !Array.isArray(lines)) {
+            return res.status(400).json({ success: false, error: 'bankAccountId and lines array are required' });
+        }
+        const result = await treasuryService.importBankStatementLines({ bankAccountId, lines });
+        res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        return handleControllerError(res, error, 'Import bank statement');
+    }
+};
+
+exports.reconcileBankTransaction = async (req, res) => {
+    try {
+        const { transactionId, matchedType, matchedId } = req.body;
+        const tx = await treasuryService.reconcileTransaction({
+            transactionId,
+            matchedType,
+            matchedId,
+            userId: req.user.id
+        });
+        res.status(200).json({ success: true, transaction: tx });
+    } catch (error) {
+        return handleControllerError(res, error, 'Reconcile bank transaction');
+    }
+};
+
+exports.getTreasurySummary = async (req, res) => {
+    try {
+        const summary = await treasuryService.getTreasurySummary();
+        res.status(200).json({ success: true, ...summary });
+    } catch (error) {
+        return handleControllerError(res, error, 'Get treasury summary');
+    }
+};
+
+// ==========================================
+// Accounting Periods & Month-End Closing
+// ==========================================
+
+exports.listAccountingPeriods = async (req, res) => {
+    try {
+        const periods = await generalLedgerService.listAccountingPeriods();
+        res.status(200).json({ success: true, periods });
+    } catch (error) {
+        return handleControllerError(res, error, 'List accounting periods');
+    }
+};
+
+exports.closeAccountingPeriod = async (req, res) => {
+    try {
+        const period = await generalLedgerService.closeAccountingPeriod(req.params.id, req.user.id);
+        await recordFinancialAuditLog({
+            userId: req.user.id,
+            action: 'CLOSE_ACCOUNTING_PERIOD',
+            resource: 'AccountingPeriod',
+            resourceId: period.id,
+            details: { periodName: period.name },
+            req
+        });
+        res.status(200).json({ success: true, period, message: `Accounting period ${period.name} locked successfully` });
+    } catch (error) {
+        return handleControllerError(res, error, 'Close accounting period');
+    }
+};
+
+exports.reopenAccountingPeriod = async (req, res) => {
+    try {
+        const period = await generalLedgerService.reopenAccountingPeriod(req.params.id);
+        await recordFinancialAuditLog({
+            userId: req.user.id,
+            action: 'REOPEN_ACCOUNTING_PERIOD',
+            resource: 'AccountingPeriod',
+            resourceId: period.id,
+            details: { periodName: period.name },
+            req
+        });
+        res.status(200).json({ success: true, period, message: `Accounting period ${period.name} re-opened successfully` });
+    } catch (error) {
+        return handleControllerError(res, error, 'Reopen accounting period');
+    }
+};
+
 
 
 

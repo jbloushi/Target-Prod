@@ -50,6 +50,40 @@ router.get('/organizations/:orgId/statement', authorizeAny('VIEW_FINANCE', 'VIEW
 router.post('/organizations/:orgId/send-statement', authorizeAny('MANAGE_PAYMENTS', 'VIEW_INVOICES'), financeController.sendStatementNotification);
 router.post('/cron/eom-statements', authorize('MANAGE_PAYMENTS'), financeController.triggerEomStatements);
 
+// --- Core Double-Entry General Ledger & Accounts ---
+router.get('/gl/accounts', authorize('VIEW_FINANCE'), financeController.listAccounts);
+router.post('/gl/accounts', authorize('MANAGE_PAYMENTS'), requireIdempotency, financeController.createAccount);
+router.get('/gl/journal-entries', authorize('VIEW_FINANCE'), financeController.listJournalEntries);
+router.post('/gl/journal-entries', authorize('MANAGE_PAYMENTS'), requireIdempotency, financeController.createJournalEntry);
+router.post('/gl/journal-entries/:id/reverse', authorize('REVERSE_PAYMENTS'), requireIdempotency, financeController.reverseJournalEntry);
+router.get('/gl/account-ledger', authorize('VIEW_FINANCE'), financeController.getAccountLedger);
+
+// --- Financial Statements & Reports ---
+router.get('/reports/trial-balance', authorize('VIEW_FINANCE'), financeController.getTrialBalance);
+router.get('/reports/balance-sheet', authorize('VIEW_FINANCE'), financeController.getBalanceSheet);
+router.get('/reports/income-statement', authorize('VIEW_FINANCE'), financeController.getIncomeStatement);
+
+// --- Accounts Payable (AP) ---
+router.get('/ap/vendors', authorize('VIEW_FINANCE'), financeController.listVendors);
+router.post('/ap/vendors', authorize('MANAGE_PAYMENTS'), requireIdempotency, financeController.createVendor);
+router.get('/ap/bills', authorize('VIEW_FINANCE'), financeController.listBills);
+router.post('/ap/bills', authorize('MANAGE_PAYMENTS'), requireIdempotency, financeController.createBill);
+router.post('/ap/bills/:id/pay', authorize('MANAGE_PAYMENTS'), requireIdempotency, financeController.payBill);
+router.post('/ap/reconcile', authorize('VIEW_FINANCE'), financeController.reconcileCarrierBill);
+
+// --- Treasury & Bank Accounts ---
+router.get('/treasury/accounts', authorize('VIEW_FINANCE'), financeController.listBankAccounts);
+router.post('/treasury/accounts', authorize('MANAGE_PAYMENTS'), requireIdempotency, financeController.createBankAccount);
+router.get('/treasury/transactions', authorize('VIEW_FINANCE'), financeController.getBankTransactions);
+router.post('/treasury/import-statement', authorize('MANAGE_PAYMENTS'), financeController.importBankStatement);
+router.post('/treasury/reconcile-transaction', authorize('MANAGE_PAYMENTS'), requireIdempotency, financeController.reconcileBankTransaction);
+router.get('/treasury/summary', authorize('VIEW_FINANCE'), financeController.getTreasurySummary);
+
+// --- Accounting Periods ---
+router.get('/periods', authorize('VIEW_FINANCE'), financeController.listAccountingPeriods);
+router.post('/periods/:id/close', authorize('MANAGE_PAYMENTS'), requireIdempotency, financeController.closeAccountingPeriod);
+router.post('/periods/:id/reopen', authorize('MANAGE_PAYMENTS'), requireIdempotency, financeController.reopenAccountingPeriod);
+
 module.exports = router;
 
 

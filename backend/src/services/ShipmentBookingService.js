@@ -334,6 +334,23 @@ class ShipmentBookingService {
                         createdBy: payingUser?.id
                     });
                 }
+
+                // Post Double-Entry General Ledger Entry (Dr AR, Cr Freight Revenue, Dr COGS, Cr Carrier AP)
+                try {
+                    const generalLedgerService = require('./generalLedger.service');
+                    await generalLedgerService.postShipmentBookingEntry({
+                        shipmentId: finalizedShipment.id,
+                        trackingNumber: finalizedShipment.trackingNumber,
+                        organizationId,
+                        customerPrice: finalPrice,
+                        carrierCost,
+                        carrierCode: finalizedShipment.carrierCode,
+                        currency: finalizedShipment.currency || finalizedShipment.pricingSnapshot?.currency || 'KWD',
+                        createdById: payingUser?.id
+                    });
+                } catch (glError) {
+                    logger.warn(`[ShipmentBookingService] GL Journal Entry posting warning for ${finalizedShipment.trackingNumber}: ${glError.message}`);
+                }
             }
 
             // Dispatch webhook and chatwoot notification

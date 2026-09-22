@@ -29,6 +29,11 @@ import { TK } from '../tokens/kineticHorizon';
 import { generateInvoicePDF } from '../utils/pdfGenerator';
 import CashFlowDualBarChart from '../components/charts/CashFlowDualBarChart';
 import ShareOfWalletBar from '../components/charts/ShareOfWalletBar';
+import FinancialStatementsTab from '../components/accounting/FinancialStatementsTab';
+import GeneralLedgerTab from '../components/accounting/GeneralLedgerTab';
+import AccountsPayableTab from '../components/accounting/AccountsPayableTab';
+import TreasuryTab from '../components/accounting/TreasuryTab';
+import PeriodClosingTab from '../components/accounting/PeriodClosingTab';
 
 // --- Styled Components with Kinetic Horizon Tokens ---
 const SubNav = styled.div`
@@ -872,6 +877,36 @@ const FinancePage = () => {
                         {t('fin_tab_reports', 'Profitability Reports')}
                     </NavTab>
                 )}
+                {can('VIEW_FINANCE') && (
+                    <NavTab $active={activeTab === 'statements'} onClick={() => setActiveTab('statements')}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>account_balance</span>
+                        {lang === 'ar' ? 'القوائم المالية' : 'Financial Statements'}
+                    </NavTab>
+                )}
+                {can('VIEW_FINANCE') && (
+                    <NavTab $active={activeTab === 'gl'} onClick={() => setActiveTab('gl')}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>menu_book</span>
+                        {lang === 'ar' ? 'الأستاذ العام والدليل' : 'General Ledger & COA'}
+                    </NavTab>
+                )}
+                {can('VIEW_FINANCE') && (
+                    <NavTab $active={activeTab === 'ap'} onClick={() => setActiveTab('ap')}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>assignment_returned</span>
+                        {lang === 'ar' ? 'مستحقات الموردين' : 'Accounts Payable (AP)'}
+                    </NavTab>
+                )}
+                {can('VIEW_FINANCE') && (
+                    <NavTab $active={activeTab === 'treasury'} onClick={() => setActiveTab('treasury')}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>savings</span>
+                        {lang === 'ar' ? 'الخزينة والبنوك' : 'Treasury & Banks'}
+                    </NavTab>
+                )}
+                {can('VIEW_FINANCE') && (
+                    <NavTab $active={activeTab === 'periods'} onClick={() => setActiveTab('periods')}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>calendar_month</span>
+                        {lang === 'ar' ? 'الإقفال المالي' : 'Period Closing'}
+                    </NavTab>
+                )}
             </SubNav>
 
             {/* Organization Selector (if multi-org access) */}
@@ -1595,6 +1630,31 @@ const FinancePage = () => {
                         </TableWrapper>
                     </Card>
                 </>
+            )}
+
+            {/* ── TAB: FINANCIAL STATEMENTS ── */}
+            {activeTab === 'statements' && can('VIEW_FINANCE') && (
+                <FinancialStatementsTab lang={lang} />
+            )}
+
+            {/* ── TAB: GENERAL LEDGER & COA ── */}
+            {activeTab === 'gl' && can('VIEW_FINANCE') && (
+                <GeneralLedgerTab lang={lang} />
+            )}
+
+            {/* ── TAB: ACCOUNTS PAYABLE ── */}
+            {activeTab === 'ap' && can('VIEW_FINANCE') && (
+                <AccountsPayableTab lang={lang} />
+            )}
+
+            {/* ── TAB: TREASURY & BANKING ── */}
+            {activeTab === 'treasury' && can('VIEW_FINANCE') && (
+                <TreasuryTab lang={lang} />
+            )}
+
+            {/* ── TAB: PERIOD CLOSING ── */}
+            {activeTab === 'periods' && can('VIEW_FINANCE') && (
+                <PeriodClosingTab lang={lang} />
             )}
 
             {/* Cash Handover Reconciliation Modal */}

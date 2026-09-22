@@ -35,6 +35,15 @@ enum EntryType {
   CREDIT
 }
 
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  COGS
+  EXPENSE
+}
+
 // ========================================
 // CORE MODELS
 // ========================================
@@ -72,6 +81,7 @@ model Organization {
   allocations     PaymentAllocation[]
   webhooks         WebhookSubscription[]
   pickupRequests   PickupRequest[]
+  journalLines     JournalEntryLine[]
 }
 
 model User {
@@ -114,6 +124,7 @@ model User {
   auditLogs          SystemAuditLog[]
   accessScopes       UserAccessScope[]    @relation("UserGrantedAccessScopes")
   clientAccessScopes UserAccessScope[]    @relation("ClientUserAccessScopes")
+  journalEntriesCreated JournalEntry[]    @relation("JournalCreatedBy")
 
   @@index([organizationId, role, active], map: "User_org_role_active_idx")
   @@index([role, active], map: "User_role_active_idx")
@@ -207,6 +218,8 @@ model Shipment {
   pickupRequests   PickupRequest[]
   notificationLogs ShipmentNotificationLog[]
   invoiceLines     InvoiceLine[]
+  journalLines     JournalEntryLine[]
+  billLines        BillLine[]
 
   @@index([userId, status, createdAt], map: "Shipment_user_status_created_idx")
   @@index([createdOnBehalfOfUserId, createdAt], map: "Shipment_on_behalf_created_idx")
@@ -550,4 +563,238 @@ model IdempotencyKey {
 
   @@index([key])
   @@index([expiresAt])
+}
+
+// ========================================
+// DOUBLE-ENTRY GENERAL LEDGER & ERP MODELS
+// ========================================
+
+model Account {
+  id             String       @id @default(uuid())
+  code           String       @unique // e.g. "1010", "1100", "2010", "4010"
+  name           String       // e.g. "NBK Operating Account KWD"
+  type           AccountType
+  subType        String?      // "CASH", "AR", "AP", "EQUITY", "OPERATING_REVENUE", "DIRECT_COST", "EXPENSE"
+  currency       String       @default("KWD")
+  description    String?
+  balance        Decimal      @default(0.0) @db.Decimal(18, 4)
+  isActive       Boolean      @default(true)
+  isSystem       Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  journalLines   JournalEntryLine[]
+  bankAccounts   BankAccount[]
+  billLines      BillLine[]
+
+  @@index([type, isActive], map: "Account_type_active_idx")
+  @@index([code], map: "Account_code_idx")
+}
+
+model AccountingPeriod {
+  id             String       @id @default(uuid())
+  name           String       @unique // e.g. "2026-09"
+  startDate      DateTime
+  endDate        DateTime
+  isClosed       Boolean      @default(false)
+  closedAt       DateTime?
+  closedById     String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  journalEntries JournalEntry[]
+
+  @@index([startDate, endDate], map: "Period_dates_idx")
+  @@index([isClosed], map: "Period_isClosed_idx")
+}
+
+model JournalEntry {
+  id             String             @id @default(uuid())
+  entryNumber    String             @unique // e.g. "JE-202609-0001"
+  date           DateTime           @default(now())
+  periodId       String?
+  period         AccountingPeriod?  @relation(fields: [periodId], references: [id])
+  reference      String?            // AWB#, PaymentRef, BillRef
+  sourceType     String             // "SHIPMENT_BOOKING", "PAYMENT", "INVOICE", "CARRIER_BILL", "COD_SETTLEMENT", "MANUAL", "REVERSAL"
+  sourceId       String?
+  notes          String?            @db.Text
+  status         String             @default("POSTED") // "DRAFT", "POSTED", "VOID"
+  totalDebit     Decimal            @db.Decimal(18, 4)
+  totalCredit    Decimal            @db.Decimal(18, 4)
+  createdById    String?
+  createdByUser  User?              @relation("JournalCreatedBy", fields: [createdById], references: [id])
+  approvedById   String?
+  reversalOfId   String?            @unique
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  lines          JournalEntryLine[]
+
+  @@index([date, status], map: "JournalEntry_date_status_idx")
+  @@index([sourceType, sourceId], map: "JournalEntry_source_idx")
+  @@index([reference], map: "JournalEntry_reference_idx")
+}
+
+model JournalEntryLine {
+  id             String        @id @default(uuid())
+  journalEntryId String
+  journalEntry   JournalEntry  @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  accountId      String
+  account        Account       @relation(fields: [accountId], references: [id])
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  shipmentId     String?
+  shipment       Shipment?     @relation(fields: [shipmentId], references: [id])
+  debit          Decimal       @default(0.0) @db.Decimal(18, 4)
+  credit         Decimal       @default(0.0) @db.Decimal(18, 4)
+  currency       String        @default("KWD")
+  exchangeRate   Decimal       @default(1.0) @db.Decimal(18, 6)
+  baseDebit      Decimal       @default(0.0) @db.Decimal(18, 4)
+  baseCredit     Decimal       @default(0.0) @db.Decimal(18, 4)
+  memo           String?
+  createdAt      DateTime      @default(now())
+
+  @@index([journalEntryId], map: "JELine_entry_idx")
+  @@index([accountId], map: "JELine_account_idx")
+  @@index([organizationId], map: "JELine_org_idx")
+  @@index([shipmentId], map: "JELine_shipment_idx")
+}
+
+model Vendor {
+  id             String       @id @default(uuid())
+  name           String
+  code           String       @unique // e.g. "DHL", "LOGESTECHS", "KUWAIT_AIRWAYS"
+  carrierCode    String?      // matches shipment.carrierCode
+  currency       String       @default("KWD")
+  contactPerson  String?
+  email          String?
+  phone          String?
+  termsDays      Int          @default(30)
+  active         Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  bills          Bill[]
+
+  @@index([code], map: "Vendor_code_idx")
+  @@index([carrierCode], map: "Vendor_carrier_idx")
+}
+
+model Bill {
+  id             String       @id @default(uuid())
+  billNumber     String       @unique
+  vendorId       String
+  vendor         Vendor       @relation(fields: [vendorId], references: [id])
+  issueDate      DateTime
+  dueDate        DateTime
+  subtotal       Decimal      @db.Decimal(18, 4)
+  tax            Decimal      @default(0.0) @db.Decimal(18, 4)
+  total          Decimal      @db.Decimal(18, 4)
+  paidAmount     Decimal      @default(0.0) @db.Decimal(18, 4)
+  currency       String       @default("KWD")
+  status         String       @default("OPEN") // "DRAFT", "OPEN", "PARTIALLY_PAID", "PAID", "VOID"
+  notes          String?      @db.Text
+  createdById    String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  lines          BillLine[]
+  payments       BillPayment[]
+
+  @@index([vendorId, status], map: "Bill_vendor_status_idx")
+  @@index([dueDate], map: "Bill_dueDate_idx")
+}
+
+model BillLine {
+  id             String       @id @default(uuid())
+  billId         String
+  bill           Bill         @relation(fields: [billId], references: [id], onDelete: Cascade)
+  accountId      String
+  account        Account      @relation(fields: [accountId], references: [id])
+  shipmentId     String?
+  shipment       Shipment?    @relation(fields: [shipmentId], references: [id])
+  trackingNumber String?
+  description    String
+  amount         Decimal      @db.Decimal(18, 4)
+  createdAt      DateTime     @default(now())
+
+  @@index([billId], map: "BillLine_bill_idx")
+  @@index([shipmentId], map: "BillLine_shipment_idx")
+}
+
+model BillPayment {
+  id             String       @id @default(uuid())
+  billId         String
+  bill           Bill         @relation(fields: [billId], references: [id])
+  bankAccountId  String
+  bankAccount    BankAccount  @relation(fields: [bankAccountId], references: [id])
+  paymentDate    DateTime     @default(now())
+  amount         Decimal      @db.Decimal(18, 4)
+  currency       String       @default("KWD")
+  reference      String?
+  method         String       @default("bank_transfer") // "bank_transfer", "cheque", "knet"
+  notes          String?
+  createdById    String?
+  createdAt      DateTime     @default(now())
+
+  @@index([billId], map: "BillPayment_bill_idx")
+  @@index([bankAccountId], map: "BillPayment_bank_idx")
+}
+
+model BankAccount {
+  id             String       @id @default(uuid())
+  accountName    String       // "NBK Operating Account KWD"
+  accountNumber  String
+  bankName       String       // "National Bank of Kuwait"
+  iban           String?
+  swiftCode      String?
+  currency       String       @default("KWD")
+  glAccountId    String
+  glAccount      Account      @relation(fields: [glAccountId], references: [id])
+  currentBalance Decimal      @default(0.0) @db.Decimal(18, 4)
+  active         Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  transactions   BankTransaction[]
+  billPayments   BillPayment[]
+
+  @@index([glAccountId], map: "BankAccount_glAccount_idx")
+}
+
+model BankTransaction {
+  id              String       @id @default(uuid())
+  bankAccountId   String
+  bankAccount     BankAccount  @relation(fields: [bankAccountId], references: [id])
+  transactionDate DateTime
+  amount          Decimal      @db.Decimal(18, 4) // Positive = deposit, negative = withdrawal
+  currency        String       @default("KWD")
+  reference       String?
+  description     String
+  matchedType     String?      // "PAYMENT", "BILL_PAYMENT", "TRANSFER"
+  matchedId       String?
+  isReconciled    Boolean      @default(false)
+  reconciledAt    DateTime?
+  reconciledById  String?
+  createdAt       DateTime     @default(now())
+
+  @@index([bankAccountId, isReconciled], map: "BankTx_account_reconciled_idx")
+  @@index([transactionDate], map: "BankTx_date_idx")
+}
+
+model BackgroundJob {
+  id          String   @id @db.VarChar(64)
+  queueName   String   @map("queue_name") @db.VarChar(100)
+  payload     Json
+  status      String   @default("pending") @db.VarChar(32)
+  attempts    Int      @default(0)
+  maxRetries  Int      @default(5) @map("max_retries")
+  backoffMs   Int      @default(10000) @map("backoff_ms")
+  nextRunAt   DateTime @map("next_run_at")
+  lastError   String?  @map("last_error") @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([queueName, status, nextRunAt], map: "idx_queue_status_run")
+  @@map("_background_jobs")
 }
