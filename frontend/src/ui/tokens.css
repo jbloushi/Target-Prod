@@ -98,9 +98,46 @@
   --shadow-glow-primary: 0 4px 20px rgba(0, 80, 212, 0.15);
   --shadow-glow-cyan: 0 4px 16px rgba(58, 223, 250, 0.25);
 
+  /* ── Typography & GCC Regionalization ── */
+  --font-family-sans: 'Cairo', 'Tajawal', 'Noto Sans Arabic', 'Manrope', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-family-arabic: 'Cairo', 'Tajawal', 'Noto Sans Arabic', sans-serif;
+
   /* ── Gradients ── */
   --gradient-primary: linear-gradient(135deg, #0EA5E9 0%, #2563EB 100%);
   --gradient-primary-hover: linear-gradient(135deg, #38bdf8 0%, #3b82f6 100%);
+
+  /* ── Material Design 3 (M3) Semantic Specifications ── */
+  --md-sys-color-surface: #f8fafc;
+  --md-sys-color-surface-dim: #d9e2ec;
+  --md-sys-color-surface-bright: #ffffff;
+  --md-sys-color-surface-container-lowest: #ffffff;
+  --md-sys-color-surface-container-low: #f1f5f9;
+  --md-sys-color-surface-container: #e2e8f0;
+  --md-sys-color-surface-container-high: #cbd5e1;
+  --md-sys-color-surface-container-highest: #94a3b8;
+
+  --md-sys-color-primary: #0050d4;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #dbeafe;
+  --md-sys-color-on-primary-container: #1e3a8a;
+
+  --md-sys-color-secondary: #475569;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-secondary-container: #e2e8f0;
+  --md-sys-color-on-secondary-container: #0f172a;
+
+  --md-sys-state-hover: 0.08;
+  --md-sys-state-focus: 0.12;
+  --md-sys-state-pressed: 0.12;
+  --md-sys-state-dragged: 0.16;
+
+  --md-shape-corner-none: 0px;
+  --md-shape-corner-extra-small: 4px;
+  --md-shape-corner-small: 8px;
+  --md-shape-corner-medium: 12px;
+  --md-shape-corner-large: 16px;
+  --md-shape-corner-extra-large: 28px;
+  --md-shape-corner-full: 9999px;
 }
 
 /* ── KINETIC HORIZON DARK MODE ── */
@@ -215,7 +252,7 @@ button {
 
 /* ── Label Style (Manifest) ── */
 .label-manifest {
-  font-family: 'Manrope', sans-serif;
+  font-family: var(--font-family-sans);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -235,3 +272,14 @@ button {
   background: linear-gradient(to right, var(--primary), transparent);
   opacity: 0.15;
 }
+
+/* ── GCC & RTL Support Utilities ── */
+[dir="rtl"] body,
+[dir="rtl"] #root {
+  font-family: var(--font-family-sans);
+}
+
+[dir="rtl"] .font-manrope {
+  font-family: var(--font-family-sans) !important;
+}
+

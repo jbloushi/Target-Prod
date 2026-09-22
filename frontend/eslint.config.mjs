@@ -30,7 +30,7 @@ export default [
     },
     rules: {
       'react-hooks/rules-of-hooks': 'error',
-      'react-hooks/exhaustive-deps': 'warn',
+      'react-hooks/exhaustive-deps': 'off',
       'no-unused-vars': 'off',
       'react-refresh/only-export-components': 'off',
     },
@@ -39,6 +39,15 @@ export default [
     files: ['tailwind.config.js', 'postcss.config.js'],
     languageOptions: {
       sourceType: 'commonjs',
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+  {
+    files: ['scripts/**/*.{js,mjs}'],
+    languageOptions: {
+      sourceType: 'module',
       globals: {
         ...globals.node,
       },

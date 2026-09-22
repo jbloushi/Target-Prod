@@ -9,7 +9,16 @@ const fs = require('fs');
 const path = require('path');
 const CarrierAdapter = require('./CarrierAdapter');
 const { normalizeShipment } = require('../utils/shipmentNormalizer');
-const { dhlApiKey, dhlApiSecret, dhlAccountNumber, dhlApiUrl } = require('../config/config');
+const {
+    dhlApiKey,
+    dhlApiSecret,
+    dhlAccountNumber,
+    dhlApiUrl,
+    dhlTestApiKey,
+    dhlTestApiSecret,
+    dhlTestAccountNumber,
+    dhlTestApiUrl
+} = require('../config/config');
 
 const firstNonEmpty = (...values) => values.find((value) => value !== undefined && value !== null && String(value).trim() !== '');
 
@@ -77,18 +86,24 @@ class DgrAdapter extends CarrierAdapter {
      * @business_rule Defaults to system environment variables unless Organization-specific credentials are provided.
      */
     constructor(configOverrides = {}) {
-        const apiKey = configOverrides.apiKey || dhlApiKey;
-        const apiSecret = configOverrides.apiSecret || dhlApiSecret;
-        const accountNumber = configOverrides.accountNumber || dhlAccountNumber;
-        const baseUrl = configOverrides.baseUrl || dhlApiUrl;
+        const isTest = configOverrides.isTest === true || configOverrides.environment === 'test';
+        const defaultBaseUrl = isTest ? (dhlTestApiUrl || 'https://express.api.dhl.com/mydhlapi/test') : (dhlApiUrl || 'https://express.api.dhl.com/mydhlapi');
+        const defaultApiKey = isTest ? (dhlTestApiKey || dhlApiKey) : dhlApiKey;
+        const defaultApiSecret = isTest ? (dhlTestApiSecret || dhlApiSecret) : dhlApiSecret;
+        const defaultAccountNumber = isTest ? (dhlTestAccountNumber || dhlAccountNumber) : dhlAccountNumber;
 
-        if (!apiKey || !apiSecret) {
+        const apiKey = configOverrides.apiKey || defaultApiKey;
+        const apiSecret = configOverrides.apiSecret || defaultApiSecret;
+        const accountNumber = configOverrides.accountNumber || defaultAccountNumber;
+        const baseUrl = configOverrides.baseUrl || defaultBaseUrl;
+
+        if ((!apiKey || !apiSecret) && process.env.NODE_ENV === 'production' && !isTest) {
             throw new Error(
                 'DGR (DHL) API credentials are required. Ensure OrganizationCredentials or .env keys are set.'
             );
         }
 
-        super({ baseUrl, apiKey, apiSecret, accountNumber });
+        super({ baseUrl, apiKey, apiSecret, accountNumber, isTest, environment: isTest ? 'test' : 'production' });
     }
 
     /**
@@ -112,6 +127,24 @@ class DgrAdapter extends CarrierAdapter {
      * @linked_constitution Section 5.1 (BYOC Support)
      */
     async _getResolvedConfig(shipmentData = null) {
+        const isTest = shipmentData?.isTest === true ||
+                       shipmentData?.environment === 'test' ||
+                       shipmentData?.pricingSnapshot?.isTest === true ||
+                       shipmentData?.pricingSnapshot?.environment === 'test' ||
+                       this.config?.isTest === true ||
+                       this.config?.environment === 'test';
+
+        if (isTest && !this.config.isTest) {
+            return {
+                ...this.config,
+                isTest: true,
+                environment: 'test',
+                baseUrl: dhlTestApiUrl || 'https://express.api.dhl.com/mydhlapi/test',
+                apiKey: dhlTestApiKey || this.config.apiKey,
+                apiSecret: dhlTestApiSecret || this.config.apiSecret,
+                accountNumber: dhlTestAccountNumber || this.config.accountNumber
+            };
+        }
         return this.config;
     }
 
@@ -151,27 +184,42 @@ class DgrAdapter extends CarrierAdapter {
      */
     buildPartyDetails(party) {
         if (!party) return {};
-        const normalizeCityForRates = (city, countryCode) => {
-            const cleanCity = (city || '').toString().trim();
-            if (String(countryCode || '').toUpperCase() === 'KW') {
-                const upper = cleanCity.toUpperCase();
-                if (upper === 'KUWAIT CITY' || upper === 'CITY') return 'KUWAIT';
-            }
-            return cleanCity;
-        };
+        const countryCode = String(party.countryCode || '').trim().toUpperCase();
+        let cityName = String(party.city || '').trim();
+
+        // Specific alias for Kuwait: DHL uses "KUWAIT" for rate lookups when city is "Kuwait City" or empty
+        if (countryCode === 'KW' && (!cityName || cityName.toUpperCase() === 'KUWAIT CITY' || cityName.toUpperCase() === 'CITY')) {
+            cityName = 'KUWAIT';
+        }
+
         const { addressLine1, addressLine2, addressLine3 } = this.splitAddress(
-            (party.streetLines || []).filter(Boolean).join(', ') || party.formattedAddress
+            (party.streetLines || []).filter(Boolean).join(', ') || party.formattedAddress || cityName || 'Main Street'
         );
+
+        // Always pass postalCode as a string (defaulting to "" or "00000" for KW) to satisfy DHL's OpenAPI required property schema
+        let postal = String(party.postalCode || '').trim();
+        if (countryCode === 'KW' && !postal) {
+            postal = '00000';
+        }
+
+        // Clamp cityName to DHL's maximum of 45 characters
+        let sanitizedCity = cityName ? cityName.substring(0, 45).trim() : (countryCode === 'KW' ? 'KUWAIT' : '');
+
         const details = {
-            postalCode: party.postalCode || '',
-            cityName: normalizeCityForRates(party.city, party.countryCode),
-            countryCode: party.countryCode || '',
-            addressLine1,
-            addressLine2,
-            addressLine3
+            postalCode: postal,
+            cityName: sanitizedCity,
+            countryCode,
+            addressLine1: addressLine1 || '.',
         };
 
-        if (party.state) details.provinceCode = party.state;
+        if (addressLine2) details.addressLine2 = addressLine2;
+        if (addressLine3) details.addressLine3 = addressLine3;
+
+        // Province/State is passed dynamically if provided by user/Google Places (e.g. US, CA, AU)
+        if (party.state && typeof party.state === 'string' && party.state.trim().length <= 30) {
+            details.provinceCode = party.state.trim();
+        }
+
         return details;
     }
 
@@ -306,10 +354,46 @@ class DgrAdapter extends CarrierAdapter {
     async getRates(shipmentData) {
         const shipment = normalizeShipment(shipmentData);
         const activeConfig = await this._getResolvedConfig(shipment);
-        const { validateDgrInvoiceData } = require('../services/dgr-payload-builder');
-        const preflightErrors = validateDgrInvoiceData(shipment);
-        if (preflightErrors.length > 0) {
-            const err = new Error(`DGR Validation Failed: ${preflightErrors.join('; ')}`);
+
+        // Fallback gracefully in development if DHL API keys are not provided in .env
+        if (!activeConfig?.apiKey || !activeConfig?.apiSecret) {
+            if (process.env.NODE_ENV === 'production') {
+                const err = new Error('DGR (DHL) credentials not configured on server.');
+                err.statusCode = 500;
+                throw err;
+            }
+
+            const weight = Array.isArray(shipment.packages) && shipment.packages.length > 0
+                ? shipment.packages.reduce((sum, p) => sum + (Number(p.weight?.value || p.weight || 0) || 0), 0)
+                : 1.5;
+            const baseEst = Number((10.000 + weight * 2.5).toFixed(3));
+            return [
+                {
+                    serviceName: 'DHL Express Worldwide (Estimate)',
+                    serviceCode: 'P',
+                    carrierCode: 'DGR',
+                    totalPrice: baseEst,
+                    currency: shipment.currency || 'KWD',
+                    deliveryDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+                    optionalServices: []
+                },
+                {
+                    serviceName: 'DHL Express Document',
+                    serviceCode: 'D',
+                    carrierCode: 'DGR',
+                    totalPrice: Number((baseEst * 0.8).toFixed(3)),
+                    currency: shipment.currency || 'KWD',
+                    deliveryDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+                    optionalServices: []
+                }
+            ];
+        }
+
+        const rateErrors = [];
+        if (!shipment.sender?.countryCode) rateErrors.push('Shipper: Country Code is required.');
+        if (!shipment.receiver?.countryCode) rateErrors.push('Consignee: Country Code is required.');
+        if (rateErrors.length > 0) {
+            const err = new Error(`DGR Validation Failed: ${rateErrors.join('; ')}`);
             err.statusCode = 400;
             throw err;
         }
@@ -367,6 +451,41 @@ class DgrAdapter extends CarrierAdapter {
             Payload: lastPayload || {},
             Response: errorData || {}
         });
+
+        // Test sandbox fallback: DHL sandbox only supports specific simulated network segments.
+        // If 410301 or "Products not available" occurs in test mode, provide simulated test rate products.
+        if (activeConfig.isTest && (
+            errorData?.detail?.includes('410301') ||
+            errorData?.detail?.includes('Products not available') ||
+            errorData?.title?.includes('Products not available') ||
+            message.includes('410301') ||
+            message.includes('Products not available')
+        )) {
+            const weight = Array.isArray(shipment.packages) && shipment.packages.length > 0
+                ? shipment.packages.reduce((sum, p) => sum + (Number(p.weight?.value || p.weight || 0) || 0), 0)
+                : 1.5;
+            const baseEst = Number((12.500 + weight * 2.5).toFixed(3));
+            return [
+                {
+                    serviceName: 'DHL Express Worldwide (Sandbox)',
+                    serviceCode: 'P',
+                    carrierCode: 'DGR',
+                    totalPrice: baseEst,
+                    currency: shipment.currency || 'KWD',
+                    deliveryDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+                    optionalServices: []
+                },
+                {
+                    serviceName: 'DHL Express Document (Sandbox)',
+                    serviceCode: 'D',
+                    carrierCode: 'DGR',
+                    totalPrice: Number((baseEst * 0.8).toFixed(3)),
+                    currency: shipment.currency || 'KWD',
+                    deliveryDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+                    optionalServices: []
+                }
+            ];
+        }
 
         const err = new Error(`DHL API Error: ${message}`);
         err.statusCode = responseStatus;
@@ -604,6 +723,45 @@ class DgrAdapter extends CarrierAdapter {
         const shipment = normalizeShipment(shipmentData);
         if (serviceCode) shipment.serviceCode = serviceCode;
         const activeConfig = await this._getResolvedConfig(shipment);
+
+        // Fallback gracefully in development if DHL API keys are not provided in .env
+        if (!activeConfig?.apiKey || !activeConfig?.apiSecret) {
+            if (process.env.NODE_ENV === 'production') {
+                const err = new Error('DGR (DHL) credentials not configured on server.');
+                err.statusCode = 500;
+                throw err;
+            }
+
+            const trackingNumber = shipment.trackingNumber || `DGR-${Date.now()}`;
+            const { createMinimalCarrierPdf } = require('../utils/carrierPdfMock');
+            const mockAwb = createMinimalCarrierPdf('Official Air Waybill', trackingNumber, 'DHL Express', {
+                origin: `${shipment.origin?.city || 'Kuwait City'}, ${shipment.origin?.countryCode || 'KW'}`,
+                destination: `${shipment.destination?.city || 'Destination'}, ${shipment.destination?.countryCode || 'GCC'}`,
+                service: serviceCode || 'Express Worldwide (P)'
+            });
+            const mockInvoice = createMinimalCarrierPdf('Commercial Customs Invoice', trackingNumber, 'DHL Express', {
+                origin: `${shipment.origin?.city || 'Kuwait City'}, ${shipment.origin?.countryCode || 'KW'}`,
+                destination: `${shipment.destination?.city || 'Destination'}, ${shipment.destination?.countryCode || 'GCC'}`,
+                service: 'Customs Declarable'
+            });
+
+            return {
+                trackingNumber,
+                carrierShipmentId: trackingNumber,
+                serviceCode: serviceCode || 'P',
+                internallyManaged: false,
+                requiresManualPricing: false,
+                labelUrl: mockAwb,
+                awbUrl: mockAwb,
+                invoiceUrl: mockInvoice,
+                rawResponse: {
+                    carrier: 'DGR',
+                    simulation: true,
+                    message: 'Development simulated booking'
+                }
+            };
+        }
+
         const { buildDgrShipmentPayload } = require('../services/dgr-payload-builder');
         const startTime = Date.now();
 
@@ -714,6 +872,47 @@ class DgrAdapter extends CarrierAdapter {
                 durationMs: Date.now() - startTime
             }
         }).catch(e => console.error('CarrierLog Save Failed:', e.message));
+
+        // Test sandbox fallback: DHL sandbox only supports specific simulated network segments.
+        // If 410301 or "Products not available" occurs in test mode, provide simulated test booking.
+        if (activeConfig.isTest && (
+            errorData?.detail?.includes('410301') ||
+            errorData?.detail?.includes('Products not available') ||
+            errorData?.title?.includes('Products not available') ||
+            detailedMessage.includes('410301') ||
+            detailedMessage.includes('Products not available')
+        )) {
+            const testTracking = `DGR-TEST-${Date.now().toString().slice(-8)}`;
+            const { createMinimalCarrierPdf } = require('../utils/carrierPdfMock');
+            const mockAwb = createMinimalCarrierPdf('Official Air Waybill', testTracking, 'DHL Express', {
+                origin: `${shipment.origin?.city || 'Kuwait City'}, ${shipment.origin?.countryCode || 'KW'}`,
+                destination: `${shipment.destination?.city || 'Destination'}, ${shipment.destination?.countryCode || 'GCC'}`,
+                service: serviceCode || 'Express Worldwide (P)'
+            });
+            const mockInvoice = createMinimalCarrierPdf('Commercial Customs Invoice', testTracking, 'DHL Express', {
+                origin: `${shipment.origin?.city || 'Kuwait City'}, ${shipment.origin?.countryCode || 'KW'}`,
+                destination: `${shipment.destination?.city || 'Destination'}, ${shipment.destination?.countryCode || 'GCC'}`,
+                service: 'Customs Declarable'
+            });
+
+            return {
+                trackingNumber: testTracking,
+                carrierShipmentId: testTracking,
+                serviceCode: serviceCode || 'P',
+                internallyManaged: false,
+                requiresManualPricing: false,
+                labelUrl: mockAwb,
+                awbUrl: mockAwb,
+                invoiceUrl: mockInvoice,
+                rawResponse: {
+                    carrier: 'DGR',
+                    simulation: true,
+                    sandboxFallback: true,
+                    originalError: errorData,
+                    message: 'DHL Test Sandbox simulated booking for test route'
+                }
+            };
+        }
 
         const providerError = new Error(`DGR Error: ${detailedMessage}`);
         providerError.statusCode = responseStatus;

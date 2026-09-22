@@ -5,7 +5,10 @@
 
 const SHIPMENT_STATUSES = [
     'draft', 'pending', 'booked', 'ready_for_pickup', 'picked_up',
-    'in_transit', 'out_for_delivery', 'delivered', 'exception', 'cancelled'
+    'received_at_hub', 'verified',
+    'in_transit', 'out_for_delivery', 'delivered', 
+    'rto_in_transit', 'returned',
+    'exception', 'cancelled'
 ];
 
 const INTERNAL_SHIPMENT_STATUSES = [
@@ -14,9 +17,13 @@ const INTERNAL_SHIPMENT_STATUSES = [
     'booked',
     'ready_for_pickup',
     'picked_up',
+    'received_at_hub',
+    'verified',
     'in_transit',
     'out_for_delivery',
     'delivered',
+    'rto_in_transit',
+    'returned',
     'exception',
     'cancelled'
 ];
@@ -27,9 +34,13 @@ const STATUS_LABELS = {
     booked: 'Booked',
     ready_for_pickup: 'Ready for Pickup',
     picked_up: 'Picked Up',
+    received_at_hub: 'Received at Hub',
+    verified: 'Hub Verified',
     in_transit: 'In Transit',
     out_for_delivery: 'Out for Delivery',
     delivered: 'Delivered',
+    rto_in_transit: 'RTO In Transit',
+    returned: 'Returned to Shipper',
     exception: 'Exception',
     cancelled: 'Cancelled',
 };

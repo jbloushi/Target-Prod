@@ -9,9 +9,11 @@ const { handleControllerError } = require('../utils/controllerError');
 const { hasCapability, isPlatformRole } = require('../middleware/rbac.policy');
 const { canAccessShipment, scopeShipmentWhere } = require('../middleware/authorize.middleware');
 const { INTERNAL_SHIPMENT_STATUSES, SHIPMENT_STATUSES } = require('../constants/statusConstants');
-const { DELETABLE_SHIPMENT_STATUSES, buildShipmentDeleteBlockedMessage } = require('../utils/shipmentDeletionPolicy');
+const { DELETABLE_SHIPMENT_STATUSES, buildShipmentDeleteBlockedMessage, hasCarrierBooking, canDeleteShipment } = require('../utils/shipmentDeletionPolicy');
 const { syncCarrierTrackingHistory, hasCriticalChanges, canUpdateShipmentStatus, isInternalShipment, buildDisplayHistory } = require('./shipment.helpers');
 const chatwootNotificationService = require('../services/chatwootNotificationService');
+const WebhookDispatcher = require('../services/WebhookDispatcher');
+const { isTrackingSyncDue, markTrackingSynced, triggerBackgroundTrackingSync } = require('../services/queue/trackingCache');
 
 /**
  * Get shipment statistics (Status counts and Monthly volume)
@@ -97,6 +99,24 @@ exports.createShipment = async (req, res) => {
         const shipment = await ShipmentDraftService.createDraft(req.body, req.user);
         logger.info(`Shipment ${shipment.trackingNumber} created (Draft).`);
         chatwootNotificationService.triggerShipmentNotification('shipment_created', shipment);
+        WebhookDispatcher.dispatch('shipment.created', shipment.organizationId, {
+            trackingNumber: shipment.trackingNumber,
+            status: shipment.status,
+            carrierCode: shipment.carrierCode,
+            origin: shipment.origin,
+            destination: shipment.destination,
+            createdAt: shipment.createdAt
+        });
+
+        // Only dispatch background booking job if explicitly requested (e.g. automated integration)
+        // Default operational workflow requires staff to review and click 'Approve & Book Carrier'
+        if (req.body.autoDispatch === true && shipment.carrierCode && shipment.carrierCode !== 'INTERNAL') {
+            const ShipmentBookingService = require('../services/ShipmentBookingService');
+            const optionalCodes = (shipment.pricingSnapshot?.optionalServices || []).map(s => s.serviceCode);
+            await ShipmentBookingService.bookShipmentAsync(shipment.trackingNumber, shipment.carrierCode, optionalCodes, req.user.role);
+            logger.info(`Dispatched background booking job for ${shipment.trackingNumber}`);
+        }
+
         res.status(200).json({ success: true, data: shipment, message: 'Shipment created successfully' });
     } catch (error) {
         return handleControllerError(res, error, 'Shipment creation');
@@ -166,24 +186,32 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
             shipment.awbUrl = null; 
         }
 
-        // Sync tracking from carrier if needed
-        const updates = await syncCarrierTrackingHistory(shipment);
-        if (updates) {
-            await prisma.shipment.update({
-                where: { id: shipment.id },
-                data: {
-                    history: updates.history,
-                    status: updates.status
-                }
-            });
-            shipment.history = updates.history;
-            shipment.status = updates.status;
+        // Sync tracking from carrier if requested explicitly, or trigger non-blocking background refresh if due
+        if (req.query.refresh === 'true' || req.query.sync === 'true') {
+            const updates = await syncCarrierTrackingHistory(shipment);
+            if (updates) {
+                await prisma.shipment.update({
+                    where: { id: shipment.id },
+                    data: {
+                        history: updates.history,
+                        status: updates.status
+                    }
+                });
+                shipment.history = updates.history;
+                shipment.status = updates.status;
+            }
+            markTrackingSynced(shipment.trackingNumber);
+        } else if (isTrackingSyncDue(shipment)) {
+            triggerBackgroundTrackingSync(shipment, syncCarrierTrackingHistory);
         }
 
         const rawHistory = Array.isArray(shipment.history) ? shipment.history : [];
         const originLocation = shipment.origin?.formattedAddress || shipment.origin?.city || '';
         const displayHistory = buildDisplayHistory(rawHistory, { originLocation });
-        res.status(200).json({ success: true, data: { ...shipment, rawHistory, displayHistory, history: displayHistory } });
+        const dangerousGoods = shipment.dangerousGoods || shipment.origin?.dangerousGoods || (shipment.serviceCode === 'Y' ? { contains: true, code: '1266', unCode: '1266', properShippingName: 'PERFUMERY PRODUCTS', hazardClass: '3', packingGroup: 'II' } : { contains: false });
+        const isTest = shipment.pricingSnapshot?.isTest === true || shipment.pricingSnapshot?.environment === 'test' || shipment.isTest === true;
+        const environment = isTest ? 'test' : (shipment.pricingSnapshot?.environment || 'production');
+        res.status(200).json({ success: true, data: { ...shipment, isTest, environment, dangerousGoods, rawHistory, displayHistory, history: displayHistory } });
     } catch (error) {
         logger.error('Error fetching shipment:', error);
         res.status(500).json({ success: false, error: 'Failed to fetch shipment' });
@@ -196,7 +224,7 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
  */
 exports.getAllShipments = async (req, res) => {
     try {
-        const { status, statusIn, q, sortBy, sortOrder, limit = 50, page = 1, organizationId, paid, summary } = req.query;
+        const { status, statusIn, q, sortBy, sortOrder, limit = 50, page = 1, organizationId, orgId, paid, paymentStatus, payment_status, summary } = req.query;
         const where = {};
 
         // 1. Status Filters
@@ -207,15 +235,26 @@ exports.getAllShipments = async (req, res) => {
         }
 
         // 2. Organization Filter — enforce tenant isolation for non-platform users
+        const targetOrgId = organizationId || orgId;
         if (isPlatformRole(req.user.role)) {
             // Platform staff can filter by any org or see all
-            if (organizationId) {
-                where.organizationId = organizationId === 'none' ? null : organizationId;
+            if (targetOrgId) {
+                where.organizationId = (targetOrgId === 'none' || targetOrgId === 'null') ? null : targetOrgId;
             }
         }
 
         // 3. Payment Filter
-        if (paid !== undefined) {
+        const pStatus = paymentStatus || payment_status;
+        if (pStatus) {
+            if (pStatus === 'paid') {
+                where.paid = true;
+            } else if (pStatus === 'unpaid') {
+                where.paid = false;
+            } else if (pStatus === 'partial') {
+                where.paid = false;
+                where.totalPaid = { gt: 0 };
+            }
+        } else if (paid !== undefined) {
             const isPaid = paid === 'true' || paid === true;
             where.paid = isPaid;
         }
@@ -295,6 +334,9 @@ exports.getAllShipments = async (req, res) => {
                 delete s.invoiceUrl;
                 delete s.awbUrl;
             }
+            s.isTest = s.pricingSnapshot?.isTest === true || s.pricingSnapshot?.environment === 'test' || s.isTest === true;
+            s.environment = s.isTest ? 'test' : (s.pricingSnapshot?.environment || 'production');
+            s.dangerousGoods = s.dangerousGoods || s.origin?.dangerousGoods || { contains: false };
             return s;
         });
 
@@ -326,22 +368,34 @@ exports.deleteShipment = async (req, res) => {
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
-        const isAdminOrStaff = ['admin', 'staff', 'manager', 'accounting'].includes(user.role);
-        if (!isAdminOrStaff && !canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Not authorized' });
+        // Deletion is restricted to Superadmin / Admin only
+        if (user.role !== 'admin') {
+            return res.status(403).json({ success: false, error: 'Only administrators can delete shipments' });
+        }
 
-        if (!DELETABLE_SHIPMENT_STATUSES.includes(shipment.status)) {
-            const message = buildShipmentDeleteBlockedMessage(shipment.status);
+        const isCarrierBooked = hasCarrierBooking(shipment);
+        if (isCarrierBooked || !DELETABLE_SHIPMENT_STATUSES.includes(shipment.status)) {
+            const message = buildShipmentDeleteBlockedMessage(shipment.status, isCarrierBooked);
             return res.status(409).json({
                 success: false,
                 code: 'SHIPMENT_DELETE_NOT_ALLOWED',
                 error: message.short,
                 message,
                 status: shipment.status,
+                hasCarrierBooking: isCarrierBooked,
                 allowedStatuses: DELETABLE_SHIPMENT_STATUSES
             });
         }
 
-        await prisma.shipment.delete({ where: { id: shipment.id } });
+        await prisma.$transaction([
+            prisma.shipmentNotificationLog.deleteMany({ where: { shipmentId: shipment.id } }),
+            prisma.paymentAllocation.deleteMany({ where: { shipmentId: shipment.id } }),
+            prisma.pickupRequest.deleteMany({ where: { shipmentId: shipment.id } }),
+            prisma.invoiceLine.deleteMany({ where: { shipmentId: shipment.id } }),
+            prisma.shipment.delete({ where: { id: shipment.id } })
+        ]);
+
+        logger.info(`Shipment ${trackingNumber} deleted by admin ${user.email || user.id}`);
         return res.status(200).json({ success: true, message: 'Shipment deleted successfully' });
     } catch (error) {
         logger.error('Error deleting shipment:', error);
@@ -376,7 +430,7 @@ exports.updateShipment = async (req, res) => {
         let criticalChangesDetected = hasCriticalChanges(shipment, updates);
         const shipmentIsInternal = isInternalShipment(shipment);
         const shipmentCarrier = String(shipment.carrierCode || '').toUpperCase();
-        const shipmentAllowsInternalPricing = shipmentIsInternal || ['OTE', 'LOGESTECHS'].includes(shipmentCarrier);
+        const shipmentAllowsInternalPricing = shipmentIsInternal || ['OTE', 'LOGESTECHS', 'MANUAL'].includes(shipmentCarrier);
         const canManageManualFields = shipmentAllowsInternalPricing && ['admin', 'staff', 'manager', 'accounting'].includes(user.role);
 
         if (updates.status && updates.status !== shipment.status) {
@@ -438,6 +492,32 @@ exports.updateShipment = async (req, res) => {
             };
         }
 
+        // Audit Logging for Address Modifications
+        const isAddressChanged = Boolean(updates.destination || updates.origin || updates.customer);
+        if (isAddressChanged) {
+            try {
+                await prisma.shipmentAuditLog.create({
+                    data: {
+                        shipmentId: shipment.id,
+                        trackingNumber: shipment.trackingNumber,
+                        actorType: user.role ? user.role.toUpperCase() : 'USER',
+                        actorId: user.id,
+                        actorName: user.name || user.email || 'System User',
+                        action: user.role === 'client' ? 'ADDRESS_UPDATE_REQUESTED' : 'ADDRESS_UPDATED',
+                        fieldChanges: {
+                            oldDestination: shipment.destination,
+                            newDestination: updates.destination || shipment.destination,
+                            oldOrigin: shipment.origin,
+                            newOrigin: updates.origin || shipment.origin
+                        },
+                        ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+                    }
+                });
+            } catch (auditErr) {
+                logger.warn(`[Audit Log Warning] Failed to log address edit: ${auditErr.message}`);
+            }
+        }
+
         // Handle Status Change History
         if (updates.status && updates.status !== shipment.status) {
             const history = Array.isArray(shipment.history) ? shipment.history : [];
@@ -454,7 +534,7 @@ exports.updateShipment = async (req, res) => {
         }
 
         // --- Dynamic Re-rating Logic ---
-        if (criticalChangesDetected && !shipmentIsInternal) {
+        if (criticalChangesDetected && !shipmentIsInternal && shipmentCarrier !== 'MANUAL' && !shipment.manualShipment) {
             logger.info(`Critical changes detected for ${trackingNumber}. Initiating re-rating.`);
             try {
                 const PricingService = require('../services/pricing.service');
@@ -462,8 +542,10 @@ exports.updateShipment = async (req, res) => {
                 
                 // Merge current state with updates for rating
                 const mergedState = { ...shipment, ...updates };
-                const carrier = CarrierFactory.getAdapter(mergedState.carrierCode);
-                const quotes = await carrier.getRates(mergedState);
+                const isTest = shipment.pricingSnapshot?.isTest === true || shipment.pricingSnapshot?.environment === 'test' || updates.isTest === true;
+                const environment = isTest ? 'test' : (updates.environment || shipment.pricingSnapshot?.environment || 'production');
+                const carrier = CarrierFactory.getAdapter(mergedState.carrierCode, { isTest, environment });
+                const quotes = await carrier.getRates({ ...mergedState, isTest, environment });
                 
                 const selectedService = quotes.find(q => q.serviceCode === (updates.serviceCode || shipment.serviceCode)) || quotes[0];
                 
@@ -518,6 +600,8 @@ exports.updateShipment = async (req, res) => {
                 snapshot.totalPrice = Number((estimatedShipmentCost + optionalServicesTotal).toFixed(3));
                 snapshot.declaredCurrency = updates.currency || shipment.currency || selectedService.currency || 'KWD';
                 snapshot.insuredValue = updates.insuredValue ?? currentOrigin.insuredValue ?? null;
+                snapshot.isTest = isTest;
+                snapshot.environment = environment;
 
                 const oldPrice = shipment.price || 0;
                 const newPrice = snapshot.totalPrice;
@@ -563,11 +647,164 @@ exports.updateShipment = async (req, res) => {
             if (eventType) {
                 chatwootNotificationService.triggerShipmentNotification(eventType, updatedShipment);
             }
+            WebhookDispatcher.dispatch('shipment.status_updated', updatedShipment.organizationId, {
+                trackingNumber: updatedShipment.trackingNumber,
+                previousStatus: shipment.status,
+                newStatus: updates.status,
+                status: updates.status,
+                carrierCode: updatedShipment.carrierCode,
+                description: updates.statusDescription || updates.description,
+                shipment: updatedShipment
+            });
         }
 
-        res.status(200).json({ success: true, data: updatedShipment });
+        res.status(200).json({
+            success: true,
+            data: {
+                ...updatedShipment,
+                dangerousGoods: updatedShipment.dangerousGoods || updatedShipment.origin?.dangerousGoods || { contains: false }
+            }
+        });
     } catch (error) {
         logger.error('Error updating shipment:', error);
         res.status(500).json({ success: false, error: 'Server error' });
+    }
+};
+
+/**
+ * Get Audit Logs for a shipment (Superadmin / Staff)
+ * @route GET /api/shipments/:trackingNumber/audit-logs
+ */
+exports.getShipmentAuditLogs = async (req, res) => {
+    try {
+        const { trackingNumber } = req.params;
+        const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
+        if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
+
+        const isAdminOrStaff = ['admin', 'staff', 'manager', 'accounting'].includes(req.user.role);
+        if (!isAdminOrStaff && !canAccessShipment(req, shipment)) {
+            return res.status(403).json({ success: false, error: 'Permission denied' });
+        }
+
+        const logs = await prisma.shipmentAuditLog.findMany({
+            where: { shipmentId: shipment.id },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        return res.json({ success: true, data: logs });
+    } catch (error) {
+        logger.error('Error fetching shipment audit logs:', error);
+        return res.status(500).json({ success: false, error: 'Failed to fetch audit logs' });
+    }
+};
+
+/**
+ * Bulk Import Shipments (CSV / Excel batch creation)
+ * @route POST /api/shipments/bulk-import
+ */
+exports.bulkImportShipments = async (req, res) => {
+    try {
+        const { rows, defaultCarrierCode = 'DGR', autoDispatch = false } = req.body;
+        const { user } = req;
+
+        if (!Array.isArray(rows) || rows.length === 0) {
+            return res.status(400).json({ success: false, error: 'Rows array is required and must not be empty' });
+        }
+
+        if (rows.length > 500) {
+            return res.status(400).json({ success: false, error: 'Maximum 500 shipments allowed per batch import' });
+        }
+
+        const results = {
+            total: rows.length,
+            created: [],
+            errors: []
+        };
+
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            const rowIndex = i + 1;
+
+            try {
+                // Validate mandatory fields
+                if (!row.recipientName || !row.recipientPhone || !row.destinationCity || !row.destinationCountry) {
+                    throw new Error(`Row ${rowIndex}: Missing mandatory recipient information (Name, Phone, City, or Country)`);
+                }
+
+                const destCountry = String(row.destinationCountry || 'KW').toUpperCase().trim();
+                const weight = parseFloat(row.weightKg) || 1.0;
+                const codAmount = row.codAmount ? parseFloat(row.codAmount) : null;
+                const carrier = row.carrierCode || defaultCarrierCode;
+
+                const payload = {
+                    carrierCode: carrier,
+                    shipmentType: 'package',
+                    currency: 'KWD',
+                    origin: {
+                        company: user.organization?.name || user.name || 'Target Logistics Hub',
+                        contactPerson: user.name || 'Operations Staff',
+                        phone: user.phone || '96597691271',
+                        phoneCountryCode: '965',
+                        country: 'KW',
+                        countryCode: 'KW',
+                        city: 'Kuwait City',
+                        formattedAddress: 'Shuwaikh Industrial 1, Kuwait'
+                    },
+                    destination: {
+                        contactPerson: String(row.recipientName).trim(),
+                        phone: String(row.recipientPhone).trim(),
+                        phoneCountryCode: row.phoneCountryCode || (destCountry === 'KW' ? '965' : destCountry === 'SA' ? '966' : destCountry === 'AE' ? '971' : '20'),
+                        country: destCountry,
+                        countryCode: destCountry,
+                        city: String(row.destinationCity).trim(),
+                        state: row.destinationState || '',
+                        postalCode: row.postalCode || '',
+                        streetLines: [row.street || row.formattedAddress || 'Main Street', row.block ? `Block ${row.block}` : ''],
+                        buildingName: row.building || '',
+                        unitNumber: row.unit || '',
+                        paciNumber: row.paciNumber || '',
+                        formattedAddress: row.formattedAddress || `${row.destinationCity}, ${destCountry}`
+                    },
+                    parcels: [
+                        {
+                            weight,
+                            length: parseFloat(row.lengthCm) || 15,
+                            width: parseFloat(row.widthCm) || 15,
+                            height: parseFloat(row.heightCm) || 10,
+                            description: row.itemDescription || 'Commercial Merchandise'
+                        }
+                    ],
+                    codAmount: codAmount,
+                    codCurrency: codAmount ? (destCountry === 'SA' ? 'SAR' : destCountry === 'AE' ? 'AED' : 'KWD') : null,
+                    autoDispatch: autoDispatch === true
+                };
+
+                const createdShipment = await ShipmentDraftService.createDraft(payload, user);
+                results.created.push({
+                    rowIndex,
+                    trackingNumber: createdShipment.trackingNumber,
+                    recipientName: row.recipientName,
+                    price: createdShipment.price,
+                    carrierCode: createdShipment.carrierCode
+                });
+            } catch (rowErr) {
+                results.errors.push({
+                    rowIndex,
+                    recipientName: row.recipientName || 'Unknown',
+                    error: rowErr.message
+                });
+            }
+        }
+
+        logger.info(`[Bulk Import] Completed ${results.created.length}/${results.total} shipments created by ${user.email}`);
+
+        return res.status(200).json({
+            success: true,
+            message: `Successfully imported ${results.created.length} of ${results.total} consignments`,
+            data: results
+        });
+    } catch (error) {
+        logger.error('Bulk shipment import failed:', error);
+        return res.status(500).json({ success: false, error: 'Bulk import failed: ' + error.message });
     }
 };

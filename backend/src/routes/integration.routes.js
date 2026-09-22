@@ -24,4 +24,13 @@ router.get(
     integrationController.previewChatwootShipmentMessage
 );
 
+// Merchant Webhook Subscriptions & Simulator
+router.get('/webhooks', integrationController.listWebhooks);
+router.post('/webhooks', integrationController.createWebhook);
+router.put('/webhooks/:id', integrationController.updateWebhook);
+router.delete('/webhooks/:id', integrationController.deleteWebhook);
+router.get('/webhooks/:id/events', integrationController.getWebhookEvents);
+router.post('/webhooks/:id/test', integrationController.testWebhook);
+
 module.exports = router;
+

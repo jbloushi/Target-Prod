@@ -329,9 +329,11 @@ const syncCarrierTrackingHistory = async (shipment) => {
     }
 
     const carrierCode = (shipment?.carrierCode || shipment?.carrier || 'DGR').toUpperCase();
+    const isTest = shipment?.pricingSnapshot?.isTest === true || shipment?.pricingSnapshot?.environment === 'test';
+    const environment = isTest ? 'test' : (shipment?.pricingSnapshot?.environment || 'production');
     let carrier;
     try {
-        carrier = CarrierFactory.getAdapter(carrierCode);
+        carrier = CarrierFactory.getAdapter(carrierCode, { isTest, environment });
     } catch (error) {
         logger.warn(`Carrier adapter not available for ${carrierCode}: ${error.message}`);
         return null;

@@ -4,6 +4,8 @@ const logger = require('../utils/logger');
 const {
     logesTechsShipmentBaseUrl,
     logesTechsFulfillmentBaseUrl,
+    logesTechsTestShipmentBaseUrl,
+    logesTechsTestFulfillmentBaseUrl,
     logesTechsCompanyId,
     logesTechsUsername,
     logesTechsPassword,
@@ -14,12 +16,16 @@ const {
 
 class LogesTechsAdapter extends CarrierAdapter {
     constructor(configOverrides = {}) {
+        const isTest = configOverrides.isTest === true || configOverrides.environment === 'test';
+        const defaultShipmentBaseUrl = isTest ? (logesTechsTestShipmentBaseUrl || 'https://apisv5.logestechs.com/api') : logesTechsShipmentBaseUrl;
+        const defaultFulfillmentBaseUrl = isTest ? (logesTechsTestFulfillmentBaseUrl || 'https://apisv5.logestechs.com/api') : logesTechsFulfillmentBaseUrl;
+
         const pick = (key, fallback) => Object.prototype.hasOwnProperty.call(configOverrides, key)
             ? configOverrides[key]
             : fallback;
 
-        const shipmentBaseUrl = pick('shipmentBaseUrl', logesTechsShipmentBaseUrl);
-        const fulfillmentBaseUrl = pick('fulfillmentBaseUrl', logesTechsFulfillmentBaseUrl);
+        const shipmentBaseUrl = pick('shipmentBaseUrl', defaultShipmentBaseUrl);
+        const fulfillmentBaseUrl = pick('fulfillmentBaseUrl', defaultFulfillmentBaseUrl);
         const companyId = pick('companyId', logesTechsCompanyId);
         const username = pick('username', logesTechsUsername);
         const password = pick('password', logesTechsPassword);
@@ -35,7 +41,9 @@ class LogesTechsAdapter extends CarrierAdapter {
             password,
             email,
             shipmentEmail,
-            shipmentPassword
+            shipmentPassword,
+            isTest,
+            environment: isTest ? 'test' : 'production'
         });
 
         this.code = 'OTE';

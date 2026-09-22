@@ -7,12 +7,9 @@ const { authorize } = require('../middleware/authorize.middleware');
 // Protect all routes
 router.use(authController.protect);
 
-// List / view orgs (platform ops)
-router.use(authorize('VIEW_ALL_SHIPMENTS'));
-
 router
     .route('/')
-    .get(organizationController.getAllOrganizations)
+    .get(authorize('VIEW_ALL_SHIPMENTS'), organizationController.getAllOrganizations)
     .post(authorize('MANAGE_ORGS'), organizationController.createOrganization);
 
 router

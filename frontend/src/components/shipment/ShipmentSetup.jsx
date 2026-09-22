@@ -1,6 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
-import { Select, Input, AddressPanel } from '../../ui';
+import { Select, Input } from '../../ui';
+import AddressPanel from '../AddressPanel';
 import Toggle from '../../ui/components/Toggle';
 
 const PageContainer = styled.div`
@@ -86,16 +87,22 @@ const ShipmentSetup = ({
                         value={selectedCarrier || 'DGR'}
                         onChange={(e) => onCarrierChange(e.target.value)}
                     >
-                        {availableCarriers.map((carrier) => (
-                            <option key={carrier.code} value={carrier.code} disabled={!carrier.active}>
-                                {carrier.code === 'INTERNAL' ? 'Internal' : `${carrier.name} Network`} {!carrier.active && '(Service Suspended)'}
-                            </option>
-                        ))}
+                        {availableCarriers.map((carrier) => {
+                            let label = `${carrier.name} Network`;
+                            if (carrier.code === 'INTERNAL') label = 'Target Local Fleet';
+                            if (carrier.code === 'DGR' || carrier.code === 'DHL') label = 'Target International Air (DHL DGR)';
+                            if (carrier.code === 'OTE' || carrier.code === 'LOGESTECHS') label = 'Target GCC Express (OTE)';
+                            return (
+                                <option key={carrier.code} value={carrier.code} disabled={!carrier.active}>
+                                    {label} {!carrier.active && '(Service Suspended)'}
+                                </option>
+                            );
+                        })}
                     </Select>
                 </StaffControls>
             )}
 
-            {/* Core shipment settings */}
+            {/* Core shipment settings & First-mile Mode Selection */}
             <TopControls className="slide-up" style={{ animationDelay: '100ms' }}>
                 <Select
                     label="Service Type"
@@ -107,7 +114,7 @@ const ShipmentSetup = ({
                 </Select>
 
                 <Input
-                    label="Scheduled Pickup Date"
+                    label={pickupRequired ? "Scheduled Pickup Date" : "Expected Hub Drop-off Date"}
                     type="date"
                     value={plannedDate}
                     onChange={(e) => setPlannedDate(e.target.value)}
@@ -115,8 +122,8 @@ const ShipmentSetup = ({
 
                 <div style={{ paddingBottom: '8px' }}>
                     <Toggle
-                        label="Pickup Required?"
-                        subLabel={pickupRequired ? 'Courier will collect from origin' : 'Drop-off at local service point'}
+                        label={pickupRequired ? "First Mile: Driver Pickup" : "First Mile: Hub Drop-off"}
+                        subLabel={pickupRequired ? "Driver will collect from Shipper address" : "Customer drops off parcel at Target Hub"}
                         checked={pickupRequired}
                         onChange={setPickupRequired}
                     />

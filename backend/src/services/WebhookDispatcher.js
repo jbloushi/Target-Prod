@@ -6,7 +6,7 @@ const logger = require('../utils/logger');
 class WebhookDispatcher {
     /**
      * Dispatches an event to all matching active subscriptions for an organization
-     * @param {string} event - The event name e.g. 'shipment.status_updated'
+     * @param {string} event - The event name e.g. 'shipment.status_updated', 'shipment.created', 'shipment.booked'
      * @param {string} organizationId
      * @param {Object} payload - The JSON payload to send
      */
@@ -15,10 +15,6 @@ class WebhookDispatcher {
             if (!organizationId) return;
 
             // Find matching subscriptions
-            // Note: Prisma Json filtering for "contains" can be tricky in MySQL. 
-            // We fetch all active for the org and filter in memory if strictly needed, 
-            // or use a join-like structure if we had a many-to-many. 
-            // Since events is a Json array, we'll fetch and filter.
             const subscriptions = await prisma.webhookSubscription.findMany({
                 where: {
                     organizationId,
@@ -33,6 +29,8 @@ class WebhookDispatcher {
 
             if (matchingSubs.length === 0) return;
 
+            const jobQueue = require('./queue/jobQueue');
+
             for (const sub of matchingSubs) {
                 // 1. Create Event record
                 const webhookEvent = await prisma.webhookEvent.create({
@@ -45,17 +43,66 @@ class WebhookDispatcher {
                     }
                 });
 
-                // 2. Queue for delivery (Async Fire-and-Forget)
-                this._deliver(sub, webhookEvent).catch(err => {
-                    logger.error(`Webhook background delivery failed for event ${webhookEvent.id}:`, err);
-                });
+                // 2. Queue for delivery with retry and backoff
+                try {
+                    await jobQueue.enqueue('webhook_delivery', {
+                        webhookEventId: webhookEvent.id,
+                        subscriptionId: sub.id
+                    }, {
+                        maxRetries: 5,
+                        backoffMs: 15000
+                    });
+                } catch (queueErr) {
+                    logger.warn(`[WebhookDispatcher] Queue enqueue failed, falling back to direct delivery for event ${webhookEvent.id}: ${queueErr.message}`);
+                    this._deliver(sub, webhookEvent).catch(err => {
+                        logger.error(`Webhook background delivery failed for event ${webhookEvent.id}:`, err);
+                    });
+                }
             }
         } catch (error) {
             logger.error(`Failed to dispatch webhooks for event ${event}:`, error);
         }
     }
 
-    static async _deliver(subscription, webhookEvent) {
+    /**
+     * Worker processor for queued webhook delivery
+     */
+    static async processQueuedDelivery(payload) {
+        const { webhookEventId, subscriptionId } = payload;
+        
+        const webhookEvent = await prisma.webhookEvent.findUnique({
+            where: { id: webhookEventId }
+        });
+
+        if (!webhookEvent) {
+            logger.warn(`[WebhookDispatcher] Webhook event ${webhookEventId} not found`);
+            return;
+        }
+
+        const subscription = await prisma.webhookSubscription.findUnique({
+            where: { id: subscriptionId }
+        });
+
+        if (!subscription || !subscription.isActive) {
+            logger.warn(`[WebhookDispatcher] Subscription ${subscriptionId} not found or inactive`);
+            await prisma.webhookEvent.update({
+                where: { id: webhookEventId },
+                data: { status: 'cancelled', lastError: 'Subscription inactive or deleted' }
+            });
+            return;
+        }
+
+        // Run delivery - will throw on network/HTTP failure so jobQueue retries
+        return await this._deliver(subscription, webhookEvent, true);
+    }
+
+    /**
+     * Executes the HTTP delivery and signature verification
+     * @param {Object} subscription
+     * @param {Object} webhookEvent
+     * @param {boolean} [throwOnError=false]
+     */
+    static async _deliver(subscription, webhookEvent, throwOnError = false) {
         try {
             const updatedEvent = await prisma.webhookEvent.update({
                 where: { id: webhookEvent.id },
@@ -66,7 +113,8 @@ class WebhookDispatcher {
             });
 
             const payloadString = JSON.stringify(updatedEvent.payload);
-            const signature = crypto.createHmac('sha256', subscription.secret).update(payloadString).digest('hex');
+            const secret = subscription.secret || '';
+            const signature = crypto.createHmac('sha256', secret).update(payloadString).digest('hex');
 
             await axios.post(subscription.targetUrl, payloadString, {
                 headers: {
@@ -74,7 +122,7 @@ class WebhookDispatcher {
                     'X-Webhook-Signature-256': signature,
                     'X-Webhook-Event': updatedEvent.event
                 },
-                timeout: 5000
+                timeout: 8000
             });
 
             await prisma.webhookEvent.update({
@@ -92,6 +140,9 @@ class WebhookDispatcher {
                 }
             });
             logger.error(`Webhook ${webhookEvent.id} delivery failed:`, error.message);
+            if (throwOnError) {
+                throw error;
+            }
         }
     }
 }

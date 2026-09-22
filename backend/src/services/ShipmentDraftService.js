@@ -10,6 +10,7 @@ const {
     shouldEnforceAssignedAccess
 } = require('./shippingAccess.service');
 const { canCreateShipmentForUser } = require('../middleware/authorize.middleware');
+const { hasCapability } = require('../middleware/rbac.policy');
 
 const OTE_DEFAULT_COD_AMOUNT = 25;
 const OTE_DEFAULT_COD_CURRENCY = 'AED';
@@ -42,8 +43,15 @@ class ShipmentDraftService {
      * @returns {Object} Created Shipment
      */
     async createDraft(data, user) {
+        // Enforce role capability: drivers and unauthorized roles cannot create shipments
+        if (user?.role && !hasCapability(user.role, 'CREATE_SHIPMENTS')) {
+            const error = new Error('Not authorized to create shipments');
+            error.statusCode = 403;
+            throw error;
+        }
+
         // 1. Determine Target User (The paying entity/owner)
-        const targetUserId = data.userId || user.id;
+        const targetUserId = data.userId || user?.id;
 
         // Fetch target user with organization details via Prisma
         const targetUser = await prisma.user.findUnique({
@@ -60,6 +68,9 @@ class ShipmentDraftService {
 
         // 2. Sanitize & Normalize Data
         const cleanData = this.sanitizePayload(data);
+        cleanData.isTest = data.isTest === true || data.environment === 'test';
+        cleanData.environment = cleanData.isTest ? 'test' : (data.environment || 'production');
+
         const assignedAccess = getAssignedShippingAccess(targetUser);
         const enforceAssignedAccess = shouldEnforceAssignedAccess(user, targetUser);
 
@@ -111,13 +122,18 @@ class ShipmentDraftService {
             if (data.price || data.totalPrice) snapshot.totalPrice = Number(data.price || data.totalPrice);
         }
 
+        if (snapshot && typeof snapshot === 'object') {
+            snapshot.isTest = cleanData.isTest;
+            snapshot.environment = cleanData.environment;
+        }
+
         // Helper to generate tracking number
         const trackingNumber = data.trackingNumber || await generateUniqueCarrierTrackingNumber(
             prisma,
             carrierCode
         );
         const estimatedDelivery = data.estimatedDelivery || new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-        const requestedStatus = cleanData.status || (isInternalShipment ? 'draft' : 'ready_for_pickup');
+        const requestedStatus = cleanData.status || (isInternalShipment ? 'draft' : 'pending');
         const isOteShipment = carrierCode === 'OTE' || carrierCode === 'LOGESTECHS';
         const codAmount = isOteShipment ? OTE_DEFAULT_COD_AMOUNT : null;
         const codCurrency = isOteShipment ? OTE_DEFAULT_COD_CURRENCY : null;
@@ -230,13 +246,18 @@ class ShipmentDraftService {
     async getSecurePricing(data, user) {
         const carrierCode = data.carrierCode || 'DGR';
         const serviceCode = data.serviceCode || defaultServiceCodeForCarrier(carrierCode);
+        const isTest = data.isTest === true || data.environment === 'test';
+        const environment = isTest ? 'test' : (data.environment || 'production');
 
         // 1. Call Carrier
-        const carrier = CarrierFactory.getAdapter(carrierCode);
-        const quotes = await carrier.getRates(data);
+        const carrier = CarrierFactory.getAdapter(carrierCode, { isTest, environment });
+        const quotes = await carrier.getRates({ ...data, isTest, environment });
 
         // 2. Find selected service
-        const quote = quotes.find(q => q.serviceCode === serviceCode);
+        let quote = quotes.find(q => q.serviceCode === serviceCode);
+        if (!quote) {
+            quote = quotes.find(q => String(q.serviceCode).toUpperCase() === String(serviceCode).toUpperCase()) || quotes[0];
+        }
         if (!quote) {
             throw new Error(`Service ${serviceCode} not available from ${carrierCode}`);
         }

@@ -1,16 +1,14 @@
+import { WInput } from '../../ui';
 import React, { useState } from 'react';
 import {
     Box, Typography, Button, Grid, FormControl,
     InputLabel, Select, MenuItem, IconButton,
-    Alert, TextField, Stack, alpha, useTheme
+    Alert, Stack, alpha, useTheme
 } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
-import Inventory2Icon from '@mui/icons-material/Inventory2';
-import DescriptionIcon from '@mui/icons-material/Description';
 import ParcelCard from './ParcelCard';
 import DangerousGoodsPanel from './DangerousGoodsPanel';
 import StatusPill from '../../ui/components/StatusPill';
+import { TK } from '../../tokens/kineticHorizon';
 
 const HS_CODE_REGEX = /^\d{4}(\.\d{2}(\.\d{2})?)?$/;
 const ISO_COUNTRY_REGEX = /^[A-Z]{2}$/;
@@ -98,17 +96,20 @@ const ShipmentContent = ({
             {/* 1. Physical Packages */}
             <Box 
                 sx={{ 
-                    p: 4, mb: 4, 
-                    bgcolor: 'surface-container-low', 
-                    borderRadius: 6,
+                    p: { xs: 2.5, sm: 3.5 }, 
+                    mb: 4, 
+                    bgcolor: '#ffffff',
+                    border: `1px solid ${TK.border}`,
+                    borderRadius: '20px',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
                     position: 'relative'
                 }}
             >
                 <Stack direction="row" alignItems="center" spacing={2} mb={4}>
-                    <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: alpha(theme.palette.primary.main, 0.1), color: 'primary.main', display: 'flex' }}>
-                        <Inventory2Icon />
+                    <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: 'rgba(0,80,212,0.08)', color: TK.primary, display: 'flex' }}>
+                        <span className="material-symbols-outlined" >inventory_2</span>
                     </Box>
-                    <Typography variant="h5" fontWeight="800" sx={{ letterSpacing: '-0.02em' }}>
+                    <Typography variant="h6" fontWeight="800" sx={{ color: TK.text1, letterSpacing: '-0.02em', fontFamily: 'Manrope' }}>
                         Physical Packages
                     </Typography>
                 </Stack>
@@ -154,9 +155,9 @@ const ShipmentContent = ({
 
                 <Button
                     variant="outlined"
-                    startIcon={<AddIcon />}
+                    startIcon={<span className="material-symbols-outlined" >add</span>}
                     onClick={() => setParcels([...parcels, { description: '', weight: '', length: '', width: '', height: '', quantity: 1, declaredValue: '' }])}
-                    sx={{ mt: 4, borderRadius: 3, textTransform: 'none', fontWeight: 800, py: 1, px: 3 }}
+                    sx={{ mt: 4, borderRadius: '12px', textTransform: 'none', fontWeight: 800, py: 1, px: 3 }}
                 >
                     Add Physical Unit
                 </Button>
@@ -166,17 +167,20 @@ const ShipmentContent = ({
             {shipmentType !== 'documents' && (
                 <Box 
                     sx={{ 
-                        p: 4, mb: 4, 
-                        bgcolor: 'surface-container-low', 
-                        borderRadius: 6
+                        p: { xs: 2.5, sm: 3.5 }, 
+                        mb: 4, 
+                        bgcolor: '#ffffff',
+                        border: `1px solid ${TK.border}`,
+                        borderRadius: '20px',
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.05)'
                     }}
                 >
                     <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
                         <Stack direction="row" alignItems="center" spacing={2}>
-                            <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: alpha(theme.palette.secondary.main, 0.1), color: 'secondary.main', display: 'flex' }}>
-                                <DescriptionIcon />
+                            <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: 'rgba(0,80,212,0.08)', color: TK.primary, display: 'flex' }}>
+                                <span className="material-symbols-outlined" >description</span>
                             </Box>
-                            <Typography variant="h5" fontWeight="800" sx={{ letterSpacing: '-0.02em' }}>
+                            <Typography variant="h6" fontWeight="800" sx={{ color: TK.text1, letterSpacing: '-0.02em', fontFamily: 'Manrope' }}>
                                 Customs Declaration
                             </Typography>
                         </Stack>
@@ -198,7 +202,7 @@ const ShipmentContent = ({
                     </Box>
 
                     {itemWarnings.length > 0 && (
-                        <Alert severity="warning" variant="outlined" sx={{ mb: 4, borderRadius: 4 }}>
+                        <Alert severity="warning" variant="outlined" sx={{ mb: 4, borderRadius: '12px'}}>
                             {itemWarnings.map((warning) => (
                                 <Typography key={warning} variant="caption" display="block">• {warning}</Typography>
                             ))}
@@ -212,11 +216,11 @@ const ShipmentContent = ({
                                 className="slide-up"
                                 sx={{ 
                                     p: 3, 
-                                    borderRadius: 4, 
-                                    bgcolor: 'surface-container-high',
-                                    border: '1px solid transparent',
-                                    transition: 'var(--transition-base)',
-                                    '&:hover': { bgcolor: 'surface-container' }
+                                    borderRadius: '14px', 
+                                    bgcolor: '#f8fafc',
+                                    border: `1px solid ${TK.border}`,
+                                    transition: 'all 0.2s ease',
+                                    '&:hover': { bgcolor: '#f1f5f9' }
                                 }}
                             >
                                 <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
@@ -224,56 +228,78 @@ const ShipmentContent = ({
                                         ITEM CONSIGNMENT {index + 1}
                                     </Typography>
                                     <IconButton size="small" onClick={() => removeItem(index)} sx={{ bgcolor: alpha(theme.palette.error.main, 0.05), color: 'error.main' }}>
-                                        <DeleteIcon fontSize="small" />
+                                        <span className="material-symbols-outlined" fontSize="small" >delete</span>
                                     </IconButton>
                                 </Box>
                                 
-                                <Grid container spacing={3}>
-                                    <Grid item xs={12} md={6}>
-                                        <TextField
-                                            fullWidth label="Editorial Description" value={item.description}
+                                <Grid container spacing={2}>
+                                    <Grid item xs={12}>
+                                        <WInput
+                                            fullWidth
+                                            label="Editorial Description"
+                                            value={item.description}
                                             onChange={(e) => updateItem(index, 'description', e.target.value)}
                                             error={!!errors[`item${index}desc`] || (item.description || '').length > 70}
-                                            helperText={`${(item.description || '').length}/70 — Professional invoice description`}
+                                            placeholder="Professional invoice description (e.g. Perfumery Products)"
+                                            helperText={`${(item.description || '').length}/70`}
                                         />
                                     </Grid>
-                                    <Grid item xs={6} md={2}>
-                                        <TextField
-                                            fullWidth type="number" label="Quantity" value={item.quantity}
+                                    <Grid item xs={4}>
+                                        <WInput
+                                            fullWidth
+                                            type="number"
+                                            label="Quantity"
+                                            unit="pcs"
+                                            value={item.quantity}
                                             onChange={(e) => updateItem(index, 'quantity', e.target.value)}
+                                            inputProps={{ min: 1 }}
                                             error={!!errors[`item${index}qty`]}
                                         />
                                     </Grid>
-                                    <Grid item xs={6} md={4}>
-                                        <TextField
-                                            fullWidth type="number" label={`Unit Value (${currency})`} value={item.declaredValue}
+                                    <Grid item xs={4}>
+                                        <WInput
+                                            fullWidth
+                                            type="number"
+                                            label="Unit Value"
+                                            unit={currency || 'KWD'}
+                                            value={item.declaredValue}
                                             onChange={(e) => updateItem(index, 'declaredValue', e.target.value)}
+                                            inputProps={{ min: 0, step: 'any' }}
                                             error={!!errors[`item${index}val`]}
                                         />
                                     </Grid>
-                                    <Grid item xs={6} md={4}>
-                                        <TextField
-                                            fullWidth type="number" label="Net Weight (kg)" value={item.weight}
+                                    <Grid item xs={4}>
+                                        <WInput
+                                            fullWidth
+                                            type="number"
+                                            label="Net Weight"
+                                            unit="kg"
+                                            value={item.weight}
                                             onChange={(e) => updateItem(index, 'weight', e.target.value)}
+                                            inputProps={{ min: 0, step: 'any' }}
                                             error={!!errors[`item${index}wgt`]}
                                         />
                                     </Grid>
-                                    <Grid item xs={6} md={4}>
-                                        <TextField
-                                            fullWidth label="HS / Harmonized Code" value={item.hsCode}
+                                    <Grid item xs={6}>
+                                        <WInput
+                                            fullWidth
+                                            label="HS / Harmonized Code"
+                                            value={item.hsCode}
                                             onChange={(e) => updateItem(index, 'hsCode', e.target.value)}
                                             error={!!errors[`item${index}hs`] || (!!item.hsCode && !HS_CODE_REGEX.test(item.hsCode))}
                                             placeholder="e.g. 3303.00.00"
-                                            helperText="Standard Customs Code"
+                                            helperText="Tariff Code"
                                         />
                                     </Grid>
-                                    <Grid item xs={6} md={4}>
-                                        <TextField
-                                            fullWidth label="Country of Origin" value={item.countryOfOrigin}
+                                    <Grid item xs={6}>
+                                        <WInput
+                                            fullWidth
+                                            label="Country of Origin"
+                                            value={item.countryOfOrigin}
                                             onChange={(e) => updateItem(index, 'countryOfOrigin', e.target.value)}
                                             error={!!errors[`item${index}origin`] || (!!item.countryOfOrigin && !ISO_COUNTRY_REGEX.test(item.countryOfOrigin))}
                                             placeholder="e.g. KW"
-                                            helperText="2-letter ISO code"
+                                            helperText="ISO Code"
                                         />
                                     </Grid>
                                 </Grid>
@@ -283,9 +309,9 @@ const ShipmentContent = ({
 
                     <Button 
                         variant="outlined"
-                        startIcon={<AddIcon />} 
+                        startIcon={<span className="material-symbols-outlined" >add</span>} 
                         onClick={() => setItems([...items, { description: '', quantity: 1, declaredValue: '', currency: currency || 'KWD', weight: '', hsCode: '', countryOfOrigin: defaultOrigin || 'KW' }])}
-                        sx={{ mt: 4, borderRadius: 3, fontWeight: 800, py: 1, px: 3 }}
+                        sx={{ mt: 4, borderRadius: '20px', fontWeight: 800, py: 1, px: 3 }}
                     >
                         Register Another Asset
                     </Button>

@@ -29,11 +29,13 @@ const normalizeCountryCode = (input, fallback) => {
  * @returns {string}
  */
 const normalizeCityForCarrier = (city, countryCode) => {
-    const c = (city || '').toString().trim().toUpperCase();
+    let c = (city || '').toString().trim();
     if (countryCode === 'KW') {
-        if (c === 'KUWAIT CITY' || c === 'CITY') return 'KUWAIT';
+        const upper = c.toUpperCase();
+        if (upper === 'KUWAIT CITY' || upper === 'CITY' || !upper) return 'KUWAIT';
     }
-    return c;
+    // DHL OpenAPI schema cityName max length is 45 chars
+    return c.substring(0, 45).trim();
 };
 
 /**
@@ -81,6 +83,8 @@ function validateShipmentForDgr(order) {
     const { sender, receiver, items, dangerousGoods } = order;
     const requiresCustomsItems = !order.isDocument && order.shipmentType !== 'documents';
 
+    const NON_POSTAL_COUNTRIES = ['AE', 'QA', 'BH', 'OM', 'KW', 'HK', 'IE', 'GH', 'UG', 'ZW', 'PA', 'BS', 'FJ', 'MU', 'SC'];
+
     // Shipper
     if (!sender.company && !sender.contactPerson) errors.push('Shipper: Company or Contact Person is required.');
 
@@ -89,7 +93,9 @@ function validateShipmentForDgr(order) {
 
     if (!sender.city) errors.push('Shipper: City is required.');
     if (!sender.countryCode) errors.push('Shipper: Country Code is required.');
-    if (!sender.postalCode) errors.push('Shipper: Postal Code is required.');
+    if (!NON_POSTAL_COUNTRIES.includes(String(sender.countryCode || '').toUpperCase()) && !sender.postalCode) {
+        errors.push('Shipper: Postal Code is required.');
+    }
     if (!sender.phone) errors.push('Shipper: Phone is required.');
 
     // Consignee
@@ -100,7 +106,9 @@ function validateShipmentForDgr(order) {
 
     if (!receiver.city) errors.push('Consignee: City is required.');
     if (!receiver.countryCode) errors.push('Consignee: Country Code is required.');
-    if (!receiver.postalCode) errors.push('Consignee: Postal Code is required.');
+    if (!NON_POSTAL_COUNTRIES.includes(String(receiver.countryCode || '').toUpperCase()) && !receiver.postalCode) {
+        errors.push('Consignee: Postal Code is required.');
+    }
     if (!receiver.phone) errors.push('Consignee: Phone is required.');
 
     // Invoice
@@ -259,7 +267,7 @@ function buildExportDeclaration(order, config = {}) {
                 unitOfMeasurement: item.unitOfMeasurement || 'PCS'
             },
             commodityCodes: commodityCodes,
-            priceCurrency: order.currency || 'KWD',
+            priceCurrency: item.currency || order.currency || 'KWD',
             manufacturerCountry: manufacturerCountryCode,
             weight: {
                 netValue: formatWeight(totalLineNet),
@@ -377,13 +385,9 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
 
     // 1. Determine the primary currency for the shipment
     const detectedCurrency = (order.currency || 'KWD').substring(0, 3).toUpperCase();
-
-    // Normalize item currencies to match shipment currency (DGR requires consistency)
-    if (order.items && order.items.length > 0) {
-        order.items.forEach(item => {
-            item.currency = detectedCurrency;
-        });
-    }
+    const invoiceCurrency = (order.items && order.items.length > 0 && order.items[0].currency) 
+        ? order.items[0].currency.toUpperCase() 
+        : detectedCurrency;
 
     const totalDeclaredValue = order.items.reduce((sum, item) => sum + (item.value * item.quantity), 0);
 
@@ -548,7 +552,7 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
             unitOfMeasurement: 'metric',
             ...((!order.isDocument && order.shipmentType !== 'documents') ? {
                 declaredValue: Number(totalDeclaredValue || order.declaredValue || 1),
-                declaredValueCurrency: normalizeCur(detectedCurrency || order.currency || 'USD'),
+                declaredValueCurrency: normalizeCur(invoiceCurrency || order.currency || 'USD'),
                 exportDeclaration: exportDeclaration
             } : {})
         }

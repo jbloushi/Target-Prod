@@ -12,6 +12,8 @@ import KeyIcon from '@mui/icons-material/Key';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { useSnackbar } from 'notistack';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
+
 import api from '../services/api';
 
 // ─── Design tokens ─────────────────────────────────────────────────────────────
@@ -68,14 +70,16 @@ const CodeBlock = ({ children }) => (
     </Box>
 );
 
-const FieldTable = ({ fields }) => (
+const FieldTable = ({ fields }) => {
+    const { lang } = useLanguage();
+    return (
     <Table size="small" sx={{ mb: 2 }}>
         <TableHead>
             <TableRow>
-                <TableCell sx={{ fontWeight: 700, fontSize: 11, color: DS.outline, width: '28%' }}>Field</TableCell>
-                <TableCell sx={{ fontWeight: 700, fontSize: 11, color: DS.outline, width: '16%' }}>Type</TableCell>
-                <TableCell sx={{ fontWeight: 700, fontSize: 11, color: DS.outline, width: '16%' }}>Required</TableCell>
-                <TableCell sx={{ fontWeight: 700, fontSize: 11, color: DS.outline }}>Description</TableCell>
+                <TableCell sx={{ fontWeight: 700, fontSize: 11, color: DS.outline, width: '28%' }}>{lang === 'ar' ? 'الحقل' : 'Field'}</TableCell>
+                <TableCell sx={{ fontWeight: 700, fontSize: 11, color: DS.outline, width: '16%' }}>{lang === 'ar' ? 'النوع' : 'Type'}</TableCell>
+                <TableCell sx={{ fontWeight: 700, fontSize: 11, color: DS.outline, width: '16%' }}>{lang === 'ar' ? 'مطلوب' : 'Required'}</TableCell>
+                <TableCell sx={{ fontWeight: 700, fontSize: 11, color: DS.outline }}>{lang === 'ar' ? 'الوصف' : 'Description'}</TableCell>
             </TableRow>
         </TableHead>
         <TableBody>
@@ -83,16 +87,18 @@ const FieldTable = ({ fields }) => (
                 <TableRow key={f.field} hover>
                     <TableCell sx={{ fontFamily: 'monospace', fontSize: 12, color: DS.primary }}>{f.field}</TableCell>
                     <TableCell sx={{ fontFamily: 'monospace', fontSize: 11, color: DS.onSurfaceVar }}>{f.type}</TableCell>
-                    <TableCell>{f.required ? <Chip label="required" size="small" color="error" sx={{ fontSize: 10, height: 18 }} /> : <Chip label="optional" size="small" sx={{ fontSize: 10, height: 18, bgcolor: DS.surfaceLow }} />}</TableCell>
+                    <TableCell>{f.required ? <Chip label={lang === 'ar' ? 'مطلوب' : 'required'} size="small" color="error" sx={{ fontSize: 10, height: 18 }} /> : <Chip label={lang === 'ar' ? 'اختياري' : 'optional'} size="small" sx={{ fontSize: 10, height: 18, bgcolor: DS.surfaceLow }} />}</TableCell>
                     <TableCell sx={{ fontSize: 12, color: DS.onSurfaceVar }}>{f.description}</TableCell>
                 </TableRow>
             ))}
         </TableBody>
     </Table>
-);
+    );
+};
 
 const EndpointCard = ({ method, path, title, description, fields, response, errors, note }) => {
     const [open, setOpen] = useState(false);
+    const { lang } = useLanguage();
     return (
         <Box sx={{ ...CARD_SX, mb: 2 }}>
             <Box
@@ -116,7 +122,7 @@ const EndpointCard = ({ method, path, title, description, fields, response, erro
                     {fields && fields.length > 0 && (
                         <>
                             <Typography sx={{ fontSize: 11, fontWeight: 800, color: DS.outline, letterSpacing: '0.1em', textTransform: 'uppercase', mb: 1 }}>
-                                Request Fields
+                                {lang === 'ar' ? 'حقول الطلب' : 'Request Fields'}
                             </Typography>
                             <FieldTable fields={fields} />
                         </>
@@ -124,7 +130,7 @@ const EndpointCard = ({ method, path, title, description, fields, response, erro
                     {response && (
                         <>
                             <Typography sx={{ fontSize: 11, fontWeight: 800, color: DS.outline, letterSpacing: '0.1em', textTransform: 'uppercase', mb: 1 }}>
-                                Response Example
+                                {lang === 'ar' ? 'مثال الاستجابة' : 'Response Example'}
                             </Typography>
                             <CodeBlock>{response}</CodeBlock>
                         </>
@@ -132,7 +138,7 @@ const EndpointCard = ({ method, path, title, description, fields, response, erro
                     {errors && errors.length > 0 && (
                         <Box sx={{ mt: 2 }}>
                             <Typography sx={{ fontSize: 11, fontWeight: 800, color: DS.outline, letterSpacing: '0.1em', textTransform: 'uppercase', mb: 1 }}>
-                                Error Responses
+                                {lang === 'ar' ? 'استجابات الخطأ' : 'Error Responses'}
                             </Typography>
                             {errors.map(e => (
                                 <Box key={e.code} sx={{ display: 'flex', gap: 1.5, mb: 0.5 }}>
@@ -148,7 +154,9 @@ const EndpointCard = ({ method, path, title, description, fields, response, erro
     );
 };
 
-const SectionHeader = ({ id, title, subtitle }) => (
+const SectionHeader = ({ id, title, subtitle }) => {
+    const { lang } = useLanguage();
+    return (
     <Box id={id} sx={{ mb: 2, mt: 4, scrollMarginTop: 100 }}>
         <Typography sx={{ fontSize: 18, fontWeight: 800, color: DS.onSurface, fontFamily: "'Manrope', sans-serif" }}>
             {title}
@@ -156,13 +164,15 @@ const SectionHeader = ({ id, title, subtitle }) => (
         {subtitle && <Typography sx={{ fontSize: 13, color: DS.onSurfaceVar, mt: 0.5 }}>{subtitle}</Typography>}
         <Divider sx={{ mt: 1.5 }} />
     </Box>
-);
+    );
+};
 
 // ─── API Key Panel ──────────────────────────────────────────────────────────────
 
 const ApiKeyPanel = () => {
     const { user } = useAuth();
     const { enqueueSnackbar } = useSnackbar();
+    const { lang, isRTL } = useLanguage();
     const [apiKey, setApiKey] = useState(user?.apiKey || '');
     const [loading, setLoading] = useState(false);
     const [show, setShow] = useState(false);
@@ -176,9 +186,9 @@ const ApiKeyPanel = () => {
         try {
             const res = await api.post('/auth/api-key');
             setApiKey(res.data.apiKey);
-            enqueueSnackbar('New API key generated!', { variant: 'success' });
+            enqueueSnackbar(lang === 'ar' ? 'تم إنشاء مفتاح API جديد!' : 'New API key generated!', { variant: 'success' });
         } catch {
-            enqueueSnackbar('Failed to generate key', { variant: 'error' });
+            enqueueSnackbar(lang === 'ar' ? 'فشل إنشاء المفتاح' : 'Failed to generate key', { variant: 'error' });
         } finally {
             setLoading(false);
         }
@@ -187,7 +197,7 @@ const ApiKeyPanel = () => {
     const copy = () => {
         if (!apiKey) return;
         navigator.clipboard.writeText(apiKey);
-        enqueueSnackbar('API key copied!', { variant: 'success' });
+        enqueueSnackbar(lang === 'ar' ? 'تم نسخ مفتاح API!' : 'API key copied!', { variant: 'success' });
     };
 
     const masked = apiKey
@@ -201,11 +211,11 @@ const ApiKeyPanel = () => {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
                 <KeyIcon sx={{ color: DS.primary, fontSize: 20 }} />
                 <Typography sx={{ fontSize: 14, fontWeight: 800, color: DS.onSurface, fontFamily: "'Manrope', sans-serif" }}>
-                    Your API Key
+                    {lang === 'ar' ? 'مفتاح API الخاص بك' : 'Your API Key'}
                 </Typography>
             </Box>
             <Alert severity="warning" sx={{ mb: 2, fontSize: 12 }}>
-                Never expose this key in frontend JavaScript. Store it in server-side environment variables only.
+                {lang === 'ar' ? 'لا تعرض هذا المفتاح في JavaScript الواجهة الأمامية أبدًا. قم بتخزينه في متغيرات البيئة من جانب الخادم فقط.' : 'Never expose this key in frontend JavaScript. Store it in server-side environment variables only.'}
             </Alert>
             <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
                 <Box sx={{
@@ -218,7 +228,7 @@ const ApiKeyPanel = () => {
                         readOnly
                         sx={{ flex: 1, fontFamily: 'monospace', fontSize: 12, color: DS.onSurface }}
                     />
-                    <Tooltip title={show ? 'Hide' : 'Show'}>
+                    <Tooltip title={show ? (lang === 'ar' ? 'إخفاء' : 'Hide') : (lang === 'ar' ? 'إظهار' : 'Show')}>
                         <span>
                         <IconButton size="small" onClick={() => setShow(s => !s)} disabled={!apiKey}>
                             <Typography sx={{ fontSize: 10 }}>{show ? '🙈' : '👁'}</Typography>
@@ -231,19 +241,19 @@ const ApiKeyPanel = () => {
                     onClick={copy} disabled={!apiKey}
                     sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 700, fontSize: 12 }}
                 >
-                    Copy
+                    {lang === 'ar' ? 'نسخ' : 'Copy'}
                 </Button>
                 <Button
                     variant="contained" size="small" startIcon={<RefreshIcon />}
                     onClick={generate} disabled={loading}
                     sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 700, fontSize: 12, bgcolor: DS.primary }}
                 >
-                    {apiKey ? 'Regenerate' : 'Generate Key'}
+                    {apiKey ? (lang === 'ar' ? 'إعادة إنشاء' : 'Regenerate') : (lang === 'ar' ? 'إنشاء مفتاح' : 'Generate Key')}
                 </Button>
             </Box>
             <Typography sx={{ fontSize: 11, color: DS.outline, mt: 1.5 }}>
-                Format: <code style={{ fontFamily: 'monospace', background: DS.surfaceLow, padding: '1px 5px', borderRadius: 4 }}>userId.randomBytes</code>
-                &nbsp;— Used as <code style={{ fontFamily: 'monospace', background: DS.surfaceLow, padding: '1px 5px', borderRadius: 4 }}>x-api-key</code> header in every request.
+                {lang === 'ar' ? 'التنسيق:' : 'Format:'} <code style={{ fontFamily: 'monospace', background: DS.surfaceLow, padding: '1px 5px', borderRadius: 4 }}>userId.randomBytes</code>
+                &nbsp;{lang === 'ar' ? '— يُستخدم كترويسة' : '— Used as'} <code style={{ fontFamily: 'monospace', background: DS.surfaceLow, padding: '1px 5px', borderRadius: 4 }}>x-api-key</code> {lang === 'ar' ? 'في كل طلب.' : 'header in every request.'}
             </Typography>
         </Box>
     );
@@ -268,25 +278,26 @@ const ADDRESS_FIELDS = [
 ];
 
 const SECTIONS = [
-    { id: 'auth', label: 'Authentication' },
-    { id: 'shipments', label: 'Shipments' },
-    { id: 'quotes', label: 'Quotes' },
-    { id: 'addresses', label: 'Address Book' },
-    { id: 'pickups', label: 'Pickups' },
-    { id: 'tracking', label: 'Tracking' },
-    { id: 'public', label: 'Public' },
-    { id: 'statuses', label: 'Status Reference' },
+    { id: 'auth', label: 'Authentication', labelAr: 'المصادقة' },
+    { id: 'shipments', label: 'Shipments', labelAr: 'الشحنات' },
+    { id: 'quotes', label: 'Quotes', labelAr: 'عروض الأسعار' },
+    { id: 'addresses', label: 'Address Book', labelAr: 'دفتر العناوين' },
+    { id: 'pickups', label: 'Pickups', labelAr: 'الاستلام' },
+    { id: 'tracking', label: 'Tracking', labelAr: 'التتبع' },
+    { id: 'public', label: 'Public', labelAr: 'عام' },
+    { id: 'statuses', label: 'Status Reference', labelAr: 'مرجع الحالات' },
 ];
 
 // ─── Main Page ──────────────────────────────────────────────────────────────────
 
 const ApiDocsPage = () => {
+    const { lang, isRTL } = useLanguage();
     const scrollTo = (id) => {
         document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
     return (
-        <Box sx={{ bgcolor: DS.surface, minHeight: '100vh' }}>
+        <Box sx={{ bgcolor: DS.surface, minHeight: '100vh' }} dir={isRTL ? 'rtl' : 'ltr'}>
             <Box sx={{ maxWidth: 1100, mx: 'auto', px: { xs: 2, md: 4 }, py: 3 }}>
 
                 {/* Page Header */}
@@ -294,10 +305,10 @@ const ApiDocsPage = () => {
                     <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
                         <Box>
                             <Typography sx={{ fontSize: 26, fontWeight: 900, color: DS.onSurface, fontFamily: "'Manrope', sans-serif", letterSpacing: '-0.03em' }}>
-                                Developer API
+                                {lang === 'ar' ? 'واجهة برمجة التطبيقات للمطورين' : 'Developer API'}
                             </Typography>
                             <Typography sx={{ fontSize: 14, color: DS.onSurfaceVar, mt: 0.5 }}>
-                                Integrate shipment creation, tracking, and pickup management into your systems.
+                                {lang === 'ar' ? 'قم بدمج إنشاء الشحنات وتتبعها وإدارة الاستلام في أنظمتك.' : 'Integrate shipment creation, tracking, and pickup management into your systems.'}
                             </Typography>
                         </Box>
                         <Button
@@ -308,7 +319,7 @@ const ApiDocsPage = () => {
                             download="target-logistics-api.postman_collection.json"
                             sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 700, fontSize: 12 }}
                         >
-                            Download Postman Collection
+                            {lang === 'ar' ? 'تحميل مجموعة Postman' : 'Download Postman Collection'}
                         </Button>
                     </Box>
                 </Box>
@@ -319,7 +330,7 @@ const ApiDocsPage = () => {
                     <Box sx={{ position: 'sticky', top: 88, display: { xs: 'none', lg: 'block' } }}>
                         <Box sx={{ ...CARD_SX, p: 2 }}>
                             <Typography sx={{ fontSize: 10, fontWeight: 800, color: DS.outline, letterSpacing: '0.12em', textTransform: 'uppercase', mb: 1.5 }}>
-                                Contents
+                                {lang === 'ar' ? 'المحتويات' : 'Contents'}
                             </Typography>
                             {SECTIONS.map(s => (
                                 <Box
@@ -331,7 +342,7 @@ const ApiDocsPage = () => {
                                         '&:hover': { bgcolor: DS.surfaceLow, color: DS.primary },
                                     }}
                                 >
-                                    {s.label}
+                                    {lang === 'ar' && s.labelAr ? s.labelAr : s.label}
                                 </Box>
                             ))}
                         </Box>
@@ -344,24 +355,24 @@ const ApiDocsPage = () => {
                         <ApiKeyPanel />
 
                         {/* Auth */}
-                        <SectionHeader id="auth" title="Authentication" subtitle="All endpoints except Public Tracking require your API key." />
+                        <SectionHeader id="auth" title={lang === "ar" ? "المصادقة" : "Authentication"} subtitle={lang === "ar" ? "تتطلب جميع نقاط الاتصال باستثناء التتبع العام مفتاح API الخاص بك." : "All endpoints except Public Tracking require your API key."} />
                         <Box sx={{ ...CARD_SX, p: 2.5, mb: 3 }}>
                             <Typography sx={{ fontSize: 13, color: DS.onSurfaceVar, mb: 1.5 }}>
-                                Include your API key in every request as an HTTP header:
+                                {lang === "ar" ? "قم بتضمين مفتاح API الخاص بك في كل طلب كترويسة HTTP:" : "Include your API key in every request as an HTTP header:"}
                             </Typography>
                             <CodeBlock>{`x-api-key: YOUR_API_KEY`}</CodeBlock>
                             <Divider sx={{ my: 2 }} />
                             <Typography sx={{ fontSize: 12, color: DS.onSurfaceVar }}>
-                                <strong>Base URL (production):</strong> <code style={{ fontFamily: 'monospace', background: DS.surfaceLow, padding: '2px 6px', borderRadius: 4 }}>https://3pl-api.mawthook.io/api</code><br />
-                                <strong>Rate limit:</strong> 30 requests/minute per key. Exceeding returns HTTP 429.
+                                <strong>{lang === "ar" ? "رابط الأساس (الإنتاج):" : "Base URL (production):"}</strong> <code style={{ fontFamily: 'monospace', background: DS.surfaceLow, padding: '2px 6px', borderRadius: 4 }}>https://3pl-api.mawthook.io/api</code><br />
+                                <strong>{lang === "ar" ? "حد المعدل:" : "Rate limit:"}</strong> {lang === "ar" ? "30 طلب/دقيقة لكل مفتاح. التجاوز يعيد HTTP 429." : "30 requests/minute per key. Exceeding returns HTTP 429."}
                             </Typography>
                             <Alert severity="info" sx={{ mt: 2, fontSize: 12 }}>
-                                Carrier-backed integrations should quote first, then create the shipment using the returned <code>serviceCode</code>. Manual-mode integrations can create shipments directly with no quote and no carrier booking.
+                                {lang === "ar" ? "يجب أن تقوم تكاملات شركات الشحن بطلب عرض سعر أولاً، ثم إنشاء الشحنة باستخدام <code>serviceCode</code> المرتجع. يمكن لتكاملات الوضع اليدوي إنشاء شحنات مباشرة بدون عرض سعر وبدون حجز من شركة الشحن." : "Carrier-backed integrations should quote first, then create the shipment using the returned <code>serviceCode</code>. Manual-mode integrations can create shipments directly with no quote and no carrier booking."}
                             </Alert>
                         </Box>
 
                         {/* Shipments */}
-                        <SectionHeader id="shipments" title="Shipments" />
+                        <SectionHeader id="shipments" title={lang === "ar" ? "الشحنات" : "Shipments"} />
                         <EndpointCard
                             method="POST" path="/v1/shipments" title="Create Carrier Shipment"
                             description="Creates a carrier-backed shipment for the API key owner. Best practice is to quote first, then create the shipment using the returned serviceCode."
@@ -410,7 +421,7 @@ const ApiDocsPage = () => {
                         />
 
                         {/* Quotes */}
-                        <SectionHeader id="quotes" title="Quotes" subtitle="Get live rates before creating a carrier-backed shipment." />
+                        <SectionHeader id="quotes" title={lang === "ar" ? "عروض الأسعار" : "Quotes"} subtitle={lang === "ar" ? "احصل على أسعار حية قبل إنشاء شحنة مدعومة من شركة الشحن." : "Get live rates before creating a carrier-backed shipment."} />
                         <EndpointCard
                             method="POST" path="/v1/quotes" title="Get Rate Quote"
                             description="Fetch live shipping rates before creating a carrier-backed shipment. Verified live for a KW → AE route that returned DGR / P."
@@ -426,7 +437,7 @@ const ApiDocsPage = () => {
                         />
 
                         {/* Address Book */}
-                        <SectionHeader id="addresses" title="Address Book" subtitle="Save and reuse sender/receiver addresses." />
+                        <SectionHeader id="addresses" title={lang === "ar" ? "دفتر العناوين" : "Address Book"} subtitle={lang === "ar" ? "حفظ وإعادة استخدام عناوين المرسل/المستلم." : "Save and reuse sender/receiver addresses."} />
                         <EndpointCard
                             method="GET" path="/v1/addresses" title="List Addresses"
                             description="Returns all addresses saved in your account."
@@ -447,7 +458,7 @@ const ApiDocsPage = () => {
                         />
 
                         {/* Pickups */}
-                        <SectionHeader id="pickups" title="Pickups" subtitle="Request a driver to collect from your location." />
+                        <SectionHeader id="pickups" title={lang === "ar" ? "الاستلام" : "Pickups"} subtitle={lang === "ar" ? "اطلب سائقًا للاستلام من موقعك." : "Request a driver to collect from your location."} />
                         <EndpointCard
                             method="POST" path="/client/pickups" title="Request Pickup"
                             note="Include an Idempotency-Key header to safely retry requests without creating duplicates."
@@ -470,7 +481,7 @@ const ApiDocsPage = () => {
                         />
 
                         {/* Tracking */}
-                        <SectionHeader id="tracking" title="Tracking" />
+                        <SectionHeader id="tracking" title={lang === "ar" ? "التتبع" : "Tracking"} />
                         <EndpointCard
                             method="GET" path="/v1/tracking/:trackingNumber" title="Track Shipment"
                             response={`{\n  "success": true,\n  "data": {\n    "trackingNumber": "DGR-AB12CD34",\n    "status": "in_transit",\n    "carrier": "DGR",\n    "estimatedDelivery": "2026-04-11T00:00:00.000Z",\n    "history": [\n      { "status": "picked_up", "location": "Kuwait City", "timestamp": "2026-04-10T09:00:00.000Z" }\n    ]\n  }\n}`}
@@ -489,7 +500,7 @@ const ApiDocsPage = () => {
                         />
 
                         {/* Public */}
-                        <SectionHeader id="public" title="Public Tracking" subtitle="No API key required — safe to use in customer-facing apps." />
+                        <SectionHeader id="public" title={lang === "ar" ? "التتبع العام" : "Public Tracking"} subtitle={lang === "ar" ? "لا يلزم مفتاح API — آمن للاستخدام في تطبيقات العملاء." : "No API key required — safe to use in customer-facing apps."} />
                         <EndpointCard
                             method="GET" path="/public/shipments/:trackingNumber" title="Public Shipment Tracking"
                             description="No authentication required. Share this endpoint URL directly with your end customers for order tracking."
@@ -497,11 +508,11 @@ const ApiDocsPage = () => {
                         />
 
                         {/* Status Reference */}
-                        <SectionHeader id="statuses" title="Status Reference" />
+                        <SectionHeader id="statuses" title={lang === "ar" ? "مرجع الحالات" : "Status Reference"} />
                         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 4 }}>
                             <Box sx={{ ...CARD_SX, p: 2.5 }}>
                                 <Typography sx={{ fontSize: 12, fontWeight: 800, color: DS.outline, letterSpacing: '0.1em', textTransform: 'uppercase', mb: 1.5 }}>
-                                    Shipment Statuses
+                                    {lang === "ar" ? "حالات الشحنة" : "Shipment Statuses"}
                                 </Typography>
                                 {[
                                     ['draft', 'Created, not yet booked'],
@@ -521,7 +532,7 @@ const ApiDocsPage = () => {
                             </Box>
                             <Box sx={{ ...CARD_SX, p: 2.5 }}>
                                 <Typography sx={{ fontSize: 12, fontWeight: 800, color: DS.outline, letterSpacing: '0.1em', textTransform: 'uppercase', mb: 1.5 }}>
-                                    Pickup Statuses
+                                    {lang === "ar" ? "حالات الاستلام" : "Pickup Statuses"}
                                 </Typography>
                                 {[
                                     ['REQUESTED', 'Submitted, awaiting review'],

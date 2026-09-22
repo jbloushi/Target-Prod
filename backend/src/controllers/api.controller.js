@@ -120,7 +120,9 @@ exports.createShipment = async (req, res) => {
         }
 
         // 2. Get Adapter
-        const adapter = CarrierFactory.getAdapter(resolvedCarrierCode);
+        const isTest = req.body.isTest === true || req.body.environment === 'test';
+        const environment = isTest ? 'test' : (req.body.environment || 'production');
+        const adapter = CarrierFactory.getAdapter(resolvedCarrierCode, { isTest, environment });
 
         // 3. Validate via Adapter
         const errors = await adapter.validate(normalized);
@@ -179,6 +181,43 @@ exports.createShipment = async (req, res) => {
                 }]
             }
         });
+
+        // Accounting: Post Debit to Customer Ledger & Credit to Carrier Payable
+        if (req.user.organizationId && bookingPrice > 0) {
+            try {
+                const financeLedgerService = require('../services/financeLedger.service');
+                await financeLedgerService.createLedgerEntry(req.user.organizationId, {
+                    sourceRepo: 'Shipment',
+                    sourceId: newShipment.id,
+                    amount: bookingPrice,
+                    currency: newShipment.currency,
+                    entryType: 'DEBIT',
+                    category: 'SHIPMENT_CHARGE',
+                    description: `API Booking Charge for ${newShipment.trackingNumber}`,
+                    reference: newShipment.trackingNumber,
+                    createdBy: req.user.id,
+                    metadata: {
+                        carrierCode: resolvedCarrierCode,
+                        serviceCode: resolvedServiceCode,
+                        currency: newShipment.currency
+                    }
+                });
+
+                if (resolvedCarrierCode !== 'INTERNAL' && Number(newShipment.costPrice || 0) > 0) {
+                    await financeLedgerService.recordCarrierPayable({
+                        organizationId: req.user.organizationId,
+                        shipmentId: newShipment.id,
+                        carrierCode: resolvedCarrierCode,
+                        costPrice: newShipment.costPrice || 0,
+                        currency: newShipment.currency,
+                        trackingNumber: newShipment.trackingNumber,
+                        createdBy: req.user.id
+                    });
+                }
+            } catch (ledgeErr) {
+                logger.warn(`API Shipment ledger posting non-fatal warning for ${newShipment.trackingNumber}: ${ledgeErr.message}`);
+            }
+        }
 
         res.status(201).json({
             success: true,
@@ -271,8 +310,10 @@ exports.updateShipment = async (req, res) => {
         if (criticalChanges) {
             // Re-rating logic
             const tempState = { ...shipment, ...updates };
-            const adapter = CarrierFactory.getAdapter(tempState.carrierCode || 'DGR');
-            const quotes = await adapter.getRates({ ...tempState, sender: tempState.origin, receiver: tempState.destination });
+            const isTest = shipment.pricingSnapshot?.isTest === true || shipment.pricingSnapshot?.environment === 'test';
+            const environment = isTest ? 'test' : (shipment.pricingSnapshot?.environment || 'production');
+            const adapter = CarrierFactory.getAdapter(tempState.carrierCode || 'DGR', { isTest, environment });
+            const quotes = await adapter.getRates({ ...tempState, sender: tempState.origin, receiver: tempState.destination, isTest, environment });
 
             if (!quotes || quotes.length === 0) throw new Error('Re-rating failed');
 

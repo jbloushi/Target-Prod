@@ -28,6 +28,10 @@ const SERVICE_LABELS = {
     },
     FEDEX: {
         P: 'FedEx Priority'
+    },
+    MANUAL: {
+        label: 'Manual Carrier',
+        services: [{ code: null, name: 'Manual Shipment' }]
     }
 };
 
@@ -49,6 +53,10 @@ const normalizeService = (serviceCode) => {
 const getServiceName = (carrierCode, serviceCode) => {
     const carrier = normalizeCarrier(carrierCode);
 
+    if (carrier === 'MANUAL') {
+        return 'Manual Shipment';
+    }
+
     if (carrier === 'INTERNAL') {
         return SERVICE_LABELS.INTERNAL[normalizeService(serviceCode) || 'STD'];
     }
@@ -62,6 +70,15 @@ const getServiceName = (carrierCode, serviceCode) => {
 };
 
 const normalizeShippingAccess = (value = {}) => {
+    if (value.mode === 'manual' || String(value.carrierCode || value.preferredCarrier || '').toUpperCase() === 'MANUAL') {
+        return {
+            mode: 'manual',
+            carrierCode: 'MANUAL',
+            serviceCode: null,
+            serviceName: value.serviceName || 'Manual Shipment'
+        };
+    }
+
     const carrierCode = normalizeCarrier(value.carrierCode || value.preferredCarrier);
 
     if (carrierCode === 'INTERNAL') {
@@ -90,17 +107,20 @@ const getAssignedShippingAccess = (user) => {
         return normalizeShippingAccess(policy.shippingAccess);
     }
 
-    const allowedCarriers = Array.isArray(policy.allowedCarriers) ? policy.allowedCarriers : [];
+    const allowedCarriers = Array.isArray(policy.allowedCarriers) && policy.allowedCarriers.length > 0
+        ? policy.allowedCarriers
+        : (user?.organization?.allowedCarriers?.allowed || []);
+
     if (allowedCarriers.length === 1) {
         return normalizeShippingAccess({
             carrierCode: allowedCarriers[0],
-            serviceCode: policy.serviceCode || policy.defaultServiceCode || null
+            serviceCode: policy.serviceCode || policy.defaultServiceCode || user?.organization?.allowedCarriers?.defaultServiceCode || null
         });
     }
 
     return normalizeShippingAccess({
-        carrierCode: user?.carrierConfig?.preferredCarrier || DEFAULT_CARRIER,
-        serviceCode: user?.carrierConfig?.serviceCode || null
+        carrierCode: user?.carrierConfig?.preferredCarrier || user?.organization?.allowedCarriers?.defaultCarrier || DEFAULT_CARRIER,
+        serviceCode: user?.carrierConfig?.serviceCode || user?.organization?.allowedCarriers?.defaultServiceCode || null
     });
 };
 
@@ -112,6 +132,15 @@ const assertRequestedAccessAllowed = (assignedAccess, requested = {}) => {
         const err = new Error(`This account is assigned to ${assignedAccess.serviceName}. Requested carrier ${requestedCarrier} is not allowed.`);
         err.statusCode = 403;
         throw err;
+    }
+
+    if (assignedAccess.mode === 'manual' || assignedAccess.carrierCode === 'MANUAL') {
+        if (requestedService) {
+            const err = new Error('Manual shipments does not allow a carrier service code.');
+            err.statusCode = 403;
+            throw err;
+        }
+        return;
     }
 
     if (assignedAccess.mode === 'internal') {
@@ -143,6 +172,10 @@ const shouldEnforceAssignedAccess = (actor, targetUser) => {
 
 const getServiceOptions = (carrierCode) => {
     const carrier = normalizeCarrier(carrierCode);
+
+    if (carrier === 'MANUAL') {
+        return [{ serviceCode: null, serviceName: 'Manual Shipment' }];
+    }
 
     return Object.entries(SERVICE_LABELS[carrier] || {})
         .map(([serviceCode, serviceName]) => ({

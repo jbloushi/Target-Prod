@@ -25,11 +25,13 @@ Recommended values:
 - User: `target_logistics_api`
 - Password: strong generated password
 
-The backend `DATABASE_URL` uses this shape:
+The backend `DATABASE_URL` uses this shape with connection pooling parameters:
 
 ```env
-DATABASE_URL="mysql://target_logistics_api:PASSWORD@127.0.0.1:3306/target_logistics"
+DATABASE_URL="mysql://target_logistics_api:PASSWORD@127.0.0.1:3306/target_logistics?connection_limit=10&pool_timeout=20&connect_timeout=10"
 ```
+
+> **Connection Pooling Note**: In PM2 cluster mode with 2 instances, `connection_limit=10` allocates up to 10 connections per process (20 connections total), preventing MySQL connection exhaustion while staying well within the aaPanel MySQL default (`max_connections = 151`).
 
 ## Backend Deployment
 
@@ -48,12 +50,24 @@ Create `backend/.env` on the server:
 ```env
 PORT=8899
 NODE_ENV=production
-DATABASE_URL="mysql://target_logistics_api:PASSWORD@127.0.0.1:3306/target_logistics"
-JWT_SECRET="replace-with-a-long-random-secret"
+DATABASE_URL="mysql://target_logistics_api:PASSWORD@127.0.0.1:3306/target_logistics?connection_limit=10&pool_timeout=20&connect_timeout=10"
+JWT_SECRET="replace-with-a-long-random-secret-at-least-64-characters-for-production"
 JWT_EXPIRES_IN=7d
+API_KEY_SECRET="replace-with-a-32-or-64-char-secret-for-api-key-hashing"
+# Generate 64-hex char (32 bytes) key using: openssl rand -hex 32
+ENCRYPTION_KEY="replace-with-a-64-char-hex-key-generated-by-openssl"
 CORS_ORIGIN=https://your-domain.com
 FRONTEND_URL=https://your-domain.com
 RATE_LIMIT_ENABLED=true
+
+# Operational & Async Queue Configuration
+ASYNC_CARRIER_DISPATCH=true
+CHATWOOT_ENABLED=true
+CHATWOOT_BASE_URL=https://chatwoot.your-domain.com
+CHATWOOT_ACCOUNT_ID=1
+CHATWOOT_INBOX_ID=1
+CHATWOOT_API_ACCESS_TOKEN=your-chatwoot-platform-token
+CHATWOOT_WEBHOOK_SECRET=your-chatwoot-webhook-signing-secret
 ```
 
 Start with PM2 or aaPanel Node project:
@@ -124,6 +138,9 @@ Enable HTTPS and force HTTPS in aaPanel.
 ## Maintenance Notes
 
 - Run `npm run db:migrate:deploy` on staging and production for every deploy that includes Prisma migrations. Back up the database before applying schema changes.
+- **MySQL 8 Migration Recovery**: Because MySQL 8 DDL statements cause implicit commits, if a migration fails partway through:
+  1. Inspect status: `npx prisma migrate status`
+  2. If a migration is marked failed, verify database state, fix the schema discrepancy, and mark it resolved: `npx prisma migrate resolve --applied <migration_name>` or `--rolled-back <migration_name>`
 - Do not use `prisma db push` on production; it bypasses the committed migration history.
 - Keep `.env` files outside version control.
 - Keep `CORS_ORIGIN` aligned with the deployed frontend domain.

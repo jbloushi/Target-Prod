@@ -245,7 +245,64 @@ export const countries = [
     { code: 'VI', name: 'Virgin Islands, U.S.', flag: '🇻🇮', dialCode: '+1-340' },
     { code: 'WF', name: 'Wallis and Futuna', flag: '🇼🇫', dialCode: '+681' },
     { code: 'EH', name: 'Western Sahara', flag: '🇪🇭', dialCode: '+212' },
-    { code: 'YE', name: 'Yemen', flag: '🇾🇪', dialCode: '+967' },
     { code: 'ZM', name: 'Zambia', flag: '🇿🇲', dialCode: '+260' },
     { code: 'ZW', name: 'Zimbabwe', flag: '🇿🇼', dialCode: '+263' }
 ];
+
+export const ARABIC_COUNTRY_NAMES = {
+    KW: 'الكويت',
+    SA: 'المملكة العربية السعودية',
+    AE: 'الإمارات العربية المتحدة',
+    QA: 'دولة قطر',
+    BH: 'مملكة البحرين',
+    OM: 'سلطنة عمان',
+    EG: 'مصر',
+    JO: 'الأردن',
+    LB: 'لبنان',
+    IQ: 'العراق',
+    SY: 'سوريا',
+    PS: 'فلسطين',
+    YE: 'اليمن',
+    TR: 'تركيا',
+    US: 'الولايات المتحدة',
+    GB: 'المملكة المتحدة',
+    CN: 'الصين',
+    IN: 'الهند',
+    PK: 'باكستان',
+    BD: 'بنغلاديش',
+    PH: 'الفلبين',
+    DE: 'ألمانيا',
+    FR: 'فرنسا',
+    IT: 'إيطاليا',
+    ES: 'إسبانيا',
+    NL: 'هولندا',
+    CH: 'سويسرا',
+    CA: 'كندا',
+    AU: 'أستراليا',
+    RU: 'روسيا',
+    MY: 'ماليزيا',
+    SG: 'سنغافورة',
+    ID: 'إندونيسيا',
+    TH: 'تايلاند',
+    JP: 'اليابان',
+    KR: 'كوريا الجنوبية',
+    BR: 'البرازيل',
+    ZA: 'جنوب أفريقيا',
+    MA: 'المغرب',
+    DZ: 'الجزائر',
+    TN: 'تونس',
+    LY: 'ليبيا',
+    SD: 'السودان',
+    GCC: 'دول الخليج العربي'
+};
+
+export const getCountryDisplayName = (countryOrCode, lang = 'en') => {
+    if (!countryOrCode) return '';
+    const code = (countryOrCode.code || countryOrCode).toUpperCase();
+    if (lang === 'ar') {
+        if (ARABIC_COUNTRY_NAMES[code]) return ARABIC_COUNTRY_NAMES[code];
+    }
+    const found = countries.find(c => c.code === code || c.name.toLowerCase() === String(countryOrCode).toLowerCase());
+    return found ? (lang === 'ar' ? (ARABIC_COUNTRY_NAMES[found.code] || found.name) : found.name) : (ARABIC_COUNTRY_NAMES[code] || countryOrCode);
+};
+

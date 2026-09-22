@@ -1,9 +1,11 @@
 import React from 'react';
 import { Chip } from '@mui/material';
 import { useTheme, alpha } from '@mui/material/styles';
+import { useLanguage } from '../../context/LanguageContext';
 
 const StatusPill = ({ status, ...props }) => {
     const theme = useTheme();
+    const { t } = useLanguage();
 
     const getStatusColor = (status) => {
         const s = (status || '').toLowerCase();
@@ -16,10 +18,14 @@ const StatusPill = ({ status, ...props }) => {
 
     const colorKey = getStatusColor(status);
     const color = theme.palette[colorKey];
+    const s = (status || '').toLowerCase();
+    const key = `status_${s}`;
+    const defaultLabel = (status || 'Unknown').replace(/_/g, ' ');
+    const localizedLabel = t(key, defaultLabel);
 
     return (
         <Chip
-            label={(status || 'Unknown').replace(/_/g, ' ')}
+            label={localizedLabel}
             size="small"
             sx={{
                 fontWeight: 700,

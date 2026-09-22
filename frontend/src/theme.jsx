@@ -64,7 +64,7 @@ export const getThemeConfig = (mode) => ({
     },
   },
   typography: {
-    fontFamily: '"Manrope", "Inter", "system-ui", sans-serif',
+    fontFamily: '"Cairo", "Tajawal", "Noto Sans Arabic", "Manrope", "Inter", "system-ui", sans-serif',
     h1: { fontWeight: 800, fontSize: '2.5rem', letterSpacing: '-0.025em' },
     h2: { fontWeight: 800, fontSize: '2rem', letterSpacing: '-0.025em' },
     h3: { fontWeight: 700, fontSize: '1.5rem', letterSpacing: '-0.02em' },

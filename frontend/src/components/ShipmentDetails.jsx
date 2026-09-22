@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import TrackingTimeline from './TrackingTimeline';
 import { useTheme, alpha } from '@mui/material/styles';
@@ -61,9 +61,11 @@ import {
 
 import { useShipment } from '../context/ShipmentContext';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import {
   buildShipmentDeleteBlockedMessage,
   canDeleteShipmentStatus,
+  hasCarrierBooking,
   getShipmentDeleteErrorMessage
 } from '../utils/shipmentDeletionPolicy';
 import axios from 'axios';
@@ -161,48 +163,55 @@ const InfoRow = ({ label, value, icon }) => (
   </Box>
 );
 
-const AddressBlock = ({ title, data }) => (
-  <Card variant="outlined" sx={{
-    height: '100%',
-    borderRadius: 3,
-    bgcolor: '#141929',
-    borderColor: '#2a3347',
-    transition: 'all 0.2s',
-    '&:hover': {
-      borderColor: 'primary.main',
-      boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
-    }
-  }}>
-    <CardContent>
-      <Box display="flex" alignItems="center" gap={1} mb={2}>
-        <LocationIcon color="primary" fontSize="small" />
-        <Typography variant="subtitle2" color="primary" textTransform="uppercase" letterSpacing={1} fontWeight="700">
-          {title}
-        </Typography>
-      </Box>
-      <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ color: '#fff' }}>
-        {data?.contactPerson || data?.name || 'N/A'}
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        {data?.company}
-      </Typography>
+const AddressBlock = ({ title, data }) => {
+  const { getCityName, getCountryName } = useLanguage();
+  const displayCity = data?.city ? getCityName(data.city) : '';
+  const displayCountry = data?.country ? getCountryName(data.country) : (data?.countryCode ? getCountryName(data.countryCode) : '');
+  const locationStr = [displayCity, displayCountry].filter(Boolean).join(', ');
 
-      <Box sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.03)', borderRadius: 2 }}>
-        <Typography variant="body2" fontWeight="500" color="#e2e8f0" sx={{ lineHeight: 1.6 }}>
-          {data?.formattedAddress || data?.address}
-        </Typography>
-        {data?.city && <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>{data.city}, {data.country}</Typography>}
-      </Box>
-
-      {(data?.phone || data?.email) && (
-        <Box mt={2}>
-          {data.phone && <Typography variant="caption" display="block" color="text.secondary">📞 {data.phone}</Typography>}
-          {data.email && <Typography variant="caption" display="block" color="text.secondary">✉️ {data.email}</Typography>}
+  return (
+    <Card variant="outlined" sx={{
+      height: '100%',
+      borderRadius: 3,
+      bgcolor: '#141929',
+      borderColor: '#2a3347',
+      transition: 'all 0.2s',
+      '&:hover': {
+        borderColor: 'primary.main',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
+      }
+    }}>
+      <CardContent>
+        <Box display="flex" alignItems="center" gap={1} mb={2}>
+          <LocationIcon color="primary" fontSize="small" />
+          <Typography variant="subtitle2" color="primary" textTransform="uppercase" letterSpacing={1} fontWeight="700">
+            {title}
+          </Typography>
         </Box>
-      )}
-    </CardContent>
-  </Card>
-);
+        <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ color: '#fff' }}>
+          {data?.contactPerson || data?.name || 'N/A'}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {data?.company}
+        </Typography>
+
+        <Box sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.03)', borderRadius: 2 }}>
+          <Typography variant="body2" fontWeight="500" color="#e2e8f0" sx={{ lineHeight: 1.6 }}>
+            {data?.formattedAddress || data?.address}
+          </Typography>
+          {locationStr && <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>{locationStr}</Typography>}
+        </Box>
+
+        {(data?.phone || data?.email) && (
+          <Box mt={2}>
+            {data.phone && <Typography variant="caption" display="block" color="text.secondary">📞 {data.phone}</Typography>}
+            {data.email && <Typography variant="caption" display="block" color="text.secondary">✉️ {data.email}</Typography>}
+          </Box>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
 
 
 // --- Main Component ---
@@ -211,6 +220,7 @@ const ShipmentDetails = ({ shipment, onUpdateLocation, updatingLocation, locatio
   const theme = useTheme();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { t, lang, isRTL, getCityName, getCountryName } = useLanguage();
 
   const {
     updateShipmentStatus,
@@ -284,8 +294,8 @@ const ShipmentDetails = ({ shipment, onUpdateLocation, updatingLocation, locatio
   };
 
   const handleDelete = async () => {
-    if (!canDeleteShipmentStatus(shipment.status)) {
-      alert(buildShipmentDeleteBlockedMessage(shipment.status).medium);
+    if (!canDeleteShipmentStatus(shipment.status, shipment, user?.role)) {
+      alert(buildShipmentDeleteBlockedMessage(shipment.status, hasCarrierBooking(shipment)).medium);
       return;
     }
 
@@ -386,10 +396,10 @@ const ShipmentDetails = ({ shipment, onUpdateLocation, updatingLocation, locatio
               }}
             >
               {[
-                {label: 'Overview', icon: <InfoIcon fontSize="small" /> },
-                {label: 'Parcels', icon: <InventoryIcon fontSize="small" /> },
-                {label: 'Activity', icon: <TimelineIcon fontSize="small" /> },
-                ...(isStaff ? [{label: 'Management', icon: <AttachMoneyIcon fontSize="small" /> }] : [])
+                {label: t('tab_overview', 'Overview'), icon: <InfoIcon fontSize="small" /> },
+                {label: t('tab_parcels', 'Parcels'), icon: <InventoryIcon fontSize="small" /> },
+                {label: t('tab_activity', 'Activity'), icon: <TimelineIcon fontSize="small" /> },
+                ...(isStaff ? [{label: t('tab_management', 'Management'), icon: <AttachMoneyIcon fontSize="small" /> }] : [])
               ].map((tab, index) => (
               <Tab
                 key={index}
@@ -426,7 +436,7 @@ const ShipmentDetails = ({ shipment, onUpdateLocation, updatingLocation, locatio
             {['in_transit', 'out_for_delivery', 'picked_up'].includes(shipment.status) && (
               <Box mb={4} sx={{ bgcolor: '#141929', p: 3, borderRadius: 3, border: '1px solid #2a3347' }}>
                 <Box display="flex" justifyContent="space-between" mb={1.5}>
-                  <Typography variant="caption" fontWeight="bold" color="text.secondary" textTransform="uppercase" letterSpacing={1}>Delivery Progress</Typography>
+                  <Typography variant="caption" fontWeight="bold" color="text.secondary" textTransform="uppercase" letterSpacing={1}>{t('delivery_progress', 'Delivery Progress')}</Typography>
                   <Typography variant="caption" fontWeight="bold" color="primary">{progress}%</Typography>
                 </Box>
                 <LinearProgress
@@ -447,28 +457,28 @@ const ShipmentDetails = ({ shipment, onUpdateLocation, updatingLocation, locatio
 
             <Grid container spacing={3}>
               <Grid item xs={12} md={6}>
-                <AddressBlock title="Origin (Sender)" data={shipment.origin} />
+                <AddressBlock title={t('origin_sender', 'Origin (Sender)')} data={shipment.origin} />
               </Grid>
               <Grid item xs={12} md={6}>
-                <AddressBlock title="Destination (Recipient)" data={shipment.destination} />
+                <AddressBlock title={t('destination_recipient', 'Destination (Recipient)')} data={shipment.destination} />
               </Grid>
             </Grid>
 
             <Box mt={4}>
-              <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ color: '#fff', mb: 2 }}>Shipment Details</Typography>
+              <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ color: '#fff', mb: 2 }}>{t('details_title', 'Shipment Details')}</Typography>
               <Box sx={{ bgcolor: '#141929', p: 3, borderRadius: 3, border: '1px solid #2a3347' }}>
                 <Grid container spacing={2}>
                   <Grid item xs={6} md={3}>
-                    <InfoRow label="Service Type" value={shipment.serviceType || 'Standard'} icon={<TruckIcon fontSize="small" sx={{ color: 'primary.main' }} />} />
+                    <InfoRow label={t('service_type', 'Service Type')} value={shipment.serviceType || 'Standard'} icon={<TruckIcon fontSize="small" sx={{ color: 'primary.main' }} />} />
                   </Grid>
                   <Grid item xs={6} md={3}>
-                    <InfoRow label="Total Pieces" value={shipment.items?.length || 0} icon={<InventoryIcon fontSize="small" sx={{ color: 'primary.main' }} />} />
+                    <InfoRow label={t('total_pieces', 'Total Pieces')} value={shipment.items?.length || 0} icon={<InventoryIcon fontSize="small" sx={{ color: 'primary.main' }} />} />
                   </Grid>
                   <Grid item xs={6} md={3}>
-                    <InfoRow label="Total Weight" value={`${shipment.totalWeight || 0} kg`} />
+                    <InfoRow label={t('actual_weight', 'Total Weight')} value={`${shipment.totalWeight || 0} kg`} />
                   </Grid>
                   <Grid item xs={6} md={3}>
-                    <InfoRow label="Dimensions" value={shipment.items?.[0] ? `${shipment.items[0].length}x${shipment.items[0].width}x${shipment.items[0].height} cm` : 'N/A'} />
+                    <InfoRow label={t('package_dim_cm', 'Dimensions')} value={shipment.items?.[0] ? `${shipment.items[0].length}x${shipment.items[0].width}x${shipment.items[0].height} cm` : 'N/A'} />
                   </Grid>
                 </Grid>
               </Box>
@@ -574,9 +584,9 @@ const ShipmentDetails = ({ shipment, onUpdateLocation, updatingLocation, locatio
                   <LocationIcon fontSize="small" />
                 </Box>
                 <Box>
-                  <Typography variant="caption" fontWeight="bold" color="textSecondary" display="block">CURRENT LOCATION</Typography>
+                  <Typography variant="caption" fontWeight="bold" color="textSecondary" display="block">{t('current_location', 'CURRENT LOCATION')}</Typography>
                   <Typography variant="body2" fontWeight="bold" noWrap color="text.primary">
-                    {shipment.currentLocation?.address || shipment.origin?.city || 'Processing Center'}
+                    {shipment.currentLocation?.address || (shipment.origin?.city ? getCityName(shipment.origin.city) : (lang === 'ar' ? 'مركز التوزيع والفرز' : 'Processing Center'))}
                   </Typography>
                 </Box>
               </Paper>
@@ -606,7 +616,7 @@ const ShipmentDetails = ({ shipment, onUpdateLocation, updatingLocation, locatio
                   startIcon={<MyLocationIcon />}
                   sx={{ boxShadow: '0 4px 14px rgba(0, 217, 184, 0.4)' }}
                 >
-                  Share Live Location
+                  {t('share_live_location', 'Share Live Location')}
                 </Button>
               </Box>
             )}
@@ -614,7 +624,7 @@ const ShipmentDetails = ({ shipment, onUpdateLocation, updatingLocation, locatio
 
           {/* Generated Documents Sidebar Card */}
           <Box mt={3}>
-            <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ color: '#fff', mb: 2 }}>Generated Documents</Typography>
+            <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ color: '#fff', mb: 2 }}>{t('generated_documents', 'Generated Documents')}</Typography>
             <Card elevation={0} sx={{ borderRadius: 3, border: '1px solid #2a3347', bgcolor: '#141929' }}>
               <List disablePadding>
                 {/* Reference Label - Visible to EVERYONE */}
@@ -624,8 +634,8 @@ const ShipmentDetails = ({ shipment, onUpdateLocation, updatingLocation, locatio
                 }} sx={{ px: 3, py: 2, '&:hover': { bgcolor: 'rgba(255,255,255,0.02)' } }}>
                   <ListItemIcon><PrintIcon color="primary" /></ListItemIcon>
                   <ListItemText
-                    primary={<Typography fontWeight="600" color="text.primary">Target Label</Typography>}
-                    secondary={<Typography variant="caption" color="text.secondary">System Label with QR code</Typography>}
+                    primary={<Typography fontWeight="600" color="text.primary">{t('target_label', 'Target Label')}</Typography>}
+                    secondary={<Typography variant="caption" color="text.secondary">{t('system_label_qr', 'System Label with QR code')}</Typography>}
                   />
                 </ListItem>
 
@@ -636,8 +646,8 @@ const ShipmentDetails = ({ shipment, onUpdateLocation, updatingLocation, locatio
                   <ListItem button onClick={() => handleOpenPdf(shipment.awbUrl)} sx={{ px: 3, py: 2, '&:hover': { bgcolor: 'rgba(255,255,255,0.02)' } }}>
                     <ListItemIcon><DescriptionIcon color="error" /></ListItemIcon>
                     <ListItemText
-                      primary={<Typography fontWeight="600" color="text.primary">Carrier AWB</Typography>}
-                      secondary={<Typography variant="caption" color="text.secondary">Official Waybill</Typography>}
+                      primary={<Typography fontWeight="600" color="text.primary">{t('carrier_awb', 'Carrier AWB')}</Typography>}
+                      secondary={<Typography variant="caption" color="text.secondary">{lang === 'ar' ? 'بوليصة الشحن الرسمية' : 'Official Waybill'}</Typography>}
                     />
                   </ListItem>
                 )}
@@ -646,8 +656,8 @@ const ShipmentDetails = ({ shipment, onUpdateLocation, updatingLocation, locatio
                   <ListItem button onClick={() => handleOpenPdf(shipment.invoiceUrl)} sx={{ px: 3, py: 2, '&:hover': { bgcolor: 'rgba(255,255,255,0.02)' } }}>
                     <ListItemIcon><AssignmentIcon color="warning" /></ListItemIcon>
                     <ListItemText
-                      primary={<Typography fontWeight="600" color="text.primary">Commercial Invoice</Typography>}
-                      secondary={<Typography variant="caption" color="text.secondary">Customs Declaration</Typography>}
+                      primary={<Typography fontWeight="600" color="text.primary">{t('commercial_invoice', 'Commercial Invoice')}</Typography>}
+                      secondary={<Typography variant="caption" color="text.secondary">{t('customs_declaration', 'Customs Declaration')}</Typography>}
                     />
                   </ListItem>
                 )}

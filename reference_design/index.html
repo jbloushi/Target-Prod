@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Target Logistics — Global Suite</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <!-- ── Backend configuration ─────────────────────────────
+       Edit these defaults, or override at runtime via the Tweaks panel
+       (the panel persists changes to localStorage). -->
+  <script>
+    window.TL_CONFIG = /*EDITMODE-BEGIN*/{
+      "apiBase":         "http://localhost:8899",
+      "mockMode":        true,
+      "pollMs":          30000,
+      "fallbackOnError": true
+    }/*EDITMODE-END*/;
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root {
+      height: 100%; font-family: 'Manrope', system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased; background: #f3f7fb; color: #1a1f23;
+    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #d0d5db; border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: #a9aeb1; }
+
+    @keyframes tlspin    { to { transform: rotate(360deg); } }
+    @keyframes tlPulse   { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.6;transform:scale(1.2)} }
+    @keyframes fadeIn    { from{opacity:0} to{opacity:1} }
+    @keyframes tlSlideIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes tlSkeleton{ 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+    @keyframes pageIn    { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes slideUp   { from{opacity:0;transform:translateY(40px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes tlSlideRight { from{opacity:0;transform:translateX(40px)} to{opacity:1;transform:translateX(0)} }
+
+    :focus-visible { outline: 2px solid #0050d4; outline-offset: 2px; }
+    .page-enter    { animation: pageIn 0.22s ease both; }
+  </style>
+</head>
+<body>
+  <template id="__bundler_thumbnail" data-bg-color="#0050d4">
+    <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+      <rect width="1200" height="800" fill="#0050d4"/>
+      <g transform="translate(600 400)" fill="none" stroke="#fff" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+        <circle r="160" stroke-opacity="0.35"/>
+        <circle r="100" stroke-opacity="0.55"/>
+        <circle r="40"  fill="#fff" stroke="none"/>
+        <path d="M-220 0 H-180 M180 0 H220 M0 -220 V-180 M0 180 V220" stroke-opacity="0.6"/>
+      </g>
+      <text x="600" y="640" text-anchor="middle" font-family="Manrope, sans-serif" font-weight="800" font-size="46" fill="#fff" letter-spacing="-1">TARGET LOGISTICS</text>
+    </svg>
+  </template>
+  <div id="root"></div>
+
+  <!-- API client + shared UI first -->
+  <script type="text/babel" src="tl-api.jsx"></script>
+  <script type="text/babel" src="tl-mocks.jsx"></script>
+  <script type="text/babel" src="tl-ui.jsx"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <!-- Pages -->
+  <script type="text/babel" src="tl-login.jsx"></script>
+  <script type="text/babel" src="tl-dashboard.jsx"></script>
+  <script type="text/babel" src="tl-shipments.jsx"></script>
+  <script type="text/babel" src="tl-wizard.jsx"></script>
+  <script type="text/babel" src="tl-financials.jsx"></script>
+  <script type="text/babel" src="tl-api-docs.jsx"></script>
+  <script type="text/babel" src="tl-organizations.jsx"></script>
+  <script type="text/babel" src="tl-users.jsx"></script>
+  <script type="text/babel" src="tl-settings.jsx"></script>
+  <script type="text/babel" src="tl-tracking.jsx"></script>
+
+  <script type="text/babel">
+    // ── Patch NAV_ITEMS to wire all pages ─────────
+    const ALL_NAV_ITEMS = [
+      { label:'Dashboard',     icon:'speed',                   page:'dashboard'    },
+      { label:'Shipments',     icon:'local_shipping',          page:'shipments'    },
+      { label:'Organizations', icon:'corporate_fare',          page:'organizations'},
+      { label:'Users',         icon:'people',                  page:'users'        },
+      { label:'Address Book',  icon:'menu_book',               page:null           },
+      { label:'Financials',    icon:'account_balance_wallet',  page:'financials'   },
+      { label:'API Docs',      icon:'api',                     page:'api-docs'     },
+      { label:'Settings',      icon:'settings',                page:'settings'     },
+    ];
+    if (typeof NAV_ITEMS !== 'undefined') {
+      NAV_ITEMS.splice(0, NAV_ITEMS.length, ...ALL_NAV_ITEMS);
+    }
+
+    // ── Wizard Modal ──────────────────────────────
+    const WizardModal = ({ onClose, onComplete, editing }) => {
+      const w = useWindowWidth();
+      const isMobile = w < 640;
+      return (
+        <>
+          <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:500, background:'rgba(26,31,35,0.5)', backdropFilter:'blur(4px)', WebkitBackdropFilter:'blur(4px)' }} />
+          <div style={{
+            position:'fixed', zIndex:501,
+            top: isMobile ? 0 : '50%', left: isMobile ? 0 : '50%',
+            right: isMobile ? 0 : 'unset', bottom: isMobile ? 0 : 'unset',
+            transform: isMobile ? 'none' : 'translate(-50%,-50%)',
+            width: isMobile ? '100%' : Math.min(780, window.innerWidth - 40),
+            height: isMobile ? '100%' : Math.min(640, window.innerHeight - 60),
+            background:'#fff',
+            borderRadius: isMobile ? 0 : 22,
+            boxShadow:'0 32px 80px rgba(0,0,0,0.22)',
+            display:'flex', flexDirection:'column', overflow:'hidden',
+            animation: isMobile ? 'slideUp 0.28s ease' : 'tlSlideIn 0.22s ease',
+          }}>
+            <ShipmentWizard onClose={onClose} onComplete={onComplete} editing={editing} />
+          </div>
+        </>
+      );
+    };
+
+    // ── Shipment Detail Drawer ──────────────────────
+    const ShipmentDetailDrawer = ({ shipment, onClose, onEdit, onDelete }) => {
+      const w = useWindowWidth();
+      const isMobile = w < 640;
+      const [detail, setDetail] = React.useState(null);
+      const [loading, setLoading] = React.useState(true);
+      const [error, setError] = React.useState(null);
+
+      React.useEffect(() => {
+        if (!shipment) return;
+        let active = true;
+        setLoading(true); setError(null);
+        // Try authenticated detail first; fall back to the row data we already have
+        const tn = shipment.trackingNumber;
+        TL_API.shipments.get(tn)
+          .then(r => { if (active) { setDetail((r && (r.data || r)) || shipment); setLoading(false); } })
+          .catch(e => {
+            if (!active) return;
+            // Fallback: fetch public tracking events
+            TL_API.publicTracking.get(tn)
+              .then(r => { if (active) { setDetail({ ...shipment, ...(r && (r.data || r)) }); setLoading(false); } })
+              .catch(() => { if (active) { setDetail(shipment); setLoading(false); setError(e); } });
+          });
+        return () => { active = false; };
+      }, [shipment?.trackingNumber]);
+
+      if (!shipment) return null;
+      const d = detail || shipment;
+      const events = d.events || d.history || [];
+      const sd = (typeof STATUS_DISPLAY !== 'undefined' && STATUS_DISPLAY[d.status]) || { label: d.status, color: TK.text2, bg: '#f0f2f4' };
+
+      const Row = ({ k, v }) => (
+        <div style={{ display:'flex', justifyContent:'space-between', gap:12, padding:'7px 0', borderBottom:`1px solid ${TK.border}` }}>
+          <span style={{ fontSize:12, color:TK.text3, fontWeight:600 }}>{k}</span>
+          <span style={{ fontSize:12.5, color:TK.text1, fontWeight:600, textAlign:'right', maxWidth:'60%' }}>{v || '—'}</span>
+        </div>
+      );
+
+      return (
+        <>
+          <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:500, background:'rgba(26,31,35,0.5)', backdropFilter:'blur(4px)', WebkitBackdropFilter:'blur(4px)' }} />
+          <div style={{
+            position:'fixed', zIndex:501, top:0, bottom:0, right:0,
+            width: isMobile ? '100%' : Math.min(540, window.innerWidth - 40),
+            background:'#fff', boxShadow:'-12px 0 40px rgba(0,0,0,0.18)',
+            display:'flex', flexDirection:'column',
+            animation: isMobile ? 'slideUp 0.28s ease' : 'tlSlideRight 0.22s ease',
+          }}>
+            {/* Header */}
+            <div style={{ padding:'16px 20px', borderBottom:`1px solid ${TK.border}`, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
+              <div style={{ minWidth:0 }}>
+                <div style={{ fontWeight:800, fontSize:15, color:TK.text1, fontFamily:'monospace', letterSpacing:'-0.02em', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{d.trackingNumber}</div>
+                <div style={{ fontSize:12, color:TK.text3, marginTop:2 }}>{d.service || d.serviceCode || 'Shipment'}</div>
+              </div>
+              <div style={{ display:'flex', gap:8 }}>
+                <button onClick={() => onEdit && onEdit(d)} style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 12px', borderRadius:9, border:`1px solid ${TK.border}`, background:'#fff', color:TK.text1, fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize:15 }}>edit</span>
+                  Edit
+                </button>
+                <button onClick={onClose} style={{ width:34, height:34, borderRadius:9, border:`1px solid ${TK.border}`, background:'transparent', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:TK.text2 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize:18 }}>close</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div style={{ flex:1, overflowY:'auto', padding:'18px 20px' }}>
+              {loading && <div style={{ padding:'40px 0', textAlign:'center', color:TK.text3, fontSize:13 }}>Loading shipment…</div>}
+              {!loading && (
+                <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
+                  {/* Status pill */}
+                  <div>
+                    <span style={{ display:'inline-flex', alignItems:'center', gap:7, padding:'6px 12px', borderRadius:99, background:sd.bg, color:sd.color, fontWeight:800, fontSize:12 }}>
+                      <span style={{ width:7, height:7, borderRadius:'50%', background:sd.color }} />
+                      {sd.label}
+                    </span>
+                    {error && <div style={{ marginTop:8, fontSize:11.5, color:TK.text3 }}>Live detail unavailable — showing summary only.</div>}
+                  </div>
+
+                  {/* Route */}
+                  <div style={{ background:'#fafbfc', border:`1px solid ${TK.border}`, borderRadius:12, padding:'14px 16px' }}>
+                    <div style={{ fontSize:11, color:TK.text3, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:8 }}>Route</div>
+                    <div style={{ display:'flex', alignItems:'center', gap:10, fontSize:14 }}>
+                      <span style={{ fontWeight:700, color:TK.text1 }}>{d.origin || d.originCity || '—'}</span>
+                      <span style={{ color:TK.primary, fontWeight:700 }}>→</span>
+                      <span style={{ fontWeight:700, color:TK.text1 }}>{d.destination || d.dest || '—'}</span>
+                    </div>
+                    <div style={{ fontSize:12, color:TK.text3, marginTop:6 }}>ETA: <strong style={{ color:TK.text1 }}>{d.eta || d.estimatedDelivery || '—'}</strong></div>
+                  </div>
+
+                  {/* Parties */}
+                  <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap:12 }}>
+                    <div style={{ padding:'14px 16px', background:'#fafbfc', border:`1px solid ${TK.border}`, borderRadius:12 }}>
+                      <div style={{ fontSize:11, color:TK.text3, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:8 }}>Sender</div>
+                      <Row k="Name"    v={d.senderName  || d.sender?.name} />
+                      <Row k="Phone"   v={d.senderPhone || d.sender?.phone} />
+                      <Row k="Country" v={d.sender?.country} />
+                    </div>
+                    <div style={{ padding:'14px 16px', background:'#fafbfc', border:`1px solid ${TK.border}`, borderRadius:12 }}>
+                      <div style={{ fontSize:11, color:TK.text3, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:8 }}>Receiver</div>
+                      <Row k="Name"    v={d.receiverName || d.customer || d.receiver?.name} />
+                      <Row k="Phone"   v={d.receiverPhone|| d.phone    || d.receiver?.phone} />
+                      <Row k="Country" v={d.receiver?.country} />
+                    </div>
+                  </div>
+
+                  {/* Meta */}
+                  <div style={{ padding:'14px 16px', background:'#fafbfc', border:`1px solid ${TK.border}`, borderRadius:12 }}>
+                    <div style={{ fontSize:11, color:TK.text3, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:8 }}>Shipment Info</div>
+                    <Row k="Service"   v={d.service} />
+                    <Row k="Weight"    v={d.weight || (d.package && d.package.weightKg ? `${d.package.weightKg} kg` : null)} />
+                    <Row k="Created"   v={d.created || (d.createdAt ? new Date(d.createdAt).toLocaleString() : null)} />
+                    <Row k="Created By" v={d.createdBy} />
+                    <Row k="Organization" v={d.org || d.organizationName} />
+                  </div>
+
+                  {/* Timeline */}
+                  {events.length > 0 && (
+                    <div>
+                      <div style={{ fontSize:11, color:TK.text3, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:10 }}>Tracking History</div>
+                      <div style={{ display:'flex', flexDirection:'column', gap:0 }}>
+                        {events.map((ev, i) => {
+                          const last = i === events.length - 1;
+                          return (
+                            <div key={i} style={{ display:'flex', gap:12, position:'relative', paddingBottom: last ? 0 : 16 }}>
+                              {!last && <div style={{ position:'absolute', left:11, top:24, bottom:0, width:2, background:TK.border }} />}
+                              <div style={{ width:24, height:24, borderRadius:'50%', flexShrink:0, border:`2px solid ${ev.active ? TK.primary : TK.success}`, background: ev.active ? TK.primary : '#fff', display:'flex', alignItems:'center', justifyContent:'center', color: ev.active ? '#fff' : TK.success }}>
+                                <span className="material-symbols-outlined" style={{ fontSize:13, fontVariationSettings:"'FILL' 1" }}>{ev.active ? 'location_on' : 'check'}</span>
+                              </div>
+                              <div style={{ flex:1, paddingTop:2 }}>
+                                <div style={{ display:'flex', justifyContent:'space-between', flexWrap:'wrap', gap:4 }}>
+                                  <span style={{ fontWeight:700, fontSize:12.5, color: ev.active ? TK.primary : TK.text1 }}>{ev.status || ev.label}</span>
+                                  <span style={{ fontSize:11, color:TK.text3 }}>{ev.time || ev.timestamp}</span>
+                                </div>
+                                {ev.desc && <div style={{ fontSize:12, color:TK.text2, marginTop:2 }}>{ev.desc}</div>}
+                                {ev.location && <div style={{ fontSize:11, color:TK.text3, marginTop:2 }}>{ev.location}</div>}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding:'12px 20px', borderTop:`1px solid ${TK.border}`, display:'flex', justifyContent:'space-between', gap:10, background:'#fafbfc' }}>
+              <button onClick={() => onDelete && onDelete(d)} style={{ display:'flex', alignItems:'center', gap:6, padding:'9px 14px', borderRadius:9, border:`1px solid ${TK.error}30`, background:'#fff', color:TK.error, fontSize:12.5, fontWeight:700, cursor:'pointer' }}>
+                <span className="material-symbols-outlined" style={{ fontSize:16 }}>delete</span>
+                Delete
+              </button>
+              <button onClick={onClose} style={{ padding:'9px 18px', borderRadius:9, border:'none', background:TK.primary, color:'#fff', fontSize:12.5, fontWeight:700, cursor:'pointer' }}>Close</button>
+            </div>
+          </div>
+        </>
+      );
+    };
+
+    // ── Login Page wrapper — adds Track Shipment link ──
+    const LoginPageWrapper = ({ onLogin, onTrack }) => {
+      const w = useWindowWidth();
+      const isMobile = w < 640;
+      return (
+        <div style={{ position:'relative' }}>
+          <LoginPage onLogin={onLogin} />
+          {/* Floating "Track a Shipment" bar at the very top */}
+          <div style={{
+            position:'fixed', top:0, left:0, right:0, zIndex:200,
+            background: '#0050d4',
+            padding:'10px 20px',
+            display:'flex', alignItems:'center', justifyContent:'center', gap:14,
+            flexWrap:'wrap',
+          }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <span className="material-symbols-outlined" style={{ fontSize:18, color:'rgba(255,255,255,0.85)', fontVariationSettings:"'FILL' 1" }}>location_on</span>
+              <span style={{ fontSize:13, color:'rgba(255,255,255,0.9)', fontWeight:500 }}>
+                {isMobile ? 'Track a shipment without signing in' : 'Track your shipment without signing in — no account required'}
+              </span>
+            </div>
+            <button
+              onClick={onTrack}
+              style={{
+                display:'flex', alignItems:'center', gap:6,
+                padding:'6px 16px', borderRadius:99,
+                background:'rgba(255,255,255,0.18)', border:'1.5px solid rgba(255,255,255,0.35)',
+                color:'#fff', fontWeight:700, fontSize:13, cursor:'pointer',
+                transition:'background 0.15s',
+                fontFamily:'Manrope, sans-serif',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.28)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.18)'}
+            >
+              Track Shipment
+              <span className="material-symbols-outlined" style={{ fontSize:16 }}>arrow_forward</span>
+            </button>
+          </div>
+        </div>
+      );
+    };
+
+    // ── App Shell ─────────────────────────────────
+    const App = () => {
+      const [page, setPage]           = React.useState('login');
+      const [user, setUser]           = React.useState(null);
+      const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
+      const [drawerOpen, setDrawerOpen] = React.useState(false);
+      const [pageKey, setPageKey]     = React.useState(0);
+      const [wizardOpen, setWizardOpen] = React.useState(false);
+      const [editingShipment, setEditingShipment] = React.useState(null);
+      const [viewingShipment, setViewingShipment] = React.useState(null);
+      const [shipmentsRefresh, setShipmentsRefresh] = React.useState(0);
+      const w = useWindowWidth();
+      const isMobile = w < 768;
+
+      // Restore session from localStorage (token + user)
+      React.useEffect(() => {
+        const saved = TL_auth.getUser();
+        const tok   = TL_auth.getToken();
+        if (saved && tok) { setUser(saved); setPage('dashboard'); }
+        // Handle 401s globally
+        const onUnauth = () => { setUser(null); setPage('login'); };
+        window.addEventListener('tl-unauthorized', onUnauth);
+        return () => window.removeEventListener('tl-unauthorized', onUnauth);
+      }, []);
+
+      const navigate = (target) => {
+        if (!target) return;
+        if (target === 'new-shipment') { setEditingShipment(null); setWizardOpen(true); return; }
+        setPage(target); setPageKey(k => k + 1); setDrawerOpen(false);
+      };
+
+      const openView = (s) => setViewingShipment(s);
+      const openEdit = (s) => { setViewingShipment(null); setEditingShipment(s); setWizardOpen(true); };
+      const handleDelete = async (s) => {
+        if (!s) return;
+        if (!window.confirm(`Delete shipment ${s.trackingNumber}? This cannot be undone.`)) return;
+        try { await TL_API.shipments.cancel(s.trackingNumber); }
+        catch (e) { alert('Delete failed: ' + (e.message || 'unknown error')); return; }
+        setViewingShipment(null);
+        setShipmentsRefresh(n => n + 1);
+      };
+
+      const handleLogin = (u) => {
+        setUser(u);
+        TL_auth.setUser(u);
+        navigate('dashboard');
+      };
+
+      const handleLogout = () => {
+        TL_API.auth.logout();
+        setUser(null);
+        navigate('login');
+      };
+
+      // Override TopBar sign-out to call handleLogout
+      React.useEffect(() => {
+        window.__tlLogout = handleLogout;
+      }, []);
+
+      // Auto-collapse sidebar on tablet
+      React.useEffect(() => {
+        if (w >= 768 && w < 1100) setSidebarCollapsed(true);
+        else if (w >= 1100) setSidebarCollapsed(false);
+      }, [w]);
+
+      // Public pages — no auth shell
+      if (page === 'tracking') {
+        return (
+          <TrackingPage
+            onGoBack={() => navigate('login')}
+          />
+        );
+      }
+
+      if (page === 'login') {
+        return (
+          <LoginPageWrapper
+            onLogin={handleLogin}
+            onTrack={() => navigate('tracking')}
+          />
+        );
+      }
+
+      const sidebarW = isMobile ? 0 : (sidebarCollapsed ? 72 : 228);
+
+      return (
+        <div style={{ display:'flex', height:'100%', background:'#f3f7fb' }}>
+          <Sidebar
+            collapsed={sidebarCollapsed}
+            onToggle={() => setSidebarCollapsed(c => !c)}
+            currentPage={page}
+            onNavigate={navigate}
+            user={user}
+            mobile={isMobile}
+            drawerOpen={drawerOpen}
+            onDrawerClose={() => setDrawerOpen(false)}
+          />
+
+          {/* Mobile drawer backdrop */}
+          {isMobile && drawerOpen && (
+            <div onClick={() => setDrawerOpen(false)} style={{ position:'fixed', inset:0, zIndex:150, background:'rgba(26,31,35,0.45)', backdropFilter:'blur(2px)' }} />
+          )}
+
+          <div style={{
+            flex:1,
+            marginLeft: !isMobile ? sidebarW : 0,
+            transition:'margin-left 0.25s cubic-bezier(0.4,0,0.2,1)',
+            display:'flex', flexDirection:'column',
+            minHeight:'100vh', minWidth:0,
+          }}>
+            <TopBar
+              onNavigate={navigate}
+              user={user}
+              onMenuToggle={() => setDrawerOpen(d => !d)}
+              isMobile={isMobile}
+            />
+
+            <main
+              key={pageKey}
+              className="page-enter"
+              style={{
+                flex:1,
+                padding: isMobile ? '16px 14px' : '24px 28px',
+                overflowY:'auto',
+              }}
+            >
+              {page === 'dashboard'     && <DashboardPage user={user} onNavigate={navigate} />}
+              {page === 'shipments'     && <ShipmentsPage user={user} onNew={() => navigate('new-shipment')} onView={openView} onEdit={openEdit} onDelete={handleDelete} refreshKey={shipmentsRefresh} />}
+              {page === 'financials'    && <FinancialsPage user={user} />}
+              {page === 'api-docs'      && <ApiDocsPage />}
+              {page === 'organizations' && <OrganizationsPage />}
+              {page === 'users'         && <UsersPage />}
+              {page === 'settings'      && <SettingsPage user={user} />}
+            </main>
+          </div>
+
+          {/* Shipment Wizard Modal */}
+          {wizardOpen && (
+            <WizardModal
+              editing={editingShipment}
+              onClose={() => { setWizardOpen(false); setEditingShipment(null); }}
+              onComplete={() => {
+                setWizardOpen(false); setEditingShipment(null);
+                setShipmentsRefresh(n => n + 1);
+                navigate('shipments');
+              }}
+            />
+          )}
+
+          {/* Shipment Detail Drawer */}
+          {viewingShipment && (
+            <ShipmentDetailDrawer
+              shipment={viewingShipment}
+              onClose={() => setViewingShipment(null)}
+              onEdit={openEdit}
+              onDelete={handleDelete}
+            />
+          )}
+
+          {/* Backend config Tweaks panel */}
+          <BackendTweaks />
+        </div>
+      );
+    };
+
+    // ── Tweaks: backend configuration ───────────────
+    const BackendTweaks = () => {
+      const [t, setTweak] = useTweaks(window.TL_CONFIG);
+      React.useEffect(() => { TL_setConfig(t); }, [t.apiBase, t.mockMode, t.pollMs, t.fallbackOnError]);
+      const status = t.mockMode ? 'Mock data (offline-safe)' : 'Live backend';
+      return (
+        <TweaksPanel title="Backend">
+          <TweakSection title="Connection" subtitle={status}>
+            <TweakText label="API base URL" value={t.apiBase} onChange={v => setTweak('apiBase', v)} placeholder="http://localhost:8899" />
+            <TweakToggle label="Mock mode" hint="Use bundled fake data instead of hitting the backend" value={!!t.mockMode} onChange={v => setTweak('mockMode', v)} />
+            <TweakToggle label="Fallback on error" hint="If a real call fails, fall back to mocks (dev convenience)" value={!!t.fallbackOnError} onChange={v => setTweak('fallbackOnError', v)} />
+            <TweakSlider label="Tracking poll interval (ms)" min={5000} max={120000} step={5000} value={t.pollMs} onChange={v => setTweak('pollMs', v)} />
+          </TweakSection>
+          <TweakSection title="Session">
+            <TweakButton label="Clear token & sign out" onClick={() => { TL_API.auth.logout(); location.reload(); }} />
+          </TweakSection>
+        </TweaksPanel>
+      );
+    };
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

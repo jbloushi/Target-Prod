@@ -2,14 +2,20 @@ import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useSnackbar } from 'notistack';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import { userService } from '../services/api';
-import { PageHeader, Button, Card, Modal } from '../ui';
+import { TK } from '../tokens/kineticHorizon';
+import { PageHeader, Button, Card, Modal, WInput } from '../ui';
 import AddressPanel from '../components/AddressPanel';
 
-// Custom Table Styles (Sharing with Dashboard but inline for now as requested)
+// --- Styled Components with Kinetic Horizon Tokens ---
 const TableWrapper = styled.div`
   width: 100%;
   overflow-x: auto;
+  background: #ffffff;
+  border-radius: 20px;
+  border: 1px solid ${TK.border};
+  box-shadow: 0 4px 20px rgba(0,0,0,0.05);
 `;
 
 const StyledTable = styled.table`
@@ -19,31 +25,34 @@ const StyledTable = styled.table`
   
   th {
     text-align: left;
-    padding: 14px 16px;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-secondary);
+    padding: 14px 18px;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: ${TK.text2};
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    border-bottom: 1px solid var(--border-color);
-    background: var(--bg-tertiary);
+    border-bottom: 1px solid ${TK.border};
+    background: #f8fafc;
   }
 
-  th:first-child { border-radius: 10px 0 0 0; }
-  th:last-child { border-radius: 0 10px 0 0; }
+  th:first-child { border-radius: 20px 0 0 0; }
+  th:last-child { border-radius: 0 20px 0 0; }
 
   td {
-    padding: 20px 16px;
-    border-bottom: 1px solid var(--border-color);
-    font-size: 14px;
-    color: var(--text-primary);
-    background: var(--bg-secondary);
+    padding: 16px 18px;
+    border-bottom: 1px solid ${TK.border};
+    font-size: 13.5px;
+    color: ${TK.text1};
+    background: #ffffff;
   }
 
+  tbody tr:last-child td:first-child { border-radius: 0 0 0 20px; }
+  tbody tr:last-child td:last-child { border-radius: 0 0 20px 0; }
+
   tbody tr {
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
     &:hover td {
-      background: var(--bg-tertiary);
+      background: #f8fafc;
     }
   }
 `;
@@ -52,18 +61,23 @@ const ActionButton = styled.button`
     background: transparent;
     border: none;
     cursor: pointer;
-    color: ${props => props.$color || 'var(--text-secondary)'};
-    padding: 4px;
-    transition: color 0.2s;
-    &:hover { color: var(--text-primary); }
+    color: ${props => props.$color || TK.text2};
+    padding: 6px;
+    border-radius: 8px;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    &:hover { background: #f3f4f6; color: ${TK.text1}; }
 `;
 
 const SearchContainer = styled.div`
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    padding: 16px;
+    background: #ffffff;
+    border: 1px solid ${TK.border};
+    border-radius: 20px;
+    padding: 16px 20px;
     margin-bottom: 24px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.05);
 `;
 
 const AddressBookPage = () => {

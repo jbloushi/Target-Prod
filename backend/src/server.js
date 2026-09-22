@@ -1,3 +1,10 @@
+const { validateEnv } = require('./config/envValidator');
+
+// Run fail-fast environment validation on server bootstrap
+if (require.main === module || process.env.NODE_ENV === 'production') {
+  validateEnv({ exitOnError: require.main === module });
+}
+
 const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
@@ -25,18 +32,27 @@ app.use((req, res, next) => {
 });
 
 // FAIL-SAFE CRASH LOGGER
-process.on('uncaughtException', (err) => {
-  const fs = require('fs');
-  const path = require('path');
-  fs.appendFileSync(path.join(__dirname, '../fatal_error.log'), `[UNCAUGHT_EXCEPTION] ${new Date().toISOString()}\n${err.stack}\n\n`);
-  process.exit(1);
-});
+// Only register global process exit handlers when running as main application,
+// avoiding EventEmitter MaxListenersExceededWarning memory leak warnings when tests repeatedly require server.js
+if (require.main === module && !process._hasTargetProdCrashHandlers) {
+  process._hasTargetProdCrashHandlers = true;
+  process.on('uncaughtException', (err) => {
+    const fs = require('fs');
+    const path = require('path');
+    try {
+      fs.appendFileSync(path.join(__dirname, '../fatal_error.log'), `[UNCAUGHT_EXCEPTION] ${new Date().toISOString()}\n${err.stack}\n\n`);
+    } catch (_) {}
+    process.exit(1);
+  });
 
-process.on('unhandledRejection', (reason, promise) => {
-  const fs = require('fs');
-  const path = require('path');
-  fs.appendFileSync(path.join(__dirname, '../fatal_error.log'), `[UNHANDLED_REJECTION] ${new Date().toISOString()}\n${reason?.stack || reason}\n\n`);
-});
+  process.on('unhandledRejection', (reason, promise) => {
+    const fs = require('fs');
+    const path = require('path');
+    try {
+      fs.appendFileSync(path.join(__dirname, '../fatal_error.log'), `[UNHANDLED_REJECTION] ${new Date().toISOString()}\n${reason?.stack || reason}\n\n`);
+    } catch (_) {}
+  });
+}
 
 app.set('trust proxy', 1); // Trust first proxy (Nginx)
 
@@ -70,7 +86,8 @@ app.use(cors(corsOptions));
 app.use(compression());
 
 // Security middleware
-app.use(helmet());
+app.use(helmet({ crossOriginResourcePolicy: false }));
+app.use('/uploads', express.static(require('path').join(__dirname, '../uploads')));
 
 // Rate Limiting
 if (rateLimitEnabled) {
@@ -138,10 +155,14 @@ const organizationRoutes = require('./routes/organization.routes');
 const integrationRoutes = require('./routes/integration.routes');
 
 const shipmentPublicRoutes = require('./routes/shipment-public.routes');
+const settingsRoutes = require('./routes/settings.routes');
+const whatsappRoutes = require('./routes/whatsapp.routes');
 
 // Standard API Route Mounting
+app.use('/api', whatsappRoutes);
 app.use('/api/public/shipments', shipmentPublicRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/settings', settingsRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/organizations', organizationRoutes);
@@ -193,8 +214,28 @@ app.use(errorHandler);
 // Start server
 const startServer = async () => {
   try {
+    // Validate environment fail-fast
+    validateEnv({ exitOnError: true });
+
     // Connect to MySQL via Prisma
     await connectDB();
+
+    // Start background queue workers for carrier dispatch, notifications, and webhooks
+    const { initWorkers } = require('./services/queue');
+    const queue = initWorkers();
+    queue.start();
+
+    // Start background carrier sync cron
+    const carrierSyncCronService = require('./services/carrierSyncCron.service');
+    if (process.env.CARRIER_CRON_SYNC_ENABLED !== 'false') {
+      carrierSyncCronService.start();
+    }
+
+    // Start background EOM statement cron
+    const eomStatementCronService = require('./services/eomStatementCron.service');
+    if (process.env.EOM_STATEMENT_CRON_ENABLED !== 'false') {
+      eomStatementCronService.start();
+    }
 
     // Start Express server
     const serverInstance = app.listen(port, () => {
@@ -223,6 +264,10 @@ const startServer = async () => {
       serverInstance.close(async () => {
         logger.info('Express server closed');
         try {
+          carrierSyncCronService.stop();
+          eomStatementCronService.stop();
+          const { jobQueue } = require('./services/queue');
+          jobQueue.stop();
           const { closeDB } = require('./config/database');
           await closeDB();
           process.exit(0);

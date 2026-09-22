@@ -1,13 +1,9 @@
+import { WInput } from '../../ui';
 import React from 'react';
 import {
-    Box, Typography, Tooltip, IconButton, Collapse, Grid, TextField, alpha, useTheme
+    Box, Typography, Tooltip, IconButton, Collapse, Grid, alpha, useTheme
 } from '@mui/material';
-import DeleteIcon from '@mui/icons-material/Delete';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
-import CalculateIcon from '@mui/icons-material/Calculate';
-import InventoryIcon from '@mui/icons-material/Inventory';
+import { TK } from '../../tokens/kineticHorizon';
 
 const VOLUME_FACTOR = 5000;
 
@@ -18,14 +14,15 @@ const ParcelCard = ({ parcel, index, onChange, onRemove, expanded, onToggle, err
     const pHgt = Number(parcel.height || parcel.dimensions?.height || 0);
 
     const updateDim = (field, val) => {
-        const numVal = Number(val);
+        const numVal = val === '' ? '' : Number(val);
+        const resolvedVal = numVal === '' ? 0 : numVal;
         onChange({
             [field]: numVal,
             dimensions: {
-                ...parcel.dimensions,
-                length: field === 'length' ? numVal : pLen,
-                width: field === 'width' ? numVal : pWid,
-                height: field === 'height' ? numVal : pHgt,
+                ...(parcel.dimensions || {}),
+                length: field === 'length' ? resolvedVal : pLen,
+                width: field === 'width' ? resolvedVal : pWid,
+                height: field === 'height' ? resolvedVal : pHgt,
             }
         });
     };
@@ -41,13 +38,12 @@ const ParcelCard = ({ parcel, index, onChange, onRemove, expanded, onToggle, err
         <Box
             sx={{
                 mb: 2,
-                borderRadius: 4,
+                borderRadius: '16px',
                 overflow: 'hidden',
-                bgcolor: expanded ? 'surface-container-high' : 'surface-container-lowest',
-                border: '1px solid',
-                borderColor: hasError ? 'error.main' : (expanded ? 'primary.main' : 'divider'),
-                boxShadow: expanded ? 'var(--shadow-glow-primary)' : 'var(--shadow-ambient)',
-                transition: 'var(--transition-base)'
+                bgcolor: '#ffffff',
+                border: `1.5px solid ${hasError ? '#ef4444' : (expanded ? TK.primary : TK.border)}`,
+                boxShadow: expanded ? '0 4px 16px rgba(0,80,212,0.08)' : '0 1px 3px rgba(0,0,0,0.03)',
+                transition: 'all 0.2s ease'
             }}
         >
             <Box
@@ -58,17 +54,17 @@ const ParcelCard = ({ parcel, index, onChange, onRemove, expanded, onToggle, err
                 onClick={onToggle}
                 sx={{ 
                     cursor: 'pointer',
-                    bgcolor: expanded ? alpha(theme.palette.primary.main, 0.05) : 'transparent',
+                    bgcolor: expanded ? 'rgba(0,80,212,0.03)' : 'transparent',
                 }}
             >
                 <Box display="flex" alignItems="center" gap={2}>
                     <Box sx={{ 
-                        p: 1, borderRadius: 2, 
+                        p: 1, borderRadius: '10px', 
                         display: 'flex', 
-                        bgcolor: hasError ? alpha(theme.palette.error.main, 0.1) : alpha(theme.palette.primary.main, 0.1),
-                        color: hasError ? 'error.main' : 'primary.main'
+                        bgcolor: hasError ? 'rgba(239,68,68,0.1)' : 'rgba(0,80,212,0.08)',
+                        color: hasError ? '#ef4444' : TK.primary
                     }}>
-                        <InventoryIcon sx={{ fontSize: 20 }} />
+                        <span className="material-symbols-outlined" style={{ fontSize: 20 }} >inventory</span>
                     </Box>
                     <Box>
                         <Typography variant="body1" fontWeight="800">Unit {index + 1}</Typography>
@@ -78,7 +74,7 @@ const ParcelCard = ({ parcel, index, onChange, onRemove, expanded, onToggle, err
                             </Typography>
                         )}
                     </Box>
-                    {hasError && <Tooltip title="Missing information"><ErrorOutlineIcon color="error" sx={{ fontSize: 18 }} /></Tooltip>}
+                    {hasError && <Tooltip title="Missing information"><span className="material-symbols-outlined" color="error" style={{ fontSize: 18 }} >error_outline</span></Tooltip>}
                 </Box>
                 <Box display="flex" alignItems="center" gap={1}>
                     <IconButton 
@@ -86,71 +82,109 @@ const ParcelCard = ({ parcel, index, onChange, onRemove, expanded, onToggle, err
                         onClick={(e) => { e.stopPropagation(); onRemove(); }} 
                         sx={{ color: 'text.disabled', '&:hover': { color: 'error.main', bgcolor: alpha(theme.palette.error.main, 0.05) } }}
                     >
-                        <DeleteIcon fontSize="small" />
+                        <span className="material-symbols-outlined" fontSize="small" >delete</span>
                     </IconButton>
                     <IconButton size="small" sx={{ color: 'text.primary' }}>
-                        {expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                        {expanded ? <span className="material-symbols-outlined" >expand_less</span> : <span className="material-symbols-outlined" >expand_more</span>}
                     </IconButton>
                 </Box>
             </Box>
 
             <Collapse in={expanded}>
-                <Box p={4} sx={{ borderTop: '1px solid', borderColor: 'divider' }}>
-                    <Grid container spacing={3}>
+                <Box p={3.5} sx={{ borderTop: `1px solid ${TK.border}`, bgcolor: '#ffffff' }}>
+                    <Grid container spacing={2.5}>
                         <Grid item xs={12}>
-                            <TextField
+                            <WInput
                                 fullWidth
                                 label="Logistics Description"
                                 value={parcel.description}
                                 onChange={(e) => onChange('description', e.target.value)}
-                                placeholder="e.g. Spare Parts, High Val Asset"
+                                placeholder="e.g. Spare Parts, Electronics, Garments"
                                 error={!!errors[`parcel${index}desc`]}
                                 helperText={errors[`parcel${index}desc`]}
                             />
                         </Grid>
-                        <Grid item xs={6} md={3}>
-                            <TextField
-                                fullWidth type="number" label="Unit Weight (kg)"
-                                value={parcel.weight}
-                                onChange={(e) => onChange('weight', Number(e.target.value))}
-                                InputProps={{ inputProps: { min: 0 } }}
+                        <Grid item xs={12} sm={6}>
+                            <WInput
+                                fullWidth
+                                type="number"
+                                label="Unit Weight"
+                                unit="kg"
+                                value={parcel.weight ?? ''}
+                                onChange={(e) => onChange('weight', e.target.value === '' ? '' : Number(e.target.value))}
+                                inputProps={{ min: 0, step: 'any' }}
                                 error={!!errors[`parcel${index}weight`]}
                                 helperText={errors[`parcel${index}weight`]}
                             />
                         </Grid>
-                        <Grid item xs={6} md={2}>
-                            <TextField fullWidth type="number" label="Length" value={pLen || ''} onChange={(e) => updateDim('length', e.target.value)} error={!!errors[`parcel${index}length`]} />
-                        </Grid>
-                        <Grid item xs={6} md={2}>
-                            <TextField fullWidth type="number" label="Width" value={pWid || ''} onChange={(e) => updateDim('width', e.target.value)} error={!!errors[`parcel${index}width`]} />
-                        </Grid>
-                        <Grid item xs={6} md={2}>
-                            <TextField fullWidth type="number" label="Height" value={pHgt || ''} onChange={(e) => updateDim('height', e.target.value)} error={!!errors[`parcel${index}height`]} />
-                        </Grid>
-                        <Grid item xs={6} md={3}>
-                            <TextField
-                                fullWidth type="number" label="Unit Qty"
+                        <Grid item xs={12} sm={6}>
+                            <WInput
+                                fullWidth
+                                type="number"
+                                label="Unit Quantity"
+                                unit="pcs"
                                 value={parcel.quantity || 1}
-                                onChange={(e) => onChange('quantity', Number(e.target.value))}
+                                onChange={(e) => onChange('quantity', e.target.value === '' ? 1 : Number(e.target.value))}
+                                inputProps={{ min: 1 }}
+                            />
+                        </Grid>
+                        <Grid item xs={4}>
+                            <WInput
+                                fullWidth
+                                type="number"
+                                label="Length"
+                                unit="cm"
+                                value={parcel.length ?? parcel.dimensions?.length ?? ''}
+                                onChange={(e) => updateDim('length', e.target.value)}
+                                inputProps={{ min: 0, step: 'any' }}
+                                error={!!errors[`parcel${index}length`]}
+                            />
+                        </Grid>
+                        <Grid item xs={4}>
+                            <WInput
+                                fullWidth
+                                type="number"
+                                label="Width"
+                                unit="cm"
+                                value={parcel.width ?? parcel.dimensions?.width ?? ''}
+                                onChange={(e) => updateDim('width', e.target.value)}
+                                inputProps={{ min: 0, step: 'any' }}
+                                error={!!errors[`parcel${index}width`]}
+                            />
+                        </Grid>
+                        <Grid item xs={4}>
+                            <WInput
+                                fullWidth
+                                type="number"
+                                label="Height"
+                                unit="cm"
+                                value={parcel.height ?? parcel.dimensions?.height ?? ''}
+                                onChange={(e) => updateDim('height', e.target.value)}
+                                inputProps={{ min: 0, step: 'any' }}
+                                error={!!errors[`parcel${index}height`]}
                             />
                         </Grid>
                         <Grid item xs={12}>
                             <Box 
                                 sx={{ 
-                                    p: 2, borderRadius: 3, 
-                                    bgcolor: 'surface-container-high', 
-                                    display: 'flex', alignItems: 'center', gap: 2,
-                                    border: '1px solid transparent',
-                                    borderColor: 'divider'
+                                    p: 2.5,
+                                    borderRadius: '16px', 
+                                    bgcolor: '#f8fafc', 
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 2,
+                                    border: `1px solid ${TK.border}`
                                 }}
                             >
-                                <CalculateIcon sx={{ color: 'primary.main' }} />
+                                <span className="material-symbols-outlined" style={{ color: TK.primary, fontSize: 24 }} >calculate</span>
                                 <Box flex={1}>
-                                    <Typography variant="caption" color="text.secondary" fontWeight="800" display="block">BILLABLE METRICS</Typography>
-                                    <Typography variant="body2" fontWeight="700">
-                                        Vol: <b>{volumetricTotal.toFixed(2)}kg</b> | Act: <b>{weightTotal.toFixed(2)}kg</b> | 
-                                        <Box component="span" sx={{ color: 'primary.main', ml: 1 }}>
-                                            Billable: <b>{billableWeight.toFixed(2)}kg</b>
+                                    <Typography variant="caption" sx={{ color: TK.text2, fontWeight: 800, letterSpacing: '0.05em' }} display="block">
+                                        CALCULATED BILLABLE METRICS
+                                    </Typography>
+                                    <Typography variant="body2" sx={{ color: TK.text1, fontWeight: 700, mt: 0.5 }}>
+                                        Volumetric: <b>{volumetricTotal.toFixed(2)} kg</b> &nbsp;•&nbsp; Actual: <b>{weightTotal.toFixed(2)} kg</b> &nbsp;•&nbsp; 
+                                        <Box component="span" sx={{ color: TK.primary, ml: 1, fontWeight: 800 }}>
+                                            Billable Total: {billableWeight.toFixed(2)} kg
                                         </Box>
                                     </Typography>
                                 </Box>

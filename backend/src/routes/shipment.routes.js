@@ -7,6 +7,7 @@ const { check } = require('express-validator');
 const logger = require('../utils/logger');
 const authController = require('../controllers/auth.controller');
 const { authorize } = require('../middleware/authorize.middleware');
+const { requireIdempotency } = require('../middleware/idempotency.middleware');
 const { SHIPMENT_STATUSES } = require('../constants/statusConstants');
 
 // Validation middleware
@@ -28,16 +29,25 @@ router.use((req, res, next) => {
 // Public: Get basic shipment info
 router.get('/public/:trackingNumber', shipmentController.getPublicShipment);
 
-// Public: Update location
-router.patch(
-  '/public/:trackingNumber/location',
+// Public: Check Return Eligibility
+router.get(
+  '/public/:trackingNumber/return-eligibility',
   [
     param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
-    body('coordinates').isArray({ min: 2, max: 2 }).withMessage('Invalid coordinates'),
-    body('address').isString().notEmpty().withMessage('Address is required'),
     validate
   ],
-  shipmentController.updatePublicLocation
+  shipmentController.checkReturnEligibility
+);
+
+// Public: Create Self-Service Return Waybill
+router.post(
+  '/public/:trackingNumber/create-return',
+  [
+    param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
+    body('returnReason').isString().notEmpty().withMessage('Return reason is required'),
+    validate
+  ],
+  shipmentController.createPublicReturn
 );
 
 // Protect all routes after this middleware
@@ -58,8 +68,22 @@ router.get('/carriers', (req, res, next) => {
 // Get all shipments (Standard list)
 router.get('/', shipmentController.getAllShipments);
 
+// Package Templates (System + Organization Custom)
+router.get('/package-templates', shipmentBookingController.getPackageTemplates);
+router.post('/package-templates', shipmentBookingController.savePackageTemplate);
+
 // Get rate quotes
 router.post('/quote', shipmentBookingController.getQuotes);
+
+// Bulk Consignment Import (CSV / Excel)
+router.post('/bulk-import', authorize('CREATE_SHIPMENTS'), shipmentController.bulkImportShipments);
+
+// Carrier Dispatch & Handover Manifest
+router.post('/manifest', shipmentController.generateCarrierManifest);
+
+// Automated Carrier Cron Sync Trigger (Admin / Staff)
+router.post('/cron/sync-carriers', authorize('MANAGE_SHIPMENTS'), shipmentController.triggerCarrierSync);
+
 
 
 // Get shipments near a location
@@ -75,7 +99,7 @@ router.get(
 );
 
 // Create a new shipment
-router.post('/', shipmentController.createShipment);
+router.post('/', authorize('CREATE_SHIPMENTS'), shipmentController.createShipment);
 
 // Get shipment by tracking number
 router.get(
@@ -128,6 +152,9 @@ router.patch(
 
 // Update shipment status
 router.patch('/:trackingNumber/status', shipmentController.updateShipmentStatus);
+
+// Confirm Delivery with Proof of Delivery (POD)
+router.post('/:trackingNumber/deliver', shipmentController.confirmDeliveryWithPod);
 
 // Get shipment history
 router.get(
@@ -269,11 +296,23 @@ router.post(
 router.post(
   '/:trackingNumber/book',
   authorize('BOOK_CARRIERS'),
+  requireIdempotency,
   [
     param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
     validate
   ],
   shipmentBookingController.bookWithCarrier
+);
+
+// Generate or re-fetch Carrier AWB and Invoice from carrier
+router.post(
+  '/:trackingNumber/carrier-documents/generate',
+  authorize('BOOK_CARRIERS'),
+  [
+    param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
+    validate
+  ],
+  shipmentBookingController.generateCarrierDocuments
 );
 
 // Update a checkpoint
@@ -310,6 +349,27 @@ router.patch(
     validate
   ],
   shipmentController.updatePublicSettings
+);
+
+// Send payment link via WhatsApp (Chatwoot)
+router.post(
+  '/:trackingNumber/send-payment-link',
+  [
+    param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
+    body('recipientRole').optional().isIn(['sender', 'receiver']).withMessage('recipientRole must be sender or receiver'),
+    validate
+  ],
+  shipmentController.sendPaymentLink
+);
+
+// Get Audit Logs for shipment address modifications (Admin / Staff / Superadmin)
+router.get(
+  '/:trackingNumber/audit-logs',
+  [
+    param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
+    validate
+  ],
+  shipmentController.getShipmentAuditLogs
 );
 
 module.exports = router;

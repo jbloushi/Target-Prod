@@ -39,7 +39,7 @@ function normalizeShipment(data) {
             Number(item.unitValue) ||
             10,
 
-        currency: data.currency || item.currency || 'USD',
+        currency: item.currency || data.currency || 'USD',
         netWeight: Number(item.weight) || 0.1,
         hsCode: item.hsCode,
         countryOfOrigin: item.countryOfOrigin,
@@ -106,7 +106,7 @@ function normalizeShipment(data) {
 
         items,
         packages,
-        dangerousGoods: data.dangerousGoods,
+        dangerousGoods: data.dangerousGoods || data.origin?.dangerousGoods,
 
         gstPaid: data.gstPaid,
         payerOfVat: data.payerOfVat,

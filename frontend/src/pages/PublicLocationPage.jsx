@@ -182,11 +182,68 @@ const PublicLocationPage = () => {
         setAddressData(prev => ({ ...prev, [field]: value }));
     };
 
+    // OTP Verification State
+    const [otpStep, setOtpStep] = useState('initial'); // 'initial' | 'sent' | 'verified'
+    const [otpInput, setOtpInput] = useState('');
+    const [otpToken, setOtpToken] = useState(null);
+    const [sendingOtp, setSendingOtp] = useState(false);
+    const [verifyingOtp, setVerifyingOtp] = useState(false);
+    const [otpMessage, setOtpMessage] = useState('');
+    const [devOtpHint, setDevOtpHint] = useState('');
+
+    const handleSendOtp = async () => {
+        setSendingOtp(true);
+        setError(null);
+        try {
+            const response = await fetch(`${API_URL}/public/shipments/${trackingNumber}/location/send-otp`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            if (data.success) {
+                setOtpStep('sent');
+                setOtpMessage(data.message);
+                if (data.devOtp) setDevOtpHint(data.devOtp);
+            } else {
+                setError(data.error || 'Failed to send OTP');
+            }
+        } catch (err) {
+            setError('Failed to send WhatsApp verification code');
+        } finally {
+            setSendingOtp(false);
+        }
+    };
+
+    const handleVerifyOtp = async () => {
+        if (!otpInput || otpInput.length < 6) return;
+        setVerifyingOtp(true);
+        setError(null);
+        try {
+            const response = await fetch(`${API_URL}/public/shipments/${trackingNumber}/location/verify-otp`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ otp: otpInput })
+            });
+            const data = await response.json();
+            if (data.success) {
+                setOtpStep('verified');
+                setOtpToken(data.otpToken);
+                setUserMode('update');
+            } else {
+                setError(data.error || 'Invalid 6-digit OTP code');
+            }
+        } catch (err) {
+            setError('Failed to verify OTP code');
+        } finally {
+            setVerifyingOtp(false);
+        }
+    };
+
     const handleSubmit = async () => {
         if (!addressData) return;
         setUpdating(true);
         try {
-            const response = await fetch(`${API_URL}/shipments/public/${trackingNumber}/location`, {
+            const response = await fetch(`${API_URL}/public/shipments/${trackingNumber}/location`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -201,14 +258,15 @@ const PublicLocationPage = () => {
                     unitNumber: addressData.unitNumber,
                     buildingName: addressData.buildingName,
                     landmark: addressData.landmark,
-                    deliveryNotes: addressData.deliveryNotes
+                    deliveryNotes: addressData.deliveryNotes,
+                    otpToken
                 })
             });
             const data = await response.json();
             if (data.success) {
                 setSuccess(true);
             } else {
-                setError(data.error?.message || 'Failed to update location');
+                setError(data.error?.message || data.error || 'Failed to update location');
             }
         } catch (err) {
             setError('Failed to submit location update');
@@ -365,16 +423,52 @@ const PublicLocationPage = () => {
                         <TrackingTimeline history={shipment.history} currentStatus={shipment.status} />
                     </div>
 
-                    {userMode === 'view' && shipment.allowPublicLocationUpdate !== false && (
+                    {userMode === 'view' && (
                         <div style={{ textAlign: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '32px' }}>
                             <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>
-                                Are you at the delivery location now?
+                                Verify your registered receiver phone to pin exact GPS location.
                             </p>
-                            <Button variant="primary" onClick={() => setUserMode('update')} style={{ width: '100%' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                                    <MyLocationIcon /> Update Location
+                            
+                            {otpStep === 'initial' && (
+                                <Button variant="primary" onClick={handleSendOtp} disabled={sendingOtp} style={{ width: '100%' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                        <MyLocationIcon /> {sendingOtp ? 'Sending WhatsApp OTP...' : 'Send WhatsApp Verification OTP'}
+                                    </div>
+                                </Button>
+                            )}
+
+                            {otpStep === 'sent' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', background: 'var(--bg-secondary)', padding: '20px', borderRadius: '12px' }}>
+                                    <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                        {otpMessage || 'Enter the 6-digit OTP code sent to your WhatsApp:'}
+                                    </div>
+
+                                    {devOtpHint && (
+                                        <div style={{ fontSize: '12px', padding: '6px 12px', background: '#dcfce7', color: '#15803d', borderRadius: '6px', fontWeight: 700 }}>
+                                            [DEV HINT] Test OTP: {devOtpHint}
+                                        </div>
+                                    )}
+
+                                    <Input
+                                        placeholder="Enter 6-digit code (e.g. 123456)"
+                                        value={otpInput}
+                                        onChange={(e) => setOtpInput(e.target.value)}
+                                        style={{ textAlign: 'center', letterSpacing: '4px', fontSize: '18px', fontWeight: 'bold' }}
+                                    />
+
+                                    <Button variant="primary" onClick={handleVerifyOtp} disabled={verifyingOtp || otpInput.length < 6} style={{ width: '100%' }}>
+                                        {verifyingOtp ? 'Verifying OTP...' : 'Verify OTP & Unlock Map Pin'}
+                                    </Button>
                                 </div>
-                            </Button>
+                            )}
+
+                            {otpStep === 'verified' && (
+                                <Button variant="primary" onClick={() => setUserMode('update')} style={{ width: '100%', background: '#10b981', borderColor: '#10b981' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                        <MyLocationIcon /> OTP Verified - Pin Location Now
+                                    </div>
+                                </Button>
+                            )}
                         </div>
                     )}
                 </StatusSection>

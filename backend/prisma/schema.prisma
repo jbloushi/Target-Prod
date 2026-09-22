@@ -216,6 +216,25 @@ model Shipment {
   @@index([carrierCode, serviceCode], map: "Shipment_carrier_service_idx")
   @@index([createdAt], map: "Shipment_createdAt_idx")
   @@index([updatedAt], map: "Shipment_updatedAt_idx")
+  auditLogs        ShipmentAuditLog[]
+}
+
+model ShipmentAuditLog {
+  id             String   @id @default(uuid())
+  shipmentId     String
+  shipment       Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  trackingNumber String
+  actorType      String   // 'CLIENT', 'STAFF', 'ADMIN', 'RECEIVER_OTP'
+  actorId        String?
+  actorName      String?
+  action         String   // 'ADDRESS_UPDATE_REQUESTED', 'ADDRESS_UPDATED', 'LOCATION_PINNED'
+  fieldChanges   Json?
+  ipAddress      String?
+  createdAt      DateTime @default(now())
+
+  @@index([shipmentId, createdAt], map: "ShipmentAudit_shipment_created_idx")
+  @@index([trackingNumber], map: "ShipmentAudit_tracking_idx")
+  @@index([actorType, createdAt], map: "ShipmentAudit_actor_created_idx")
 }
 
 model Invoice {
@@ -324,7 +343,6 @@ model ShipmentNotificationLog {
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
-  @@unique([shipmentId, eventType, recipientRole, provider], map: "ShipmentNotification_unique_event")
   @@index([trackingNumber], map: "ShipmentNotification_tracking_idx")
   @@index([eventType, status, createdAt], map: "ShipmentNotification_event_status_created_idx")
   @@index([provider, status, createdAt], map: "ShipmentNotification_provider_status_created_idx")

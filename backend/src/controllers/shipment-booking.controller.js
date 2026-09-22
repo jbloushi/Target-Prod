@@ -62,8 +62,10 @@ exports.getQuotes = async (req, res) => {
 
         const { markup, policySource } = resolveEffectiveCarrierPolicy({ targetUser, carrierCode, availableCarrierCodes: carrierCodes });
 
-        const carrier = CarrierFactory.getAdapter(carrierCode);
-        const rawQuotes = await carrier.getRates({ ...req.body, carrierCode, serviceCode });
+        const isTest = req.body.isTest === true || req.body.environment === 'test';
+        const environment = isTest ? 'test' : (req.body.environment || 'production');
+        const carrier = CarrierFactory.getAdapter(carrierCode, { isTest, environment });
+        const rawQuotes = await carrier.getRates({ ...req.body, carrierCode, serviceCode, isTest, environment });
         const visibleQuotes = serviceCode
             ? rawQuotes.filter(quote => String(quote.serviceCode || '').toUpperCase() === String(serviceCode).toUpperCase())
             : rawQuotes;
@@ -214,7 +216,21 @@ exports.getBookingOptions = async (req, res) => {
             return res.status(403).json({ success: false, error: 'Permission denied' });
         }
 
-        const carrier = CarrierFactory.getAdapter(carrierCode);
+        if (carrierCode === 'MANUAL' || shipment.carrierCode === 'MANUAL') {
+            return res.status(200).json({
+                success: true,
+                data: {
+                    carrierCode: 'MANUAL',
+                    services: [{ serviceCode: null, serviceName: 'Manual Shipment' }],
+                    selectedServiceCode: null,
+                    optionalServices: []
+                }
+            });
+        }
+
+        const isTest = shipment.pricingSnapshot?.isTest === true || shipment.pricingSnapshot?.environment === 'test' || req.query.isTest === 'true';
+        const environment = isTest ? 'test' : (shipment.pricingSnapshot?.environment || 'production');
+        const carrier = CarrierFactory.getAdapter(carrierCode, { isTest, environment });
         const rawQuotes = await carrier.getRates({
             sender: shipment.origin,
             receiver: shipment.destination,
@@ -222,8 +238,10 @@ exports.getBookingOptions = async (req, res) => {
             items: shipment.items || [],
             serviceCode: shipment.serviceCode,
             currency: shipment.currency || 'KWD',
-            dangerousGoods: shipment.dangerousGoods,
-            carrierCode
+            dangerousGoods: shipment.dangerousGoods || shipment.origin?.dangerousGoods,
+            carrierCode,
+            isTest,
+            environment
         });
 
         if (!Array.isArray(rawQuotes) || rawQuotes.length === 0) {
@@ -267,8 +285,21 @@ exports.bookWithCarrier = async (req, res) => {
             return res.status(403).json({ success: false, error: 'Permission denied' });
         }
 
-        const result = await ShipmentBookingService.bookShipment(trackingNumber, carrierCode, optionalServiceCodes, req.user.role);
-        res.status(200).json({ success: true, data: result, message: `Shipment successfully booked` });
+        const isSync = req.query.async === 'false' || req.body?.async === false;
+
+        if (isSync) {
+            const result = await ShipmentBookingService.bookShipment(trackingNumber, carrierCode, optionalServiceCodes, req.user.role);
+            return res.status(200).json({ success: true, data: result, message: `Shipment successfully booked` });
+        }
+
+        // Asynchronous non-blocking dispatch returning HTTP 202 Accepted
+        const result = await ShipmentBookingService.bookShipmentAsync(trackingNumber, carrierCode, optionalServiceCodes, req.user.role);
+        return res.status(202).json({
+            success: true,
+            status: 'processing',
+            data: result,
+            message: result.message || 'Carrier booking initiated in background'
+        });
     } catch (error) {
         return handleControllerError(res, error, 'Carrier booking');
     }
@@ -336,9 +367,210 @@ exports.submitToDhl = async (req, res) => {
     try {
         const { trackingNumber } = req.params;
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
+        if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
+
+        if (!canAccessShipment(req, shipment)) {
+            return res.status(403).json({ success: false, error: 'Permission denied' });
+        }
+
+        const isAsync = req.query.async === 'true' || req.body?.async === true;
+        if (isAsync) {
+            const result = await ShipmentBookingService.bookShipmentAsync(trackingNumber, 'DGR', [], req.user?.role);
+            return res.status(202).json({
+                success: true,
+                status: 'processing',
+                data: result,
+                message: 'DHL booking initiated in background'
+            });
+        }
+
         const result = await ShipmentBookingService.bookShipment(trackingNumber);
         res.status(200).json({ success: true, data: result.shipment, message: 'Shipment booked successfully' });
     } catch (error) {
         return handleControllerError(res, error, 'DHL submission');
+    }
+};
+
+/**
+ * Get package templates (System presets + User Organization custom templates)
+ * @route GET /api/shipments/package-templates
+ */
+exports.getPackageTemplates = async (req, res) => {
+    try {
+        const { SYSTEM_PACKAGE_TEMPLATES } = require('../constants/packageTemplates');
+
+        let userCustomTemplates = [];
+        if (req.user?.organizationId) {
+            const org = await prisma.organization.findUnique({
+                where: { id: req.user.organizationId },
+                select: { markup: true }
+            });
+            if (org?.markup && Array.isArray(org.markup.packageTemplates)) {
+                userCustomTemplates = org.markup.packageTemplates;
+            }
+        } else if (req.user?.id) {
+            const u = await prisma.user.findUnique({
+                where: { id: req.user.id },
+                select: { agentPolicy: true }
+            });
+            if (u?.agentPolicy && Array.isArray(u.agentPolicy.packageTemplates)) {
+                userCustomTemplates = u.agentPolicy.packageTemplates;
+            }
+        }
+
+        res.status(200).json({
+            success: true,
+            data: {
+                systemTemplates: SYSTEM_PACKAGE_TEMPLATES,
+                customTemplates: userCustomTemplates
+            }
+        });
+    } catch (error) {
+        return handleControllerError(res, error, 'Get package templates');
+    }
+};
+
+/**
+ * Save custom package template for user's organization
+ * @route POST /api/shipments/package-templates
+ */
+exports.savePackageTemplate = async (req, res) => {
+    try {
+        const { name, length, width, height, weight, maxWeight, description } = req.body;
+
+        if (!name || !length || !width || !height) {
+            return res.status(400).json({ success: false, error: 'Name, length, width, and height are required.' });
+        }
+
+        const newTemplate = {
+            id: `tpl_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+            name: String(name).trim(),
+            category: 'Custom',
+            length: Number(length),
+            width: Number(width),
+            height: Number(height),
+            weight: Number(weight) || 1.0,
+            maxWeight: Number(maxWeight) || 10.0,
+            description: description ? String(description).trim() : '',
+            createdAt: new Date().toISOString()
+        };
+
+        if (req.user?.organizationId) {
+            const org = await prisma.organization.findUnique({
+                where: { id: req.user.organizationId }
+            });
+            const existingMarkup = (org?.markup && typeof org.markup === 'object') ? org.markup : {};
+            const existingTemplates = Array.isArray(existingMarkup.packageTemplates) ? existingMarkup.packageTemplates : [];
+
+            await prisma.organization.update({
+                where: { id: req.user.organizationId },
+                data: {
+                    markup: {
+                        ...existingMarkup,
+                        packageTemplates: [...existingTemplates, newTemplate]
+                    }
+                }
+            });
+        } else {
+            const u = await prisma.user.findUnique({ where: { id: req.user.id } });
+            const existingPolicy = (u?.agentPolicy && typeof u.agentPolicy === 'object') ? u.agentPolicy : {};
+            const existingTemplates = Array.isArray(existingPolicy.packageTemplates) ? existingPolicy.packageTemplates : [];
+
+            await prisma.user.update({
+                where: { id: req.user.id },
+                data: {
+                    agentPolicy: {
+                        ...existingPolicy,
+                        packageTemplates: [...existingTemplates, newTemplate]
+                    }
+                }
+            });
+        }
+
+        res.status(201).json({
+            success: true,
+            data: newTemplate,
+            message: 'Custom package template saved successfully'
+        });
+    } catch (error) {
+        return handleControllerError(res, error, 'Save package template');
+    }
+};
+
+/**
+ * Generate or re-fetch Carrier AWB and Invoice documents
+ */
+exports.generateCarrierDocuments = async (req, res) => {
+    try {
+        const { trackingNumber } = req.params;
+        const shipment = await prisma.shipment.findUnique({
+            where: { trackingNumber },
+            include: { organization: true, user: true }
+        });
+        if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
+        if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
+
+        const carrierCode = (shipment.carrierCode || shipment.carrier || '').toUpperCase();
+        if (!carrierCode || carrierCode === 'INTERNAL') {
+            return res.status(400).json({ success: false, error: 'Cannot generate carrier documents for an INTERNAL shipment. Convert to carrier first.' });
+        }
+
+        const existingDocs = Array.isArray(shipment.documents) ? shipment.documents : [];
+        const foundLabel = shipment.labelUrl || shipment.awbUrl || existingDocs.find(d => ['label', 'awb', 'waybilldoc'].includes(String(d?.type || '').toLowerCase()))?.url;
+        const foundInvoice = shipment.invoiceUrl || existingDocs.find(d => ['invoice', 'customs_invoice'].includes(String(d?.type || '').toLowerCase()))?.url;
+
+        // If documents already exist on shipment, return them
+        if (foundLabel && foundInvoice) {
+            return res.status(200).json({
+                success: true,
+                data: {
+                    labelUrl: foundLabel,
+                    awbUrl: shipment.awbUrl || foundLabel,
+                    invoiceUrl: foundInvoice,
+                    documents: existingDocs,
+                    carrierShipmentId: shipment.carrierShipmentId || shipment.dhlTrackingNumber
+                },
+                message: 'Carrier documents are already available'
+            });
+        }
+
+        // If already booked with carrier and has label, but carrier didn't provide separate customs invoice (e.g. domestic or OTE)
+        if ((shipment.carrierShipmentId || shipment.dhlTrackingNumber) && foundLabel) {
+            return res.status(200).json({
+                success: true,
+                data: {
+                    labelUrl: foundLabel,
+                    awbUrl: shipment.awbUrl || foundLabel,
+                    invoiceUrl: foundInvoice || null,
+                    documents: existingDocs,
+                    carrierShipmentId: shipment.carrierShipmentId || shipment.dhlTrackingNumber
+                },
+                message: 'Carrier documents are ready'
+            });
+        }
+
+        // Book / generate with carrier synchronously
+        const bookingResult = await ShipmentBookingService.bookShipment(
+            trackingNumber,
+            carrierCode,
+            [],
+            req.user?.role
+        );
+
+        const updated = await prisma.shipment.findUnique({ where: { trackingNumber } });
+        return res.status(200).json({
+            success: true,
+            data: {
+                labelUrl: updated.labelUrl,
+                awbUrl: updated.awbUrl || updated.labelUrl,
+                invoiceUrl: updated.invoiceUrl,
+                documents: updated.documents || [],
+                carrierShipmentId: updated.carrierShipmentId || updated.dhlTrackingNumber,
+                shipment: updated
+            },
+            message: 'Carrier AWB and Invoice successfully generated'
+        });
+    } catch (error) {
+        return handleControllerError(res, error, 'Generate carrier documents');
     }
 };

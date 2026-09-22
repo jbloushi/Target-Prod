@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Shipment Controller — Barrel Re-export
  *
  * The monolithic controller has been decomposed into focused sub-controllers.
@@ -29,6 +29,8 @@ module.exports = {
   deleteShipment: crud.deleteShipment,
   updateShipment: crud.updateShipment,
   getShipmentStats: crud.getShipmentStats,
+  getShipmentAuditLogs: crud.getShipmentAuditLogs,
+  bulkImportShipments: crud.bulkImportShipments,
 
   // Booking
   getQuotes: booking.getQuotes,
@@ -54,6 +56,8 @@ module.exports = {
   getPublicShipment: public_.getPublicShipment,
   updatePublicLocation: public_.updatePublicLocation,
   updatePublicSettings: public_.updatePublicSettings,
+  checkReturnEligibility: public_.checkReturnEligibility,
+  createPublicReturn: public_.createPublicReturn,
 
   // Ops
   updateShipmentStatus: ops.updateShipmentStatus,
@@ -61,4 +65,8 @@ module.exports = {
   pickupShipment: ops.pickupShipment,
   processWarehouseScan: ops.processWarehouseScan,
   serveDocument: ops.serveDocument,
+  sendPaymentLink: ops.sendPaymentLink,
+  generateCarrierManifest: ops.generateCarrierManifest,
+  confirmDeliveryWithPod: ops.confirmDeliveryWithPod,
+  triggerCarrierSync: ops.triggerCarrierSync,
 };

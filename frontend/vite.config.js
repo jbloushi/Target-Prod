@@ -11,12 +11,33 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    resolve: {
+      alias: [
+        {
+          find: /^@mui\/icons-material\/(.*)/,
+          replacement: '@mui/icons-material/esm/$1'
+        },
+        {
+          find: '@mui/icons-material',
+          replacement: '@mui/icons-material/esm'
+        }
+      ]
+    },
     envPrefix: ['VITE_', 'REACT_APP_'],
     define: {
       'process.env': JSON.stringify(processEnv)
     },
+    optimizeDeps: {
+      include: [
+        '@mui/material',
+        '@mui/icons-material',
+        '@emotion/react',
+        '@emotion/styled'
+      ]
+    },
     server: {
-      port: 3000,
+      port: 3030,
+      strictPort: true,
       // Add the allowedHosts property here
       allowedHosts: ['3pl.mawthook.io'], 
       proxy: {
@@ -31,16 +52,44 @@ export default defineConfig(({ mode }) => {
       chunkSizeWarningLimit: 550,
       rollupOptions: {
         output: {
-          manualChunks(id) {
-            if (!id.includes('node_modules')) return undefined;
-            if (id.includes('react-qr-scanner')) return 'scanner-vendor';
-            if (id.includes('jspdf')) return 'jspdf-vendor';
-            if (id.includes('html2canvas')) return 'canvas-vendor';
-            if (id.includes('qrcode')) return 'qrcode-vendor';
-            if (id.includes('@react-google-maps') || id.includes('mapbox-gl')) return 'maps-vendor';
-            if (id.includes('@mui') || id.includes('@emotion')) return 'mui-vendor';
-            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) return 'react-vendor';
-            return 'vendor';
+          codeSplitting: {
+            groups: [
+              {
+                name: 'react-core',
+                test: (id) => id.includes('preload') || id.includes('vite/') || /[\\/]node_modules[\\/](react|react-dom|scheduler|@babel\/runtime)[\\/]/.test(id),
+                priority: 40
+              },
+              {
+                name: 'maps-vendor',
+                test: /[\\/]node_modules[\\/](@react-google-maps|use-places-autocomplete|mapbox-gl)[\\/]/,
+                priority: 20
+              },
+              {
+                name: 'jspdf-vendor',
+                test: /[\\/]node_modules[\\/](jspdf|jspdf-autotable)[\\/]/,
+                priority: 20
+              },
+              {
+                name: 'scanner-vendor',
+                test: /[\\/]node_modules[\\/]react-qr-scanner[\\/]/,
+                priority: 20
+              },
+              {
+                name: 'canvas-vendor',
+                test: /[\\/]node_modules[\\/]html2canvas[\\/]/,
+                priority: 15
+              },
+              {
+                name: 'qrcode-vendor',
+                test: /[\\/]node_modules[\\/]qrcode[\\/]/,
+                priority: 15
+              },
+              {
+                name: 'mui-vendor',
+                test: /[\\/]node_modules[\\/](@mui|@emotion)[\\/]/,
+                priority: 10
+              }
+            ]
           }
         }
       }

@@ -63,6 +63,16 @@ exports.updateShipmentStatus = async (req, res) => {
     }
 };
 
+const escapeHtml = (unsafe) => {
+    if (unsafe == null) return '';
+    return String(unsafe)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
+
 exports.generateLabel = async (req, res) => {
     try {
         const { trackingNumber } = req.params;
@@ -70,15 +80,38 @@ exports.generateLabel = async (req, res) => {
         if (!shipment) return res.status(404).send('Shipment not found');
         if (!canAccessShipment(req, shipment)) return res.status(403).send('Permission denied');
 
-        const html = `<!DOCTYPE html><html><head><title>Label - ${trackingNumber}</title>
+        const origin = shipment.origin && typeof shipment.origin === 'object' ? shipment.origin : {};
+        const destination = shipment.destination && typeof shipment.destination === 'object' ? shipment.destination : {};
+        const safeTrackingNumber = escapeHtml(trackingNumber);
+        const safeOriginContact = escapeHtml(origin.contactPerson || '');
+        const safeOriginCompany = origin.company ? `${escapeHtml(origin.company)}<br>` : '';
+        const safeOriginAddress = escapeHtml(origin.formattedAddress || 'N/A');
+        const safeOriginCity = escapeHtml(origin.city || '');
+        const safeOriginCountry = escapeHtml(origin.countryCode || '');
+        const safeOriginPhone = escapeHtml(origin.phone || '');
+
+        const safeDestContact = escapeHtml(destination.contactPerson || '');
+        const safeDestCompany = destination.company ? `${escapeHtml(destination.company)}<br>` : '';
+        const safeDestAddress = escapeHtml(destination.formattedAddress || 'N/A');
+        const safeDestCity = escapeHtml(destination.city || '');
+        const safeDestCountry = escapeHtml(destination.countryCode || '');
+        const safeDestPhone = escapeHtml(destination.phone || '');
+
+        const safeStatus = escapeHtml((shipment.status || '').replace(/_/g, ' ').toUpperCase());
+        const safePieces = Array.isArray(shipment.items) ? shipment.items.length : 1;
+        const safeWeight = Array.isArray(shipment.items) ? shipment.items.reduce((acc, i) => acc + (Number(i.weight) || 0), 0) : 0;
+        const safeDate = escapeHtml(new Date(shipment.createdAt || Date.now()).toLocaleDateString());
+        const safeTrackUrl = escapeHtml(config.frontendUrl || 'https://targetlogistics.demo');
+
+        const html = `<!DOCTYPE html><html><head><title>Label - ${safeTrackingNumber}</title>
 <style>body{font-family:'Arial',sans-serif;background:#f5f5f5;display:flex;justify-content:center;padding:20px}.label-container{width:400px;height:600px;background:#fff;padding:20px;border:2px solid #000;position:relative}.header{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:20px}.logo{font-size:24px;font-weight:bold;color:#d32f2f}.tracking{font-size:14px;font-weight:bold}.barcode{margin:20px 0;text-align:center;border:1px dashed #ccc;padding:10px}.details{margin-bottom:20px}.section-title{font-size:12px;font-weight:bold;color:#666;text-transform:uppercase;margin-bottom:5px}.address-box{border:1px solid #000;padding:10px;margin-bottom:15px}.address-text{font-size:14px;line-height:1.4}.footer{position:absolute;bottom:20px;left:20px;right:20px;text-align:center;font-size:12px;color:#666}.print-btn{position:fixed;bottom:20px;right:20px;padding:10px 20px;background:#000;color:#fff;border:none;cursor:pointer;border-radius:5px}@media print{body{background:#fff;padding:0}.print-btn{display:none}.label-container{border:none;width:100%;height:100%}}</style></head>
 <body><div class="label-container">
-<div class="header"><div class="logo">TARGET LOGISTICS</div><div class="tracking">TN: ${trackingNumber}</div></div>
-<div class="details"><div class="section-title">From (Sender)</div><div class="address-box"><div class="address-text"><strong>${shipment.origin.contactPerson}</strong><br>${shipment.origin.company ? shipment.origin.company + '<br>' : ''}${shipment.origin.formattedAddress || 'N/A'}<br>${shipment.origin.city}, ${shipment.origin.countryCode}<br>Ph: ${shipment.origin.phone}</div></div>
-<div class="section-title">To (Receiver)</div><div class="address-box"><div class="address-text"><strong>${shipment.destination.contactPerson}</strong><br>${shipment.destination.company ? shipment.destination.company + '<br>' : ''}${shipment.destination.formattedAddress || 'N/A'}<br>${shipment.destination.city}, ${shipment.destination.countryCode}<br>Ph: ${shipment.destination.phone}</div></div></div>
-<div class="barcode"><h3>*${trackingNumber}*</h3><p>Scan for Details</p></div>
-<div class="details"><div class="section-title">Shipment Details</div><p><strong>Status:</strong> ${(shipment.status || '').replace(/_/g, ' ').toUpperCase()}</p><p><strong>Pieces:</strong> ${Array.isArray(shipment.items) ? shipment.items.length : 1} | <strong>Weight:</strong> ${Array.isArray(shipment.items) ? shipment.items.reduce((acc, i) => acc + (i.weight || 0), 0) : 0} kg</p><p><strong>Date:</strong> ${new Date(shipment.createdAt).toLocaleDateString()}</p></div>
-<div class="footer">Thank you for shipping with Target Logistics.<br>Track at: ${config.frontendUrl || 'https://targetlogistics.demo'}</div></div>
+<div class="header"><div class="logo">TARGET LOGISTICS</div><div class="tracking">TN: ${safeTrackingNumber}</div></div>
+<div class="details"><div class="section-title">From (Sender)</div><div class="address-box"><div class="address-text"><strong>${safeOriginContact}</strong><br>${safeOriginCompany}${safeOriginAddress}<br>${safeOriginCity}, ${safeOriginCountry}<br>Ph: ${safeOriginPhone}</div></div>
+<div class="section-title">To (Receiver)</div><div class="address-box"><div class="address-text"><strong>${safeDestContact}</strong><br>${safeDestCompany}${safeDestAddress}<br>${safeDestCity}, ${safeDestCountry}<br>Ph: ${safeDestPhone}</div></div></div>
+<div class="barcode"><h3>*${safeTrackingNumber}*</h3><p>Scan for Details</p></div>
+<div class="details"><div class="section-title">Shipment Details</div><p><strong>Status:</strong> ${safeStatus}</p><p><strong>Pieces:</strong> ${safePieces} | <strong>Weight:</strong> ${safeWeight} kg</p><p><strong>Date:</strong> ${safeDate}</p></div>
+<div class="footer">Thank you for shipping with Target Logistics.<br>Track at: ${safeTrackUrl}</div></div>
 <button class="print-btn" onclick="window.print()">Print Label</button></body></html>`;
 
         res.send(html);
@@ -168,19 +201,28 @@ exports.processWarehouseScan = async (req, res) => {
         if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
         if (!['admin', 'staff'].includes(user.role)) return res.status(403).json({ success: false, error: 'Only Staff or Admin can process warehouse scans.' });
 
-        const allowedStatuses = ['picked_up', 'booked', 'ready_for_pickup'];
+        const allowedStatuses = ['picked_up', 'booked', 'ready_for_pickup', 'received_at_hub', 'verified', 'in_transit'];
         if (!allowedStatuses.includes(shipment.status)) {
-            if (shipment.status === 'in_transit') return res.status(200).json({ success: true, message: 'Shipment already processed (In Transit)' });
-            return res.status(400).json({ success: false, error: `Shipment status is ${shipment.status}. Must be 'Picked Up' or 'Ready' to process inbound.` });
+            return res.status(400).json({ success: false, error: `Shipment status is ${shipment.status}. Must be in inbound/intake status to process.` });
         }
 
-        const updateData = { status: 'in_transit' };
+        const nextStatus = req.body.action === 'receive' ? 'received_at_hub' : (req.body.action === 'verify' ? 'verified' : 'in_transit');
+        const updateData = { status: nextStatus };
+
+        let discrepancyDetected = false;
+        let weightDifference = 0;
 
         if (weight || dimensions) {
-            const currentWeight = Array.isArray(shipment.items) ? shipment.items.reduce((acc, i) => acc + (i.weight || 0), 0) : 0;
+            const currentWeight = Array.isArray(shipment.parcels) && shipment.parcels.length > 0
+                ? shipment.parcels.reduce((acc, p) => acc + (Number(p.weight) || 0), 0)
+                : (Array.isArray(shipment.items) ? shipment.items.reduce((acc, i) => acc + (Number(i.weight) || 0), 0) : 0);
+            
             const newWeight = Number(weight);
 
             if (newWeight && Math.abs(currentWeight - newWeight) > 0.05) {
+                discrepancyDetected = true;
+                weightDifference = Number((newWeight - currentWeight).toFixed(3));
+
                 const parcels = Array.isArray(shipment.parcels) ? shipment.parcels : [];
                 const items = Array.isArray(shipment.items) ? shipment.items : [];
 
@@ -193,17 +235,21 @@ exports.processWarehouseScan = async (req, res) => {
                     items[0].weight = newWeight;
                     updateData.items = items;
                 }
-                logger.warn(`Warehouse Scan updated weight for ${trackingNumber} to ${newWeight}kg.`);
+                logger.warn(`Warehouse Scan updated weight for ${trackingNumber}: declared ${currentWeight}kg -> actual ${newWeight}kg (diff: ${weightDifference}kg)`);
             }
         }
 
         const history = Array.isArray(shipment.history) ? shipment.history : [];
+        const description = discrepancyDetected
+            ? `Hub intake verified by ${user.name}: Weight discrepancy of ${weightDifference > 0 ? '+' : ''}${weightDifference} kg recorded on certified scale.`
+            : `Processed at Warehouse Hub facility (${nextStatus}) by ${user.name}`;
+
         updateData.history = [
             ...history,
             { 
                 location: shipment.currentLocation, 
-                status: 'in_transit', 
-                description: `Processed at Warehouse Facility by ${user.name}`, 
+                status: nextStatus, 
+                description, 
                 timestamp: new Date() 
             }
         ];
@@ -213,8 +259,20 @@ exports.processWarehouseScan = async (req, res) => {
             data: updateData
         });
 
-        logger.info(`Shipment ${trackingNumber} processed at warehouse by ${user.name}`);
-        res.status(200).json({ success: true, data: updated, message: 'Shipment processed at warehouse' });
+        logger.info(`Shipment ${trackingNumber} processed at warehouse by ${user.name} -> ${nextStatus}`);
+        
+        const eventType = chatwootNotificationService.mapStatusToNotificationEvent(nextStatus, description);
+        if (eventType) {
+            chatwootNotificationService.triggerShipmentNotification(eventType, updated);
+        }
+
+        res.status(200).json({ 
+            success: true, 
+            data: updated, 
+            discrepancyDetected,
+            weightDifference,
+            message: `Shipment processed at warehouse as ${nextStatus}` 
+        });
     } catch (error) {
         logger.error('Error in processWarehouseScan:', error);
         res.status(500).json({ success: false, error: 'Failed to process warehouse scan' });
@@ -261,3 +319,262 @@ exports.serveDocument = async (req, res) => {
         res.status(500).json({ success: false, error: 'Failed to serve document' });
     }
 };
+
+exports.sendPaymentLink = async (req, res) => {
+    try {
+        const { trackingNumber } = req.params;
+        const { recipientRole = 'sender' } = req.body || {};
+
+        const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
+        if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
+        if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
+
+        let shipmentForSend = shipment;
+        if (recipientRole) {
+            shipmentForSend = {
+                ...shipment,
+                origin: recipientRole === 'sender' ? shipment.origin : { ...(shipment.origin || {}), phone: null },
+                destination: recipientRole === 'receiver' ? shipment.destination : { ...(shipment.destination || {}), phone: null }
+            };
+        }
+
+        chatwootNotificationService.triggerShipmentNotification('payment_link_ready', shipmentForSend, { force: true });
+
+        const baseUrl = config.publicTrackingBaseUrl || config.frontendUrl || 'http://localhost:3000';
+        const paymentLink = `${String(baseUrl).replace(/\/+$/, '')}/pay/${encodeURIComponent(trackingNumber)}`;
+
+        logger.info(`[PaymentLink] Dispatched payment link for ${trackingNumber} to ${recipientRole}`);
+        res.status(200).json({
+            success: true,
+            message: 'Payment link dispatched via WhatsApp successfully',
+            paymentLink
+        });
+    } catch (error) {
+        logger.error('Error sending payment link:', error);
+        res.status(500).json({ success: false, error: 'Failed to send payment link' });
+    }
+};
+
+/**
+ * Generate End-of-Day (EOD) Carrier Dispatch & Handover Manifest
+ */
+exports.generateCarrierManifest = async (req, res) => {
+    try {
+        const { carrier, status, shipmentIds, startDate, endDate, hub = 'Kuwait Central Sorting Facility' } = req.body || {};
+        
+        const whereClause = {};
+
+        // Scope to user's accessible organization if org role
+        if (req.user && req.user.role && req.user.role !== 'SUPERADMIN' && req.user.role !== 'ADMIN' && req.user.role !== 'DISPATCHER' && req.user.role !== 'ACCOUNTING') {
+            if (req.user.organizationId) {
+                whereClause.organizationId = req.user.organizationId;
+            }
+        }
+
+        if (carrier && carrier !== 'ALL') {
+            whereClause.carrierCode = { contains: carrier };
+        }
+
+        if (status) {
+            whereClause.status = status;
+        }
+
+        if (Array.isArray(shipmentIds) && shipmentIds.length > 0) {
+            whereClause.OR = [
+                { id: { in: shipmentIds } },
+                { trackingNumber: { in: shipmentIds } },
+                { dhlTrackingNumber: { in: shipmentIds } }
+            ];
+        }
+
+        if (startDate || endDate) {
+            whereClause.createdAt = {};
+            if (startDate) whereClause.createdAt.gte = new Date(startDate);
+            if (endDate) whereClause.createdAt.lte = new Date(endDate);
+        }
+
+        const shipments = await prisma.shipment.findMany({
+            where: whereClause,
+            include: {
+                organization: {
+                    select: { id: true, name: true }
+                }
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 250
+        });
+
+        let totalPieces = 0;
+        let totalActualWeight = 0;
+        let totalVolumetricWeight = 0;
+        let totalDeclaredValue = 0;
+
+        const manifestItems = shipments.map((s, idx) => {
+            const parcels = Array.isArray(s.parcels) ? s.parcels : [];
+            const pieces = parcels.length > 0 
+                ? parcels.reduce((sum, p) => sum + (Number(p.quantity) || 1), 0) 
+                : 1;
+            const actualWeight = parseFloat(s.actualWeight || 0);
+            const volumetricWeight = parseFloat(s.volumetricWeight || 0);
+            const declaredValue = parseFloat(s.declaredValue || 0);
+
+            totalPieces += pieces;
+            totalActualWeight += actualWeight;
+            totalVolumetricWeight += volumetricWeight;
+            totalDeclaredValue += declaredValue;
+
+            const origin = s.origin || {};
+            const destination = s.destination || {};
+
+            return {
+                seq: idx + 1,
+                id: s.id,
+                trackingNumber: s.trackingNumber,
+                carrierTrackingNumber: s.dhlTrackingNumber || s.carrierShipmentId || s.trackingNumber,
+                carrier: s.carrierCode || carrier || 'STANDARD',
+                serviceType: s.serviceCode || s.shipmentType || 'EXPRESS',
+                pieces,
+                actualWeight,
+                volumetricWeight,
+                chargeableWeight: s.chargeableWeight ? parseFloat(s.chargeableWeight) : Math.max(actualWeight, volumetricWeight),
+                declaredValue,
+                currency: s.currency || 'KWD',
+                senderName: origin.company || origin.contactPerson || origin.fullName || 'Shipper',
+                senderCity: origin.city || origin.country || 'Kuwait',
+                receiverName: destination.company || destination.contactPerson || destination.fullName || 'Consignee',
+                receiverCity: destination.city || destination.country || 'Destination',
+                destinationCountry: destination.country || destination.countryCode || 'KW',
+                status: s.status,
+                createdAt: s.createdAt
+            };
+        });
+
+        const now = new Date();
+        const manifestNumber = `MNF-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+        const manifestData = {
+            manifestNumber,
+            carrier: carrier || 'ALL',
+            hub,
+            dispatcherName: req.user?.name || 'Dispatcher',
+            generatedAt: now.toISOString(),
+            summary: {
+                totalShipments: shipments.length,
+                totalPieces,
+                totalActualWeight: Number(totalActualWeight.toFixed(3)),
+                totalVolumetricWeight: Number(totalVolumetricWeight.toFixed(3)),
+                totalBillableWeight: Number(Math.max(totalActualWeight, totalVolumetricWeight).toFixed(3)),
+                totalDeclaredValue: Number(totalDeclaredValue.toFixed(2))
+            },
+            items: manifestItems
+        };
+
+        res.status(200).json({ success: true, data: manifestData });
+    } catch (error) {
+        logger.error('Error generating carrier manifest:', error);
+        res.status(500).json({ success: false, error: 'Failed to generate carrier manifest' });
+    }
+};
+
+/**
+ * Confirm delivery with digital signature & Proof-of-Delivery (POD)
+ */
+exports.confirmDeliveryWithPod = async (req, res) => {
+    try {
+        const { trackingNumber } = req.params;
+        const {
+            recipientName,
+            recipientRelationship = 'Self',
+            signatureDataUrl,
+            photoUrl,
+            notes,
+            coordinates,
+            codCollected = 0
+        } = req.body || {};
+
+        const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
+        if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
+        if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
+
+        const history = Array.isArray(shipment.history) ? shipment.history : [];
+        const existingDocs = (shipment.documents && typeof shipment.documents === 'object') ? shipment.documents : {};
+
+        const podData = {
+            recipientName: recipientName || shipment.destination?.contactPerson || 'Recipient',
+            recipientRelationship,
+            signatureDataUrl: signatureDataUrl || null,
+            photoUrl: photoUrl || null,
+            deliveredAt: new Date().toISOString(),
+            driverId: req.user?.id || null,
+            driverName: req.user?.name || 'Driver',
+            notes: notes || 'Delivered to consignee with signature',
+            coordinates: coordinates || null,
+            codCollected: parseFloat(codCollected || 0)
+        };
+
+        const newHistoryEntry = {
+            location: shipment.currentLocation || shipment.destination,
+            status: 'DELIVERED',
+            description: `Delivered to ${podData.recipientName} (${podData.recipientRelationship}) by ${podData.driverName}`,
+            source: 'driver_pod',
+            timestamp: new Date(),
+            pod: podData
+        };
+
+        const updateData = {
+            status: 'DELIVERED',
+            history: [...history, newHistoryEntry],
+            documents: {
+                ...existingDocs,
+                pod: podData
+            }
+        };
+
+        if (podData.codCollected > 0 && shipment.codAmount) {
+            updateData.codStatus = 'COLLECTED';
+        }
+
+        const updated = await prisma.shipment.update({
+            where: { id: shipment.id },
+            data: updateData
+        });
+
+        logger.info(`[POD] Shipment ${trackingNumber} marked as DELIVERED with POD signature by ${req.user?.name || 'Driver'}`);
+        chatwootNotificationService.triggerShipmentNotification('delivered', updated);
+
+        res.status(200).json({
+            success: true,
+            data: updated,
+            message: 'Proof of Delivery recorded and shipment marked as DELIVERED successfully'
+        });
+    } catch (error) {
+        logger.error('Error recording proof of delivery:', error);
+        res.status(500).json({ success: false, error: 'Failed to record proof of delivery' });
+    }
+};
+
+/**
+ * Manual Admin/Staff trigger to execute carrier tracking synchronization batch
+ */
+exports.triggerCarrierSync = async (req, res) => {
+    try {
+        const carrierSyncCronService = require('../services/carrierSyncCron.service');
+        const { limit = 20, carrier } = req.body || {};
+
+        const result = await carrierSyncCronService.runSyncBatch({
+            limit: Number(limit) || 20,
+            carrier
+        });
+
+        res.status(200).json({
+            success: true,
+            data: result,
+            message: `Carrier synchronization batch completed: ${result.synced} checked, ${result.updated} updated.`
+        });
+    } catch (error) {
+        logger.error('Error triggering carrier sync:', error);
+        res.status(500).json({ success: false, error: 'Failed to trigger carrier sync batch' });
+    }
+};
+
+

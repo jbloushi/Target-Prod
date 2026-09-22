@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { GoogleMap, useJsApiLoader } from '@react-google-maps/api';
-import { Box, CircularProgress, Typography, Button, Alert } from '@mui/material';
+import { Box, CircularProgress, Typography, Button, Alert, TextField, Stack } from '@mui/material';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { getGoogleMapsApiKey } from '../utils/env';
 
 const libraries = ['places'];
@@ -12,12 +13,12 @@ const mapContainerStyle = {
     borderRadius: '8px'
 };
 
-const defaultCenter = { lat: 0, lng: 0 }; // Atlantic default
+const defaultCenter = { lat: 29.3759, lng: 47.9774 }; // Kuwait City / GCC regional default
 
 const LocationPicker = ({ initialLocation, fallbackLocation, onLocationChange }) => {
     const apiKey = getGoogleMapsApiKey();
 
-    const { isLoaded } = useJsApiLoader({
+    const { isLoaded, loadError } = useJsApiLoader({
         id: 'google-map-script',
         googleMapsApiKey: apiKey,
         libraries
@@ -30,11 +31,19 @@ const LocationPicker = ({ initialLocation, fallbackLocation, onLocationChange })
     // Determine initial center
     const getValidCoords = (loc) => {
         if (!loc) return null;
-        if (Array.isArray(loc.coordinates) && (loc.coordinates[0] !== 0 || loc.coordinates[1] !== 0)) {
-            return { lat: loc.coordinates[1], lng: loc.coordinates[0] };
+        if (Array.isArray(loc.coordinates) && loc.coordinates[0] != null && loc.coordinates[1] != null) {
+            const lng = Number(loc.coordinates[0]);
+            const lat = Number(loc.coordinates[1]);
+            if (Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0)) {
+                return { lat, lng };
+            }
         }
-        if (loc.latitude && loc.longitude && (loc.latitude !== 0 || loc.longitude !== 0)) {
-            return { lat: loc.latitude, lng: loc.longitude };
+        if (loc.latitude != null && loc.longitude != null) {
+            const lat = Number(loc.latitude);
+            const lng = Number(loc.longitude);
+            if (Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0)) {
+                return { lat, lng };
+            }
         }
         return null;
     };
@@ -171,15 +180,79 @@ const LocationPicker = ({ initialLocation, fallbackLocation, onLocationChange })
         };
     }, []);
 
-    if (!apiKey) {
+    if (!apiKey || loadError) {
         return (
-            <Alert severity="error" sx={{ m: 2 }}>
-                Google Maps API key not configured. Set VITE_GOOGLE_MAPS_API_KEY in your .env file.
-            </Alert>
+            <Box sx={{ mt: 2, p: 3, border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: 'background.paper', textAlign: 'center' }}>
+                <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+                    Interactive Map Preview Offline
+                </Typography>
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+                    The map interface is currently unavailable. You can specify coordinates manually or use your device location.
+                </Typography>
+
+                {locationError && (
+                    <Alert severity="warning" sx={{ mb: 2, py: 0.5 }}>{locationError}</Alert>
+                )}
+
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
+                    <TextField
+                        label="Latitude"
+                        size="small"
+                        type="number"
+                        inputProps={{ step: 'any' }}
+                        value={markerPosition.lat || ''}
+                        onChange={(e) => {
+                            const newPos = { ...markerPosition, lat: parseFloat(e.target.value) || 0 };
+                            setMarkerPosition(newPos);
+                            onLocationChange(newPos);
+                        }}
+                        fullWidth
+                    />
+                    <TextField
+                        label="Longitude"
+                        size="small"
+                        type="number"
+                        inputProps={{ step: 'any' }}
+                        value={markerPosition.lng || ''}
+                        onChange={(e) => {
+                            const newPos = { ...markerPosition, lng: parseFloat(e.target.value) || 0 };
+                            setMarkerPosition(newPos);
+                            onLocationChange(newPos);
+                        }}
+                        fullWidth
+                    />
+                </Stack>
+
+                <Stack direction="row" spacing={2} justifyContent="center" flexWrap="wrap">
+                    <Button
+                        size="small"
+                        variant="contained"
+                        color="primary"
+                        startIcon={gettingLocation ? <CircularProgress size={16} color="inherit" /> : <MyLocationIcon />}
+                        onClick={handleUseCurrentLocation}
+                        disabled={gettingLocation}
+                        sx={{ textTransform: 'none' }}
+                    >
+                        {gettingLocation ? 'Detecting Location...' : 'Use My Location'}
+                    </Button>
+
+                    {markerPosition.lat !== 0 && markerPosition.lng !== 0 && (
+                        <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<OpenInNewIcon />}
+                            href={`https://www.google.com/maps/search/?api=1&query=${markerPosition.lat},${markerPosition.lng}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            sx={{ textTransform: 'none' }}
+                        >
+                            Open External Map
+                        </Button>
+                    )}
+                </Stack>
+            </Box>
         );
     }
-
-    if (!isLoaded) return <CircularProgress />;
 
     return (
         <Box sx={{ mt: 2, border: '1px solid #ccc', borderRadius: 2, overflow: 'hidden' }}>

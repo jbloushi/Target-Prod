@@ -3,12 +3,14 @@ import styled from 'styled-components';
 import { useSnackbar } from 'notistack';
 import { userService, organizationService, shipmentService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
+import { TK } from '../tokens/kineticHorizon';
 import {
     PageHeader,
     Card,
     Button,
-    Input,
-    Select,
+    WInput,
+    WSelect,
     Modal,
     TableWrapper,
     Table,
@@ -24,16 +26,17 @@ import {
 } from '../ui';
 import { getRoleLabel } from '../utils/roleLabels';
 
-// --- Styled Components ---
+// --- Styled Components with Kinetic Horizon Tokens ---
 
 const FilterBar = styled.div`
     display: flex;
     gap: 16px;
     align-items: center;
-    background: var(--bg-secondary);
-    padding: 16px;
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
+    background: #ffffff;
+    padding: 16px 20px;
+    border: 1px solid ${TK.border};
+    border-radius: 20px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.05);
     margin-bottom: 24px;
     flex-wrap: wrap;
 `;
@@ -42,10 +45,14 @@ const ActionButton = styled.button`
     background: transparent;
     border: none;
     cursor: pointer;
-    color: ${props => props.$color || 'var(--text-secondary)'};
-    padding: 4px;
-    transition: all 0.2s;
-    &:hover { color: var(--text-primary); transform: scale(1.1); }
+    color: ${props => props.$color || TK.text2};
+    padding: 6px;
+    border-radius: 8px;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    &:hover { background: #f3f4f6; color: ${TK.text1}; }
 `;
 
 const CARRIER_SERVICE_OPTIONS = {

@@ -148,6 +148,32 @@ async function createInvoiceFromPeriod({ organizationId, periodStart, periodEnd,
     const vat = subtotal.times(normalizeAmount(vatRate).div(100));
     const total = subtotal.plus(vat);
 
+    // Snapshot active exchange rates to guarantee invoice rate immutability
+    let exchangeRateSnapshot = null;
+    try {
+        const currencyRateService = require('./currencyRate.service');
+        const rateData = await currencyRateService.getRates();
+        exchangeRateSnapshot = {
+            baseCurrency: 'KWD',
+            invoiceCurrency,
+            rateToKWD: rateData?.rates?.[invoiceCurrency] || 1.0,
+            capturedAt: new Date().toISOString(),
+            rates: rateData?.rates || {}
+        };
+    } catch (rateErr) {
+        // Fallback gracefully
+        exchangeRateSnapshot = {
+            baseCurrency: 'KWD',
+            invoiceCurrency,
+            rateToKWD: 1.0,
+            capturedAt: new Date().toISOString()
+        };
+    }
+
+    const finalNotes = notes
+        ? `${notes}\n\n[EXCHANGE_RATE_SNAPSHOT: ${JSON.stringify(exchangeRateSnapshot)}]`
+        : `[EXCHANGE_RATE_SNAPSHOT: ${JSON.stringify(exchangeRateSnapshot)}]`;
+
     return prisma.invoice.create({
         data: {
             organizationId: organizationId || null,
@@ -160,7 +186,7 @@ async function createInvoiceFromPeriod({ organizationId, periodStart, periodEnd,
             currency: invoiceCurrency,
             status: 'draft',
             dueDate: dueDate ? new Date(dueDate) : null,
-            notes: notes || null,
+            notes: finalNotes,
             createdById: createdBy || null,
             lines: { create: lineItems }
         },

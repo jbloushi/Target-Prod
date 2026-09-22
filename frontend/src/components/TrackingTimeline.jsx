@@ -2,37 +2,135 @@ import React from 'react';
 import {
     Box, Tooltip, Typography
 } from '@mui/material';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import LocalShippingIcon from '@mui/icons-material/LocalShipping';
-import InventoryIcon from '@mui/icons-material/Inventory';
-import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff';
-import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import { dedupeTrackingEvents } from '../utils/dedupeTrackingEvents';
 import LocationLabel from './LocationLabel';
 import { getEventDisplayMessage } from '../utils/shipmentDisplay';
+import { TK } from '../tokens/kineticHorizon';
+import { useLanguage } from '../context/LanguageContext';
 
 /**
- * DGR-Style Tracking Timeline Component
- * 
- * Displays shipment history as a vertical timeline with:
- * - Date grouping
- * - Status icons
- * - Location and description
- * - Color-coded status indicators
+ * TrackingProgress - Kinetic Horizon 5-Node Connected Stepper
  */
+export const TrackingProgress = ({ status = 'in_transit' }) => {
+    const { t, lang } = useLanguage();
+    const steps = [
+        { key: 'created', label: lang === 'ar' ? 'تم إنشاء\nالطلب' : 'Order\nCreated', icon: 'add_circle' },
+        { key: 'picked_up', label: lang === 'ar' ? 'تم الاستلام\nمن الراسل' : 'Picked\nUp', icon: 'inventory' },
+        { key: 'in_transit', label: lang === 'ar' ? 'قيد الشحن\nوالنقل الدولي' : 'In\nTransit', icon: 'flight' },
+        { key: 'out_for_delivery', label: lang === 'ar' ? 'مع المندوب\nللتسليم' : 'Out for\nDelivery', icon: 'local_shipping' },
+        { key: 'delivered', label: lang === 'ar' ? 'تم التسليم\nبنجاح' : 'Delivered', icon: 'check_circle' },
+    ];
+
+    const normalized = String(status || '').toLowerCase();
+    const idx = normalized === 'delivered' || normalized === 'completed'
+        ? 4
+        : normalized === 'out_for_delivery'
+            ? 3
+            : normalized === 'in_transit'
+                ? 2
+                : normalized === 'picked_up'
+                    ? 1
+                    : 0;
+
+    return (
+        <Box sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            py: 2.5,
+            px: { xs: 1, sm: 3 },
+            mb: 4,
+            borderRadius: '18px',
+            bgcolor: '#ffffff',
+            border: `1px solid ${TK.border}`,
+            boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+            overflowX: 'auto'
+        }}>
+            {steps.map((s, i) => {
+                const done = i <= idx;
+                const current = i === idx;
+                const isLast = i === steps.length - 1;
+
+                return (
+                    <React.Fragment key={s.key}>
+                        <Box sx={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: 1,
+                            flex: '0 0 auto',
+                            minWidth: { xs: 55, sm: 70 }
+                        }}>
+                            <Box sx={{
+                                width: current ? 40 : 34,
+                                height: current ? 40 : 34,
+                                borderRadius: '50%',
+                                border: `2.5px solid ${done ? (current ? TK.primary : TK.success) : TK.border}`,
+                                bgcolor: done ? (current ? TK.primary : TK.success) : '#ffffff',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: done ? '#ffffff' : TK.text3,
+                                transition: 'all 0.3s ease',
+                                boxShadow: current ? `0 0 0 5px ${TK.primary}22` : 'none',
+                            }}>
+                                <span className="material-symbols-outlined" style={{ fontSize: current ? 20 : 17 }}>
+                                    {s.icon}
+                                </span>
+                            </Box>
+                            <Typography sx={{
+                                fontSize: { xs: '10px', sm: '11px' },
+                                fontWeight: current ? 800 : 600,
+                                color: current ? TK.primary : done ? TK.success : TK.text3,
+                                textAlign: 'center',
+                                whiteSpace: 'pre-line',
+                                lineHeight: 1.25,
+                            }}>
+                                {s.label}
+                            </Typography>
+                        </Box>
+
+                        {!isLast && (
+                            <Box sx={{
+                                flex: 1,
+                                height: 3,
+                                mx: { xs: 0.5, sm: 1 },
+                                mb: 2.5,
+                                bgcolor: i < idx ? TK.success : TK.border,
+                                borderRadius: 99,
+                                transition: 'background 0.3s',
+                                position: 'relative',
+                                minWidth: 15
+                            }}>
+                                {i === idx - 1 && (
+                                    <Box sx={{
+                                        position: 'absolute',
+                                        inset: 0,
+                                        background: `linear-gradient(90deg, ${TK.success}, ${TK.primary})`,
+                                        borderRadius: 99
+                                    }} />
+                                )}
+                            </Box>
+                        )}
+                    </React.Fragment>
+                );
+            })}
+        </Box>
+    );
+};
 
 const statusConfig = {
-    'created': { icon: InventoryIcon, color: '#0b5bd3', label: 'Created' },
-    'pickup_scheduled': { icon: AccessTimeIcon, color: '#00d9b8', label: 'Pickup Scheduled' },
-    'ready_for_pickup': { icon: InventoryIcon, color: '#00d9b8', label: 'Ready for Pickup' },
-    'picked_up': { icon: LocalShippingIcon, color: '#00d9b8', label: 'Picked Up' },
-    'in_transit': { icon: FlightTakeoffIcon, color: '#00d9b8', label: 'In Transit' },
-    'out_for_delivery': { icon: LocalShippingIcon, color: '#00d9b8', label: 'Out for Delivery' },
-    'delivered': { icon: CheckCircleIcon, color: '#00d9b8', label: 'Delivered' },
-    'exception': { icon: AccessTimeIcon, color: '#00d9b8', label: 'Exception' },
-    'pending': { icon: AccessTimeIcon, color: '#00d9b8', label: 'Pending' },
-    'updated': { icon: AccessTimeIcon, color: '#00d9b8', label: 'Updated (Review)' },
-    'default': { icon: AccessTimeIcon, color: '#0b5bd3', label: 'Update' }
+    'created': { icon: 'inventory_2', color: '#0050d4', label: 'Created' },
+    'pickup_scheduled': { icon: 'schedule', color: '#0284c7', label: 'Pickup Scheduled' },
+    'ready_for_pickup': { icon: 'inventory', color: '#0284c7', label: 'Ready for Pickup' },
+    'picked_up': { icon: 'local_shipping', color: '#0284c7', label: 'Picked Up' },
+    'in_transit': { icon: 'flight', color: '#0050d4', label: 'In Transit' },
+    'out_for_delivery': { icon: 'local_shipping', color: '#059669', label: 'Out for Delivery' },
+    'delivered': { icon: 'check_circle', color: '#059669', label: 'Delivered' },
+    'exception': { icon: 'warning', color: '#dc2626', label: 'Exception' },
+    'pending': { icon: 'schedule', color: '#b45309', label: 'Pending' },
+    'updated': { icon: 'update', color: '#0050d4', label: 'Updated (Review)' },
+    'default': { icon: 'update', color: '#0050d4', label: 'Update' }
 };
 
 const getStatusConfig = (status) => {
@@ -49,6 +147,9 @@ const toDisplayTimestamp = (eventOrTimestamp) => {
 
 const formatDate = (eventOrTimestamp) => {
     const timestamp = toDisplayTimestamp(eventOrTimestamp);
+    if (!timestamp) {
+        return { date: 'N/A', time: 'N/A', shortDate: 'N/A' };
+    }
     const localMatch = String(timestamp || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
     if (localMatch) {
         const [, year, month, day, hour, minute] = localMatch;
@@ -57,16 +158,16 @@ const formatDate = (eventOrTimestamp) => {
         const hour12 = hourNumber % 12 || 12;
         const suffix = hourNumber >= 12 ? 'PM' : 'AM';
         return {
-            date: date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }),
-            time: `${String(hour12).padStart(2, '0')}:${minute} ${suffix}`,
-            shortDate: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+            date: date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Kuwait' }),
+            time: `${String(hour12).padStart(2, '0')}:${minute} ${suffix} (AST)`,
+            shortDate: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Kuwait' })
         };
     }
     const date = new Date(timestamp);
     return {
-        date: date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
-        time: date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-        shortDate: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        date: date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Kuwait' }),
+        time: date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kuwait' }) + ' AST',
+        shortDate: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Kuwait' })
     };
 };
 
@@ -106,7 +207,6 @@ const formatLocation = (location) => {
     );
 };
 
-// Group events by date
 const groupEventsByDate = (events) => {
     const groups = {};
     events?.forEach(event => {
@@ -126,8 +226,8 @@ const timelineDedupKey = (event) => {
     return `${desc}|${loc}`;
 };
 
-const TrackingTimeline = ({ history = [], currentStatus }) => {
-    // Collapse adjacent duplicate carrier checkpoints, then sort newest first
+const TrackingTimeline = ({ history = [], currentStatus = 'in_transit' }) => {
+    const { t, lang } = useLanguage();
     const dedupedHistory = dedupeTrackingEvents(history, timelineDedupKey);
     const sortedHistory = [...dedupedHistory].sort((a, b) =>
         new Date(b.timestamp) - new Date(a.timestamp)
@@ -136,167 +236,185 @@ const TrackingTimeline = ({ history = [], currentStatus }) => {
     const groupedEvents = groupEventsByDate(sortedHistory);
     const dateKeys = Object.keys(groupedEvents);
 
-    if (!history || history.length === 0) {
-        return (
-            <Box sx={{
-                p: 4,
-                borderRadius: '16px',
-                background: 'var(--surface-container-low, #ecf1f6)',
-                border: '1px dashed var(--border-color, #d9dee4)',
-                textAlign: 'center'
-            }}>
-                <Typography sx={{ color: 'var(--on-surface-variant, #575c60)', fontSize: '14px' }}>
-                    No tracking events recorded yet. Check back soon for updates.
-                </Typography>
-            </Box>
-        );
-    }
-
     return (
         <Box sx={{ p: 1 }}>
-            {dateKeys.map((dateKey, dateIndex) => {
-                const events = groupedEvents[dateKey];
-                const isLatestDate = dateIndex === 0;
+            {/* Visual 5-Node Kinetic Horizon Progress Bar */}
+            <TrackingProgress status={currentStatus} />
 
-                return (
-                    <Box key={dateKey} sx={{ mb: 4 }}>
-                        {/* Date Header */}
-                        <Typography
-                            variant="subtitle2"
-                            fontWeight="800"
-                            sx={{
-                                color: isLatestDate ? '#0b5bd3' : 'var(--on-surface-variant, #575c60)',
-                                mb: 3,
-                                textTransform: 'uppercase',
-                                letterSpacing: '1px',
-                                fontSize: '12px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 2
-                            }}
-                        >
-                            {dateKey}
-                            <Box sx={{ flex: 1, height: '1px', background: 'var(--border-color, #d9dee4)' }} />
-                        </Typography>
+            {(!history || history.length === 0) ? (
+                <Box sx={{
+                    p: 4,
+                    borderRadius: '16px',
+                    background: '#f8fafc',
+                    border: `1px dashed ${TK.border}`,
+                    textAlign: 'center'
+                }}>
+                    <Typography sx={{ color: TK.text2, fontSize: '14px' }}>
+                        {lang === 'ar' ? 'لا توجد محطات تتبع مسجلة حتى الآن. سيتم التحديث تلقائياً فور تحرك الشحنة.' : 'No tracking checkpoint events recorded yet. Check back soon for telemetry updates.'}
+                    </Typography>
+                </Box>
+            ) : (
+                dateKeys.map((dateKey, dateIndex) => {
+                    const events = groupedEvents[dateKey];
+                    const isLatestDate = dateIndex === 0;
 
-                        {/* Events for this date */}
-                        <Box sx={{ position: 'relative', pl: 4 }}>
-                            {/* Vertical Timeline Line */}
-                            <Box
+                    return (
+                        <Box key={dateKey} sx={{ mb: 4 }}>
+                            {/* Date Header */}
+                            <Typography
+                                variant="subtitle2"
+                                fontWeight="800"
                                 sx={{
-                                    position: 'absolute',
-                                    left: 12,
-                                    top: 0,
-                                    bottom: -20,
-                                    width: 1,
-                                    background: 'var(--border-color, #d9dee4)',
-                                    zIndex: 0
+                                    color: isLatestDate ? TK.primary : TK.text2,
+                                    mb: 3,
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '1px',
+                                    fontSize: '12px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 2
                                 }}
-                            />
+                            >
+                                {dateKey}
+                                <Box sx={{ flex: 1, height: '1px', background: TK.border }} />
+                            </Typography>
 
-                            {events.map((event, eventIndex) => {
-                                const statusStr = typeof event.status === 'object' ? (event.status?.status || event.status?.name || 'Update') : event.status;
-                                const config = getStatusConfig(statusStr);
-                                const { time } = formatDate(event);
-                                const previousTime = eventIndex > 0 ? formatDate(events[eventIndex - 1]).time : null;
-                                const showTime = eventIndex === 0 || previousTime !== time;
-                                const startsTimeGroup = showTime && eventIndex > 0;
-                                const isFirst = dateIndex === 0 && eventIndex === 0;
-                                const source = event.source === 'carrier' ? 'Global Network' : 'Logistics Center';
-                                const displayMessage = getEventDisplayMessage(event, statusStr || config.label);
+                            {/* Events for this date */}
+                            <Box sx={{ position: 'relative', pl: 4, '[dir="rtl"] &': { pl: 0, pr: 4 } }}>
+                                {/* Vertical Timeline Line */}
+                                <Box
+                                    sx={{
+                                        position: 'absolute',
+                                        left: 16,
+                                        transform: 'translateX(-50%)',
+                                        '[dir="rtl"] &': {
+                                            left: 'auto',
+                                            right: 16,
+                                            transform: 'translateX(50%)'
+                                        },
+                                        top: 0,
+                                        bottom: -20,
+                                        width: '2px',
+                                        background: TK.border,
+                                        zIndex: 0
+                                    }}
+                                />
 
-                                return (
-                                    <Box
-                                        key={eventIndex}
-                                        sx={{
-                                            position: 'relative',
-                                            mt: startsTimeGroup ? 2 : 0,
-                                            pt: startsTimeGroup ? 2 : 0,
-                                            pb: 4,
-                                            borderTop: startsTimeGroup ? '1px solid var(--border-color, #d9dee4)' : 'none',
-                                            '&:last-child': { pb: 0 }
-                                        }}
-                                    >
-                                        {/* Timeline Dot/Icon */}
+                                {events.map((event, eventIndex) => {
+                                    const statusStr = typeof event.status === 'object' ? (event.status?.status || event.status?.name || 'Update') : event.status;
+                                    const config = getStatusConfig(statusStr);
+                                    const { time } = formatDate(event);
+                                    const previousTime = eventIndex > 0 ? formatDate(events[eventIndex - 1]).time : null;
+                                    const showTime = eventIndex === 0 || previousTime !== time;
+                                    const startsTimeGroup = showTime && eventIndex > 0;
+                                    const isFirst = dateIndex === 0 && eventIndex === 0;
+                                    const source = event.source === 'carrier' 
+                                        ? (lang === 'ar' ? 'شبكة النقل الدولية' : 'Global Network') 
+                                        : (lang === 'ar' ? 'مركز العمليات اللوجستية' : 'Logistics Center');
+                                    const displayMessage = getEventDisplayMessage(event, statusStr || config.label);
+
+                                    return (
                                         <Box
+                                            key={eventIndex}
                                             sx={{
-                                                position: 'absolute',
-                                                left: -32,
-                                                top: 0,
-                                                width: 10,
-                                                height: 10,
-                                                borderRadius: '50%',
-                                                bgcolor: '#0b5bd3',
-                                                border: '2px solid var(--surface-container-lowest, #ffffff)',
-                                                zIndex: 1,
-                                                boxShadow: 'none',
-                                                transition: 'all 0.3s ease'
+                                                position: 'relative',
+                                                mt: startsTimeGroup ? 2 : 0,
+                                                pt: startsTimeGroup ? 2 : 0,
+                                                mb: 3
                                             }}
-                                        />
+                                        >
+                                            {/* Node icon */}
+                                            <Box
+                                                sx={{
+                                                    position: 'absolute',
+                                                    left: -32,
+                                                    '[dir="rtl"] &': {
+                                                        left: 'auto',
+                                                        right: -32
+                                                    },
+                                                    width: 28,
+                                                    height: 28,
+                                                    borderRadius: '50%',
+                                                    bgcolor: isFirst ? TK.primary : '#ffffff',
+                                                    border: `2px solid ${isFirst ? TK.primary : TK.border}`,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    color: isFirst ? '#ffffff' : TK.text2,
+                                                    boxShadow: isFirst ? `0 0 0 4px ${TK.primary}20` : 'none',
+                                                    zIndex: 1
+                                                }}
+                                            >
+                                                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
+                                                    {config.icon}
+                                                </span>
+                                            </Box>
 
-                                        {/* Event Content */}
-                                        <Box display="flex" justifyContent="space-between" alignItems="flex-start" sx={{ ml: 1 }}>
-                                            <Box>
-                                                <Typography
-                                                    variant="body2"
-                                                    fontWeight={isFirst ? 700 : 500}
-                                                    sx={{
-                                                        color: 'var(--on-surface, #2a2f32)',
-                                                        fontSize: '14px'
-                                                    }}
-                                                >
-                                                    {displayMessage}
-                                                </Typography>
-
-                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 0.5 }}>
-                                                    <LocationLabel
-                                                        location={event.location}
-                                                        style={{ color: 'var(--on-surface-variant, #575c60)', fontSize: 12 }}
-                                                    />
-                                                    <Box sx={{ width: 4, height: 4, borderRadius: '50%', bgcolor: 'var(--border-color, #d9dee4)' }} />
-                                                    <Typography variant="caption" sx={{ color: isFirst ? '#0b5bd3' : 'var(--on-surface-variant, #575c60)', fontWeight: 600 }}>
-                                                        {source}
+                                            <Box sx={{
+                                                bgcolor: '#ffffff',
+                                                p: 2,
+                                                borderRadius: '14px',
+                                                border: `1px solid ${TK.border}`,
+                                                boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                                            }}>
+                                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', mb: 0.5 }}>
+                                                    <Typography sx={{ fontWeight: 800, fontSize: 13, color: TK.text1 }}>
+                                                        {displayMessage}
+                                                    </Typography>
+                                                    <Typography sx={{ fontSize: 11.5, color: TK.text3, fontWeight: 600 }}>
+                                                        {time}
                                                     </Typography>
                                                 </Box>
-                                            </Box>
-                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, ml: 2, whiteSpace: 'nowrap' }}>
-                                                {event.occurrences > 1 && (
-                                                    <Tooltip title={`Repeated ${event.occurrences} times - first at ${formatDate(event.firstTimestamp).time}`}>
-                                                        <Box
-                                                            component="span"
-                                                            sx={{
-                                                                fontSize: '10px',
-                                                                fontWeight: 700,
-                                                                px: 0.75,
-                                                                py: '2px',
-                                                                borderRadius: '999px',
-                                                                bgcolor: 'rgba(11,91,211,0.12)',
-                                                                color: '#0b5bd3',
-                                                                lineHeight: 1.4,
-                                                            }}
-                                                        >
-                                                            x{event.occurrences}
-                                                        </Box>
-                                                    </Tooltip>
+
+                                                {event.location && (
+                                                    <Typography sx={{ fontSize: 12, color: TK.text2, mt: 0.5 }}>
+                                                        <LocationLabel location={event.location} />
+                                                    </Typography>
                                                 )}
-                                                <Typography
-                                                    variant="caption"
-                                                    sx={{
-                                                        color: isFirst ? 'var(--on-surface, #2a2f32)' : 'var(--on-surface-variant, #575c60)',
-                                                        fontWeight: isFirst ? 700 : 500
-                                                    }}
-                                                >
-                                                    {showTime ? time : ''}
+
+                                                {event.pod && (
+                                                    <Box sx={{
+                                                        mt: 1.5,
+                                                        p: 1.5,
+                                                        bgcolor: '#f0fdf4',
+                                                        border: '1px solid #bbf7d0',
+                                                        borderRadius: '10px'
+                                                    }}>
+                                                        <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#166534', mb: 0.5 }}>
+                                                            {lang === 'ar' ? '✓ تم تسجيل إثبات التسليم (POD)' : '✓ Proof of Delivery Recorded'}
+                                                        </Typography>
+                                                        <Typography sx={{ fontSize: 11.5, color: '#15803d' }}>
+                                                            {lang === 'ar' ? 'المستلم:' : 'Received by:'} <strong>{event.pod.recipientName}</strong> ({event.pod.recipientRelationship || (lang === 'ar' ? 'المستلم شخصياً' : 'Self')})
+                                                        </Typography>
+                                                        {event.pod.driverName && (
+                                                            <Typography sx={{ fontSize: 11, color: '#15803d' }}>
+                                                                {lang === 'ar' ? 'بواسطة المندوب:' : 'Delivered by:'} {event.pod.driverName}
+                                                            </Typography>
+                                                        )}
+                                                        {event.pod.signatureDataUrl && (
+                                                            <Box sx={{ mt: 1, bgcolor: '#ffffff', p: 0.5, borderRadius: '6px', border: '1px solid #dcfce7', display: 'inline-block' }}>
+                                                                <img
+                                                                    src={event.pod.signatureDataUrl}
+                                                                    alt="Recipient Signature"
+                                                                    style={{ height: '40px', maxWidth: '140px', objectFit: 'contain', display: 'block' }}
+                                                                />
+                                                            </Box>
+                                                        )}
+                                                    </Box>
+                                                )}
+
+                                                <Typography sx={{ fontSize: 10.5, color: TK.text3, mt: 0.75, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                                    {lang === 'ar' ? 'المصدر:' : 'Source:'} {source}
                                                 </Typography>
                                             </Box>
                                         </Box>
-                                    </Box>
-                                );
-                            })}
+                                    );
+                                })}
+                            </Box>
                         </Box>
-                    </Box>
-                );
-            })}
+                    );
+                })
+            )}
         </Box>
     );
 };

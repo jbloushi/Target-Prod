@@ -47,7 +47,7 @@ const ShipmentMapAll = ({ shipments }) => {
         map.current = new mapboxgl.Map({
           container: mapContainer.current,
           style: 'mapbox://styles/mapbox/streets-v11',
-          center: [-98.5795, 39.8283], // Center of US as default
+          center: [47.9774, 29.3759], // Kuwait City / GCC regional center default
           zoom: 3,
           attributionControl: false // Hide attribution for cleaner look
         });
@@ -74,7 +74,7 @@ const ShipmentMapAll = ({ shipments }) => {
       map.current = new mapboxgl.Map({
         container: mapContainer.current,
         style: 'mapbox://styles/mapbox/streets-v11',
-        center: [-98.5795, 39.8283], // Center of US as default
+        center: [47.9774, 29.3759], // Kuwait City / GCC regional center default
         zoom: 3,
         attributionControl: false // Hide attribution for cleaner look
       });

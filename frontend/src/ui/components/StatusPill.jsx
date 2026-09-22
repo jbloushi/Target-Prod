@@ -1,5 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
+import { useLanguage } from '../../context/LanguageContext';
 
 const Pill = styled.span`
     display: inline-block;
@@ -9,7 +10,6 @@ const Pill = styled.span`
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    font-family: 'Manrope', sans-serif;
     background: ${props => props.$bg};
     color: ${props => props.$color};
     border: none;
@@ -41,28 +41,17 @@ const getStatusColor = (status) => {
     return { bg: 'rgba(87, 92, 96, 0.08)', color: '#575c60' };
 };
 
-const STATUS_LABELS = {
-    'draft': 'Draft',
-    'pending': 'Pending Review',
-    'booked': 'Booked',
-    'ready_for_pickup': 'Ready For Pickup',
-    'updated': 'Pending Review',
-    'picked_up': 'Picked Up',
-    'in_transit': 'In Transit',
-    'out_for_delivery': 'Out For Delivery',
-    'delivered': 'Delivered',
-    'exception': 'Exception',
-    'cancelled': 'Cancelled'
-};
-
 const StatusPill = ({ status, style }) => {
+    const { t } = useLanguage();
     const s = (status || '').toLowerCase();
     const colors = getStatusColor(s);
-    const label = STATUS_LABELS[s] || status || 'Unknown';
+    const key = `status_${s}`;
+    const defaultLabel = s.replace(/_/g, ' ');
+    const localizedLabel = t(key, defaultLabel);
 
     return (
         <Pill $bg={colors.bg} $color={colors.color} style={style}>
-            {label.replace(/_/g, ' ')}
+            {localizedLabel}
         </Pill>
     );
 };

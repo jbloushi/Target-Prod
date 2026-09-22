@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, DirectionsRenderer, Rectangle, InfoWindow, Polyline } from '@react-google-maps/api';
 import { Box, Paper, Alert, CircularProgress, Typography } from '@mui/material';
 import { getGoogleMapsApiKey } from '../utils/env';
+import MapFallbackCard from './MapFallbackCard';
 
 // Libraries to load from Google Maps API
 const libraries = ['places'];
@@ -194,21 +195,13 @@ const GoogleMapComponent = ({ shipment }) => {
         }
     }, [directionsResponse, isLoaded, safeOrigin, safeDest, origin, destination, shipment, map]);
 
-    if (!apiKey) {
+    if (!apiKey || loadError) {
         return (
-            <Box display="flex" justifyContent="center" alignItems="center" height="100%" p={2}>
-                <Alert severity="error">
-                    Google Maps API key not configured. Set VITE_GOOGLE_MAPS_API_KEY in your .env file.
-                </Alert>
-            </Box>
-        );
-    }
-
-    if (loadError) {
-        return (
-            <Box display="flex" justifyContent="center" alignItems="center" height="100%" p={2}>
-                <Alert severity="error">Error loading Google Maps</Alert>
-            </Box>
+            <MapFallbackCard 
+                shipment={shipment} 
+                coordinates={safeCurrent || safeDest || safeOrigin || defaultCenter}
+                title="Interactive Map Offline"
+            />
         );
     }
 

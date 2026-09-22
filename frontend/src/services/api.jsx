@@ -31,12 +31,18 @@ const api = axios.create({
   },
 });
 
-// Add request interceptor to add auth token
+// Add request interceptor to add auth token and idempotency key
 api.interceptors.request.use(
   config => {
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+    const method = String(config.method || '').toLowerCase();
+    if (['post', 'put', 'patch', 'delete'].includes(method)) {
+      if (!config.headers['Idempotency-Key'] && !config.headers['idempotency-key']) {
+        config.headers['Idempotency-Key'] = `req-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+      }
     }
     return config;
   },
@@ -174,6 +180,28 @@ export const shipmentService = {
     }
   },
 
+  // Get package templates
+  getPackageTemplates: async () => {
+    try {
+      const response = await api.get('shipments/package-templates');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching package templates:', error);
+      throw error;
+    }
+  },
+
+  // Save custom package template
+  savePackageTemplate: async (templateData) => {
+    try {
+      const response = await api.post('shipments/package-templates', templateData);
+      return response.data;
+    } catch (error) {
+      console.error('Error saving package template:', error);
+      throw error;
+    }
+  },
+
   // Create new shipment
   createShipment: async (shipmentData) => {
     try {
@@ -208,6 +236,17 @@ export const shipmentService = {
     }
   },
 
+  // Bulk Import Shipments (CSV / Excel)
+  bulkImport: async (payload) => {
+    try {
+      const response = await api.post('shipments/bulk-import', payload);
+      return response.data;
+    } catch (error) {
+      console.error('Error bulk importing shipments:', error);
+      throw error;
+    }
+  },
+
   // Delete shipment
   deleteShipment: async (trackingNumber) => {
     try {
@@ -226,6 +265,16 @@ export const shipmentService = {
       return response.data;
     } catch (error) {
       console.error(`Error updating shipment details ${trackingNumber}:`, error);
+      throw error;
+    }
+  },
+
+  updateShipment: async (trackingNumber, updates) => {
+    try {
+      const response = await api.patch(`shipments/${trackingNumber}`, updates);
+      return response.data;
+    } catch (error) {
+      console.error(`Error updating shipment ${trackingNumber}:`, error);
       throw error;
     }
   },
@@ -269,12 +318,23 @@ export const shipmentService = {
   },
 
   // Warehouse: Scan Inbound (Handover)
-  warehouseScan: async (trackingNumber) => {
+  warehouseScan: async (trackingNumber, payload = {}) => {
     try {
-      const response = await api.post(`shipments/${trackingNumber}/warehouse/scan`);
+      const response = await api.post(`shipments/${trackingNumber}/warehouse/scan`, payload);
       return response.data;
     } catch (error) {
       console.error(`Error processing warehouse scan for ${trackingNumber}:`, error);
+      throw error;
+    }
+  },
+
+  // Send Pay-by-Link via WhatsApp (Chatwoot)
+  sendPaymentLink: async (trackingNumber, payload = {}) => {
+    try {
+      const response = await api.post(`shipments/${trackingNumber}/send-payment-link`, payload);
+      return response.data;
+    } catch (error) {
+      console.error(`Error sending payment link for ${trackingNumber}:`, error);
       throw error;
     }
   },
@@ -300,13 +360,28 @@ export const shipmentService = {
   },
 
   // Submit to Carrier (Generic Carrier Booking)
-  bookShipment: async (trackingNumber, carrierCode = 'DGR', optionalServiceCodes = []) => {
+  bookShipment: async (trackingNumber, carrierCode = 'DGR', optionalServiceCodes = [], isAsync = false) => {
     try {
-      console.log('--- FRONTEND BOOKING REQUEST ---', { trackingNumber, carrierCode, optionalServiceCodes });
-      const response = await api.post(`shipments/${trackingNumber}/book`, { carrierCode, optionalServiceCodes });
+      console.log('--- FRONTEND BOOKING REQUEST ---', { trackingNumber, carrierCode, optionalServiceCodes, isAsync });
+      const response = await api.post(`shipments/${trackingNumber}/book?async=${isAsync}`, {
+        carrierCode,
+        optionalServiceCodes,
+        async: isAsync
+      });
       return response.data;
     } catch (error) {
       console.error(`Error submitting shipment ${trackingNumber} to ${carrierCode}:`, error);
+      throw error;
+    }
+  },
+
+  // Generate or re-fetch Carrier AWB and Invoice from carrier
+  generateCarrierDocuments: async (trackingNumber) => {
+    try {
+      const response = await api.post(`shipments/${trackingNumber}/carrier-documents/generate`);
+      return response.data;
+    } catch (error) {
+      console.error(`Error generating carrier documents for ${trackingNumber}:`, error);
       throw error;
     }
   },
@@ -484,6 +559,61 @@ export const shipmentService = {
     }
   },
 
+  // Generate Carrier Dispatch & Handover Manifest
+  generateCarrierManifest: async (payload = {}) => {
+    try {
+      const response = await api.post('shipments/manifest', payload);
+      return response.data;
+    } catch (error) {
+      console.error('Error generating carrier manifest:', error);
+      throw error;
+    }
+  },
+
+  // Confirm Delivery with Proof of Delivery (POD)
+  confirmDeliveryWithPod: async (trackingNumber, payload = {}) => {
+    try {
+      const response = await api.post(`shipments/${trackingNumber}/deliver`, payload);
+      return response.data;
+    } catch (error) {
+      console.error(`Error confirming delivery for ${trackingNumber}:`, error);
+      throw error;
+    }
+  },
+
+  // Check Return Eligibility (Public)
+  checkReturnEligibility: async (trackingNumber) => {
+    try {
+      const response = await api.get(`shipments/public/${trackingNumber}/return-eligibility`);
+      return response.data;
+    } catch (error) {
+      console.error(`Error checking return eligibility for ${trackingNumber}:`, error);
+      throw error;
+    }
+  },
+
+  // Create Self-Service Return (Public)
+  createPublicReturn: async (trackingNumber, payload = {}) => {
+    try {
+      const response = await api.post(`shipments/public/${trackingNumber}/create-return`, payload);
+      return response.data;
+    } catch (error) {
+      console.error(`Error creating return for ${trackingNumber}:`, error);
+      throw error;
+    }
+  },
+
+  // Trigger Carrier Tracking Cron Sync (Admin/Staff)
+  triggerCarrierSync: async (payload = {}) => {
+    try {
+      const response = await api.post('shipments/cron/sync-carriers', payload);
+      return response.data;
+    } catch (error) {
+      console.error('Error triggering carrier sync:', error);
+      throw error;
+    }
+  },
+
   // Seed database with sample data (development only)
   seedDatabase: async (req, res) => {
     if (isProductionMode()) {
@@ -576,6 +706,16 @@ export const financeService = {
     }
   },
 
+  getOrganizationBalance: async (orgId) => {
+    try {
+      const response = await api.get(`finance/organizations/${orgId}/overview`);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching organization balance:', error);
+      throw error;
+    }
+  },
+
   listPayments: async (orgId) => {
     try {
       const response = await api.get(`finance/organizations/${orgId}/payments`);
@@ -612,6 +752,26 @@ export const financeService = {
       return response.data;
     } catch (error) {
       console.error('Error updating invoice status:', error);
+      throw error;
+    }
+  },
+
+  getInvoice: async (invoiceId) => {
+    try {
+      const response = await api.get(`finance/invoices/${invoiceId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching invoice:', error);
+      throw error;
+    }
+  },
+
+  sendInvoiceWhatsApp: async (invoiceId) => {
+    try {
+      const response = await api.post(`finance/invoices/${invoiceId}/send-whatsapp`);
+      return response.data;
+    } catch (error) {
+      console.error('Error sending invoice WhatsApp:', error);
       throw error;
     }
   },
@@ -666,7 +826,115 @@ export const financeService = {
     }
   },
 
+  getProfitabilityReport: async (params = {}) => {
+    try {
+      const response = await api.get('finance/reports/profitability', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching profitability report:', error);
+      throw error;
+    }
+  },
 
+  getDriverCodSummary: async (params = {}) => {
+    try {
+      const response = await api.get('finance/cod/driver-summary', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching driver COD summary:', error);
+      throw error;
+    }
+  },
+
+  remitDriverCod: async (payload) => {
+    try {
+      const response = await api.post('finance/cod/remit', payload);
+      return response.data;
+    } catch (error) {
+      console.error('Error remitting driver COD:', error);
+      throw error;
+    }
+  },
+
+  requestDriverCodRemittance: async (payload) => {
+    try {
+      const response = await api.post('finance/cod/request-remittance', payload);
+      return response.data;
+    } catch (error) {
+      console.error('Error requesting driver COD remittance:', error);
+      throw error;
+    }
+  },
+
+  confirmDriverCodRemittance: async (payload) => {
+    try {
+      const response = await api.post('finance/cod/confirm-remittance', payload);
+      return response.data;
+    } catch (error) {
+      console.error('Error confirming driver COD remittance:', error);
+      throw error;
+    }
+  },
+
+  reconcileCarrierInvoice: async (payload) => {
+    try {
+      const response = await api.post('finance/reconciliation/carrier-invoice', payload);
+      return response.data;
+    } catch (error) {
+      console.error('Error reconciling carrier invoice:', error);
+      throw error;
+    }
+  },
+
+  postCarrierReconciliationAdjustments: async (payload) => {
+    try {
+      const response = await api.post('finance/reconciliation/adjustments', payload);
+      return response.data;
+    } catch (error) {
+      console.error('Error posting carrier reconciliation adjustments:', error);
+      throw error;
+    }
+  },
+
+  getOrganizationStatement: async (orgId, params = {}) => {
+    try {
+      const response = await api.get(`finance/organizations/${orgId}/statement`, { params });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching organization statement:', error);
+      throw error;
+    }
+  },
+
+  sendStatementNotification: async (orgId, data = {}) => {
+    try {
+      const response = await api.post(`finance/organizations/${orgId}/send-statement`, data);
+      return response.data;
+    } catch (error) {
+      console.error('Error sending statement notification:', error);
+      throw error;
+    }
+  },
+
+  getExchangeRates: async () => {
+    try {
+      const response = await api.get('finance/rates');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching exchange rates:', error);
+      throw error;
+    }
+  },
+
+  updateExchangeRates: async (rates) => {
+    try {
+      const response = await api.put('finance/rates', { rates });
+      return response.data;
+    } catch (error) {
+      console.error('Error updating exchange rates:', error);
+      throw error;
+    }
+  }
 };
 
 export const userService = {
@@ -759,6 +1027,26 @@ export const userService = {
       throw error;
     }
   },
+
+  getMe: async () => {
+    try {
+      const response = await api.get('users/me');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching current user profile:', error);
+      throw error;
+    }
+  },
+
+  updateProfile: async (profileData) => {
+    try {
+      const response = await api.patch('users/profile', profileData);
+      return response.data;
+    } catch (error) {
+      console.error('Error updating user profile:', error);
+      throw error;
+    }
+  },
 };
 
 export const organizationService = {
@@ -818,6 +1106,102 @@ export const organizationService = {
       return response.data;
     } catch (error) {
       console.error(`Error removing member from organization ${id}:`, error);
+      throw error;
+    }
+  }
+};
+
+export const settingsService = {
+  getSystemSettings: async () => {
+    try {
+      const response = await api.get('settings/system');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching system settings:', error);
+      throw error;
+    }
+  },
+
+  updateSystemSettings: async (updates) => {
+    try {
+      const response = await api.patch('settings/system', updates);
+      return response.data;
+    } catch (error) {
+      console.error('Error updating system settings:', error);
+      throw error;
+    }
+  },
+
+  testCarrierConnection: async (carrierCode = 'DGR', environment = null) => {
+    try {
+      const response = await api.post('settings/system/test-carrier', { carrierCode, ...(environment ? { environment } : {}) });
+      return response.data;
+    } catch (error) {
+      console.error('Error testing carrier connection:', error);
+      throw error;
+    }
+  }
+};
+
+export const publicCheckoutService = {
+  getCheckoutDetails: async (trackingNumber) => {
+    try {
+      const response = await api.get(`public/shipments/${trackingNumber}/checkout`);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching checkout details:', error);
+      throw error;
+    }
+  },
+
+  processPayment: async (trackingNumber, paymentData) => {
+    try {
+      const response = await api.post(`public/shipments/${trackingNumber}/pay`, paymentData);
+      return response.data;
+    } catch (error) {
+      console.error('Error processing payment:', error);
+      throw error;
+    }
+  }
+};
+
+export const whatsappService = {
+  getLogs: async (params = {}) => {
+    try {
+      const response = await api.get('admin/whatsapp/logs', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching WhatsApp logs:', error);
+      throw error;
+    }
+  },
+
+  resendNotification: async (logId) => {
+    try {
+      const response = await api.post(`admin/whatsapp/resend/${logId}`);
+      return response.data;
+    } catch (error) {
+      console.error(`Error resending WhatsApp log ${logId}:`, error);
+      throw error;
+    }
+  },
+
+  sendShipmentWhatsApp: async (trackingNumber, payload) => {
+    try {
+      const response = await api.post(`shipments/${trackingNumber}/whatsapp/send`, payload);
+      return response.data;
+    } catch (error) {
+      console.error(`Error sending WhatsApp notification for shipment ${trackingNumber}:`, error);
+      throw error;
+    }
+  },
+
+  getTemplates: async () => {
+    try {
+      const response = await api.get('whatsapp/templates');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching WhatsApp templates:', error);
       throw error;
     }
   }

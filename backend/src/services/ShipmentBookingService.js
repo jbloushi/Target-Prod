@@ -27,13 +27,84 @@ class ShipmentBookingService {
     }
 
     /**
-     * Executes the full booking workflow for a single shipment.
+    /**
+     * Executes the full booking workflow for a single shipment synchronously.
      * @param {string} trackingNumber - Internal tracking number.
      * @param {string|null} [overrideCarrierCode=null] - Optional carrier force.
      * @param {string[]} [optionalServiceCodes=[]] - Optional services selected at booking time.
      * @returns {Promise<Object>} { success, shipment, message }
      */
     async bookShipment(trackingNumber, overrideCarrierCode = null, optionalServiceCodes = [], bookingUserRole = null) {
+        const prep = await this._prepareBooking(trackingNumber, overrideCarrierCode, optionalServiceCodes, bookingUserRole);
+        if (prep.alreadyBooked) {
+            return { success: true, shipment: prep.shipment, message: 'Shipment already booked.' };
+        }
+        return await this._executeCarrierBooking(prep);
+    }
+
+    /**
+     * Executes the booking workflow asynchronously via durable job queue.
+     * Returns immediately with 202 status and attempt/job ID.
+     */
+    async bookShipmentAsync(trackingNumber, overrideCarrierCode = null, optionalServiceCodes = [], bookingUserRole = null) {
+        const prep = await this._prepareBooking(trackingNumber, overrideCarrierCode, optionalServiceCodes, bookingUserRole);
+        if (prep.alreadyBooked) {
+            return { success: true, status: 'succeeded', jobId: prep.attemptId, shipment: prep.shipment, message: 'Shipment already booked.' };
+        }
+
+        const jobQueue = require('./queue/jobQueue');
+        await jobQueue.enqueue('carrier_dispatch', {
+            trackingNumber,
+            carrierCode: prep.carrierCode,
+            optionalServiceCodes,
+            bookingUserRole,
+            attemptId: prep.attemptId
+        }, {
+            jobId: prep.attemptId,
+            maxRetries: 3,
+            backoffMs: 5000
+        });
+
+        return {
+            success: true,
+            status: 'processing',
+            jobId: prep.attemptId,
+            trackingNumber,
+            carrierCode: prep.carrierCode,
+            message: 'Carrier booking initiated in background'
+        };
+    }
+
+    /**
+     * Background worker entry point for carrier_dispatch queue jobs.
+     */
+    async executeCarrierDispatchJob(payload) {
+        const { trackingNumber, carrierCode, optionalServiceCodes, bookingUserRole, attemptId } = payload;
+        const shipment = await prisma.shipment.findUnique({
+            where: { trackingNumber },
+            include: { user: true, organization: true }
+        });
+
+        if (!shipment) throw new Error(`Shipment ${trackingNumber} not found for carrier dispatch`);
+
+        const carrierCapabilities = CarrierFactory.getCarrierCapabilities(carrierCode) || {};
+        return await this._executeCarrierBooking({
+            shipment,
+            carrierCode,
+            optionalServiceCodes: optionalServiceCodes || [],
+            attemptId,
+            payingUser: shipment.user,
+            organization: shipment.organization,
+            organizationId: shipment.organizationId,
+            carrierCapabilities
+        });
+    }
+
+    /**
+     * Validates shipment, policies, credits, and records pending attempt.
+     * @private
+     */
+    async _prepareBooking(trackingNumber, overrideCarrierCode = null, optionalServiceCodes = [], bookingUserRole = null) {
         const shipment = await prisma.shipment.findUnique({
             where: { trackingNumber },
             include: { user: true, organization: true }
@@ -58,9 +129,6 @@ class ShipmentBookingService {
         const price = shipment.pricingSnapshot?.totalPrice ?? shipment.price ?? 0;
 
         // Financial Gate: Credit Check
-        // A null/undefined creditLimit means unlimited credit — skip the check entirely.
-        // Admin and staff roles bypass the credit gate entirely (they have override authority).
-        // Check price against the org's credit limit directly (not net of balance).
         const isBypassRole = ['admin', 'staff', 'accounting'].includes(bookingUserRole);
         if (!isBypassRole && organizationId && organization?.creditLimit != null) {
             if (price > 0 && price > organization.creditLimit) {
@@ -87,7 +155,9 @@ class ShipmentBookingService {
         );
 
         if (activeAttempt) {
-            if (activeAttempt.status === 'succeeded') return { success: true, shipment, message: 'Shipment already booked.' };
+            if (activeAttempt.status === 'succeeded') {
+                return { alreadyBooked: true, shipment, attemptId: activeAttempt.attemptId, carrierCode };
+            }
             throw new Error('A booking request is currently being processed by the carrier. Please wait.');
         }
 
@@ -102,11 +172,37 @@ class ShipmentBookingService {
             data: { bookingAttempts: updatedAttempts }
         });
 
+        return {
+            alreadyBooked: false,
+            shipment,
+            carrierCode,
+            optionalServiceCodes,
+            attemptId,
+            payingUser,
+            organization,
+            organizationId,
+            carrierCapabilities
+        };
+    }
+
+    /**
+     * Executes the carrier API call, uploads documents, persists DB status, and posts ledger entries.
+     * @private
+     */
+    async _executeCarrierBooking({ shipment, carrierCode, optionalServiceCodes, attemptId, payingUser, organization, organizationId, carrierCapabilities }) {
         let carrierResult;
         let carrierAdapter;
         try {
-            carrierAdapter = CarrierFactory.getAdapter(carrierCode);
+            const isTest = shipment.pricingSnapshot?.isTest === true ||
+                           shipment.pricingSnapshot?.environment === 'test' ||
+                           shipment.isTest === true ||
+                           shipment.environment === 'test' ||
+                           (shipment.metadata && (shipment.metadata.isTest === true || shipment.metadata.environment === 'test'));
+            const environment = isTest ? 'test' : (shipment.pricingSnapshot?.environment || shipment.environment || 'production');
+            carrierAdapter = CarrierFactory.getAdapter(carrierCode, { isTest, environment });
             const payload = this.mapToCarrierPayload(shipment);
+            payload.isTest = isTest;
+            payload.environment = environment;
             
             // Integrate optional services passed from the controller
             if (optionalServiceCodes && optionalServiceCodes.length > 0) {
@@ -174,7 +270,6 @@ class ShipmentBookingService {
                     updateData[targetField] = doc.url;
                 } catch (docError) {
                     logger.warn(`Document upload skipped for ${freshShipment.trackingNumber} (${type}): ${docError.message}`);
-                    // Only persist safe URL-like fallbacks; avoid writing raw/base64 blobs into URL DB fields.
                     const sourceText = typeof sourceValue === 'string' ? sourceValue.trim() : '';
                     if (/^https?:\/\//i.test(sourceText)) {
                         updateData[targetField] = updateData[targetField] || sourceText;
@@ -204,8 +299,10 @@ class ShipmentBookingService {
                 data: updateData
             });
 
-            // Accounting: Post Debit to Ledger
+            // Accounting: Post Debit to Ledger (Customer Receivable) & Credit to Carrier Payable (COGS)
             const finalPrice = finalizedShipment.pricingSnapshot?.totalPrice ?? finalizedShipment.price ?? 0;
+            const carrierCost = finalizedShipment.pricingSnapshot?.carrierRate ?? finalizedShipment.costPrice ?? 0;
+
             if (finalPrice > 0 && organizationId) {
                 await financeLedgerService.createLedgerEntry(organizationId, {
                     sourceRepo: 'Shipment',
@@ -224,6 +321,41 @@ class ShipmentBookingService {
                         fixedFeeApplied: finalizedShipment.carrierCode === 'OTE'
                     }
                 });
+
+                // Post Carrier Accounts Payable liability if external carrier cost exists
+                if (carrierCost > 0 && finalizedShipment.carrierCode !== 'INTERNAL' && typeof financeLedgerService.recordCarrierPayable === 'function') {
+                    await financeLedgerService.recordCarrierPayable({
+                        organizationId,
+                        shipmentId: finalizedShipment.id,
+                        carrierCode: finalizedShipment.carrierCode,
+                        costPrice: carrierCost,
+                        currency: finalizedShipment.currency || finalizedShipment.pricingSnapshot?.currency || 'KWD',
+                        trackingNumber: finalizedShipment.trackingNumber,
+                        createdBy: payingUser?.id
+                    });
+                }
+            }
+
+            // Dispatch webhook and chatwoot notification
+            try {
+                const WebhookDispatcher = require('./WebhookDispatcher');
+                WebhookDispatcher.dispatch('shipment.booked', finalizedShipment.organizationId, {
+                    trackingNumber: finalizedShipment.trackingNumber,
+                    carrierCode: finalizedShipment.carrierCode,
+                    carrierShipmentId,
+                    carrierTrackingNumber,
+                    status: 'booked',
+                    shipment: finalizedShipment
+                });
+            } catch (whErr) {
+                logger.debug(`[ShipmentBookingService] Webhook dispatch error: ${whErr.message}`);
+            }
+
+            try {
+                const chatwootService = require('./chatwootNotificationService');
+                chatwootService.triggerShipmentNotification('shipment_booked', finalizedShipment);
+            } catch (cwErr) {
+                logger.debug(`[ShipmentBookingService] Chatwoot notification error: ${cwErr.message}`);
             }
 
             return { success: true, shipment: finalizedShipment };
@@ -313,8 +445,14 @@ class ShipmentBookingService {
      */
     async refreshPricingSnapshotForBooking({ shipment, carrierCode, payingUser, organization }) {
         const { Decimal } = require('decimal.js');
-        const adapter = CarrierFactory.getAdapter(carrierCode);
-        const quotes = await adapter.getRates(this.mapToCarrierPayload(shipment));
+        const isTest = shipment.pricingSnapshot?.isTest === true ||
+                       shipment.pricingSnapshot?.environment === 'test' ||
+                       shipment.isTest === true ||
+                       shipment.environment === 'test' ||
+                       (shipment.metadata && (shipment.metadata.isTest === true || shipment.metadata.environment === 'test'));
+        const environment = isTest ? 'test' : (shipment.pricingSnapshot?.environment || shipment.environment || 'production');
+        const adapter = CarrierFactory.getAdapter(carrierCode, { isTest, environment });
+        const quotes = await adapter.getRates({ ...this.mapToCarrierPayload(shipment), isTest, environment });
 
         if (!Array.isArray(quotes) || quotes.length === 0) throw new Error('No valid rates available for refresh.');
 
@@ -330,6 +468,8 @@ class ShipmentBookingService {
             rateCurrency,
             source
         );
+        snapshot.isTest = isTest;
+        snapshot.environment = environment;
 
         // Re-attach optional services from original record
         const optionalServices = shipment.pricingSnapshot?.optionalServices || [];

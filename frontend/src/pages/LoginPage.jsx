@@ -315,18 +315,34 @@ const LoginPage = () => {
 
                         {showDevOptions && (
                             <DevPanel>
-                                <div style={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', color: 'var(--on-surface-variant)', letterSpacing: '0.05em' }}>
-                                    Quick Login (Dev Only)
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                    <div style={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', color: 'var(--on-surface-variant)', letterSpacing: '0.05em' }}>
+                                        Client Showcase Quick Login
+                                    </div>
+                                    <span style={{ fontSize: '10px', color: 'var(--primary)', fontWeight: 600 }}>Pass: password123</span>
+                                </div>
+                                <div style={{ fontSize: '11px', color: 'var(--on-surface-variant)', marginBottom: '8px' }}>
+                                    Idempotent seed-dump dataset ready for local testing. Click any role below:
                                 </div>
                                 <QuickLoginGrid>
-                                    {['admin', 'staff', 'org_manager', 'org_agent', 'driver'].map((role) => (
+                                    {[
+                                        { role: 'admin', label: 'Superadmin' },
+                                        { role: 'manager', label: 'Ops Manager' },
+                                        { role: 'accounting', label: 'Finance Controller' },
+                                        { role: 'staff', label: 'Ops Staff' },
+                                        { role: 'driver', label: 'Courier Driver' },
+                                        { role: 'org_manager', label: 'Company Manager' },
+                                        { role: 'org_agent', label: 'Company Agent' },
+                                        { role: 'client', label: 'Direct Shipper' },
+                                        { role: 'dgr', label: 'DGR Specialist', email: 'dgr@demo.com' }
+                                    ].map((item) => (
                                         <Button
-                                            key={role}
+                                            key={item.role}
                                             variant="secondary"
-                                            onClick={() => handleLogin(`${role}@demo.com`, 'password123')}
-                                            style={{ textTransform: 'capitalize', fontSize: '12px', padding: '8px' }}
+                                            onClick={() => handleLogin(item.email || `${item.role}@demo.com`, 'password123')}
+                                            style={{ fontSize: '11px', padding: '7px 6px', textAlign: 'center' }}
                                         >
-                                            {getRoleLabel(role)}
+                                            {item.label}
                                         </Button>
                                     ))}
                                 </QuickLoginGrid>

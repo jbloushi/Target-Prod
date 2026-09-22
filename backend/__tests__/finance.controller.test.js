@@ -7,6 +7,7 @@ describe('finance controller', () => {
     };
     const prisma = {
         $transaction: jest.fn(),
+        organization: { findUnique: jest.fn() },
         payment: { findUnique: jest.fn() },
         shipment: { findMany: jest.fn() },
         paymentAllocation: { findMany: jest.fn() }

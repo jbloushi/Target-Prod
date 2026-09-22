@@ -43,11 +43,16 @@ const resolveLogesTechsCodStatus = (normalizedStatus, body = {}, shipment = {}) 
 
 exports.handleLogesTechsWebhook = async (req, res) => {
     const secret = config.logesTechsWebhookSecret;
-    if (secret) {
+    if (!secret) {
+        if (process.env.NODE_ENV !== 'test' || process.env.ENFORCE_WEBHOOK_SECRETS === 'true') {
+            logger.warn('[logestechs-webhook] Webhook secret not configured on server - failing closed');
+            return res.status(401).json({ ok: false, error: 'Webhook secret is not configured' });
+        }
+    } else {
         const provided = req.headers['x-logestechs-webhook-secret'] || req.headers['x-webhook-secret'] || req.query?.secret || '';
         if (!safeTimingEqual(provided, secret)) {
             logger.warn('[logestechs-webhook] invalid secret - request rejected');
-            return res.status(401).json({ ok: false });
+            return res.status(401).json({ ok: false, error: 'Invalid webhook secret' });
         }
     }
 
@@ -128,14 +133,19 @@ exports.handleLogesTechsWebhook = async (req, res) => {
 
 exports.handleChatwootWebhook = async (req, res) => {
     const webhookSecret = config.chatwoot?.webhookSecret;
-    if (webhookSecret) {
+    if (!webhookSecret) {
+        if (process.env.NODE_ENV !== 'test' || process.env.ENFORCE_WEBHOOK_SECRETS === 'true') {
+            logger.warn('[chatwoot-webhook] Webhook secret not configured on server - failing closed');
+            return res.status(401).json({ ok: false, error: 'Webhook secret is not configured' });
+        }
+    } else {
         const signature = req.headers['x-chatwoot-signature'] || '';
         const expected = crypto.createHmac('sha256', webhookSecret).update(req.rawBody || '').digest('hex');
         const sigBuf = Buffer.from(signature);
         const expBuf = Buffer.from(expected);
         if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
             logger.warn('[chatwoot-webhook] invalid signature — request rejected');
-            return res.status(401).json({ ok: false });
+            return res.status(401).json({ ok: false, error: 'Invalid webhook signature' });
         }
     }
 
@@ -188,10 +198,18 @@ exports.handleChatwootWebhook = async (req, res) => {
 
 const VALID_EVENTS = [
     'shipment_created',
+    'pickup_scheduled',
+    'received_at_hub',
+    'verified_and_dispatched',
+    'payment_link_ready',
+    'payment_confirmed',
     'on_hold_customs_issue',
     'documents_needed',
     'delivery_attempt',
-    'out_for_delivery'
+    'out_for_delivery',
+    'delivered',
+    'rto_in_transit',
+    'returned'
 ];
 
 exports.sendChatwootTestMessage = async (req, res) => {
@@ -257,3 +275,239 @@ exports.previewChatwootShipmentMessage = async (req, res) => {
         return res.status(500).json({ success: false, error: 'Failed to preview Chatwoot message' });
     }
 };
+
+const WebhookDispatcher = require('../services/WebhookDispatcher');
+const { canAccessOrganization } = require('../middleware/authorize.middleware');
+
+const resolveUserOrgId = async (req) => {
+    if (req.user.organizationId) return req.user.organizationId;
+    const user = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: { organizationId: true }
+    });
+    return user?.organizationId || req.query.orgId || req.body.orgId || null;
+};
+
+/**
+ * List all webhook subscriptions for current user organization
+ */
+exports.listWebhooks = async (req, res) => {
+    try {
+        const organizationId = await resolveUserOrgId(req);
+        if (!organizationId) {
+            return res.status(400).json({ success: false, error: 'No organization linked to user' });
+        }
+        if (!canAccessOrganization(req, organizationId)) {
+            return res.status(403).json({ success: false, error: 'Unauthorized for this organization' });
+        }
+
+        const subscriptions = await prisma.webhookSubscription.findMany({
+            where: { organizationId },
+            include: {
+                _count: {
+                    select: { deliveryEvents: true }
+                }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        res.status(200).json({ success: true, data: subscriptions });
+    } catch (error) {
+        logger.error('[integration] listWebhooks error:', error);
+        res.status(500).json({ success: false, error: 'Failed to list webhook subscriptions' });
+    }
+};
+
+/**
+ * Create a new webhook subscription
+ */
+exports.createWebhook = async (req, res) => {
+    try {
+        const organizationId = await resolveUserOrgId(req);
+        if (!organizationId) {
+            return res.status(400).json({ success: false, error: 'No organization linked to user' });
+        }
+        if (!canAccessOrganization(req, organizationId)) {
+            return res.status(403).json({ success: false, error: 'Unauthorized for this organization' });
+        }
+
+        const { targetUrl, events, secret } = req.body || {};
+        if (!targetUrl || !targetUrl.startsWith('http')) {
+            return res.status(400).json({ success: false, error: 'A valid http/https targetUrl is required' });
+        }
+
+        const eventList = Array.isArray(events) && events.length > 0 ? events : ['*'];
+        const signingSecret = secret || crypto.randomBytes(24).toString('hex');
+
+        const subscription = await prisma.webhookSubscription.create({
+            data: {
+                organizationId,
+                targetUrl,
+                events: eventList,
+                secret: signingSecret,
+                isActive: true
+            }
+        });
+
+        res.status(201).json({ success: true, data: subscription });
+    } catch (error) {
+        logger.error('[integration] createWebhook error:', error);
+        res.status(500).json({ success: false, error: 'Failed to create webhook subscription' });
+    }
+};
+
+/**
+ * Update an existing webhook subscription
+ */
+exports.updateWebhook = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const sub = await prisma.webhookSubscription.findUnique({ where: { id } });
+        if (!sub) {
+            return res.status(404).json({ success: false, error: 'Webhook subscription not found' });
+        }
+        if (!canAccessOrganization(req, sub.organizationId)) {
+            return res.status(403).json({ success: false, error: 'Unauthorized' });
+        }
+
+        const { targetUrl, events, isActive, secret } = req.body || {};
+        const updateData = {};
+        if (targetUrl !== undefined) {
+            if (!targetUrl || !targetUrl.startsWith('http')) {
+                return res.status(400).json({ success: false, error: 'Valid targetUrl required' });
+            }
+            updateData.targetUrl = targetUrl;
+        }
+        if (events !== undefined && Array.isArray(events)) {
+            updateData.events = events;
+        }
+        if (isActive !== undefined) {
+            updateData.isActive = Boolean(isActive);
+        }
+        if (secret !== undefined && String(secret).trim().length > 0) {
+            updateData.secret = String(secret).trim();
+        }
+
+        const updated = await prisma.webhookSubscription.update({
+            where: { id },
+            data: updateData
+        });
+
+        res.status(200).json({ success: true, data: updated });
+    } catch (error) {
+        logger.error('[integration] updateWebhook error:', error);
+        res.status(500).json({ success: false, error: 'Failed to update webhook subscription' });
+    }
+};
+
+/**
+ * Delete a webhook subscription
+ */
+exports.deleteWebhook = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const sub = await prisma.webhookSubscription.findUnique({ where: { id } });
+        if (!sub) {
+            return res.status(404).json({ success: false, error: 'Webhook subscription not found' });
+        }
+        if (!canAccessOrganization(req, sub.organizationId)) {
+            return res.status(403).json({ success: false, error: 'Unauthorized' });
+        }
+
+        // Delete associated delivery events first
+        await prisma.webhookEvent.deleteMany({ where: { subscriptionId: id } });
+        await prisma.webhookSubscription.delete({ where: { id } });
+
+        res.status(200).json({ success: true, message: 'Webhook subscription deleted successfully' });
+    } catch (error) {
+        logger.error('[integration] deleteWebhook error:', error);
+        res.status(500).json({ success: false, error: 'Failed to delete webhook subscription' });
+    }
+};
+
+/**
+ * List recent delivery attempt logs for a webhook subscription
+ */
+exports.getWebhookEvents = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const sub = await prisma.webhookSubscription.findUnique({ where: { id } });
+        if (!sub) {
+            return res.status(404).json({ success: false, error: 'Webhook subscription not found' });
+        }
+        if (!canAccessOrganization(req, sub.organizationId)) {
+            return res.status(403).json({ success: false, error: 'Unauthorized' });
+        }
+
+        const events = await prisma.webhookEvent.findMany({
+            where: { subscriptionId: id },
+            orderBy: { createdAt: 'desc' },
+            take: 50
+        });
+
+        res.status(200).json({ success: true, data: events });
+    } catch (error) {
+        logger.error('[integration] getWebhookEvents error:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch webhook logs' });
+    }
+};
+
+/**
+ * Test a webhook subscription by sending an immediate ping payload
+ */
+exports.testWebhook = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const sub = await prisma.webhookSubscription.findUnique({ where: { id } });
+        if (!sub) {
+            return res.status(404).json({ success: false, error: 'Webhook subscription not found' });
+        }
+        if (!canAccessOrganization(req, sub.organizationId)) {
+            return res.status(403).json({ success: false, error: 'Unauthorized' });
+        }
+
+        const testPayload = {
+            event: 'ping',
+            timestamp: new Date().toISOString(),
+            organizationId: sub.organizationId,
+            message: 'Target-Prod Webhook Test Dispatch',
+            sampleData: {
+                trackingNumber: 'TRK-TEST-999',
+                status: 'delivered',
+                originCity: 'Kuwait City',
+                destinationCity: 'Hawalli'
+            }
+        };
+
+        const webhookEvent = await prisma.webhookEvent.create({
+            data: {
+                subscriptionId: sub.id,
+                event: 'ping',
+                payload: testPayload,
+                status: 'pending',
+                attempts: 0
+            }
+        });
+
+        try {
+            await WebhookDispatcher._deliver(sub, webhookEvent, true);
+            const deliveredEvent = await prisma.webhookEvent.findUnique({ where: { id: webhookEvent.id } });
+            res.status(200).json({
+                success: true,
+                message: `Test ping delivered successfully to ${sub.targetUrl}`,
+                event: deliveredEvent
+            });
+        } catch (deliveryError) {
+            const failedEvent = await prisma.webhookEvent.findUnique({ where: { id: webhookEvent.id } });
+            res.status(422).json({
+                success: false,
+                error: `Webhook delivery failed: ${deliveryError.message}`,
+                event: failedEvent
+            });
+        }
+    } catch (error) {
+        logger.error('[integration] testWebhook error:', error);
+        res.status(500).json({ success: false, error: 'Failed to execute webhook test' });
+    }
+};
+

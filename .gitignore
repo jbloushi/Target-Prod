@@ -1,7 +1,13 @@
-
 # local/server artifacts
 backend-old/
 frontend/.env.production
 frontend/build/
 node_modules/
 *.zip
+
+# Agent & local tools workspace
+.agents/
+.claude/
+.gemini/
+*.log
+backend/run_query.js

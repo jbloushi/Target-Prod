@@ -12,7 +12,9 @@ class CarrierRateService {
         try {
             // For now, only DGR is supported
             const code = carrierCode || 'DGR';
-            const adapter = CarrierFactory.getAdapter(code);
+            const isTest = shipmentData?.isTest === true || shipmentData?.environment === 'test';
+            const environment = isTest ? 'test' : (shipmentData?.environment || 'production');
+            const adapter = CarrierFactory.getAdapter(code, { isTest, environment });
 
             // Call adapter
             const rates = await adapter.getRates(shipmentData);

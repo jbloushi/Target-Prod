@@ -2,6 +2,7 @@ import { BrowserRouter as Router } from 'react-router-dom';
 import CssBaseline from '@mui/material/CssBaseline';
 import { SnackbarProvider } from 'notistack';
 import { ThemeModeProvider } from './context/ThemeContext';
+import { LanguageProvider } from './context/LanguageContext';
 import AppRoutes from './routes';
 import { AuthProvider } from './context/AuthContext';
 import { ShipmentProvider } from './context/ShipmentContext';
@@ -15,25 +16,27 @@ const routerFutureConfig = {
 
 function App() {
   return (
-    <ThemeModeProvider>
-      <CssBaseline />
-      <SnackbarProvider
-        maxSnack={3}
-        anchorOrigin={{
-          vertical: 'top',
-          horizontal: 'right',
-        }}
-        autoHideDuration={3000}
-      >
-        <AuthProvider>
-          <ShipmentProvider>
-            <Router future={routerFutureConfig}>
-              <AppRoutes />
-            </Router>
-          </ShipmentProvider>
-        </AuthProvider>
-      </SnackbarProvider>
-    </ThemeModeProvider>
+    <LanguageProvider>
+      <ThemeModeProvider>
+        <CssBaseline />
+        <SnackbarProvider
+          maxSnack={3}
+          anchorOrigin={{
+            vertical: 'top',
+            horizontal: 'right',
+          }}
+          autoHideDuration={3000}
+        >
+          <AuthProvider>
+            <ShipmentProvider>
+              <Router future={routerFutureConfig}>
+                <AppRoutes />
+              </Router>
+            </ShipmentProvider>
+          </AuthProvider>
+        </SnackbarProvider>
+      </ThemeModeProvider>
+    </LanguageProvider>
   );
 }
 

@@ -9,7 +9,7 @@ const { handleControllerError } = require('../utils/controllerError');
  */
 exports.createOrganization = async (req, res) => {
     try {
-        const { name, type, creditLimit, markup, address, taxId } = req.body;
+        const { name, type, creditLimit, markup, allowedCarriers, address, taxId } = req.body;
 
         const organization = await prisma.organization.create({
             data: {
@@ -18,6 +18,7 @@ exports.createOrganization = async (req, res) => {
                 creditLimit: Number(creditLimit) || 0,
                 taxId,
                 markup: markup || {},
+                allowedCarriers: allowedCarriers || {},
                 addresses: address ? [address] : []
             }
         });
@@ -68,6 +69,11 @@ exports.getAllOrganizations = async (req, res) => {
  */
 exports.getOrganization = async (req, res) => {
     try {
+        const isPlatformStaff = ['admin', 'staff', 'manager', 'accounting'].includes(req.user.role);
+        if (!isPlatformStaff && req.user.organizationId !== req.params.id) {
+            return res.status(403).json({ success: false, error: 'Permission denied: Cannot view another organization' });
+        }
+
         const organization = await prisma.organization.findUnique({
             where: { id: req.params.id },
             include: {

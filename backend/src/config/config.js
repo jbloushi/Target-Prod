@@ -35,18 +35,30 @@ module.exports = {
   // Security & Authentication
   jwtSecret: process.env.JWT_SECRET || 'dev-secret-key-change-in-production',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
+  apiKeySecret: process.env.API_KEY_SECRET || process.env.JWT_SECRET || 'dev-api-key-secret',
+  encryptionKey: process.env.ENCRYPTION_KEY,
   corsOrigin: process.env.CORS_ORIGIN || '',
   frontendUrl: process.env.FRONTEND_URL || 'https://target-logistics.com',
   publicTrackingBaseUrl: process.env.PUBLIC_TRACKING_BASE_URL || process.env.FRONTEND_URL || 'https://target-logistics.com',
   supportWhatsappPhone: process.env.SUPPORT_WHATSAPP_PHONE || '96597691271',
 
-  // API Keys (will be validated in adapters)
+  // Production Carrier Configuration (Default)
   dhlApiKey: process.env.DHL_API_KEY,
   dhlApiSecret: process.env.DHL_API_SECRET,
   dhlAccountNumber: process.env.DHL_ACCOUNT_NUMBER,
-  dhlApiUrl: process.env.DHL_API_URL || 'https://express.api.dhl.com/mydhlapi/test',
+  dhlApiUrl: process.env.DHL_API_URL || 'https://express.api.dhl.com/mydhlapi',
+
+  // Sandbox / Test Carrier Configuration (Dynamic Dual-Routing)
+  dhlTestApiKey: process.env.DHL_TEST_API_KEY || process.env.DHL_API_KEY,
+  dhlTestApiSecret: process.env.DHL_TEST_API_SECRET || process.env.DHL_API_SECRET,
+  dhlTestAccountNumber: process.env.DHL_TEST_ACCOUNT_NUMBER || process.env.DHL_ACCOUNT_NUMBER,
+  dhlTestApiUrl: process.env.DHL_TEST_API_URL || 'https://express.api.dhl.com/mydhlapi/test',
+
+  // LogesTechs / OTE Production & Test
   logesTechsShipmentBaseUrl: process.env.LOGESTECHS_SHIPMENT_BASE_URL || 'https://apisv2.logestechs.com/api',
-  logesTechsFulfillmentBaseUrl: process.env.LOGESTECHS_FULFILLMENT_BASE_URL || 'https://apisv5.logestechs.com/api',
+  logesTechsFulfillmentBaseUrl: process.env.LOGESTECHS_FULFILLMENT_BASE_URL || 'https://apisv2.logestechs.com/api',
+  logesTechsTestShipmentBaseUrl: process.env.LOGESTECHS_TEST_SHIPMENT_BASE_URL || 'https://apisv5.logestechs.com/api',
+  logesTechsTestFulfillmentBaseUrl: process.env.LOGESTECHS_TEST_FULFILLMENT_BASE_URL || 'https://apisv5.logestechs.com/api',
   logesTechsCompanyId: process.env.LOGESTECHS_COMPANY_ID,
   logesTechsUsername: process.env.LOGESTECHS_USERNAME,
   logesTechsPassword: process.env.LOGESTECHS_PASSWORD,

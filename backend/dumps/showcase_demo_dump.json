@@ -1,0 +1,159 @@
+{
+  "generatedAt": "2026-09-15T19:16:08.177Z",
+  "version": "1.0.0",
+  "credentials": {
+    "defaultPassword": "password123",
+    "quickLoginUrl": "http://localhost:3030/login",
+    "accounts": [
+      {
+        "email": "admin@demo.com",
+        "role": "admin",
+        "name": "System Superadmin",
+        "phone": "+965 9000 0001"
+      },
+      {
+        "email": "manager@demo.com",
+        "role": "manager",
+        "name": "Nasser Al-Ghanim",
+        "phone": "+965 9000 0002"
+      },
+      {
+        "email": "accounting@demo.com",
+        "role": "accounting",
+        "name": "Hessa Al-Bahar",
+        "phone": "+965 9000 0003"
+      },
+      {
+        "email": "staff@demo.com",
+        "role": "staff",
+        "name": "Bader Al-Mutawa",
+        "phone": "+965 9000 0004"
+      },
+      {
+        "email": "driver@demo.com",
+        "role": "driver",
+        "name": "Ahmed Courier Driver",
+        "phone": "+965 9000 0005"
+      },
+      {
+        "email": "org_manager@demo.com",
+        "role": "org_manager",
+        "name": "Yousef Al-Mutawa (Manager)",
+        "phone": "+965 9911 2233"
+      },
+      {
+        "email": "org_agent@demo.com",
+        "role": "org_agent",
+        "name": "Zaid Al-Harbi (Agent)",
+        "phone": "+965 9911 2234"
+      },
+      {
+        "email": "client@demo.com",
+        "role": "client",
+        "name": "Dalal Al-Khaled (Direct Shipper)",
+        "phone": "+965 9988 7766"
+      }
+    ]
+  },
+  "organizations": [
+    {
+      "name": "Target Logistics",
+      "type": "internal",
+      "creditLimit": "100,000 KWD"
+    },
+    {
+      "name": "Gulf Apex Trading W.L.L.",
+      "type": "BUSINESS",
+      "creditLimit": "15,000 KWD"
+    },
+    {
+      "name": "Al-Sabah Medical & Pharma Logistics",
+      "type": "BUSINESS",
+      "creditLimit": "25,000 KWD"
+    },
+    {
+      "name": "Kuwait Ministry of Commerce",
+      "type": "GOVERNMENT",
+      "creditLimit": "50,000 KWD"
+    }
+  ],
+  "showcaseConsignments": [
+    {
+      "trackingNumber": "DGR-KW-DEMO-001",
+      "status": "pending",
+      "carrierCode": "DGR",
+      "destination": "GB",
+      "description": "Fragrance Oils"
+    },
+    {
+      "trackingNumber": "TRK-KW-READY-002",
+      "status": "ready_for_pickup",
+      "carrierCode": "DHL",
+      "destination": "SA",
+      "description": "Retail Electronics"
+    },
+    {
+      "trackingNumber": "TRK-KW-PICKED-003",
+      "status": "picked_up",
+      "carrierCode": "ARAMEX",
+      "destination": "AE",
+      "description": "Commercial Samples"
+    },
+    {
+      "trackingNumber": "DGR-KW-MANIFEST-004",
+      "status": "created",
+      "carrierCode": "DHL",
+      "destination": "DE",
+      "description": "Medical Diagnostics"
+    },
+    {
+      "trackingNumber": "TRK-KW-TRANSIT-005",
+      "status": "in_transit",
+      "carrierCode": "DHL",
+      "destination": "AE",
+      "description": "Handcrafted Goods"
+    },
+    {
+      "trackingNumber": "TRK-KW-OUTDEL-006",
+      "status": "out_for_delivery",
+      "carrierCode": "ARAMEX",
+      "destination": "SA",
+      "description": "Designer Fashion Accessories"
+    },
+    {
+      "trackingNumber": "TRK-KW-DELIVERED-007",
+      "status": "delivered",
+      "carrierCode": "MANUAL",
+      "destination": "KW",
+      "description": "Office Equipment"
+    },
+    {
+      "trackingNumber": "TRK-KW-RETURN-008",
+      "status": "pending",
+      "carrierCode": "MANUAL",
+      "destination": "KW",
+      "description": "Exchange Return - Wrong Size"
+    },
+    {
+      "trackingNumber": "TRK-COD-UNREMITTED-01",
+      "status": "delivered",
+      "carrierCode": "MANUAL",
+      "destination": "KW",
+      "description": "Electronics COD"
+    },
+    {
+      "trackingNumber": "TRK-COD-UNREMITTED-02",
+      "status": "delivered",
+      "carrierCode": "MANUAL",
+      "destination": "KW",
+      "description": "Cosmetics COD"
+    },
+    {
+      "trackingNumber": "TRK-COD-REMITTED-03",
+      "status": "delivered",
+      "carrierCode": "MANUAL",
+      "destination": "KW",
+      "description": "Wholesale COD"
+    }
+  ]
+}

@@ -676,6 +676,53 @@ const PublicTrackingPage = () => {
 
         {!loading && shipment && (
           <section style={styles.content}>
+            {/* Receiver Action Banner / Card */}
+            <div style={{
+              background: 'linear-gradient(135deg, #0b5bd3 0%, #064098 100%)',
+              borderRadius: 14,
+              padding: '20px 24px',
+              color: '#ffffff',
+              marginBottom: 24,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 16,
+              boxShadow: '0 10px 30px rgba(11, 91, 211, 0.25)',
+              flexWrap: 'wrap'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{
+                  width: 44, height: 44, borderRadius: 12, background: 'rgba(255,255,255,0.18)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24
+                }}>
+                  📍
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 16 }}>Need to Pin Your Exact Delivery Location?</div>
+                  <div style={{ fontSize: 13, opacity: 0.9, marginTop: 2 }}>
+                    Verify via WhatsApp OTP to assist courier driver with precise GPS location.
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => navigate(`/track/${shipment.trackingNumber}/location`)}
+                style={{
+                  background: '#ffffff',
+                  color: '#0b5bd3',
+                  border: 'none',
+                  borderRadius: 10,
+                  padding: '12px 22px',
+                  fontWeight: 800,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.12)',
+                  transition: 'all 0.2s'
+                }}
+              >
+                Pin Delivery Location
+              </button>
+            </div>
+
             {activeTab === 'details' && <ShipmentDetailsTab shipment={shipment} />}
             {activeTab === 'timeline' && <TimelineTab events={timelineEvents} />}
             {activeTab === 'events' && <EventLogTab events={timelineEvents} />}

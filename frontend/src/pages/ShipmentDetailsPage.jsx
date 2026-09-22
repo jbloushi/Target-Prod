@@ -5,8 +5,6 @@ import { useShipment } from '../context/ShipmentContext';
 import { useAuth } from '../context/AuthContext';
 import { useSnackbar } from 'notistack';
 import {
-    PageHeader,
-    Button,
     StatusPill,
     Loader,
     Alert
@@ -26,25 +24,12 @@ import {
     Select,
     MenuItem
 } from '@mui/material';
-import CloseIcon from '@mui/icons-material/Close';
-import RequestQuoteIcon from '@mui/icons-material/RequestQuote';
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
-import CancelOutlinedIcon from '@mui/icons-material/CancelOutlined';
-import UpdateIcon from '@mui/icons-material/Update';
-import EditIcon from '@mui/icons-material/Edit';
-import SaveIcon from '@mui/icons-material/Save';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import ShareIcon from '@mui/icons-material/Share';
-import AccessTimeIcon from '@mui/icons-material/AccessTime';
-import WhatsAppIcon from '@mui/icons-material/WhatsApp';
-import SearchIcon from '@mui/icons-material/Search';
-import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import TrackingTimeline from '../components/TrackingTimeline';
 import AddressPanel from '../components/AddressPanel';
 import ShipmentContent from '../components/shipment/ShipmentContent';
-import ShipmentBilling from '../components/shipment/ShipmentBilling';
+import ProofOfDeliveryModal from '../components/ProofOfDeliveryModal';
 import { financeService, integrationService, shipmentService, userService } from '../services/api';
-import api from '../services/api'; // Use the default api instance for generic get requests
+import api from '../services/api';
 import {
     STATUS_ORDER, STATUS_LABELS, INTERNAL_SHIPMENT_STATUSES, getStepIndex
 } from '../constants/statusConfig';
@@ -53,17 +38,16 @@ import {
     canDeleteShipmentStatus,
     getShipmentDeleteErrorMessage
 } from '../utils/shipmentDeletionPolicy';
-import { getCarrierDisplayName, requiresManualPricing } from '../utils/shipmentDisplay';
+import { getCarrierDisplayName } from '../utils/shipmentDisplay';
+import { generateWaybillPDF, generateCommercialInvoicePDF } from '../utils/pdfGenerator';
+import { TK } from '../tokens/kineticHorizon';
 
 const getAllowedStatusOptions = (user, shipment) => {
     if (!user || !shipment) return [];
-
     const role = user.role;
-
-    if (['admin', 'manager', 'accounting'].includes(role)) {
+    if (['admin', 'staff', 'manager', 'accounting'].includes(role)) {
         return INTERNAL_SHIPMENT_STATUSES;
     }
-
     return [];
 };
 
@@ -71,65 +55,112 @@ const getShipmentTypeLabel = (shipmentType) => (
     shipmentType === 'documents' ? 'Document Express' : 'Standard Package'
 );
 
-// --- Styled Components ---
+// --- Kinetic Horizon Styled Components ---
 
-const HeroSection = styled.div`
-    background: var(--surface-container-low, #ecf1f6);
-    border-left: 6px solid var(--primary, #0050d4);
-    border-radius: 20px;
-    padding: 40px;
-    margin-bottom: 32px;
-    box-shadow: var(--shadow-ambient, 0 12px 32px -4px rgba(42, 47, 50, 0.06));
+const PageContainer = styled.div`
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 24px 20px 60px;
+    min-height: 100vh;
+`;
+
+const KineticHeroCard = styled.div`
+    background: #ffffff;
+    border: 1px solid ${TK.border};
+    border-radius: ${TK.radiusCard}px;
+    padding: 28px 32px;
+    margin-bottom: 24px;
+    box-shadow: ${TK.shadowMd};
     position: relative;
     overflow: hidden;
-
-    &::before {
-        content: '';
-        position: absolute;
-        top: 0; right: 0; bottom: 0; left: 0;
-        background: radial-gradient(circle at top right, rgba(0, 80, 212, 0.05), transparent 70%);
-        pointer-events: none;
-    }
 `;
 
-const TrackingId = styled.div`
-    font-family: 'Manrope', sans-serif;
-    font-size: 36px;
-    font-weight: 800;
-    color: var(--on-surface, #2a2f32);
-    margin-bottom: 8px;
+const TrackingHeaderRow = styled.div`
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 20px;
+`;
+
+const TrackingNumberDisplay = styled.div`
     display: flex;
     align-items: center;
-    gap: 16px;
-    letter-spacing: -0.03em;
+    gap: 14px;
+
+    h1 {
+        font-family: 'Outfit', 'Manrope', sans-serif;
+        font-size: 28px;
+        font-weight: 800;
+        color: ${TK.text1};
+        margin: 0;
+        letter-spacing: -0.02em;
+    }
 `;
 
-const ShipmentMeta = styled.div`
+const CarrierBadge = styled.span`
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: ${TK.radiusPill}px;
+    font-size: 12px;
+    font-weight: 700;
+    background: ${TK.primaryBg};
+    color: ${TK.primary};
+    border: 1px solid ${TK.border};
+`;
+
+const QuickActionBar = styled.div`
     display: flex;
-    gap: 32px;
-    font-size: 14px;
-    color: var(--on-surface-variant, #575c60);
-    font-weight: 500;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+`;
 
-    span {
-        display: flex;
-        align-items: center;
-        gap: 8px;
+const ActionButton = styled.button`
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: ${TK.radiusMd}px;
+    font-size: 12.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border: 1px solid ${props => props.primary ? 'transparent' : props.danger ? '#fca5a5' : TK.border};
+    background: ${props => props.primary ? TK.primary : props.danger ? '#fee2e2' : '#ffffff'};
+    color: ${props => props.primary ? '#ffffff' : props.danger ? '#dc2626' : TK.text1};
+
+    &:hover:not(:disabled) {
+        transform: translateY(-1px);
+        box-shadow: ${TK.shadowSm};
+        background: ${props => props.primary ? TK.primaryDark : props.danger ? '#fecaca' : '#fafbfc'};
     }
 
-    strong {
-        color: var(--on-surface, #2a2f32);
-        font-weight: 700;
+    &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
     }
+`;
+
+const RouteStatusBar = styled.div`
+    background: ${TK.surface};
+    border-radius: ${TK.radiusMd}px;
+    padding: 20px 24px;
+    margin-top: 16px;
+    border: 1px solid ${TK.border};
 `;
 
 const ContentGrid = styled.div`
     display: grid;
     grid-template-columns: 2fr 1fr;
-    gap: 32px;
+    gap: 24px;
     align-items: start;
 
-    @media (max-width: 1200px) {
+    @media (max-width: 1100px) {
         grid-template-columns: 1fr;
     }
 `;
@@ -148,565 +179,273 @@ const SidebarColumn = styled.div`
     top: 24px;
 `;
 
-const InfoCard = styled.div`
-    background: var(--surface-container-lowest, #ffffff);
-    border: none;
-    border-radius: 20px;
-    padding: 32px;
-    height: 100%;
-    box-shadow: var(--shadow-ambient, 0 12px 32px -4px rgba(42, 47, 50, 0.06));
+const KineticCard = styled.div`
+    background: #ffffff;
+    border: 1px solid ${TK.border};
+    border-radius: ${TK.radiusCard}px;
+    padding: 24px;
+    box-shadow: ${TK.shadowSm};
+    transition: box-shadow 0.2s ease;
+
+    &:hover {
+        box-shadow: ${TK.shadowMd};
+    }
 `;
 
 const CardHeader = styled.div`
     display: flex;
     align-items: center;
     justify-content: space-between;
-    font-size: 12px;
-    font-weight: 800;
-    color: var(--primary, #0050d4);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-bottom: 24px;
-    border-bottom: 1px solid rgba(169, 174, 177, 0.1);
-    padding-bottom: 16px;
-    font-family: 'Manrope', sans-serif;
+    margin-bottom: 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid ${TK.border};
 
-    .header-label {
+    .title-group {
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: 10px;
+        font-size: 14px;
+        font-weight: 800;
+        color: ${TK.text1};
+        letter-spacing: -0.01em;
+
+        span.material-symbols-outlined {
+            color: ${TK.primary};
+            font-size: 20px;
+        }
+    }
+`;
+
+const DocumentTile = styled.div`
+    background: ${TK.surface};
+    border: 1px solid ${TK.border};
+    border-radius: ${TK.radiusMd}px;
+    padding: 16px 18px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    transition: all 0.2s ease;
+
+    &:hover {
+        border-color: ${TK.primary};
+        box-shadow: ${TK.shadowSm};
     }
 
-    svg {
-        width: 18px;
-        height: 18px;
+    .doc-icon-wrapper {
+        width: 44px;
+        height: 44px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+
+        span {
+            font-size: 24px;
+        }
     }
+`;
+
+const PartyCard = styled.div`
+    background: #ffffff;
+    border: 1px solid ${TK.border};
+    border-radius: ${TK.radiusCard}px;
+    padding: 20px 24px;
+    flex: 1;
+    min-width: 280px;
 `;
 
 const PartyName = styled.div`
-    font-size: 18px;
-    font-weight: 600;
-    margin-bottom: 4px;
-`;
-
-const PartyType = styled.div`
-    font-size: 13px;
-    color: var(--on-surface-variant, #575c60);
-    margin-bottom: 16px;
-    font-weight: 500;
-`;
-
-const DetailRow = styled.div`
-    margin-bottom: 16px;
-    font-size: 14px;
-    line-height: 1.5;
-`;
-
-const ContactInfo = styled.div`
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 8px 0;
-    font-size: 13px;
-
-    svg {
-        width: 14px;
-        height: 14px;
-        color: var(--accent-error);
-    }
-`;
-
-const RouteProgressBar = ({ originCity, destCity, stepIndex }) => {
-    const total = STATUS_ORDER.length - 1;
-    const pct = Math.max(2, Math.min(98, (stepIndex / total) * 100));
-    const DOTS = 7;
-    return (
-        <Box sx={{ mt: 4, mb: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <Typography variant="caption" sx={{ fontWeight: 800, color: 'var(--on-surface)', minWidth: 80, textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: 'Manrope' }}>{originCity || 'Origin'}</Typography>
-                <Box sx={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', mx: 3 }}>
-                    <Box sx={{ height: 4, bgcolor: 'rgba(0,80,212,0.1)', width: '100%', position: 'absolute', borderRadius: 2 }} />
-                    <Box sx={{ height: 4, bgcolor: 'var(--primary)', width: `${pct}%`, position: 'absolute', transition: 'width 0.8s cubic-bezier(0.4, 0, 0.2, 1)', borderRadius: 2 }} />
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', position: 'relative', zIndex: 1 }}>
-                        {[...Array(DOTS)].map((_, i) => {
-                            const active = (i / (DOTS - 1)) * 100 <= pct;
-                            return (
-                                <Box
-                                    key={i}
-                                    sx={{
-                                        width: 12,
-                                        height: 12,
-                                        borderRadius: '50%',
-                                        bgcolor: active ? 'var(--primary)' : 'var(--surface-container-high)',
-                                        border: '3px solid #ffffff',
-                                        boxShadow: active ? '0 0 10px rgba(0,80,212,0.3)' : 'none',
-                                        transition: 'all 0.3s ease'
-                                    }}
-                                />
-                            );
-                        })}
-                    </Box>
-                    <Box sx={{ position: 'absolute', left: `${pct}%`, transform: 'translateX(-50%)', top: -28, fontSize: 20, zIndex: 2, filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.1))' }}>✈️</Box>
-                </Box>
-                <Typography variant="caption" sx={{ fontWeight: 800, color: 'var(--on-surface)', minWidth: 80, textAlign: 'right', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: 'Manrope' }}>{destCity || 'Destination'}</Typography>
-            </Box>
-        </Box>
-    );
-};
-
-const TrackingLink = styled.a`
-    color: var(--accent-primary);
-    font-weight: 600;
-    text-decoration: none;
-
-    &:hover {
-        text-decoration: underline;
-    }
-`;
-
-const DetailsCard = styled.div`
-    grid-column: 1 / 3;
-    background: var(--surface-container-lowest, #ffffff);
-    border: none;
-    border-radius: 20px;
-    padding: 32px;
-    box-shadow: var(--shadow-ambient, 0 12px 32px -4px rgba(42, 47, 50, 0.06));
-
-    @media (max-width: 1200px) {
-        grid-column: 1 / -1;
-    }
-`;
-
-const DetailsGrid = styled.div`
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 24px;
-
-    @media (max-width: 768px) {
-        grid-template-columns: repeat(2, 1fr);
-    }
-`;
-
-const DetailItem = styled.div`
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-`;
-
-const DetailIcon = styled.div`
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
-    background: rgba(0, 80, 212, 0.06);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--primary, #0050d4);
-    flex-shrink: 0;
-
-    svg {
-        width: 22px;
-        height: 22px;
-    }
-`;
-
-const DetailContent = styled.div`
-    flex: 1;
-`;
-
-const DetailContentLabel = styled.div`
-    font-size: 11px;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 4px;
-`;
-
-const DetailContentValue = styled.div`
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text-primary);
-`;
-
-const SectionCard = styled.div`
-    background: var(--surface-container-lowest, #ffffff);
-    border: none;
-    border-radius: 20px;
-    padding: 32px;
-    margin-bottom: 32px;
-    box-shadow: var(--shadow-ambient, 0 12px 32px -4px rgba(42, 47, 50, 0.06));
-`;
-
-const SectionTitle = styled.h3`
-    margin: 0 0 16px 0;
     font-size: 16px;
     font-weight: 700;
-    color: var(--text-primary);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    color: ${TK.text1};
+    margin-bottom: 4px;
 `;
 
-const Table = styled.table`
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 14px;
-    font-family: 'Manrope', sans-serif;
+const PartyContact = styled.div`
+    font-size: 13px;
+    color: ${TK.text2};
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+`;
 
-    th, td {
-        padding: 16px;
-        text-align: left;
-        border-bottom: 1px solid rgba(169, 174, 177, 0.1);
+const PartyAddress = styled.div`
+    font-size: 13px;
+    color: ${TK.text2};
+    line-height: 1.5;
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: ${TK.surface};
+    border-radius: ${TK.radiusSm}px;
+    border: 1px solid ${TK.border};
+`;
+
+const SummaryMetricsGrid = styled.div`
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 14px;
+    margin-bottom: 18px;
+`;
+
+const MetricBox = styled.div`
+    background: ${TK.surface};
+    border: 1px solid ${TK.border};
+    border-radius: ${TK.radiusMd}px;
+    padding: 14px 16px;
+
+    label {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: ${TK.text3};
+        display: block;
+        margin-bottom: 4px;
     }
 
-    th {
-        color: var(--on-surface-variant, #575c60);
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
+    div {
+        font-size: 16px;
         font-weight: 800;
-        background: var(--surface-container-low, #ecf1f6);
+        color: ${TK.text1};
+    }
+`;
+
+const DataTable = styled.table`
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+
+    th {
+        text-align: left;
+        padding: 10px 12px;
+        background: ${TK.surface};
+        color: ${TK.text2};
+        font-weight: 700;
+        font-size: 11.5px;
+        text-transform: uppercase;
+        border-bottom: 1px solid ${TK.border};
     }
 
     td {
-        color: var(--on-surface, #2a2f32);
-        font-weight: 500;
+        padding: 12px;
+        border-bottom: 1px solid ${TK.border};
+        color: ${TK.text1};
     }
-`;
 
-const EmptyState = styled.div`
-    padding: 24px;
-    border: 1px dashed var(--border-color);
-    border-radius: 10px;
-    color: var(--text-secondary);
-    text-align: center;
+    tr:last-child td {
+        border-bottom: none;
+    }
 `;
 
 const WhatsAppLogGrid = styled.div`
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
-
-    @media (max-width: 768px) {
-        grid-template-columns: 1fr;
-    }
-`;
-
-const WhatsAppLogEntry = styled.div`
-    border: 1px solid rgba(169, 174, 177, 0.16);
-    border-radius: 12px;
-    padding: 16px;
-    background: var(--surface-container-low, #ecf1f6);
-`;
-
-const WhatsAppLogRole = styled.div`
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 12px;
+    flex-direction: column;
+    gap: 14px;
 `;
 
-const WhatsAppLogMeta = styled.div`
-    display: grid;
-    gap: 8px;
-    font-size: 13px;
-    color: var(--on-surface-variant, #575c60);
-
-    strong {
-        color: var(--on-surface, #2a2f32);
-        font-weight: 700;
-    }
-`;
-
-const WhatsAppPreview = styled.pre`
-    margin: 14px 0 0;
-    padding: 14px;
-    border-radius: 10px;
-    background: #ffffff;
-    border: 1px solid rgba(169, 174, 177, 0.16);
-    color: var(--on-surface, #2a2f32);
-    font: 600 12px/1.55 'Manrope', sans-serif;
-    white-space: pre-wrap;
-    word-break: break-word;
-`;
-
-const toDisplayText = (value) => {
-    if (value === null || value === undefined) return '';
-    if (typeof value === 'string' || typeof value === 'number') return String(value);
-    return '';
-};
-
-const formatPartyPhone = (phone, phoneCountryCode) => {
-    const rawPhone = toDisplayText(phone).trim();
-    if (!rawPhone) return '';
-
-    const rawCode = toDisplayText(phoneCountryCode).trim();
-    if (rawPhone.startsWith('+')) return rawPhone;
-    if (!rawCode || rawCode === 'OTHER') return rawPhone;
-
-    const codeDigits = rawCode.replace(/\D/g, '');
-    const phoneDigits = rawPhone.replace(/\D/g, '');
-    if (!codeDigits || !phoneDigits) return rawPhone;
-
-    const localDigits = phoneDigits.startsWith(codeDigits)
-        ? phoneDigits.slice(codeDigits.length)
-        : phoneDigits.startsWith('0') && codeDigits !== '1'
-            ? phoneDigits.slice(1)
-            : phoneDigits;
-
-    return `+${codeDigits} ${localDigits}`;
-};
-
-const normalizePartyAddress = (party = {}) => {
-    const nestedAddress = party.address && typeof party.address === 'object' ? party.address : {};
-    const streetLines = Array.isArray(party.streetLines)
-        ? party.streetLines
-        : Array.isArray(nestedAddress.streetLines)
-            ? nestedAddress.streetLines
-            : [];
-
-    const phone = toDisplayText(party.phone || nestedAddress.phone);
-    const phoneCountryCode = toDisplayText(party.phoneCountryCode || nestedAddress.phoneCountryCode);
-
-    return {
-        ...party,
-        line1: toDisplayText(party.line1 || nestedAddress.line1 || nestedAddress.street || streetLines[0]),
-        line2: toDisplayText(party.line2 || nestedAddress.line2 || streetLines[1]),
-        line3: toDisplayText(party.line3 || nestedAddress.line3 || streetLines[2]),
-        city: toDisplayText(party.city || nestedAddress.city),
-        state: toDisplayText(party.state || nestedAddress.state),
-        postalCode: toDisplayText(party.postalCode || nestedAddress.postalCode),
-        countryCode: toDisplayText(party.countryCode || nestedAddress.countryCode),
-        email: toDisplayText(party.email || nestedAddress.email),
-        phone,
-        phoneCountryCode,
-        displayPhone: formatPartyPhone(phone, phoneCountryCode),
-        company: toDisplayText(party.company || nestedAddress.company),
-        contactPerson: toDisplayText(party.contactPerson || nestedAddress.contactPerson)
-    };
-};
-
-const WHATSAPP_EVENT_LABELS = {
-    shipment_created: 'Shipment Created',
-    on_hold_customs_issue: 'On Hold / Customs Issue',
-    documents_needed: 'Documents Needed',
-    delivery_attempt: 'Delivery Attempt',
-    out_for_delivery: 'Out for Delivery'
-};
-
-const getWhatsAppStatusColor = (status) => {
-    if (status === 'delivered' || status === 'read') return { color: '#087f5b', background: 'rgba(8, 127, 91, 0.1)' };
-    if (status === 'sent' || status === 'submitted') return { color: '#0050d4', background: 'rgba(0, 80, 212, 0.1)' };
-    if (status === 'failed') return { color: '#b31b25', background: 'rgba(179, 27, 37, 0.1)' };
-    if (status === 'skipped') return { color: '#575c60', background: 'rgba(87, 92, 96, 0.1)' };
-    return { color: '#9a6700', background: 'rgba(154, 103, 0, 0.1)' };
-};
-
-const formatWhatsAppTime = (value) => {
-    if (!value) return 'Not submitted yet';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return 'Not submitted yet';
-    return date.toLocaleString();
-};
-
-const getLatestWhatsAppLog = (logs, role) => {
-    const roleLogs = (logs || [])
-        .filter(log => log.provider === 'chatwoot' && log.recipientRole === role)
-        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-    return roleLogs[0] || null;
-};
-
-const getWhatsAppStatusLabel = (status) => {
-    if (status === 'submitted') return 'SUBMITTED';
-    if (status === 'sent') return 'SENT ✓';
-    if (status === 'delivered') return 'DELIVERED ✓✓';
-    if (status === 'read') return 'READ ✓✓';
-    return String(status || 'pending').toUpperCase();
-};
-
-const WhatsAppLogCard = ({ logs = [], previews = {}, previewLoading = false, sendingRole = null, onSendRole }) => {
-    const [expandedPreviews, setExpandedPreviews] = useState({});
+const WhatsAppLogCardComponent = ({ logs = [], sendingRole = null, onSendRole }) => {
     const roles = [
-        { key: 'sender', label: 'Sender' },
-        { key: 'receiver', label: 'Receiver' }
+        { key: 'sender', label: 'Sender Notification' },
+        { key: 'receiver', label: 'Receiver Notification' }
     ];
-    const totalRecords = logs.filter(log => log.provider === 'chatwoot').length;
 
     return (
-        <SectionCard>
+        <KineticCard>
             <CardHeader>
-                <div className="header-label">
-                    <WhatsAppIcon />
-                    WhatsApp Log
+                <div className="title-group">
+                    <span className="material-symbols-outlined" style={{ color: '#25D366' }}>chat</span>
+                    WhatsApp Dispatch Tracker
                 </div>
-                <Chip
-                    size="small"
-                    label={`${totalRecords} record${totalRecords === 1 ? '' : 's'}`}
-                    sx={{ fontWeight: 800, fontSize: '11px' }}
-                />
+                <Chip size="small" label={`${logs.length} logs`} sx={{ fontWeight: 700, fontSize: 11 }} />
             </CardHeader>
 
             <WhatsAppLogGrid>
-                {roles.map((role) => {
-                    const roleLogs = (logs || [])
-                        .filter(log => log.provider === 'chatwoot' && log.recipientRole === role.key)
-                        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+                {roles.map(role => {
+                    const roleLogs = (logs || []).filter(l => l.recipientRole === role.key);
                     const latestLog = roleLogs[0] || null;
-                    const latestStatus = latestLog?.status || 'pending';
-                    const statusStyle = getWhatsAppStatusColor(latestStatus);
-                    const confirmed = latestStatus === 'delivered' || latestStatus === 'read';
-                    const sent = ['submitted', 'sent', 'delivered', 'read'].includes(latestStatus);
-                    const latestEventType = latestLog?.eventType || 'shipment_created';
-                    const preview = previews[role.key];
-                    const previewExpanded = Boolean(expandedPreviews[role.key]);
-                    const canSend = Boolean(onSendRole) && !sent;
-                    const isSending = sendingRole === role.key;
-                    const actionLabel = latestLog ? 'Retry Send' : 'Send Now';
+                    const isSent = latestLog && ['sent', 'delivered', 'read'].includes(latestLog.status);
 
                     return (
-                        <WhatsAppLogEntry key={role.key}>
-                            <WhatsAppLogRole>
-                                <Typography variant="subtitle2" sx={{ fontWeight: 800, color: 'var(--on-surface)', fontFamily: 'Manrope' }}>
-                                    {role.label}
-                                </Typography>
-                                <Chip
-                                    size="small"
-                                    icon={confirmed ? <CheckCircleOutlineIcon /> : undefined}
-                                    label={latestLog ? getWhatsAppStatusLabel(latestStatus) : 'NOT QUEUED'}
-                                    sx={{
-                                        color: statusStyle.color,
-                                        bgcolor: statusStyle.background,
-                                        fontWeight: 800,
-                                        '& .MuiChip-icon': { color: statusStyle.color }
-                                    }}
-                                />
-                            </WhatsAppLogRole>
+                        <div
+                            key={role.key}
+                            style={{
+                                padding: '14px 16px',
+                                background: TK.surface,
+                                borderRadius: TK.radiusMd,
+                                border: `1px solid ${TK.border}`,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: 8
+                            }}
+                        >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ fontWeight: 700, fontSize: 13, color: TK.text1 }}>{role.label}</div>
+                                <span style={{
+                                    fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
+                                    background: isSent ? '#dcfce7' : '#fef3c7',
+                                    color: isSent ? '#15803d' : '#b45309'
+                                }}>
+                                    {latestLog ? latestLog.status.toUpperCase() : 'QUEUED'}
+                                </span>
+                            </div>
 
-                            {roleLogs.length === 0 ? (
-                                <EmptyState style={{ padding: '16px', fontSize: '13px' }}>
-                                    No WhatsApp message record yet for this role.
-                                </EmptyState>
-                            ) : (
-                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 1 }}>
-                                    {roleLogs.map((log, idx) => {
-                                        const logStatus = log.status || 'pending';
-                                        const logStatusStyle = getWhatsAppStatusColor(logStatus);
-                                        const isLatest = idx === 0;
-                                        return (
-                                            <Box
-                                                key={log.id || idx}
-                                                sx={{
-                                                    borderLeft: `3px solid ${isLatest ? logStatusStyle.color : 'var(--border-color, #d9dee4)'}`,
-                                                    pl: 1.5,
-                                                    py: 0.5,
-                                                    opacity: isLatest ? 1 : 0.65,
-                                                }}
-                                            >
-                                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                                                    <Typography variant="caption" sx={{ fontWeight: 800, color: 'var(--on-surface)', fontSize: '12px' }}>
-                                                        {WHATSAPP_EVENT_LABELS[log.eventType] || log.eventType}
-                                                    </Typography>
-                                                    <Chip
-                                                        size="small"
-                                                        label={getWhatsAppStatusLabel(logStatus)}
-                                                        sx={{ color: logStatusStyle.color, bgcolor: logStatusStyle.background, fontWeight: 800, fontSize: '10px', height: '20px' }}
-                                                    />
-                                                </Box>
-                                                <WhatsAppLogMeta>
-                                                    <div>Recipient: <strong>{log.recipientName || role.label}</strong></div>
-                                                    <div>Phone: <strong>{log.recipientPhone || 'Masked'}</strong></div>
-                                                    <div>Queued: <strong>{formatWhatsAppTime(log.createdAt)}</strong></div>
-                                                    {log.sentAt && <div>Submitted: <strong>{formatWhatsAppTime(log.sentAt)}</strong></div>}
-                                                    {log.chatwootConversationId && <div>Conversation: <strong>#{log.chatwootConversationId}</strong></div>}
-                                                    {log.errorMessage && <div style={{ color: '#c0392b' }}>Error: <strong>{log.errorMessage}</strong></div>}
-                                                </WhatsAppLogMeta>
-                                            </Box>
-                                        );
-                                    })}
-                                </Box>
+                            {latestLog && (
+                                <div style={{ fontSize: 12, color: TK.text2 }}>
+                                    To: <strong>{latestLog.recipientPhone || 'Customer'}</strong> • Event: {latestLog.eventType}
+                                </div>
                             )}
 
-                            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 2 }}>
-                                <Typography variant="caption" sx={{ color: 'var(--on-surface-variant)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                                    Message Review
-                                </Typography>
-                                <MuiIconButton
-                                    size="small"
-                                    onClick={() => setExpandedPreviews(prev => ({ ...prev, [role.key]: !prev[role.key] }))}
-                                    sx={{ color: 'var(--primary)', bgcolor: 'rgba(0,80,212,0.06)', borderRadius: '8px', p: 0.8 }}
-                                    title={previewExpanded ? 'Hide message preview' : 'Review message preview'}
+                            {onSendRole && (
+                                <ActionButton
+                                    primary
+                                    onClick={() => onSendRole(role.key)}
+                                    disabled={sendingRole === role.key}
+                                    style={{ marginTop: 4, width: '100%', justifyContent: 'center' }}
                                 >
-                                    <SearchIcon fontSize="small" />
-                                </MuiIconButton>
-                            </Stack>
-
-                            {previewExpanded && (
-                                <>
-                                    <WhatsAppPreview>
-                                        {previewLoading && !preview?.content
-                                            ? 'Loading preview...'
-                                            : preview?.content || 'Preview unavailable. Check sender/receiver phone and shipment data.'}
-                                    </WhatsAppPreview>
-                                    {preview?.templateName && (
-                                        <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'var(--on-surface-variant)' }}>
-                                            Template: {preview.templateName}
-                                        </Typography>
-                                    )}
-                                </>
+                                    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>send</span>
+                                    {sendingRole === role.key ? 'Dispatching...' : isSent ? 'Re-send WhatsApp Update' : 'Send WhatsApp Now'}
+                                </ActionButton>
                             )}
-
-                            {canSend && (
-                                <Button
-                                    variant="secondary"
-                                    onClick={() => onSendRole(role.key, latestEventType)}
-                                    disabled={isSending}
-                                    style={{ marginTop: '14px', width: '100%', minHeight: '36px' }}
-                                >
-                                    {isSending ? 'Sending...' : actionLabel}
-                                </Button>
-                            )}
-                        </WhatsAppLogEntry>
+                        </div>
                     );
                 })}
             </WhatsAppLogGrid>
-        </SectionCard>
+        </KineticCard>
     );
 };
 
-// --- Main Component ---
+// 5 Edit Tabs Definition
+const EDIT_TABS = [
+    { key: 'sender', label: 'Shipper', icon: 'flight_takeoff' },
+    { key: 'receiver', label: 'Consignee', icon: 'flight_land' },
+    { key: 'content', label: 'Parcels & Goods', icon: 'inventory_2' },
+    { key: 'billing', label: 'Billing & Terms', icon: 'receipt_long' },
+    { key: 'status', label: 'Status & Milestones', icon: 'history' }
+];
 
-const ShipmentDetailsPage = () => {
+export const ShipmentDetailsPage = () => {
     const { trackingNumber } = useParams();
     const navigate = useNavigate();
     const fetchedRef = useRef(false);
     const [accounting, setAccounting] = useState(null);
-    const [approvalDrawerOpen, setApprovalDrawerOpen] = useState(false);
-    const [approvalComment, setApprovalComment] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
+    const [isGeneratingCarrierDocs, setIsGeneratingCarrierDocs] = useState(false);
     const [editDrawerOpen, setEditDrawerOpen] = useState(false);
-    const [editSection, setEditSection] = useState(null); // 'sender', 'receiver', 'content', 'billing'
+    const [editSection, setEditSection] = useState('sender');
     const [editDraft, setEditDraft] = useState(null);
     const [editErrors, setEditErrors] = useState({});
     const [clients, setClients] = useState([]);
-    const [availableCarriers, setAvailableCarriers] = useState([]);
-    const [availableOptionalServices, setAvailableOptionalServices] = useState([]);
-    const [selectedOptionalServiceCodes, setSelectedOptionalServiceCodes] = useState([]);
-    const [editInsuredValue, setEditInsuredValue] = useState('');
     const [sendingWhatsAppRole, setSendingWhatsAppRole] = useState(null);
-    const [whatsAppPreviews, setWhatsAppPreviews] = useState({});
-    const [whatsAppPreviewLoading, setWhatsAppPreviewLoading] = useState(false);
     const [conversionDrawerOpen, setConversionDrawerOpen] = useState(false);
-    const [conversionCarrierCode, setConversionCarrierCode] = useState('');
-    const [conversionServiceCode, setConversionServiceCode] = useState('');
-    const [conversionOptions, setConversionOptions] = useState(null);
+    const [conversionCarrierCode, setConversionCarrierCode] = useState('DGR');
+    const [conversionServiceCode, setConversionServiceCode] = useState('P');
     const [conversionTargetCarriers, setConversionTargetCarriers] = useState([]);
-    const [conversionLoading, setConversionLoading] = useState(false);
-    const [conversionError, setConversionError] = useState('');
+    const [isPodModalOpen, setIsPodModalOpen] = useState(false);
+    const [isCarrierDocsCollapsed, setIsCarrierDocsCollapsed] = useState(true);
 
-    const { user } = useAuth();
+    const { user, can } = useAuth();
     const { enqueueSnackbar } = useSnackbar();
-    const location = useLocation();
 
     const {
         shipment,
@@ -715,7 +454,6 @@ const ShipmentDetailsPage = () => {
         getShipment,
     } = useShipment();
 
-    // Fetch shipment data on component mount
     useEffect(() => {
         if (!trackingNumber) return;
         fetchedRef.current = false;
@@ -725,61 +463,21 @@ const ShipmentDetailsPage = () => {
             fetchedRef.current = true;
             try {
                 await getShipment(trackingNumber);
-            } catch (error) {
-                console.error('Error fetching shipment:', error);
+            } catch (err) {
+                console.error('Failed to load shipment details:', err);
             }
         };
 
         fetchShipmentData();
     }, [trackingNumber, getShipment]);
 
-
-    // Capability and Status Checks
-    const isStaff = ['admin', 'staff', 'manager', 'accounting'].includes(user?.role);
-    const isClient = user?.role === 'client';
-    const approvalStatuses = ['pending', 'draft', 'updated', 'ready_for_pickup', 'picked_up'];
-    const clientEditableStatuses = ['draft', 'pending', 'updated'];
-    const shipmentCarrierCode = String(shipment?.carrierCode || shipment?.carrier || '').toUpperCase();
-    const isInternalCarrierShipment = shipment && (
-        shipmentCarrierCode === 'INTERNAL'
-        || shipment.internallyManaged === true
-    );
-    const isInternalShipment = shipment && (
-        isInternalCarrierShipment
-        || requiresManualPricing(shipment)
-    );
-    const statusEditOptions = shipment ? getAllowedStatusOptions(user, shipment) : [];
-    const canEditStatus = statusEditOptions.length > 0;
-    const canManageApproval = canEditStatus && shipment && approvalStatuses.includes(shipment.status);
-    const canApprove = canManageApproval && !isInternalShipment;
-    const canEdit = isClient && shipment && clientEditableStatuses.includes(shipment.status);
-    const isConvertedInternalShipment = Boolean(shipment?.pricingSnapshot?.conversion?.convertedToTrackingNumber);
-    const canConvertInternalShipment = isStaff
-        && isInternalCarrierShipment
-        && !isConvertedInternalShipment
-        && shipment
-        && !['cancelled', 'delivered'].includes(shipment.status);
-
-    const canEditSection = (section) => {
-        if (!shipment) return false;
-        if (section === 'status') return canEditStatus;
-        if (isStaff) return true;
-        return clientEditableStatuses.includes(shipment.status);
-    };
-
-    const shipmentId = shipment?.id || shipment?._id;
-    const organizationId = shipment?.organizationId || shipment?.organization?.id || shipment?.organization?._id || shipment?.organization;
+    const shipmentId = shipment?._id || shipment?.id;
+    const organizationId = shipment?.organizationId || shipment?.organization?._id;
 
     useEffect(() => {
-        const params = new URLSearchParams(location.search);
-        if (params.get('action') === 'approve' && canApprove) {
-            setApprovalDrawerOpen(true);
-        }
-    }, [location.search, canApprove]);
+        if (!shipmentId) return;
 
-    useEffect(() => {
         const loadAccounting = async () => {
-            if (!shipmentId) return;
             try {
                 const accountingResponse = await financeService.getShipmentAccounting(shipmentId);
                 setAccounting(accountingResponse.data);
@@ -791,408 +489,29 @@ const ShipmentDetailsPage = () => {
         loadAccounting();
     }, [shipmentId, organizationId]);
 
-    useEffect(() => {
-        const loadWhatsAppPreviews = async () => {
-            if (!shipment?.trackingNumber || !isStaff) return;
-            setWhatsAppPreviewLoading(true);
-            try {
-                const roleConfigs = ['sender', 'receiver'];
-                const previewPairs = await Promise.all(roleConfigs.map(async (role) => {
-                    const latestLog = getLatestWhatsAppLog(shipment.notificationLogs || [], role);
-                    const eventType = latestLog?.eventType || 'shipment_created';
-                    const response = await integrationService.previewChatwootShipmentMessage({
-                        trackingNumber: shipment.trackingNumber,
-                        eventType,
-                        recipientRole: role
-                    });
-                    return [role, response.data?.[0] || null];
-                }));
-                setWhatsAppPreviews(Object.fromEntries(previewPairs));
-            } catch (error) {
-                console.error('Failed to load WhatsApp previews:', error);
-                setWhatsAppPreviews({});
-            } finally {
-                setWhatsAppPreviewLoading(false);
-            }
-        };
+    const [sendingPaymentLink, setSendingPaymentLink] = useState(false);
 
-        loadWhatsAppPreviews();
-    }, [shipment?.trackingNumber, shipment?.notificationLogs, isStaff]);
-
-    const refreshAccounting = async () => {
-        if (!shipmentId) return;
-        const accountingResponse = await financeService.getShipmentAccounting(shipmentId);
-        setAccounting(accountingResponse.data);
-    };
-
-    const handleReverseAllocation = async (allocationId) => {
+    const handleSendPaymentLink = async (recipientRole = 'sender') => {
+        if (!shipment?.trackingNumber) return;
+        setSendingPaymentLink(true);
         try {
-            await financeService.reverseAllocation(allocationId, { reason: 'Manual reversal' });
-            await refreshAccounting();
-        } catch (error) {
-            console.error('Failed to reverse allocation:', error);
-        }
-    };
-
-    const loadConversionOptions = async (carrierCode, carrierList = conversionTargetCarriers) => {
-        if (!shipment?.trackingNumber || !carrierCode) return;
-        setConversionLoading(true);
-        setConversionError('');
-        try {
-            const response = await shipmentService.getBookingOptions(shipment.trackingNumber, carrierCode);
-            const options = response?.data || {};
-            const targetMetadata = carrierList.find(carrier => carrier.code === carrierCode);
-            const selectedService = options.selectedServiceCode
-                || options.services?.[0]?.serviceCode
-                || targetMetadata?.defaultServiceCode
-                || (carrierCode === 'OTE' ? 'STD' : 'P');
-
-            setConversionOptions(options);
-            setConversionServiceCode(selectedService);
-        } catch (error) {
-            setConversionOptions(null);
-            setConversionError(error.message || 'Could not load carrier options');
-        } finally {
-            setConversionLoading(false);
-        }
-    };
-
-    const handleOpenConversion = async () => {
-        setConversionDrawerOpen(true);
-        setConversionError('');
-
-        let carriers = conversionTargetCarriers;
-        try {
-            const response = await shipmentService.getInternalShipmentConversionTargets(shipment.trackingNumber);
-            carriers = response.data || [];
-            setConversionTargetCarriers(carriers);
-        } catch (error) {
-            setConversionError(error.message || 'Could not load conversion carriers');
-            return;
-        }
-
-        const target = carriers.find(carrier => (
-            carrier.active !== false
-            && carrier.capabilities?.supportsConversionTarget === true
-        ));
-        if (target) {
-            setConversionCarrierCode(target.code);
-            await loadConversionOptions(target.code, carriers);
-        }
-    };
-
-    const handleChangeConversionCarrier = async (carrierCode) => {
-        setConversionCarrierCode(carrierCode);
-        setConversionServiceCode('');
-        setConversionOptions(null);
-        await loadConversionOptions(carrierCode);
-    };
-
-    const handleConvertInternalShipment = async () => {
-        if (!conversionCarrierCode || !conversionServiceCode) {
-            enqueueSnackbar('Select a carrier and service before converting.', { variant: 'warning' });
-            return;
-        }
-
-        setIsProcessing(true);
-        try {
-            await shipmentService.convertInternalShipment(shipment.trackingNumber, {
-                carrierCode: conversionCarrierCode,
-                serviceCode: conversionServiceCode
-            });
-            enqueueSnackbar(`Carrier changed to ${conversionCarrierCode}`, { variant: 'success' });
-            setConversionDrawerOpen(false);
+            await shipmentService.sendPaymentLink(shipment.trackingNumber, { recipientRole });
+            enqueueSnackbar('WhatsApp Pay-by-Link sent to customer!', { variant: 'success' });
             await getShipment(shipment.trackingNumber);
         } catch (error) {
-            enqueueSnackbar(error.message || 'Failed to convert shipment', { variant: 'error' });
+            console.error('Failed to send payment link:', error);
+            enqueueSnackbar(error.response?.data?.error || error.message || 'Failed to send WhatsApp payment link', { variant: 'error' });
         } finally {
-            setIsProcessing(false);
+            setSendingPaymentLink(false);
         }
     };
 
-    const handleSendWhatsAppRole = async (recipientRole, eventType = 'shipment_created') => {
-        if (!shipment?.trackingNumber || !recipientRole) return;
-        setSendingWhatsAppRole(recipientRole);
-        try {
-            const result = await integrationService.sendChatwootTestMessage({
-                trackingNumber: shipment.trackingNumber,
-                eventType,
-                recipientRole,
-                force: true
-            });
-            const responseData = result?.data || {};
-            const resultItems = responseData.results || [];
-            const failed = resultItems.some(item => item.status === 'failed');
-            const skipped = responseData.skipped || resultItems.some(item => item.status === 'skipped');
-            const skippedReason = responseData.reason || resultItems.find(item => item.status === 'skipped')?.reason;
-
-            enqueueSnackbar(
-                failed
-                    ? `WhatsApp ${recipientRole} message failed. Check the log.`
-                    : skipped
-                        ? `WhatsApp ${recipientRole} message skipped${skippedReason ? `: ${skippedReason}` : '.'}`
-                        : `WhatsApp ${recipientRole} message submitted to Chatwoot.`,
-                { variant: failed || skipped ? 'warning' : 'success' }
-            );
-            await getShipment(shipment.trackingNumber);
-        } catch (error) {
-            enqueueSnackbar(error.message || `Failed to send WhatsApp message to ${recipientRole}`, { variant: 'error' });
-        } finally {
-            setSendingWhatsAppRole(null);
-        }
+    const handleCopyPaymentLink = () => {
+        if (!shipment?.trackingNumber) return;
+        const link = `${window.location.origin}/pay/${shipment.trackingNumber}`;
+        navigator.clipboard.writeText(link);
+        enqueueSnackbar('Payment checkout link copied to clipboard!', { variant: 'success' });
     };
-
-    const handleOpenEdit = (section) => {
-        if (!shipment) return;
-        setEditSection(section);
-
-        // Fix: Map origin to sender and destination to receiver for the edit form
-        const draft = JSON.parse(JSON.stringify(shipment));
-        if (!draft.sender && draft.origin) draft.sender = draft.origin;
-        if (!draft.receiver && draft.destination) draft.receiver = draft.destination;
-        const dangerousGoodsSource = draft.dangerousGoods || draft.origin?.dangerousGoods || {};
-        draft.dangerousGoods = {
-            contains: false,
-            ...(dangerousGoodsSource || {})
-        };
-
-        setEditDraft(draft);
-        setEditErrors({});
-        setEditDrawerOpen(true);
-
-        // Fetch auxiliary data if editing billing/setup
-        if (section === 'billing' || section === 'sender') {
-            if (isStaff && clients.length === 0) {
-                userService.getClients().then(res => setClients(res.data || []));
-            }
-            if (availableCarriers.length === 0) {
-                shipmentService.getAvailableCarriers().then(res => setAvailableCarriers(res.data || []));
-            }
-            
-            // If editing billing, fetch quotes to get available optional services
-            if (section === 'billing' && shipment) {
-                // Initialize selected codes from shipment pricing snapshot or current state
-                const selected = (shipment.pricingSnapshot?.optionalServices || []).map(s => s.serviceCode);
-                const selectedFallback = Array.isArray(shipment.origin?.optionalServiceCodes)
-                    ? shipment.origin.optionalServiceCodes
-                    : [];
-                const selectedCodes = selected.length > 0 ? selected : selectedFallback;
-                setSelectedOptionalServiceCodes(selectedCodes);
-                const declaredValue = (shipment.items || []).reduce((sum, item) => {
-                    const itemValue = Number(item?.declaredValue || 0) * Number(item?.quantity || 1);
-                    return sum + itemValue;
-                }, 0);
-                const savedInsuredValueRaw = shipment.insuredValue ?? shipment.origin?.insuredValue;
-                const savedInsuredValue = savedInsuredValueRaw != null
-                    ? Number(savedInsuredValueRaw)
-                    : declaredValue;
-                setEditInsuredValue(
-                    selectedCodes.includes('II') && savedInsuredValue > 0
-                        ? String(savedInsuredValue)
-                        : ''
-                );
-
-                if (isInternalCarrierShipment) {
-                    setAvailableOptionalServices([]);
-                } else {
-                    const quotePayload = {
-                        sender: shipment.origin,
-                        receiver: shipment.destination,
-                        parcels: shipment.parcels,
-                        items: shipment.items,
-                        carrierCode: shipment.carrierCode,
-                        serviceCode: shipment.serviceCode,
-                        shipmentType: shipment.shipmentType || 'package'
-                    };
-                    shipmentService.getQuotes(quotePayload).then(res => {
-                        if (res.success && Array.isArray(res.data)) {
-                            const active = res.data.find(q => q.serviceCode === shipment.serviceCode) || res.data[0];
-                            if (active) {
-                                setAvailableOptionalServices(active.optionalServices || []);
-                            }
-                        }
-                    }).catch(err => console.error('Failed to fetch optional services for edit:', err));
-                }
-            }
-        }
-    };
-
-    const handleSaveEdit = async () => {
-        if (!editDraft) return;
-        setIsProcessing(true);
-        try {
-            let payload = {};
-            if (editSection === 'sender') payload = { origin: editDraft.sender };
-            else if (editSection === 'receiver') payload = { destination: editDraft.receiver };
-            else if (editSection === 'content') {
-                payload = {
-                    parcels: editDraft.parcels,
-                    items: editDraft.items,
-                    dangerousGoods: editDraft.dangerousGoods,
-                    packagingType: editDraft.packagingType,
-                    currency: editDraft.currency
-                };
-            }
-            else if (editSection === 'billing') {
-                const effectiveInsuredValue = selectedOptionalServiceCodes.includes('II')
-                    ? Number(editInsuredValue || 0)
-                    : undefined;
-
-                if (selectedOptionalServiceCodes.includes('II') && (!effectiveInsuredValue || effectiveInsuredValue <= 0)) {
-                    enqueueSnackbar('Insurance value must be greater than 0 when insurance service (II) is selected.', { variant: 'warning' });
-                    setIsProcessing(false);
-                    return;
-                }
-
-                const quotePayload = {
-                    sender: editDraft.sender || shipment.origin,
-                    receiver: editDraft.receiver || shipment.destination,
-                    parcels: editDraft.parcels || shipment.parcels,
-                    items: editDraft.items || shipment.items,
-                    carrierCode: shipment.carrierCode,
-                    serviceCode: shipment.serviceCode,
-                    shipmentType: editDraft.shipmentType || shipment.shipmentType || 'package',
-                    optionalServiceCodes: selectedOptionalServiceCodes,
-                    insuredValue: effectiveInsuredValue
-                };
-
-                const quoteResponse = await shipmentService.getQuotes(quotePayload);
-                if (quoteResponse.success && Array.isArray(quoteResponse.data)) {
-                    const activeQuote = quoteResponse.data.find(q => q.serviceCode === shipment.serviceCode) || quoteResponse.data[0];
-                    if (activeQuote) {
-                        setAvailableOptionalServices(activeQuote.optionalServices || []);
-                    }
-                }
-
-                payload = {
-                    exportReason: editDraft.exportReason,
-                    incoterm: editDraft.incoterm,
-                    invoiceRemarks: editDraft.invoiceRemarks,
-                    signatureName: editDraft.signatureName,
-                    signatureTitle: editDraft.signatureTitle,
-                    payerOfVat: editDraft.payerOfVat,
-                    gstPaid: editDraft.gstPaid,
-                    shipperAccount: editDraft.shipperAccount,
-                    labelFormat: editDraft.labelFormat,
-                    palletCount: editDraft.palletCount,
-                    packageMarks: editDraft.packageMarks,
-                    allowPublicLocationUpdate: editDraft.allowPublicLocationUpdate,
-                    allowPublicInfoUpdate: editDraft.allowPublicInfoUpdate,
-                    reference: editDraft.reference,
-                    optionalServiceCodes: selectedOptionalServiceCodes,
-                    insuredValue: effectiveInsuredValue
-                };
-            }
-            else if (editSection === 'status') {
-                payload = {
-                    status: editDraft.status,
-                    description: editDraft.statusDescription || `Status changed to ${STATUS_LABELS[editDraft.status] || editDraft.status}`,
-                    ...(isInternalShipment ? {
-                        price: editDraft.price,
-                        costPrice: editDraft.costPrice,
-                        currency: editDraft.currency,
-                        estimatedDelivery: editDraft.estimatedDelivery
-                    } : {})
-                };
-            }
-
-            console.info('[ShipmentDetailsPage] Saving edit payload keys:', Object.keys(payload || {}));
-            const response = await shipmentService.updateShipmentDetails(shipment.trackingNumber, payload);
-            if (response.success) {
-                enqueueSnackbar(`${editSection.charAt(0).toUpperCase() + editSection.slice(1)} updated successfully`, { variant: 'success' });
-                setEditDrawerOpen(false);
-                getShipment(shipment.trackingNumber);
-            }
-        } catch (error) {
-            console.error(`Error saving ${editSection} edit: `, error);
-            enqueueSnackbar(error.message || `Failed to update ${editSection} `, { variant: 'error' });
-        } finally {
-            setIsProcessing(false);
-        }
-    };
-
-    const handleApprovalAction = async (action) => {
-        setIsProcessing(true);
-        try {
-            if (action === 'approve') {
-                const carrier = shipment.carrierCode || shipment.carrier;
-                const serviceCode = shipment.serviceCode;
-                const isInternal = String(carrier || '').toUpperCase() === 'INTERNAL'
-                    || shipment.internallyManaged === true;
-
-                if (isInternal) {
-                    await shipmentService.updateStatus(shipment.trackingNumber, {
-                        status: 'ready_for_pickup',
-                        description: approvalComment || 'Internal shipment approved for internal handling'
-                    });
-
-                    enqueueSnackbar('Internal shipment approved', { variant: 'success' });
-                    setApprovalDrawerOpen(false);
-                    getShipment(shipment.trackingNumber);
-                    return;
-                }
-
-                if (!carrier || !serviceCode) {
-                    enqueueSnackbar('Missing carrier or service info. Redirecting to Edit to fix.', { variant: 'warning' });
-                    navigate(`/shipment/${shipment.trackingNumber}/edit`);
-                    return;
-                }
-
-                const existingOptionalCodes = (shipment.pricingSnapshot?.optionalServices || []).map(s => s.serviceCode);
-
-                await shipmentService.bookShipment(shipment.trackingNumber, carrier, existingOptionalCodes);
-
-                enqueueSnackbar('Shipment Approved & Booked Successfully', { variant: 'success' });
-                setApprovalDrawerOpen(false);
-                getShipment(shipment.trackingNumber);
-            } else if (action === 'reject') {
-                await shipmentService.updateStatus(shipment.trackingNumber, {
-                    status: 'exception',
-                    description: approvalComment || 'Shipment rejected during review'
-                });
-                enqueueSnackbar('Shipment marked as exception', { variant: 'info' });
-                setApprovalDrawerOpen(false);
-                getShipment(shipment.trackingNumber);
-            } else if (action === 'update') {
-                await shipmentService.updateStatus(shipment.trackingNumber, {
-                    status: 'pending',
-                    description: approvalComment || 'Shipment update requested from client'
-                });
-                enqueueSnackbar('Update requested from client', { variant: 'info' });
-                setApprovalDrawerOpen(false);
-                getShipment(shipment.trackingNumber);
-            }
-        } catch (error) {
-            console.error(`Failed to ${action} shipment:`, error);
-            enqueueSnackbar(error.message || `Failed to ${action} shipment`, { variant: 'error' });
-        } finally {
-            setIsProcessing(false);
-        }
-    };
-
-
-    if (loading && !shipment) {
-        return (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
-                <Loader size="48px" />
-            </div>
-        );
-    }
-
-    if (error || (!shipment && !loading)) {
-        return (
-            <div style={{ maxWidth: '800px', margin: '40px auto' }}>
-                <Alert type="error" title="Error">
-                    {error || 'Shipment not found.'}
-                </Alert>
-                <div style={{ marginTop: '24px' }}>
-                    <Button variant="primary" onClick={() => navigate('/shipments')}>
-                        Back to Shipments
-                    </Button>
-                </div>
-            </div>
-        );
-    }
 
     const handleOpenPdf = async (pdfData) => {
         if (!pdfData) return;
@@ -1212,7 +531,7 @@ const ShipmentDetailsPage = () => {
                 return;
             }
 
-            // Handle relative upload paths (Convert to secure backend API call)
+            // Handle relative upload paths (convert to secure backend API call)
             if (typeof pdfData === 'string' && pdfData.startsWith('/uploads/documents/')) {
                 const filename = pdfData.split('/').pop();
                 const secureUrl = `/shipments/${shipment.trackingNumber}/documents/${filename}`;
@@ -1229,31 +548,12 @@ const ShipmentDetailsPage = () => {
                 return;
             }
 
-            // Handle API endpoints (detect if they return HTML or PDF)
-            if (typeof pdfData === 'string' && pdfData.startsWith('/api/')) {
-                const response = await api.get(pdfData, { responseType: 'blob' });
-                const blob = response.data;
-                const contentType = response.headers['content-type'];
-
-                if (contentType && contentType.includes('text/html')) {
-                    // It's an HTML label, not a PDF
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                        const htmlContent = reader.result;
-                        const newTab = window.open();
-                        newTab.document.write(htmlContent);
-                        newTab.document.close();
-                    };
-                    reader.readAsText(blob);
-                } else {
-                    // It's a PDF blob
-                    const blobUrl = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
-                    window.open(blobUrl, '_blank');
-                }
+            // Handle API endpoints or external URLs
+            if (typeof pdfData === 'string' && (pdfData.startsWith('/api/') || pdfData.startsWith('http://') || pdfData.startsWith('https://'))) {
+                window.open(pdfData, '_blank');
                 return;
             }
 
-            // Fallback for absolute URLs or other strings
             window.open(pdfData, '_blank');
         } catch (error) {
             console.error('Failed to open document:', error);
@@ -1261,832 +561,938 @@ const ShipmentDetailsPage = () => {
         }
     };
 
-    const handleGenerateWaybill = async () => {
-        const { generateWaybillPDF } = await import('../utils/pdfGenerator');
-        await generateWaybillPDF(shipment);
+    const handleOpenEdit = (section = 'sender') => {
+        if (!shipment) return;
+        setEditSection(section);
+        const draft = JSON.parse(JSON.stringify(shipment));
+        if (!draft.sender && draft.origin) draft.sender = draft.origin;
+        if (!draft.receiver && draft.destination) draft.receiver = draft.destination;
+        draft.dangerousGoods = {
+            contains: false,
+            ...(draft.dangerousGoods || draft.origin?.dangerousGoods || {})
+        };
+
+        setEditDraft(draft);
+        setEditErrors({});
+        setEditDrawerOpen(true);
+
+        if (section === 'billing' || section === 'sender') {
+            if (isStaff && clients.length === 0) {
+                userService.getClients().then(res => setClients(res.data || []));
+            }
+        }
     };
 
-    const sender = normalizePartyAddress(shipment.origin || shipment.sender || {});
-    const receiver = normalizePartyAddress(shipment.destination || shipment.receiver || {});
+    const handleSaveEdit = async () => {
+        if (!editDraft || !shipment) return;
+        setIsProcessing(true);
+        try {
+            const payload = {
+                origin: editDraft.sender || editDraft.origin,
+                destination: editDraft.receiver || editDraft.destination,
+                parcels: editDraft.parcels,
+                items: editDraft.items,
+                dangerousGoods: editDraft.dangerousGoods,
+                packagingType: editDraft.packagingType,
+                shipmentType: editDraft.shipmentType,
+                incoterm: editDraft.incoterm,
+                reference: editDraft.reference,
+                currency: editDraft.currency
+            };
+
+            if (editDraft.status && editDraft.status !== shipment.status) {
+                payload.status = editDraft.status;
+                payload.description = editDraft.statusDescription || `Status changed to ${STATUS_LABELS[editDraft.status] || editDraft.status}`;
+            }
+
+            if (isInternalShipment) {
+                if (editDraft.price !== undefined && editDraft.price !== '') payload.price = Number(editDraft.price);
+                if (editDraft.costPrice !== undefined && editDraft.costPrice !== '') payload.costPrice = Number(editDraft.costPrice);
+                if (editDraft.estimatedDelivery) payload.estimatedDelivery = editDraft.estimatedDelivery;
+            }
+
+            await shipmentService.updateShipmentDetails(shipment.trackingNumber, payload);
+            enqueueSnackbar('Consignment details saved successfully!', { variant: 'success' });
+            setEditDrawerOpen(false);
+            await getShipment(shipment.trackingNumber);
+        } catch (error) {
+            enqueueSnackbar(error.message || 'Failed to update shipment', { variant: 'error' });
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleGenerateInvoiceQR = async () => {
+        if (!shipment) return;
+        try {
+            await generateWaybillPDF(shipment);
+        } catch (err) {
+            console.error('Failed to generate Invoice/QR:', err);
+            enqueueSnackbar('Failed to generate Target Invoice/QR PDF', { variant: 'error' });
+        }
+    };
+
+    const handleSendWhatsAppRole = async (recipientRole, eventType = 'shipment_created') => {
+        if (!shipment?.trackingNumber || !recipientRole) return;
+        setSendingWhatsAppRole(recipientRole);
+        try {
+            await integrationService.sendChatwootTestMessage({
+                trackingNumber: shipment.trackingNumber,
+                eventType,
+                recipientRole,
+                force: true
+            });
+            enqueueSnackbar(`WhatsApp message queued for ${recipientRole}!`, { variant: 'success' });
+            await getShipment(shipment.trackingNumber);
+        } catch (error) {
+            enqueueSnackbar(error.message || 'Failed to send WhatsApp message', { variant: 'error' });
+        } finally {
+            setSendingWhatsAppRole(null);
+        }
+    };
+
+    const handleOpenConversion = async () => {
+        if (!shipment?.trackingNumber) return;
+        setConversionDrawerOpen(true);
+        try {
+            const targetsRes = await shipmentService.getInternalShipmentConversionTargets(shipment.trackingNumber);
+            const carriers = targetsRes.data || [];
+            setConversionTargetCarriers(carriers);
+            const defaultTarget = carriers[0];
+            if (defaultTarget) {
+                setConversionCarrierCode(defaultTarget.code);
+                setConversionServiceCode(defaultTarget.serviceOptions?.[0]?.code || 'P');
+            }
+        } catch (err) {
+            console.error('Failed to fetch conversion targets:', err);
+        }
+    };
+
+    const handleConvertAndBook = async () => {
+        if (!conversionCarrierCode || !conversionServiceCode) {
+            enqueueSnackbar('Please select a carrier and service.', { variant: 'warning' });
+            return;
+        }
+        setIsProcessing(true);
+        try {
+            const res = await shipmentService.convertInternalShipment(shipment.trackingNumber, {
+                carrierCode: conversionCarrierCode,
+                serviceCode: conversionServiceCode,
+                bookWithCarrier: true,
+                autoBook: true
+            });
+            const awb = res?.data?.booking?.trackingNumber || res?.data?.shipment?.dhlTrackingNumber || res?.data?.shipment?.carrierShipmentId;
+            enqueueSnackbar(`Shipment converted and booked with ${conversionCarrierCode}! ${awb ? `(AWB: ${awb})` : ''}`, { variant: 'success' });
+            setConversionDrawerOpen(false);
+            await getShipment(shipment.trackingNumber);
+        } catch (error) {
+            enqueueSnackbar(error.response?.data?.error || error.message || 'Failed to convert shipment', { variant: 'error' });
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleApproveAndBook = async () => {
+        if (!shipment) return;
+        const rawCarrier = shipment.carrierCode || shipment.carrier || 'INTERNAL';
+        const isInternal = String(rawCarrier).toUpperCase() === 'INTERNAL' || shipment.internallyManaged === true;
+
+        if (isInternal) {
+            handleOpenConversion();
+            return;
+        }
+
+        setIsProcessing(true);
+        try {
+            const existingOptionalCodes = (shipment.pricingSnapshot?.optionalServices || []).map(s => s.serviceCode);
+            const res = await shipmentService.bookShipment(shipment.trackingNumber, rawCarrier, existingOptionalCodes, false);
+            const awb = res?.data?.trackingNumber || res?.data?.shipment?.dhlTrackingNumber || res?.data?.shipment?.carrierShipmentId;
+            enqueueSnackbar(`Shipment booked with carrier successfully! ${awb ? `(AWB: ${awb})` : ''}`, { variant: 'success' });
+            await getShipment(shipment.trackingNumber);
+        } catch (error) {
+            enqueueSnackbar(error.response?.data?.error || error.message || 'Failed to book with carrier', { variant: 'error' });
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleGenerateCarrierDocs = async (docTypeToOpen = 'awb') => {
+        if (!shipment) return;
+        if (isInternalShipment) {
+            handleOpenConversion();
+            return;
+        }
+
+        setIsGeneratingCarrierDocs(true);
+        try {
+            const res = await shipmentService.generateCarrierDocuments(shipment.trackingNumber);
+            const awb = res?.data?.carrierShipmentId || res?.data?.awbUrl || res?.data?.labelUrl;
+            enqueueSnackbar(`Carrier AWB & Invoice generated successfully from ${carrierDisplayName}! ${awb ? `(AWB: ${awb})` : ''}`, { variant: 'success' });
+            await getShipment(shipment.trackingNumber);
+
+            let openUrl = null;
+            if (docTypeToOpen === 'invoice') {
+                openUrl = res?.data?.invoiceUrl || res?.data?.shipment?.invoiceUrl;
+            } else {
+                openUrl = res?.data?.awbUrl || res?.data?.labelUrl || res?.data?.shipment?.awbUrl || res?.data?.shipment?.labelUrl;
+            }
+
+            if (openUrl) {
+                handleOpenPdf(openUrl);
+            }
+        } catch (err) {
+            console.error('Failed to generate carrier documents:', err);
+            enqueueSnackbar(err.response?.data?.error || err.message || 'Failed to generate carrier documents', { variant: 'error' });
+        } finally {
+            setIsGeneratingCarrierDocs(false);
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!canDeleteShipmentStatus(shipment.status)) {
+            enqueueSnackbar(buildShipmentDeleteBlockedMessage(shipment.status).short, { variant: 'warning' });
+            return;
+        }
+        if (window.confirm(`Delete consignment ${shipment.trackingNumber}? This cannot be undone.`)) {
+            try {
+                await shipmentService.deleteShipment(shipment.trackingNumber);
+                enqueueSnackbar('Consignment deleted successfully', { variant: 'success' });
+                navigate('/shipments');
+            } catch (err) {
+                enqueueSnackbar(getShipmentDeleteErrorMessage(err, shipment.status), { variant: 'warning' });
+            }
+        }
+    };
+
+    if (loading && !shipment) {
+        return (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
+                <Loader size="48px" />
+            </div>
+        );
+    }
+
+    if (error || (!shipment && !loading)) {
+        return (
+            <div style={{ maxWidth: '800px', margin: '40px auto' }}>
+                <Alert type="error" title="Error">
+                    {error || 'Shipment not found.'}
+                </Alert>
+                <div style={{ marginTop: '24px' }}>
+                    <ActionButton primary onClick={() => navigate('/shipments')}>
+                        Back to Shipments
+                    </ActionButton>
+                </div>
+            </div>
+        );
+    }
+
+    const sender = shipment.origin || shipment.sender || {};
+    const receiver = shipment.destination || shipment.receiver || {};
     const parcels = shipment.parcels || [];
     const items = shipment.items || [];
-    const rawDocuments = Array.isArray(shipment.documents) ? shipment.documents : [];
-    const extractDocumentUrl = (value) => {
-        if (!value) return null;
-        if (typeof value === 'string') return value;
-        if (typeof value === 'object') {
-            const candidate = value.url || value.href || value.path || value.link;
-            return typeof candidate === 'string' ? candidate : null;
-        }
-        return null;
-    };
-
-    // Robust document resolving for Labels and Invoices, especially when standard backend URLs fall back to the generic documents array
-    // Ignore blob URLs as they are temporary local drafts that expire on page refresh. 
-    // Fall back to the internal backend generated label URL.
-    const resolvedLabelUrl = shipment.labelUrl && !shipment.labelUrl.startsWith('blob:')
-        ? shipment.labelUrl
-        : `/api/shipments/${shipment.trackingNumber}/label`;
-
-    const invoiceDocument = rawDocuments.find((d) => {
-        const type = String(d?.type || '').toLowerCase();
-        const url = String(extractDocumentUrl(d?.url) || extractDocumentUrl(d) || '').toLowerCase();
-        return type === 'invoice' || url.includes('invoice');
-    });
-    const resolvedInvoiceUrl = shipment.invoiceUrl
-        || extractDocumentUrl(invoiceDocument?.url)
-        || extractDocumentUrl(invoiceDocument);
-
-    // Filter out resolved documents from the general stack
-    const documents = rawDocuments
-        .map((doc) => ({ ...doc, resolvedUrl: extractDocumentUrl(doc?.url) || extractDocumentUrl(doc) }))
-        .filter((doc) => doc.resolvedUrl && doc.resolvedUrl !== resolvedLabelUrl && doc.resolvedUrl !== resolvedInvoiceUrl);
-
     const totalWeight = parcels.reduce((sum, p) => sum + (Number(p.weight) || 0), 0);
     const totalPieces = parcels.reduce((sum, p) => sum + (Number(p.quantity) || 1), 0);
-    const totalVolumetric = parcels.reduce((sum, p) => {
-        if (p.volumetricWeight) return sum + Number(p.volumetricWeight);
-        if (p.dimensions?.length && p.dimensions?.width && p.dimensions?.height) {
-            return sum + ((p.dimensions.length * p.dimensions.width * p.dimensions.height) / 5000) * (Number(p.quantity) || 1);
-        }
-        return sum;
-    }, 0);
-    const carrierTrackingNumber = shipment.carrierShipmentId || shipment.dhlTrackingNumber;
-    const carrierCode = (shipment.carrier || shipment.carrierCode || 'DGR').toUpperCase();
-    const carrierDisplayName = getCarrierDisplayName(carrierCode);
-    const carrierTrackingUrl = carrierTrackingNumber && (carrierCode === 'DGR' || carrierCode === 'DHL')
-        ? `https://www.dhl.com/global-en/home/tracking.html?tracking-id=${carrierTrackingNumber}`
-        : null;
-    const fallbackTotalCharge = Number(
-        shipment.pricingSnapshot?.totalPrice
-        ?? shipment.price
-        ?? 0
-    );
-    const fallbackTotalPaid = Number(shipment.totalPaid ?? 0);
-    const fallbackRemainingBalance = Number(
-        shipment.remainingBalance
-        ?? Math.max(fallbackTotalCharge - fallbackTotalPaid, 0)
-    );
-    const accountingSummary = accounting || {
-        totalCharge: fallbackTotalCharge,
-        totalPaid: fallbackTotalPaid,
-        remainingBalance: fallbackRemainingBalance,
-        status: fallbackRemainingBalance <= 0.001 && fallbackTotalCharge > 0 ? 'paid' : 'unpaid',
-        allocations: []
-    };
-    const allocationHistory = Array.isArray(accountingSummary.allocations)
-        ? accountingSummary.allocations
-        : [];
-
+    const rawCarrierCode = (shipment.carrier || shipment.carrierCode || 'DGR').toUpperCase();
+    const isInternalShipment = rawCarrierCode === 'INTERNAL' || shipment.internallyManaged === true;
+    const carrierDisplayName = getCarrierDisplayName(rawCarrierCode);
     const publicTrackingUrl = `${window.location.origin}/track/${shipment.trackingNumber}`;
-    const shipmentCarrierText = [
-        shipment.carrierCode,
-        shipment.carrier,
-        shipment.carrierName,
-        shipment.pricingSnapshot?.carrierCode,
-        shipment.pricingSnapshot?.carrier
-    ].filter(Boolean).join(' ').toUpperCase();
-    const normalizeCurrencyCode = (currency, fallback = 'KWD') => String(currency || fallback || 'KWD').trim().toUpperCase().slice(0, 3);
-    const billingCurrency = normalizeCurrencyCode(
-        accountingSummary?.currency
-        || shipment.pricingSnapshot?.billingCurrency
-        || shipment.pricingSnapshot?.currency
-        || shipment.currency,
-        shipmentCarrierText.includes('OTE') || shipmentCarrierText.includes('LOGESTECHS') ? 'AED' : 'KWD'
-    );
-    const declaredCurrency = normalizeCurrencyCode(
-        shipment.pricingSnapshot?.declaredCurrency || shipment.currency,
-        billingCurrency
-    );
 
-    const handleCopyTrackingLink = () => {
-        navigator.clipboard.writeText(publicTrackingUrl);
-        enqueueSnackbar('Tracking link copied to clipboard!', { variant: 'success' });
+    const isStaff = !user || ['admin', 'staff', 'manager', 'accounting', 'org_manager', 'org_agent'].includes(user?.role) || (typeof can === 'function' && can('BOOK_CARRIERS'));
+    const canEdit = isStaff || shipment.status === 'draft';
+
+    const rawDocuments = Array.isArray(shipment.documents) ? shipment.documents : [];
+    const extractDocUrl = (doc) => {
+        if (!doc) return null;
+        if (typeof doc === 'string') return doc;
+        return doc.url || doc.path || null;
+    };
+
+    const carrierAwbDoc = rawDocuments.find(d => ['label', 'awb', 'waybilldoc'].includes(String(d?.type || '').toLowerCase()));
+    const carrierInvoiceDoc = rawDocuments.find(d => ['invoice', 'customs_invoice'].includes(String(d?.type || '').toLowerCase()));
+
+    const resolvedCarrierAwb = shipment.labelUrl || shipment.awbUrl || extractDocUrl(carrierAwbDoc);
+    const resolvedCarrierInvoice = shipment.invoiceUrl || extractDocUrl(carrierInvoiceDoc);
+    const hasCarrierBooking = Boolean(shipment.carrierShipmentId || shipment.dhlTrackingNumber || shipment.dhlConfirmed || resolvedCarrierAwb);
+    const canApproveOrBook = isStaff && !hasCarrierBooking && ['draft', 'pending', 'pending_approval', 'ready_for_pickup', 'created'].includes(shipment.status);
+    const canGenerateCarrierDocs = isStaff && (!resolvedCarrierAwb || !resolvedCarrierInvoice);
+
+    const statusEditOptions = getAllowedStatusOptions(user, shipment);
+
+    const accountingSummary = accounting || {
+        totalCharge: Number(shipment.price || 0),
+        totalPaid: Number(shipment.totalPaid || 0),
+        remainingBalance: Number(shipment.remainingBalance || (Number(shipment.price || 0) - Number(shipment.totalPaid || 0))),
+        status: (Number(shipment.remainingBalance || 0) <= 0.001 && Number(shipment.price || 0) > 0) ? 'paid' : 'unpaid',
+        allocations: []
     };
 
     return (
-        <div style={{ paddingBottom: '40px' }}>
-            <PageHeader
-                title="Shipment Details"
-                description={`Tracking Number: ${shipment.trackingNumber}`}
-                action={
-                    <>
-                        {canEdit && (
-                            <Button variant="secondary" onClick={() => navigate(`/shipment/${shipment.trackingNumber}/edit`)}>
-                                Edit Shipment
-                            </Button>
-                        )}
-                        {canManageApproval && (
-                            <Button
-                                variant="primary"
-                                onClick={() => !isInternalShipment && setApprovalDrawerOpen(true)}
-                                disabled={isInternalShipment}
-                            >
-                                Manage Approval
-                            </Button>
-                        )}
-                        {canConvertInternalShipment && (
-                            <Button
-                                variant="primary"
-                                onClick={handleOpenConversion}
-                                icon={<LocalShippingIcon />}
-                            >
-                                Convert to Carrier
-                            </Button>
-                        )}
-                        <Button
-                            variant="primary"
-                            onClick={handleGenerateWaybill}
-                        >
-                            Print Label
-                        </Button>
-                        {user?.role === 'admin' && (
-                            <span title={!canDeleteShipmentStatus(shipment.status) ? buildShipmentDeleteBlockedMessage(shipment.status).tooltip : ''}>
-                                <Button
-                                    variant="secondary"
-                                    disabled={!canDeleteShipmentStatus(shipment.status)}
-                                    onClick={async () => {
-                                        if (!canDeleteShipmentStatus(shipment.status)) {
-                                            enqueueSnackbar(buildShipmentDeleteBlockedMessage(shipment.status).short, { variant: 'warning' });
-                                            return;
-                                        }
-
-                                        if (window.confirm(`Delete shipment ${shipment.trackingNumber}? This is only allowed while the shipment is still in an early pre-processing state and cannot be undone.`)) {
-                                            try {
-                                                await shipmentService.deleteShipment(shipment.trackingNumber);
-                                                enqueueSnackbar('Shipment deleted successfully', { variant: 'success' });
-                                                navigate('/shipments');
-                                            } catch (error) {
-                                                enqueueSnackbar(getShipmentDeleteErrorMessage(error, shipment.status), { variant: 'warning' });
-                                            }
-                                        }
-                                    }}
-                                    style={{ color: '#ff4d4d', borderColor: '#ff4d4d', marginLeft: '8px' }}
-                                >
-                                    Delete
-                                </Button>
-                            </span>
-                        )}
-                    </>
-                }
-                secondaryAction={
-                    <Button variant="secondary" onClick={() => navigate('/shipments')}>
-                        Back to List
-                    </Button>
-                }
-            />
-
-            <HeroSection>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '20px' }}>
-                    <div style={{ flex: 1 }}>
-                        <TrackingId>
-                            {shipment.trackingNumber}
-                            <StatusPill status={shipment.status} />
-                        </TrackingId>
-                        <ShipmentMeta>
-                            <span>Created: <strong>{new Date(shipment.createdAt).toLocaleDateString()}</strong></span>
-                            <span>Type: <strong>{getShipmentTypeLabel(shipment.shipmentType)}</strong></span>
-                            {isStaff && <span>Carrier: <strong>{carrierDisplayName}</strong></span>}
-                            <span>Total Weight: <strong>{totalWeight.toFixed(2)} KG</strong></span>
-                        </ShipmentMeta>
-
-                        <RouteProgressBar
-                            originCity={sender.city}
-                            destCity={receiver.city}
-                            stepIndex={getStepIndex(shipment.status)}
-                        />
-
-                        {shipment.history && shipment.history.length > 0 && (
-                            <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1, color: 'var(--text-secondary)', fontSize: '13px' }}>
-                                <AccessTimeIcon sx={{ fontSize: 16 }} />
-                                Last Update: {new Date(shipment.history[shipment.history.length - 1].timestamp).toLocaleString()}
-                            </Box>
-                        )}
-                    </div>
-
-                    <Box sx={{
-                        background: 'var(--surface-container-lowest, #ffffff)',
-                        p: 3,
-                        borderRadius: '16px',
-                        border: 'none',
-                        minWidth: { xs: '100%', sm: '320px' },
-                        boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)',
-                        alignSelf: 'stretch',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'center'
-                    }}>
-                        <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1.5 }}>
-                            <ShareIcon sx={{ fontSize: 18, color: 'var(--primary)' }} />
-                            <Typography variant="caption" sx={{ color: 'var(--on-surface-variant)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'Manrope' }}>
-                                Shareable Tracking Link
-                            </Typography>
-                        </Stack>
-                        <Stack direction="row" alignItems="center" spacing={1}>
-                            <Box sx={{
-                                flex: 1,
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                                fontSize: '13px',
-                                color: 'var(--on-surface)',
-                                background: 'var(--surface-container-low)',
-                                p: '10px 16px',
-                                borderRadius: '8px',
-                                border: '1px solid rgba(169, 174, 177, 0.1)',
-                                fontFamily: 'monospace',
-                                fontWeight: 600
-                            }}>
-                                {publicTrackingUrl}
-                            </Box>
-                            <MuiIconButton
-                                size="small"
-                                onClick={handleCopyTrackingLink}
-                                sx={{
-                                    color: 'var(--primary)',
-                                    bgcolor: 'rgba(0,80,212,0.06)',
-                                    '&:hover': { bgcolor: 'rgba(0,80,212,0.12)' },
-                                    borderRadius: '8px',
-                                    p: 1.2
-                                }}
-                            >
-                                <ContentCopyIcon fontSize="small" />
-                            </MuiIconButton>
-                        </Stack>
-                    </Box>
+        <PageContainer>
+            {/* Top Breadcrumb Navigation */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <button
+                        type="button"
+                        onClick={() => navigate('/shipments')}
+                        style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px',
+                            background: '#ffffff', border: `1px solid ${TK.border}`, borderRadius: TK.radiusMd,
+                            fontSize: 12.5, fontWeight: 700, color: TK.text2, cursor: 'pointer'
+                        }}
+                    >
+                        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>arrow_back</span>
+                        Shipments
+                    </button>
+                    <span style={{ color: TK.text3 }}>/</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: TK.text2 }}>Consignment Details</span>
                 </div>
-            </HeroSection>
 
+                <div style={{ fontSize: 12, color: TK.text3 }}>
+                    Last Updated: {new Date(shipment.updatedAt || shipment.createdAt).toLocaleString()}
+                </div>
+            </div>
+
+            {/* Kinetic Hero Card */}
+            <KineticHeroCard>
+                <TrackingHeaderRow>
+                    <TrackingNumberDisplay>
+                        <h1>{shipment.trackingNumber}</h1>
+                        <StatusPill status={shipment.status} />
+                        <CarrierBadge>
+                            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>local_shipping</span>
+                            {carrierDisplayName}
+                        </CarrierBadge>
+                    </TrackingNumberDisplay>
+
+                    <QuickActionBar>
+                        <ActionButton
+                            onClick={() => {
+                                navigator.clipboard.writeText(publicTrackingUrl);
+                                enqueueSnackbar('Tracking link copied to clipboard!', { variant: 'success' });
+                            }}
+                        >
+                            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>content_copy</span>
+                            Copy Link
+                        </ActionButton>
+
+                        {/* Official Carrier AWB from Carrier */}
+                        {resolvedCarrierAwb && (
+                            <ActionButton primary onClick={() => handleOpenPdf(resolvedCarrierAwb)}>
+                                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>print</span>
+                                Print Carrier AWB
+                            </ActionButton>
+                        )}
+
+                        {/* Official Carrier Customs Invoice from Carrier */}
+                        {resolvedCarrierInvoice && (
+                            <ActionButton onClick={() => handleOpenPdf(resolvedCarrierInvoice)}>
+                                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>print</span>
+                                Print Carrier Invoice
+                            </ActionButton>
+                        )}
+
+                        {/* Generate Carrier AWB & Invoice Button (prominent when not yet generated) */}
+                        {canGenerateCarrierDocs && (
+                            <ActionButton
+                                primary
+                                disabled={isGeneratingCarrierDocs || isProcessing}
+                                onClick={() => handleGenerateCarrierDocs('awb')}
+                            >
+                                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
+                                    {isGeneratingCarrierDocs ? 'hourglass_top' : 'bolt'}
+                                </span>
+                                {isGeneratingCarrierDocs
+                                    ? 'Generating...'
+                                    : (isInternalShipment ? 'Convert & Generate Carrier Docs' : 'Generate AWB & Invoice from Carrier')}
+                            </ActionButton>
+                        )}
+
+                        {/* Target Hub Standard Document: Invoice/QR */}
+                        <ActionButton onClick={handleGenerateInvoiceQR}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>qr_code_2</span>
+                            Invoice/QR
+                        </ActionButton>
+
+                        {['out_for_delivery', 'in_transit'].includes(shipment.status) && (
+                            <ActionButton primary onClick={() => setIsPodModalOpen(true)}>
+                                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>draw</span>
+                                Capture POD
+                            </ActionButton>
+                        )}
+
+                        {String(shipment.status || '').toLowerCase() === 'delivered' && (
+                            <ActionButton onClick={() => window.open(`/returns/${shipment.trackingNumber}`, '_blank')}>
+                                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>assignment_return</span>
+                                Customer Return
+                            </ActionButton>
+                        )}
+
+                        {canEdit && (
+                            <ActionButton onClick={() => handleOpenEdit('sender')}>
+                                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>edit</span>
+                                Edit Consignment
+                            </ActionButton>
+                        )}
+
+                        {user?.role === 'admin' && (
+                            <ActionButton
+                                danger
+                                disabled={!canDeleteShipmentStatus(shipment.status)}
+                                onClick={handleDelete}
+                                title={!canDeleteShipmentStatus(shipment.status) ? buildShipmentDeleteBlockedMessage(shipment.status).tooltip : ''}
+                            >
+                                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>delete</span>
+                                Delete
+                            </ActionButton>
+                        )}
+                    </QuickActionBar>
+                </TrackingHeaderRow>
+
+                {/* Route Visual Connector */}
+                <RouteStatusBar>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: TK.text3, textTransform: 'uppercase' }}>Origin</div>
+                            <div style={{ fontSize: 16, fontWeight: 800, color: TK.text1 }}>
+                                {sender.city || 'Kuwait City'}, {sender.countryCode || 'KW'}
+                            </div>
+                        </div>
+
+                        <div style={{ flex: 1, margin: '0 32px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, color: TK.primary }}>
+                                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>flight_takeoff</span>
+                                <span>{getShipmentTypeLabel(shipment.shipmentType)}</span>
+                            </div>
+                            <div style={{ height: 4, width: '100%', background: TK.border, borderRadius: 2, position: 'relative' }}>
+                                <div style={{
+                                    height: '100%',
+                                    width: `${Math.min(100, Math.max(15, (getStepIndex(shipment.status) / (STATUS_ORDER.length - 1)) * 100))}%`,
+                                    background: TK.primary,
+                                    borderRadius: 2,
+                                    transition: 'width 0.4s ease'
+                                }} />
+                            </div>
+                        </div>
+
+                        <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: TK.text3, textTransform: 'uppercase' }}>Destination</div>
+                            <div style={{ fontSize: 16, fontWeight: 800, color: TK.text1 }}>
+                                {receiver.city || 'Destination'}, {receiver.countryCode || 'GCC'}
+                            </div>
+                        </div>
+                    </div>
+                </RouteStatusBar>
+            </KineticHeroCard>
+
+            {/* 2-Column Content Layout */}
             <ContentGrid>
+                {/* Left Main Column */}
                 <MainColumn>
-                    {/* Origin & Destination Container */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
-                        {/* Origin Card */}
-                        <InfoCard>
-                            <CardHeader>
-                                <div className="header-label">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <circle cx="12" cy="12" r="10"></circle>
-                                        <circle cx="12" cy="12" r="3"></circle>
-                                    </svg>
+                    {/* Origin & Destination Parties */}
+                    <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+                        {/* Shipper Party Card */}
+                        <PartyCard>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                                <div style={{ fontSize: 12, fontWeight: 800, color: TK.primary, textTransform: 'uppercase' }}>
                                     Shipper (From)
                                 </div>
-                                {canEditSection('sender') && (
-                                    <MuiIconButton size="small" onClick={() => handleOpenEdit('sender')} sx={{ color: 'var(--primary)', bgcolor: 'rgba(0,80,212,0.06)', borderRadius: '8px', p: 0.8 }}>
-                                        <EditIcon fontSize="small" />
-                                    </MuiIconButton>
+                                {canEdit && (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleOpenEdit('sender')}
+                                        style={{ border: 'none', background: 'transparent', color: TK.primary, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}
+                                    >
+                                        Edit
+                                    </button>
                                 )}
-                            </CardHeader>
-                            <PartyName>{sender.company || sender.contactPerson || 'N/A'}</PartyName>
-                            {sender.company && <PartyType>c/o {sender.contactPerson || 'N/A'}</PartyType>}
+                            </div>
 
-                            <DetailRow>
-                                {sender.line1 && <div>{sender.line1}</div>}
-                                {sender.line2 && <div>{sender.line2}</div>}
-                                {sender.line3 && <div>{sender.line3}</div>}
-                                <div>
-                                    {sender.city}{sender.state ? `, ${sender.state}` : ''} {sender.postalCode}
-                                </div>
-                                <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginTop: '4px' }}>
-                                    {sender.countryCode}
-                                </div>
-                            </DetailRow>
+                            <PartyName>{sender.company || sender.contactPerson || 'Shipper Contact'}</PartyName>
+                            <PartyContact>
+                                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>call</span>
+                                {sender.phone || 'No phone'}
+                            </PartyContact>
+                            {sender.email && (
+                                <PartyContact>
+                                    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>mail</span>
+                                    {sender.email}
+                                </PartyContact>
+                            )}
 
-                            <DetailRow>
-                                <ContactInfo>
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
-                                    </svg>
-                                    {sender.displayPhone || sender.phone || 'No phone'}
-                                </ContactInfo>
-                                <ContactInfo>
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                                        <polyline points="22,6 12,13 2,6"></polyline>
-                                    </svg>
-                                    {sender.email || 'No email'}
-                                </ContactInfo>
-                            </DetailRow>
-                        </InfoCard>
+                            <PartyAddress>
+                                <div>{[sender.line1, sender.line2, sender.address].filter(Boolean).join(', ') || 'Address on file'}</div>
+                                <div style={{ fontWeight: 600, marginTop: 4 }}>{sender.city}, {sender.countryCode || 'KW'}</div>
+                            </PartyAddress>
+                        </PartyCard>
 
-                        {/* Destination Card */}
-                        <InfoCard>
-                            <CardHeader>
-                                <div className="header-label">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                                        <circle cx="12" cy="10" r="3"></circle>
-                                    </svg>
+                        {/* Consignee Party Card */}
+                        <PartyCard>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                                <div style={{ fontSize: 12, fontWeight: 800, color: TK.info, textTransform: 'uppercase' }}>
                                     Consignee (To)
                                 </div>
-                                {canEditSection('receiver') && (
-                                    <MuiIconButton size="small" onClick={() => handleOpenEdit('receiver')} sx={{ color: '#00d9b8', p: 0.5 }}>
-                                        <EditIcon fontSize="small" />
-                                    </MuiIconButton>
+                                {canEdit && (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleOpenEdit('receiver')}
+                                        style={{ border: 'none', background: 'transparent', color: TK.primary, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}
+                                    >
+                                        Edit
+                                    </button>
                                 )}
-                            </CardHeader>
+                            </div>
 
-                            <PartyName>{receiver.company || receiver.contactPerson || 'N/A'}</PartyName>
-                            {receiver.company && <PartyType>c/o {receiver.contactPerson || 'N/A'}</PartyType>}
+                            <PartyName>{receiver.company || receiver.contactPerson || 'Consignee Contact'}</PartyName>
+                            <PartyContact>
+                                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>call</span>
+                                {receiver.phone || 'No phone'}
+                            </PartyContact>
+                            {receiver.email && (
+                                <PartyContact>
+                                    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>mail</span>
+                                    {receiver.email}
+                                </PartyContact>
+                            )}
 
-                            <DetailRow>
-                                {receiver.line1 && <div>{receiver.line1}</div>}
-                                {receiver.line2 && <div>{receiver.line2}</div>}
-                                {receiver.line3 && <div>{receiver.line3}</div>}
-                                <div>
-                                    {receiver.city}{receiver.state ? `, ${receiver.state}` : ''} {receiver.postalCode}
-                                </div>
-                                <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginTop: '4px' }}>
-                                    {receiver.countryCode}
-                                </div>
-                            </DetailRow>
-
-                            <DetailRow>
-                                <ContactInfo>
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
-                                    </svg>
-                                    {receiver.displayPhone || receiver.phone || 'No phone'}
-                                </ContactInfo>
-                                <ContactInfo>
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                                        <polyline points="22,6 12,13 2,6"></polyline>
-                                    </svg>
-                                    {receiver.email || 'No email'}
-                                </ContactInfo>
-                            </DetailRow>
-                        </InfoCard>
+                            <PartyAddress>
+                                <div>{[receiver.line1, receiver.line2, receiver.address].filter(Boolean).join(', ') || 'Address on file'}</div>
+                                <div style={{ fontWeight: 600, marginTop: 4 }}>{receiver.city}, {receiver.countryCode || 'GCC'}</div>
+                            </PartyAddress>
+                        </PartyCard>
                     </div>
 
-                    {/* Shipment Details & Content Summary Card */}
-                    <DetailsCard>
+                    {/* Consignment Packages & Content Summary */}
+                    <KineticCard>
                         <CardHeader>
-                            <div className="header-label">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <circle cx="12" cy="12" r="10"></circle>
-                                    <line x1="12" y1="8" x2="12" y2="12"></line>
-                                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                                </svg>
-                                Shipment & Content Summary
+                            <div className="title-group">
+                                <span className="material-symbols-outlined">inventory_2</span>
+                                Package & Consignment Structure
                             </div>
-                            {canEditSection('content') && (
-                                <MuiIconButton size="small" onClick={() => handleOpenEdit('content')} sx={{ color: '#00d9b8', p: 0.5 }}>
-                                    <EditIcon fontSize="small" />
-                                </MuiIconButton>
+                            {canEdit && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleOpenEdit('content')}
+                                    style={{ border: 'none', background: 'transparent', color: TK.primary, cursor: 'pointer', fontSize: 12.5, fontWeight: 700 }}
+                                >
+                                    Edit Parcels
+                                </button>
                             )}
                         </CardHeader>
 
-                        <DetailsGrid>
-                            {isStaff && (
-                                <DetailItem>
-                                    <DetailIcon>
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-                                            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-                                        </svg>
-                                    </DetailIcon>
-                                    <Box flex={1}>
-                                        <DetailContentLabel>Service Mode</DetailContentLabel>
-                                        <DetailContentValue>{shipment.serviceCode || 'Standard'}</DetailContentValue>
-                                    </Box>
-                                </DetailItem>
-                            )}
+                        <SummaryMetricsGrid>
+                            <MetricBox>
+                                <label>Total Pieces</label>
+                                <div>{totalPieces} Pcs</div>
+                            </MetricBox>
+                            <MetricBox>
+                                <label>Actual Weight</label>
+                                <div>{Number(totalWeight).toFixed(2)} KG</div>
+                            </MetricBox>
+                            <MetricBox>
+                                <label>Packaging</label>
+                                <div>{shipment.packagingType || 'Standard'}</div>
+                            </MetricBox>
+                            <MetricBox>
+                                <label>Incoterm</label>
+                                <div>{shipment.incoterm || 'DAP'}</div>
+                            </MetricBox>
+                        </SummaryMetricsGrid>
 
-                            <DetailItem>
-                                <DetailIcon>
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                                        <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                                        <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                                    </svg>
-                                </DetailIcon>
-                                <DetailContent>
-                                    <DetailContentLabel>Parcels & Weight</DetailContentLabel>
-                                    <DetailContentValue>
-                                        {totalPieces} Pcs ({Number(totalWeight).toFixed(2)} KG)
-                                        {totalVolumetric ? ` / Vol: ${Number(totalVolumetric).toFixed(2)} KG` : ''}
-                                    </DetailContentValue>
-                                </DetailContent>
-                            </DetailItem>
-
-                            <DetailItem>
-                                <DetailIcon>
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                                        <polyline points="16 17 21 12 16 7"></polyline>
-                                        <line x1="21" y1="12" x2="9" y2="12"></line>
-                                    </svg>
-                                </DetailIcon>
-                                <DetailContent>
-                                    <DetailContentLabel>Content Items</DetailContentLabel>
-                                    <DetailContentValue>
-                                        {items.length} Declared Items
-                                    </DetailContentValue>
-                                </DetailContent>
-                            </DetailItem>
-
-                            {isStaff && (
-                                <>
-                                    <DetailItem>
-                                        <DetailIcon>
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
-                                                <line x1="8" y1="21" x2="16" y2="21"></line>
-                                                <line x1="12" y1="17" x2="12" y2="21"></line>
-                                            </svg>
-                                        </DetailIcon>
-                                        <DetailContent>
-                                            <DetailContentLabel>Carrier</DetailContentLabel>
-                                            <DetailContentValue>{carrierDisplayName || '-'}</DetailContentValue>
-                                        </DetailContent>
-                                    </DetailItem>
-                                    <DetailItem>
-                                        <DetailIcon>
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                <circle cx="12" cy="12" r="10"></circle>
-                                                <path d="M12 16v-4"></path>
-                                                <path d="M12 8h.01"></path>
-                                            </svg>
-                                        </DetailIcon>
-                                        <DetailContent>
-                                            <DetailContentLabel>Carrier Tracking Link</DetailContentLabel>
-                                            <DetailContentValue>
-                                                {carrierTrackingUrl ? (
-                                                    <TrackingLink href={carrierTrackingUrl} target="_blank" rel="noreferrer">
-                                                        Open Tracking
-                                                    </TrackingLink>
-                                                ) : (
-                                                    'Not available'
-                                                )}
-                                            </DetailContentValue>
-                                        </DetailContent>
-                                    </DetailItem>
-                                </>
-                            )}
-                        </DetailsGrid>
-
-                        {/* Contents & Parcels List Summaries */}
-                        {items.length > 0 && (
-                            <div style={{ marginTop: '24px', padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Declared Items</div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    {items.map((item, index) => (
-                                        <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px' }}>
-                                            <div style={{ color: '#00d9b8' }}>
-                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                    <circle cx="12" cy="12" r="10"></circle>
-                                                    <path d="M12 8v4l3 3"></path>
-                                                </svg>
-                                            </div>
-                                            <div style={{ flex: 1, color: 'var(--text-primary)' }}>{item.description || 'Item'} (x{item.quantity || 1})</div>
-                                            <div style={{ color: 'var(--text-secondary)' }}>{item.declaredValue != null ? `${item.declaredValue} ${declaredCurrency}` : ''}</div>
-                                            <div style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>HS: {item.hsCode || '—'}</div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
+                        {/* Parcels Table */}
                         {parcels.length > 0 && (
-                            <div style={{ marginTop: '16px', padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Parcels Structure</div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    {parcels.map((parcel, index) => (
-                                        <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px' }}>
-                                            <div style={{ color: '#3b82f6' }}>
-                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                    <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-                                                    <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-                                                </svg>
-                                            </div>
-                                            <div style={{ flex: 1, color: 'var(--text-primary)' }}>{parcel.description || 'Parcel'}</div>
-                                            <div style={{ color: 'var(--text-secondary)' }}>{Number(parcel.weight || 0).toFixed(2)} KG</div>
-                                            <div style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
-                                                {parcel.dimensions ? `${parcel.dimensions.length || 0}×${parcel.dimensions.width || 0}×${parcel.dimensions.height || 0} cm` : 'No Dims'}
-                                            </div>
-                                            <div style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
-                                                Ref: {parcel.trackingReference || shipment.reference || '—'}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
+                            <div style={{ overflowX: 'auto', marginBottom: 16 }}>
+                                <DataTable>
+                                    <thead>
+                                        <tr>
+                                            <th>Parcel #</th>
+                                            <th>Description</th>
+                                            <th>Weight</th>
+                                            <th>Dimensions (L×W×H)</th>
+                                            <th>Reference</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {parcels.map((p, idx) => (
+                                            <tr key={idx}>
+                                                <td style={{ fontWeight: 700 }}>Package {idx + 1}</td>
+                                                <td>{p.description || 'General Goods'}</td>
+                                                <td>{Number(p.weight || 0).toFixed(2)} KG</td>
+                                                <td>
+                                                    {p.dimensions ? `${p.dimensions.length || p.length || 0}×${p.dimensions.width || p.width || 0}×${p.dimensions.height || p.height || 0} cm` : '—'}
+                                                </td>
+                                                <td style={{ color: TK.text3 }}>{p.trackingReference || shipment.reference || '—'}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </DataTable>
                             </div>
                         )}
-                    </DetailsCard>
 
-                    {/* Generated Documents Section Card */}
-                    {(documents.length > 0 || shipment.trackingNumber || resolvedInvoiceUrl || resolvedLabelUrl) && (
-                        <SectionCard>
-                            <SectionTitle>Generated Documents</SectionTitle>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px', paddingTop: '12px' }}>
-                                {/* System Label - Always Available, now restricted to Staff */}
+                        {/* Items Table */}
+                        {items.length > 0 && (
+                            <div style={{ overflowX: 'auto' }}>
+                                <div style={{ fontSize: 12, fontWeight: 700, color: TK.text2, marginBottom: 8, textTransform: 'uppercase' }}>
+                                    Declared Commercial Goods ({items.length})
+                                </div>
+                                <DataTable>
+                                    <thead>
+                                        <tr>
+                                            <th>Item Description</th>
+                                            <th>Qty</th>
+                                            <th>Declared Value</th>
+                                            <th>HS Code</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {items.map((it, idx) => (
+                                            <tr key={idx}>
+                                                <td style={{ fontWeight: 600 }}>{it.description}</td>
+                                                <td>{it.quantity || 1}</td>
+                                                <td>{it.declaredValue != null ? `${it.declaredValue} ${shipment.currency || 'KWD'}` : '—'}</td>
+                                                <td style={{ color: TK.text3 }}>{it.hsCode || '—'}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </DataTable>
+                            </div>
+                        )}
+                    </KineticCard>
+
+                    {/* Official Carrier Paperwork & Customs Documents Card (Collapsed by default, positioned after Package structure) */}
+                    <KineticCard>
+                        <CardHeader style={{
+                            marginBottom: isCarrierDocsCollapsed ? 0 : 18,
+                            borderBottom: isCarrierDocsCollapsed ? 'none' : `1px solid ${TK.border}`,
+                            paddingBottom: isCarrierDocsCollapsed ? 0 : 14
+                        }}>
+                            <div
+                                className="title-group"
+                                onClick={() => setIsCarrierDocsCollapsed(prev => !prev)}
+                                style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 10 }}
+                            >
+                                <span className="material-symbols-outlined">description</span>
+                                <span>Official Carrier Paperwork & Customs Documents</span>
+                                {resolvedCarrierAwb && resolvedCarrierInvoice ? (
+                                    <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: '#dcfce7', color: '#15803d' }}>
+                                        2 DOCS READY
+                                    </span>
+                                ) : resolvedCarrierAwb ? (
+                                    <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: '#dcfce7', color: '#15803d' }}>
+                                        AWB READY
+                                    </span>
+                                ) : (
+                                    <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: '#fef3c7', color: '#b45309' }}>
+                                        PENDING
+                                    </span>
+                                )}
+                                <span className="material-symbols-outlined" style={{
+                                    fontSize: 20,
+                                    color: TK.text3,
+                                    transition: 'transform 0.2s ease',
+                                    transform: isCarrierDocsCollapsed ? 'rotate(0deg)' : 'rotate(180deg)'
+                                }}>
+                                    expand_more
+                                </span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 {isStaff && (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                        <div style={{ color: '#00d9b8', background: 'rgba(0,217,184,0.1)', padding: '8px', borderRadius: '6px' }}>
-                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                <polyline points="6 9 6 2 18 2 18 9"></polyline>
-                                                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
-                                                <rect x="6" y="14" width="12" height="8"></rect>
-                                            </svg>
-                                        </div>
-                                        <div style={{ flex: 1 }}>
-                                            <div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>AWB</div>
-                                            <div style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>System QR Code</div>
-                                        </div>
-                                        <Button variant="secondary" onClick={handleGenerateWaybill} style={{ padding: '6px 16px', fontSize: '13px', minHeight: 'auto' }}>
-                                            View
-                                        </Button>
-                                    </div>
+                                    <ActionButton
+                                        primary={!resolvedCarrierAwb || !resolvedCarrierInvoice}
+                                        disabled={isGeneratingCarrierDocs || isProcessing}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleGenerateCarrierDocs('awb');
+                                        }}
+                                        style={{ fontSize: 12, padding: '4px 14px' }}
+                                    >
+                                        <span className="material-symbols-outlined" style={{ fontSize: 14 }}>
+                                            {isGeneratingCarrierDocs ? 'hourglass_top' : (!resolvedCarrierAwb || !resolvedCarrierInvoice ? 'bolt' : 'sync')}
+                                        </span>
+                                        {isGeneratingCarrierDocs
+                                            ? 'Generating...'
+                                            : (!resolvedCarrierAwb || !resolvedCarrierInvoice
+                                                ? (isInternalShipment ? 'Convert & Generate Carrier Docs' : 'Generate AWB & Invoice from Carrier')
+                                                : 'Re-generate Carrier Docs')}
+                                    </ActionButton>
                                 )}
-
-                                {/* Carrier AWB */}
-                                {(isStaff && resolvedLabelUrl && resolvedLabelUrl !== `/api/shipments/${shipment.trackingNumber}/label`) && (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                        <div style={{ color: '#ef4444', background: 'rgba(239,68,68,0.1)', padding: '8px', borderRadius: '6px' }}>
-                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                                                <polyline points="14 2 14 8 20 8"></polyline>
-                                                <line x1="16" y1="13" x2="8" y2="13"></line>
-                                                <line x1="16" y1="17" x2="8" y2="17"></line>
-                                                <polyline points="10 9 9 9 8 9"></polyline>
-                                            </svg>
-                                        </div>
-                                        <div style={{ flex: 1 }}>
-                                            <div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Carrier AWB</div>
-                                            <div style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>Official Waybill</div>
-                                        </div>
-                                        <Button variant="secondary" onClick={() => handleOpenPdf(resolvedLabelUrl)} style={{ padding: '6px 16px', fontSize: '13px', minHeight: 'auto' }}>
-                                            View
-                                        </Button>
-                                    </div>
-                                )}
-
-                                {/* Commercial Invoice */}
-                                {(isStaff && resolvedInvoiceUrl) && (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                        <div style={{ color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '8px', borderRadius: '6px' }}>
-                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                                                <polyline points="14 2 14 8 20 8"></polyline>
-                                                <line x1="16" y1="13" x2="8" y2="13"></line>
-                                                <line x1="16" y1="17" x2="8" y2="17"></line>
-                                                <polyline points="10 9 9 9 8 9"></polyline>
-                                            </svg>
-                                        </div>
-                                        <div style={{ flex: 1 }}>
-                                            <div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Invoice</div>
-                                            <div style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>Customs Declaration</div>
-                                        </div>
-                                        <Button variant="secondary" onClick={() => handleOpenPdf(resolvedInvoiceUrl)} style={{ padding: '6px 16px', fontSize: '13px', minHeight: 'auto' }}>
-                                            View
-                                        </Button>
-                                    </div>
-                                )}
-
-                                {/* Other Documents */}
-                                {documents.map((doc, index) => (
-                                    doc.resolvedUrl && (
-                                        <div key={`doc-${index}`} style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                            <div style={{ color: '#3b82f6', background: 'rgba(59,130,246,0.1)', padding: '8px', borderRadius: '6px' }}>
-                                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                                                    <polyline points="14 2 14 8 20 8"></polyline>
-                                                    <line x1="16" y1="13" x2="8" y2="13"></line>
-                                                    <line x1="16" y1="17" x2="8" y2="17"></line>
-                                                    <polyline points="10 9 9 9 8 9"></polyline>
-                                                </svg>
-                                            </div>
-                                            <div style={{ flex: 1 }}>
-                                                <div style={{ color: 'var(--text-primary)', fontWeight: 600, textTransform: 'capitalize' }}>{doc.type}</div>
-                                                <div style={{ color: 'var(--text-secondary)', fontSize: '12px', textTransform: 'uppercase' }}>{doc.format || 'doc'}</div>
-                                            </div>
-                                            <Button variant="secondary" onClick={() => handleOpenPdf(doc.resolvedUrl)} style={{ padding: '6px 16px', fontSize: '13px', minHeight: 'auto' }}>
-                                                View
-                                            </Button>
-                                        </div>
-                                    )
-                                ))}
                             </div>
-                        </SectionCard>
-                    )}
+                        </CardHeader>
 
-                    {/* Track History Section */}
-                    <SectionCard>
-                        <SectionTitle>Track History</SectionTitle>
-                        <div style={{ padding: '12px 0' }}>
-                            <TrackingTimeline history={shipment.history || []} currentStatus={shipment.status} />
-                        </div>
-                    </SectionCard>
+                        {!isCarrierDocsCollapsed && (
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14, marginTop: 14 }}>
+                                {/* Carrier Official AWB */}
+                                <DocumentTile>
+                                    <div className="doc-icon-wrapper" style={{ background: '#eff6ff', color: '#2563eb' }}>
+                                        <span className="material-symbols-outlined">local_shipping</span>
+                                    </div>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontWeight: 800, fontSize: 13, color: TK.text1 }}>
+                                            Carrier Air Waybill (AWB)
+                                        </div>
+                                        <div style={{ fontSize: 11.5, color: TK.text2, marginTop: 2 }}>
+                                            Official {carrierDisplayName} Consignment Label & Barcode
+                                        </div>
+                                        <div style={{ marginTop: 6 }}>
+                                            {resolvedCarrierAwb ? (
+                                                <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: '#dcfce7', color: '#15803d' }}>
+                                                    READY FOR PRINTING
+                                                </span>
+                                            ) : (
+                                                <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: '#fef3c7', color: '#b45309' }}>
+                                                    NOT GENERATED YET
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {resolvedCarrierAwb ? (
+                                        <ActionButton primary onClick={() => handleOpenPdf(resolvedCarrierAwb)} style={{ padding: '6px 14px', fontSize: 12 }}>
+                                            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>print</span>
+                                            Print AWB
+                                        </ActionButton>
+                                    ) : isStaff ? (
+                                        <ActionButton primary onClick={() => handleGenerateCarrierDocs('awb')} disabled={isGeneratingCarrierDocs || isProcessing} style={{ padding: '6px 14px', fontSize: 12 }}>
+                                            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>bolt</span>
+                                            Generate AWB
+                                        </ActionButton>
+                                    ) : null}
+                                </DocumentTile>
 
-                    {/* Operational Status Section */}
-                    <SectionCard>
+                                {/* Carrier Customs Commercial Invoice */}
+                                <DocumentTile>
+                                    <div className="doc-icon-wrapper" style={{ background: '#fef3c7', color: '#d97706' }}>
+                                        <span className="material-symbols-outlined">receipt</span>
+                                    </div>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontWeight: 800, fontSize: 13, color: TK.text1 }}>
+                                            Carrier Customs Invoice
+                                        </div>
+                                        <div style={{ fontSize: 11.5, color: TK.text2, marginTop: 2 }}>
+                                            Official {carrierDisplayName} Itemized Customs Declaration
+                                        </div>
+                                        <div style={{ marginTop: 6 }}>
+                                            {resolvedCarrierInvoice ? (
+                                                <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: '#dcfce7', color: '#15803d' }}>
+                                                    READY FOR PRINTING
+                                                </span>
+                                            ) : (
+                                                <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: '#fef3c7', color: '#b45309' }}>
+                                                    NOT GENERATED YET
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {resolvedCarrierInvoice ? (
+                                        <ActionButton onClick={() => handleOpenPdf(resolvedCarrierInvoice)} style={{ padding: '6px 14px', fontSize: 12 }}>
+                                            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>print</span>
+                                            Print Invoice
+                                        </ActionButton>
+                                    ) : isStaff ? (
+                                        <ActionButton onClick={() => handleGenerateCarrierDocs('invoice')} disabled={isGeneratingCarrierDocs || isProcessing} style={{ padding: '6px 14px', fontSize: 12 }}>
+                                            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>bolt</span>
+                                            Generate Invoice
+                                        </ActionButton>
+                                    ) : null}
+                                </DocumentTile>
+
+                                {/* Target Hub Standard Document: Invoice / QR */}
+                                <DocumentTile>
+                                    <div className="doc-icon-wrapper" style={{ background: '#f1f5f9', color: '#0f172a' }}>
+                                        <span className="material-symbols-outlined">qr_code_2</span>
+                                    </div>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontWeight: 800, fontSize: 13, color: TK.text1 }}>
+                                            Target Invoice / QR
+                                        </div>
+                                        <div style={{ fontSize: 11.5, color: TK.text2, marginTop: 2 }}>
+                                            Official Consignment Invoice & Hub Handover Document with QR Code
+                                        </div>
+                                        <div style={{ marginTop: 6 }}>
+                                            <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: '#f1f5f9', color: '#475569' }}>
+                                                SYSTEM GENERATED
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <ActionButton onClick={handleGenerateInvoiceQR} style={{ padding: '6px 14px', fontSize: 12 }}>
+                                        <span className="material-symbols-outlined" style={{ fontSize: 14 }}>print</span>
+                                        Print
+                                    </ActionButton>
+                                </DocumentTile>
+                            </div>
+                        )}
+                    </KineticCard>
+
+                    {/* Tracking History Timeline */}
+                    <KineticCard>
                         <CardHeader>
-                            <div className="header-label">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-                                </svg>
-                                Operational Status
+                            <div className="title-group">
+                                <span className="material-symbols-outlined">timeline</span>
+                                Milestone History & Checkpoints
                             </div>
-                            {canEditSection('status') && (
-                                <MuiIconButton size="small" onClick={() => handleOpenEdit('status')} sx={{ color: 'var(--primary)', bgcolor: 'rgba(0,80,212,0.06)', borderRadius: '8px', p: 0.8 }}>
-                                    <EditIcon fontSize="small" />
-                                </MuiIconButton>
+                            {canEdit && (
+                                <ActionButton onClick={() => handleOpenEdit('status')}>
+                                    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>add_task</span>
+                                    Update Status
+                                </ActionButton>
                             )}
                         </CardHeader>
-                        <Table>
-                            <tbody>
-                                <tr>
-                                    <td>Current Status</td>
-                                    <td><StatusPill status={shipment.status} /></td>
-                                </tr>
-                                <tr>
-                                    <td>Status Source</td>
-                                    <td>{isInternalShipment ? 'Internal' : 'Platform / Carrier'}</td>
-                                </tr>
-                                <tr>
-                                    <td>Status Editing</td>
-                                    <td>{canEditStatus ? 'Allowed for your role' : 'Restricted'}</td>
-                                </tr>
-                            </tbody>
-                        </Table>
-                    </SectionCard>
-
-                    {/* Shipment Settings Section */}
-                    <SectionCard style={{ margin: 0 }}>
-                        <CardHeader>
-                            <div className="header-label">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <circle cx="12" cy="12" r="3"></circle>
-                                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                                </svg>
-                                Shipment Settings
-                            </div>
-                            {canEditSection('billing') && (
-                                <MuiIconButton size="small" onClick={() => handleOpenEdit('billing')} sx={{ color: '#00d9b8', p: 0.5 }}>
-                                    <EditIcon fontSize="small" />
-                                </MuiIconButton>
-                            )}
-                        </CardHeader>
-                        <Table>
-                            <tbody>
-                                <tr>
-                                    <td>Public Loc Updates</td>
-                                    <td>{shipment.allowPublicLocationUpdate ? 'Enabled' : 'Disabled'}</td>
-                                </tr>
-                                <tr>
-                                    <td>Public Info Updates</td>
-                                    <td>{shipment.allowPublicInfoUpdate ? 'Enabled' : 'Disabled'}</td>
-                                </tr>
-                                <tr>
-                                    <td>Incoterm</td>
-                                    <td>{shipment.incoterm || '—'}</td>
-                                </tr>
-                                <tr>
-                                    <td>Export Reason</td>
-                                    <td>{shipment.exportReason || '—'}</td>
-                                </tr>
-                                <tr>
-                                    <td>Reference</td>
-                                    <td>{shipment.reference || '—'}</td>
-                                </tr>
-                            </tbody>
-                        </Table>
-                    </SectionCard>
+                        <TrackingTimeline history={shipment.history || []} currentStatus={shipment.status} />
+                    </KineticCard>
                 </MainColumn>
 
+                {/* Right Sidebar Column */}
                 <SidebarColumn>
-                    {/* Accounting Summary Card */}
-                    <SectionCard style={{ margin: 0 }}>
+                    {/* Financial Summary Card */}
+                    <KineticCard>
                         <CardHeader>
-                            <div className="header-label">
-                                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                                </svg>
-                                FINANCIAL SUMMARY
+                            <div className="title-group">
+                                <span className="material-symbols-outlined">account_balance_wallet</span>
+                                Financial Summary
                             </div>
                         </CardHeader>
-                        <Table style={{ marginTop: '16px' }}>
+
+                        <DataTable>
                             <tbody>
                                 <tr>
                                     <td>Total Charge</td>
-                                    <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(accountingSummary.totalCharge || 0).toFixed(3)} {billingCurrency}</td>
-                                </tr>
-                                <tr>
-                                    <td>Total Paid</td>
-                                    <td style={{ textAlign: 'right', color: 'var(--primary)', fontWeight: '800' }}>{Number(accountingSummary.totalPaid || 0).toFixed(3)} {billingCurrency}</td>
-                                </tr>
-                                <tr>
-                                    <td>Remaining</td>
-                                    <td style={{ textAlign: 'right', color: accountingSummary.remainingBalance > 0 ? '#b31b25' : 'var(--primary)', fontWeight: '800' }}>
-                                        {Number(accountingSummary.remainingBalance || 0).toFixed(3)} {billingCurrency}
+                                    <td style={{ textAlign: 'right', fontWeight: 800, fontSize: 15 }}>
+                                        {Number(accountingSummary.totalCharge || 0).toFixed(3)} {shipment.currency || 'KWD'}
                                     </td>
                                 </tr>
                                 <tr>
-                                    <td>Status</td>
+                                    <td>Total Paid</td>
+                                    <td style={{ textAlign: 'right', color: '#15803d', fontWeight: 700 }}>
+                                        {Number(accountingSummary.totalPaid || 0).toFixed(3)} {shipment.currency || 'KWD'}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>Remaining</td>
+                                    <td style={{
+                                        textAlign: 'right', fontWeight: 800,
+                                        color: accountingSummary.remainingBalance > 0 ? '#dc2626' : '#15803d'
+                                    }}>
+                                        {Number(accountingSummary.remainingBalance || 0).toFixed(3)} {shipment.currency || 'KWD'}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>Payment Status</td>
                                     <td style={{ textAlign: 'right' }}>
                                         <StatusPill status={accountingSummary.status || 'unpaid'} />
                                     </td>
                                 </tr>
                             </tbody>
-                        </Table>
-                    </SectionCard>
-                    {/* Accounting Management Section (Staff Only) */}
+                        </DataTable>
+
+                        {accountingSummary.remainingBalance > 0 && (
+                            <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                <ActionButton
+                                    primary
+                                    onClick={() => handleSendPaymentLink('sender')}
+                                    disabled={sendingPaymentLink}
+                                    style={{ width: '100%', justifyContent: 'center' }}
+                                >
+                                    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>chat</span>
+                                    {sendingPaymentLink ? 'Dispatching...' : 'Send WhatsApp Payment Link'}
+                                </ActionButton>
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                    <ActionButton onClick={handleCopyPaymentLink} style={{ flex: 1, justifyContent: 'center' }}>
+                                        Copy Link
+                                    </ActionButton>
+                                    <ActionButton
+                                        onClick={() => window.open(`/pay/${shipment.trackingNumber}`, '_blank')}
+                                        style={{ flex: 1, justifyContent: 'center' }}
+                                    >
+                                        Pay Online ↗
+                                    </ActionButton>
+                                </div>
+                            </div>
+                        )}
+                    </KineticCard>
+
+                    {/* WhatsApp Notification Log Card */}
                     {isStaff && (
-                        <>
-                            <WhatsAppLogCard
-                                logs={shipment.notificationLogs || []}
-                                previews={whatsAppPreviews}
-                                previewLoading={whatsAppPreviewLoading}
-                                sendingRole={sendingWhatsAppRole}
-                                onSendRole={handleSendWhatsAppRole}
-                            />
-
-                            <SectionCard style={{ margin: 0 }}>
-                                <CardHeader>
-                                    <div className="header-label">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <circle cx="12" cy="12" r="10"></circle>
-                                            <polyline points="12 6 12 12 16 14"></polyline>
-                                        </svg>
-                                        Allocation History
-                                    </div>
-                                </CardHeader>
-                                {allocationHistory.length > 0 ? (
-                                    <Table>
-                                        <thead>
-                                            <tr>
-                                                <th>Date</th>
-                                                <th>Payment</th>
-                                                <th>Amount</th>
-                                                <th>Status</th>
-                                                <th>Action</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {allocationHistory.map(allocation => (
-                                                <tr key={allocation.id}>
-                                                    <td>{new Date(allocation.createdAt).toLocaleDateString()}</td>
-                                                    <td>
-                                                        {allocation.payment?.reference || allocation.paymentId || '—'}
-                                                        {allocation.payment?.postedAt && (
-                                                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                                                Posted {new Date(allocation.payment.postedAt).toLocaleDateString()}
-                                                            </div>
-                                                        )}
-                                                    </td>
-                                                    <td>{Number(allocation.amount || 0).toFixed(3)}</td>
-                                                    <td>
-                                                        <StatusPill status={allocation.status} />
-                                                    </td>
-                                                    <td>
-                                                        {allocation.status === 'ACTIVE' ? (
-                                                            <Button variant="secondary" onClick={() => handleReverseAllocation(allocation.id)} style={{ padding: '4px 8px', fontSize: '11px' }}>
-                                                                Reverse
-                                                            </Button>
-                                                        ) : (
-                                                            '—'
-                                                        )}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </Table>
-                                ) : (
-                                    <EmptyState style={{ padding: '16px', fontSize: '13px' }}>No payment allocations yet.</EmptyState>
-                                )}
-                            </SectionCard>
-                        </>
+                        <WhatsAppLogCardComponent
+                            logs={shipment.notificationLogs || []}
+                            sendingRole={sendingWhatsAppRole}
+                            onSendRole={handleSendWhatsAppRole}
+                        />
                     )}
-
-
                 </SidebarColumn>
             </ContentGrid>
 
+            {/* Proof of Delivery Modal */}
+            <ProofOfDeliveryModal
+                isOpen={isPodModalOpen}
+                shipment={shipment}
+                onClose={() => setIsPodModalOpen(false)}
+                onDelivered={async () => {
+                    setIsPodModalOpen(false);
+                    enqueueSnackbar('Proof of delivery captured successfully!', { variant: 'success' });
+                    await getShipment(shipment.trackingNumber);
+                }}
+            />
+
+            {/* Kinetic Redesigned Edit Consignment Drawer with 5 Top Tabs */}
             <Drawer
                 anchor="right"
                 open={editDrawerOpen}
                 onClose={() => setEditDrawerOpen(false)}
                 PaperProps={{
-                    sx: { width: { xs: '100%', sm: 600 }, bgcolor: '#ffffff', borderLeft: 'none', boxShadow: '-12px 0 32px rgba(0,0,0,0.05)' }
+                    sx: {
+                        width: { xs: '100%', sm: 620 },
+                        bgcolor: '#ffffff',
+                        borderLeft: `1px solid ${TK.border}`,
+                        boxShadow: TK.shadowModal
+                    }
                 }}
             >
                 <Box sx={{ p: 4, height: '100%', display: 'flex', flexDirection: 'column' }}>
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
-                        <Typography variant="h5" fontWeight="800" color="var(--primary)" sx={{ fontFamily: 'Manrope', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                            Edit {editSection}
+                    {/* Drawer Header */}
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                        <Typography variant="h6" fontWeight="800" color={TK.text1} sx={{ fontFamily: 'Outfit, Manrope, sans-serif' }}>
+                            Edit Consignment
                         </Typography>
-                        <MuiIconButton onClick={() => setEditDrawerOpen(false)} sx={{ color: 'text.secondary' }}>
-                            <CloseIcon />
+                        <MuiIconButton onClick={() => setEditDrawerOpen(false)} sx={{ color: TK.text3 }}>
+                            <span className="material-symbols-outlined">close</span>
                         </MuiIconButton>
                     </Box>
 
-                    <Box sx={{ flexGrow: 1, overflowY: 'auto', mb: 3, px: 1 }}>
+                    {/* 5 Top Navigation Tabs */}
+                    <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', pb: 2, mb: 3, borderBottom: `1px solid ${TK.border}` }}>
+                        {EDIT_TABS.map(tab => (
+                            <button
+                                key={tab.key}
+                                type="button"
+                                onClick={() => setEditSection(tab.key)}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 6,
+                                    padding: '8px 14px',
+                                    borderRadius: TK.radiusPill,
+                                    fontSize: 12.5,
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    whiteSpace: 'nowrap',
+                                    border: editSection === tab.key ? `1.5px solid ${TK.primary}` : `1px solid ${TK.border}`,
+                                    background: editSection === tab.key ? TK.primaryBg : '#ffffff',
+                                    color: editSection === tab.key ? TK.primary : TK.text2,
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{tab.icon}</span>
+                                {tab.label}
+                            </button>
+                        ))}
+                    </Box>
+
+                    {/* Drawer Body Form */}
+                    <Box sx={{ flexGrow: 1, overflowY: 'auto', mb: 3, pr: 1 }}>
                         {editDraft && (
                             <>
                                 {editSection === 'sender' && (
                                     <AddressPanel
-                                        title="Shipper Details"
+                                        title="Shipper (Origin) Details"
                                         type="sender"
                                         value={editDraft.sender}
                                         onChange={(val) => setEditDraft({ ...editDraft, sender: val })}
@@ -2098,7 +1504,7 @@ const ShipmentDetailsPage = () => {
 
                                 {editSection === 'receiver' && (
                                     <AddressPanel
-                                        title="Consignee Details"
+                                        title="Consignee (Destination) Details"
                                         type="receiver"
                                         value={editDraft.receiver}
                                         onChange={(val) => setEditDraft({ ...editDraft, receiver: val })}
@@ -2130,53 +1536,75 @@ const ShipmentDetailsPage = () => {
                                 )}
 
                                 {editSection === 'billing' && (
-                                    <ShipmentBilling
-                                        exportReason={editDraft.exportReason}
-                                        setExportReason={(val) => setEditDraft({ ...editDraft, exportReason: val })}
-                                        incoterm={editDraft.incoterm}
-                                        setIncoterm={(val) => setEditDraft({ ...editDraft, incoterm: val })}
-                                        invoiceRemarks={editDraft.invoiceRemarks}
-                                        setInvoiceRemarks={(val) => setEditDraft({ ...editDraft, invoiceRemarks: val })}
-                                        signatureName={editDraft.signatureName}
-                                        setSignatureName={(val) => setEditDraft({ ...editDraft, signatureName: val })}
-                                        signatureTitle={editDraft.signatureTitle}
-                                        setSignatureTitle={(val) => setEditDraft({ ...editDraft, signatureTitle: val })}
-                                        payerOfVat={editDraft.payerOfVat}
-                                        setPayerOfVat={(val) => setEditDraft({ ...editDraft, payerOfVat: val })}
-                                        gstPaid={editDraft.gstPaid}
-                                        setGstPaid={(val) => setEditDraft({ ...editDraft, gstPaid: val })}
-                                        shipperAccount={editDraft.shipperAccount}
-                                        setShipperAccount={(val) => setEditDraft({ ...editDraft, shipperAccount: val })}
-                                        labelFormat={editDraft.labelFormat}
-                                        setLabelFormat={(val) => setEditDraft({ ...editDraft, labelFormat: val })}
-                                        palletCount={editDraft.palletCount}
-                                        setPalletCount={(val) => setEditDraft({ ...editDraft, palletCount: val })}
-                                        packageMarks={editDraft.packageMarks}
-                                        setPackageMarks={(val) => setEditDraft({ ...editDraft, packageMarks: val })}
-                                        allowPublicLocationUpdate={editDraft.allowPublicLocationUpdate}
-                                        setAllowPublicLocationUpdate={(val) => setEditDraft({ ...editDraft, allowPublicLocationUpdate: val })}
-                                        allowPublicInfoUpdate={editDraft.allowPublicInfoUpdate}
-                                        setAllowPublicInfoUpdate={(val) => setEditDraft({ ...editDraft, allowPublicInfoUpdate: val })}
-                                        reference={editDraft.reference}
-                                        setReference={(val) => setEditDraft({ ...editDraft, reference: val })}
-                                        availableOptionalServices={availableOptionalServices}
-                                        selectedOptionalServiceCodes={selectedOptionalServiceCodes}
-                                        onToggleOptionalService={(code) => {
-                                            setSelectedOptionalServiceCodes(prev => 
-                                                prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]
-                                            );
-                                        }}
-                                        insuredValue={editInsuredValue}
-                                        setInsuredValue={setEditInsuredValue}
-                                        currency={editDraft.currency}
-                                        showMarkupDetails={isStaff}
-                                    />
+                                    <Stack spacing={3}>
+                                        <FormControl fullWidth size="small">
+                                            <InputLabel>Incoterm</InputLabel>
+                                            <Select
+                                                label="Incoterm"
+                                                value={editDraft.incoterm || 'DAP'}
+                                                onChange={(e) => setEditDraft({ ...editDraft, incoterm: e.target.value })}
+                                            >
+                                                <MenuItem value="DAP">DAP (Delivered at Place)</MenuItem>
+                                                <MenuItem value="DDP">DDP (Delivered Duty Paid)</MenuItem>
+                                                <MenuItem value="FOB">FOB (Free on Board)</MenuItem>
+                                                <MenuItem value="EXW">EXW (Ex Works)</MenuItem>
+                                                <MenuItem value="CIF">CIF (Cost, Insurance & Freight)</MenuItem>
+                                            </Select>
+                                        </FormControl>
+
+                                        <TextField
+                                            fullWidth
+                                            size="small"
+                                            label="Export Reason"
+                                            value={editDraft.exportReason || 'Commercial / Merchandise'}
+                                            onChange={(e) => setEditDraft({ ...editDraft, exportReason: e.target.value })}
+                                        />
+
+                                        <TextField
+                                            fullWidth
+                                            size="small"
+                                            label="Customer Reference / Notes"
+                                            value={editDraft.reference || ''}
+                                            onChange={(e) => setEditDraft({ ...editDraft, reference: e.target.value })}
+                                        />
+
+                                        {isInternalShipment && (
+                                            <>
+                                                <Divider />
+                                                <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 800 }}>
+                                                    Internal Pricing & Logistics
+                                                </Typography>
+                                                <Grid container spacing={2}>
+                                                    <Grid item xs={12} sm={6}>
+                                                        <TextField
+                                                            fullWidth
+                                                            size="small"
+                                                            type="number"
+                                                            label="Customer Price"
+                                                            value={editDraft.price ?? ''}
+                                                            onChange={(e) => setEditDraft({ ...editDraft, price: e.target.value })}
+                                                        />
+                                                    </Grid>
+                                                    <Grid item xs={12} sm={6}>
+                                                        <TextField
+                                                            fullWidth
+                                                            size="small"
+                                                            type="number"
+                                                            label="Internal Cost"
+                                                            value={editDraft.costPrice ?? ''}
+                                                            onChange={(e) => setEditDraft({ ...editDraft, costPrice: e.target.value })}
+                                                        />
+                                                    </Grid>
+                                                </Grid>
+                                            </>
+                                        )}
+                                    </Stack>
                                 )}
 
                                 {editSection === 'status' && (
                                     <Stack spacing={3}>
                                         <Alert type="info">
-                                            Status changes are written to shipment history and are limited by role.
+                                            Status changes update milestone history and tracking timestamps.
                                         </Alert>
 
                                         <FormControl fullWidth size="small">
@@ -2198,348 +1626,123 @@ const ShipmentDetailsPage = () => {
                                             fullWidth
                                             multiline
                                             minRows={3}
-                                            label="Status note"
-                                            placeholder="Add context for the tracking history..."
+                                            label="Status Checkpoint Note"
+                                            placeholder="Add operational checkpoint note..."
                                             value={editDraft.statusDescription || ''}
                                             onChange={(event) => setEditDraft({ ...editDraft, statusDescription: event.target.value })}
                                         />
-
-                                        {isInternalShipment && (
-                                            <>
-                                                <Divider />
-                                                <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 800 }}>
-                                                    Internal Details
-                                                </Typography>
-                                                <Grid container spacing={2}>
-                                                    <Grid item xs={12} sm={6}>
-                                                        <TextField
-                                                            fullWidth
-                                                            size="small"
-                                                            type="number"
-                                                            label="Customer price"
-                                                            value={editDraft.price ?? ''}
-                                                            onChange={(event) => setEditDraft({ ...editDraft, price: event.target.value })}
-                                                        />
-                                                    </Grid>
-                                                    <Grid item xs={12} sm={6}>
-                                                        <TextField
-                                                            fullWidth
-                                                            size="small"
-                                                            type="number"
-                                                            label="Internal cost"
-                                                            value={editDraft.costPrice ?? ''}
-                                                            onChange={(event) => setEditDraft({ ...editDraft, costPrice: event.target.value })}
-                                                        />
-                                                    </Grid>
-                                                    <Grid item xs={12} sm={6}>
-                                                        <TextField
-                                                            fullWidth
-                                                            size="small"
-                                                            label="Currency"
-                                                            value={editDraft.currency || 'KWD'}
-                                                            onChange={(event) => setEditDraft({ ...editDraft, currency: event.target.value.toUpperCase() })}
-                                                            inputProps={{ maxLength: 3 }}
-                                                        />
-                                                    </Grid>
-                                                    <Grid item xs={12} sm={6}>
-                                                        <TextField
-                                                            fullWidth
-                                                            size="small"
-                                                            type="date"
-                                                            label="Estimated delivery"
-                                                            InputLabelProps={{ shrink: true }}
-                                                            value={editDraft.estimatedDelivery ? new Date(editDraft.estimatedDelivery).toISOString().slice(0, 10) : ''}
-                                                            onChange={(event) => setEditDraft({ ...editDraft, estimatedDelivery: event.target.value })}
-                                                        />
-                                                    </Grid>
-                                                </Grid>
-                                            </>
-                                        )}
                                     </Stack>
                                 )}
                             </>
                         )}
                     </Box>
 
-                    <Divider sx={{ mb: 3, opacity: 0.1 }} />
-
-                    <Box display="flex" gap={2}>
-                        <Button
-                            variant="secondary"
+                    {/* Drawer Footer Actions */}
+                    <Box display="flex" gap={2} pt={2} sx={{ borderTop: `1px solid ${TK.border}` }}>
+                        <ActionButton
+                            type="button"
                             onClick={() => setEditDrawerOpen(false)}
-                            fullWidth
+                            style={{ flex: 1, justifyContent: 'center' }}
                         >
                             Cancel
-                        </Button>
-                        <Button
-                            variant="primary"
+                        </ActionButton>
+                        <ActionButton
+                            primary
+                            type="button"
                             onClick={handleSaveEdit}
                             disabled={isProcessing}
-                            fullWidth
-                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                            style={{ flex: 1, justifyContent: 'center' }}
                         >
-                            {isProcessing ? <Loader size={20} /> : <SaveIcon />}
                             {isProcessing ? 'Saving...' : 'Save Changes'}
-                        </Button>
+                        </ActionButton>
                     </Box>
                 </Box>
             </Drawer>
 
-            <Drawer
-                anchor="right"
-                open={approvalDrawerOpen}
-                onClose={() => setApprovalDrawerOpen(false)}
-                PaperProps={{
-                    sx: { width: { xs: '100%', sm: 450 }, bgcolor: '#ffffff', borderLeft: 'none', boxShadow: '-12px 0 32px rgba(0,0,0,0.05)' }
-                }}
-            >
-                <Box sx={{ p: 4, height: '100%', display: 'flex', flexDirection: 'column' }}>
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-                        <Typography variant="h5" fontWeight="800" color="var(--primary)" sx={{ fontFamily: 'Manrope', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                            Decision Center
-                        </Typography>
-                        <MuiIconButton onClick={() => setApprovalDrawerOpen(false)} sx={{ color: 'text.secondary' }}>
-                            <CloseIcon />
-                        </MuiIconButton>
-                    </Box>
-
-                    <Alert type="info" sx={{ mb: 3 }}>
-                        Please review the shipment details carefully before taking action.
-                        Approving will move the shipment to the next stage of booking.
-                    </Alert>
-
-                    <Stack spacing={3} sx={{ flexGrow: 1 }}>
-                        <Box>
-                            <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 1 }}>Shipment Summary</Typography>
-                            <Box sx={{ bgcolor: 'var(--surface-container-low)', p: 3, borderRadius: '16px' }}>
-                                <Grid container spacing={2}>
-                                    <Grid item xs={6}>
-                                        <Typography variant="caption" display="block" color="text.secondary" sx={{ fontWeight: 700, mb: 0.5 }}>TRACKING ID</Typography>
-                                        <Typography variant="body2" fontWeight="800" sx={{ fontFamily: 'Manrope' }}>{shipment.trackingNumber}</Typography>
-                                    </Grid>
-                                    <Grid item xs={6}>
-                                        <Typography variant="caption" display="block" color="text.secondary" sx={{ fontWeight: 700, mb: 0.5 }}>CURRENT STATUS</Typography>
-                                        <Chip label={shipment.status.toUpperCase()} size="small" sx={{ height: 20, bgcolor: 'rgba(0,80,212,0.1)', color: 'var(--primary)', fontWeight: '800', fontSize: '10px', fontFamily: 'Manrope' }} />
-                                    </Grid>
-
-                                    <Grid item xs={6}>
-                                        <Typography variant="caption" display="block" color="text.secondary">Sender</Typography>
-                                        <Typography variant="body2" fontWeight="500">{sender.company || sender.contactPerson || 'N/A'}</Typography>
-                                        <Typography variant="caption" color="text.secondary">{sender.city}, {sender.countryCode}</Typography>
-                                    </Grid>
-                                    <Grid item xs={6}>
-                                        <Typography variant="caption" display="block" color="text.secondary">Receiver</Typography>
-                                        <Typography variant="body2" fontWeight="500">{receiver.company || receiver.contactPerson || 'N/A'}</Typography>
-                                        <Typography variant="caption" color="text.secondary">{receiver.city}, {receiver.countryCode}</Typography>
-                                    </Grid>
-
-                                    <Grid item xs={6}>
-                                        <Typography variant="caption" display="block" color="text.secondary">Content Summary</Typography>
-                                        <Typography variant="body2">{totalPieces} Pcs | {Number(totalWeight).toFixed(2)} KG</Typography>
-                                        <Typography variant="caption" color="text.secondary">{shipment.serviceCode || 'Standard'}</Typography>
-                                    </Grid>
-                                    <Grid item xs={6}>
-                                        <Typography variant="caption" display="block" color="text.secondary" sx={{ fontWeight: 700, mb: 0.5 }}>REVENUE EST.</Typography>
-                                        <Typography variant="body2" color="var(--primary)" fontWeight="800" sx={{ fontFamily: 'Manrope' }}>{Number(accountingSummary.totalCharge).toFixed(3)} {billingCurrency}</Typography>
-                                        <Typography variant="caption" color="text.secondary">{carrierDisplayName}</Typography>
-                                    </Grid>
-                                </Grid>
-                            </Box>
-                        </Box>
-
-                        <Box>
-                            <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 1, fontWeight: 800 }}>Internal Notes / Feedback</Typography>
-                            <TextField
-                                fullWidth
-                                multiline
-                                rows={4}
-                                placeholder="Add comments for the client or internal logs..."
-                                value={approvalComment}
-                                onChange={(e) => setApprovalComment(e.target.value)}
-                                sx={{
-                                    '& .MuiOutlinedInput-root': {
-                                        bgcolor: 'var(--surface-container-low)',
-                                        color: 'var(--on-surface)'
-                                    }
-                                }}
-                            />
-                        </Box>
-
-                        <Divider sx={{ my: 2, borderColor: 'rgba(255,255,255,0.1)' }} />
-
-                        <Stack spacing={2}>
-                            <Button
-                                variant="primary"
-                                fullWidth
-                                onClick={() => handleApprovalAction('approve')}
-                                disabled={isProcessing}
-                                icon={<CheckCircleOutlineIcon />}
-                            >
-                                {isProcessing ? 'Processing...' : 'Approve & Book'}
-                            </Button>
-
-                            <Box display="flex" gap={2}>
-                                <Button
-                                    variant="secondary"
-                                    fullWidth
-                                    onClick={() => handleApprovalAction('update')}
-                                    disabled={isProcessing}
-                                    icon={<UpdateIcon />}
-                                >
-                                    Request Update
-                                </Button>
-                                <Button
-                                    variant="secondary"
-                                    fullWidth
-                                    onClick={() => handleApprovalAction('reject')}
-                                    disabled={isProcessing}
-                                    icon={<CancelOutlinedIcon />}
-                                    style={{ color: '#ff4d4d', borderColor: 'rgba(255, 77, 77, 0.4)' }}
-                                >
-                                    Reject
-                                </Button>
-                            </Box>
-
-                            <Button
-                                variant="secondary"
-                                fullWidth
-                                onClick={() => {
-                                    setApprovalDrawerOpen(false);
-                                    navigate(`/shipment/${shipment.trackingNumber}/edit`);
-                                }}
-                                disabled={isProcessing}
-                                icon={<RequestQuoteIcon />}
-                            >
-                                Edit Full Shipment
-                            </Button>
-                        </Stack>
-                    </Stack>
-
-                    <Box mt={4} textAlign="center">
-                        <Typography variant="caption" color="text.secondary">
-                            Decision actions are logged for audit purposes.
-                        </Typography>
-                    </Box>
-                </Box>
-            </Drawer>
-
+            {/* Carrier Conversion Drawer */}
             <Drawer
                 anchor="right"
                 open={conversionDrawerOpen}
                 onClose={() => setConversionDrawerOpen(false)}
                 PaperProps={{
                     sx: {
-                        width: { xs: '100%', sm: 460 },
-                        background: 'var(--surface-container)',
-                        color: 'var(--on-surface)'
+                        width: { xs: '100%', sm: 500 },
+                        bgcolor: '#ffffff',
+                        borderLeft: `1px solid ${TK.border}`,
+                        boxShadow: TK.shadowModal
                     }
                 }}
             >
                 <Box sx={{ p: 4, height: '100%', display: 'flex', flexDirection: 'column' }}>
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-                        <Typography variant="h5" fontWeight="800" color="var(--primary)" sx={{ fontFamily: 'Manrope' }}>
-                            Convert to Carrier
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={3} pb={2} sx={{ borderBottom: `1px solid ${TK.border}` }}>
+                        <Typography variant="h6" fontWeight="800" color={TK.text1} sx={{ fontFamily: 'Outfit, Manrope, sans-serif' }}>
+                            Convert & Book Carrier
                         </Typography>
-                        <MuiIconButton onClick={() => setConversionDrawerOpen(false)} sx={{ color: 'text.secondary' }}>
-                            <CloseIcon />
+                        <MuiIconButton onClick={() => setConversionDrawerOpen(false)} sx={{ color: TK.text3 }}>
+                            <span className="material-symbols-outlined">close</span>
                         </MuiIconButton>
                     </Box>
 
-                    <Alert type="info" style={{ marginBottom: 24 }}>
-                        This creates a new carrier shipment and closes the internal record with a conversion history event.
-                    </Alert>
+                    <Box sx={{ flexGrow: 1, overflowY: 'auto' }}>
+                        <Typography variant="body2" color="text.secondary" mb={3}>
+                            Select a target carrier and service level to dispatch this consignment and generate carrier AWB immediately.
+                        </Typography>
 
-                    <Stack spacing={3} sx={{ flexGrow: 1 }}>
-                        <Box sx={{ bgcolor: 'var(--surface-container-low)', p: 3, borderRadius: '16px' }}>
-                            <Typography variant="caption" display="block" color="text.secondary" sx={{ fontWeight: 700, mb: 0.5 }}>SOURCE SHIPMENT</Typography>
-                            <Typography variant="body2" fontWeight="800" sx={{ fontFamily: 'Manrope' }}>{shipment.trackingNumber}</Typography>
-                            <Typography variant="caption" color="text.secondary">{carrierDisplayName}</Typography>
-                        </Box>
-
-                        <FormControl fullWidth>
-                            <InputLabel>Target Carrier</InputLabel>
-                            <Select
-                                value={conversionCarrierCode}
-                                label="Target Carrier"
-                                onChange={(event) => handleChangeConversionCarrier(event.target.value)}
-                            >
-                                {conversionTargetCarriers.map(carrier => (
-                                    <MenuItem key={carrier.code} value={carrier.code}>
-                                        {carrier.name || carrier.code}
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
-
-                        {conversionLoading ? (
-                            <Loader size="32px" />
-                        ) : conversionOptions?.services?.length > 0 ? (
-                            <FormControl fullWidth>
-                                <InputLabel>Service</InputLabel>
+                        <Stack spacing={3}>
+                            <FormControl fullWidth size="small">
+                                <InputLabel>Carrier</InputLabel>
                                 <Select
-                                    value={conversionServiceCode}
-                                    label="Service"
-                                    onChange={(event) => setConversionServiceCode(event.target.value)}
+                                    label="Carrier"
+                                    value={conversionCarrierCode}
+                                    onChange={(e) => {
+                                        setConversionCarrierCode(e.target.value);
+                                        const carrier = conversionTargetCarriers.find(c => c.code === e.target.value);
+                                        if (carrier?.serviceOptions?.[0]) {
+                                            setConversionServiceCode(carrier.serviceOptions[0].code);
+                                        }
+                                    }}
                                 >
-                                    {conversionOptions.services.map(service => (
-                                        <MenuItem key={service.serviceCode} value={service.serviceCode}>
-                                            {service.serviceName || service.serviceCode}
-                                            {service.totalPrice != null ? ` - ${Number(service.totalPrice).toFixed(3)} ${service.currency || 'KWD'}` : ''}
-                                        </MenuItem>
-                                    ))}
+                                    <MenuItem value="DGR">Target International Air (DHL Express)</MenuItem>
+                                    <MenuItem value="OTE">Target Regional Road (LogesTechs / OTE)</MenuItem>
                                 </Select>
                             </FormControl>
-                        ) : (
-                            <Alert type="warning">
-                                Manual pricing required
-                            </Alert>
-                        )}
 
-                        {conversionError && (
-                            <Alert type="error">
-                                {conversionError}
-                            </Alert>
-                        )}
+                            <FormControl fullWidth size="small">
+                                <InputLabel>Service Option</InputLabel>
+                                <Select
+                                    label="Service Option"
+                                    value={conversionServiceCode}
+                                    onChange={(e) => setConversionServiceCode(e.target.value)}
+                                >
+                                    <MenuItem value="P">Express Worldwide (P)</MenuItem>
+                                    <MenuItem value="N">Domestic Express (N)</MenuItem>
+                                    <MenuItem value="D">Economy Select (D)</MenuItem>
+                                </Select>
+                            </FormControl>
+                        </Stack>
+                    </Box>
 
-                        {conversionOptions?.services?.length > 0 && (
-                            <Box sx={{ bgcolor: 'var(--surface-container-low)', p: 3, borderRadius: '16px' }}>
-                                <Typography variant="caption" display="block" color="text.secondary" sx={{ fontWeight: 700, mb: 0.5 }}>PRICING</Typography>
-                                {(() => {
-                                    const selectedService = conversionOptions.services.find(service => service.serviceCode === conversionServiceCode);
-                                    return (
-                                        <Typography variant="body2" fontWeight="800">
-                                            {selectedService?.totalPrice != null
-                                                ? `${Number(selectedService.totalPrice).toFixed(3)} ${selectedService.currency || 'KWD'}`
-                                                : 'Manual pricing required'}
-                                        </Typography>
-                                    );
-                                })()}
-                            </Box>
-                        )}
-                    </Stack>
-
-                    <Stack spacing={2} sx={{ mt: 4 }}>
-                        <Button
-                            variant="primary"
-                            fullWidth
-                            onClick={handleConvertInternalShipment}
-                            disabled={isProcessing || conversionLoading || !conversionCarrierCode || !conversionServiceCode}
-                            icon={<LocalShippingIcon />}
-                        >
-                            {isProcessing ? 'Converting...' : 'Create Carrier Shipment'}
-                        </Button>
-                        <Button
-                            variant="secondary"
-                            fullWidth
+                    <Box display="flex" gap={2} pt={2} sx={{ borderTop: `1px solid ${TK.border}` }}>
+                        <ActionButton
+                            type="button"
                             onClick={() => setConversionDrawerOpen(false)}
-                            disabled={isProcessing}
+                            style={{ flex: 1, justifyContent: 'center' }}
                         >
                             Cancel
-                        </Button>
-                    </Stack>
+                        </ActionButton>
+                        <ActionButton
+                            primary
+                            type="button"
+                            onClick={handleConvertAndBook}
+                            disabled={isProcessing}
+                            style={{ flex: 1, justifyContent: 'center' }}
+                        >
+                            {isProcessing ? 'Booking...' : 'Convert & Book Carrier Now'}
+                        </ActionButton>
+                    </Box>
                 </Box>
             </Drawer>
-        </div >
+        </PageContainer>
     );
 };
 

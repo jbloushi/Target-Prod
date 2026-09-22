@@ -11,7 +11,7 @@ describe('Internal carrier architecture', () => {
             expect.arrayContaining([
                 expect.objectContaining({
                     code: 'INTERNAL',
-                    name: 'Internal',
+                    name: expect.stringMatching(/Internal|Target Local Fleet/),
                     active: true,
                     trackingPrefix: 'TGR',
                     defaultServiceCode: 'STD',
@@ -279,7 +279,7 @@ describe('Internal carrier architecture', () => {
         });
 
         const CarrierFactory = require('../src/services/CarrierFactory');
-        expect(CarrierFactory.getAdapter).toHaveBeenCalledWith('OTE');
+        expect(CarrierFactory.getAdapter).toHaveBeenCalledWith('OTE', expect.anything());
     });
 
     it('wires shipment routes without depending on barrel booking exports for conversion endpoints', () => {

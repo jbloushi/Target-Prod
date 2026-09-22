@@ -15,7 +15,6 @@ import {
   ListItemIcon,
   Typography,
   Divider,
-  Chip,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import AddIcon from '@mui/icons-material/Add';
@@ -29,9 +28,11 @@ import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import PersonIcon from '@mui/icons-material/Person';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
+import TranslateIcon from '@mui/icons-material/Translate';
 import { styled } from '@mui/material/styles';
 import { useAuth } from '../../context/AuthContext';
 import { useThemeMode } from '../../context/ThemeContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { financeService } from '../../services/api';
 
 const Search = styled('div')(({ theme }) => ({
@@ -68,7 +69,6 @@ const SearchIconWrapper = styled('div')(({ theme }) => ({
 const StyledInputBase = styled(InputBase)(({ theme }) => ({
   color: theme.palette.text.primary,
   width: '100%',
-  fontFamily: 'Manrope, sans-serif',
   '& .MuiInputBase-input': {
     padding: theme.spacing(1.5, 1, 1.5, 0),
     paddingLeft: `calc(1em + ${theme.spacing(4)})`,
@@ -100,6 +100,7 @@ const UserIconWrapper = styled(Box)(({ theme }) => ({
 const Header = () => {
   const theme = useTheme();
   const { isDark, toggleTheme } = useThemeMode();
+  const { lang, toggleLanguage, t } = useLanguage();
   const { user, isAuthenticated, logout } = useAuth();
   const [anchorElUser, setAnchorElUser] = useState(null);
   const [financeSummary, setFinanceSummary] = useState(null);
@@ -130,9 +131,26 @@ const Header = () => {
     return (
       <AppBar position="sticky" color="transparent" elevation={0} sx={{ py: 1 }}>
         <Toolbar>
-          <Typography variant="h6" component={RouterLink} to="/" sx={{ textDecoration: 'none', color: 'text.primary', fontWeight: 900, flexGrow: 1, fontFamily: 'Manrope, sans-serif', letterSpacing: '-0.04em' }}>
+          <Typography variant="h6" component={RouterLink} to="/" sx={{ textDecoration: 'none', color: 'text.primary', fontWeight: 900, flexGrow: 1, letterSpacing: '-0.04em' }}>
             TARGET<Box component="span" sx={{ color: 'primary.main', opacity: 0.8 }}> LOGISTICS</Box> GLOBAL
           </Typography>
+
+          <Button
+            onClick={toggleLanguage}
+            size="small"
+            sx={{
+              mr: 2,
+              px: 1.5,
+              py: 0.5,
+              borderRadius: 2,
+              border: `1px solid ${alpha(theme.palette.text.secondary, 0.2)}`,
+              color: 'text.primary',
+              fontWeight: 700,
+              fontSize: '12px'
+            }}
+          >
+            EN &lt;&gt; ع
+          </Button>
           
           <IconButton onClick={toggleTheme} sx={{ color: 'text.secondary', mr: 2 }}>
             {isDark ? <LightModeIcon /> : <DarkModeIcon />}
@@ -161,14 +179,14 @@ const Header = () => {
             <SearchIcon />
           </SearchIconWrapper>
           <StyledInputBase
-            placeholder="Search..."
+            placeholder={t('search_placeholder', 'Search waybill #, recipient, or phone...')}
             inputProps={{ 'aria-label': 'search' }}
           />
         </Search>
 
         <Box sx={{ flexGrow: 1 }} />
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           {user && (
             <Box
               sx={{
@@ -182,13 +200,40 @@ const Header = () => {
                 fontWeight: 700,
                 fontSize: '14px',
                 color: 'primary.main',
-                fontFamily: 'Manrope, sans-serif',
               }}
             >
               <AccountBalanceWalletIcon sx={{ fontSize: 20 }} />
-              {parseFloat(financeSummary?.balance || 0).toFixed(3)} KD
+              {parseFloat(financeSummary?.balance || 0).toFixed(3)} {lang === 'ar' ? 'د.ك' : 'KD'}
             </Box>
           )}
+
+          {/* Language Switcher Button */}
+          <Button
+            onClick={toggleLanguage}
+            size="small"
+            sx={{
+              px: 1.5,
+              py: 0.8,
+              borderRadius: 2.5,
+              border: `1px solid ${alpha(theme.palette.divider, 0.6)}`,
+              color: 'text.primary',
+              fontWeight: 800,
+              fontSize: '12.5px',
+              textTransform: 'none',
+              bgcolor: isDark ? alpha(theme.palette.background.paper, 0.1) : '#ffffff',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.6,
+              '&:hover': {
+                borderColor: 'primary.main',
+                bgcolor: alpha(theme.palette.primary.main, 0.05)
+              }
+            }}
+          >
+            <TranslateIcon sx={{ fontSize: 16, color: 'primary.main' }} />
+            EN &lt;&gt; ع
+          </Button>
 
           <IconButton onClick={toggleTheme} sx={{ color: 'text.secondary' }}>
             {isDark ? <LightModeIcon /> : <DarkModeIcon />}
@@ -199,17 +244,17 @@ const Header = () => {
             color="primary"
             startIcon={<AddIcon />}
             component={RouterLink}
-            to="/create"
+            to="/shipment/new"
             sx={{
               borderRadius: 3,
-              px: 3,
-              py: 1.5,
+              px: 2.5,
+              py: 1.2,
               fontWeight: 700,
               textTransform: 'none',
-              fontSize: '14px',
+              fontSize: '13.5px',
             }}
           >
-            New Shipment
+            {t('new_shipment', 'New Shipment')}
           </Button>
 
           <UserIconWrapper onClick={handleOpenUserMenu}>
@@ -235,18 +280,18 @@ const Header = () => {
             open={Boolean(anchorElUser)}
             onClose={handleCloseUserMenu}
           >
-            <MenuItem component={RouterLink} to="/profile" onClick={handleCloseUserMenu}>
+            <MenuItem component={RouterLink} to="/settings" onClick={handleCloseUserMenu}>
               <ListItemIcon>
-                <PersonIcon fontSize="small" />
+                <SettingsIcon fontSize="small" />
               </ListItemIcon>
-              <Typography textAlign="center">Profile</Typography>
+              <Typography textAlign="center">{t('nav_settings', 'Settings')}</Typography>
             </MenuItem>
             <Divider />
             <MenuItem onClick={() => { handleCloseUserMenu(); logout(); }}>
               <ListItemIcon>
                 <LogoutIcon fontSize="small" color="error" />
               </ListItemIcon>
-              <Typography textAlign="center" color="error">Logout</Typography>
+              <Typography textAlign="center" color="error">{t('sign_out', 'Logout')}</Typography>
             </MenuItem>
           </Menu>
         </Box>

@@ -1,4 +1,4 @@
-﻿const axios = require('axios');
+const axios = require('axios');
 const { prisma } = require('../config/database');
 const config = require('../config/config');
 const logger = require('../utils/logger');
@@ -8,18 +8,34 @@ const PROVIDER = 'chatwoot';
 
 const EVENT_TARGETS = {
     shipment_created: ['sender', 'receiver'],
+    pickup_scheduled: ['sender'],
+    received_at_hub: ['sender'],
+    verified_and_dispatched: ['sender', 'receiver'],
+    payment_link_ready: ['sender'],
+    payment_confirmed: ['sender', 'receiver'],
     on_hold_customs_issue: ['sender', 'receiver'],
     documents_needed: ['sender', 'receiver'],
     delivery_attempt: ['receiver'],
-    out_for_delivery: ['receiver']
+    out_for_delivery: ['receiver'],
+    delivered: ['sender', 'receiver'],
+    rto_in_transit: ['sender'],
+    returned: ['sender']
 };
 
 const DEFAULT_EVENT_CONTENT = {
     shipment_created: 'Shipment Created',
+    pickup_scheduled: 'Driver Scheduled for Pickup',
+    received_at_hub: 'Received at Target Logistics Hub',
+    verified_and_dispatched: 'Hub Verified & Dispatched to Carrier',
+    payment_link_ready: 'Payment Request & Checkout Link',
+    payment_confirmed: 'Payment Received & Verified',
     on_hold_customs_issue: 'On Hold / Customs Issue',
     documents_needed: 'Documents Needed',
     delivery_attempt: 'Delivery Attempt',
-    out_for_delivery: 'Out for Delivery'
+    out_for_delivery: 'Out for Delivery',
+    delivered: 'Shipment Successfully Delivered',
+    rto_in_transit: 'Return to Shipper (RTO) in Transit',
+    returned: 'Parcel Returned to Shipper'
 };
 
 function getChatwootConfig() {
@@ -131,6 +147,11 @@ function buildPublicTrackingLink(trackingNumber) {
     return `${baseUrl}/track/${encodeURIComponent(trackingNumber)}`;
 }
 
+function buildPublicPaymentLink(trackingNumber) {
+    const baseUrl = trimTrailingSlash(config.publicTrackingBaseUrl || config.frontendUrl);
+    return `${baseUrl}/pay/${encodeURIComponent(trackingNumber)}`;
+}
+
 function buildSupportWhatsappLink(trackingNumber) {
     const phone = String(config.supportWhatsappPhone || '').replace(/\D/g, '');
     if (!phone) return '';
@@ -150,6 +171,10 @@ function buildShipmentNotificationContext(shipment) {
     const carrierName = carrierCode === 'DGR' ? 'DHL' : carrierCode;
     const statusDatetime = latest?.timestamp || shipment.updatedAt || shipment.createdAt;
 
+    const price = Number(shipment.remainingBalance || shipment.price || 0);
+    const currency = shipment.currency || 'KWD';
+    const formattedAmount = `${price.toFixed(3)} ${currency}`;
+
     return {
         shipmentId: shipment.id,
         trackingNumber: shipment.trackingNumber,
@@ -165,6 +190,10 @@ function buildShipmentNotificationContext(shipment) {
         currentStatusDatetime: formatDateTime(statusDatetime),
         currentStatusDatetimeDisplay: formatDisplayDate(statusDatetime, true),
         publicTrackingLink: buildPublicTrackingLink(shipment.trackingNumber),
+        publicPaymentLink: buildPublicPaymentLink(shipment.trackingNumber),
+        amountDue: formattedAmount,
+        currency,
+        isPaid: Boolean(shipment.paid),
         supportWhatsappLink: buildSupportWhatsappLink(shipment.trackingNumber),
         supportInstruction: 'Reply to this WhatsApp message for shipment support.',
         latestDescription: latest?.description || ''
@@ -182,7 +211,13 @@ function mapStatusToNotificationEvent(status, description = '') {
     const normalizedStatus = String(status || '').toLowerCase();
     const text = String(description || '').toLowerCase();
 
+    if (normalizedStatus === 'received_at_hub') return 'received_at_hub';
+    if (normalizedStatus === 'verified') return 'verified_and_dispatched';
     if (normalizedStatus === 'out_for_delivery') return 'out_for_delivery';
+    if (normalizedStatus === 'delivered') return 'delivered';
+    if (normalizedStatus === 'rto_in_transit') return 'rto_in_transit';
+    if (normalizedStatus === 'returned') return 'returned';
+    if (normalizedStatus === 'ready_for_pickup') return 'pickup_scheduled';
     if (normalizedStatus === 'exception' && /customs|clearance|hold/.test(text)) return 'on_hold_customs_issue';
     if (normalizedStatus === 'exception' && /document|invoice|paperwork|kyc/.test(text)) return 'documents_needed';
     if (normalizedStatus === 'exception' && /attempt|unavailable|no answer|failed delivery/.test(text)) return 'delivery_attempt';
@@ -198,8 +233,9 @@ function buildTemplateParameters(context, target) {
         context.currentStatus,
         context.currentStatusDatetimeDisplay || formatDisplayDate(new Date(), true),
         context.publicTrackingLink,
-        context.supportWhatsappLink || context.supportInstruction,
-        target.name || ''
+        context.publicPaymentLink || context.publicTrackingLink,
+        target.name || '',
+        context.amountDue || ''
     ];
 }
 
@@ -207,6 +243,42 @@ function buildPlainContent(eventType, context, target) {
     const statusLabel = DEFAULT_EVENT_CONTENT[eventType] || context.currentStatus || eventType;
     const routeLine = `${context.origin} \u2192 ${context.destination}`;
     const updatedAt = context.currentStatusDatetimeDisplay || formatDisplayDate(new Date(), true);
+
+    if (eventType === 'payment_link_ready') {
+        return [
+            '*Target Logistics - Payment Request*',
+            '',
+            `*Tracking Number:* _${context.trackingNumber}_`,
+            `*Amount Due:* *${context.amountDue}*`,
+            `*Carrier / Route:* ${context.carrierDisplayName || context.carrierName} (${routeLine})`,
+            '',
+            '*Secure Pay-by-Link (K-Net / Card / Apple Pay):*',
+            context.publicPaymentLink,
+            '',
+            'Please complete your settlement via the link above to dispatch your shipment.',
+            '',
+            '*Support:*',
+            context.supportWhatsappLink || 'Reply to this WhatsApp message for assistance.'
+        ].join('\n');
+    }
+
+    if (eventType === 'payment_confirmed') {
+        return [
+            '*Target Logistics - Payment Confirmed*',
+            '',
+            `*Tracking Number:* _${context.trackingNumber}_`,
+            `*Amount Paid:* *${context.amountDue}*`,
+            `*Status:* Payment received & verified online.`,
+            `*Route:* ${routeLine}`,
+            '',
+            '*Live Tracking:*',
+            context.publicTrackingLink,
+            '',
+            '*Support:*',
+            context.supportWhatsappLink || 'Reply to this WhatsApp message for assistance.'
+        ].join('\n');
+    }
+
     return [
         '*Shipment Update*',
         '',
@@ -521,9 +593,36 @@ class ChatwootNotificationService {
     }
 
     async sendShipmentNotification(eventType, shipment, options = {}) {
+        const { getSystemSettings } = require('./systemSettings.service');
+        const systemSettings = getSystemSettings()?.whatsapp || {};
+        const activeProvider = systemSettings.provider || 'META';
+        const targets = getNotificationTargets(eventType, shipment);
+
+        // When provider is SHIPMENT_WHATSAPP, META, or MOCK, route directly to WhatsApp integration
+        if (activeProvider === 'SHIPMENT_WHATSAPP' || activeProvider === 'TARGET_MSG' || activeProvider === 'META' || activeProvider === 'MOCK') {
+            const whatsappIntegration = require('./whatsappIntegration.service');
+            const results = [];
+            for (const target of targets) {
+                try {
+                    const res = await whatsappIntegration.sendNotification({
+                        shipment,
+                        recipientRole: target.role,
+                        recipientPhone: target.phone,
+                        recipientCountryCode: target.countryCode,
+                        recipientName: target.name,
+                        eventType
+                    });
+                    results.push({ target: target.role, status: res.status || 'submitted', externalMessageId: res.externalMessageId });
+                } catch (err) {
+                    logger.error(`[WhatsApp ${activeProvider}] dispatch error: ${err.message}`);
+                    results.push({ target: target.role, status: 'failed', error: err.message });
+                }
+            }
+            return { skipped: false, provider: activeProvider, results };
+        }
+
         const cw = getChatwootConfig();
         const context = buildShipmentNotificationContext(shipment);
-        const targets = getNotificationTargets(eventType, shipment);
 
         if (!cw.enabled) {
             logger.info('[chatwoot] skipped disabled');
@@ -611,10 +710,62 @@ class ChatwootNotificationService {
         return { skipped: false, results };
     }
 
+    /**
+     * Processes a queued notification from the durable job queue
+     */
+    async processQueuedNotification(payload) {
+        const { eventType, shipmentId, trackingNumber, shipment: directShipment, options = {} } = payload;
+        let shipment = directShipment;
+        if (!shipment && (shipmentId || trackingNumber)) {
+            shipment = await prisma.shipment.findUnique({
+                where: shipmentId ? { id: shipmentId } : { trackingNumber },
+                include: { user: true, organization: true }
+            });
+        }
+        if (!shipment) {
+            logger.warn(`[chatwoot] Shipment not found for queued notification (${shipmentId || trackingNumber})`);
+            return { skipped: true, reason: 'shipment_not_found' };
+        }
+        return await this.sendShipmentNotification(eventType, shipment, options);
+    }
+
+    /**
+     * Enqueues an operational WhatsApp notification into the durable queue
+     */
     triggerShipmentNotification(eventType, shipment, options = {}) {
-        this.sendShipmentNotification(eventType, shipment, options).catch(error => {
-            logger.error(`[chatwoot] non-blocking notification failed: ${error.message}`);
-        });
+        try {
+            const jobQueue = require('./queue/jobQueue');
+            jobQueue.enqueue('chatwoot_notify', {
+                eventType,
+                shipmentId: shipment?.id,
+                trackingNumber: shipment?.trackingNumber,
+                shipment: {
+                    id: shipment?.id,
+                    trackingNumber: shipment?.trackingNumber,
+                    status: shipment?.status,
+                    currentLocation: shipment?.currentLocation,
+                    destination: shipment?.destination,
+                    origin: shipment?.origin,
+                    user: shipment?.user,
+                    organization: shipment?.organization
+                },
+                options
+            }, {
+                maxRetries: 5,
+                backoffMs: 10000
+            }).catch(error => {
+                logger.error(`[chatwoot] Failed to enqueue notification: ${error.message}`);
+                // Fallback to direct async invocation
+                this.sendShipmentNotification(eventType, shipment, options).catch(e => {
+                    logger.error(`[chatwoot] Direct fallback notification failed: ${e.message}`);
+                });
+            });
+        } catch (error) {
+            logger.error(`[chatwoot] Queue dispatch error: ${error.message}`);
+            this.sendShipmentNotification(eventType, shipment, options).catch(e => {
+                logger.error(`[chatwoot] Direct fallback notification failed: ${e.message}`);
+            });
+        }
     }
 }
 
@@ -622,6 +773,7 @@ const service = new ChatwootNotificationService();
 
 module.exports = service;
 module.exports.buildShipmentNotificationContext = buildShipmentNotificationContext;
+module.exports.buildPlainContent = buildPlainContent;
 module.exports.getNotificationTargets = getNotificationTargets;
 module.exports.mapStatusToNotificationEvent = mapStatusToNotificationEvent;
 module.exports.maskPhone = maskPhone;

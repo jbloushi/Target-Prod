@@ -1,0 +1,48 @@
+{
+  "carrierBranding": {
+    "INTERNAL": {
+      "name": "Target Local Fleet",
+      "description": "Same-day and next-day local courier delivery within Kuwait",
+      "badge": "Local Fleet",
+      "active": true
+    },
+    "DGR": {
+      "name": "Target International Air (DHL DGR)",
+      "description": "Worldwide express air freight with dangerous goods certification",
+      "badge": "Global Air",
+      "active": true
+    },
+    "OTE": {
+      "name": "Target GCC Express (OTE)",
+      "description": "Cross-border road & express distribution across GCC states",
+      "badge": "GCC Express",
+      "active": true
+    },
+    "ARAMEX": {
+      "name": "Target Regional Express (Aramex)",
+      "description": "Middle East regional parcels and express courier",
+      "badge": "Regional",
+      "active": true
+    }
+  },
+  "weightDiscrepancy": {
+    "policy": "auto_bill",
+    "thresholdPercent": 10,
+    "notifyMerchantOnDiscrepancy": true
+  },
+  "carrierEnvironments": {
+    "DHL": "test",
+    "OTE": "test"
+  },
+  "whatsapp": {
+    "enabled": true,
+    "provider": "SHIPMENT_WHATSAPP",
+    "serviceUrl": "https://msg.target-kw.com",
+    "phoneNumberId": "201163949758098",
+    "businessAccountId": "257192317476419",
+    "accessToken": "EAAOR5zRPCjQBRmHh8DH649uZBZAMhJdR1ZA2Gy4iPQfBLlfs3ZCpPcvYkEfeW9RABQZCbdag2JsTsB9TLKWs4XasQfOwjCtSGe1C01V8LPYvwZCEES85ArQIYhpkJSifvnpgH36iNEwAcn5ZCbvy71uZAdFdzHOAOo1YIS5UfooeDu5sUrbZBjNPiH0Lox1nkyhMcZCgZDZD",
+    "webhookVerifyToken": "target_logistics_meta_verify_secret_2026",
+    "metaAppId": "",
+    "metaAppSecret": ""
+  }
+}

@@ -14,8 +14,11 @@ const SettingsPage = lazy(() => import('../pages/SettingsPage'));
 const AddressBookPage = lazy(() => import('../pages/AddressBookPage'));
 const AdminUsersPage = lazy(() => import('../pages/AdminUsersPage'));
 const AdminOrganizationsPage = lazy(() => import('../pages/AdminOrganizationsPage'));
+const AdminWhatsAppLogsPage = lazy(() => import('../pages/AdminWhatsAppLogsPage'));
 const PublicLocationPage = lazy(() => import('../pages/PublicLocationPage'));
 const PublicTrackingLandingPage = lazy(() => import('../pages/PublicTrackingLandingPage'));
+const PublicCheckoutPage = lazy(() => import('../pages/PublicCheckoutPage'));
+const PublicReturnPortalPage = lazy(() => import('../pages/PublicReturnPortalPage'));
 
 const DashboardPage = lazy(() => import('../pages/DashboardPage'));
 const ShipmentsPage = lazy(() => import('../pages/ShipmentsPage'));
@@ -71,6 +74,14 @@ const AppRoutes = () => {
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/" element={<Navigate to="/login" replace />} />
 
+        {/* Standalone Public Pay-by-Link Checkout */}
+        <Route path="/pay/:trackingNumber" element={<PublicCheckoutPage />} />
+        <Route path="/checkout/:trackingNumber" element={<PublicCheckoutPage />} />
+
+        {/* Standalone Customer Self-Service Return Portal */}
+        <Route path="/returns" element={<PublicReturnPortalPage />} />
+        <Route path="/returns/:trackingNumber" element={<PublicReturnPortalPage />} />
+
         {/* Standalone Driver Route (No Sidebar) */}
         <Route path="/driver/pickup" element={
           <ProtectedRoute allowedRoles={['driver', 'admin', 'staff']}>
@@ -94,6 +105,12 @@ const AppRoutes = () => {
           <Route path="admin/organizations" element={
             <ProtectedRoute allowedRoles={['admin', 'staff', 'manager']}>
               <AdminOrganizationsPage />
+            </ProtectedRoute>
+          } />
+
+          <Route path="admin/whatsapp-logs" element={
+            <ProtectedRoute allowedRoles={['admin', 'staff', 'manager']}>
+              <AdminWhatsAppLogsPage />
             </ProtectedRoute>
           } />
 
@@ -127,6 +144,9 @@ const AppRoutes = () => {
               <TrackingLandingPage />
             </ProtectedRoute>
           } />
+          {/* Explicit New Shipment aliases */}
+          <Route path="shipment/new" element={<Navigate to="/create" replace />} />
+          <Route path="shipments/new" element={<Navigate to="/create" replace />} />
           <Route path="shipment/:trackingNumber" element={
             <ProtectedRoute allowedRoles={['admin', 'staff', 'client', 'manager', 'accounting', 'org_manager', 'org_agent']}>
               <ShipmentDetailsPage />

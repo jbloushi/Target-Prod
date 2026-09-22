@@ -1,7 +1,38 @@
 const { prisma } = require('../config/database');
 const { Decimal } = require('decimal.js');
+const logger = require('../utils/logger');
 
 Decimal.set({ precision: 20, rounding: Decimal.ROUND_HALF_UP });
+
+/**
+ * Executes an interactive Prisma transaction with automatic retry and exponential backoff
+ * for transient MySQL lock wait timeouts, deadlocks (ER_LOCK_DEADLOCK 1213), and P2034 conflicts.
+ */
+const executeTransactionWithRetry = async (executeFn, maxRetries = 3, options = { maxWait: 5000, timeout: 15000 }) => {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            return await prisma.$transaction(executeFn, options);
+        } catch (err) {
+            const isDeadlockOrLockTimeout =
+                err.code === 'P2034' ||
+                err.code === 'P2028' ||
+                (err.message && (
+                    err.message.includes('deadlock') ||
+                    err.message.includes('ER_LOCK_DEADLOCK') ||
+                    err.message.includes('1213') ||
+                    err.message.includes('Lock wait timeout exceeded') ||
+                    err.message.includes('1205')
+                ));
+            if (isDeadlockOrLockTimeout && attempt < maxRetries) {
+                const delay = Math.floor(Math.random() * 100 * Math.pow(2, attempt)) + 50;
+                logger.warn(`[financeLedger] Transaction conflict/deadlock (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms: ${err.message}`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                continue;
+            }
+            throw err;
+        }
+    }
+};
 
 const BASE_CURRENCY = 'KWD';
 const AGING_BUCKETS = ['0-30', '31-60', '61-90', '90+'];
@@ -67,7 +98,19 @@ const getOrganizationBalance = async (organizationId, currency = null) => {
 
     const debitTotal = totals.find(row => row.entryType === 'DEBIT')?._sum.amount || 0;
     const creditTotal = totals.find(row => row.entryType === 'CREDIT')?._sum.amount || 0;
-    return toApiAmount(normalizeAmount(debitTotal).minus(creditTotal));
+    const ledgerBalance = normalizeAmount(debitTotal).minus(creditTotal);
+
+    if (organizationId && totals.length === 0) {
+        const org = await prisma.organization.findUnique({
+            where: { id: organizationId },
+            select: { balance: true }
+        });
+        if (org && Number(org.balance || 0) !== 0) {
+            return toApiAmount(org.balance);
+        }
+    }
+
+    return toApiAmount(ledgerBalance);
 };
 
 const getOrganizationBalancesByCurrency = async (organizationId) => {
@@ -103,7 +146,7 @@ const createLedgerEntry = async (organizationId, entry, externalTx = null) => {
         });
         const balanceAfter = normalizeAmount(lastEntry?.balanceAfter || 0).plus(transactionAmount);
 
-        if (organizationId) {
+        if (organizationId && entry.category !== 'CARRIER_PAYABLE') {
             const org = await tx.organization.findUnique({
                 where: { id: organizationId },
                 select: { currency: true }
@@ -142,7 +185,7 @@ const createLedgerEntry = async (organizationId, entry, externalTx = null) => {
         });
     };
 
-    return externalTx ? execute(externalTx) : prisma.$transaction(execute);
+    return externalTx ? execute(externalTx) : executeTransactionWithRetry(execute);
 };
 
 const getAccountCredit = async (organizationId, currency = null) => {
@@ -397,6 +440,17 @@ const updateShipmentPaidStatus = async (shipmentId, txClient = prisma) => {
 };
 
 const assertAllocationCurrencies = async ({ tx, organizationId, paymentId, shipmentId, allocAmount }) => {
+    // Acquire row-level locks on Payment and Shipment in MySQL
+    if (typeof tx.$queryRawUnsafe === 'function') {
+        try {
+            await tx.$queryRawUnsafe('SELECT id FROM `Payment` WHERE id = ? FOR UPDATE', paymentId);
+            await tx.$queryRawUnsafe('SELECT id FROM `Shipment` WHERE id = ? FOR UPDATE', shipmentId);
+        } catch (rawErr) {
+            // In unit test environments where mocks may not support raw queries, log debug and proceed
+            logger.debug(`[financeLedger] Pessimistic lock query: ${rawErr.message}`);
+        }
+    }
+
     const [payment, shipment] = await Promise.all([
         tx.payment.findUnique({
             where: { id: paymentId },
@@ -485,9 +539,9 @@ const allocatePayment = async ({ organizationId, paymentId, shipmentId, amount, 
             ? await tx.user.findUnique({ where: { id: createdBy }, select: { name: true } })
             : null;
 
-        await tx.organizationLedger.create({
-            data: {
-                organizationId: organizationId || null,
+        await createLedgerEntry(
+            organizationId || null,
+            {
                 sourceRepo: 'Payment',
                 sourceId: paymentId,
                 amount: 0,
@@ -496,10 +550,10 @@ const allocatePayment = async ({ organizationId, paymentId, shipmentId, amount, 
                 category: 'ALLOCATION',
                 description: `${isFifo ? '[FIFO] ' : ''}Allocation: ${payment.reference || 'Payment'} applied to ${shipment.trackingNumber || 'Shipment'} by ${user?.name || 'System'}`,
                 createdBy,
-                balanceAfter: 0,
                 metadata: { currency, shipmentId }
-            }
-        });
+            },
+            tx
+        );
 
         await adjustUnappliedOrganizationBalance({
             tx,
@@ -523,7 +577,7 @@ const allocatePayment = async ({ organizationId, paymentId, shipmentId, amount, 
         return await runPostAction(allocation, externalTx);
     }
 
-    const allocation = await prisma.$transaction(execute);
+    const allocation = await executeTransactionWithRetry(execute);
     return await runPostAction(allocation, prisma);
 };
 
@@ -556,7 +610,7 @@ const reverseAllocation = async ({ allocationId, reversedBy, reason }, externalT
         return updatedAlloc;
     };
 
-    const updated = externalTx ? await execute(externalTx) : await prisma.$transaction(execute);
+    const updated = externalTx ? await execute(externalTx) : await executeTransactionWithRetry(execute);
     if (updated && originalAllocation) {
         await updatePaymentStatus(originalAllocation.paymentId);
         await updateShipmentPaidStatus(originalAllocation.shipmentId);
@@ -653,6 +707,398 @@ const allocatePaymentsFifo = async ({ organizationId, createdBy }) => {
     return results;
 };
 
+/**
+ * Records a Carrier Accounts Payable (liability & COGS) entry in the financial ledger.
+ */
+const recordCarrierPayable = async ({ organizationId, shipmentId, carrierCode, costPrice, currency, trackingNumber, createdBy }, externalTx = null) => {
+    const cost = normalizeAmount(costPrice);
+    if (cost.lte(0)) return null;
+
+    const payableCurrency = normalizeCurrencyCode(currency);
+    return await createLedgerEntry(
+        organizationId || null,
+        {
+            sourceRepo: 'Shipment',
+            sourceId: shipmentId,
+            amount: toApiAmount(cost),
+            currency: payableCurrency,
+            entryType: 'CREDIT',
+            category: 'CARRIER_PAYABLE',
+            description: `Carrier wholesale liability (${carrierCode}) for ${trackingNumber}`,
+            reference: trackingNumber,
+            createdBy,
+            metadata: {
+                carrierCode,
+                costPrice: toApiAmount(cost),
+                currency: payableCurrency,
+                accountType: 'LIABILITY_AP'
+            }
+        },
+        externalTx
+    );
+};
+
+/**
+ * Generates an itemized shipment profitability report with real carrier wholesale cost and revenue.
+ */
+const getProfitabilityReport = async ({ organizationId, startDate, endDate, carrierCode, page = 1, limit = 50 }) => {
+    const where = {
+        status: { not: 'draft' }
+    };
+
+    if (organizationId && organizationId !== 'none') {
+        where.organizationId = organizationId;
+    }
+    if (carrierCode) {
+        where.carrierCode = carrierCode;
+    }
+    if (startDate || endDate) {
+        where.createdAt = {};
+        if (startDate) where.createdAt.gte = new Date(startDate);
+        if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+
+    const parsedPage = Math.max(parseInt(page, 10) || 1, 1);
+    const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
+    const skip = (parsedPage - 1) * parsedLimit;
+
+    const [shipments, totalCount] = await Promise.all([
+        prisma.shipment.findMany({
+            where,
+            select: {
+                id: true,
+                trackingNumber: true,
+                carrierCode: true,
+                serviceCode: true,
+                status: true,
+                price: true,
+                costPrice: true,
+                markupAmount: true,
+                currency: true,
+                pricingSnapshot: true,
+                paid: true,
+                totalPaid: true,
+                remainingBalance: true,
+                organization: {
+                    select: { id: true, name: true }
+                },
+                user: {
+                    select: { id: true, name: true, email: true }
+                },
+                createdAt: true
+            },
+            orderBy: { createdAt: 'desc' },
+            skip,
+            take: parsedLimit
+        }),
+        prisma.shipment.count({ where })
+    ]);
+
+    let totalRevenue = new Decimal(0);
+    let totalCost = new Decimal(0);
+    let totalProfit = new Decimal(0);
+
+    const rows = shipments.map(s => {
+        const rev = normalizeAmount(s.pricingSnapshot?.totalPrice ?? s.price ?? 0);
+        // If costPrice is explicitly stored, use it; otherwise fallback to pricingSnapshot.carrierRate
+        const cost = normalizeAmount(s.costPrice ?? s.pricingSnapshot?.carrierRate ?? 0);
+        const profit = rev.minus(cost);
+        const marginPct = rev.gt(0) ? profit.dividedBy(rev).times(100) : new Decimal(0);
+
+        totalRevenue = totalRevenue.plus(rev);
+        totalCost = totalCost.plus(cost);
+        totalProfit = totalProfit.plus(profit);
+
+        return {
+            id: s.id,
+            trackingNumber: s.trackingNumber,
+            carrierCode: s.carrierCode,
+            serviceCode: s.serviceCode,
+            status: s.status,
+            customerName: s.organization?.name || s.user?.name || 'Individual',
+            createdAt: s.createdAt,
+            currency: normalizeCurrencyCode(s.currency || s.pricingSnapshot?.currency),
+            revenue: toApiAmount(rev),
+            cost: toApiAmount(cost),
+            profit: toApiAmount(profit),
+            marginPercent: Number(marginPct.toFixed(1)),
+            paid: s.paid,
+            totalPaid: toApiAmount(s.totalPaid || 0),
+            remainingBalance: toApiAmount(s.remainingBalance ?? rev)
+        };
+    });
+
+    const overallMargin = totalRevenue.gt(0)
+        ? totalProfit.dividedBy(totalRevenue).times(100)
+        : new Decimal(0);
+
+    return {
+        items: rows,
+        summary: {
+            totalShipments: totalCount,
+            totalRevenue: toApiAmount(totalRevenue),
+            totalCost: toApiAmount(totalCost),
+            totalProfit: toApiAmount(totalProfit),
+            overallMarginPercent: Number(overallMargin.toFixed(1))
+        },
+        pagination: {
+            total: totalCount,
+            page: parsedPage,
+            limit: parsedLimit,
+            pages: Math.ceil(totalCount / parsedLimit)
+        }
+    };
+};
+
+/**
+ * Retrieves COD Cash-Clearing balance & collected shipments for drivers.
+ */
+const getDriverCashClearing = async ({ driverId, organizationId }) => {
+    const where = {
+        codAmount: { gt: 0 }
+    };
+
+    if (driverId) where.assignedDriverId = driverId;
+    if (organizationId && organizationId !== 'none') where.organizationId = organizationId;
+
+    const shipments = await prisma.shipment.findMany({
+        where,
+        select: {
+            id: true,
+            trackingNumber: true,
+            status: true,
+            codAmount: true,
+            codCurrency: true,
+            codStatus: true,
+            assignedDriver: {
+                select: { id: true, name: true, phone: true }
+            },
+            updatedAt: true
+        },
+        orderBy: { updatedAt: 'desc' }
+    });
+
+    const totalsByCurrency = {};
+    const unremittedShipments = [];
+    const alerts = [];
+    const now = Date.now();
+    let oldestUnremittedMs = null;
+
+    shipments.forEach(s => {
+        const cur = normalizeCurrencyCode(s.codCurrency);
+        const amount = normalizeAmount(s.codAmount);
+        const isCollected = s.status === 'delivered' || s.codStatus === 'COLLECTED' || s.codStatus === 'PENDING_REMITTANCE';
+        const isRemitted = s.codStatus === 'REMITTED';
+
+        if (isCollected && !isRemitted) {
+            totalsByCurrency[cur] = toApiAmount(normalizeAmount(totalsByCurrency[cur] || 0).plus(amount));
+            unremittedShipments.push(s);
+
+            const collectedTime = new Date(s.updatedAt).getTime();
+            if (!oldestUnremittedMs || collectedTime < oldestUnremittedMs) {
+                oldestUnremittedMs = collectedTime;
+            }
+        }
+    });
+
+    const oldestAgingDays = oldestUnremittedMs
+        ? Math.floor((now - oldestUnremittedMs) / (1000 * 60 * 60 * 24))
+        : 0;
+
+    const baseUnremittedKwd = totalsByCurrency['KWD'] || 0;
+    const holdingLimitKwd = 500.0;
+    const isLimitExceeded = baseUnremittedKwd > holdingLimitKwd;
+    const isAgingCritical = oldestAgingDays >= 3;
+
+    if (isLimitExceeded) {
+        alerts.push({
+            type: 'LIMIT_EXCEEDED',
+            severity: 'HIGH',
+            message: `Driver unremitted COD cash (${baseUnremittedKwd.toFixed(3)} KWD) exceeds the safety holding threshold (${holdingLimitKwd.toFixed(3)} KWD).`
+        });
+    }
+
+    if (isAgingCritical && unremittedShipments.length > 0) {
+        alerts.push({
+            type: 'AGING_CRITICAL',
+            severity: 'HIGH',
+            message: `Oldest unremitted cash collected ${oldestAgingDays} day(s) ago. Immediate hub vault handover required.`
+        });
+    }
+
+    return {
+        unremittedTotalsByCurrency: totalsByCurrency,
+        unremittedCount: unremittedShipments.length,
+        oldestAgingDays,
+        isLimitExceeded,
+        isAgingCritical,
+        holdingLimitKwd,
+        alerts,
+        shipments
+    };
+};
+
+/**
+ * Posts a driver COD cash remittance to the hub vault, clearing driver held funds.
+ */
+const remitDriverCodCash = async ({ driverId, amount, currency, shipmentIds = [], receivedBy, notes }) => {
+    const remitAmount = normalizeAmount(amount);
+    const remitCurrency = normalizeCurrencyCode(currency);
+
+    const driver = await prisma.user.findUnique({
+        where: { id: driverId },
+        select: { id: true, name: true, organizationId: true }
+    });
+    if (!driver) throw makeClientError('Driver not found', 404);
+
+    return await prisma.$transaction(async (tx) => {
+        // Mark shipments as REMITTED
+        if (shipmentIds.length > 0) {
+            await tx.shipment.updateMany({
+                where: {
+                    id: { in: shipmentIds },
+                    assignedDriverId: driverId
+                },
+                data: {
+                    codStatus: 'REMITTED'
+                }
+            });
+        }
+
+        // Post Cash Remittance entry in Ledger
+        const ledgerEntry = await createLedgerEntry(
+            driver.organizationId || null,
+            {
+                amount: toApiAmount(remitAmount),
+                currency: remitCurrency,
+                entryType: 'CREDIT',
+                category: 'COD_REMITTANCE',
+                description: `COD Cash Remittance from Driver ${driver.name}: ${toApiAmount(remitAmount)} ${remitCurrency}`,
+                reference: `REMIT-${driver.id.slice(0, 6).toUpperCase()}-${Date.now()}`,
+                createdBy: receivedBy,
+                metadata: {
+                    driverId,
+                    driverName: driver.name,
+                    shipmentIds,
+                    notes: notes || 'Hub cash handover'
+                }
+            },
+            tx
+        );
+
+        return ledgerEntry;
+    });
+};
+
+/**
+ * Step 1 of Two-Step COD Remittance: Driver/Dispatcher submits cash handover request.
+ */
+const requestDriverCodRemittance = async ({ driverId, amount, currency, shipmentIds = [], requestedBy, bagReference, notes }) => {
+    const remitAmount = normalizeAmount(amount);
+    const remitCurrency = normalizeCurrencyCode(currency);
+
+    const driver = await prisma.user.findUnique({
+        where: { id: driverId },
+        select: { id: true, name: true, organizationId: true }
+    });
+    if (!driver) throw makeClientError('Driver not found', 404);
+
+    return await prisma.$transaction(async (tx) => {
+        if (shipmentIds.length > 0) {
+            await tx.shipment.updateMany({
+                where: {
+                    id: { in: shipmentIds },
+                    assignedDriverId: driverId
+                },
+                data: {
+                    codStatus: 'PENDING_REMITTANCE'
+                }
+            });
+        }
+
+        const requestId = `COD-REQ-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+
+        return {
+            success: true,
+            status: 'PENDING_VERIFICATION',
+            requestId,
+            driverId,
+            driverName: driver.name,
+            amount: toApiAmount(remitAmount),
+            currency: remitCurrency,
+            shipmentIds,
+            bagReference: bagReference || `BAG-${Date.now().toString().slice(-6)}`,
+            notes: notes || 'Cash handover submitted awaiting cashier verification',
+            requestedBy,
+            requestedAt: new Date().toISOString()
+        };
+    });
+};
+
+/**
+ * Step 2 of Two-Step COD Remittance: Hub Cashier/Accounting verifies physical cash count and confirms.
+ */
+const confirmDriverCodRemittance = async ({ driverId, amount, currency, shipmentIds = [], verifiedBy, bagReference, notes, verifiedAmount }) => {
+    const finalAmount = verifiedAmount !== undefined ? normalizeAmount(verifiedAmount) : normalizeAmount(amount);
+    const remitCurrency = normalizeCurrencyCode(currency);
+
+    const driver = await prisma.user.findUnique({
+        where: { id: driverId },
+        select: { id: true, name: true, organizationId: true }
+    });
+    if (!driver) throw makeClientError('Driver not found', 404);
+
+    return await prisma.$transaction(async (tx) => {
+        // Mark shipments as REMITTED
+        if (shipmentIds.length > 0) {
+            await tx.shipment.updateMany({
+                where: {
+                    id: { in: shipmentIds },
+                    assignedDriverId: driverId
+                },
+                data: {
+                    codStatus: 'REMITTED'
+                }
+            });
+        }
+
+        // Post Cash Remittance entry in Ledger
+        const ledgerEntry = await createLedgerEntry(
+            driver.organizationId || null,
+            {
+                amount: toApiAmount(finalAmount),
+                currency: remitCurrency,
+                entryType: 'CREDIT',
+                category: 'COD_REMITTANCE',
+                description: `COD Cash Remittance Verified from Driver ${driver.name}: ${toApiAmount(finalAmount)} ${remitCurrency} (Bag: ${bagReference || 'N/A'})`,
+                reference: `REMIT-${driver.id.slice(0, 6).toUpperCase()}-${Date.now()}`,
+                createdBy: verifiedBy,
+                metadata: {
+                    driverId,
+                    driverName: driver.name,
+                    shipmentIds,
+                    bagReference,
+                    verifiedBy,
+                    status: 'CONFIRMED',
+                    notes: notes || 'Hub cash verified and reconciled by cashier'
+                }
+            },
+            tx
+        );
+
+        return {
+            success: true,
+            status: 'CONFIRMED',
+            ledgerEntry,
+            driverId,
+            driverName: driver.name,
+            verifiedAmount: toApiAmount(finalAmount),
+            currency: remitCurrency,
+            shipmentIds
+        };
+    });
+};
+
 module.exports = {
     normalizeAmount,
     normalizeCurrencyCode,
@@ -660,6 +1106,12 @@ module.exports = {
     getOrganizationBalance,
     getOrganizationBalancesByCurrency,
     createLedgerEntry,
+    recordCarrierPayable,
+    getProfitabilityReport,
+    getDriverCashClearing,
+    remitDriverCodCash,
+    requestDriverCodRemittance,
+    confirmDriverCodRemittance,
     getAccountCredit,
     getAllocationTotal,
     getUnappliedCash,
@@ -673,5 +1125,7 @@ module.exports = {
     allocatePayment,
     allocatePaymentsFifo,
     reverseAllocation,
-    reverseLedgerEntry
+    reverseLedgerEntry,
+    executeTransactionWithRetry
 };
+

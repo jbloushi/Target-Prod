@@ -139,7 +139,7 @@ describe('client API shipment workflows', () => {
 
         await controller.createShipment(req, res);
 
-        expect(getAdapter).toHaveBeenCalledWith('DGR');
+        expect(getAdapter).toHaveBeenCalledWith('DGR', expect.anything());
         expect(adapter.createShipment).toHaveBeenCalledWith(expect.objectContaining({
             serviceCode: 'Y',
             user: 'user-1'

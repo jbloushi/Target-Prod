@@ -119,8 +119,10 @@ class InternalShipmentConversionService {
         }
 
         const serviceCode = normalizeCode(options.serviceCode) || defaultServiceCodeForCarrier(carrierCode);
-        const adapter = CarrierFactory.getAdapter(carrierCode);
-        const ratePayload = buildRatePayload(sourceShipment, carrierCode, serviceCode);
+        const isTest = options.isTest === true || options.environment === 'test' || sourceShipment.pricingSnapshot?.isTest === true;
+        const environment = isTest ? 'test' : (options.environment || sourceShipment.pricingSnapshot?.environment || 'production');
+        const adapter = CarrierFactory.getAdapter(carrierCode, { isTest, environment });
+        const ratePayload = { ...buildRatePayload(sourceShipment, carrierCode, serviceCode), isTest, environment };
         const rawQuotes = await adapter.getRates(ratePayload);
         const quotes = Array.isArray(rawQuotes) ? rawQuotes : [];
         const selectedQuote = quotes.find((quote) => normalizeCode(quote.serviceCode) === serviceCode)
@@ -196,12 +198,27 @@ class InternalShipmentConversionService {
             }
         });
 
+        let bookingResult = null;
+        if (options.bookWithCarrier === true || options.autoBook === true) {
+            try {
+                const ShipmentBookingService = require('./ShipmentBookingService');
+                bookingResult = await ShipmentBookingService.bookShipment(sourceShipment.trackingNumber, carrierCode, [], actor.role);
+            } catch (bookingError) {
+                const logger = require('../utils/logger');
+                logger.warn(`Immediate carrier booking for converted shipment ${sourceShipment.trackingNumber} deferred: ${bookingError.message}`);
+                throw bookingError;
+            }
+        }
+
+        const finalShipment = bookingResult?.shipment || convertedShipment;
+
         return {
             success: true,
-            shipment: convertedShipment,
+            shipment: finalShipment,
             carrierCode,
             serviceCode,
-            quote: selectedQuote
+            quote: selectedQuote,
+            booking: bookingResult
         };
     }
 

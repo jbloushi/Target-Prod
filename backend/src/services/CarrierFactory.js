@@ -95,10 +95,25 @@ class CarrierFactory {
      * List of carriers that have active implementations.
      */
     static getAvailableCarriers() {
-        return CARRIER_REGISTRY.map((carrier) => ({
-            ...carrier,
-            capabilities: { ...carrier.capabilities }
-        }));
+        let branding = {};
+        try {
+            const { getSystemSettings } = require('./systemSettings.service');
+            branding = getSystemSettings()?.carrierBranding || {};
+        } catch {
+            // fallback gracefully to hardcoded names
+        }
+
+        return CARRIER_REGISTRY.map((carrier) => {
+            const custom = branding[carrier.code];
+            return {
+                ...carrier,
+                name: custom?.name || carrier.name,
+                description: custom?.description || carrier.description,
+                badge: custom?.badge || null,
+                active: custom?.active !== undefined ? custom.active : carrier.active,
+                capabilities: { ...carrier.capabilities }
+            };
+        });
     }
 
     static getCarrierMetadata(carrierCode) {
@@ -123,22 +138,40 @@ class CarrierFactory {
      */
     static getAdapter(carrierCode, config = {}) {
         const code = normalizeCarrierCode(carrierCode);
+        const isTestExplicit = config.isTest === true || config.environment === 'test';
+        const isProductionExplicit = config.isTest === false || config.environment === 'production';
+        
+        let resolvedEnv = isTestExplicit ? 'test' : 'production';
+        if (!isTestExplicit && !isProductionExplicit) {
+            try {
+                const { getSystemSettings } = require('./systemSettings.service');
+                const carrierEnvs = getSystemSettings()?.carrierEnvironments;
+                const envForCarrier = (code === 'OTE' || code === 'LOGESTECHS') ? carrierEnvs?.OTE : carrierEnvs?.DHL;
+                if (envForCarrier) resolvedEnv = envForCarrier;
+            } catch {
+                // fallback to production
+            }
+        }
+
+        const isTest = resolvedEnv === 'test';
+        const environment = resolvedEnv;
+        const resolvedConfig = { isTest, environment, ...config };
 
         switch (code) {
             case 'INTERNAL':
-                return new InternalAdapter(config);
+                return new InternalAdapter(resolvedConfig);
 
             case 'DGR':
-                return new DgrAdapter(config);
+                return new DgrAdapter(resolvedConfig);
 
             case 'ARAMEX':
-                return new AramexAdapter(config); // <-- NEW ADAPTER
+                return new AramexAdapter(resolvedConfig);
 
             case 'OTE':
-                return new LogesTechsAdapter(config);
+                return new LogesTechsAdapter(resolvedConfig);
 
             case 'FEDEX':
-                return new FedexAdapter(config);
+                return new FedexAdapter(resolvedConfig);
 
             case 'UPS':
                 throw new Error('UPS integration not yet implemented');

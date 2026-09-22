@@ -4,6 +4,7 @@ import {
 } from '@mui/material';
 import WarningIcon from '@mui/icons-material/Warning';
 import BusinessCenterIcon from '@mui/icons-material/BusinessCenter';
+import { TK } from '../../tokens/kineticHorizon';
 
 const DG_TYPES = [
     { label: 'Standard', code: '', serviceCode: '', contentId: '', hazard: '', psn: '' },
@@ -83,25 +84,25 @@ const DangerousGoodsPanel = ({ dangerousGoods, setDangerousGoods }) => {
     return (
         <Box 
             sx={{ 
-                p: 4, mb: 4, 
-                bgcolor: dg.contains ? alpha(theme.palette.error.main, 0.05) : 'surface-container-low', 
-                borderRadius: 6,
-                border: '1px solid',
-                borderColor: dg.contains ? 'error.main' : 'transparent',
-                transition: 'var(--transition-base)'
+                p: { xs: 2, sm: 2.5, md: 3 }, mb: 3, 
+                bgcolor: dg.contains ? '#fff5f5' : '#ffffff', 
+                borderRadius: `${TK.radiusCard}px`,
+                border: `1.5px solid ${dg.contains ? TK.errorBorder : TK.border}`,
+                boxShadow: TK.shadowSm,
+                transition: 'all 0.2s ease'
             }}
         >
-            <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Stack direction="row" alignItems="center" spacing={2.5}>
-                    <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: dg.contains ? alpha(theme.palette.error.main, 0.1) : alpha(theme.palette.primary.main, 0.1), color: dg.contains ? 'error.main' : 'primary.main', display: 'flex' }}>
-                        <WarningIcon />
+            <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1.5}>
+                <Stack direction="row" alignItems="center" spacing={1.5}>
+                    <Box sx={{ width: 38, height: 38, borderRadius: '10px', bgcolor: dg.contains ? TK.errorBg : '#f1f5f9', color: dg.contains ? TK.error : TK.text2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <WarningIcon sx={{ fontSize: 20 }} />
                     </Box>
                     <Box>
-                        <Typography variant="h5" fontWeight="800" sx={{ letterSpacing: '-0.02em' }}>
+                        <Typography variant="subtitle1" fontWeight="800" sx={{ color: TK.text1, letterSpacing: '-0.01em', lineHeight: 1.2 }}>
                             Dangerous Goods Declaration
                         </Typography>
-                        <Typography variant="caption" color="text.secondary" fontWeight="700">
-                            Regulatory validation for hazardous assets
+                        <Typography variant="caption" sx={{ color: TK.text3, fontWeight: 700 }}>
+                            Regulatory validation for hazardous assets (IATA / DGR)
                         </Typography>
                     </Box>
                 </Stack>
@@ -114,21 +115,21 @@ const DangerousGoodsPanel = ({ dangerousGoods, setDangerousGoods }) => {
                             color="error"
                         />
                     }
-                    label={<Typography variant="body2" fontWeight="800" color="text.secondary">Asset requires DGR handling</Typography>}
+                    label={<Typography variant="body2" fontWeight="700" sx={{ color: TK.text2 }}>Asset requires DGR handling</Typography>}
                     labelPlacement="start"
-                    sx={{ gap: 2 }}
+                    sx={{ gap: 1 }}
                 />
             </Box>
 
             <Collapse in={Boolean(dg.contains)}>
-                <Box mt={5} className="slide-up">
-                    <Grid container spacing={3}>
+                <Box mt={3} className="slide-up">
+                    <Grid container spacing={2}>
                         <Grid item xs={12}>
-                            <Box sx={{ mb: 2, p: 3, borderRadius: 4, bgcolor: 'surface-container-high', display: 'flex', alignItems: 'center', gap: 2 }}>
-                                <BusinessCenterIcon color="error" />
+                            <Box sx={{ mb: 1, p: 2, borderRadius: `${TK.radiusMd}px`, bgcolor: '#ffffff', border: `1px solid ${TK.border}`, display: 'flex', alignItems: 'center', gap: 2 }}>
+                                <BusinessCenterIcon sx={{ color: TK.error, fontSize: 20 }} />
                                 <Box flex={1}>
                                     <FormControl fullWidth size="small" variant="standard">
-                                        <InputLabel sx={{ fontWeight: 800, color: 'error.main' }}>Logistics Template (Quick Select)</InputLabel>
+                                        <InputLabel sx={{ fontWeight: 800, color: TK.error }}>Logistics Template (Quick Select)</InputLabel>
                                         <Select
                                             onChange={handleTypeChange}
                                             defaultValue=""
@@ -146,6 +147,7 @@ const DangerousGoodsPanel = ({ dangerousGoods, setDangerousGoods }) => {
                         <Grid item xs={12} md={4}>
                             <TextField
                                 fullWidth
+                                size="small"
                                 label="UN/ID Primary Code"
                                 value={dg.code || ''}
                                 onChange={(e) => handleChange('code', e.target.value)}

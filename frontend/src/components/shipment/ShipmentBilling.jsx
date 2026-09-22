@@ -1,16 +1,12 @@
+import { WInput } from '../../ui';
 import React, { useMemo } from 'react';
 import {
     Box, Typography, Grid, FormControl,
-    InputLabel, Select, MenuItem, TextField, FormControlLabel,
+    InputLabel, Select, MenuItem, FormControlLabel,
     Switch, Alert, Checkbox, Divider, alpha, useTheme, Stack,
     Accordion, AccordionSummary, AccordionDetails
 } from '@mui/material';
-import CreditCardIcon from '@mui/icons-material/CreditCard';
-import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
-import LocalOfferIcon from '@mui/icons-material/LocalOffer';
-import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import { TK } from '../../tokens/kineticHorizon';
 
 const LIMITS = {
     invoiceRemarks: 120,
@@ -83,35 +79,35 @@ const ShipmentBilling = ({
                     onClick={() => onToggleOptionalService?.(service.serviceCode)}
                     sx={{
                         p: 2,
-                        borderRadius: 4,
-                        bgcolor: checked ? alpha(theme.palette.primary.main, 0.05) : 'surface-container-high',
+                        borderRadius: '14px',
+                        bgcolor: checked ? 'rgba(0,80,212,0.04)' : '#f8fafc',
                         border: '1px solid',
-                        borderColor: checked ? 'primary.main' : 'transparent',
+                        borderColor: checked ? TK.primary : TK.border,
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
-                        transition: 'var(--transition-base)',
-                        '&:hover': { bgcolor: 'surface-container' }
+                        transition: 'all 0.2s ease',
+                        '&:hover': { bgcolor: '#f1f5f9' }
                     }}
                 >
-                    <Checkbox checked={checked} sx={{ mr: 1, color: 'text.disabled' }} />
+                    <Checkbox checked={checked} sx={{ mr: 1, color: TK.text3 }} />
                     <Box flex={1}>
-                        <Typography variant="body2" fontWeight="800">{service.serviceName}</Typography>
-                        <Typography variant="caption" color="text.secondary">
+                        <Typography variant="body2" fontWeight="800" sx={{ color: TK.text1 }}>{service.serviceName}</Typography>
+                        <Typography variant="caption" sx={{ color: TK.text2 }}>
                             Asset Protection & Operations
                             {showMarkupDetails && Number(service.markupAmount || 0) > 0
                                 ? ` · Base ${Number(service.carrierAmount || 0).toFixed(3)} + Markup ${Number(service.markupAmount || 0).toFixed(3)}`
                                 : ''}
                         </Typography>
                     </Box>
-                    <Typography variant="body2" fontWeight="800" color="primary.main">
+                    <Typography variant="body2" fontWeight="800" sx={{ color: TK.primary }}>
                         {Number(service.totalPrice || 0) === 0 ? 'Included' : `+${Number(service.totalPrice).toFixed(3)}`}
                     </Typography>
                 </Box>
 
                 {checked && isInsurance && (
                     <Box sx={{ px: 2, pt: 1.5 }}>
-                        <TextField
+                        <WInput
                             fullWidth
                             size="small"
                             type="number"
@@ -160,12 +156,12 @@ const ShipmentBilling = ({
                 expanded
                 disableGutters
                 elevation={0}
-                sx={{ mb: 3, borderRadius: 6, overflow: 'hidden', bgcolor: 'surface-container-low' }}
+                sx={{ mb: 3, borderRadius: '20px', overflow: 'hidden', bgcolor: 'surface-container-low' }}
             >
                 <AccordionSummary sx={{ px: 4, py: 1, '& .MuiAccordionSummary-expandIconWrapper': { display: 'none' } }}>
                     <Stack direction="row" alignItems="center" spacing={2}>
-                        <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: alpha(theme.palette.primary.main, 0.1), color: 'primary.main', display: 'flex' }}>
-                            <ReceiptLongIcon />
+                        <Box sx={{ p: 1.5, borderRadius: '20px', bgcolor: alpha(theme.palette.primary.main, 0.1), color: 'primary.main', display: 'flex' }}>
+                            <span className="material-symbols-outlined" >receipt_long</span>
                         </Box>
                         <Typography variant="h5" fontWeight="800" sx={{ letterSpacing: '-0.02em' }}>
                             Commercial Documentation
@@ -193,7 +189,7 @@ const ShipmentBilling = ({
                             </FormControl>
                         </Grid>
                         <Grid item xs={12} md={6}>
-                            <TextField
+                            <WInput
                                 fullWidth size="small"
                                 label="Invoice Remarks"
                                 value={invoiceRemarks}
@@ -204,7 +200,7 @@ const ShipmentBilling = ({
                             />
                         </Grid>
                         <Grid item xs={12} md={6}>
-                            <TextField
+                            <WInput
                                 fullWidth size="small"
                                 label="Authorized Signature Name"
                                 value={signatureName}
@@ -214,7 +210,7 @@ const ShipmentBilling = ({
                             />
                         </Grid>
                         <Grid item xs={12} md={6}>
-                            <TextField
+                            <WInput
                                 fullWidth size="small"
                                 label="Authorized Title"
                                 value={signatureTitle}
@@ -233,14 +229,21 @@ const ShipmentBilling = ({
                 expanded
                 disableGutters
                 elevation={0}
-                sx={{ mb: 3, borderRadius: 6, overflow: 'hidden', bgcolor: 'surface-container-low' }}
+                sx={{ 
+                    mb: 3, 
+                    borderRadius: '20px', 
+                    overflow: 'hidden', 
+                    bgcolor: '#ffffff',
+                    border: `1px solid ${TK.border}`,
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.05)'
+                }}
             >
                 <AccordionSummary sx={{ px: 4, py: 1, '& .MuiAccordionSummary-expandIconWrapper': { display: 'none' } }}>
                     <Stack direction="row" alignItems="center" spacing={2}>
-                    <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: alpha(theme.palette.secondary.main, 0.1), color: 'secondary.main', display: 'flex' }}>
-                        <CreditCardIcon />
+                    <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: 'rgba(0,80,212,0.08)', color: TK.primary, display: 'flex' }}>
+                        <span className="material-symbols-outlined" >credit_card</span>
                     </Box>
-                    <Typography variant="h5" fontWeight="800" sx={{ letterSpacing: '-0.02em' }}>
+                    <Typography variant="h6" fontWeight="800" sx={{ color: TK.text1, letterSpacing: '-0.02em', fontFamily: 'Manrope' }}>
                         Financial Configuration
                     </Typography>
                     </Stack>
@@ -276,7 +279,7 @@ const ShipmentBilling = ({
                     </Grid>
 
                     <Grid item xs={12} md={6}>
-                        <TextField
+                        <WInput
                             fullWidth size="small"
                             label="Custom Carrier Account (Optional)"
                             value={shipperAccount}
@@ -300,21 +303,28 @@ const ShipmentBilling = ({
                 expanded
                 disableGutters
                 elevation={0}
-                sx={{ mb: 3, borderRadius: 6, overflow: 'hidden', bgcolor: 'surface-container-low' }}
+                sx={{ 
+                    mb: 3, 
+                    borderRadius: '20px', 
+                    overflow: 'hidden', 
+                    bgcolor: '#ffffff',
+                    border: `1px solid ${TK.border}`,
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.05)'
+                }}
             >
                 <AccordionSummary sx={{ px: 4, py: 1, '& .MuiAccordionSummary-expandIconWrapper': { display: 'none' } }}>
                     <Stack direction="row" alignItems="center" spacing={2} sx={{ width: '100%' }}>
-                    <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: alpha(theme.palette.primary.main, 0.1), color: 'primary.main', display: 'flex' }}>
-                        <LocalOfferIcon />
+                    <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: 'rgba(0,80,212,0.08)', color: TK.primary, display: 'flex' }}>
+                        <span className="material-symbols-outlined" >local_offer</span>
                     </Box>
                     <Grid container justifyContent="space-between" alignItems="center">
                         <Grid item>
-                            <Typography variant="h5" fontWeight="800" sx={{ letterSpacing: '-0.02em' }}>
+                            <Typography variant="h6" fontWeight="800" sx={{ color: TK.text1, letterSpacing: '-0.02em', fontFamily: 'Manrope' }}>
                                 Value Added Logistics
                             </Typography>
                         </Grid>
                         <Grid item>
-                            <Typography variant="h5" fontWeight="800" color="primary.main">
+                            <Typography variant="h6" fontWeight="800" sx={{ color: TK.primary }}>
                                 {Number(estimatedShipmentTotal).toFixed(3)} <Box component="span" sx={{ fontSize: '0.9rem', opacity: 0.7 }}>{billingCurrency}</Box>
                             </Typography>
                         </Grid>
@@ -338,14 +348,13 @@ const ShipmentBilling = ({
                                         disableGutters
                                         elevation={0}
                                         sx={{
-                                            borderRadius: 4,
-                                            bgcolor: 'surface-container',
-                                            border: '1px solid',
-                                            borderColor: 'divider'
+                                            borderRadius: '14px',
+                                            bgcolor: '#f8fafc',
+                                            border: `1px solid ${TK.border}`
                                         }}
                                     >
-                                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                                            <Typography variant="overline" color="text.secondary" fontWeight="800">
+                                        <AccordionSummary expandIcon={<span className="material-symbols-outlined" >expand_more</span>}>
+                                            <Typography variant="overline" sx={{ color: TK.text2, fontWeight: 800 }}>
                                                 {group.title} ({group.items.length})
                                             </Typography>
                                         </AccordionSummary>
@@ -353,15 +362,15 @@ const ShipmentBilling = ({
                                             <Stack spacing={1.5}>
                                                 {group.items.length > 0
                                                     ? group.items.map(renderServiceRow)
-                                                    : <Typography variant="caption" color="text.secondary">{group.emptyLabel}</Typography>}
+                                                    : <Typography variant="caption" sx={{ color: TK.text3 }}>{group.emptyLabel}</Typography>}
                                             </Stack>
                                         </AccordionDetails>
                                     </Accordion>
                                 ))}
                             </Stack>
                         ) : (
-                            <Box sx={{ p: 4, borderRadius: 4, bgcolor: 'surface-container-high', textAlign: 'center' }}>
-                                <Typography variant="body2" color="text.secondary" fontWeight="700">
+                            <Box sx={{ p: 4, borderRadius: '14px', bgcolor: '#f8fafc', border: `1px solid ${TK.border}`, textAlign: 'center' }}>
+                                <Typography variant="body2" sx={{ color: TK.text3, fontWeight: 700 }}>
                                     No additional value services available for this route.
                                 </Typography>
                             </Box>
@@ -369,8 +378,8 @@ const ShipmentBilling = ({
                     </Grid>
 
                     <Grid item xs={12} lg={5}>
-                        <Box sx={{ p: 3, borderRadius: 4, bgcolor: 'surface-container-high', height: '100%' }}>
-                            <Typography variant="overline" color="text.secondary" fontWeight="800" display="block" mb={2}>
+                        <Box sx={{ p: 3, borderRadius: '16px', bgcolor: '#f8fafc', border: `1px solid ${TK.border}`, height: '100%' }}>
+                            <Typography variant="overline" sx={{ color: TK.text2, fontWeight: 800, display: 'block', mb: 2 }}>
                                 ESTIMATED BREAKDOWN
                             </Typography>
                             <Stack spacing={2}>
@@ -410,8 +419,8 @@ const ShipmentBilling = ({
                                 </Box>
 
                                 {deliveryDate && (
-                                    <Box sx={{ mt: 2, p: 2, borderRadius: 3, bgcolor: alpha(theme.palette.success.main, 0.08), display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                                        <CheckCircleIcon color="success" fontSize="small" />
+                                    <Box sx={{ mt: 2, p: 2, borderRadius: '20px', bgcolor: alpha(theme.palette.success.main, 0.08), display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                                        <span className="material-symbols-outlined" color="success" fontSize="small" >check_circle</span>
                                         <Box>
                                             <Typography variant="caption" color="success.main" fontWeight="800" display="block">EXPECTED ARRIVAL</Typography>
                                             <Typography variant="body2" fontWeight="800">
@@ -432,12 +441,12 @@ const ShipmentBilling = ({
                 expanded
                 disableGutters
                 elevation={0}
-                sx={{ borderRadius: 6, overflow: 'hidden', bgcolor: 'surface-container-low' }}
+                sx={{ borderRadius: '20px', overflow: 'hidden', bgcolor: 'surface-container-low' }}
             >
                 <AccordionSummary sx={{ px: 4, py: 1, '& .MuiAccordionSummary-expandIconWrapper': { display: 'none' } }}>
                     <Stack direction="row" alignItems="center" spacing={2}>
-                    <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: alpha(theme.palette.primary.main, 0.1), color: 'primary.main', display: 'flex' }}>
-                        <SettingsSuggestIcon />
+                    <Box sx={{ p: 1.5, borderRadius: '20px', bgcolor: alpha(theme.palette.primary.main, 0.1), color: 'primary.main', display: 'flex' }}>
+                        <span className="material-symbols-outlined" >settings_suggest</span>
                     </Box>
                     <Typography variant="h5" fontWeight="800" sx={{ letterSpacing: '-0.02em' }}>
                         Operational Directives
@@ -460,13 +469,13 @@ const ShipmentBilling = ({
                         </FormControl>
                     </Grid>
                     <Grid item xs={12} md={4}>
-                        <TextField
+                        <WInput
                             fullWidth size="small" type="number" label="Unit Pallet Count"
                             value={palletCount} onChange={(e) => setPalletCount(e.target.value)}
                         />
                     </Grid>
                     <Grid item xs={12} md={4}>
-                        <TextField
+                        <WInput
                             fullWidth size="small" label="Special Package Marks"
                             value={packageMarks} onChange={(e) => setPackageMarks(e.target.value.slice(0, LIMITS.packageMarks + 40))}
                             placeholder="e.g. HANDLE WITH CARE"
@@ -479,7 +488,7 @@ const ShipmentBilling = ({
             </Accordion>
 
             {warnings.length > 0 && (
-                <Alert severity="warning" variant="outlined" sx={{ mt: 4, borderRadius: 4 }}>
+                <Alert severity="warning" variant="outlined" sx={{ mt: 4, borderRadius: '20px'}}>
                     <Typography variant="subtitle2" fontWeight="800" sx={{ mb: 1 }}>Carrier Validation Warnings</Typography>
                     {warnings.map((warning) => (
                         <Typography key={warning} variant="caption" display="block">• {warning}</Typography>
