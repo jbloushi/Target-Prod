@@ -36,16 +36,22 @@ export default defineConfig(({ mode }) => {
       ]
     },
     server: {
-      port: 3030,
-      strictPort: true,
-      // Add the allowedHosts property here
-      allowedHosts: ['3pl.mawthook.io'], 
+      host: '0.0.0.0',
+      port: Number(process.env.PORT) || 3000,
+      strictPort: false,
+      allowedHosts: true, 
       proxy: {
         '^/api(?:/|$)': {
           target: 'http://127.0.0.1:8899',
           changeOrigin: true
         }
       }
+    },
+    preview: {
+      host: '0.0.0.0',
+      port: Number(process.env.PORT) || 3000,
+      strictPort: false,
+      allowedHosts: true
     },
     build: {
       outDir: 'build',
