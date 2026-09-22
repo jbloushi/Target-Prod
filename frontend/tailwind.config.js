@@ -58,25 +58,53 @@ module.exports = {
         "error-dim": "#9f0519",
         "on-primary": "#f1f2ff"
       },
+      boxShadow: {
+        'floating-sm': '0 4px 20px -2px rgba(0, 80, 212, 0.08), 0 2px 6px -1px rgba(0, 0, 0, 0.04)',
+        'floating': '0 20px 40px -15px rgba(0, 80, 212, 0.12), 0 0 1px 1px rgba(255, 255, 255, 0.8)',
+        'floating-lg': '0 30px 60px -12px rgba(0, 80, 212, 0.18), 0 18px 36px -18px rgba(0, 0, 0, 0.12)',
+        'neon-blue': '0 0 25px -5px rgba(0, 80, 212, 0.5), 0 0 10px -2px rgba(0, 80, 212, 0.3)',
+        'neon-teal': '0 0 25px -5px rgba(0, 217, 184, 0.5), 0 0 10px -2px rgba(0, 217, 184, 0.3)',
+        'glass-edge': 'inset 0 1px 1px 0 rgba(255, 255, 255, 0.6), 0 10px 30px -10px rgba(0, 0, 0, 0.05)',
+      },
       borderRadius: {
-        "DEFAULT": "0.125rem",
-        "lg": "0.25rem",
-        "xl": "0.5rem",
-        "full": "0.75rem"
+        "sm": "0.375rem",
+        "DEFAULT": "0.5rem",
+        "md": "0.75rem",
+        "lg": "1rem",
+        "xl": "1.25rem",
+        "2xl": "1.5rem",
+        "3xl": "2rem",
+        "full": "9999px"
       },
       fontFamily: {
-        "headline": ["Noto Sans Arabic", "Manrope", "sans-serif"],
-        "body": ["Noto Sans Arabic", "Manrope", "sans-serif"],
-        "label": ["Noto Sans Arabic", "Manrope", "sans-serif"],
+        "headline": ["Noto Sans Arabic", "Manrope", "system-ui", "sans-serif"],
+        "body": ["Noto Sans Arabic", "Manrope", "system-ui", "sans-serif"],
+        "label": ["Noto Sans Arabic", "Manrope", "system-ui", "sans-serif"],
         "manrope": ["Manrope", "sans-serif"]
       },
       animation: {
         'pulse-subtle': 'pulse-subtle 2s ease-in-out infinite',
+        'float-slow': 'float 6s ease-in-out infinite',
+        'shimmer-sweep': 'shimmerSweep 2s ease-in-out infinite',
+        'beacon': 'beaconRing 2s cubic-bezier(0, 0, 0.2, 1) infinite',
       },
       keyframes: {
         'pulse-subtle': {
           '0%, 100%': { opacity: 1 },
           '50%': { opacity: 0.8 },
+        },
+        'float': {
+          '0%, 100%': { transform: 'translateY(0px)' },
+          '50%': { transform: 'translateY(-6px)' },
+        },
+        'shimmerSweep': {
+          '0%': { backgroundPosition: '-200% 0' },
+          '100%': { backgroundPosition: '200% 0' },
+        },
+        'beaconRing': {
+          '0%': { transform: 'scale(0.8)', opacity: '0.9' },
+          '70%': { transform: 'scale(2.2)', opacity: '0' },
+          '100%': { transform: 'scale(2.2)', opacity: '0' },
         }
       }
     },

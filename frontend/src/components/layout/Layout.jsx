@@ -22,7 +22,7 @@ const Layout = () => {
 
     if (!isAuthenticated) {
         return (
-            <div className="min-h-screen flex flex-col bg-surface dark:bg-slate-900 transition-colors duration-300">
+            <div className="min-h-screen flex flex-col spatial-mesh-bg dark:bg-slate-900 transition-colors duration-300">
                 <Header />
                 <main className="flex-grow pt-20 px-6 max-w-7xl mx-auto w-full">
                     <Outlet />
@@ -33,7 +33,7 @@ const Layout = () => {
     }
 
     return (
-        <div className="min-h-screen flex bg-surface dark:bg-slate-900 transition-colors duration-300 overflow-x-clip">
+        <div className="min-h-screen flex spatial-mesh-bg dark:bg-slate-900 transition-colors duration-300 overflow-x-clip">
             {/* Sidebar (with desktop collapse logic and responsive mobile drawer) */}
             <Sidebar 
                 isCollapsed={isSidebarCollapsed} 
