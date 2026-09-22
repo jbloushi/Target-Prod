@@ -332,21 +332,24 @@ function RouteProgressBar({ originCity, destCity, stepIndex }) {
           {PUBLIC_PROGRESS_STEPS.map((step, index) => {
             const pos = (index / total) * 100;
             const active = index <= stepIndex;
+            const isCurrent = index === stepIndex;
             return (
               <div
                 key={step}
                 title={PUBLIC_PROGRESS_LABELS[step]}
+                className={isCurrent ? "live-beacon" : ""}
                 style={{
                   position: 'absolute',
                   left: `${pos}%`,
                   top: 17,
-                  width: active ? 14 : 12,
-                  height: active ? 14 : 12,
+                  width: active ? 16 : 12,
+                  height: active ? 16 : 12,
                   borderRadius: '50%',
                   transform: 'translate(-50%, -50%)',
                   background: active ? '#0b5bd3' : '#ffffff',
                   border: `2px solid ${active ? '#0b5bd3' : '#b4c1d2'}`,
-                  boxShadow: active && index === stepIndex ? '0 0 0 6px rgba(11, 91, 211, 0.12)' : 'none',
+                  boxShadow: isCurrent ? '0 0 0 7px rgba(11, 91, 211, 0.2), 0 4px 12px rgba(11, 91, 211, 0.35)' : 'none',
+                  transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
                 }}
               />
             );
@@ -581,6 +584,22 @@ const PublicTrackingPage = () => {
   const stepIndex = shipment ? getPublicStepIndex(shipment.status) : 0;
   const normalizedStatus = normalizeStatus(shipment?.status);
 
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    if (!shipment?.trackingNumber) return;
+    navigator.clipboard.writeText(shipment.trackingNumber);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleShareWhatsApp = () => {
+    if (!shipment?.trackingNumber) return;
+    const url = `https://target-kw.com/track/${shipment.trackingNumber}`;
+    const text = encodeURIComponent(`Track your shipment #${shipment.trackingNumber} with Target Logistics: ${url}`);
+    window.open(`https://wa.me/?text=${text}`, '_blank');
+  };
+
   const handleSearch = (event) => {
     event.preventDefault();
     const nextTrackingNumber = searchInput.trim();
@@ -622,7 +641,7 @@ const PublicTrackingPage = () => {
                 placeholder="Enter your tracking number"
                 aria-label="Tracking number"
               />
-              <button type="submit" style={styles.searchBtn}>Track</button>
+              <button type="submit" style={styles.searchBtn} className="press-tactile">Track</button>
             </form>
 
             {loading && <div style={styles.statePanel}>Loading tracking details...</div>}
@@ -630,9 +649,55 @@ const PublicTrackingPage = () => {
 
             {!loading && shipment && (
               <>
-                <div style={styles.meta}>
-                  <span style={styles.trackingCode}>Tracking Code: {shipment.trackingNumber}</span>
-                  <span>{shipment.carrierCode || shipment.carrier || 'Target Logistics'}</span>
+                <div style={{ ...styles.meta, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={styles.trackingCode}>Tracking Code: {shipment.trackingNumber}</span>
+                    <button
+                      onClick={handleCopy}
+                      title="Copy Tracking Number"
+                      className="press-tactile"
+                      style={{
+                        background: copied ? '#22c55e' : '#eef3fa',
+                        color: copied ? '#ffffff' : '#0b5bd3',
+                        border: 'none',
+                        borderRadius: 6,
+                        padding: '4px 10px',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
+                      }}
+                    >
+                      {copied ? '✓ Copied' : '📋 Copy'}
+                    </button>
+                    <button
+                      onClick={handleShareWhatsApp}
+                      title="Share Tracking Link via WhatsApp"
+                      className="press-tactile"
+                      style={{
+                        background: '#25D366',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: 6,
+                        padding: '4px 10px',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
+                      }}
+                    >
+                      💬 WhatsApp
+                    </button>
+                  </div>
+                  <span style={{ fontSize: 13, color: '#66758a', fontWeight: 600 }}>
+                    {shipment.carrierCode || shipment.carrier || 'Target Logistics'}
+                  </span>
                 </div>
 
                 <h1 style={styles.statusHeadline}>

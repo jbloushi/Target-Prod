@@ -343,6 +343,44 @@ const AddressStep = ({
         )}
       </div>
 
+      {/* Quick Location Preset Chips */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+        <span style={{ fontSize: 11.5, fontWeight: 700, color: TK.text3 }}>⚡ Quick Presets:</span>
+        {[
+          { label: '🏢 Shuwaikh Logistics Hub', city: 'Shuwaikh Industrial', country: 'Kuwait', countryCode: 'KW', phoneCountryCode: '+965', zip: '70001', addr1: 'Block 1, Street 14, Target Logistics Hub' },
+          { label: '🏪 Airport Cargo Terminal', city: 'Farwaniya', country: 'Kuwait', countryCode: 'KW', phoneCountryCode: '+965', zip: '80000', addr1: 'Cargo City, Kuwait International Airport' },
+          { label: '🏬 Kuwait City Financial Centre', city: 'Kuwait City', country: 'Kuwait', countryCode: 'KW', phoneCountryCode: '+965', zip: '13001', addr1: 'Sharq, Block 3, Al-Hamra Tower Wing' }
+        ].map((preset, pIdx) => (
+          <button
+            key={pIdx}
+            type="button"
+            onClick={() => {
+              setData(d => ({
+                ...d,
+                city: preset.city,
+                country: preset.country,
+                countryCode: preset.countryCode,
+                phoneCountryCode: preset.phoneCountryCode,
+                zip: preset.zip,
+                addr1: preset.addr1,
+                formattedAddress: `${preset.addr1}, ${preset.city}, ${preset.country}`
+              }));
+              if (clearErrors) {
+                clearErrors([`${pfx}_addr1`, `${pfx}_city`, `${pfx}_country`, `${pfx}_zip`]);
+              }
+            }}
+            className="press-tactile hover-lift"
+            style={{
+              padding: '4px 10px', borderRadius: 8, border: `1px solid ${TK.border}`,
+              background: '#f8fafc', color: TK.text2, fontSize: 11, fontWeight: 700,
+              cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4
+            }}
+          >
+            {preset.label}
+          </button>
+        ))}
+      </div>
+
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
         {/* Contact Info */}
         <WInput
@@ -1036,6 +1074,71 @@ const PackageStep = ({ data, setData, templates, onSaveNewTemplate, errors = {},
         )}
       </div>
 
+      {/* Interactive Volumetric & Chargeable Weight Visualizer Gauge */}
+      {(() => {
+        const pkgs = data.packagesList && data.packagesList.length > 0 ? data.packagesList : [data];
+        const totalActual = pkgs.reduce((sum, p) => sum + (parseFloat(p.weight) || 0), 0);
+        const totalVolumetric = pkgs.reduce((sum, p) => {
+          const l = parseFloat(p.length) || 0;
+          const w = parseFloat(p.width) || 0;
+          const h = parseFloat(p.height) || 0;
+          const q = parseInt(p.qty) || 1;
+          return sum + ((l * w * h) / 5000) * q;
+        }, 0);
+        const chargeableWeight = Math.max(totalActual, totalVolumetric);
+        const isVolumetric = totalVolumetric > totalActual;
+
+        return (
+          <div style={{
+            padding: '16px 20px', borderRadius: 16,
+            background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+            border: `1.5px solid ${isVolumetric ? '#f59e0b' : '#3b82f6'}`,
+            boxShadow: '0 4px 14px rgba(0,0,0,0.03)',
+            marginBottom: 4
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 20, color: isVolumetric ? '#d97706' : '#2563eb' }}>
+                  {isVolumetric ? 'view_in_ar' : 'scale'}
+                </span>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 13.5, color: TK.text1 }}>
+                    IATA Chargeable Weight Rating Engine
+                  </div>
+                  <div style={{ fontSize: 11.5, color: TK.text3 }}>
+                    Comparing Scale Actual vs. Volumetric Dim (L×W×H / 5000)
+                  </div>
+                </div>
+              </div>
+              <span style={{
+                fontSize: 12, fontWeight: 800, padding: '4px 12px', borderRadius: 20,
+                background: isVolumetric ? '#fef3c7' : '#dbeafe',
+                color: isVolumetric ? '#b45309' : '#1e40af',
+                border: `1px solid ${isVolumetric ? '#fde68a' : '#bfdbfe'}`
+              }}>
+                Chargeable: <strong>{chargeableWeight.toFixed(2)} KG</strong> ({isVolumetric ? 'Volumetric Rating Applied' : 'Actual Weight Applied'})
+              </span>
+            </div>
+
+            {/* Dual Gauge Bar */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+              <div style={{ background: '#fff', padding: '10px 14px', borderRadius: 12, border: `1px solid ${TK.border}` }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: TK.text3, textTransform: 'uppercase' }}>Actual Scale Weight</div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', marginTop: 2 }}>{totalActual.toFixed(2)} <span style={{ fontSize: 12, fontWeight: 600 }}>KG</span></div>
+              </div>
+              <div style={{ background: '#fff', padding: '10px 14px', borderRadius: 12, border: `1px solid ${TK.border}` }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: isVolumetric ? '#d97706' : TK.text3, textTransform: 'uppercase' }}>
+                  Volumetric Weight (5000 Divisor)
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: isVolumetric ? '#d97706' : '#0f172a', marginTop: 2 }}>
+                  {totalVolumetric.toFixed(2)} <span style={{ fontSize: 12, fontWeight: 600 }}>KG</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* 4. PACKAGE SPECS FORM (Supports Multi-Package Shipments) */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {/* Package items list */}
@@ -1071,33 +1174,54 @@ const PackageStep = ({ data, setData, templates, onSaveNewTemplate, errors = {},
                   {item.pkgType || data.pkgType || 'Box'}
                 </span>
               </div>
-              {arr.length > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <button
                   type="button"
                   onClick={() => {
-                    const updatedList = arr.filter((_, i) => i !== idx);
+                    const duplicated = { ...item, id: Date.now() };
+                    const updatedList = [...arr.slice(0, idx + 1), duplicated, ...arr.slice(idx + 1)];
                     const totalWeight = updatedList.reduce((s, p) => s + (parseFloat(p.weight) || 0), 0);
-                    const totalVal = updatedList.reduce((s, p) => s + (parseFloat(p.value) || 0), 0);
-                    setData(d => ({
-                      ...d,
-                      packagesList: updatedList,
-                      weight: totalWeight.toFixed(2),
-                      value: totalVal > 0 ? totalVal.toFixed(3) : d.value,
-                      length: updatedList[0]?.length || d.length,
-                      width: updatedList[0]?.width || d.width,
-                      height: updatedList[0]?.height || d.height
-                    }));
+                    setData(d => ({ ...d, packagesList: updatedList, weight: totalWeight.toFixed(2) }));
                   }}
+                  className="press-tactile hover-lift"
                   style={{
-                    border: 'none', background: '#fee2e2', color: '#dc2626',
+                    border: `1px solid ${TK.border}`, background: '#f8fafc', color: TK.text1,
                     padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
                     fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4
                   }}
                 >
-                  <span className="material-symbols-outlined" style={{ fontSize: 14 }}>delete</span>
-                  Remove
+                  <span className="material-symbols-outlined" style={{ fontSize: 14 }}>content_copy</span>
+                  Duplicate
                 </button>
-              )}
+                {arr.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updatedList = arr.filter((_, i) => i !== idx);
+                      const totalWeight = updatedList.reduce((s, p) => s + (parseFloat(p.weight) || 0), 0);
+                      const totalVal = updatedList.reduce((s, p) => s + (parseFloat(p.value) || 0), 0);
+                      setData(d => ({
+                        ...d,
+                        packagesList: updatedList,
+                        weight: totalWeight.toFixed(2),
+                        value: totalVal > 0 ? totalVal.toFixed(3) : d.value,
+                        length: updatedList[0]?.length || d.length,
+                        width: updatedList[0]?.width || d.width,
+                        height: updatedList[0]?.height || d.height
+                      }));
+                    }}
+                    className="press-tactile"
+                    style={{
+                      border: 'none', background: '#fee2e2', color: '#dc2626',
+                      padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
+                      fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4
+                    }}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: 14 }}>delete</span>
+                    Remove
+                  </button>
+                )}
+              </div>
             </div>
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
@@ -3060,7 +3184,7 @@ export const KineticShipmentWizard = ({ onClose, editing }) => {
       </div>
 
       {/* Body Form */}
-      <div style={{ padding: '24px 28px', flex: 1 }}>
+      <div key={step} className="animate-slide-right" style={{ padding: '24px 28px', flex: 1 }}>
         {step === 1 && (
           <AddressStep
             title={lang === 'ar' ? 'بيانات الراسل (المصدر والشحن)' : 'Sender (Origin Dispatch)'}
@@ -3161,6 +3285,7 @@ export const KineticShipmentWizard = ({ onClose, editing }) => {
         <button
           type="button"
           onClick={handleBack}
+          className="press-tactile"
           style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px',
             borderRadius: 10, border: `1px solid ${TK.border}`, background: '#fff',
@@ -3178,6 +3303,7 @@ export const KineticShipmentWizard = ({ onClose, editing }) => {
             type="button"
             onClick={handleNext}
             disabled={false}
+            className="press-tactile hover-lift"
             style={{
               display: 'flex', alignItems: 'center', gap: 6, padding: '10px 22px',
               borderRadius: 10, border: 'none',
@@ -3198,6 +3324,7 @@ export const KineticShipmentWizard = ({ onClose, editing }) => {
             type="button"
             onClick={handleConfirmSubmit}
             disabled={submitting}
+            className="press-tactile hover-lift"
             style={{
               display: 'flex', alignItems: 'center', gap: 8, padding: '11px 26px',
               borderRadius: 10, border: 'none',

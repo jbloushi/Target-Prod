@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useShipmentStats } from '../utils/useShipmentStats';
 import { useShipments } from '../utils/useShipments';
@@ -22,11 +22,42 @@ import {
   useTheme,
   Stack,
   Avatar,
-  ButtonGroup
+  ButtonGroup,
+  Chip
 } from '@mui/material';
 import { TK, STATUS_CONFIG } from '../tokens/kineticHorizon';
 import VolumeBarChart from '../components/charts/VolumeBarChart';
 import VelocityProgressBar from '../components/charts/VelocityProgressBar';
+
+/**
+ * Animated Number Ticker Component
+ */
+const AnimatedNumber = ({ value = 0, duration = 800 }) => {
+    const [displayVal, setDisplayVal] = useState(0);
+
+    useEffect(() => {
+        let startTimestamp = null;
+        const startValue = displayVal;
+        const targetValue = Number(value) || 0;
+        
+        if (startValue === targetValue) return;
+
+        const step = (timestamp) => {
+            if (!startTimestamp) startTimestamp = timestamp;
+            const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+            // Ease out cubic
+            const easeProgress = 1 - Math.pow(1 - progress, 3);
+            const current = Math.round(startValue + (targetValue - startValue) * easeProgress);
+            setDisplayVal(current);
+            if (progress < 1) {
+                window.requestAnimationFrame(step);
+            }
+        };
+        window.requestAnimationFrame(step);
+    }, [value, duration]);
+
+    return <span>{displayVal.toLocaleString()}</span>;
+};
 
 /**
  * Target Logistics Global - Kinetic Horizon Dashboard
@@ -42,12 +73,14 @@ const DashboardPage = () => {
     // UI State for interactivity
     const [hoveredCard, setHoveredCard] = useState(null);
     const [timeframe, setTimeframe] = useState('weekly'); // 'weekly' | 'monthly'
+    const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'pending' | 'in_transit' | 'exception' | 'delivered'
     
     const { stats, loading: statsLoading } = useShipmentStats();
-    const { shipments: recentShipments, loading: recentLoading } = useShipments({ limit: 8 });
+    const { shipments: recentShipments, loading: recentLoading } = useShipments({ limit: 12 });
 
     const statsCards = [
         { 
+            id: 'all',
             label: t('dash_total_shipments', 'Total Shipments'), 
             value: stats.total || 0, 
             icon: <span className="material-symbols-outlined" style={{ fontSize: 22 }}>local_shipping</span>, 
@@ -58,6 +91,7 @@ const DashboardPage = () => {
             description: t('dash_total_desc', 'Total active lifecycle')
         },
         { 
+            id: 'pending',
             label: t('dash_pending_gate', 'Pending Gate'), 
             value: stats.pending || 0, 
             icon: <span className="material-symbols-outlined" style={{ fontSize: 22 }}>pending_actions</span>, 
@@ -68,6 +102,7 @@ const DashboardPage = () => {
             description: t('dash_pending_desc', 'Awaiting manifest approval')
         },
         { 
+            id: 'in_transit',
             label: t('dash_global_transit', 'Global Transit'), 
             value: stats.inTransit || 0, 
             icon: <span className="material-symbols-outlined" style={{ fontSize: 22 }}>public</span>, 
@@ -78,6 +113,7 @@ const DashboardPage = () => {
             description: t('dash_transit_desc', 'Cross-border movement')
         },
         { 
+            id: 'exception',
             label: t('dash_exceptions', 'Critical Exceptions'), 
             value: stats.exceptions || 0, 
             icon: <span className="material-symbols-outlined" style={{ fontSize: 22 }}>warning</span>, 
@@ -88,6 +124,7 @@ const DashboardPage = () => {
             description: t('dash_exceptions_desc', 'Requires intervention')
         },
         { 
+            id: 'delivered',
             label: t('dash_success_rate', 'Success Rate'), 
             value: stats.delivered || 0, 
             icon: <span className="material-symbols-outlined" style={{ fontSize: 22 }}>check_circle</span>, 
@@ -130,6 +167,20 @@ const DashboardPage = () => {
         }
         return months;
     }, [stats.total, lang]);
+
+    // Filtered manifests list based on interactive radar selection
+    const filteredShipments = useMemo(() => {
+        if (!recentShipments) return [];
+        if (statusFilter === 'all') return recentShipments;
+        return recentShipments.filter(s => {
+            const st = (s.status || '').toLowerCase();
+            if (statusFilter === 'pending') return ['pending', 'ready_for_pickup', 'created'].includes(st);
+            if (statusFilter === 'in_transit') return ['in_transit', 'out_for_delivery', 'picked_up'].includes(st);
+            if (statusFilter === 'exception') return ['exception', 'failed', 'returned', 'cancelled'].includes(st);
+            if (statusFilter === 'delivered') return ['delivered', 'completed'].includes(st);
+            return true;
+        });
+    }, [recentShipments, statusFilter]);
 
     // Simulated Real-Time Activity Feed based on recent shipments
     const activityFeed = useMemo(() => {
@@ -198,6 +249,7 @@ const DashboardPage = () => {
                     <Button 
                         startIcon={<span className="material-symbols-outlined" style={{ fontSize: 18 }}>support_agent</span>}
                         variant="outlined" 
+                        className="press-tactile hover-lift"
                         sx={{ borderRadius: `${TK.radiusMd}px`, px: 2.5, fontWeight: 700, textTransform: 'none', borderColor: TK.border, color: TK.text1 }}
                         onClick={() => navigate('/contact')}
                     >
@@ -206,6 +258,7 @@ const DashboardPage = () => {
                     <Button 
                         startIcon={<span className="material-symbols-outlined" style={{ fontSize: 18 }}>add</span>}
                         variant="contained" 
+                        className="press-tactile hover-lift"
                         onClick={() => navigate('/shipment/new')}
                         sx={{ 
                             borderRadius: `${TK.radiusMd}px`, 
@@ -222,88 +275,97 @@ const DashboardPage = () => {
                 </Box>
             </Box>
 
-            {/* Global Stats Grid (5 Cards) */}
+            {/* Global Stats Grid (5 Interactive Filter Cards) */}
             <Grid container spacing={2.5} sx={{ mb: 4 }}>
-                {statsCards.map((stat, idx) => (
-                    <Grid item xs={12} sm={6} lg={2.4} key={idx}>
-                        <Card 
-                            onMouseEnter={() => setHoveredCard(idx)}
-                            onMouseLeave={() => setHoveredCard(null)}
-                            sx={{ 
-                                height: '100%', 
-                                position: 'relative',
-                                borderRadius: '20px',
-                                background: isDark ? 'rgba(255,255,255,0.02)' : '#ffffff',
-                                border: `1px solid ${hoveredCard === idx ? stat.color : TK.border}`,
-                                transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-                                transform: hoveredCard === idx ? 'translateY(-4px)' : 'none',
-                                boxShadow: hoveredCard === idx ? `0 16px 36px -8px ${alpha(stat.color, 0.18)}` : '0 4px 20px rgba(0,0,0,0.05)',
-                                overflow: 'hidden'
-                            }}
-                        >
-                            <CardContent sx={{ p: 3 }}>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                                    <Box sx={{ 
-                                        width: 40,
-                                        height: 40,
-                                        borderRadius: '11px', 
-                                        bgcolor: alpha(stat.color, 0.1), 
-                                        color: stat.color,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center'
-                                    }}>
-                                        {stat.icon}
+                {statsCards.map((stat, idx) => {
+                    const isSelected = statusFilter === stat.id;
+                    return (
+                        <Grid item xs={12} sm={6} lg={2.4} key={idx}>
+                            <Card 
+                                onClick={() => setStatusFilter(statusFilter === stat.id ? 'all' : stat.id)}
+                                onMouseEnter={() => setHoveredCard(idx)}
+                                onMouseLeave={() => setHoveredCard(null)}
+                                className="press-tactile cursor-pointer"
+                                sx={{ 
+                                    height: '100%', 
+                                    position: 'relative',
+                                    borderRadius: '20px',
+                                    background: isDark ? 'rgba(255,255,255,0.02)' : '#ffffff',
+                                    border: `2px solid ${isSelected ? stat.color : hoveredCard === idx ? alpha(stat.color, 0.5) : TK.border}`,
+                                    transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+                                    transform: hoveredCard === idx || isSelected ? 'translateY(-3px)' : 'none',
+                                    boxShadow: isSelected 
+                                        ? `0 12px 28px -4px ${alpha(stat.color, 0.25)}` 
+                                        : hoveredCard === idx 
+                                            ? `0 14px 30px -6px ${alpha(stat.color, 0.15)}` 
+                                            : '0 4px 20px rgba(0,0,0,0.04)',
+                                    overflow: 'hidden'
+                                }}
+                            >
+                                <CardContent sx={{ p: 3 }}>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                                        <Box sx={{ 
+                                            width: 40,
+                                            height: 40,
+                                            borderRadius: '11px', 
+                                            bgcolor: alpha(stat.color, 0.12), 
+                                            color: stat.color,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center'
+                                        }}>
+                                            {stat.icon}
+                                        </Box>
+                                        <Box sx={{ 
+                                            px: 1.25, 
+                                            py: 0.35, 
+                                            borderRadius: '99px', 
+                                            bgcolor: isSelected ? alpha(stat.color, 0.15) : stat.isPositive === null ? 'rgba(0,0,0,0.04)' : stat.isPositive ? TK.successBg : TK.errorBg,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 0.5
+                                        }}>
+                                            <Typography variant="caption" sx={{ fontWeight: 800, color: isSelected ? stat.color : stat.isPositive === null ? TK.text2 : stat.isPositive ? TK.success : TK.error, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                                {isSelected ? (lang === 'ar' ? 'نشط' : 'Active Filter') : <>{stat.trendIcon} {stat.trend}</>}
+                                            </Typography>
+                                        </Box>
                                     </Box>
-                                    <Box sx={{ 
-                                        px: 1.25, 
-                                        py: 0.35, 
-                                        borderRadius: '99px', 
-                                        bgcolor: stat.isPositive === null ? 'rgba(0,0,0,0.04)' : stat.isPositive ? TK.successBg : TK.errorBg,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: 0.5
-                                    }}>
-                                        <Typography variant="caption" sx={{ fontWeight: 800, color: stat.isPositive === null ? TK.text2 : stat.isPositive ? TK.success : TK.error, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                            {stat.trendIcon} {stat.trend}
+                                    <Typography variant="caption" sx={{ fontWeight: 800, color: TK.text3, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                                        {stat.label}
+                                    </Typography>
+                                    <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75, mt: 0.5 }}>
+                                        <Typography variant="h4" sx={{ fontWeight: 900, letterSpacing: '-0.03em', color: isSelected ? stat.color : TK.text1 }}>
+                                            <AnimatedNumber value={stat.value} />
+                                        </Typography>
+                                        <Typography variant="caption" sx={{ color: TK.text3, fontWeight: 600 }}>
+                                            {t('units', 'units')}
                                         </Typography>
                                     </Box>
-                                </Box>
-                                <Typography variant="caption" sx={{ fontWeight: 800, color: TK.text3, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                                    {stat.label}
-                                </Typography>
-                                <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75, mt: 0.5 }}>
-                                    <Typography variant="h4" sx={{ fontWeight: 900, letterSpacing: '-0.03em', color: TK.text1 }}>
-                                        {stat.value.toLocaleString()}
+                                    <Typography variant="caption" sx={{ display: 'block', mt: 1, color: TK.text2, fontSize: 11.5 }}>
+                                        {stat.description}
                                     </Typography>
-                                    <Typography variant="caption" sx={{ color: TK.text3, fontWeight: 600 }}>
-                                        {t('units', 'units')}
-                                    </Typography>
-                                </Box>
-                                <Typography variant="caption" sx={{ display: 'block', mt: 1, color: TK.text2, fontSize: 11.5 }}>
-                                    {stat.description}
-                                </Typography>
-                            </CardContent>
-                            
-                            {/* Decorative Sparkline */}
-                            <Box sx={{ 
-                                position: 'absolute', 
-                                bottom: 0, 
-                                left: 0, 
-                                right: 0, 
-                                height: 3, 
-                                bgcolor: alpha(stat.color, 0.15) 
-                            }}>
+                                </CardContent>
+                                
+                                {/* Decorative Sparkline */}
                                 <Box sx={{ 
-                                    height: '100%', 
-                                    width: hoveredCard === idx ? '100%' : '35%', 
-                                    bgcolor: stat.color,
-                                    transition: 'width 0.8s ease-in-out'
-                                }} />
-                            </Box>
-                        </Card>
-                    </Grid>
-                ))}
+                                    position: 'absolute', 
+                                    bottom: 0, 
+                                    left: 0, 
+                                    right: 0, 
+                                    height: 3, 
+                                    bgcolor: alpha(stat.color, 0.15) 
+                                }}>
+                                    <Box sx={{ 
+                                        height: '100%', 
+                                        width: isSelected || hoveredCard === idx ? '100%' : '35%', 
+                                        bgcolor: stat.color,
+                                        transition: 'width 0.4s ease-in-out'
+                                    }} />
+                                </Box>
+                            </Card>
+                        </Grid>
+                    );
+                })}
             </Grid>
 
             {/* Operational Deep-Dive & Visualizations */}
@@ -334,6 +396,7 @@ const DashboardPage = () => {
                                 <Button 
                                     onClick={() => setTimeframe('weekly')}
                                     variant={timeframe === 'weekly' ? 'contained' : 'outlined'}
+                                    className="press-tactile"
                                     sx={{ 
                                         fontWeight: 700, 
                                         fontSize: 12, 
@@ -347,6 +410,7 @@ const DashboardPage = () => {
                                 <Button 
                                     onClick={() => setTimeframe('monthly')}
                                     variant={timeframe === 'monthly' ? 'contained' : 'outlined'}
+                                    className="press-tactile"
                                     sx={{ 
                                         fontWeight: 700, 
                                         fontSize: 12, 
@@ -455,7 +519,7 @@ const DashboardPage = () => {
 
             {/* Live Activity Timeline & Manifest Grid */}
             <Grid container spacing={3}>
-                {/* Live Activity Stream */}
+                {/* Live Activity Stream with Beacon Pulse */}
                 <Grid item xs={12} lg={4}>
                     <Card sx={{ 
                         borderRadius: '20px', 
@@ -466,14 +530,18 @@ const DashboardPage = () => {
                     }}>
                         <Box sx={{ p: 3, pb: 2, borderBottom: `1px solid ${TK.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <Box>
-                                <Typography variant="h6" sx={{ fontWeight: 800, color: TK.text1, fontSize: '1.05rem' }}>
+                                <Typography variant="h6" sx={{ fontWeight: 800, color: TK.text1, fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <span className="relative flex h-3 w-3">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                                    </span>
                                     {t('dash_live_feed_title', 'Live Operations Feed')}
                                 </Typography>
                                 <Typography variant="body2" sx={{ color: TK.text2, fontSize: '0.8rem' }}>
                                     {t('dash_live_feed_desc', 'Real-time network events & dispatches')}
                                 </Typography>
                             </Box>
-                            <span className="material-symbols-outlined" style={{ fontSize: 20, color: TK.primary }}>
+                            <span className="material-symbols-outlined live-beacon text-blue-600" style={{ fontSize: 22 }}>
                                 sensors
                             </span>
                         </Box>
@@ -514,7 +582,7 @@ const DashboardPage = () => {
                     </Card>
                 </Grid>
 
-                {/* Operations Manifest Table */}
+                {/* Operations Manifest Table with Zero-Reload Status Radar */}
                 <Grid item xs={12} lg={8}>
                     <Card sx={{ 
                         borderRadius: '20px', 
@@ -523,23 +591,44 @@ const DashboardPage = () => {
                         boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
                         overflow: 'hidden' 
                     }}>
-                        <Box sx={{ p: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${TK.border}` }}>
+                        <Box sx={{ p: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, borderBottom: `1px solid ${TK.border}` }}>
                             <Box>
-                                <Typography variant="h6" sx={{ fontWeight: 800, color: TK.text1, fontSize: '1.05rem' }}>
+                                <Typography variant="h6" sx={{ fontWeight: 800, color: TK.text1, fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: 1.5 }}>
                                     {t('dash_recent_manifests', 'Recent Active Manifests')}
+                                    {statusFilter !== 'all' && (
+                                        <Chip 
+                                            size="small" 
+                                            label={`${statusFilter.replace('_', ' ').toUpperCase()} (${filteredShipments.length})`}
+                                            onDelete={() => setStatusFilter('all')}
+                                            sx={{ fontWeight: 800, fontSize: 11, bgcolor: alpha(TK.primary, 0.1), color: TK.primary }}
+                                        />
+                                    )}
                                 </Typography>
                                 <Typography variant="body2" sx={{ color: TK.text2, fontSize: '0.8rem' }}>
                                     {t('dash_recent_manifests_desc', 'Live telemetry from Target Logistics Global pipeline')}
                                 </Typography>
                             </Box>
-                            <Button 
-                                variant="outlined" 
-                                size="small" 
-                                sx={{ borderRadius: `${TK.radiusSm}px`, fontWeight: 700, textTransform: 'none', borderColor: TK.border, color: TK.text1 }}
-                                onClick={() => navigate('/shipments')}
-                            >
-                                {t('dash_view_all', 'View All')}
-                            </Button>
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                                {statusFilter !== 'all' && (
+                                    <Button 
+                                        variant="text" 
+                                        size="small" 
+                                        onClick={() => setStatusFilter('all')}
+                                        sx={{ fontWeight: 700, fontSize: 12, textTransform: 'none', color: TK.text2 }}
+                                    >
+                                        {lang === 'ar' ? 'عرض الكل' : 'Reset Filter'}
+                                    </Button>
+                                )}
+                                <Button 
+                                    variant="outlined" 
+                                    size="small" 
+                                    className="press-tactile"
+                                    sx={{ borderRadius: `${TK.radiusSm}px`, fontWeight: 700, textTransform: 'none', borderColor: TK.border, color: TK.text1 }}
+                                    onClick={() => navigate('/shipments')}
+                                >
+                                    {t('dash_view_all', 'View All')}
+                                </Button>
+                            </Box>
                         </Box>
                         <TableContainer sx={{ border: 'none' }}>
                             <Table sx={{ minWidth: 650, textAlign: lang === 'ar' ? 'right' : 'left' }}>
@@ -562,7 +651,15 @@ const DashboardPage = () => {
                                 <TableBody>
                                     {recentLoading ? (
                                         <TableRow><TableCell colSpan={4} align="center" sx={{ py: 6 }}><Loader /></TableCell></TableRow>
-                                    ) : recentShipments.map((shipment) => {
+                                    ) : filteredShipments.length === 0 ? (
+                                        <TableRow>
+                                            <TableCell colSpan={4} align="center" sx={{ py: 6 }}>
+                                                <Typography variant="body2" sx={{ color: TK.text3, fontWeight: 600 }}>
+                                                    {lang === 'ar' ? 'لا توجد شحنات مطابقة للتصفية المحددة' : 'No manifests found for this status filter.'}
+                                                </Typography>
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : filteredShipments.map((shipment) => {
                                         const cfg = STATUS_CONFIG[shipment.status] || STATUS_CONFIG.in_transit;
                                         return (
                                             <TableRow 

@@ -61,20 +61,23 @@ export const TrackingProgress = ({ status = 'in_transit' }) => {
                             flex: '0 0 auto',
                             minWidth: { xs: 55, sm: 70 }
                         }}>
-                            <Box sx={{
-                                width: current ? 40 : 34,
-                                height: current ? 40 : 34,
-                                borderRadius: '50%',
-                                border: `2.5px solid ${done ? (current ? TK.primary : TK.success) : TK.border}`,
-                                bgcolor: done ? (current ? TK.primary : TK.success) : '#ffffff',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                color: done ? '#ffffff' : TK.text3,
-                                transition: 'all 0.3s ease',
-                                boxShadow: current ? `0 0 0 5px ${TK.primary}22` : 'none',
-                            }}>
-                                <span className="material-symbols-outlined" style={{ fontSize: current ? 20 : 17 }}>
+                            <Box 
+                                className={current ? "live-beacon" : ""}
+                                sx={{
+                                    width: current ? 42 : 34,
+                                    height: current ? 42 : 34,
+                                    borderRadius: '50%',
+                                    border: `2.5px solid ${done ? (current ? TK.primary : TK.success) : TK.border}`,
+                                    bgcolor: done ? (current ? TK.primary : TK.success) : '#ffffff',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: done ? '#ffffff' : TK.text3,
+                                    transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                                    boxShadow: current ? `0 0 0 6px ${TK.primary}25, 0 8px 16px -4px ${TK.primary}40` : 'none',
+                                }}
+                            >
+                                <span className="material-symbols-outlined" style={{ fontSize: current ? 21 : 17 }}>
                                     {s.icon}
                                 </span>
                             </Box>
