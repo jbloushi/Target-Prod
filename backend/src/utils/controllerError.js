@@ -82,6 +82,15 @@ exports.handleControllerError = (res, error, context = 'Operation', defaultStatu
         return res.status(404).json({ success: false, error: 'Record not found.' });
     }
 
+    // Prisma table or column does not exist in database (e.g. pending migration)
+    if (error.code === 'P2021' || error.code === 'P2022') {
+        logger.error(`[DB Schema] Missing table or column: ${error.message}`);
+        return res.status(500).json({ 
+            success: false, 
+            error: 'Database schema migration required on server. Please run prisma migrate deploy or db push.' 
+        });
+    }
+
     // Prisma validation errors — safe to surface generically
     if (error.code && error.code.startsWith('P2')) {
         return res.status(422).json({ success: false, error: 'Data validation failed.' });

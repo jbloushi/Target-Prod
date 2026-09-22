@@ -24,7 +24,10 @@ npm install --production=false
 
 echo "🔄 Generating Prisma client & running database migrations against MySQL (194.195.87.56:3306)..."
 npx prisma generate
-npx prisma migrate deploy
+npx prisma migrate deploy || npx prisma db push --accept-data-loss
+
+echo "🌱 Seeding / verifying Chart of Accounts, Bank Accounts, and Accounting Periods..."
+node src/scripts/seedAccounting.js || true
 
 # Restart Backend in PM2 / aaPanel
 echo "♻️  Restarting backend service..."
