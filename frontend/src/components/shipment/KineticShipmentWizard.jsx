@@ -839,6 +839,8 @@ const PackageStep = ({ data, setData, templates, onSaveNewTemplate, errors = {},
         height: String(tmpl.height || '10'),
         description: tmpl.description || 'General Cargo',
         value: tmpl.value || '15.00',
+        currency: 'KWD',
+        hsCode: '',
         qty: '1',
         pkgType: tmpl.pkgType || 'Box'
       }]
@@ -1141,6 +1143,8 @@ const PackageStep = ({ data, setData, templates, onSaveNewTemplate, errors = {},
                 width: '15',
                 height: '10',
                 value: '15.00',
+                currency: 'KWD',
+                hsCode: '',
                 pkgType: data.pkgType || 'Box'
               };
               const updated = [...packages, newPkg];
@@ -1302,6 +1306,58 @@ const PackageStep = ({ data, setData, templates, onSaveNewTemplate, errors = {},
                     <span className="font-mono font-bold text-primary">{volWeight} kg</span>
                   </div>
                 </div>
+
+                {/* Declared Value, Currency & HS Code per parcel */}
+                <DaisyInput
+                  dataFieldKey={idx === 0 ? 'pkg_value' : `pkg_${idx}_value`}
+                  id={`field-${idx === 0 ? 'pkg_value' : `pkg_${idx}_value`}`}
+                  label={lang === 'ar' ? 'القيمة المصرحة' : 'Declared Value'}
+                  placeholder="0.000"
+                  value={item.value}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const updated = packages.map((p, i) => i === idx ? { ...p, value: val } : p);
+                    const totalVal = updated.reduce((s, p) => s + (parseFloat(p.value) || 0), 0);
+                    setData(d => ({
+                      ...d,
+                      packagesList: updated,
+                      value: totalVal > 0 ? totalVal.toFixed(3) : val
+                    }));
+                  }}
+                  type="number"
+                  icon="payments"
+                  half
+                />
+
+                <DaisyInput
+                  dataFieldKey={idx === 0 ? 'pkg_currency' : `pkg_${idx}_currency`}
+                  id={`field-${idx === 0 ? 'pkg_currency' : `pkg_${idx}_currency`}`}
+                  label={lang === 'ar' ? 'العملة' : 'Currency'}
+                  placeholder="e.g. KWD, USD"
+                  value={item.currency || 'KWD'}
+                  onChange={(e) => {
+                    const val = e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
+                    const updated = packages.map((p, i) => i === idx ? { ...p, currency: val } : p);
+                    setData(d => ({ ...d, packagesList: updated }));
+                  }}
+                  icon="paid"
+                  half
+                />
+
+                <DaisyInput
+                  dataFieldKey={idx === 0 ? 'pkg_hsCode' : `pkg_${idx}_hsCode`}
+                  id={`field-${idx === 0 ? 'pkg_hsCode' : `pkg_${idx}_hsCode`}`}
+                  label={lang === 'ar' ? 'رمز التعرفة الجمركية (HS Code)' : 'HS / Tariff Code'}
+                  placeholder="e.g. 8471.30.00"
+                  value={item.hsCode || ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const updated = packages.map((p, i) => i === idx ? { ...p, hsCode: val } : p);
+                    setData(d => ({ ...d, packagesList: updated }));
+                  }}
+                  icon="qr_code"
+                  half
+                />
               </div>
             </div>
           );
