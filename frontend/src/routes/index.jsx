@@ -105,19 +105,19 @@ const AppRoutes = () => {
           <Route path="dashboard-v1" element={<Navigate to="/dashboard" replace />} />
 
           <Route path="admin/users" element={
-            <ProtectedRoute allowedRoles={['admin', 'org_manager']}>
+            <ProtectedRoute allowedRoles={['admin', 'manager', 'accounting', 'org_manager']}>
               <AdminUsersPage />
             </ProtectedRoute>
           } />
 
           <Route path="admin/organizations" element={
-            <ProtectedRoute allowedRoles={['admin', 'staff', 'manager']}>
+            <ProtectedRoute allowedRoles={['admin', 'manager', 'accounting', 'staff']}>
               <AdminOrganizationsPage />
             </ProtectedRoute>
           } />
 
           <Route path="admin/whatsapp-logs" element={
-            <ProtectedRoute allowedRoles={['admin', 'staff', 'manager']}>
+            <ProtectedRoute allowedRoles={['admin', 'manager', 'accounting', 'staff']}>
               <AdminWhatsAppLogsPage />
             </ProtectedRoute>
           } />

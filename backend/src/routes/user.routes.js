@@ -23,7 +23,7 @@ router.patch('/:id', authorizeAny('MANAGE_USERS', 'MANAGE_ORG_USERS'), userContr
 router.delete('/:id', authorizeAny('MANAGE_USERS', 'MANAGE_ORG_USERS'), userController.deleteUser);
 router.patch('/:id/password', authorize('MANAGE_USERS'), authController.resetUserPassword);
 
-// Password reset by admin or accounting — does not require full MANAGE_USERS
-router.post('/:id/reset-password', authController.restrictTo('admin', 'accounting'), authController.resetUserPassword);
+// Password reset by admin, manager, or accounting — does not require full MANAGE_USERS
+router.post('/:id/reset-password', authController.restrictTo('admin', 'manager', 'accounting'), authController.resetUserPassword);
 
 module.exports = router;

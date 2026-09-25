@@ -4,32 +4,39 @@
  * @returns {Object} NormalizedShipment
  */
 function normalizeShipment(data) {
-    const normalizeAddress = (party = {}) => ({
-        company: party.company || party.contactPerson,
-        contactPerson: party.contactPerson,
-        phone: party.phone,
-        phoneCountryCode: party.phoneCountryCode || '+965',
-        email: party.email,
-        streetLines: party.streetLines || [party.addressLine1 || '', party.addressLine2 || '', party.addressLine3 || ''].filter(Boolean),
-        city: party.city || party.cityName,
-        postalCode: party.postalCode,
-        countryCode: party.countryCode,
-        state: party.state,
-        taxId: party.taxId,
-        vatNumber: party.vatNumber || party.vatNo,
-        eoriNumber: party.eoriNumber || party.eori,
-        traderType: party.traderType,
-        reference: party.reference,
-        // Structured Components
-        unitNumber: party.unitNumber,
-        buildingName: party.buildingName,
-        area: party.area,
-        landmark: party.landmark,
-        deliveryNotes: party.deliveryNotes
-    });
+    const normalizeAddress = (party = {}) => {
+        const contact = party.contactPerson || party.contactName || party.name || party.company || party.companyName || 'Target Shipper';
+        const company = party.company || party.companyName || party.contactPerson || party.contactName || party.name || 'Target Logistics';
+        const rawAddress = party.address || party.formattedAddress || party.addr1 || '';
+        const streetLines = party.streetLines || [party.addressLine1 || rawAddress || '', party.addressLine2 || party.addr2 || '', party.addressLine3 || ''].filter(Boolean);
 
-    const items = (data.items || []).map(item => ({
-        description: item.description,
+        return {
+            company: company,
+            contactPerson: contact,
+            phone: party.phone || '+96597691271',
+            phoneCountryCode: party.phoneCountryCode || '+965',
+            email: party.email || 'dispatch@target-kw.com',
+            streetLines: streetLines.length > 0 ? streetLines : [rawAddress || 'Kuwait City, Kuwait'],
+            city: party.city || party.cityName || (party.countryCode === 'KW' ? 'Kuwait City' : 'Riyadh'),
+            postalCode: party.postalCode || party.zip || (party.countryCode === 'KW' ? '15300' : '00000'),
+            countryCode: (party.countryCode || 'KW').toUpperCase(),
+            state: party.state,
+            taxId: party.taxId,
+            vatNumber: party.vatNumber || party.vatNo,
+            eoriNumber: party.eoriNumber || party.eori,
+            traderType: party.traderType,
+            reference: party.reference,
+            // Structured Components
+            unitNumber: party.unitNumber,
+            buildingName: party.buildingName,
+            area: party.area,
+            landmark: party.landmark,
+            deliveryNotes: party.deliveryNotes
+        };
+    };
+
+    let items = (data.items || []).map(item => ({
+        description: item.description || 'General Commercial Goods',
         quantity: Number(item.quantity) || 1,
 
         // Accept all common client payload names
@@ -41,12 +48,28 @@ function normalizeShipment(data) {
 
         currency: item.currency || data.currency || 'USD',
         netWeight: Number(item.weight) || 0.1,
-        hsCode: item.hsCode,
-        countryOfOrigin: item.countryOfOrigin,
+        hsCode: item.hsCode || '851712',
+        countryOfOrigin: item.countryOfOrigin || data.origin?.countryCode || 'KW',
         sku: item.sku,
         declaredValue: Number(item.declaredValue) || Number(item.value) || Number(item.unitValue) || undefined,
         unitValue: Number(item.unitValue) || undefined
     }));
+
+    if (items.length === 0 && data.shipmentType !== 'documents') {
+        const firstParcel = (data.parcels || data.packages || [])[0] || {};
+        const declaredVal = Number(data.customsInvoice?.declaredValue || data.price || 15);
+        items = [{
+            description: firstParcel.description || 'General Commercial Goods',
+            quantity: 1,
+            value: declaredVal > 0 ? declaredVal : 15,
+            currency: data.currency || 'USD',
+            netWeight: Number(firstParcel.weight) || 1.0,
+            hsCode: data.customsInvoice?.hsCode || '851712',
+            countryOfOrigin: data.origin?.countryCode || 'KW',
+            declaredValue: declaredVal > 0 ? declaredVal : 15,
+            unitValue: declaredVal > 0 ? declaredVal : 15
+        }];
+    }
 
     const totalDeclaredValue = items.reduce((sum, item) => sum + (item.value * item.quantity), 0);
 

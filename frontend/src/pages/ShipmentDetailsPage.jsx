@@ -167,10 +167,16 @@ const ShipmentDetailsPage = () => {
             if (typeof pdfData === 'string' && pdfData.startsWith('/uploads/documents/')) {
                 const filename = pdfData.split('/').pop();
                 const secureUrl = `/shipments/${shipment.trackingNumber}/documents/${filename}`;
-                const response = await api.get(secureUrl, { responseType: 'blob' });
-                const blobUrl = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
-                window.open(blobUrl, '_blank');
-                return;
+                try {
+                    const response = await api.get(secureUrl, { responseType: 'blob' });
+                    const blobUrl = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+                    window.open(blobUrl, '_blank');
+                    return;
+                } catch {
+                    const { BACKEND_URL } = await import('../services/api');
+                    window.open(`${BACKEND_URL}${pdfData}`, '_blank');
+                    return;
+                }
             }
 
             window.open(pdfData, '_blank');

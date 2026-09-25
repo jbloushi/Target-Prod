@@ -1971,6 +1971,10 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
   const wizardContainerRef = useRef(null);
 
   const [isTestMode, setIsTestMode] = useState(false);
+  const [carrierDocsLoading, setCarrierDocsLoading] = useState(false);
+  const [carrierAwb, setCarrierAwb] = useState(null);
+  const [carrierInvoice, setCarrierInvoice] = useState(null);
+  const [carrierAwbNumber, setCarrierAwbNumber] = useState(null);
   const [clients, setClients] = useState([]);
   const [selectedClientId, setSelectedClientId] = useState('');
   const [assignedCarrierCode, setAssignedCarrierCode] = useState(null);
@@ -2681,6 +2685,42 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
     }
   };
 
+  const handleGenerateCarrierAwbAndInvoice = async (docType = 'awb') => {
+    if (!createdTn) return;
+    setCarrierDocsLoading(true);
+    try {
+      const res = await shipmentService.generateCarrierDocuments(createdTn);
+      const awb = res?.data?.awbUrl || res?.data?.labelUrl;
+      const inv = res?.data?.invoiceUrl;
+      const carrierTn = res?.data?.carrierShipmentId || res?.data?.dhlTrackingNumber;
+      if (awb) setCarrierAwb(awb);
+      if (inv) setCarrierInvoice(inv);
+      if (carrierTn) setCarrierAwbNumber(carrierTn);
+
+      enqueueSnackbar(lang === 'ar' ? `تم إصدار بوليصة الناقل بنجاح! ${carrierTn ? `(AWB: ${carrierTn})` : ''}` : `Carrier documents generated successfully! ${carrierTn ? `(AWB: ${carrierTn})` : ''}`, { variant: 'success' });
+
+      const docToOpen = docType === 'invoice' ? (inv || awb) : (awb || inv);
+      if (docToOpen) {
+        if (typeof docToOpen === 'string' && docToOpen.startsWith('data:application/pdf;base64,')) {
+          const byteCharacters = atob(docToOpen.split(',')[1]);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
+          const blobUrl = URL.createObjectURL(new Blob([new Uint8Array(byteNumbers)], { type: 'application/pdf' }));
+          window.open(blobUrl, '_blank');
+        } else {
+          const { BACKEND_URL } = await import('../../services/api');
+          const finalUrl = docToOpen.startsWith('http') ? docToOpen : `${BACKEND_URL}${docToOpen}`;
+          window.open(finalUrl, '_blank');
+        }
+      }
+    } catch (err) {
+      console.error('Failed to generate carrier docs:', err);
+      enqueueSnackbar(err.response?.data?.error || err.message || 'Failed to generate carrier documents', { variant: 'error' });
+    } finally {
+      setCarrierDocsLoading(false);
+    }
+  };
+
   // ── Success Confirmation Screen ──────────────────────────────
   if (success) {
     return (
@@ -2705,6 +2745,59 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
             )}
           </div>
         </div>
+
+        {/* Carrier Official Air Waybill & Customs Invoice */}
+        {(service.carrierCode === 'DGR' || service.carrierCode === 'OTE') && (
+          <div className="p-4 rounded-2xl bg-primary/5 border border-primary/20 space-y-3 text-start">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-lg">flight_takeoff</span>
+                <span className="text-xs font-black text-base-content">
+                  {service.carrierCode === 'DGR' ? 'DHL Express (DGR) Official AWB & Customs Invoice' : 'OTE Cross-Border Manifest'}
+                </span>
+              </div>
+              <span className={`badge badge-xs font-bold py-1 px-2 ${carrierAwb ? 'badge-success' : 'badge-warning'}`}>
+                {carrierAwb ? (carrierAwbNumber ? `AWB: ${carrierAwbNumber}` : 'BOOKED') : (isTestMode ? 'DHL SANDBOX' : 'READY TO DISPATCH')}
+              </span>
+            </div>
+
+            <p className="text-[11px] text-base-content/70">
+              {lang === 'ar'
+                ? 'إصدار بوليصة الشحن الجوي الرسمية وفاتورة التخليص الجمركي مباشرة من بوابة الناقل الدولية.'
+                : 'Generate official carrier Air Waybill (AWB) and customs invoice directly from the carrier gateway.'}
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                disabled={carrierDocsLoading}
+                onClick={() => handleGenerateCarrierAwbAndInvoice('awb')}
+                className="btn btn-primary btn-sm rounded-xl font-bold gap-2 text-xs"
+              >
+                <span className="material-symbols-outlined text-sm">
+                  {carrierDocsLoading ? 'hourglass_top' : 'print'}
+                </span>
+                {carrierDocsLoading 
+                  ? (lang === 'ar' ? 'جارٍ الاتصال بالناقل...' : 'Connecting to Carrier...')
+                  : (carrierAwb 
+                      ? (lang === 'ar' ? 'عرض بوليصة الناقل (AWB)' : 'View Carrier AWB')
+                      : (lang === 'ar' ? 'إصدار بوليصة الناقل (DHL AWB)' : 'Generate Official DHL AWB'))}
+              </button>
+
+              <button
+                type="button"
+                disabled={carrierDocsLoading}
+                onClick={() => handleGenerateCarrierAwbAndInvoice('invoice')}
+                className="btn btn-outline btn-primary btn-sm rounded-xl font-bold gap-2 text-xs"
+              >
+                <span className="material-symbols-outlined text-sm">receipt_long</span>
+                {carrierInvoice 
+                  ? (lang === 'ar' ? 'عرض فاتورة الجمارك' : 'View Customs Invoice')
+                  : (lang === 'ar' ? 'إصدار فاتورة الجمارك (Invoice)' : 'Generate Customs Invoice')}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Carrier Documents PDF Download Strip */}
         <div className="p-4 rounded-2xl bg-base-200/40 border border-base-200 space-y-3 text-start">
@@ -2750,6 +2843,10 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
             onClick={() => {
               setSuccess(false);
               setCreatedTn(null);
+              setCarrierAwb(null);
+              setCarrierInvoice(null);
+              setCarrierAwbNumber(null);
+              setCarrierDocsLoading(false);
               setConfirmed(false);
               setStep(1);
             }}

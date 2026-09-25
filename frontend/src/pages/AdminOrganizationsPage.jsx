@@ -18,8 +18,8 @@ const AdminOrganizationsPage = () => {
     const { user } = useAuth();
     const { lang, isRTL } = useLanguage();
     
-    // Superadmin and Target Owner have full administrative rights
-    const canManage = user?.role === 'admin' || user?.role === 'manager';
+    // Superadmin, Target Owner, and Target Accounting have full administrative rights
+    const canManage = ['admin', 'manager', 'accounting'].includes(user?.role);
 
     const [orgs, setOrgs] = useState([]);
     const [users, setUsers] = useState([]);

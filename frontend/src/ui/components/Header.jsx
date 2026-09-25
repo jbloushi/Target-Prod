@@ -1,195 +1,543 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useThemeMode } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { financeService } from '../../services/api';
+import { getRoleLabel } from '../../utils/roleLabels';
 
 /**
- * Premium Header Component (Kinetic Horizon)
- * Rebuilt to match the glassmorphic, high-fidelity mockup provided.
- * Features:
- * - Real-time Balance Display
- * - Global Search
- * - Bilingual Language Switcher (Kuwaiti Arabic / English)
- * - Light/Dark Mode Toggle
- * - User Profile Management
+ * Target Logistics Global — Master Top Navigation Bar
+ * Replaces the legacy sidebar with a unified, high-speed top cockpit deck.
+ * Supports dual-perspective viewports (Target Operations vs Client Organizations)
+ * with full Kuwait Arabic (RTL) & English (LTR) responsiveness.
  */
-const Header = ({ isSidebarCollapsed, toggleMobileDrawer, isMobileDrawerOpen }) => {
+const Header = () => {
     const { user, logout, isAuthenticated } = useAuth();
     const { isDark, toggleTheme } = useThemeMode();
-    const { lang, toggleLanguage, t } = useLanguage();
-    const [menuOpen, setMenuOpen] = useState(false);
-    const [financeSummary, setFinanceSummary] = useState(null);
-    const menuRef = useRef();
+    const { lang, toggleLanguage, t, isRTL } = useLanguage();
     const navigate = useNavigate();
     const location = useLocation();
 
-    // Close dropdown on outside click
+    const [userMenuOpen, setUserMenuOpen] = useState(false);
+    const [opsMenuOpen, setOpsMenuOpen] = useState(false);
+    const [mgmtMenuOpen, setMgmtMenuOpen] = useState(false);
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [financeSummary, setFinanceSummary] = useState(null);
+
+    const userMenuRef = useRef(null);
+    const opsMenuRef = useRef(null);
+    const mgmtMenuRef = useRef(null);
+
+    // Close dropdowns on outside click
     useEffect(() => {
         const handleClickOutside = (event) => {
-            if (menuRef.current && !menuRef.current.contains(event.target)) {
-                setMenuOpen(false);
+            if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+                setUserMenuOpen(false);
+            }
+            if (opsMenuRef.current && !opsMenuRef.current.contains(event.target)) {
+                setOpsMenuOpen(false);
+            }
+            if (mgmtMenuRef.current && !mgmtMenuRef.current.contains(event.target)) {
+                setMgmtMenuOpen(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Fetch finance data for authenticated users
+    // Close mobile menu on route change
     useEffect(() => {
-        if (!isAuthenticated || !user?.organization) return;
+        setMobileMenuOpen(false);
+        setUserMenuOpen(false);
+        setOpsMenuOpen(false);
+        setMgmtMenuOpen(false);
+    }, [location.pathname]);
+
+    // Fetch finance balance for accounts
+    useEffect(() => {
+        if (!isAuthenticated) return;
         financeService.getBalance()
             .then(res => setFinanceSummary(res.data))
-            .catch(err => console.error('Header Finance Load Error:', err));
+            .catch(() => {});
     }, [isAuthenticated, user]);
 
-    const navLinks = [
-        { key: 'nav_dashboard', defaultLabel: 'Dashboard', path: '/dashboard' },
-        { key: 'nav_analytics', defaultLabel: 'Analytics', path: '/analytics' },
-        { key: 'nav_shipments', defaultLabel: 'Shipments', path: '/shipments' },
-        { key: 'nav_financials', defaultLabel: 'Finance', path: '/finance' }
-    ];
+    // Role-based capabilities
+    const userRole = user?.role || 'client';
+    const isStaff = ['admin', 'manager', 'accounting', 'staff'].includes(userRole);
+    const isAdminOrOwnerOrAcct = ['admin', 'manager', 'accounting'].includes(userRole);
+    const isDriver = userRole === 'driver';
+    const isCompanyManager = userRole === 'org_manager';
+
+    // Check if route is active
+    const isActive = (path) => {
+        if (path === '/dashboard') return location.pathname === '/dashboard' || location.pathname === '/dashboard-v2';
+        return location.pathname.startsWith(path);
+    };
 
     return (
-        <header className={`fixed top-0 right-0 left-0 z-[100] h-16 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border-b border-outline/10 dark:border-white/5 flex items-center justify-between px-6 transition-all duration-300 ${
-            isSidebarCollapsed ? 'lg:left-20 rtl:lg:right-20 rtl:lg:left-0' : 'lg:left-[240px] rtl:lg:right-[240px] rtl:lg:left-0'
-        }`}>
-            
-            {/* Left Section: Brand, Mobile Hamburger, or Navigation */}
-            <div className="flex items-center gap-3 lg:gap-10">
-                {isAuthenticated && toggleMobileDrawer && (
-                    <button
-                        type="button"
-                        onClick={toggleMobileDrawer}
-                        className="lg:hidden p-2 rounded-xl text-on-surface-variant hover:bg-slate-100 dark:hover:bg-white/10 transition-colors focus:outline-none"
-                        aria-label="Toggle navigation menu"
-                    >
-                        <span className="material-symbols-outlined text-2xl">
-                            {isMobileDrawerOpen ? 'close' : 'menu'}
-                        </span>
-                    </button>
-                )}
+        <header className="fixed top-0 inset-x-0 z-50 h-16 bg-base-100/90 dark:bg-slate-900/90 backdrop-blur-xl border-b border-base-200 dark:border-slate-800 transition-colors duration-200">
+            <div className="max-w-[1800px] mx-auto h-full px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
+                
+                {/* ── Brand & Navigation Group ──────────────────────── */}
+                <div className="flex items-center gap-3 lg:gap-8">
+                    {/* Mobile Hamburger Button */}
+                    {isAuthenticated && (
+                        <button
+                            type="button"
+                            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                            className="lg:hidden btn btn-ghost btn-square btn-sm rounded-xl text-base-content"
+                            aria-label="Toggle navigation menu"
+                        >
+                            <span className="material-symbols-outlined text-2xl">
+                                {mobileMenuOpen ? 'close' : 'menu'}
+                            </span>
+                        </button>
+                    )}
 
-                {!isAuthenticated ? (
-                    <Link to="/" className="text-xl font-black tracking-tighter text-primary uppercase">
-                        {t('brand_name', 'Target Logistics')}
+                    {/* Target Logistics Brand Logo */}
+                    <Link 
+                        to={isAuthenticated ? "/dashboard" : "/"} 
+                        className="flex items-center gap-2.5 group cursor-pointer"
+                    >
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-blue-700 flex items-center justify-center text-white shadow-md shadow-primary/25 group-hover:scale-105 active:scale-95 transition-transform duration-200">
+                            <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                                rocket_launch
+                            </span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-base font-black tracking-tight text-base-content group-hover:text-primary transition-colors">
+                                TARGET<span className="text-primary font-bold">.</span>
+                            </span>
+                            <span className="text-[9.5px] font-extrabold tracking-widest uppercase text-base-content/50 -mt-1">
+                                {isStaff ? (isRTL ? 'إدارة الشبكة' : 'Network Ops') : (isRTL ? 'حساب الشركات' : 'Client Portal')}
+                            </span>
+                        </div>
                     </Link>
-                ) : (
-                    <div className="hidden md:flex gap-6 items-center">
-                        {navLinks.map((link) => (
-                            <Link 
-                                key={link.path}
-                                to={link.path}
-                                className={`text-sm font-bold tracking-tight transition-all pb-1 border-b-2 ${
-                                    location.pathname.startsWith(link.path) 
-                                        ? 'text-primary border-primary' 
-                                        : 'text-on-surface-variant hover:text-primary border-transparent'
+
+                    {/* Desktop Navigation Links */}
+                    {isAuthenticated && (
+                        <nav className="hidden lg:flex items-center gap-1 xl:gap-2">
+                            {/* Dashboard */}
+                            <Link
+                                to="/dashboard"
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                    isActive('/dashboard')
+                                        ? 'bg-primary/10 text-primary font-black shadow-xs'
+                                        : 'text-base-content/70 hover:text-base-content hover:bg-base-200/60'
                                 }`}
                             >
-                                {t(link.key, link.defaultLabel)}
+                                <span className="material-symbols-outlined text-base">speed</span>
+                                <span>{t('nav_dashboard', 'Dashboard')}</span>
                             </Link>
-                        ))}
-                    </div>
-                )}
 
-                {isAuthenticated && (
-                    <div className="relative hidden xl:block ml-4 rtl:mr-4 rtl:ml-0">
-                        <input 
-                            type="text" 
-                            placeholder={t('search_placeholder', 'Quick search (⌘K)...')} 
-                            className="bg-surface-container-low dark:bg-white/5 border-none rounded-xl pl-10 pr-4 rtl:pr-10 rtl:pl-4 py-2 text-sm focus:ring-2 focus:ring-primary/20 w-72 transition-all"
-                        />
-                        <span className="material-symbols-outlined absolute left-3 rtl:right-3 rtl:left-auto top-1/2 -translate-y-1/2 text-slate-400 text-lg">search</span>
-                    </div>
-                )}
-            </div>
+                            {/* Shipments */}
+                            <Link
+                                to="/shipments"
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                    isActive('/shipments')
+                                        ? 'bg-primary/10 text-primary font-black shadow-xs'
+                                        : 'text-base-content/70 hover:text-base-content hover:bg-base-200/60'
+                                }`}
+                            >
+                                <span className="material-symbols-outlined text-base">local_shipping</span>
+                                <span>{t('nav_shipments', 'Shipments')}</span>
+                            </Link>
 
-            {/* Right Section: Profile & Actions */}
-            <div className="flex items-center gap-3 sm:gap-4">
-                
-                {/* Finance Balance */}
-                {isAuthenticated && user && (
-                    <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-primary/5 dark:bg-primary/10 rounded-full border border-primary/10 transition-all hover:bg-primary/10">
-                        <span className="material-symbols-outlined text-primary text-lg">account_balance_wallet</span>
-                        <span className="text-sm font-black text-primary tracking-tight">
-                            {parseFloat(financeSummary?.balance || 0).toFixed(3)} {lang === 'ar' ? 'د.ك' : 'KD'}
-                        </span>
-                    </div>
-                )}
+                            {/* Operations Dropdown */}
+                            <div className="relative" ref={opsMenuRef}>
+                                <button
+                                    type="button"
+                                    onClick={() => { setOpsMenuOpen(!opsMenuOpen); setMgmtMenuOpen(false); }}
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                                        isActive('/warehouse') || isActive('/driver') || isActive('/address-book') || isActive('/shipment/new')
+                                            ? 'bg-primary/10 text-primary font-black'
+                                            : 'text-base-content/70 hover:text-base-content hover:bg-base-200/60'
+                                    }`}
+                                >
+                                    <span className="material-symbols-outlined text-base">alt_route</span>
+                                    <span>{isRTL ? 'العمليات' : 'Operations'}</span>
+                                    <span className="material-symbols-outlined text-xs opacity-60">expand_more</span>
+                                </button>
 
-                {/* Language Switcher Button */}
-                <button 
-                    onClick={toggleLanguage}
-                    className="px-3 py-1.5 rounded-xl bg-surface-container-low dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 transition-all text-on-surface font-extrabold text-xs flex items-center gap-1.5 border border-outline/10 dark:border-white/10 shadow-sm cursor-pointer"
-                    title={lang === 'en' ? "التحويل للغة العربية (الكويت)" : "Switch to English"}
-                >
-                    <span className="material-symbols-outlined text-base text-primary">translate</span>
-                    <span className="font-sans">{lang === 'en' ? '🇰🇼 العربية' : '🇬🇧 English'}</span>
-                </button>
+                                {opsMenuOpen && (
+                                    <div className="absolute top-full mt-2 start-0 w-56 p-1.5 bg-base-100 border border-base-200 rounded-2xl shadow-xl z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                                        <Link
+                                            to="/shipment/new"
+                                            className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
+                                        >
+                                            <span className="material-symbols-outlined text-base text-primary">add_circle</span>
+                                            <span>{isRTL ? 'إنشاء شحنة جديدة' : 'New Consignment'}</span>
+                                        </Link>
 
-                {/* Theme Toggle */}
-                <button 
-                    onClick={toggleTheme}
-                    className="p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 transition-all text-on-surface-variant group border border-transparent hover:border-outline/10"
-                    title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
-                >
-                    <span className="material-symbols-outlined text-xl group-hover:rotate-12 transition-transform">
-                        {isDark ? 'light_mode' : 'dark_mode'}
-                    </span>
-                </button>
+                                        {isStaff && (
+                                            <Link
+                                                to="/warehouse/scan"
+                                                className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
+                                            >
+                                                <span className="material-symbols-outlined text-base text-info">qr_code_scanner</span>
+                                                <span>{isRTL ? 'ماسح المستودع' : 'Warehouse Scanner'}</span>
+                                            </Link>
+                                        )}
 
-                {/* User Dropdown */}
-                {isAuthenticated && (
-                    <div className="relative" ref={menuRef}>
-                        <button 
-                            onClick={() => setMenuOpen(!menuOpen)}
-                            className="flex items-center gap-2 pl-2 pr-1 py-1 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 transition-all group border border-transparent hover:border-outline/10"
-                        >
-                            <div className="w-8 h-8 rounded-lg kinetic-gradient flex items-center justify-center text-white text-xs font-black shadow-lg shadow-primary/20 overflow-hidden ring-2 ring-primary/5">
-                                {user?.avatar ? (
-                                    <img src={user.avatar} alt="User" className="w-full h-full object-cover" />
-                                ) : (
-                                    <span>{user?.name?.[0] || 'U'}</span>
+                                        {(isStaff || isDriver) && (
+                                            <Link
+                                                to="/driver/pickup"
+                                                className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
+                                            >
+                                                <span className="material-symbols-outlined text-base text-warning">local_shipping</span>
+                                                <span>{isRTL ? 'مسار السائق والاستلام' : 'Driver Pickups'}</span>
+                                            </Link>
+                                        )}
+
+                                        <Link
+                                            to="/address-book"
+                                            className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
+                                        >
+                                            <span className="material-symbols-outlined text-base text-base-content/60">menu_book</span>
+                                            <span>{isRTL ? 'دليل العناوين' : 'Address Book'}</span>
+                                        </Link>
+                                    </div>
                                 )}
                             </div>
-                            <span className="material-symbols-outlined text-on-surface-variant text-lg group-hover:translate-y-0.5 transition-transform">expand_more</span>
-                        </button>
 
-                        {/* Dropdown Menu */}
-                        {menuOpen && (
-                            <div className="absolute top-[calc(100%+8px)] right-0 rtl:left-0 rtl:right-auto w-64 bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl border border-outline/10 dark:border-white/5 rounded-2xl shadow-2xl p-2 animate-in fade-in slide-in-from-top-2 duration-200 z-[101]">
-                                <div className="px-4 py-3 mb-2 border-b border-outline/5 dark:border-white/5">
-                                    <p className="text-sm font-black text-on-surface truncate">{user?.name}</p>
-                                    <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">{user?.role}</p>
+                            {/* Management Dropdown (Admin, Owner, Accounting, Org Manager) */}
+                            {(isAdminOrOwnerOrAcct || isCompanyManager) && (
+                                <div className="relative" ref={mgmtMenuRef}>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setMgmtMenuOpen(!mgmtMenuOpen); setOpsMenuOpen(false); }}
+                                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                                            isActive('/admin') || isActive('/api-docs')
+                                                ? 'bg-primary/10 text-primary font-black'
+                                                : 'text-base-content/70 hover:text-base-content hover:bg-base-200/60'
+                                        }`}
+                                    >
+                                        <span className="material-symbols-outlined text-base">admin_panel_settings</span>
+                                        <span>{isRTL ? 'الإدارة والشركات' : 'Management'}</span>
+                                        <span className="material-symbols-outlined text-xs opacity-60">expand_more</span>
+                                    </button>
+
+                                    {mgmtMenuOpen && (
+                                        <div className="absolute top-full mt-2 start-0 w-60 p-1.5 bg-base-100 border border-base-200 rounded-2xl shadow-xl z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                                            {isAdminOrOwnerOrAcct && (
+                                                <Link
+                                                    to="/admin/organizations"
+                                                    className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
+                                                >
+                                                    <span className="material-symbols-outlined text-base text-primary">corporate_fare</span>
+                                                    <div>
+                                                        <p>{isRTL ? 'المؤسسات وهوامش الربح' : 'Organizations & Markups'}</p>
+                                                        <p className="text-[10px] text-base-content/50 font-normal">{isRTL ? 'تسعير النواقل والائتمان' : 'Pricing & Credit Limits'}</p>
+                                                    </div>
+                                                </Link>
+                                            )}
+
+                                            <Link
+                                                to="/admin/users"
+                                                className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
+                                            >
+                                                <span className="material-symbols-outlined text-base text-secondary">people</span>
+                                                <div>
+                                                    <p>{isRTL ? 'المستخدمون والصلاحيات' : 'Users & RBAC'}</p>
+                                                    <p className="text-[10px] text-base-content/50 font-normal">{isRTL ? 'إدارة الأعضاء والوصول' : 'Roles & Permissions'}</p>
+                                                </div>
+                                            </Link>
+
+                                            {isAdminOrOwnerOrAcct && (
+                                                <Link
+                                                    to="/admin/whatsapp-logs"
+                                                    className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
+                                                >
+                                                    <span className="material-symbols-outlined text-base text-success">chat</span>
+                                                    <div>
+                                                        <p>{isRTL ? 'سجلات وإشعارات واتساب' : 'WhatsApp Delivery Logs'}</p>
+                                                        <p className="text-[10px] text-base-content/50 font-normal">{isRTL ? 'تتبع رسائل العملاء' : 'Meta Cloud API Telemetry'}</p>
+                                                    </div>
+                                                </Link>
+                                            )}
+
+                                            <div className="my-1 border-t border-base-200" />
+
+                                            <Link
+                                                to="/api-docs"
+                                                className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
+                                            >
+                                                <span className="material-symbols-outlined text-base text-base-content/60">code</span>
+                                                <span>{isRTL ? 'دليل الربط والمطورين (API)' : 'API Documentation'}</span>
+                                            </Link>
+                                        </div>
+                                    )}
                                 </div>
-                                <button 
-                                    onClick={() => { navigate('/profile'); setMenuOpen(false); }}
-                                    className="flex items-center gap-3 w-full px-4 py-2.5 text-sm font-bold text-on-surface-variant hover:text-primary hover:bg-slate-50 dark:hover:bg-white/5 rounded-xl transition-all"
-                                >
-                                    <span className="material-symbols-outlined text-lg">person</span>
-                                    {t('profile', 'My Profile')}
-                                </button>
-                                <button 
-                                    onClick={() => { navigate('/settings'); setMenuOpen(false); }}
-                                    className="flex items-center gap-3 w-full px-4 py-2.5 text-sm font-bold text-on-surface-variant hover:text-primary hover:bg-slate-50 dark:hover:bg-white/5 rounded-xl transition-all"
-                                >
-                                    <span className="material-symbols-outlined text-lg">settings</span>
-                                    {t('nav_settings', 'Account Settings')}
-                                </button>
-                                <div className="my-2 border-t border-outline/5 dark:border-white/5"></div>
-                                <button 
-                                    onClick={() => { logout(); setMenuOpen(false); }}
-                                    className="flex items-center gap-3 w-full px-4 py-2.5 text-sm font-black text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"
-                                >
-                                    <span className="material-symbols-outlined text-lg">logout</span>
-                                    {t('sign_out', 'Sign Out')}
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                )}
+                            )}
+
+                            {/* Financials (Admin, Manager, Accounting, Staff, Org Manager, Client) */}
+                            <Link
+                                to="/finance"
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                    isActive('/finance')
+                                        ? 'bg-primary/10 text-primary font-black shadow-xs'
+                                        : 'text-base-content/70 hover:text-base-content hover:bg-base-200/60'
+                                }`}
+                            >
+                                <span className="material-symbols-outlined text-base">account_balance_wallet</span>
+                                <span>{t('nav_financials', 'Financials')}</span>
+                            </Link>
+                        </nav>
+                    )}
+                </div>
+
+                {/* ── Right Actions & Profile Hub ───────────────────── */}
+                <div className="flex items-center gap-2 sm:gap-3">
+                    {/* Quick "+ New Shipment" CTA Button */}
+                    {isAuthenticated && (
+                        <Link
+                            to="/shipment/new"
+                            className="hidden sm:inline-flex btn btn-primary btn-sm rounded-xl font-bold gap-1.5 shadow-sm text-xs"
+                        >
+                            <span className="material-symbols-outlined text-base">add</span>
+                            <span>{isRTL ? 'شحنة جديدة' : 'New Shipment'}</span>
+                        </Link>
+                    )}
+
+                    {/* Financial Balance Badge (For Client & B2B accounts) */}
+                    {isAuthenticated && (
+                        <Link
+                            to="/finance"
+                            className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/5 hover:bg-primary/10 border border-primary/15 transition-colors cursor-pointer"
+                            title={isRTL ? 'الرصيد المتاح' : 'Available Balance'}
+                        >
+                            <span className="material-symbols-outlined text-primary text-base">payments</span>
+                            <span className="text-xs font-extrabold text-primary font-mono">
+                                {parseFloat(financeSummary?.balance || user?.organization?.creditLimit || 0).toFixed(3)} {isRTL ? 'د.ك' : 'KWD'}
+                            </span>
+                        </Link>
+                    )}
+
+                    {/* Language Switcher */}
+                    <button
+                        type="button"
+                        onClick={toggleLanguage}
+                        className="btn btn-ghost btn-sm px-2.5 rounded-xl font-extrabold text-xs flex items-center gap-1.5 border border-base-300/80 hover:bg-base-200 transition-colors"
+                        title={lang === 'en' ? "التحويل للغة العربية" : "Switch to English"}
+                    >
+                        <span className="material-symbols-outlined text-sm text-primary">translate</span>
+                        <span className="font-semibold">{lang === 'en' ? '🇰🇼 عربي' : '🇬🇧 EN'}</span>
+                    </button>
+
+                    {/* Dark/Light Theme Toggle */}
+                    <button
+                        type="button"
+                        onClick={toggleTheme}
+                        className="btn btn-ghost btn-square btn-sm rounded-xl text-base-content/70 hover:text-base-content border border-base-300/80 hover:bg-base-200 transition-colors"
+                        title={isDark ? "Light Mode" : "Dark Mode"}
+                    >
+                        <span className="material-symbols-outlined text-lg">
+                            {isDark ? 'light_mode' : 'dark_mode'}
+                        </span>
+                    </button>
+
+                    {/* User Profile Menu */}
+                    {isAuthenticated ? (
+                        <div className="relative" ref={userMenuRef}>
+                            <button
+                                type="button"
+                                onClick={() => setUserMenuOpen(!userMenuOpen)}
+                                className="flex items-center gap-2 p-1 rounded-xl hover:bg-base-200/80 transition-colors cursor-pointer border border-transparent hover:border-base-300"
+                            >
+                                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-blue-700 flex items-center justify-center text-white text-xs font-black shadow-sm overflow-hidden">
+                                    {user?.avatar ? (
+                                        <img src={user.avatar} alt="User" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <span>{user?.name?.[0]?.toUpperCase() || 'U'}</span>
+                                    )}
+                                </div>
+                                <span className="hidden sm:inline-block material-symbols-outlined text-base-content/60 text-sm">
+                                    expand_more
+                                </span>
+                            </button>
+
+                            {/* User Profile Dropdown */}
+                            {userMenuOpen && (
+                                <div className="absolute top-full mt-2 end-0 w-64 p-2 bg-base-100 border border-base-200 rounded-2xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                                    <div className="px-3 py-2.5 mb-1 bg-base-200/50 rounded-xl">
+                                        <p className="text-xs font-black text-base-content truncate">{user?.name}</p>
+                                        <p className="text-[11px] text-base-content/60 truncate">{user?.email}</p>
+                                        <div className="mt-1.5 flex items-center gap-1.5">
+                                            <span className="badge badge-primary badge-xs font-bold uppercase text-[9px] px-2 py-1">
+                                                {getRoleLabel(user?.role)}
+                                            </span>
+                                            {user?.organization?.name && (
+                                                <span className="text-[10px] text-base-content/60 font-semibold truncate">
+                                                    • {user.organization.name}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <Link
+                                        to="/settings"
+                                        onClick={() => setUserMenuOpen(false)}
+                                        className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-base-200 rounded-xl transition-colors"
+                                    >
+                                        <span className="material-symbols-outlined text-base text-base-content/60">settings</span>
+                                        <span>{isRTL ? 'إعدادات الحساب' : 'Account Settings'}</span>
+                                    </Link>
+
+                                    <Link
+                                        to="/track"
+                                        onClick={() => setUserMenuOpen(false)}
+                                        className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-base-200 rounded-xl transition-colors"
+                                    >
+                                        <span className="material-symbols-outlined text-base text-base-content/60">travel_explore</span>
+                                        <span>{isRTL ? 'بوابة التتبع العامة' : 'Public Tracking Portal'}</span>
+                                    </Link>
+
+                                    <div className="my-1 border-t border-base-200" />
+
+                                    <button
+                                        type="button"
+                                        onClick={() => { setUserMenuOpen(false); logout(); }}
+                                        className="flex items-center gap-2.5 w-full px-3 py-2 text-xs font-bold text-error hover:bg-error/10 rounded-xl transition-colors text-start"
+                                    >
+                                        <span className="material-symbols-outlined text-base">logout</span>
+                                        <span>{isRTL ? 'تسجيل الخروج' : 'Sign Out'}</span>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <Link
+                            to="/login"
+                            className="btn btn-primary btn-sm rounded-xl font-bold text-xs"
+                        >
+                            {isRTL ? 'تسجيل الدخول' : 'Sign In'}
+                        </Link>
+                    )}
+                </div>
             </div>
+
+            {/* ── Mobile Navigation Drawer Menu ──────────────────── */}
+            {mobileMenuOpen && (
+                <div className="lg:hidden bg-base-100 border-b border-base-200 px-4 py-4 space-y-3 shadow-xl max-h-[80vh] overflow-y-auto">
+                    <div className="grid grid-cols-2 gap-2">
+                        <Link
+                            to="/dashboard"
+                            className={`p-3 rounded-xl flex items-center gap-2 text-xs font-bold border ${
+                                isActive('/dashboard') ? 'bg-primary/10 border-primary text-primary' : 'bg-base-200/50 border-base-200 text-base-content'
+                            }`}
+                        >
+                            <span className="material-symbols-outlined text-lg">speed</span>
+                            <span>{t('nav_dashboard', 'Dashboard')}</span>
+                        </Link>
+
+                        <Link
+                            to="/shipments"
+                            className={`p-3 rounded-xl flex items-center gap-2 text-xs font-bold border ${
+                                isActive('/shipments') ? 'bg-primary/10 border-primary text-primary' : 'bg-base-200/50 border-base-200 text-base-content'
+                            }`}
+                        >
+                            <span className="material-symbols-outlined text-lg">local_shipping</span>
+                            <span>{t('nav_shipments', 'Shipments')}</span>
+                        </Link>
+
+                        <Link
+                            to="/shipment/new"
+                            className="p-3 rounded-xl flex items-center gap-2 text-xs font-bold bg-primary text-primary-content"
+                        >
+                            <span className="material-symbols-outlined text-lg">add_circle</span>
+                            <span>{isRTL ? 'شحنة جديدة' : 'New Shipment'}</span>
+                        </Link>
+
+                        <Link
+                            to="/finance"
+                            className={`p-3 rounded-xl flex items-center gap-2 text-xs font-bold border ${
+                                isActive('/finance') ? 'bg-primary/10 border-primary text-primary' : 'bg-base-200/50 border-base-200 text-base-content'
+                            }`}
+                        >
+                            <span className="material-symbols-outlined text-lg">account_balance_wallet</span>
+                            <span>{t('nav_financials', 'Financials')}</span>
+                        </Link>
+                    </div>
+
+                    {/* Operations Hub */}
+                    <div className="pt-2 border-t border-base-200">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-base-content/50 mb-2">
+                            {isRTL ? 'العمليات والميدان' : 'Field Operations'}
+                        </p>
+                        <div className="space-y-1">
+                            {isStaff && (
+                                <Link
+                                    to="/warehouse/scan"
+                                    className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
+                                >
+                                    <span className="material-symbols-outlined text-base text-info">qr_code_scanner</span>
+                                    <span>{isRTL ? 'ماسح المستودع' : 'Warehouse Scanner'}</span>
+                                </Link>
+                            )}
+                            {(isStaff || isDriver) && (
+                                <Link
+                                    to="/driver/pickup"
+                                    className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
+                                >
+                                    <span className="material-symbols-outlined text-base text-warning">local_shipping</span>
+                                    <span>{isRTL ? 'مسار السائق والاستلام' : 'Driver Pickups'}</span>
+                                </Link>
+                            )}
+                            <Link
+                                to="/address-book"
+                                className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
+                            >
+                                <span className="material-symbols-outlined text-base text-base-content/60">menu_book</span>
+                                <span>{isRTL ? 'دليل العناوين' : 'Address Book'}</span>
+                            </Link>
+                        </div>
+                    </div>
+
+                    {/* Management Section */}
+                    {(isAdminOrOwnerOrAcct || isCompanyManager) && (
+                        <div className="pt-2 border-t border-base-200">
+                            <p className="text-[10px] font-black uppercase tracking-wider text-base-content/50 mb-2">
+                                {isRTL ? 'الإدارة والحسابات' : 'Management & Governance'}
+                            </p>
+                            <div className="space-y-1">
+                                {isAdminOrOwnerOrAcct && (
+                                    <Link
+                                        to="/admin/organizations"
+                                        className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
+                                    >
+                                        <span className="material-symbols-outlined text-base text-primary">corporate_fare</span>
+                                        <span>{isRTL ? 'المؤسسات وهوامش الربح' : 'Organizations & Markups'}</span>
+                                    </Link>
+                                )}
+                                <Link
+                                    to="/admin/users"
+                                    className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
+                                >
+                                    <span className="material-symbols-outlined text-base text-secondary">people</span>
+                                    <span>{isRTL ? 'المستخدمون والصلاحيات' : 'Users & RBAC'}</span>
+                                </Link>
+                                {isAdminOrOwnerOrAcct && (
+                                    <Link
+                                        to="/admin/whatsapp-logs"
+                                        className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
+                                    >
+                                        <span className="material-symbols-outlined text-base text-success">chat</span>
+                                        <span>{isRTL ? 'سجلات واتساب' : 'WhatsApp Delivery Logs'}</span>
+                                    </Link>
+                                )}
+                                <Link
+                                    to="/api-docs"
+                                    className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
+                                >
+                                    <span className="material-symbols-outlined text-base text-base-content/60">code</span>
+                                    <span>{isRTL ? 'دليل الربط والمطورين (API)' : 'API Documentation'}</span>
+                                </Link>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
         </header>
     );
 };

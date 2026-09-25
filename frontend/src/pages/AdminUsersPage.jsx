@@ -49,7 +49,7 @@ const AdminUsersPage = () => {
     const { lang, isRTL } = useLanguage();
 
     const isOrgManager = currentUser?.role === 'org_manager';
-    const canFullAdmin = currentUser?.role === 'admin' || currentUser?.role === 'manager';
+    const canFullAdmin = ['admin', 'manager', 'accounting'].includes(currentUser?.role);
 
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(false);
