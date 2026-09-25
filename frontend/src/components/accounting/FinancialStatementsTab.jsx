@@ -1,37 +1,32 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import styled from 'styled-components';
 import { useSnackbar } from 'notistack';
 import { financeService } from '../../services/api';
 import { TK } from '../../tokens/kineticHorizon';
 import { Card, Button, WInput, Select, TableWrapper, Table, Thead, Tbody, Tr, Th, Td, Loader } from '../../ui';
 
-const TabButton = styled.button`
-  padding: 8px 18px;
-  border-radius: 10px;
-  border: none;
-  background: ${props => props.$active ? '#ffffff' : 'transparent'};
-  color: ${props => props.$active ? TK.primary : TK.text2};
-  font-weight: ${props => props.$active ? '700' : '600'};
-  font-size: 13px;
-  cursor: pointer;
-  box-shadow: ${props => props.$active ? '0 2px 6px rgba(0,0,0,0.06)' : 'none'};
-  transition: all 0.15s ease;
-`;
+const TabButton = ({ $active, children, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+      $active ? 'bg-base-100 text-primary shadow-xs' : 'text-base-content/60 hover:text-base-content'
+    }`}
+  >
+    {children}
+  </button>
+);
 
-const KPIBar = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  margin-bottom: 20px;
-`;
+const KPIBar = ({ children }) => (
+  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+    {children}
+  </div>
+);
 
-const KPICard = styled.div`
-  background: #ffffff;
-  border-radius: 16px;
-  border: 1px solid ${TK.border};
-  padding: 16px 20px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.03);
-`;
+const KPICard = ({ children, style }) => (
+  <div style={style} className="bg-base-100 rounded-2xl border border-base-200 p-4 shadow-xs">
+    {children}
+  </div>
+);
 
 const FinancialStatementsTab = ({ lang = 'en' }) => {
   const { enqueueSnackbar } = useSnackbar();

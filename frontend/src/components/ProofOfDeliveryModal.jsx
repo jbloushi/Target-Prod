@@ -1,87 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import styled from 'styled-components';
-import { Card, Button, StatusPill, Loader } from '../ui';
 import { shipmentService } from '../services/api';
-import { TK } from '../tokens/kineticHorizon';
 
-const ModalBackdrop = styled.div`
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 9999;
-    padding: 16px;
-`;
-
-const ModalCard = styled(Card)`
-    width: 100%;
-    max-width: 520px;
-    background: #ffffff;
-    border-radius: 16px;
-    padding: 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    max-height: 90vh;
-    overflow-y: auto;
-`;
-
-const CanvasWrapper = styled.div`
-    border: 2px dashed ${TK.border};
-    border-radius: 10px;
-    background: #fafafa;
-    position: relative;
-    cursor: crosshair;
-    touch-action: none;
-`;
-
-const Canvas = styled.canvas`
-    width: 100%;
-    height: 160px;
-    display: block;
-    border-radius: 8px;
-`;
-
-const InputGroup = styled.div`
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-`;
-
-const Label = styled.label`
-    font-size: 12px;
-    font-weight: 700;
-    color: ${TK.text2};
-`;
-
-const Input = styled.input`
-    padding: 10px 12px;
-    border: 1px solid ${TK.border};
-    border-radius: 8px;
-    font-size: 14px;
-    &:focus {
-        border-color: ${TK.accent};
-        outline: none;
-    }
-`;
-
-const Select = styled.select`
-    padding: 10px 12px;
-    border: 1px solid ${TK.border};
-    border-radius: 8px;
-    font-size: 14px;
-    background: #fff;
-    &:focus {
-        border-color: ${TK.accent};
-        outline: none;
-    }
-`;
-
+/**
+ * ProofOfDeliveryModal — Pure DaisyUI v4 + Tailwind CSS Handover Capture
+ * Captures recipient signature via HTML5 canvas, relationship, COD cash collection, and notes.
+ */
 const ProofOfDeliveryModal = ({ isOpen, onClose, shipment, onDelivered }) => {
     const canvasRef = useRef(null);
     const [isDrawing, setIsDrawing] = useState(false);
@@ -94,7 +17,7 @@ const ProofOfDeliveryModal = ({ isOpen, onClose, shipment, onDelivered }) => {
 
     useEffect(() => {
         if (shipment) {
-            const defaultRecipient = shipment.destination?.contactPerson || shipment.destination?.company || '';
+            const defaultRecipient = shipment.destination?.contactPerson || shipment.destination?.company || shipment.receiver?.name || '';
             setRecipientName(defaultRecipient);
             setCodCollected(shipment.codAmount ? String(shipment.codAmount) : '');
         }
@@ -154,7 +77,7 @@ const ProofOfDeliveryModal = ({ isOpen, onClose, shipment, onDelivered }) => {
 
     const handleSubmit = async () => {
         if (!recipientName.trim()) {
-            alert('Please enter recipient name');
+            alert('Please enter recipient full name');
             return;
         }
 
@@ -183,122 +106,137 @@ const ProofOfDeliveryModal = ({ isOpen, onClose, shipment, onDelivered }) => {
         }
     };
 
+    const hasCodRequired = shipment.codAmount && parseFloat(shipment.codAmount) > 0;
+
     return (
-        <ModalBackdrop onClick={onClose}>
-            <ModalCard onClick={(e) => e.stopPropagation()}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                        <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800 }}>Proof of Delivery (POD)</h3>
-                        <div style={{ fontSize: '13px', color: TK.text2, marginTop: '2px' }}>
-                            Tracking: <strong style={{ fontFamily: 'monospace' }}>{shipment.trackingNumber}</strong>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div
+                onClick={(e) => e.stopPropagation()}
+                className="card bg-base-100 shadow-2xl border border-base-200/80 w-full max-w-lg max-h-[90vh] overflow-y-auto p-5 md:p-6 space-y-4"
+            >
+                {/* Header */}
+                <div className="flex items-center justify-between pb-3 border-b border-base-200">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-xl bg-success/15 flex items-center justify-center text-success shrink-0">
+                            <span className="material-symbols-outlined text-xl">draw</span>
+                        </div>
+                        <div>
+                            <h3 className="font-extrabold text-base text-base-content">Proof of Delivery (POD)</h3>
+                            <div className="text-xs text-base-content/60 font-mono">
+                                Tracking: <span className="font-bold text-primary">#{shipment.trackingNumber}</span>
+                            </div>
                         </div>
                     </div>
                     <button
+                        type="button"
                         onClick={onClose}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: TK.text3 }}
+                        className="btn btn-ghost btn-xs btn-circle text-base-content/60 hover:text-base-content"
                     >
                         ✕
                     </button>
                 </div>
 
-                <InputGroup>
-                    <Label>Recipient Full Name *</Label>
-                    <Input
+                {/* Recipient Full Name */}
+                <div className="form-control w-full">
+                    <label className="text-xs font-bold text-base-content/80 mb-1">
+                        Recipient Full Name <span className="text-error font-bold">*</span>
+                    </label>
+                    <input
                         type="text"
                         value={recipientName}
                         onChange={(e) => setRecipientName(e.target.value)}
                         placeholder="e.g. Fatima Al-Sabah"
+                        className="input input-bordered input-sm w-full bg-base-100 font-medium text-sm focus:input-primary"
                     />
-                </InputGroup>
+                </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: (shipment.codAmount && parseFloat(shipment.codAmount) > 0) ? '1fr 1fr' : '1fr', gap: '12px' }}>
-                    <InputGroup>
-                        <Label>Relationship</Label>
-                        <Select value={relationship} onChange={(e) => setRelationship(e.target.value)}>
+                {/* Relationship & COD Grid */}
+                <div className={`grid grid-cols-1 ${hasCodRequired ? 'sm:grid-cols-2' : ''} gap-3`}>
+                    <div className="form-control w-full">
+                        <label className="text-xs font-bold text-base-content/80 mb-1">
+                            Relationship to Consignee
+                        </label>
+                        <select
+                            value={relationship}
+                            onChange={(e) => setRelationship(e.target.value)}
+                            className="select select-bordered select-sm w-full bg-base-100 text-xs font-medium focus:select-primary"
+                        >
                             <option value="Self">Self / Consignee</option>
                             <option value="Security">Security Gate</option>
                             <option value="Reception">Reception / Mailroom</option>
                             <option value="Family">Family Member</option>
                             <option value="Assistant">Office Assistant</option>
                             <option value="Other">Other</option>
-                        </Select>
-                    </InputGroup>
+                        </select>
+                    </div>
 
-                    {shipment.codAmount && parseFloat(shipment.codAmount) > 0 ? (
-                        <InputGroup>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <Label style={{ color: '#059669' }}>💵 COD Cash to Collect *</Label>
+                    {hasCodRequired ? (
+                        <div className="form-control w-full">
+                            <div className="flex justify-between items-baseline mb-1">
+                                <label className="text-xs font-bold text-success">
+                                    💵 COD Cash to Collect *
+                                </label>
                                 <button
                                     type="button"
                                     onClick={() => setCodCollected(String(shipment.codAmount))}
-                                    style={{
-                                        background: 'none',
-                                        border: 'none',
-                                        color: '#059669',
-                                        fontSize: '11px',
-                                        fontWeight: 700,
-                                        cursor: 'pointer',
-                                        textDecoration: 'underline'
-                                    }}
+                                    className="text-[11px] font-bold text-success underline hover:opacity-80"
                                 >
                                     Exact Amount
                                 </button>
                             </div>
-                            <Input
+                            <input
                                 type="number"
                                 step="0.001"
                                 value={codCollected}
                                 onChange={(e) => setCodCollected(e.target.value)}
-                                style={{
-                                    borderColor: '#10b981',
-                                    background: 'rgba(16, 185, 129, 0.05)',
-                                    fontWeight: 700,
-                                    fontSize: '15px'
-                                }}
                                 placeholder={`Amount in ${shipment.codCurrency || shipment.currency || 'KWD'}`}
+                                className="input input-bordered input-sm w-full bg-success/5 border-success text-success font-mono font-bold text-sm"
                             />
-                        </InputGroup>
+                        </div>
                     ) : (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                        <div className="flex items-center gap-2 pt-6">
                             <input
                                 type="checkbox"
                                 id="extraCodCheck"
                                 checked={parseFloat(codCollected || 0) > 0}
                                 onChange={(e) => setCodCollected(e.target.checked ? '1' : '')}
-                                style={{ width: '16px', height: '16px', accentColor: '#10b981' }}
+                                className="checkbox checkbox-success checkbox-sm"
                             />
-                            <label htmlFor="extraCodCheck" style={{ fontSize: '12px', fontWeight: 600, color: TK.text2, cursor: 'pointer' }}>
+                            <label htmlFor="extraCodCheck" className="text-xs font-semibold text-base-content/80 cursor-pointer select-none">
                                 💵 Cash collected on delivery
                             </label>
                             {parseFloat(codCollected || 0) > 0 && (
-                                <Input
+                                <input
                                     type="number"
                                     step="0.001"
                                     value={codCollected}
                                     onChange={(e) => setCodCollected(e.target.value)}
                                     placeholder="Amount (KWD)"
-                                    style={{ width: '110px', padding: '6px 8px', fontSize: '13px' }}
+                                    className="input input-bordered input-xs w-24 ms-auto font-mono font-bold"
                                 />
                             )}
                         </div>
                     )}
                 </div>
 
-                <InputGroup>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Label>Recipient Digital Signature</Label>
+                {/* Digital Signature Canvas */}
+                <div className="space-y-1.5">
+                    <div className="flex justify-between items-baseline">
+                        <label className="text-xs font-bold text-base-content/80">
+                            Recipient Digital Signature
+                        </label>
                         {hasSignature && (
                             <button
                                 type="button"
                                 onClick={clearCanvas}
-                                style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                                className="text-[11px] font-bold text-error hover:underline"
                             >
                                 Clear Signature
                             </button>
                         )}
                     </div>
-                    <CanvasWrapper>
-                        <Canvas
+                    <div className="relative border-2 border-dashed border-base-300 rounded-xl bg-base-200/40 cursor-crosshair touch-none overflow-hidden h-36">
+                        <canvas
                             ref={canvasRef}
                             onMouseDown={startDrawing}
                             onMouseMove={draw}
@@ -307,44 +245,52 @@ const ProofOfDeliveryModal = ({ isOpen, onClose, shipment, onDelivered }) => {
                             onTouchStart={startDrawing}
                             onTouchMove={draw}
                             onTouchEnd={stopDrawing}
+                            className="w-full h-full block"
                         />
                         {!hasSignature && (
-                            <div style={{
-                                position: 'absolute',
-                                inset: 0,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                pointerEvents: 'none',
-                                color: TK.text3,
-                                fontSize: '12px'
-                            }}>
-                                Sign here with finger or mouse
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-xs text-base-content/40 font-medium">
+                                Sign here with finger or stylus
                             </div>
                         )}
-                    </CanvasWrapper>
-                </InputGroup>
+                    </div>
+                </div>
 
-                <InputGroup>
-                    <Label>Delivery Notes</Label>
-                    <Input
+                {/* Delivery Notes */}
+                <div className="form-control w-full">
+                    <label className="text-xs font-bold text-base-content/80 mb-1">
+                        Delivery Notes (Optional)
+                    </label>
+                    <input
                         type="text"
                         value={notes}
                         onChange={(e) => setNotes(e.target.value)}
-                        placeholder="e.g. Handed at front door"
+                        placeholder="e.g. Handed at reception desk, building 4"
+                        className="input input-bordered input-sm w-full bg-base-100 font-medium text-sm focus:input-primary"
                     />
-                </InputGroup>
-
-                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
-                    <Button variant="outline" onClick={onClose} disabled={loading}>
-                        Cancel
-                    </Button>
-                    <Button variant="primary" onClick={handleSubmit} disabled={loading}>
-                        {loading ? 'Confirming...' : 'Confirm Delivery (POD)'}
-                    </Button>
                 </div>
-            </ModalCard>
-        </ModalBackdrop>
+
+                {/* Modal Actions */}
+                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-base-200">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        disabled={loading}
+                        className="btn btn-sm btn-ghost text-base-content/70"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleSubmit}
+                        disabled={loading}
+                        className="btn btn-sm btn-primary font-bold shadow-md shadow-primary/20 gap-2"
+                    >
+                        {loading && <span className="loading loading-spinner loading-xs" />}
+                        <span>{loading ? 'Confirming...' : 'Confirm Delivery (POD)'}</span>
+                    </button>
+                </div>
+            </div>
+        </div>
     );
 };
 

@@ -1,8 +1,14 @@
 import React from 'react';
-import { Button } from '../ui'; // Assuming Button is exported from ui
 import { format } from 'date-fns';
 
-const ExportButton = ({ data, filename = 'export', sheetName = 'Sheet1', variant = 'secondary' }) => {
+const ExportButton = ({
+    data,
+    filename = 'export',
+    sheetName = 'Sheet1',
+    variant = 'secondary',
+    className = '',
+    size = 'sm'
+}) => {
     const flattenValue = (value) => {
         if (value === null || value === undefined) return '';
         if (value instanceof Date) return value.toISOString();
@@ -47,10 +53,23 @@ const ExportButton = ({ data, filename = 'export', sheetName = 'Sheet1', variant
         URL.revokeObjectURL(url);
     };
 
+    const variantClass = variant === 'primary' 
+        ? 'btn-primary' 
+        : variant === 'outline' 
+            ? 'btn-outline' 
+            : 'btn-outline btn-neutral';
+
+    const sizeClass = size === 'xs' ? 'btn-xs' : size === 'sm' ? 'btn-sm' : '';
+
     return (
-        <Button variant={variant} onClick={handleExport}>
+        <button
+            type="button"
+            className={`btn ${sizeClass} ${variantClass} gap-1.5 font-bold shadow-xs ${className}`}
+            onClick={handleExport}
+        >
+            <span className="material-symbols-outlined text-sm">download</span>
             Export CSV
-        </Button>
+        </button>
     );
 };
 

@@ -19,9 +19,4 @@ export { default as FilterChip } from './components/FilterChip';
 export { default as Tabs, Tab } from './components/Tabs'; // Added
 export * from './components/Table';
 
-// Placeholders
-export { default as ShipmentContent } from './components/shipment/ShipmentContent';
-export { default as ShipmentBilling } from './components/shipment/ShipmentBilling';
-export { default as ShipmentReview } from './components/shipment/ShipmentReview';
-
 export * from './components/KineticInputs';

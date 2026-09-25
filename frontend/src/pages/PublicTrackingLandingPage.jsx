@@ -1,18 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, Link } from 'react-router-dom';
 import axios from 'axios';
 import { getApiBaseUrl } from '../utils/env';
 import { dedupeTrackingEvents } from '../utils/dedupeTrackingEvents';
 import LocationLabel from '../components/LocationLabel';
+import StatusBadge from '../components/common/StatusBadge';
+import TradeRouteDisplay from '../components/common/TradeRouteDisplay';
 import { getEventDisplayMessage } from '../utils/shipmentDisplay';
 import {
   STATUS_HEADLINE,
   STATUS_LABELS,
-  STATUS_ORDER,
   PUBLIC_PROGRESS_LABELS,
   PUBLIC_PROGRESS_STEPS,
   getPublicStepIndex,
-  getStepIndex,
   normalizeStatus,
 } from '../constants/statusConfig';
 
@@ -62,212 +62,14 @@ const formatDisplayDateParts = (eventOrTimestamp) => {
   };
 };
 
-const styles = {
-  page: {
-    minHeight: '100vh',
-    background: '#f6f8fb',
-    color: '#102033',
-    fontFamily: '"Inter", "Manrope", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  },
-  topBar: {
-    background: '#ffffff',
-    borderBottom: '1px solid #e4ebf4',
-  },
-  topBarInner: {
-    maxWidth: 1120,
-    margin: '0 auto',
-    padding: '22px 24px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 16,
-  },
-  brand: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-    fontWeight: 800,
-    fontSize: 18,
-    color: '#0b5bd3',
-    letterSpacing: 0,
-  },
-  brandMark: {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-    background: '#0b5bd3',
-    color: '#ffffff',
-    display: 'grid',
-    placeItems: 'center',
-    fontWeight: 800,
-    fontSize: 13,
-  },
-  supportText: {
-    fontSize: 13,
-    color: '#66758a',
-  },
-  hero: {
-    background: '#ffffff',
-    borderBottom: '1px solid #e4ebf4',
-  },
-  heroInner: {
-    maxWidth: 1120,
-    margin: '0 auto',
-    padding: '36px 24px 30px',
-  },
-  searchBar: {
-    display: 'flex',
-    maxWidth: 640,
-    marginBottom: 30,
-  },
-  searchInput: {
-    flex: 1,
-    minWidth: 0,
-    height: 48,
-    padding: '0 16px',
-    border: '1px solid #ccd7e5',
-    borderRight: 'none',
-    borderRadius: '8px 0 0 8px',
-    background: '#ffffff',
-    color: '#102033',
-    fontSize: 15,
-    outline: 'none',
-  },
-  searchBtn: {
-    height: 48,
-    padding: '0 28px',
-    border: '1px solid #0b5bd3',
-    borderRadius: '0 8px 8px 0',
-    background: '#0b5bd3',
-    color: '#ffffff',
-    cursor: 'pointer',
-    fontSize: 14,
-    fontWeight: 800,
-  },
-  meta: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    flexWrap: 'wrap',
-    marginBottom: 10,
-    color: '#5e6f84',
-    fontSize: 13,
-  },
-  trackingCode: {
-    color: '#0b5bd3',
-    fontWeight: 800,
-    textTransform: 'uppercase',
-    letterSpacing: 0,
-  },
-  statusHeadline: {
-    margin: '0 0 10px',
-    maxWidth: 760,
-    fontSize: 36,
-    lineHeight: 1.12,
-    color: '#102033',
-    fontWeight: 850,
-  },
-  lastUpdate: {
-    color: '#66758a',
-    fontSize: 14,
-    marginBottom: 28,
-  },
-  routeBar: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(120px, 190px) 1fr minmax(120px, 190px)',
-    alignItems: 'center',
-    gap: 16,
-    marginTop: 28,
-  },
-  routePlace: {
-    fontWeight: 800,
-    color: '#102033',
-    fontSize: 14,
-  },
-  routeDest: {
-    fontWeight: 800,
-    color: '#102033',
-    fontSize: 14,
-    textAlign: 'right',
-  },
-  track: {
-    position: 'relative',
-    height: 34,
-  },
-  tabBar: {
-    maxWidth: 1120,
-    margin: '0 auto',
-    padding: '0 24px',
-    display: 'flex',
-    gap: 26,
-    overflowX: 'auto',
-  },
-  tabBtn: (active) => ({
-    padding: '17px 0',
-    border: 'none',
-    borderBottom: active ? '3px solid #0b5bd3' : '3px solid transparent',
-    background: 'transparent',
-    color: active ? '#0b5bd3' : '#66758a',
-    cursor: 'pointer',
-    fontSize: 14,
-    fontWeight: active ? 800 : 650,
-    whiteSpace: 'nowrap',
-  }),
-  content: {
-    maxWidth: 1120,
-    margin: '0 auto',
-    padding: '24px',
-  },
-  card: {
-    background: '#ffffff',
-    border: '1px solid #e4ebf4',
-    borderRadius: 8,
-    boxShadow: '0 14px 34px rgba(16, 32, 51, 0.06)',
-    padding: '24px 28px',
-  },
-  detailRow: {
-    display: 'grid',
-    gridTemplateColumns: '190px 1fr',
-    gap: 18,
-    padding: '14px 0',
-    borderBottom: '1px solid #edf2f7',
-    fontSize: 14,
-  },
-  detailLabel: {
-    color: '#66758a',
-  },
-  detailValue: {
-    color: '#102033',
-    fontWeight: 800,
-  },
-  statePanel: {
-    maxWidth: 620,
-    marginTop: 10,
-    padding: '18px 20px',
-    borderRadius: 8,
-    border: '1px solid #d8e2ef',
-    background: '#f8fbff',
-    color: '#4b5f76',
-    fontSize: 14,
-  },
-  errorPanel: {
-    maxWidth: 620,
-    padding: '18px 20px',
-    borderRadius: 8,
-    border: '1px solid #f1b8b8',
-    background: '#fff7f7',
-    color: '#a72525',
-    fontSize: 14,
-  },
-};
-
 const normalizeEventText = (v) => String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+
 const publicEventKey = (event) => {
   const desc = normalizeEventText(event?.description || event?.status);
   const loc = normalizeEventText(
     typeof event?.location === 'string'
       ? event.location
-      : (event?.location?.formattedAddress || event?.location?.city || placeLabel(event?.location))
+      : (event?.location?.formattedAddress || event?.location?.city || '')
   );
   return `${desc}|${loc}`;
 };
@@ -286,255 +88,13 @@ function rawEventsForLog(shipment) {
   return [...raw].filter((event) => event?.timestamp).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 }
 
-function placeLabel(place) {
-  if (!place) return '';
-  const country = place.countryCode || place.country || '';
-  return [place.city, country].filter(Boolean).join(' - ');
-}
+const DEMO_PRESETS = [
+  { id: 'DGR-KW-DEMO-001', label: 'DGR Express to London', tag: 'Dangerous Goods' },
+  { id: 'TRK-KW-TRANSIT-005', label: 'GCC Air Transit', tag: 'In Transit' },
+  { id: 'TRK-KW-DELIVERED-007', label: 'Bader Trading Kuwait', tag: 'Delivered + POD' }
+];
 
-function RoutePlaceLabel({ place, fallback }) {
-  const label = placeLabel(place) || fallback;
-
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-      <LocationLabel location={{ ...(place || {}), formattedAddress: label }} />
-    </span>
-  );
-}
-
-function RouteProgressBar({ originCity, destCity, stepIndex }) {
-  const total = Math.max(1, PUBLIC_PROGRESS_STEPS.length - 1);
-  const pct = Math.max(0, Math.min(100, (stepIndex / total) * 100));
-
-  return (
-    <div className="tracking-route">
-      <div style={styles.routeBar}>
-        <div style={styles.routePlace}>{originCity}</div>
-        <div style={styles.track}>
-          <div style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            top: 16,
-            height: 2,
-            background: '#d8e1ed',
-          }}
-          />
-          <div style={{
-            position: 'absolute',
-            left: 0,
-            width: `${pct}%`,
-            top: 16,
-            height: 3,
-            background: '#0b5bd3',
-          }}
-          />
-          {PUBLIC_PROGRESS_STEPS.map((step, index) => {
-            const pos = (index / total) * 100;
-            const active = index <= stepIndex;
-            const isCurrent = index === stepIndex;
-            return (
-              <div
-                key={step}
-                title={PUBLIC_PROGRESS_LABELS[step]}
-                className={isCurrent ? "live-beacon" : ""}
-                style={{
-                  position: 'absolute',
-                  left: `${pos}%`,
-                  top: 17,
-                  width: active ? 16 : 12,
-                  height: active ? 16 : 12,
-                  borderRadius: '50%',
-                  transform: 'translate(-50%, -50%)',
-                  background: active ? '#0b5bd3' : '#ffffff',
-                  border: `2px solid ${active ? '#0b5bd3' : '#b4c1d2'}`,
-                  boxShadow: isCurrent ? '0 0 0 7px rgba(11, 91, 211, 0.2), 0 4px 12px rgba(11, 91, 211, 0.35)' : 'none',
-                  transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-                }}
-              />
-            );
-          })}
-        </div>
-        <div style={styles.routeDest}>{destCity}</div>
-      </div>
-      <div className="route-labels">
-        {PUBLIC_PROGRESS_STEPS.map((step, index) => (
-          <span
-            key={step}
-            style={{
-              color: index <= stepIndex ? '#102033' : '#66758a',
-              fontWeight: index === stepIndex ? 800 : 600,
-              textAlign: index === 0 ? 'left' : index === PUBLIC_PROGRESS_STEPS.length - 1 ? 'right' : 'center',
-            }}
-          >
-            {PUBLIC_PROGRESS_LABELS[step]}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ShipmentDetailsTab({ shipment }) {
-  const rows = [
-    { label: 'Pieces', value: shipment.totalPieces ?? 1 },
-    { label: 'Shipment Type', value: shipment.shipmentType === 'documents' ? 'Document Express' : 'Standard Package' },
-    { label: 'Waybill Number', value: shipment.trackingNumber },
-    { label: 'Created', value: fmt.date(shipment.createdAt) },
-    shipment.estimatedDelivery ? { label: 'Estimated Delivery', value: fmt.date(shipment.estimatedDelivery) } : null,
-  ].filter(Boolean);
-
-  return (
-    <div style={styles.card}>
-      {rows.map(({ label, value }) => (
-        <div key={label} style={styles.detailRow} className="detail-row">
-          <span style={styles.detailLabel}>{label}</span>
-          <span style={styles.detailValue}>{value}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-const EVENT_LABELS = {
-  created: 'Shipment created',
-  pickup: 'Shipment picked up',
-  arrived_facility: 'Arrived at facility',
-  processed: 'Processed at facility',
-  departed_facility: 'Departed facility',
-  customs_update: 'Customs clearance updated',
-  hold: 'Shipment on hold'
-};
-
-function TimelineTab({ events = [] }) {
-  if (!events.length) {
-    return <div style={styles.card}><p style={{ color: '#66758a', margin: 0 }}>No timeline events available yet.</p></div>;
-  }
-
-  const grouped = events.reduce((acc, event) => {
-    const key = formatDisplayDateParts(event).date;
-    acc[key] = acc[key] || [];
-    acc[key].push(event);
-    return acc;
-  }, {});
-
-  return (
-    <div style={styles.card}>
-      {Object.entries(grouped).map(([date, dayEvents]) => (
-        <div key={date} style={{ marginBottom: 16 }}>
-          <div style={{ fontWeight: 800, fontSize: 13, color: '#0b5bd3', marginBottom: 8 }}>{date}</div>
-          {dayEvents.map((event, index) => {
-            const displayMessage = getEventDisplayMessage(event, EVENT_LABELS[event.canonicalStatus] || 'Tracking update');
-            const eventTime = formatDisplayDateParts(event).time;
-            const previousTime = index > 0 ? formatDisplayDateParts(dayEvents[index - 1]).time : null;
-            const showTime = index === 0 || previousTime !== eventTime;
-            const startsTimeGroup = showTime && index > 0;
-            return (
-              <div key={`${event.timestamp}-${index}`} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 220px', gap: 10, padding: startsTimeGroup ? '14px 0 8px' : '8px 0', borderTop: startsTimeGroup ? '1px solid #dfe8f5' : 'none', borderBottom: '1px solid #eef3fa' }}>
-                <div style={{ color: '#66758a', fontSize: 12 }}>{showTime ? eventTime : ''}</div>
-                <div style={{ fontSize: 13, color: '#102033', fontWeight: 700 }}>{displayMessage}</div>
-                <LocationLabel location={event.normalizedLocation || event.location} style={{ color: '#66758a', fontSize: 12 }} />
-              </div>
-            );
-          })}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function EventLogTab({ events }) {
-  if (events.length === 0) {
-    return (
-      <div style={styles.card}>
-        <p style={{ color: '#66758a', textAlign: 'center', margin: '18px 0' }}>
-          No tracking events recorded yet. Check back soon.
-        </p>
-      </div>
-    );
-  }
-
-  const grouped = events.reduce((acc, event) => {
-    const key = formatDisplayDateParts(event).date;
-    acc[key] = acc[key] || [];
-    acc[key].push(event);
-    return acc;
-  }, {});
-  const groupDates = Object.keys(grouped);
-
-  return (
-    <div style={styles.card}>
-      {Object.entries(grouped).map(([date, dayEvents]) => (
-        <div key={date} style={{ marginBottom: 16 }}>
-          <div style={{ fontWeight: 800, fontSize: 13, color: '#0b5bd3', marginBottom: 8 }}>{date}</div>
-          {dayEvents.map((event, index) => {
-            const displayMessage = getEventDisplayMessage(event);
-            const eventTime = formatDisplayDateParts(event).time;
-            const previousTime = index > 0 ? formatDisplayDateParts(dayEvents[index - 1]).time : null;
-            const showTime = index === 0 || previousTime !== eventTime;
-            const startsTimeGroup = showTime && index > 0;
-            const isLatest = date === groupDates[0] && index === 0;
-            return (
-              <div
-                key={`${event.timestamp}-${index}`}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '18px 1fr minmax(84px, auto)',
-                  gap: 14,
-                  padding: startsTimeGroup ? '22px 0 16px' : '16px 0',
-                  borderTop: startsTimeGroup ? '1px solid #dfe8f5' : 'none',
-                  borderBottom: index === dayEvents.length - 1 ? 'none' : '1px solid #dfe8f5',
-                }}
-                className="event-row"
-              >
-                <span style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: '50%',
-                  background: isLatest ? '#0b5bd3' : '#7f93ad',
-                  marginTop: 5,
-                  boxShadow: isLatest ? '0 0 0 5px rgba(11, 91, 211, 0.12)' : 'none',
-                }}
-                />
-                <div>
-                  <div style={{ color: '#102033', fontWeight: isLatest ? 850 : 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span>{displayMessage}</span>
-                    {event.occurrences > 1 && (
-                      <span
-                        title={`Repeated ${event.occurrences} times - first at ${fmt.time(event.firstTimestamp)}`}
-                        style={{
-                          fontSize: 10,
-                          fontWeight: 700,
-                          padding: '2px 6px',
-                          borderRadius: 999,
-                          background: 'rgba(11, 91, 211, 0.12)',
-                          color: '#0b5bd3',
-                        }}
-                      >
-                        x{event.occurrences}
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ color: '#66758a', fontSize: 13, marginTop: 4 }}>
-                    <LocationLabel location={event.location} />
-                  </div>
-                  <div style={{ color: '#7a899d', fontSize: 12, marginTop: 5 }}>
-                    {event.source === 'carrier' ? 'Carrier network' : 'Target Logistics'}
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right', color: '#66758a', fontSize: 12 }}>
-                  {showTime ? eventTime : ''}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-const PublicTrackingPage = () => {
+export const PublicTrackingLandingPage = () => {
   const { trackingNumber: paramTrackingNumber } = useParams();
   const navigate = useNavigate();
   const fetchedRef = useRef(null);
@@ -545,6 +105,7 @@ const PublicTrackingPage = () => {
   const [activeTab, setActiveTab] = useState('details');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
 
   const fetchShipment = useCallback(async (tn) => {
     if (!tn) return;
@@ -558,11 +119,11 @@ const PublicTrackingPage = () => {
         setShipment(res.data.data);
       } else {
         setShipment(null);
-        setError('Shipment not found.');
+        setError('Shipment not found. Please verify the tracking number.');
       }
     } catch (err) {
       setShipment(null);
-      setError(err.response?.data?.error || 'Shipment not found.');
+      setError(err.response?.data?.error || 'Shipment not found. Please verify the tracking number.');
     } finally {
       setLoading(false);
     }
@@ -584,8 +145,6 @@ const PublicTrackingPage = () => {
   const stepIndex = shipment ? getPublicStepIndex(shipment.status) : 0;
   const normalizedStatus = normalizeStatus(shipment?.status);
 
-  const [copied, setCopied] = useState(false);
-
   const handleCopy = () => {
     if (!shipment?.trackingNumber) return;
     navigator.clipboard.writeText(shipment.trackingNumber);
@@ -595,15 +154,14 @@ const PublicTrackingPage = () => {
 
   const handleShareWhatsApp = () => {
     if (!shipment?.trackingNumber) return;
-    const url = `https://target-kw.com/track/${shipment.trackingNumber}`;
+    const url = window.location.origin ? `${window.location.origin}/track/${shipment.trackingNumber}` : `https://target-kw.com/track/${shipment.trackingNumber}`;
     const text = encodeURIComponent(`Track your shipment #${shipment.trackingNumber} with Target Logistics: ${url}`);
     window.open(`https://wa.me/?text=${text}`, '_blank');
   };
 
-  const handleSearch = (event) => {
-    event.preventDefault();
+  const handleSearch = (e) => {
+    e.preventDefault();
     const nextTrackingNumber = searchInput.trim();
-
     if (!nextTrackingNumber) return;
 
     fetchedRef.current = nextTrackingNumber;
@@ -612,249 +170,557 @@ const PublicTrackingPage = () => {
     fetchShipment(nextTrackingNumber);
   };
 
-  const tabs = [
-    { id: 'details', label: 'Shipment Details' },
-    { id: 'timeline', label: 'Shipment Timeline' },
-    { id: 'events', label: 'Event Log' },
-  ];
+  const handlePresetClick = (id) => {
+    setSearchInput(id);
+    fetchedRef.current = id;
+    setTrackingNumber(id);
+    navigate(`/track/${id}`);
+    fetchShipment(id);
+  };
 
   return (
-    <div style={styles.page}>
-      <header style={styles.topBar}>
-        <div style={styles.topBarInner}>
-          <div style={styles.brand}>
-            <span style={styles.brandMark}>TL</span>
-            <span>Target Logistics</span>
-          </div>
-          <div style={styles.supportText}>Shipment tracking</div>
+    <div className="min-h-screen bg-base-200/50 flex flex-col font-sans selection:bg-primary selection:text-white">
+      {/* Top Navbar */}
+      <header className="navbar bg-base-100 border-b border-base-200 px-4 sm:px-8 py-3 sticky top-0 z-40 shadow-sm backdrop-blur-md bg-base-100/90">
+        <div className="flex-1 flex items-center gap-3">
+          <Link to="/track" className="flex items-center gap-2.5 text-primary font-black text-lg tracking-tight">
+            <div className="w-9 h-9 rounded-xl bg-primary text-white flex items-center justify-center font-black text-sm shadow-md shadow-primary/20">
+              TL
+            </div>
+            <div className="flex flex-col">
+              <span className="leading-tight font-extrabold text-base-content">Target Logistics</span>
+              <span className="text-[10px] text-primary uppercase font-bold tracking-widest">Global Express</span>
+            </div>
+          </Link>
+        </div>
+        <div className="flex-none flex items-center gap-2">
+          <Link to="/returns" className="btn btn-ghost btn-sm text-xs font-bold gap-1 text-base-content/70 hover:text-primary">
+            <span className="material-symbols-outlined text-sm">assignment_return</span>
+            <span>Returns Portal</span>
+          </Link>
+          <a
+            href="https://wa.me/96590000000"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-outline btn-primary btn-sm text-xs font-bold gap-1"
+          >
+            <span className="material-symbols-outlined text-sm">support_agent</span>
+            <span>Kuwait Support</span>
+          </a>
         </div>
       </header>
 
-      <main>
-        <section style={styles.hero}>
-          <div style={styles.heroInner}>
-            <form onSubmit={handleSearch} style={styles.searchBar} className="tracking-search">
-              <input
-                style={styles.searchInput}
-                value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Enter your tracking number"
-                aria-label="Tracking number"
-              />
-              <button type="submit" style={styles.searchBtn} className="press-tactile">Track</button>
-            </form>
-
-            {loading && <div style={styles.statePanel}>Loading tracking details...</div>}
-            {!loading && error && <div style={styles.errorPanel}>{error}</div>}
-
-            {!loading && shipment && (
-              <>
-                <div style={{ ...styles.meta, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={styles.trackingCode}>Tracking Code: {shipment.trackingNumber}</span>
-                    <button
-                      onClick={handleCopy}
-                      title="Copy Tracking Number"
-                      className="press-tactile"
-                      style={{
-                        background: copied ? '#22c55e' : '#eef3fa',
-                        color: copied ? '#ffffff' : '#0b5bd3',
-                        border: 'none',
-                        borderRadius: 6,
-                        padding: '4px 10px',
-                        fontSize: 12,
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
-                      }}
-                    >
-                      {copied ? '✓ Copied' : '📋 Copy'}
-                    </button>
-                    <button
-                      onClick={handleShareWhatsApp}
-                      title="Share Tracking Link via WhatsApp"
-                      className="press-tactile"
-                      style={{
-                        background: '#25D366',
-                        color: '#ffffff',
-                        border: 'none',
-                        borderRadius: 6,
-                        padding: '4px 10px',
-                        fontSize: 12,
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
-                      }}
-                    >
-                      💬 WhatsApp
-                    </button>
-                  </div>
-                  <span style={{ fontSize: 13, color: '#66758a', fontWeight: 600 }}>
-                    {shipment.carrierCode || shipment.carrier || 'Target Logistics'}
-                  </span>
-                </div>
-
-                <h1 style={styles.statusHeadline}>
-                  {STATUS_HEADLINE[normalizedStatus] || 'Tracking update available'}
-                </h1>
-
-                <div style={styles.lastUpdate}>
-                  {lastEvent
-                    ? `Last update: ${fmt.dateTime(lastEvent.timestamp)}${lastEvent.location ? `, ${lastEvent.location}` : ''}`
-                    : 'Tracking events will appear here once the shipment starts moving.'}
-                </div>
-
-                <RouteProgressBar
-                  originCity={<RoutePlaceLabel place={shipment.origin} fallback="Origin" />}
-                  destCity={<RoutePlaceLabel place={shipment.destination} fallback="Destination" />}
-                  stepIndex={stepIndex}
-                />
-              </>
-            )}
-
-            {!loading && !shipment && !error && !trackingNumber && (
-              <div style={styles.statePanel}>Enter a tracking number to view shipment status and events.</div>
-            )}
-          </div>
-
-          {!loading && shipment && (
-            <nav style={styles.tabBar} aria-label="Tracking details">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  style={styles.tabBtn(activeTab === tab.id)}
-                  onClick={() => setActiveTab(tab.id)}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </nav>
-          )}
-        </section>
-
-        {!loading && shipment && (
-          <section style={styles.content}>
-            {/* Receiver Action Banner / Card */}
-            <div style={{
-              background: 'linear-gradient(135deg, #0b5bd3 0%, #064098 100%)',
-              borderRadius: 14,
-              padding: '20px 24px',
-              color: '#ffffff',
-              marginBottom: 24,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 16,
-              boxShadow: '0 10px 30px rgba(11, 91, 211, 0.25)',
-              flexWrap: 'wrap'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <div style={{
-                  width: 44, height: 44, borderRadius: 12, background: 'rgba(255,255,255,0.18)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24
-                }}>
-                  📍
-                </div>
-                <div>
-                  <div style={{ fontWeight: 800, fontSize: 16 }}>Need to Pin Your Exact Delivery Location?</div>
-                  <div style={{ fontSize: 13, opacity: 0.9, marginTop: 2 }}>
-                    Verify via WhatsApp OTP to assist courier driver with precise GPS location.
-                  </div>
-                </div>
+      {/* Main Content Area */}
+      <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+        {/* Search Hero Section */}
+        <section className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
+          <div className="card-body p-6 sm:p-8">
+            <div className="max-w-2xl">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold mb-3 border border-primary/20">
+                <span className="material-symbols-outlined text-sm">radar</span>
+                <span>Live Consignment Radar</span>
               </div>
-              <button
-                onClick={() => navigate(`/track/${shipment.trackingNumber}/location`)}
-                style={{
-                  background: '#ffffff',
-                  color: '#0b5bd3',
-                  border: 'none',
-                  borderRadius: 10,
-                  padding: '12px 22px',
-                  fontWeight: 800,
-                  fontSize: 13,
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 14px rgba(0,0,0,0.12)',
-                  transition: 'all 0.2s'
-                }}
-              >
-                Pin Delivery Location
-              </button>
+              <h1 className="text-2xl sm:text-3xl font-black text-base-content tracking-tight">
+                Track Your Shipment in Real-Time
+              </h1>
+              <p className="text-sm text-base-content/60 mt-1">
+                Enter your waybill or parcel reference number to view customs clearances, flight checkpoints, and delivery ETA.
+              </p>
             </div>
 
-            {activeTab === 'details' && <ShipmentDetailsTab shipment={shipment} />}
-            {activeTab === 'timeline' && <TimelineTab events={timelineEvents} />}
-            {activeTab === 'events' && <EventLogTab events={timelineEvents} />}
-          </section>
+            {/* Search Input Bar */}
+            <form onSubmit={handleSearch} className="mt-5 flex flex-col sm:flex-row gap-2">
+              <div className="relative flex-1">
+                <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-base-content/40 text-xl pointer-events-none">
+                  barcode_scanner
+                </span>
+                <input
+                  type="text"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="Enter tracking number (e.g. TRK-KW-100234 or DGR-10029)..."
+                  className="input input-bordered w-full pl-11 pr-4 font-mono font-medium text-sm focus:input-primary bg-base-100 transition-all"
+                />
+                {searchInput && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchInput('')}
+                    className="btn btn-ghost btn-circle btn-xs absolute right-3 top-1/2 -translate-y-1/2 text-base-content/40 hover:text-base-content"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <button
+                type="submit"
+                disabled={loading || !searchInput.trim()}
+                className="btn btn-primary font-bold px-6 gap-2 text-sm shadow-md shadow-primary/20"
+              >
+                {loading ? (
+                  <>
+                    <span className="loading loading-spinner loading-xs" />
+                    <span>Searching...</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-lg">search</span>
+                    <span>Track</span>
+                  </>
+                )}
+              </button>
+            </form>
+
+            {/* Quick Presets */}
+            <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-base-200">
+              <span className="text-xs font-bold text-base-content/40 uppercase tracking-wider">Example consignments:</span>
+              {DEMO_PRESETS.map((demo) => (
+                <button
+                  key={demo.id}
+                  type="button"
+                  onClick={() => handlePresetClick(demo.id)}
+                  className="btn btn-xs btn-outline border-base-300 hover:border-primary hover:bg-primary/5 text-base-content/70 hover:text-primary gap-1.5"
+                >
+                  <span className="font-mono">{demo.id}</span>
+                  <span className="badge badge-xs badge-neutral">{demo.tag}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Loading State */}
+        {loading && (
+          <div className="card bg-base-100 border border-base-200 p-8 flex flex-col items-center justify-center gap-3">
+            <span className="loading loading-ring loading-lg text-primary" />
+            <p className="text-sm font-bold text-base-content/60 animate-pulse">
+              Retrieving live telemetry and carrier checkpoints...
+            </p>
+          </div>
+        )}
+
+        {/* Error State */}
+        {!loading && error && (
+          <div className="alert alert-error shadow-sm text-sm">
+            <span className="material-symbols-outlined text-lg">error</span>
+            <div className="flex-1">
+              <div className="font-bold">Shipment Lookup Notice</div>
+              <div className="text-xs opacity-90">{error}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Shipment Active Result View */}
+        {!loading && shipment && (
+          <div className="space-y-6">
+            {/* Hero Waybill Card */}
+            <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
+              <div className="p-6 sm:p-8 space-y-6">
+                {/* Meta Row: Tracking Code, Actions, Status */}
+                <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-base-200">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="font-mono font-black text-lg sm:text-xl text-base-content">
+                      {shipment.trackingNumber}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCopy}
+                      className="btn btn-xs btn-ghost border border-base-300 hover:border-primary gap-1"
+                      title="Copy Tracking Number"
+                    >
+                      <span className="material-symbols-outlined text-xs">
+                        {copied ? 'check' : 'content_copy'}
+                      </span>
+                      <span>{copied ? 'Copied!' : 'Copy'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleShareWhatsApp}
+                      className="btn btn-xs bg-[#25D366] text-white hover:bg-[#1ebc57] border-none gap-1 shadow-sm"
+                      title="Share Tracking Link on WhatsApp"
+                    >
+                      <span className="material-symbols-outlined text-xs">chat</span>
+                      <span>WhatsApp</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="badge badge-neutral font-bold text-xs gap-1 py-3 px-3">
+                      <span className="material-symbols-outlined text-sm">local_shipping</span>
+                      {shipment.carrierCode || shipment.carrier || 'Target Network'}
+                    </span>
+                    <StatusBadge status={shipment.status} size="md" />
+                  </div>
+                </div>
+
+                {/* Status Headline & Relative Updated Time */}
+                <div>
+                  <h2 className="text-2xl sm:text-3xl font-black text-base-content tracking-tight">
+                    {STATUS_HEADLINE[normalizedStatus] || 'Consignment in motion'}
+                  </h2>
+                  <p className="text-sm text-base-content/60 mt-1 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-base text-primary">schedule</span>
+                    <span>
+                      {lastEvent
+                        ? `Last activity: ${fmt.dateTime(lastEvent.timestamp)}${lastEvent.location ? ` • ${lastEvent.location}` : ''}`
+                        : 'Consignment booked. Awaiting initial collection scan.'}
+                    </span>
+                  </p>
+                </div>
+
+                {/* Trade Route Corridor Bar */}
+                <div className="p-4 rounded-xl bg-base-200/50 border border-base-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                      <span className="material-symbols-outlined">flight_takeoff</span>
+                    </div>
+                    <div>
+                      <div className="text-xs text-base-content/50 font-bold uppercase tracking-wider">Trade Corridor</div>
+                      <TradeRouteDisplay
+                        origin={shipment.origin}
+                        destination={shipment.destination}
+                        size="md"
+                      />
+                    </div>
+                  </div>
+
+                  {shipment.estimatedDelivery && (
+                    <div className="text-right sm:border-l sm:border-base-200 sm:pl-6">
+                      <div className="text-xs text-base-content/50 font-bold uppercase tracking-wider">Estimated Delivery</div>
+                      <div className="font-extrabold text-sm text-primary">
+                        {fmt.date(shipment.estimatedDelivery)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* DaisyUI Horizontal Steps Progress Bar */}
+                <div className="pt-4 overflow-x-auto">
+                  <ul className="steps steps-horizontal w-full">
+                    {PUBLIC_PROGRESS_STEPS.map((stepKey, idx) => {
+                      const isComplete = idx <= stepIndex;
+                      const isCurrent = idx === stepIndex;
+                      return (
+                        <li
+                          key={stepKey}
+                          data-content={isComplete ? '✓' : idx + 1}
+                          className={`step text-xs font-bold transition-all ${
+                            isComplete ? 'step-primary' : ''
+                          } ${isCurrent ? 'font-black scale-105' : ''}`}
+                        >
+                          <span className={isCurrent ? 'text-primary font-black underline' : 'text-base-content/70'}>
+                            {PUBLIC_PROGRESS_LABELS[stepKey] || stepKey}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* Receiver Action Callout Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Pin GPS Location CTA */}
+              <div className="card bg-gradient-to-br from-primary to-primary-focus text-primary-content p-6 shadow-md flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-xl shrink-0">
+                      📍
+                    </div>
+                    <div>
+                      <h3 className="font-extrabold text-base leading-tight">Pin Delivery GPS Location</h3>
+                      <p className="text-xs opacity-85 mt-0.5">Assist the courier driver with exact Kuwait address coordinates.</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 pt-3 border-t border-white/20 flex items-center justify-between">
+                  <span className="text-[11px] opacity-75">Kuwait PACI / Map Pin</span>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/track/${shipment.trackingNumber}/location`)}
+                    className="btn btn-sm bg-white text-primary hover:bg-white/90 border-none font-bold text-xs shadow-sm"
+                  >
+                    Open Location Pin
+                  </button>
+                </div>
+              </div>
+
+              {/* Online Returns / Documents */}
+              <div className="card bg-base-100 border border-base-200 p-6 shadow-sm flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-xl bg-secondary/10 text-secondary flex items-center justify-center text-xl shrink-0">
+                      🔄
+                    </div>
+                    <div>
+                      <h3 className="font-extrabold text-base text-base-content leading-tight">Customer Return & Paperwork</h3>
+                      <p className="text-xs text-base-content/60 mt-0.5">Initiate 14-day hassle-free reverse parcel returns or print AWB.</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 pt-3 border-t border-base-200 flex items-center justify-between gap-2">
+                  <a
+                    href={`${API}/shipments/${shipment.trackingNumber}/label`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-xs btn-ghost border border-base-300 text-xs font-bold gap-1"
+                  >
+                    <span className="material-symbols-outlined text-xs">print</span>
+                    <span>Air Waybill</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/returns/${shipment.trackingNumber}`)}
+                    className="btn btn-xs btn-outline btn-secondary text-xs font-bold gap-1"
+                  >
+                    <span className="material-symbols-outlined text-xs">assignment_return</span>
+                    <span>Check Return</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Detailed Tabs: Dossier, Timeline, Event Log */}
+            <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
+              <div className="border-b border-base-200 px-6 pt-4 bg-base-100">
+                <div role="tablist" className="tabs tabs-bordered">
+                  <button
+                    role="tab"
+                    type="button"
+                    onClick={() => setActiveTab('details')}
+                    className={`tab tab-bordered font-bold text-sm gap-2 pb-3 ${
+                      activeTab === 'details' ? 'tab-active text-primary border-primary' : 'text-base-content/60'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-base">inventory_2</span>
+                    <span>Shipment Dossier</span>
+                  </button>
+                  <button
+                    role="tab"
+                    type="button"
+                    onClick={() => setActiveTab('timeline')}
+                    className={`tab tab-bordered font-bold text-sm gap-2 pb-3 ${
+                      activeTab === 'timeline' ? 'tab-active text-primary border-primary' : 'text-base-content/60'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-base">timeline</span>
+                    <span>Milestone Timeline ({timelineEvents.length})</span>
+                  </button>
+                  <button
+                    role="tab"
+                    type="button"
+                    onClick={() => setActiveTab('events')}
+                    className={`tab tab-bordered font-bold text-sm gap-2 pb-3 ${
+                      activeTab === 'events' ? 'tab-active text-primary border-primary' : 'text-base-content/60'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-base">receipt_long</span>
+                    <span>Carrier Telemetry</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6">
+                {/* Tab 1: Dossier Details */}
+                {activeTab === 'details' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    <div className="p-4 rounded-xl bg-base-200/40 border border-base-200">
+                      <div className="text-xs text-base-content/50 font-bold uppercase">Total Pieces</div>
+                      <div className="text-lg font-black text-base-content mt-1">{shipment.totalPieces ?? shipment.pieces?.length ?? 1} Units</div>
+                    </div>
+                    <div className="p-4 rounded-xl bg-base-200/40 border border-base-200">
+                      <div className="text-xs text-base-content/50 font-bold uppercase">Shipment Type</div>
+                      <div className="text-lg font-black text-base-content mt-1">
+                        {shipment.shipmentType === 'documents' ? 'Document Express' : 'Standard Air Parcel'}
+                      </div>
+                    </div>
+                    <div className="p-4 rounded-xl bg-base-200/40 border border-base-200">
+                      <div className="text-xs text-base-content/50 font-bold uppercase">Total Gross Weight</div>
+                      <div className="text-lg font-black text-base-content mt-1">
+                        {shipment.weight ? `${shipment.weight} kg` : (shipment.totalWeight ? `${shipment.totalWeight} kg` : 'N/A')}
+                      </div>
+                    </div>
+                    <div className="p-4 rounded-xl bg-base-200/40 border border-base-200">
+                      <div className="text-xs text-base-content/50 font-bold uppercase">Chargeable Volumetric</div>
+                      <div className="text-lg font-black text-base-content mt-1">
+                        {shipment.chargeableWeight ? `${shipment.chargeableWeight} kg` : 'Calculated at Hub'}
+                      </div>
+                    </div>
+                    <div className="p-4 rounded-xl bg-base-200/40 border border-base-200">
+                      <div className="text-xs text-base-content/50 font-bold uppercase">Booking Date</div>
+                      <div className="text-sm font-black text-base-content mt-1">{fmt.date(shipment.createdAt)}</div>
+                    </div>
+                    <div className="p-4 rounded-xl bg-base-200/40 border border-base-200">
+                      <div className="text-xs text-base-content/50 font-bold uppercase">Payment Terms</div>
+                      <div className="text-sm font-black text-base-content mt-1 uppercase">
+                        {shipment.paymentMethod || 'Prepaid Airfreight'}
+                      </div>
+                    </div>
+
+                    {/* Dangerous Goods Banner if applicable */}
+                    {shipment.isDangerousGoods && (
+                      <div className="sm:col-span-2 md:col-span-3 p-4 rounded-xl bg-warning/10 border border-warning/30 flex items-center gap-3">
+                        <span className="material-symbols-outlined text-warning text-2xl">warning</span>
+                        <div className="text-xs text-warning-content">
+                          <strong className="block font-bold">IATA Dangerous Goods Declared</strong>
+                          <span>
+                            Class {shipment.dgClass || '9'} • UN {shipment.unNumber || 'UN3481'} ({shipment.properShippingName || 'Lithium Ion Batteries'}). Special handling rules in effect.
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Tab 2: Milestone Timeline */}
+                {activeTab === 'timeline' && (
+                  <div className="space-y-6">
+                    {timelineEvents.length === 0 ? (
+                      <div className="text-center py-8 text-base-content/50">
+                        <span className="material-symbols-outlined text-4xl mb-2">hourglass_empty</span>
+                        <p className="text-sm font-medium">No milestone events recorded yet. Updates will appear once scanned at the intake hub.</p>
+                      </div>
+                    ) : (
+                      <div className="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-base-300">
+                        {timelineEvents.map((evt, idx) => {
+                          const dateParts = formatDisplayDateParts(evt);
+                          const isLatest = idx === 0;
+                          return (
+                            <div key={`${evt.timestamp}-${idx}`} className="relative group">
+                              <span
+                                className={`absolute -left-6 top-1 w-4 h-4 rounded-full border-2 transition-all ${
+                                  isLatest
+                                    ? 'bg-primary border-primary ring-4 ring-primary/20'
+                                    : 'bg-base-100 border-base-300'
+                                }`}
+                              />
+                              <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
+                                <div className="text-sm font-extrabold text-base-content">
+                                  {getEventDisplayMessage(evt, evt.status || 'Status update')}
+                                </div>
+                                <div className="text-xs text-base-content/50 font-mono">
+                                  {dateParts.date} • {dateParts.time}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 mt-1">
+                                <LocationLabel location={evt.normalizedLocation || evt.location} className="text-xs text-base-content/60" />
+                                {evt.source && (
+                                  <span className="badge badge-xs badge-ghost text-[10px]">
+                                    {evt.source === 'carrier' ? 'Carrier Network' : 'Target Hub'}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Tab 3: Event Log / Raw Telemetry */}
+                {activeTab === 'events' && (
+                  <div className="space-y-3">
+                    {timelineEvents.length === 0 ? (
+                      <div className="text-center py-8 text-base-content/50">
+                        No telemetry logs available.
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="table table-zebra table-xs w-full">
+                          <thead>
+                            <tr className="text-base-content/60">
+                              <th>Time</th>
+                              <th>Event</th>
+                              <th>Location</th>
+                              <th>Originating Source</th>
+                              <th>Occurrences</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {timelineEvents.map((evt, idx) => {
+                              const dateParts = formatDisplayDateParts(evt);
+                              return (
+                                <tr key={`${evt.timestamp}-${idx}`} className="font-mono">
+                                  <td className="whitespace-nowrap">{dateParts.date} {dateParts.time}</td>
+                                  <td className="font-bold text-base-content">{getEventDisplayMessage(evt)}</td>
+                                  <td>
+                                    <LocationLabel location={evt.location} />
+                                  </td>
+                                  <td>
+                                    <span className="badge badge-xs badge-neutral">
+                                      {evt.source || 'target_ops'}
+                                    </span>
+                                  </td>
+                                  <td>
+                                    {evt.occurrences > 1 ? (
+                                      <span className="badge badge-xs badge-primary">x{evt.occurrences}</span>
+                                    ) : '1'}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Empty Search Landing Explainer */}
+        {!loading && !shipment && !error && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+            <div className="card bg-base-100 border border-base-200 p-5 shadow-sm">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-3">
+                <span className="material-symbols-outlined">flight</span>
+              </div>
+              <h3 className="font-black text-sm text-base-content">Air Cargo Radar</h3>
+              <p className="text-xs text-base-content/60 mt-1">Direct API integration with DHL, FedEx, and Middle East air cargo networks.</p>
+            </div>
+
+            <div className="card bg-base-100 border border-base-200 p-5 shadow-sm">
+              <div className="w-10 h-10 rounded-xl bg-success/10 text-success flex items-center justify-center mb-3">
+                <span className="material-symbols-outlined">verified</span>
+              </div>
+              <h3 className="font-black text-sm text-base-content">GCC Customs Gateways</h3>
+              <p className="text-xs text-base-content/60 mt-1">Live tracking of import permits, duty payments, and customs clearance releases.</p>
+            </div>
+
+            <div className="card bg-base-100 border border-base-200 p-5 shadow-sm">
+              <div className="w-10 h-10 rounded-xl bg-info/10 text-info flex items-center justify-center mb-3">
+                <span className="material-symbols-outlined">chat</span>
+              </div>
+              <h3 className="font-black text-sm text-base-content">Meta WhatsApp Alerts</h3>
+              <p className="text-xs text-base-content/60 mt-1">Subscribed recipients receive automated out-for-delivery and delivery alerts.</p>
+            </div>
+
+            <div className="card bg-base-100 border border-base-200 p-5 shadow-sm">
+              <div className="w-10 h-10 rounded-xl bg-secondary/10 text-secondary flex items-center justify-center mb-3">
+                <span className="material-symbols-outlined">draw</span>
+              </div>
+              <h3 className="font-black text-sm text-base-content">Digital POD Signatures</h3>
+              <p className="text-xs text-base-content/60 mt-1">Instant touch-screen driver signature verification and photographic proof of delivery.</p>
+            </div>
+          </div>
         )}
       </main>
 
-      <style>{`
-        .route-labels {
-          display: grid;
-          grid-template-columns: repeat(${PUBLIC_PROGRESS_STEPS.length}, minmax(0, 1fr));
-          gap: 12px;
-          margin: 8px 206px 0;
-          font-size: 12px;
-        }
-
-        @media (max-width: 720px) {
-          .tracking-search {
-            max-width: none;
-          }
-
-          .tracking-route > div:first-child {
-            grid-template-columns: 1fr;
-            gap: 8px;
-          }
-
-          .tracking-route > div:first-child > div:last-child {
-            text-align: left !important;
-          }
-
-          .route-labels {
-            display: none;
-          }
-
-          .detail-row {
-            grid-template-columns: 1fr !important;
-            gap: 5px !important;
-          }
-
-          .event-row {
-            grid-template-columns: 18px 1fr !important;
-          }
-
-          .event-row > div:last-child {
-            grid-column: 2;
-            text-align: left !important;
-          }
-        }
-
-        @media (max-width: 520px) {
-          .tracking-search {
-            display: grid !important;
-            grid-template-columns: 1fr;
-          }
-
-          .tracking-search input {
-            border-right: 1px solid #ccd7e5 !important;
-            border-radius: 8px 8px 0 0 !important;
-          }
-
-          .tracking-search button {
-            border-radius: 0 0 8px 8px !important;
-          }
-        }
-      `}</style>
+      {/* Footer */}
+      <footer className="footer footer-center p-6 bg-base-100 text-base-content/60 text-xs border-t border-base-200 mt-12">
+        <div className="flex flex-wrap items-center justify-center gap-6">
+          <Link to="/track" className="link link-hover font-bold text-primary">Track Parcel</Link>
+          <Link to="/returns" className="link link-hover">Self-Service Returns</Link>
+          <Link to="/privacy" className="link link-hover">Privacy Policy</Link>
+          <Link to="/terms" className="link link-hover">Terms of Service</Link>
+        </div>
+        <p>© 2026 Target Logistics Global Express W.L.L. All Rights Reserved. State of Kuwait.</p>
+      </footer>
     </div>
   );
 };
 
-export default PublicTrackingPage;
+export default PublicTrackingLandingPage;

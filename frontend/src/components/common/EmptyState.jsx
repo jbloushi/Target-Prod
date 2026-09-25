@@ -1,70 +1,36 @@
 import React from 'react';
-import { Box, Typography, Paper } from '@mui/material';
-import { alpha } from '@mui/material/styles';
 
 /**
- * EmptyState - Premium empty state placeholder
- * 
- * @param {string} title - Main message
- * @param {string} description - Detailed helper text
- * @param {ReactNode} icon - Icon component
- * @param {ReactNode} action - Primary CTA button
- * @param {string} image - Optional image URL
+ * EmptyState - DaisyUI v4 + Tailwind CSS component
  */
-const EmptyState = ({
-    title = "No data available",
-    description = "Get started by creating your first item.",
-    icon,
-    action,
-    image
+export const EmptyState = ({
+  title = 'No data available',
+  description = 'Get started by creating your first item.',
+  icon,
+  action,
+  image,
 }) => {
-    return (
-        <Paper
-            variant="outlined"
-            sx={{
-                p: 6,
-                textAlign: 'center',
-                borderRadius: 4,
-                backgroundColor: (theme) => alpha(theme.palette.background.paper, 0.4),
-                borderStyle: 'dashed',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                minHeight: 300,
-                height: '100%'
-            }}
-        >
-            {image ? (
-                <Box component="img" src={image} alt="Empty" sx={{ width: 200, height: 'auto', mb: 3, opacity: 0.8 }} />
-            ) : icon ? (
-                <Box sx={{
-                    p: 3,
-                    borderRadius: '50%',
-                    bgcolor: (theme) => alpha(theme.palette.primary.main, 0.1),
-                    color: 'primary.main',
-                    mb: 3,
-                    display: 'inline-flex'
-                }}>
-                    {React.cloneElement(icon, { sx: { fontSize: 48 } })}
-                </Box>
-            ) : null}
+  return (
+    <div className="card bg-base-100 border border-dashed border-base-300 p-8 sm:p-12 text-center flex flex-col items-center justify-center min-h-[300px]">
+      {image ? (
+        <img src={image} alt="Empty" className="w-48 h-auto mb-4 opacity-80" />
+      ) : icon ? (
+        <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-4 text-3xl">
+          {icon}
+        </div>
+      ) : null}
 
-            <Typography variant="h5" fontWeight="bold" gutterBottom>
-                {title}
-            </Typography>
+      <h3 className="text-lg sm:text-xl font-black text-base-content tracking-tight mb-1">
+        {title}
+      </h3>
 
-            <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 500, mb: 4, mx: 'auto' }}>
-                {description}
-            </Typography>
+      <p className="text-xs sm:text-sm text-base-content/60 max-w-md mx-auto mb-6 leading-relaxed">
+        {description}
+      </p>
 
-            {action && (
-                <Box>
-                    {action}
-                </Box>
-            )}
-        </Paper>
-    );
+      {action && <div>{action}</div>}
+    </div>
+  );
 };
 
 export default EmptyState;

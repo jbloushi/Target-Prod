@@ -1,558 +1,449 @@
 import React, { useEffect, useState } from 'react';
-import {
-    Box, Typography, Chip, Divider, Table, TableBody,
-    TableCell, TableHead, TableRow, Collapse, IconButton,
-    Alert, Button, InputBase, Tooltip
-} from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import DownloadIcon from '@mui/icons-material/Download';
-import KeyIcon from '@mui/icons-material/Key';
-import RefreshIcon from '@mui/icons-material/Refresh';
 import { useSnackbar } from 'notistack';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
-
 import api from '../services/api';
+import PageHeader from '../components/common/PageHeader';
 
-// ─── Design tokens ─────────────────────────────────────────────────────────────
-const DS = {
-    surface:       '#f3f7fb',
-    surfaceLowest: '#ffffff',
-    surfaceLow:    '#ecf1f6',
-    primary:       '#0050d4',
-    onSurface:     '#2a2f32',
-    onSurfaceVar:  '#575c60',
-    outline:       '#73777b',
-    outlineVar:    '#a9aeb1',
+const METHOD_BADGES = {
+  GET: 'badge-success text-white',
+  POST: 'badge-primary text-white',
+  PUT: 'badge-warning text-neutral',
+  DELETE: 'badge-error text-white',
 };
-
-const CARD_SX = {
-    bgcolor: DS.surfaceLowest,
-    borderRadius: '12px',
-    border: `1px solid rgba(169,174,177,0.18)`,
-    boxShadow: '0 1px 6px rgba(42,47,50,0.06)',
-    overflow: 'hidden',
-};
-
-const METHOD_COLORS = {
-    GET:    { bg: '#dcfce7', color: '#15803d' },
-    POST:   { bg: '#dbeafe', color: '#1d4ed8' },
-    PUT:    { bg: '#fef9c3', color: '#a16207' },
-    DELETE: { bg: '#fee2e2', color: '#b91c1c' },
-};
-
-// ─── Sub-components ─────────────────────────────────────────────────────────────
 
 const MethodBadge = ({ method }) => {
-    const style = METHOD_COLORS[method] || METHOD_COLORS.GET;
-    return (
-        <Box component="span" sx={{
-            display: 'inline-block', px: 1.25, py: 0.25,
-            borderRadius: '6px', bgcolor: style.bg, color: style.color,
-            fontSize: 11, fontWeight: 800, letterSpacing: '0.05em',
-            fontFamily: 'monospace', mr: 1.5, flexShrink: 0,
-        }}>
-            {method}
-        </Box>
-    );
+  const badgeClass = METHOD_BADGES[method] || 'badge-neutral';
+  return (
+    <span className={`badge badge-sm font-mono font-black text-[11px] px-2 py-0.5 ${badgeClass}`}>
+      {method}
+    </span>
+  );
 };
 
 const CodeBlock = ({ children }) => (
-    <Box component="pre" sx={{
-        bgcolor: '#0a0e1a', color: '#e2e8f0',
-        p: 2, borderRadius: '8px', fontSize: 12,
-        fontFamily: 'monospace', overflowX: 'auto',
-        lineHeight: 1.7, m: 0,
-    }}>
-        {children}
-    </Box>
+  <pre className="p-3 rounded-lg bg-neutral text-neutral-content font-mono text-xs overflow-x-auto leading-relaxed my-2">
+    <code>{children}</code>
+  </pre>
 );
 
 const FieldTable = ({ fields }) => {
-    const { lang } = useLanguage();
-    return (
-    <Table size="small" sx={{ mb: 2 }}>
-        <TableHead>
-            <TableRow>
-                <TableCell sx={{ fontWeight: 700, fontSize: 11, color: DS.outline, width: '28%' }}>{lang === 'ar' ? 'الحقل' : 'Field'}</TableCell>
-                <TableCell sx={{ fontWeight: 700, fontSize: 11, color: DS.outline, width: '16%' }}>{lang === 'ar' ? 'النوع' : 'Type'}</TableCell>
-                <TableCell sx={{ fontWeight: 700, fontSize: 11, color: DS.outline, width: '16%' }}>{lang === 'ar' ? 'مطلوب' : 'Required'}</TableCell>
-                <TableCell sx={{ fontWeight: 700, fontSize: 11, color: DS.outline }}>{lang === 'ar' ? 'الوصف' : 'Description'}</TableCell>
-            </TableRow>
-        </TableHead>
-        <TableBody>
-            {fields.map(f => (
-                <TableRow key={f.field} hover>
-                    <TableCell sx={{ fontFamily: 'monospace', fontSize: 12, color: DS.primary }}>{f.field}</TableCell>
-                    <TableCell sx={{ fontFamily: 'monospace', fontSize: 11, color: DS.onSurfaceVar }}>{f.type}</TableCell>
-                    <TableCell>{f.required ? <Chip label={lang === 'ar' ? 'مطلوب' : 'required'} size="small" color="error" sx={{ fontSize: 10, height: 18 }} /> : <Chip label={lang === 'ar' ? 'اختياري' : 'optional'} size="small" sx={{ fontSize: 10, height: 18, bgcolor: DS.surfaceLow }} />}</TableCell>
-                    <TableCell sx={{ fontSize: 12, color: DS.onSurfaceVar }}>{f.description}</TableCell>
-                </TableRow>
-            ))}
-        </TableBody>
-    </Table>
-    );
+  const { lang } = useLanguage();
+  return (
+    <div className="overflow-x-auto my-2">
+      <table className="table table-xs table-zebra w-full font-mono">
+        <thead>
+          <tr className="text-base-content/60 font-sans">
+            <th>{lang === 'ar' ? 'الحقل' : 'Field'}</th>
+            <th>{lang === 'ar' ? 'النوع' : 'Type'}</th>
+            <th>{lang === 'ar' ? 'مطلوب' : 'Required'}</th>
+            <th className="font-sans">{lang === 'ar' ? 'الوصف' : 'Description'}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {fields.map((f) => (
+            <tr key={f.field}>
+              <td className="text-primary font-bold">{f.field}</td>
+              <td className="text-base-content/70">{f.type}</td>
+              <td>
+                {f.required ? (
+                  <span className="badge badge-error badge-xs font-bold text-white">required</span>
+                ) : (
+                  <span className="badge badge-ghost badge-xs">optional</span>
+                )}
+              </td>
+              <td className="font-sans text-xs text-base-content/80">{f.description}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 };
 
 const EndpointCard = ({ method, path, title, description, fields, response, errors, note }) => {
-    const [open, setOpen] = useState(false);
-    const { lang } = useLanguage();
-    return (
-        <Box sx={{ ...CARD_SX, mb: 2 }}>
-            <Box
-                onClick={() => setOpen(o => !o)}
-                sx={{ display: 'flex', alignItems: 'center', p: 2, cursor: 'pointer', '&:hover': { bgcolor: DS.surface } }}
-            >
-                <MethodBadge method={method} />
-                <Typography sx={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: DS.onSurface, flex: 1 }}>
-                    {path}
-                </Typography>
-                <Typography sx={{ fontSize: 12, color: DS.onSurfaceVar, mr: 2, display: { xs: 'none', sm: 'block' } }}>
-                    {title}
-                </Typography>
-                <IconButton size="small">{open ? <ExpandLessIcon /> : <ExpandMoreIcon />}</IconButton>
-            </Box>
-            <Collapse in={open}>
-                <Divider />
-                <Box sx={{ p: 2.5 }}>
-                    {note && <Alert severity="info" sx={{ mb: 2, fontSize: 12 }}>{note}</Alert>}
-                    {description && <Typography sx={{ fontSize: 13, color: DS.onSurfaceVar, mb: 2 }}>{description}</Typography>}
-                    {fields && fields.length > 0 && (
-                        <>
-                            <Typography sx={{ fontSize: 11, fontWeight: 800, color: DS.outline, letterSpacing: '0.1em', textTransform: 'uppercase', mb: 1 }}>
-                                {lang === 'ar' ? 'حقول الطلب' : 'Request Fields'}
-                            </Typography>
-                            <FieldTable fields={fields} />
-                        </>
-                    )}
-                    {response && (
-                        <>
-                            <Typography sx={{ fontSize: 11, fontWeight: 800, color: DS.outline, letterSpacing: '0.1em', textTransform: 'uppercase', mb: 1 }}>
-                                {lang === 'ar' ? 'مثال الاستجابة' : 'Response Example'}
-                            </Typography>
-                            <CodeBlock>{response}</CodeBlock>
-                        </>
-                    )}
-                    {errors && errors.length > 0 && (
-                        <Box sx={{ mt: 2 }}>
-                            <Typography sx={{ fontSize: 11, fontWeight: 800, color: DS.outline, letterSpacing: '0.1em', textTransform: 'uppercase', mb: 1 }}>
-                                {lang === 'ar' ? 'استجابات الخطأ' : 'Error Responses'}
-                            </Typography>
-                            {errors.map(e => (
-                                <Box key={e.code} sx={{ display: 'flex', gap: 1.5, mb: 0.5 }}>
-                                    <Chip label={e.code} size="small" color="error" sx={{ fontSize: 10, height: 18, fontFamily: 'monospace' }} />
-                                    <Typography sx={{ fontSize: 12, color: DS.onSurfaceVar }}>{e.msg}</Typography>
-                                </Box>
-                            ))}
-                        </Box>
-                    )}
-                </Box>
-            </Collapse>
-        </Box>
-    );
+  const [open, setOpen] = useState(false);
+  const { lang } = useLanguage();
+
+  return (
+    <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden mb-3">
+      <div
+        onClick={() => setOpen(!open)}
+        className="p-4 flex items-center justify-between cursor-pointer hover:bg-base-200/50 transition-colors gap-3"
+      >
+        <div className="flex items-center gap-3 flex-wrap">
+          <MethodBadge method={method} />
+          <code className="font-mono text-xs sm:text-sm font-bold text-base-content">{path}</code>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-base-content/60 hidden sm:inline">{title}</span>
+          <span className="material-symbols-outlined text-sm text-base-content/40 transition-transform duration-200">
+            {open ? 'expand_less' : 'expand_more'}
+          </span>
+        </div>
+      </div>
+
+      {open && (
+        <div className="p-4 sm:p-5 border-t border-base-200 space-y-4 bg-base-100">
+          {note && (
+            <div className="alert alert-info text-xs py-2 px-3 shadow-none">
+              <span className="material-symbols-outlined text-base">info</span>
+              <span>{note}</span>
+            </div>
+          )}
+
+          {description && <p className="text-xs text-base-content/70 leading-relaxed">{description}</p>}
+
+          {fields && fields.length > 0 && (
+            <div>
+              <div className="text-[11px] font-bold text-base-content/60 uppercase tracking-wider mb-1">
+                {lang === 'ar' ? 'حقول الطلب' : 'Request Payload Parameters'}
+              </div>
+              <FieldTable fields={fields} />
+            </div>
+          )}
+
+          {response && (
+            <div>
+              <div className="text-[11px] font-bold text-base-content/60 uppercase tracking-wider mb-1">
+                {lang === 'ar' ? 'نموذج الاستجابة' : 'Response Example (JSON)'}
+              </div>
+              <CodeBlock>{response}</CodeBlock>
+            </div>
+          )}
+
+          {errors && errors.length > 0 && (
+            <div>
+              <div className="text-[11px] font-bold text-base-content/60 uppercase tracking-wider mb-1.5">
+                {lang === 'ar' ? 'استجابات الأخطاء' : 'HTTP Error Responses'}
+              </div>
+              <div className="space-y-1">
+                {errors.map((e) => (
+                  <div key={e.code} className="flex items-center gap-2 text-xs">
+                    <span className="badge badge-error badge-xs font-mono font-bold text-white">{e.code}</span>
+                    <span className="text-base-content/70">{e.msg}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 };
 
-const SectionHeader = ({ id, title, subtitle }) => {
-    const { lang } = useLanguage();
-    return (
-    <Box id={id} sx={{ mb: 2, mt: 4, scrollMarginTop: 100 }}>
-        <Typography sx={{ fontSize: 18, fontWeight: 800, color: DS.onSurface, fontFamily: "'Manrope', sans-serif" }}>
-            {title}
-        </Typography>
-        {subtitle && <Typography sx={{ fontSize: 13, color: DS.onSurfaceVar, mt: 0.5 }}>{subtitle}</Typography>}
-        <Divider sx={{ mt: 1.5 }} />
-    </Box>
-    );
-};
-
-// ─── API Key Panel ──────────────────────────────────────────────────────────────
+const SectionHeader = ({ id, title, subtitle }) => (
+  <div id={id} className="pt-6 pb-2 scroll-mt-24 space-y-1">
+    <h3 className="text-xl font-black text-base-content tracking-tight">{title}</h3>
+    {subtitle && <p className="text-xs text-base-content/60">{subtitle}</p>}
+  </div>
+);
 
 const ApiKeyPanel = () => {
-    const { user } = useAuth();
-    const { enqueueSnackbar } = useSnackbar();
-    const { lang, isRTL } = useLanguage();
-    const [apiKey, setApiKey] = useState(user?.apiKey || '');
-    const [loading, setLoading] = useState(false);
-    const [show, setShow] = useState(false);
+  const { user } = useAuth();
+  const { enqueueSnackbar } = useSnackbar();
+  const { lang } = useLanguage();
+  const [apiKey, setApiKey] = useState(user?.apiKey || '');
+  const [loading, setLoading] = useState(false);
+  const [show, setShow] = useState(false);
 
-    useEffect(() => {
-        setApiKey(user?.apiKey || '');
-    }, [user?.apiKey]);
+  useEffect(() => {
+    setApiKey(user?.apiKey || '');
+  }, [user?.apiKey]);
 
-    const generate = async () => {
-        setLoading(true);
-        try {
-            const res = await api.post('/auth/api-key');
-            setApiKey(res.data.apiKey);
-            enqueueSnackbar(lang === 'ar' ? 'تم إنشاء مفتاح API جديد!' : 'New API key generated!', { variant: 'success' });
-        } catch {
-            enqueueSnackbar(lang === 'ar' ? 'فشل إنشاء المفتاح' : 'Failed to generate key', { variant: 'error' });
-        } finally {
-            setLoading(false);
-        }
-    };
+  const generate = async () => {
+    setLoading(true);
+    try {
+      const res = await api.post('/auth/api-key');
+      setApiKey(res.data.apiKey);
+      enqueueSnackbar(lang === 'ar' ? 'تم إنشاء مفتاح API جديد!' : 'New API key generated!', { variant: 'success' });
+    } catch {
+      enqueueSnackbar(lang === 'ar' ? 'فشل إنشاء المفتاح' : 'Failed to generate key', { variant: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const copy = () => {
-        if (!apiKey) return;
-        navigator.clipboard.writeText(apiKey);
-        enqueueSnackbar(lang === 'ar' ? 'تم نسخ مفتاح API!' : 'API key copied!', { variant: 'success' });
-    };
+  const copy = () => {
+    if (!apiKey) return;
+    navigator.clipboard.writeText(apiKey);
+    enqueueSnackbar(lang === 'ar' ? 'تم نسخ مفتاح API!' : 'API key copied!', { variant: 'success' });
+  };
 
-    const masked = apiKey
-        ? (show ? apiKey : apiKey.substring(0, 8) + '...')
-        : (user?.apiKeyLast4
-            ? `Stored key ending with ....${user.apiKeyLast4} - regenerate to view full key`
-            : 'No key generated yet - click Generate');
+  const masked = apiKey
+    ? show ? apiKey : `${apiKey.substring(0, 8)}...`
+    : (user?.apiKeyLast4
+        ? `Stored key ending with ....${user.apiKeyLast4}`
+        : 'No key generated yet - click Roll Key');
 
-    return (
-        <Box sx={{ ...CARD_SX, p: 3, mb: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
-                <KeyIcon sx={{ color: DS.primary, fontSize: 20 }} />
-                <Typography sx={{ fontSize: 14, fontWeight: 800, color: DS.onSurface, fontFamily: "'Manrope', sans-serif" }}>
-                    {lang === 'ar' ? 'مفتاح API الخاص بك' : 'Your API Key'}
-                </Typography>
-            </Box>
-            <Alert severity="warning" sx={{ mb: 2, fontSize: 12 }}>
-                {lang === 'ar' ? 'لا تعرض هذا المفتاح في JavaScript الواجهة الأمامية أبدًا. قم بتخزينه في متغيرات البيئة من جانب الخادم فقط.' : 'Never expose this key in frontend JavaScript. Store it in server-side environment variables only.'}
-            </Alert>
-            <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
-                <Box sx={{
-                    flex: 1, minWidth: 200, bgcolor: DS.surfaceLow,
-                    borderRadius: '8px', px: 2, py: 1.25, border: `1px solid ${DS.outlineVar}`,
-                    display: 'flex', alignItems: 'center', gap: 1,
-                }}>
-                    <InputBase
-                        value={masked}
-                        readOnly
-                        sx={{ flex: 1, fontFamily: 'monospace', fontSize: 12, color: DS.onSurface }}
-                    />
-                    <Tooltip title={show ? (lang === 'ar' ? 'إخفاء' : 'Hide') : (lang === 'ar' ? 'إظهار' : 'Show')}>
-                        <span>
-                        <IconButton size="small" onClick={() => setShow(s => !s)} disabled={!apiKey}>
-                            <Typography sx={{ fontSize: 10 }}>{show ? '🙈' : '👁'}</Typography>
-                        </IconButton>
-                        </span>
-                    </Tooltip>
-                </Box>
-                <Button
-                    variant="outlined" size="small" startIcon={<ContentCopyIcon />}
-                    onClick={copy} disabled={!apiKey}
-                    sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 700, fontSize: 12 }}
-                >
-                    {lang === 'ar' ? 'نسخ' : 'Copy'}
-                </Button>
-                <Button
-                    variant="contained" size="small" startIcon={<RefreshIcon />}
-                    onClick={generate} disabled={loading}
-                    sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 700, fontSize: 12, bgcolor: DS.primary }}
-                >
-                    {apiKey ? (lang === 'ar' ? 'إعادة إنشاء' : 'Regenerate') : (lang === 'ar' ? 'إنشاء مفتاح' : 'Generate Key')}
-                </Button>
-            </Box>
-            <Typography sx={{ fontSize: 11, color: DS.outline, mt: 1.5 }}>
-                {lang === 'ar' ? 'التنسيق:' : 'Format:'} <code style={{ fontFamily: 'monospace', background: DS.surfaceLow, padding: '1px 5px', borderRadius: 4 }}>userId.randomBytes</code>
-                &nbsp;{lang === 'ar' ? '— يُستخدم كترويسة' : '— Used as'} <code style={{ fontFamily: 'monospace', background: DS.surfaceLow, padding: '1px 5px', borderRadius: 4 }}>x-api-key</code> {lang === 'ar' ? 'في كل طلب.' : 'header in every request.'}
-            </Typography>
-        </Box>
-    );
+  return (
+    <div className="card bg-base-100 border border-base-200 shadow-sm p-6 space-y-4">
+      <div className="flex items-center gap-2">
+        <span className="material-symbols-outlined text-primary text-xl">key</span>
+        <h4 className="font-black text-sm text-base-content uppercase tracking-wider">
+          {lang === 'ar' ? 'مفتاح API الخاص بحسابك' : 'Your Live API Secret Key'}
+        </h4>
+      </div>
+
+      <div className="alert alert-warning text-xs py-2.5 px-3">
+        <span className="material-symbols-outlined text-base">warning</span>
+        <span>Never expose this key in client-side JavaScript. Store strictly in backend environment variables.</span>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-2">
+        <div className="relative flex-1">
+          <input
+            type="text"
+            readOnly
+            value={masked}
+            className="input input-bordered w-full font-mono text-xs pr-10 bg-base-200/50"
+          />
+          <button
+            type="button"
+            onClick={() => setShow(!show)}
+            disabled={!apiKey}
+            className="btn btn-ghost btn-circle btn-xs absolute right-2 top-1/2 -translate-y-1/2 text-base-content/50"
+          >
+            <span className="material-symbols-outlined text-sm">{show ? 'visibility_off' : 'visibility'}</span>
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={copy}
+          disabled={!apiKey}
+          className="btn btn-outline border-base-300 btn-sm font-bold text-xs gap-1"
+        >
+          <span className="material-symbols-outlined text-sm">content_copy</span>
+          <span>Copy</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={generate}
+          disabled={loading}
+          className="btn btn-primary btn-sm font-bold text-xs gap-1 shadow-md shadow-primary/20"
+        >
+          <span className="material-symbols-outlined text-sm">refresh</span>
+          <span>{loading ? 'Rolling...' : 'Roll Key'}</span>
+        </button>
+      </div>
+
+      <p className="text-[11px] text-base-content/50">
+        Transmit as <code className="bg-base-200 px-1 py-0.5 rounded font-mono font-bold">x-api-key: [YOUR_KEY]</code> header in every HTTP request.
+      </p>
+    </div>
+  );
 };
 
-// ─── Endpoint data ──────────────────────────────────────────────────────────────
-
-const ADDRESS_FIELDS = [
-    { field: 'company', type: 'string', required: true, description: 'Company or entity name' },
-    { field: 'contactPerson', type: 'string', required: true, description: 'Full name of contact' },
-    { field: 'phone', type: 'string', required: true, description: 'Phone number with country code digits' },
-    { field: 'phoneCountryCode', type: 'string', required: true, description: 'e.g. "+965"' },
-    { field: 'email', type: 'string', required: true, description: 'Contact email address' },
-    { field: 'countryCode', type: 'string', required: true, description: 'ISO 2-letter country code, e.g. "KW"' },
-    { field: 'city', type: 'string', required: true, description: 'City name' },
-    { field: 'postalCode', type: 'string', required: true, description: 'Postal / ZIP code' },
-    { field: 'streetLines', type: 'string[]', required: true, description: 'Array of address lines' },
-    { field: 'state', type: 'string', required: false, description: 'State or province' },
-    { field: 'taxId', type: 'string', required: false, description: 'Tax identification number' },
-    { field: 'eoriNumber', type: 'string', required: false, description: 'EORI number for customs' },
-    { field: 'vatNumber', type: 'string', required: false, description: 'VAT registration number' },
-];
-
 const SECTIONS = [
-    { id: 'auth', label: 'Authentication', labelAr: 'المصادقة' },
-    { id: 'shipments', label: 'Shipments', labelAr: 'الشحنات' },
-    { id: 'quotes', label: 'Quotes', labelAr: 'عروض الأسعار' },
-    { id: 'addresses', label: 'Address Book', labelAr: 'دفتر العناوين' },
-    { id: 'pickups', label: 'Pickups', labelAr: 'الاستلام' },
-    { id: 'tracking', label: 'Tracking', labelAr: 'التتبع' },
-    { id: 'public', label: 'Public', labelAr: 'عام' },
-    { id: 'statuses', label: 'Status Reference', labelAr: 'مرجع الحالات' },
+  { id: 'auth', label: 'Authentication', labelAr: 'المصادقة' },
+  { id: 'shipments', label: 'Shipments', labelAr: 'الشحنات' },
+  { id: 'quotes', label: 'Quotes', labelAr: 'عروض الأسعار' },
+  { id: 'addresses', label: 'Address Book', labelAr: 'دفتر العناوين' },
+  { id: 'pickups', label: 'Pickups', labelAr: 'الاستلام' },
+  { id: 'tracking', label: 'Tracking', labelAr: 'التتبع' },
+  { id: 'public', label: 'Public Tracking', labelAr: 'التتبع العام' },
+  { id: 'statuses', label: 'Status Reference', labelAr: 'مرجع الحالات' },
 ];
 
-// ─── Main Page ──────────────────────────────────────────────────────────────────
+export const ApiDocsPage = () => {
+  const { lang } = useLanguage();
 
-const ApiDocsPage = () => {
-    const { lang, isRTL } = useLanguage();
-    const scrollTo = (id) => {
-        document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    };
+  const scrollTo = (id) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
-    return (
-        <Box sx={{ bgcolor: DS.surface, minHeight: '100vh' }} dir={isRTL ? 'rtl' : 'ltr'}>
-            <Box sx={{ maxWidth: 1100, mx: 'auto', px: { xs: 2, md: 4 }, py: 3 }}>
+  return (
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 font-sans">
+      <PageHeader
+        title={lang === 'ar' ? 'واجهة برمجة التطبيقات للمطورين' : 'Developer REST API & Integrations'}
+        subtitle="Complete technical reference for programmatic consignment dispatch, live carrier telemetry, and customs manifests."
+      >
+        <a
+          href="/postman_collection.json"
+          download="target-logistics-api.postman_collection.json"
+          className="btn btn-outline border-base-300 btn-sm font-bold text-xs gap-1.5"
+        >
+          <span className="material-symbols-outlined text-sm">download</span>
+          <span>Postman Collection</span>
+        </a>
+      </PageHeader>
 
-                {/* Page Header */}
-                <Box sx={{ mb: 4 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
-                        <Box>
-                            <Typography sx={{ fontSize: 26, fontWeight: 900, color: DS.onSurface, fontFamily: "'Manrope', sans-serif", letterSpacing: '-0.03em' }}>
-                                {lang === 'ar' ? 'واجهة برمجة التطبيقات للمطورين' : 'Developer API'}
-                            </Typography>
-                            <Typography sx={{ fontSize: 14, color: DS.onSurfaceVar, mt: 0.5 }}>
-                                {lang === 'ar' ? 'قم بدمج إنشاء الشحنات وتتبعها وإدارة الاستلام في أنظمتك.' : 'Integrate shipment creation, tracking, and pickup management into your systems.'}
-                            </Typography>
-                        </Box>
-                        <Button
-                            variant="outlined"
-                            size="small"
-                            startIcon={<DownloadIcon />}
-                            href="/postman_collection.json"
-                            download="target-logistics-api.postman_collection.json"
-                            sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 700, fontSize: 12 }}
-                        >
-                            {lang === 'ar' ? 'تحميل مجموعة Postman' : 'Download Postman Collection'}
-                        </Button>
-                    </Box>
-                </Box>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Sticky Left Nav */}
+        <div className="hidden lg:block lg:col-span-3 sticky top-24">
+          <div className="card bg-base-100 border border-base-200 shadow-sm p-3">
+            <div className="text-[11px] font-black text-base-content/50 uppercase tracking-widest px-3 py-2">
+              API Topics
+            </div>
+            <ul className="menu menu-xs w-full gap-0.5 p-0">
+              {SECTIONS.map((s) => (
+                <li key={s.id}>
+                  <button
+                    type="button"
+                    onClick={() => scrollTo(s.id)}
+                    className="font-bold text-xs text-base-content/70 hover:text-primary py-2 px-3 rounded-lg"
+                  >
+                    {lang === 'ar' && s.labelAr ? s.labelAr : s.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
 
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '200px 1fr' }, gap: 4, alignItems: 'start' }}>
+        {/* Right Content */}
+        <div className="lg:col-span-9 space-y-6">
+          <ApiKeyPanel />
 
-                    {/* Left Nav */}
-                    <Box sx={{ position: 'sticky', top: 88, display: { xs: 'none', lg: 'block' } }}>
-                        <Box sx={{ ...CARD_SX, p: 2 }}>
-                            <Typography sx={{ fontSize: 10, fontWeight: 800, color: DS.outline, letterSpacing: '0.12em', textTransform: 'uppercase', mb: 1.5 }}>
-                                {lang === 'ar' ? 'المحتويات' : 'Contents'}
-                            </Typography>
-                            {SECTIONS.map(s => (
-                                <Box
-                                    key={s.id}
-                                    onClick={() => scrollTo(s.id)}
-                                    sx={{
-                                        py: 0.75, px: 1, borderRadius: '6px', cursor: 'pointer', fontSize: 13,
-                                        fontWeight: 600, color: DS.onSurfaceVar, fontFamily: "'Manrope', sans-serif",
-                                        '&:hover': { bgcolor: DS.surfaceLow, color: DS.primary },
-                                    }}
-                                >
-                                    {lang === 'ar' && s.labelAr ? s.labelAr : s.label}
-                                </Box>
-                            ))}
-                        </Box>
-                    </Box>
+          {/* Section: Authentication */}
+          <SectionHeader
+            id="auth"
+            title={lang === 'ar' ? 'المصادقة وحدود الطلبات' : 'Authentication & Rate Limits'}
+            subtitle="Secure x-api-key HTTP header authorization."
+          />
+          <div className="card bg-base-100 border border-base-200 shadow-sm p-5 space-y-3 text-xs leading-relaxed">
+            <p className="text-base-content/70">
+              All REST endpoints require an active API key transmitted as an HTTP header:
+            </p>
+            <CodeBlock>x-api-key: usr_9a823f...live_8834</CodeBlock>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+              <div className="p-3 bg-base-200/50 rounded-lg">
+                <span className="font-bold text-base-content block">Production Base URL</span>
+                <code className="text-primary font-mono text-[11px]">https://3pl-api.mawthook.io/api</code>
+              </div>
+              <div className="p-3 bg-base-200/50 rounded-lg">
+                <span className="font-bold text-base-content block">Rate Limiting</span>
+                <span className="text-base-content/70 text-[11px]">30 requests/minute per key (HTTP 429 upon excess)</span>
+              </div>
+            </div>
+          </div>
 
-                    {/* Right Content */}
-                    <Box>
+          {/* Section: Shipments */}
+          <SectionHeader id="shipments" title={lang === 'ar' ? 'إدارة الشحنات' : 'Shipment Operations'} />
+          <EndpointCard
+            method="POST"
+            path="/v1/shipments"
+            title="Create Carrier Shipment"
+            description="Creates an authorized carrier shipment (DHL, LogesTechs, OTE). Automatically books airway bill, generates commercial invoices, and reserves carrier barcode."
+            note="Verified for GCC & worldwide export routes. Returns live waybill tracking number."
+            fields={[
+              { field: 'sender', type: 'object', required: true, description: 'Origin contact, PACI, address' },
+              { field: 'receiver', type: 'object', required: true, description: 'Destination address' },
+              { field: 'parcels', type: 'object[]', required: true, description: 'weight(kg), length, width, height(cm)' },
+              { field: 'items', type: 'object[]', required: true, description: 'Commercial customs line items with HS Codes' },
+              { field: 'carrierCode', type: 'string', required: false, description: 'Carrier code (e.g. DHL, DGR, OTE)' },
+              { field: 'serviceCode', type: 'string', required: false, description: 'Service tier returned from /v1/quotes' },
+              { field: 'currency', type: 'string', required: false, description: 'Default: KWD' },
+            ]}
+            response={`{\n  "success": true,\n  "data": {\n    "trackingNumber": "2042595203",\n    "status": "booked",\n    "carrier": "DHL",\n    "serviceCode": "P",\n    "labelUrl": "https://api.target-kw.com/labels/2042595203.pdf"\n  }\n}`}
+            errors={[
+              { code: 400, msg: 'Missing required fields or invalid weight parameters' },
+              { code: 403, msg: 'Carrier service not authorized for this account' },
+            ]}
+          />
 
-                        {/* API Key Panel */}
-                        <ApiKeyPanel />
+          <EndpointCard
+            method="PUT"
+            path="/v1/shipments/:trackingNumber"
+            title="Update Consignment"
+            description="Modify shipment addresses or parcels before carrier physical collection."
+            fields={[
+              { field: 'receiver', type: 'object', required: false, description: 'Updated recipient address' },
+              { field: 'parcels', type: 'object[]', required: false, description: 'Updated weights and dimensions' },
+            ]}
+            response={`{\n  "success": true,\n  "data": {\n    "trackingNumber": "TRK-KW-100234",\n    "status": "booked",\n    "updatedAt": "2026-04-10T12:00:00Z"\n  }\n}`}
+            errors={[
+              { code: 400, msg: 'Cannot edit shipment after driver pickup' },
+              { code: 404, msg: 'Shipment not found' },
+            ]}
+          />
 
-                        {/* Auth */}
-                        <SectionHeader id="auth" title={lang === "ar" ? "المصادقة" : "Authentication"} subtitle={lang === "ar" ? "تتطلب جميع نقاط الاتصال باستثناء التتبع العام مفتاح API الخاص بك." : "All endpoints except Public Tracking require your API key."} />
-                        <Box sx={{ ...CARD_SX, p: 2.5, mb: 3 }}>
-                            <Typography sx={{ fontSize: 13, color: DS.onSurfaceVar, mb: 1.5 }}>
-                                {lang === "ar" ? "قم بتضمين مفتاح API الخاص بك في كل طلب كترويسة HTTP:" : "Include your API key in every request as an HTTP header:"}
-                            </Typography>
-                            <CodeBlock>{`x-api-key: YOUR_API_KEY`}</CodeBlock>
-                            <Divider sx={{ my: 2 }} />
-                            <Typography sx={{ fontSize: 12, color: DS.onSurfaceVar }}>
-                                <strong>{lang === "ar" ? "رابط الأساس (الإنتاج):" : "Base URL (production):"}</strong> <code style={{ fontFamily: 'monospace', background: DS.surfaceLow, padding: '2px 6px', borderRadius: 4 }}>https://3pl-api.mawthook.io/api</code><br />
-                                <strong>{lang === "ar" ? "حد المعدل:" : "Rate limit:"}</strong> {lang === "ar" ? "30 طلب/دقيقة لكل مفتاح. التجاوز يعيد HTTP 429." : "30 requests/minute per key. Exceeding returns HTTP 429."}
-                            </Typography>
-                            <Alert severity="info" sx={{ mt: 2, fontSize: 12 }}>
-                                {lang === "ar" ? "يجب أن تقوم تكاملات شركات الشحن بطلب عرض سعر أولاً، ثم إنشاء الشحنة باستخدام <code>serviceCode</code> المرتجع. يمكن لتكاملات الوضع اليدوي إنشاء شحنات مباشرة بدون عرض سعر وبدون حجز من شركة الشحن." : "Carrier-backed integrations should quote first, then create the shipment using the returned <code>serviceCode</code>. Manual-mode integrations can create shipments directly with no quote and no carrier booking."}
-                            </Alert>
-                        </Box>
+          {/* Section: Quotes */}
+          <SectionHeader
+            id="quotes"
+            title={lang === 'ar' ? 'عروض الأسعار الحية' : 'Live Carrier Rate Quotes'}
+            subtitle="Compute live airfreight tariffs across carriers."
+          />
+          <EndpointCard
+            method="POST"
+            path="/v1/quotes"
+            title="Get Multi-Carrier Quote"
+            description="Fetches live rate comparisons between DHL Express, LogesTechs GCC, and OTE Overland."
+            fields={[
+              { field: 'sender', type: 'object', required: true, description: 'Origin city and countryCode' },
+              { field: 'receiver', type: 'object', required: true, description: 'Destination city and countryCode' },
+              { field: 'parcels', type: 'object[]', required: true, description: 'Weight and dimensions' },
+            ]}
+            response={`{\n  "success": true,\n  "data": [\n    {\n      "carrier": "DHL",\n      "serviceName": "EXPRESS WORLDWIDE",\n      "serviceCode": "P",\n      "totalPrice": 18.500,\n      "currency": "KWD"\n    }\n  ]\n}`}
+          />
 
-                        {/* Shipments */}
-                        <SectionHeader id="shipments" title={lang === "ar" ? "الشحنات" : "Shipments"} />
-                        <EndpointCard
-                            method="POST" path="/v1/shipments" title="Create Carrier Shipment"
-                            description="Creates a carrier-backed shipment for the API key owner. Best practice is to quote first, then create the shipment using the returned serviceCode."
-                            note="Live-verified for a KW → AE route using DGR / P."
-                            fields={[
-                                { field: 'sender', type: 'object', required: true, description: 'Origin address — see Address fields below' },
-                                { field: 'receiver', type: 'object', required: true, description: 'Destination address' },
-                                { field: 'parcels', type: 'object[]', required: true, description: 'weight(kg), length, width, height (cm)' },
-                                { field: 'items', type: 'object[]', required: true, description: 'description, quantity, unitValue, currency, countryOfOrigin, hsCode for customs-declarable carrier shipments' },
-                                { field: 'carrierCode', type: 'string', required: false, description: 'Use the quoted carrier for the selected route' },
-                                { field: 'serviceCode', type: 'string', required: false, description: 'Use the serviceCode returned from /v1/quotes' },
-                                { field: 'shipmentDate', type: 'string', required: false, description: 'ISO 8601 date e.g. "2026-04-10"' },
-                                { field: 'currency', type: 'string', required: false, description: 'Default: "KWD"' },
-                            ]}
-                            response={`{\n  "success": true,\n  "data": {\n    "trackingNumber": "2042595203",\n    "status": "booked",\n    "carrier": "DGR",\n    "serviceCode": "P",\n    "labelUrl": null,\n    "invoiceUrl": null\n  }\n}`}
-                            errors={[{ code: 400, msg: 'Validation failed - missing fields or unsupported route/service' }, { code: 403, msg: 'Requested carrier or service is not allowed for this API key' }, { code: 500, msg: 'Internal server error' }]}
-                        />
-                        <EndpointCard
-                            method="POST" path="/v1/shipments" title="Create Manual Shipment"
-                            description="Creates an internal manual shipment draft with no carrier quote and no carrier booking. Works only when the API user is assigned to Manual Shipment mode."
-                            note="Live-verified. Response returns carrier MANUAL, serviceCode null, and draft status."
-                            fields={[
-                                { field: 'sender', type: 'object', required: true, description: 'Origin address — see Address fields below' },
-                                { field: 'receiver', type: 'object', required: true, description: 'Destination address' },
-                                { field: 'parcels', type: 'object[]', required: true, description: 'weight(kg), length, width, height (cm)' },
-                                { field: 'items', type: 'object[]', required: true, description: 'Internal/manual contents. hsCode is not required for a pure manual draft.' },
-                                { field: 'reference', type: 'string', required: false, description: 'Your internal order reference' },
-                                { field: 'remarks', type: 'string', required: false, description: 'Internal handling note' },
-                            ]}
-                            response={`{\n  "success": true,\n  "data": {\n    "trackingNumber": "MAN-OYXH39LR",\n    "carrier": "MANUAL",\n    "serviceCode": null,\n    "status": "draft",\n    "price": "0",\n    "currency": "KWD"\n  }\n}`}
-                            errors={[{ code: 400, msg: 'Validation failed - missing required fields' }, { code: 403, msg: 'API key is not assigned to Manual Shipment mode' }]}
-                        />
-                        <EndpointCard
-                            method="PUT" path="/v1/shipments/:trackingNumber" title="Update Shipment"
-                            description="Update shipment details. Allowed while status is draft, pending, booked, exception, or ready_for_pickup."
-                            fields={[
-                                { field: 'sender', type: 'object', required: false, description: 'Updated origin address' },
-                                { field: 'receiver', type: 'object', required: false, description: 'Updated destination' },
-                                { field: 'parcels', type: 'object[]', required: false, description: 'Updated parcels' },
-                                { field: 'items', type: 'object[]', required: false, description: 'Updated contents' },
-                                { field: 'reference', type: 'string', required: false, description: 'Your internal order reference' },
-                                { field: 'remarks', type: 'string', required: false, description: 'Special handling notes' },
-                            ]}
-                            response={`{\n  "success": true,\n  "data": {\n    "trackingNumber": "DGR-AB12CD34",\n    "status": "booked",\n    "price": 5.250,\n    "currency": "KWD",\n    "updatedAt": "2026-04-10T08:30:00.000Z"\n  }\n}`}
-                            errors={[{ code: 400, msg: 'Cannot update in current status' }, { code: 404, msg: 'Shipment not found' }]}
-                        />
+          {/* Section: Tracking */}
+          <SectionHeader id="tracking" title={lang === 'ar' ? 'تتبع الشحنات' : 'Consignment Tracking Telemetry'} />
+          <EndpointCard
+            method="GET"
+            path="/v1/tracking/:trackingNumber"
+            title="Authenticated Telemetry Feed"
+            description="Complete consolidated timeline of airline flight radar, optical scans, customs holds, and driver signatures."
+            response={`{\n  "success": true,\n  "data": {\n    "trackingNumber": "TRK-KW-TRANSIT-005",\n    "status": "in_transit",\n    "carrier": "DHL",\n    "events": [\n      { "status": "picked_up", "location": "Kuwait City", "timestamp": "2026-04-10T09:00:00Z" }\n    ]\n  }\n}`}
+          />
 
-                        {/* Quotes */}
-                        <SectionHeader id="quotes" title={lang === "ar" ? "عروض الأسعار" : "Quotes"} subtitle={lang === "ar" ? "احصل على أسعار حية قبل إنشاء شحنة مدعومة من شركة الشحن." : "Get live rates before creating a carrier-backed shipment."} />
-                        <EndpointCard
-                            method="POST" path="/v1/quotes" title="Get Rate Quote"
-                            description="Fetch live shipping rates before creating a carrier-backed shipment. Verified live for a KW → AE route that returned DGR / P."
-                            note="Best practice: quote first, then create the shipment using the returned serviceCode. Do not assume a service like P works for every route."
-                            fields={[
-                                { field: 'sender', type: 'object', required: true, description: 'Origin address (countryCode + city minimum)' },
-                                { field: 'receiver', type: 'object', required: true, description: 'Destination address' },
-                                { field: 'parcels', type: 'object[]', required: true, description: 'weight, length, width, height' },
-                                { field: 'items', type: 'object[]', required: true, description: 'Commodity details, including hsCode for customs-declarable carrier quotes' },
-                            ]}
-                            response={`{\n  "success": true,\n  "data": [\n    {\n      "serviceName": "EXPRESS WORLDWIDE",\n      "serviceCode": "P",\n      "carrier": "DGR",\n      "totalPrice": 18.576,\n      "currency": "KWD"\n    }\n  ]\n}`}
-                            errors={[{ code: 400, msg: 'Requested service is not available for this shipment route/account' }, { code: 403, msg: 'Requested carrier or service is not allowed for this API key' }, { code: 500, msg: 'Carrier rate fetch failed' }]}
-                        />
+          {/* Section: Public */}
+          <SectionHeader id="public" title={lang === 'ar' ? 'واجهة التتبع العام' : 'Public Unauthenticated Endpoint'} />
+          <EndpointCard
+            method="GET"
+            path="/public/shipments/:trackingNumber"
+            title="Public Order Tracking"
+            description="Safe for customer-facing tracking apps and portals without requiring API key authorization."
+            response={`{\n  "success": true,\n  "data": {\n    "trackingNumber": "TRK-KW-TRANSIT-005",\n    "status": "in_transit",\n    "currentLocation": "Kuwait Airport Cargo Terminal"\n  }\n}`}
+          />
 
-                        {/* Address Book */}
-                        <SectionHeader id="addresses" title={lang === "ar" ? "دفتر العناوين" : "Address Book"} subtitle={lang === "ar" ? "حفظ وإعادة استخدام عناوين المرسل/المستلم." : "Save and reuse sender/receiver addresses."} />
-                        <EndpointCard
-                            method="GET" path="/v1/addresses" title="List Addresses"
-                            description="Returns all addresses saved in your account."
-                            response={`{\n  "success": true,\n  "data": [\n    {\n      "id": "addr_01",\n      "label": "Main Warehouse",\n      "company": "My Co.",\n      "city": "Kuwait City",\n      "countryCode": "KW"\n    }\n  ]\n}`}
-                        />
-                        <EndpointCard
-                            method="POST" path="/v1/addresses" title="Add Address"
-                            fields={ADDRESS_FIELDS.filter(f => ['label','company','contactPerson','phone','email','streetLines','city','postalCode','countryCode','state','taxId','vatNumber','eoriNumber'].includes(f.field))}
-                            response={`{\n  "success": true,\n  "data": { "id": "addr_02", "label": "Branch Office", "..." : "..." }\n}`}
-                            errors={[{ code: 400, msg: 'Failed to add address' }]}
-                        />
-                        <EndpointCard
-                            method="PUT" path="/v1/addresses/:id" title="Update Address"
-                            description="Partial update — only provide fields you want to change."
-                            fields={[{ field: 'any address field', type: 'any', required: false, description: 'Provide only the fields to update' }]}
-                            response={`{\n  "success": true,\n  "data": { "id": "addr_02", "city": "Salmiya", "..." : "..." }\n}`}
-                            errors={[{ code: 404, msg: 'Address not found' }]}
-                        />
+          {/* Section: Status Reference */}
+          <SectionHeader id="statuses" title={lang === 'ar' ? 'مرجع الحالات الموحد' : 'Unified Status Reference'} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="card bg-base-100 border border-base-200 p-4 space-y-2">
+              <span className="font-black text-xs text-base-content uppercase">Consignment Lifecycle</span>
+              <div className="space-y-1.5 text-xs">
+                {[
+                  ['draft', 'Booked draft, awaiting label release'],
+                  ['pending', 'Awaiting courier collection'],
+                  ['picked_up', 'Collected from consignor hub'],
+                  ['in_transit', 'Active linehaul / flight underway'],
+                  ['out_for_delivery', 'Assigned to driver route'],
+                  ['delivered', 'Signed Proof of Delivery confirmed'],
+                  ['exception', 'Customs or address exception hold'],
+                ].map(([st, desc]) => (
+                  <div key={st} className="flex items-center gap-2">
+                    <code className="badge badge-xs badge-neutral font-bold">{st}</code>
+                    <span className="text-base-content/70 text-[11px]">{desc}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
 
-                        {/* Pickups */}
-                        <SectionHeader id="pickups" title={lang === "ar" ? "الاستلام" : "Pickups"} subtitle={lang === "ar" ? "اطلب سائقًا للاستلام من موقعك." : "Request a driver to collect from your location."} />
-                        <EndpointCard
-                            method="POST" path="/client/pickups" title="Request Pickup"
-                            note="Include an Idempotency-Key header to safely retry requests without creating duplicates."
-                            fields={[
-                                { field: 'sender', type: 'object', required: true, description: 'Pickup origin address' },
-                                { field: 'receiver', type: 'object', required: true, description: 'Delivery destination address' },
-                                { field: 'parcels', type: 'object[]', required: true, description: 'Parcel dimensions and weight' },
-                                { field: 'requestedPickupDate', type: 'string', required: true, description: 'ISO 8601 date, e.g. "2026-04-12"' },
-                                { field: 'serviceCode', type: 'string', required: false, description: 'Preferred service type' },
-                                { field: 'pickupInstructions', type: 'string', required: false, description: 'e.g. "Call on arrival"' },
-                            ]}
-                            response={`{\n  "success": true,\n  "data": {\n    "id": "pickup_88abc",\n    "status": "REQUESTED",\n    "trackingNumber": null,\n    "createdAt": "2026-04-10T10:00:00.000Z"\n  }\n}`}
-                            errors={[{ code: 400, msg: 'Missing required fields' }, { code: 409, msg: 'Idempotency-Key collision — retry with new key' }]}
-                        />
-                        <EndpointCard
-                            method="GET" path="/client/pickups/:id" title="Get Pickup Status"
-                            description="Poll this endpoint after creating a pickup request. Once approved, the shipment tracking number will appear."
-                            response={`{\n  "success": true,\n  "data": {\n    "id": "pickup_88abc",\n    "status": "APPROVED",\n    "rejectionReason": null,\n    "shipment": {\n      "trackingNumber": "DGR-AB12CD34",\n      "status": "pending",\n      "labelUrl": "https://..."\n    },\n    "createdAt": "2026-04-10T10:00:00.000Z"\n  }\n}`}
-                            errors={[{ code: 404, msg: 'Pickup request not found' }]}
-                        />
-
-                        {/* Tracking */}
-                        <SectionHeader id="tracking" title={lang === "ar" ? "التتبع" : "Tracking"} />
-                        <EndpointCard
-                            method="GET" path="/v1/tracking/:trackingNumber" title="Track Shipment"
-                            response={`{\n  "success": true,\n  "data": {\n    "trackingNumber": "DGR-AB12CD34",\n    "status": "in_transit",\n    "carrier": "DGR",\n    "estimatedDelivery": "2026-04-11T00:00:00.000Z",\n    "history": [\n      { "status": "picked_up", "location": "Kuwait City", "timestamp": "2026-04-10T09:00:00.000Z" }\n    ]\n  }\n}`}
-                            errors={[{ code: 404, msg: 'Shipment not found' }]}
-                        />
-                        <EndpointCard
-                            method="GET" path="/client/shipments/:trackingNumber" title="Get Shipment Status"
-                            response={`{\n  "success": true,\n  "data": {\n    "trackingNumber": "DGR-AB12CD34",\n    "status": "in_transit",\n    "currentLocation": { "address": "Ardiya Gateway, Kuwait" },\n    "estimatedDelivery": "2026-04-11T00:00:00.000Z",\n    "dhlTrackingNumber": null\n  }\n}`}
-                            errors={[{ code: 404, msg: 'Shipment not found' }]}
-                        />
-                        <EndpointCard
-                            method="GET" path="/client/shipments/:trackingNumber/tracking" title="Unified Tracking"
-                            description="Merged events from both internal system and carrier (DGR/DHL), sorted chronologically. Each event has a source field."
-                            response={`{\n  "success": true,\n  "data": {\n    "trackingNumber": "DGR-AB12CD34",\n    "status": "in_transit",\n    "events": [\n      { "status": "picked_up", "source": "INTERNAL", "location": "Kuwait City", "timestamp": "..." },\n      { "status": "in_transit", "source": "DGR", "location": "Kuwait Airport", "timestamp": "..." }\n    ]\n  }\n}`}
-                            errors={[{ code: 404, msg: 'Shipment not found' }]}
-                        />
-
-                        {/* Public */}
-                        <SectionHeader id="public" title={lang === "ar" ? "التتبع العام" : "Public Tracking"} subtitle={lang === "ar" ? "لا يلزم مفتاح API — آمن للاستخدام في تطبيقات العملاء." : "No API key required — safe to use in customer-facing apps."} />
-                        <EndpointCard
-                            method="GET" path="/public/shipments/:trackingNumber" title="Public Shipment Tracking"
-                            description="No authentication required. Share this endpoint URL directly with your end customers for order tracking."
-                            response={`{\n  "success": true,\n  "data": {\n    "trackingNumber": "DGR-AB12CD34",\n    "status": "in_transit",\n    "currentLocation": { "address": "Ardiya Gateway, Kuwait", "updatedAt": "2026-04-10T14:00:00.000Z" }\n  }\n}`}
-                        />
-
-                        {/* Status Reference */}
-                        <SectionHeader id="statuses" title={lang === "ar" ? "مرجع الحالات" : "Status Reference"} />
-                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 4 }}>
-                            <Box sx={{ ...CARD_SX, p: 2.5 }}>
-                                <Typography sx={{ fontSize: 12, fontWeight: 800, color: DS.outline, letterSpacing: '0.1em', textTransform: 'uppercase', mb: 1.5 }}>
-                                    {lang === "ar" ? "حالات الشحنة" : "Shipment Statuses"}
-                                </Typography>
-                                {[
-                                    ['draft', 'Created, not yet booked'],
-                                    ['pending', 'Awaiting pickup'],
-                                    ['picked_up', 'Collected from sender'],
-                                    ['in_transit', 'Moving through network'],
-                                    ['out_for_delivery', 'With local courier'],
-                                    ['delivered', 'Successfully delivered'],
-                                    ['exception', 'Issue requiring attention'],
-                                    ['cancelled', 'Shipment cancelled'],
-                                ].map(([status, desc]) => (
-                                    <Box key={status} sx={{ display: 'flex', gap: 1.5, mb: 1, alignItems: 'flex-start' }}>
-                                        <Box component="code" sx={{ fontSize: 11, bgcolor: DS.surfaceLow, px: 0.75, py: 0.25, borderRadius: '4px', color: DS.primary, flexShrink: 0 }}>{status}</Box>
-                                        <Typography sx={{ fontSize: 12, color: DS.onSurfaceVar }}>{desc}</Typography>
-                                    </Box>
-                                ))}
-                            </Box>
-                            <Box sx={{ ...CARD_SX, p: 2.5 }}>
-                                <Typography sx={{ fontSize: 12, fontWeight: 800, color: DS.outline, letterSpacing: '0.1em', textTransform: 'uppercase', mb: 1.5 }}>
-                                    {lang === "ar" ? "حالات الاستلام" : "Pickup Statuses"}
-                                </Typography>
-                                {[
-                                    ['REQUESTED', 'Submitted, awaiting review'],
-                                    ['APPROVED', 'Approved, driver assigned'],
-                                    ['REJECTED', 'Rejected — see rejectionReason'],
-                                    ['COLLECTED', 'Picked up by driver'],
-                                ].map(([status, desc]) => (
-                                    <Box key={status} sx={{ display: 'flex', gap: 1.5, mb: 1, alignItems: 'flex-start' }}>
-                                        <Box component="code" sx={{ fontSize: 11, bgcolor: DS.surfaceLow, px: 0.75, py: 0.25, borderRadius: '4px', color: DS.primary, flexShrink: 0 }}>{status}</Box>
-                                        <Typography sx={{ fontSize: 12, color: DS.onSurfaceVar }}>{desc}</Typography>
-                                    </Box>
-                                ))}
-                            </Box>
-                        </Box>
-
-                    </Box>
-                </Box>
-            </Box>
-        </Box>
-    );
+            <div className="card bg-base-100 border border-base-200 p-4 space-y-2">
+              <span className="font-black text-xs text-base-content uppercase">Driver Pickup Requests</span>
+              <div className="space-y-1.5 text-xs">
+                {[
+                  ['REQUESTED', 'Customer submitted pickup order'],
+                  ['APPROVED', 'Dispatcher assigned driver vehicle'],
+                  ['COLLECTED', 'Driver loaded parcel into van'],
+                  ['REJECTED', 'Address unserviceable or cancelled'],
+                ].map(([st, desc]) => (
+                  <div key={st} className="flex items-center gap-2">
+                    <code className="badge badge-xs badge-primary font-bold">{st}</code>
+                    <span className="text-base-content/70 text-[11px]">{desc}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default ApiDocsPage;

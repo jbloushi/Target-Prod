@@ -96,6 +96,14 @@ const AppRoutes = () => {
             </ProtectedRoute>
           } />
 
+          <Route path="dashboard-v2" element={
+            <ProtectedRoute allowedRoles={['admin', 'staff', 'client', 'manager', 'accounting', 'org_manager', 'org_agent']}>
+              <DashboardPage />
+            </ProtectedRoute>
+          } />
+
+          <Route path="dashboard-v1" element={<Navigate to="/dashboard" replace />} />
+
           <Route path="admin/users" element={
             <ProtectedRoute allowedRoles={['admin', 'org_manager']}>
               <AdminUsersPage />

@@ -1,130 +1,36 @@
 import React from 'react';
-import styled, { css } from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 
-const SidebarContainer = styled.aside`
-  width: var(--sidebar-width);
-  background: var(--bg-secondary);
-  border-right: 1px solid var(--border-color);
-  padding: 24px 0;
-  position: fixed;
-  height: 100vh;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-`;
-
-const UserProfile = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 0 12px 20px;
-  border-bottom: 1px solid var(--border-color);
-  margin-bottom: 20px;
-`;
-
-const Avatar = styled.div`
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--accent-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  color: var(--bg-primary);
-`;
-
-const UserInfo = styled.div`
-  text-align: center;
-  
-  h3 {
-    font-size: 13px;
-    font-weight: 600;
-    margin: 0;
-  }
-  
-  p {
-    font-size: 11px;
-    color: var(--text-secondary);
-    margin: 0;
-  }
-`;
-
-const NavList = styled.ul`
-  list-style: none;
-  padding: 0;
-  margin: 0;
-`;
-
-const NavItem = styled.li`
-  margin-bottom: 4px;
-`;
-
-const NavLink = styled.a`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 6px;
-  padding: 12px 8px;
-  color: var(--text-secondary);
-  text-decoration: none;
-  font-size: 11px;
-  font-weight: 500;
-  transition: var(--transition-base);
-  cursor: pointer;
-
-  &:hover {
-    color: var(--text-primary);
-    background: rgba(0, 217, 184, 0.05);
-  }
-
-  ${props => props.$active && css`
-    color: var(--text-primary);
-    background: rgba(0, 217, 184, 0.1);
-  `}
-
-  ${props => props.$disabled && css`
-    opacity: 0.5;
-    cursor: not-allowed;
-    background: transparent !important;
-    
-    &:hover {
-        color: var(--text-secondary);
-    }
-  `}
-`;
-
-const Sidebar = ({ user, items = [], activeItem }) => {
+const Sidebar = ({ user, items = [], activeItem, className = '' }) => {
   const navigate = useNavigate();
 
   return (
-    <SidebarContainer>
-      <UserProfile>
-        <Avatar>{user?.name?.[0] || 'U'}</Avatar>
-        <UserInfo>
-          <h3>{user?.name || 'User'}</h3>
-          <p>{user?.role || 'Staff'}</p>
-        </UserInfo>
-      </UserProfile>
-      <NavList>
+    <aside className={`w-60 bg-base-100 border-e border-base-200 py-6 h-screen flex flex-col ${className}`}>
+      <div className="flex flex-col items-center gap-2 px-3 pb-5 border-b border-base-200 mb-4">
+        <div className="w-10 h-10 rounded-full bg-primary text-primary-content flex items-center justify-center font-bold">
+          {user?.name?.[0] || 'U'}
+        </div>
+        <div className="text-center">
+          <h3 className="text-xs font-bold text-base-content m-0">{user?.name || 'User'}</h3>
+          <p className="text-[11px] text-base-content/60 m-0">{user?.role || 'Staff'}</p>
+        </div>
+      </div>
+      <ul className="menu menu-sm w-full p-2 space-y-1">
         {items.map((item, index) => (
-          <NavItem key={index}>
-            <NavLink
-              $active={activeItem === item.id}
-              $disabled={item.disabled}
-              title={item.disabled ? "Coming Soon" : item.label}
+          <li key={index}>
+            <button
+              type="button"
+              disabled={item.disabled}
+              className={`flex items-center gap-2.5 font-bold ${activeItem === item.id ? 'active' : ''}`}
               onClick={() => !item.disabled && item.path && navigate(item.path)}
             >
               {item.icon}
               <span>{item.label}</span>
-            </NavLink>
-          </NavItem>
+            </button>
+          </li>
         ))}
-      </NavList>
-    </SidebarContainer>
+      </ul>
+    </aside>
   );
 };
 

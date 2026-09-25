@@ -1,5 +1,4 @@
 import { BrowserRouter as Router } from 'react-router-dom';
-import CssBaseline from '@mui/material/CssBaseline';
 import { SnackbarProvider } from 'notistack';
 import { ThemeModeProvider } from './context/ThemeContext';
 import { LanguageProvider } from './context/LanguageContext';
@@ -18,7 +17,6 @@ function App() {
   return (
     <LanguageProvider>
       <ThemeModeProvider>
-        <CssBaseline />
         <SnackbarProvider
           maxSnack={3}
           anchorOrigin={{

@@ -11,29 +11,9 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
-    resolve: {
-      alias: [
-        {
-          find: /^@mui\/icons-material\/(.*)/,
-          replacement: '@mui/icons-material/esm/$1'
-        },
-        {
-          find: '@mui/icons-material',
-          replacement: '@mui/icons-material/esm'
-        }
-      ]
-    },
     envPrefix: ['VITE_', 'REACT_APP_'],
     define: {
       'process.env': JSON.stringify(processEnv)
-    },
-    optimizeDeps: {
-      include: [
-        '@mui/material',
-        '@mui/icons-material',
-        '@emotion/react',
-        '@emotion/styled'
-      ]
     },
     server: {
       host: '0.0.0.0',
@@ -89,11 +69,6 @@ export default defineConfig(({ mode }) => {
                 name: 'qrcode-vendor',
                 test: /[\\/]node_modules[\\/]qrcode[\\/]/,
                 priority: 15
-              },
-              {
-                name: 'mui-vendor',
-                test: /[\\/]node_modules[\\/](@mui|@emotion)[\\/]/,
-                priority: 10
               }
             ]
           }

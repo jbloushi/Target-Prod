@@ -1,25 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import styled from 'styled-components';
 import { useSnackbar } from 'notistack';
 import { format } from 'date-fns';
 import { financeService } from '../../services/api';
 import { TK } from '../../tokens/kineticHorizon';
 import { Card, Button, WInput, Select, Modal, TableWrapper, Table, Thead, Tbody, Tr, Th, Td, Loader } from '../../ui';
-
-const SummaryGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
-`;
-
-const StatCard = styled.div`
-  background: #ffffff;
-  border-radius: 16px;
-  border: 1px solid ${TK.border};
-  padding: 16px 20px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.03);
-`;
 
 const AccountsPayableTab = ({ lang = 'en' }) => {
   const { enqueueSnackbar } = useSnackbar();
@@ -193,24 +177,24 @@ const AccountsPayableTab = ({ lang = 'en' }) => {
     <div>
       {/* Top Action Bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
-        <SummaryGrid style={{ margin: 0, flex: 1 }}>
-          <StatCard>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
+          <div className="bg-base-100 rounded-2xl border border-base-200 p-4 shadow-xs">
             <div style={{ fontSize: 11, fontWeight: 700, color: TK.text3, textTransform: 'uppercase' }}>
               {lang === 'ar' ? 'إجمالي مستحقات الموردين (AP)' : 'Outstanding Carrier AP'}
             </div>
             <div style={{ fontSize: 22, fontWeight: 800, color: '#e67e22', marginTop: 4 }}>
               {fmt(totalPayable)} <span style={{ fontSize: 13 }}>KWD</span>
             </div>
-          </StatCard>
-          <StatCard>
+          </div>
+          <div className="bg-base-100 rounded-2xl border border-base-200 p-4 shadow-xs">
             <div style={{ fontSize: 11, fontWeight: 700, color: TK.text3, textTransform: 'uppercase' }}>
               {lang === 'ar' ? 'المسدد هذا الشهر' : 'Settled Disbursements'}
             </div>
             <div style={{ fontSize: 22, fontWeight: 800, color: TK.success, marginTop: 4 }}>
               {fmt(totalPaid)} <span style={{ fontSize: 13 }}>KWD</span>
             </div>
-          </StatCard>
-        </SummaryGrid>
+          </div>
+        </div>
 
         <div style={{ display: 'flex', gap: 10 }}>
           <Button variant="outline" onClick={() => setIsReconcileModalOpen(true)}>

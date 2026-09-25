@@ -1,230 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import styled, { keyframes } from 'styled-components';
 import { publicCheckoutService } from '../services/api';
 
-const fadeIn = keyframes`
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
-`;
-
-const spin = keyframes`
-  to { transform: rotate(360deg); }
-`;
-
-const Container = styled.div`
-  min-height: 100vh;
-  background: #f8fafc;
-  color: #0f172a;
-  font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  display: flex;
-  flex-direction: column;
-`;
-
-const TopBar = styled.header`
-  background: #ffffff;
-  border-bottom: 1px solid #e2e8f0;
-  padding: 16px 24px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  position: sticky;
-  top: 0;
-  z-index: 50;
-`;
-
-const Brand = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 800;
-  font-size: 18px;
-  color: #0284c7;
-
-  svg {
-    width: 28px;
-    height: 28px;
-  }
-`;
-
-const SecureBadge = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #10b981;
-  background: #ecfdf5;
-  padding: 6px 12px;
-  border-radius: 9999px;
-  border: 1px solid #a7f3d0;
-`;
-
-const Main = styled.main`
-  flex: 1;
-  max-width: 1000px;
-  width: 100%;
-  margin: 32px auto;
-  padding: 0 16px;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 32px;
-  animation: ${fadeIn} 0.4s ease-out;
-
-  @media (min-width: 860px) {
-    grid-template-columns: 1.1fr 1fr;
-  }
-`;
-
-const Card = styled.div`
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  padding: 24px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-`;
-
-const SectionTitle = styled.h2`
-  font-size: 18px;
-  font-weight: 700;
-  margin: 0 0 16px 0;
-  color: #0f172a;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-`;
-
-const LineItem = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 0;
-  font-size: 14px;
-  color: #475569;
-  border-bottom: 1px dashed #f1f5f9;
-
-  &.total {
-    border-top: 2px solid #e2e8f0;
-    border-bottom: none;
-    margin-top: 8px;
-    padding-top: 16px;
-    font-size: 18px;
-    font-weight: 800;
-    color: #0f172a;
-  }
-`;
-
-const TabGroup = styled.div`
-  display: flex;
-  gap: 8px;
-  margin-bottom: 20px;
-  background: #f1f5f9;
-  padding: 4px;
-  border-radius: 10px;
-`;
-
-const Tab = styled.button`
-  flex: 1;
-  padding: 10px 14px;
-  border: none;
-  background: ${props => props.$active ? '#ffffff' : 'transparent'};
-  color: ${props => props.$active ? '#0284c7' : '#64748b'};
-  font-weight: ${props => props.$active ? '700' : '500'};
-  font-size: 13px;
-  border-radius: 8px;
-  cursor: pointer;
-  box-shadow: ${props => props.$active ? '0 2px 4px rgba(0,0,0,0.06)' : 'none'};
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-`;
-
-const FormGroup = styled.div`
-  margin-bottom: 16px;
-
-  label {
-    display: block;
-    font-size: 12px;
-    font-weight: 600;
-    color: #334155;
-    margin-bottom: 6px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  input, select {
-    width: 100%;
-    padding: 12px 14px;
-    border: 1px solid #cbd5e1;
-    border-radius: 8px;
-    font-size: 14px;
-    outline: none;
-    background: #ffffff;
-    box-sizing: border-box;
-    transition: border-color 0.2s;
-
-    &:focus {
-      border-color: #0284c7;
-      box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
-    }
-  }
-`;
-
-const InputRow = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-`;
-
-const PayButton = styled.button`
-  width: 100%;
-  padding: 14px;
-  background: ${props => props.$apple ? '#000000' : 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)'};
-  color: #ffffff;
-  border: none;
-  border-radius: 10px;
-  font-size: 16px;
-  font-weight: 700;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  transition: opacity 0.2s, transform 0.1s;
-
-  &:hover:not(:disabled) {
-    opacity: 0.95;
-    transform: translateY(-1px);
-  }
-
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-`;
-
-const Spinner = styled.div`
-  width: 20px;
-  height: 20px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #ffffff;
-  border-radius: 50%;
-  animation: ${spin} 0.8s linear infinite;
-`;
-
-const SuccessOverlay = styled.div`
-  background: #ffffff;
-  border-radius: 16px;
-  border: 1px solid #bbf7d0;
-  padding: 40px 24px;
-  text-align: center;
-  animation: ${fadeIn} 0.4s ease-out;
-  box-shadow: 0 10px 25px -5px rgba(16, 185, 129, 0.1);
-`;
-
-const PublicCheckoutPage = () => {
+export const PublicCheckoutPage = () => {
   const { trackingNumber } = useParams();
   const navigate = useNavigate();
 
@@ -242,11 +20,6 @@ const PublicCheckoutPage = () => {
   const [cardExpiry, setCardExpiry] = useState('12/28');
   const [cardCvv, setCardCvv] = useState('123');
   const [cardName, setCardName] = useState('');
-
-  useEffect(() => {
-    if (!trackingNumber) return;
-    fetchCheckout();
-  }, [trackingNumber]);
 
   const fetchCheckout = async () => {
     try {
@@ -272,6 +45,11 @@ const PublicCheckoutPage = () => {
     }
   };
 
+  useEffect(() => {
+    if (!trackingNumber) return;
+    fetchCheckout();
+  }, [trackingNumber]);
+
   const handlePay = async (e) => {
     if (e) e.preventDefault();
     try {
@@ -281,7 +59,7 @@ const PublicCheckoutPage = () => {
       const res = await publicCheckoutService.processPayment(trackingNumber, {
         paymentMethod,
         customerName: cardName,
-        bank: paymentMethod === 'KNET' ? knetBank : undefined
+        bank: paymentMethod === 'KNET' ? knetBank : undefined,
       });
 
       if (res?.success) {
@@ -300,359 +78,379 @@ const PublicCheckoutPage = () => {
 
   if (loading) {
     return (
-      <Container>
-        <TopBar>
-          <Brand>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M5 18H3c-.6 0-1-.4-1-1V7c0-.6.4-1 1-1h10c.6 0 1 .4 1 1v11" />
-              <path d="M14 9h4l4 4v4c0 .6-.4 1-1 1h-2" />
-              <circle cx="7" cy="18" r="2" />
-              <circle cx="17" cy="18" r="2" />
-            </svg>
-            Target Logistics
-          </Brand>
-        </TopBar>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 16 }}>
-          <div style={{ width: 40, height: 40, border: '3px solid #e2e8f0', borderTopColor: '#0284c7', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-          <p style={{ color: '#64748b', fontSize: 14 }}>Loading secure checkout...</p>
+      <div className="min-h-screen bg-base-200/50 flex flex-col font-sans">
+        <header className="navbar bg-base-100 border-b border-base-200 px-6 py-3">
+          <div className="flex items-center gap-2.5 text-primary font-black text-lg">
+            <div className="w-8 h-8 rounded-lg bg-primary text-white flex items-center justify-center font-black text-sm">
+              TL
+            </div>
+            <span>Target Logistics</span>
+          </div>
+        </header>
+        <div className="flex-1 flex flex-col items-center justify-center gap-3">
+          <span className="loading loading-ring loading-lg text-primary" />
+          <p className="text-sm font-bold text-base-content/60">Loading secure checkout gateway...</p>
         </div>
-      </Container>
+      </div>
     );
   }
 
   if (error && !data) {
     return (
-      <Container>
-        <TopBar>
-          <Brand>Target Logistics</Brand>
-        </TopBar>
-        <div style={{ maxWidth: 500, margin: '60px auto', padding: 24, textAlign: 'center' }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a' }}>Checkout Not Available</h2>
-          <p style={{ color: '#64748b', fontSize: 14, marginBottom: 24 }}>{error}</p>
-          <Link to="/track" style={{ color: '#0284c7', fontWeight: 600, textDecoration: 'none' }}>
-            Go to Tracking Page &rarr;
-          </Link>
+      <div className="min-h-screen bg-base-200/50 flex flex-col font-sans">
+        <header className="navbar bg-base-100 border-b border-base-200 px-6 py-3">
+          <div className="flex items-center gap-2.5 text-primary font-black text-lg">
+            <div className="w-8 h-8 rounded-lg bg-primary text-white flex items-center justify-center font-black text-sm">
+              TL
+            </div>
+            <span>Target Logistics</span>
+          </div>
+        </header>
+        <div className="max-w-md mx-auto my-16 p-8 card bg-base-100 border border-base-200 shadow-sm text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-error/10 text-error flex items-center justify-center mx-auto text-2xl">
+            <span className="material-symbols-outlined text-3xl">warning</span>
+          </div>
+          <h2 className="text-xl font-black text-base-content">Checkout Unavailable</h2>
+          <p className="text-xs text-base-content/60">{error}</p>
+          <div className="pt-2">
+            <Link to="/track" className="btn btn-primary btn-sm font-bold text-xs">
+              Go to Tracking Portal &rarr;
+            </Link>
+          </div>
         </div>
-      </Container>
+      </div>
     );
   }
 
   return (
-    <Container>
-      <TopBar>
-        <Brand>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M5 18H3c-.6 0-1-.4-1-1V7c0-.6.4-1 1-1h10c.6 0 1 .4 1 1v11" />
-            <path d="M14 9h4l4 4v4c0 .6-.4 1-1 1h-2" />
-            <circle cx="7" cy="18" r="2" />
-            <circle cx="17" cy="18" r="2" />
-          </svg>
-          Target Logistics
-        </Brand>
-        <SecureBadge>
-          <svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
-          </svg>
-          256-Bit Encrypted
-        </SecureBadge>
-      </TopBar>
+    <div className="min-h-screen bg-base-200/50 flex flex-col font-sans selection:bg-primary selection:text-white">
+      {/* Top Bar */}
+      <header className="navbar bg-base-100 border-b border-base-200 px-4 sm:px-8 py-3 sticky top-0 z-40 shadow-sm">
+        <div className="flex-1 flex items-center gap-3">
+          <div className="flex items-center gap-2.5 text-primary font-black text-lg tracking-tight">
+            <div className="w-9 h-9 rounded-xl bg-primary text-white flex items-center justify-center font-black text-sm shadow-md shadow-primary/20">
+              TL
+            </div>
+            <div className="flex flex-col">
+              <span className="leading-tight font-extrabold text-base-content">Target Logistics</span>
+              <span className="text-[10px] text-primary uppercase font-bold tracking-widest">Pay-by-Link Gateway</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex-none">
+          <div className="badge badge-success badge-outline font-bold text-xs gap-1.5 py-3 px-3">
+            <span className="material-symbols-outlined text-sm">lock</span>
+            <span>256-Bit Encrypted S2S</span>
+          </div>
+        </div>
+      </header>
 
-      <Main>
+      {/* Main Form */}
+      <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 lg:p-8">
         {paidSuccess ? (
-          <div style={{ gridColumn: '1 / -1', maxWidth: 600, margin: '0 auto', width: '100%' }}>
-            <SuccessOverlay>
-              <div style={{
-                width: 64,
-                height: 64,
-                background: '#ecfdf5',
-                color: '#10b981',
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 20px auto',
-                border: '2px solid #a7f3d0'
-              }}>
-                <svg width="32" height="32" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-
-              <h1 style={{ fontSize: 24, fontWeight: 800, color: '#0f172a', margin: '0 0 8px 0' }}>
+          <div className="max-w-xl mx-auto card bg-base-100 border border-base-200 shadow-sm p-6 sm:p-8 text-center space-y-6">
+            <div className="w-16 h-16 rounded-full bg-success/10 text-success flex items-center justify-center mx-auto">
+              <span className="material-symbols-outlined text-4xl">check_circle</span>
+            </div>
+            <div>
+              <h1 className="text-2xl font-black text-base-content tracking-tight">
                 Payment Successfully Settled!
               </h1>
-              <p style={{ color: '#475569', fontSize: 14, margin: '0 0 24px 0' }}>
-                Thank you. Your payment for shipment <strong>{data?.trackingNumber}</strong> has been received and confirmed.
+              <p className="text-xs sm:text-sm text-base-content/60 mt-1">
+                Your settlement for consignment <strong className="text-base-content">{data?.trackingNumber}</strong> has been confirmed.
               </p>
-
-              <div style={{ background: '#f8fafc', padding: 16, borderRadius: 12, border: '1px solid #e2e8f0', textAlign: 'left', marginBottom: 24 }}>
-                <LineItem>
-                  <span>Tracking Number</span>
-                  <strong style={{ color: '#0f172a' }}>{data?.trackingNumber}</strong>
-                </LineItem>
-                <LineItem>
-                  <span>Amount Paid</span>
-                  <strong style={{ color: '#10b981' }}>
-                    {(data?.amount || data?.totalPaid || 0).toFixed(3)} {data?.currency}
-                  </strong>
-                </LineItem>
-                <LineItem>
-                  <span>Payment Method</span>
-                  <span>{paymentResult?.method || data?.method || 'K-Net / Card'}</span>
-                </LineItem>
-                <LineItem>
-                  <span>Transaction Reference</span>
-                  <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{paymentResult?.reference || 'SETTLED'}</span>
-                </LineItem>
-              </div>
-
-              <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
-                <PayButton onClick={() => navigate(`/track/${data?.trackingNumber}`)}>
-                  Track Live Shipment &rarr;
-                </PayButton>
-              </div>
-            </SuccessOverlay>
-          </div>
-        ) : (
-          <>
-            {/* LEFT: Shipment & Invoice Summary */}
-            <div>
-              <Card>
-                <SectionTitle>
-                  <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  Shipment Summary
-                </SectionTitle>
-
-                <div style={{
-                  padding: 14,
-                  background: '#f8fafc',
-                  borderRadius: 10,
-                  border: '1px solid #e2e8f0',
-                  marginBottom: 16
-                }}>
-                  <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>TRACKING NUMBER</div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: '#0284c7', margin: '2px 0 10px 0' }}>
-                    {data?.trackingNumber}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#334155' }}>
-                    <strong>{data?.origin?.city || 'Kuwait'}</strong>
-                    <span>&rarr;</span>
-                    <strong>{data?.destination?.city || 'Destination'}</strong>
-                  </div>
-                  <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>
-                    Network: <strong>{data?.carrierName}</strong> • {data?.parcelsCount} Package ({data?.totalWeight} kg)
-                  </div>
-                </div>
-
-                <div style={{ marginTop: 20 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 8 }}>Price Breakdown</div>
-                  <LineItem>
-                    <span>Base Freight Fee</span>
-                    <span>{(data?.breakdown?.baseFreight || (data?.amount * 0.85)).toFixed(3)} {data?.currency}</span>
-                  </LineItem>
-                  <LineItem>
-                    <span>Fuel Surcharge & Handling</span>
-                    <span>{(data?.breakdown?.fuelSurcharge + data?.breakdown?.handlingFee || (data?.amount * 0.15)).toFixed(3)} {data?.currency}</span>
-                  </LineItem>
-                  <LineItem className="total">
-                    <span>Total Amount Due</span>
-                    <span style={{ color: '#0284c7' }}>
-                      {data?.amount?.toFixed(3)} {data?.currency}
-                    </span>
-                  </LineItem>
-                </div>
-              </Card>
             </div>
 
-            {/* RIGHT: Payment Options & Card Form */}
+            <div className="p-4 rounded-xl bg-base-200/50 border border-base-200 space-y-3 text-xs text-left">
+              <div className="flex items-center justify-between">
+                <span className="text-base-content/60 font-bold">WAYBILL NUMBER</span>
+                <span className="font-mono font-black text-base-content">{data?.trackingNumber}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-base-content/60 font-bold">AMOUNT SETTLED</span>
+                <span className="font-mono font-black text-success text-sm">
+                  {(data?.amount || data?.totalPaid || 0).toFixed(3)} {data?.currency || 'KWD'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-base-content/60 font-bold">PAYMENT CHANNEL</span>
+                <span className="font-bold text-base-content">{paymentResult?.method || data?.method || 'K-Net Local Debit'}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-base-content/60 font-bold">REFERENCE CODE</span>
+                <span className="font-mono text-base-content/80">{paymentResult?.reference || 'KNET-TX-SETTLED'}</span>
+              </div>
+            </div>
+
             <div>
-              <Card>
-                <SectionTitle>
-                  <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                  </svg>
-                  Payment Route
-                </SectionTitle>
+              <button
+                type="button"
+                onClick={() => navigate(`/track/${data?.trackingNumber}`)}
+                className="btn btn-primary w-full font-bold text-sm shadow-md shadow-primary/20 gap-2"
+              >
+                <span className="material-symbols-outlined text-lg">radar</span>
+                <span>Track Live Consignment &rarr;</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Left: Summary & Invoice Breakdown */}
+            <div className="lg:col-span-5 card bg-base-100 border border-base-200 shadow-sm p-6 space-y-5">
+              <div className="flex items-center gap-2 font-black text-base text-base-content">
+                <span className="material-symbols-outlined text-primary text-xl">receipt_long</span>
+                <span>Consignment Invoice</span>
+              </div>
 
-                <TabGroup>
-                  <Tab
-                    $active={paymentMethod === 'KNET'}
-                    onClick={() => setPaymentMethod('KNET')}
-                    type="button"
-                  >
-                    🏦 K-Net Debit
-                  </Tab>
-                  <Tab
-                    $active={paymentMethod === 'CARD'}
-                    onClick={() => setPaymentMethod('CARD')}
-                    type="button"
-                  >
-                    💳 Visa / MC
-                  </Tab>
-                  <Tab
-                    $active={paymentMethod === 'APPLE_PAY'}
-                    onClick={() => setPaymentMethod('APPLE_PAY')}
-                    type="button"
-                  >
-                     Apple Pay
-                  </Tab>
-                </TabGroup>
+              <div className="p-4 rounded-xl bg-base-200/50 border border-base-200 space-y-2">
+                <div className="text-[11px] font-bold text-base-content/50 uppercase">WAYBILL REFERENCE</div>
+                <div className="font-mono font-black text-primary text-base">{data?.trackingNumber}</div>
+                <div className="text-xs font-bold text-base-content flex items-center gap-1.5 pt-1">
+                  <span>{data?.origin?.city || 'Kuwait'}</span>
+                  <span className="text-primary font-black">→</span>
+                  <span>{data?.destination?.city || 'Destination'}</span>
+                </div>
+                <div className="text-[11px] text-base-content/60">
+                  Carrier: <strong>{data?.carrierName || 'Target Express'}</strong> • {data?.parcelsCount || 1} Pcs ({data?.totalWeight || 1} kg)
+                </div>
+              </div>
 
-                {error && (
-                  <div style={{
-                    padding: 12,
-                    background: '#fef2f2',
-                    border: '1px solid #fecaca',
-                    borderRadius: 8,
-                    color: '#ef4444',
-                    fontSize: 13,
-                    marginBottom: 16
-                  }}>
-                    {error}
+              <div className="space-y-2 pt-2 border-t border-base-200 text-xs">
+                <div className="flex items-center justify-between text-base-content/70">
+                  <span>Base Airfreight Fee</span>
+                  <span className="font-mono font-medium">
+                    {(data?.breakdown?.baseFreight || (data?.amount * 0.85)).toFixed(3)} {data?.currency || 'KWD'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-base-content/70">
+                  <span>Fuel Surcharge & Handling</span>
+                  <span className="font-mono font-medium">
+                    {(data?.breakdown?.fuelSurcharge + data?.breakdown?.handlingFee || (data?.amount * 0.15)).toFixed(3)} {data?.currency || 'KWD'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between font-black text-sm text-base-content pt-3 border-t border-base-200">
+                  <span>Total Payable</span>
+                  <span className="text-primary font-mono text-base">
+                    {data?.amount?.toFixed(3)} {data?.currency || 'KWD'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Payment Method Selector & Gateway Form */}
+            <div className="lg:col-span-7 card bg-base-100 border border-base-200 shadow-sm p-6 space-y-5">
+              <div className="flex items-center gap-2 font-black text-base text-base-content">
+                <span className="material-symbols-outlined text-primary text-xl">credit_card</span>
+                <span>Select Payment Channel</span>
+              </div>
+
+              {/* Payment Tabs */}
+              <div role="tablist" className="tabs tabs-boxed bg-base-200 p-1">
+                <button
+                  type="button"
+                  role="tab"
+                  onClick={() => setPaymentMethod('KNET')}
+                  className={`tab font-bold text-xs gap-1.5 transition-all ${
+                    paymentMethod === 'KNET' ? 'tab-active bg-primary text-white' : 'text-base-content/70'
+                  }`}
+                >
+                  <span>🏦</span>
+                  <span>K-Net Debit</span>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  onClick={() => setPaymentMethod('CARD')}
+                  className={`tab font-bold text-xs gap-1.5 transition-all ${
+                    paymentMethod === 'CARD' ? 'tab-active bg-primary text-white' : 'text-base-content/70'
+                  }`}
+                >
+                  <span>💳</span>
+                  <span>Visa / Mastercard</span>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  onClick={() => setPaymentMethod('APPLE_PAY')}
+                  className={`tab font-bold text-xs gap-1.5 transition-all ${
+                    paymentMethod === 'APPLE_PAY' ? 'tab-active bg-neutral text-white' : 'text-base-content/70'
+                  }`}
+                >
+                  <span></span>
+                  <span>Apple Pay</span>
+                </button>
+              </div>
+
+              {error && (
+                <div className="alert alert-error text-xs py-2.5 px-3">
+                  <span className="material-symbols-outlined text-base">error</span>
+                  <span>{error}</span>
+                </div>
+              )}
+
+              <form onSubmit={handlePay} className="space-y-4">
+                {paymentMethod === 'KNET' && (
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-base-content/70 uppercase">
+                        Select Kuwait Bank *
+                      </label>
+                      <select
+                        value={knetBank}
+                        onChange={(e) => setKnetBank(e.target.value)}
+                        className="select select-bordered w-full text-sm font-medium focus:select-primary"
+                      >
+                        <option value="NBK">National Bank of Kuwait (NBK)</option>
+                        <option value="CBK">Commercial Bank of Kuwait (CBK)</option>
+                        <option value="GBK">Gulf Bank</option>
+                        <option value="KFH">Kuwait Finance House (KFH)</option>
+                        <option value="BOUBYAN">Boubyan Bank</option>
+                        <option value="BURGAN">Burgan Bank</option>
+                        <option value="WARBA">Warba Bank</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-base-content/70 uppercase">
+                        K-Net Card Number *
+                      </label>
+                      <input
+                        type="text"
+                        value={cardNumber}
+                        onChange={(e) => setCardNumber(e.target.value)}
+                        placeholder="Prefix + Card digits"
+                        className="input input-bordered w-full font-mono text-sm focus:input-primary"
+                        required
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-base-content/70 uppercase">Expiry (MM/YY) *</label>
+                        <input
+                          type="text"
+                          value={cardExpiry}
+                          onChange={(e) => setCardExpiry(e.target.value)}
+                          placeholder="MM/YY"
+                          className="input input-bordered w-full font-mono text-sm focus:input-primary"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-base-content/70 uppercase">ATM PIN *</label>
+                        <input
+                          type="password"
+                          maxLength="4"
+                          defaultValue="••••"
+                          placeholder="4-digit PIN"
+                          className="input input-bordered w-full font-mono text-sm focus:input-primary"
+                          required
+                        />
+                      </div>
+                    </div>
                   </div>
                 )}
 
-                <form onSubmit={handlePay}>
-                  {paymentMethod === 'KNET' && (
-                    <>
-                      <FormGroup>
-                        <label>Select Bank</label>
-                        <select value={knetBank} onChange={(e) => setKnetBank(e.target.value)}>
-                          <option value="NBK">National Bank of Kuwait (NBK)</option>
-                          <option value="CBK">Commercial Bank of Kuwait (CBK)</option>
-                          <option value="GBK">Gulf Bank</option>
-                          <option value="KFH">Kuwait Finance House (KFH)</option>
-                          <option value="BOUBYAN">Boubyan Bank</option>
-                          <option value="BURGAN">Burgan Bank</option>
-                          <option value="WARBA">Warba Bank</option>
-                        </select>
-                      </FormGroup>
-
-                      <FormGroup>
-                        <label>K-Net Card Number</label>
-                        <input
-                          type="text"
-                          value={cardNumber}
-                          onChange={(e) => setCardNumber(e.target.value)}
-                          placeholder="Prefix + Card digits"
-                          required
-                        />
-                      </FormGroup>
-
-                      <InputRow>
-                        <FormGroup>
-                          <label>Expiration</label>
-                          <input
-                            type="text"
-                            value={cardExpiry}
-                            onChange={(e) => setCardExpiry(e.target.value)}
-                            placeholder="MM/YY"
-                            required
-                          />
-                        </FormGroup>
-                        <FormGroup>
-                          <label>PIN Code</label>
-                          <input
-                            type="password"
-                            maxLength="4"
-                            defaultValue="••••"
-                            placeholder="4-digit PIN"
-                            required
-                          />
-                        </FormGroup>
-                      </InputRow>
-                    </>
-                  )}
-
-                  {paymentMethod === 'CARD' && (
-                    <>
-                      <FormGroup>
-                        <label>Cardholder Name</label>
-                        <input
-                          type="text"
-                          value={cardName}
-                          onChange={(e) => setCardName(e.target.value)}
-                          placeholder="Name as printed on card"
-                          required
-                        />
-                      </FormGroup>
-
-                      <FormGroup>
-                        <label>Card Number</label>
-                        <input
-                          type="text"
-                          value={cardNumber}
-                          onChange={(e) => setCardNumber(e.target.value)}
-                          placeholder="0000 0000 0000 0000"
-                          required
-                        />
-                      </FormGroup>
-
-                      <InputRow>
-                        <FormGroup>
-                          <label>Expiry (MM/YY)</label>
-                          <input
-                            type="text"
-                            value={cardExpiry}
-                            onChange={(e) => setCardExpiry(e.target.value)}
-                            placeholder="MM/YY"
-                            required
-                          />
-                        </FormGroup>
-                        <FormGroup>
-                          <label>CVV / CVC</label>
-                          <input
-                            type="password"
-                            maxLength="4"
-                            value={cardCvv}
-                            onChange={(e) => setCardCvv(e.target.value)}
-                            placeholder="123"
-                            required
-                          />
-                        </FormGroup>
-                      </InputRow>
-                    </>
-                  )}
-
-                  {paymentMethod === 'APPLE_PAY' && (
-                    <div style={{ padding: '24px 12px', textAlign: 'center', background: '#f8fafc', borderRadius: 10, marginBottom: 20 }}>
-                      <div style={{ fontSize: 36, marginBottom: 8 }}></div>
-                      <p style={{ fontSize: 13, color: '#475569', margin: 0 }}>
-                        Authorize one-touch settlement with Face ID / Touch ID.
-                      </p>
+                {paymentMethod === 'CARD' && (
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-base-content/70 uppercase">
+                        Cardholder Name *
+                      </label>
+                      <input
+                        type="text"
+                        value={cardName}
+                        onChange={(e) => setCardName(e.target.value)}
+                        placeholder="Full name as printed on card"
+                        className="input input-bordered w-full text-sm font-medium focus:input-primary"
+                        required
+                      />
                     </div>
-                  )}
 
-                  <PayButton
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-base-content/70 uppercase">
+                        Card Number *
+                      </label>
+                      <input
+                        type="text"
+                        value={cardNumber}
+                        onChange={(e) => setCardNumber(e.target.value)}
+                        placeholder="4111 0000 0000 0000"
+                        className="input input-bordered w-full font-mono text-sm focus:input-primary"
+                        required
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-base-content/70 uppercase">Expiry *</label>
+                        <input
+                          type="text"
+                          value={cardExpiry}
+                          onChange={(e) => setCardExpiry(e.target.value)}
+                          placeholder="MM/YY"
+                          className="input input-bordered w-full font-mono text-sm focus:input-primary"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-base-content/70 uppercase">CVV / CVC *</label>
+                        <input
+                          type="password"
+                          maxLength="4"
+                          value={cardCvv}
+                          onChange={(e) => setCardCvv(e.target.value)}
+                          placeholder="123"
+                          className="input input-bordered w-full font-mono text-sm focus:input-primary"
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {paymentMethod === 'APPLE_PAY' && (
+                  <div className="p-8 text-center bg-base-200/50 rounded-xl space-y-2 border border-base-200">
+                    <div className="text-4xl"></div>
+                    <div className="font-extrabold text-sm text-base-content">Apple Pay Express Settlement</div>
+                    <p className="text-xs text-base-content/60 max-w-xs mx-auto">
+                      Confirm payment with Touch ID or Face ID directly on your Apple device.
+                    </p>
+                  </div>
+                )}
+
+                <div className="pt-2">
+                  <button
                     type="submit"
                     disabled={paying}
-                    $apple={paymentMethod === 'APPLE_PAY'}
+                    className={`btn w-full font-bold text-sm shadow-md transition-all ${
+                      paymentMethod === 'APPLE_PAY'
+                        ? 'btn-neutral'
+                        : 'btn-primary shadow-primary/20'
+                    }`}
                   >
                     {paying ? (
                       <>
-                        <Spinner />
-                        Processing Settlement...
+                        <span className="loading loading-spinner loading-xs" />
+                        <span>Processing Gateway Settlement...</span>
                       </>
                     ) : paymentMethod === 'APPLE_PAY' ? (
-                      ` Pay ${data?.amount?.toFixed(3)} ${data?.currency}`
+                      <span> Pay {data?.amount?.toFixed(3)} {data?.currency || 'KWD'}</span>
                     ) : (
-                      `Pay ${data?.amount?.toFixed(3)} ${data?.currency} Now`
+                      <span>Settle {data?.amount?.toFixed(3)} {data?.currency || 'KWD'} Now</span>
                     )}
-                  </PayButton>
-                </form>
-
-                <div style={{ marginTop: 16, textAlign: 'center', fontSize: 12, color: '#94a3b8' }}>
-                  Target Logistics securely settles payments through authorized GCC payment gateways.
+                  </button>
                 </div>
-              </Card>
+              </form>
+
+              <div className="text-center text-[11px] text-base-content/40">
+                Target Logistics processes transactions through Central Bank of Kuwait licensed gateways.
+              </div>
             </div>
-          </>
+          </div>
         )}
-      </Main>
-    </Container>
+      </main>
+    </div>
   );
 };
 

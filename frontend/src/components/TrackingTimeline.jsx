@@ -1,18 +1,14 @@
 import React from 'react';
-import {
-    Box, Tooltip, Typography
-} from '@mui/material';
 import { dedupeTrackingEvents } from '../utils/dedupeTrackingEvents';
 import LocationLabel from './LocationLabel';
 import { getEventDisplayMessage } from '../utils/shipmentDisplay';
-import { TK } from '../tokens/kineticHorizon';
 import { useLanguage } from '../context/LanguageContext';
 
 /**
- * TrackingProgress - Kinetic Horizon 5-Node Connected Stepper
+ * TrackingProgress - Pure DaisyUI 5-Node Connected Stepper
  */
 export const TrackingProgress = ({ status = 'in_transit' }) => {
-    const { t, lang } = useLanguage();
+    const { lang } = useLanguage();
     const steps = [
         { key: 'created', label: lang === 'ar' ? 'تم إنشاء\nالطلب' : 'Order\nCreated', icon: 'add_circle' },
         { key: 'picked_up', label: lang === 'ar' ? 'تم الاستلام\nمن الراسل' : 'Picked\nUp', icon: 'inventory' },
@@ -33,107 +29,71 @@ export const TrackingProgress = ({ status = 'in_transit' }) => {
                     : 0;
 
     return (
-        <Box sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            py: 2.5,
-            px: { xs: 1, sm: 3 },
-            mb: 4,
-            borderRadius: '18px',
-            bgcolor: '#ffffff',
-            border: `1px solid ${TK.border}`,
-            boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-            overflowX: 'auto'
-        }}>
-            {steps.map((s, i) => {
-                const done = i <= idx;
-                const current = i === idx;
-                const isLast = i === steps.length - 1;
+        <div className="bg-base-100 border border-base-200 rounded-2xl p-4 sm:p-5 shadow-xs mb-6 overflow-x-auto">
+            <div className="flex items-center justify-between min-w-[500px] sm:min-w-0">
+                {steps.map((s, i) => {
+                    const done = i <= idx;
+                    const current = i === idx;
+                    const isLast = i === steps.length - 1;
 
-                return (
-                    <React.Fragment key={s.key}>
-                        <Box sx={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            gap: 1,
-                            flex: '0 0 auto',
-                            minWidth: { xs: 55, sm: 70 }
-                        }}>
-                            <Box 
-                                className={current ? "live-beacon" : ""}
-                                sx={{
-                                    width: current ? 42 : 34,
-                                    height: current ? 42 : 34,
-                                    borderRadius: '50%',
-                                    border: `2.5px solid ${done ? (current ? TK.primary : TK.success) : TK.border}`,
-                                    bgcolor: done ? (current ? TK.primary : TK.success) : '#ffffff',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    color: done ? '#ffffff' : TK.text3,
-                                    transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-                                    boxShadow: current ? `0 0 0 6px ${TK.primary}25, 0 8px 16px -4px ${TK.primary}40` : 'none',
-                                }}
-                            >
-                                <span className="material-symbols-outlined" style={{ fontSize: current ? 21 : 17 }}>
-                                    {s.icon}
+                    return (
+                        <React.Fragment key={s.key}>
+                            <div className="flex flex-col items-center gap-1.5 flex-none min-w-[64px] sm:min-w-[76px]">
+                                <div
+                                    className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-all ${
+                                        current
+                                            ? 'bg-primary text-primary-content ring-4 ring-primary/20 shadow-md shadow-primary/30'
+                                            : done
+                                                ? 'bg-success text-success-content'
+                                                : 'bg-base-200 text-base-content/40 border border-base-300'
+                                    }`}
+                                >
+                                    <span className="material-symbols-outlined text-lg sm:text-xl">
+                                        {s.icon}
+                                    </span>
+                                </div>
+                                <span
+                                    className={`text-[10px] sm:text-xs text-center font-bold whitespace-pre-line leading-tight ${
+                                        current ? 'text-primary' : done ? 'text-success' : 'text-base-content/40'
+                                    }`}
+                                >
+                                    {s.label}
                                 </span>
-                            </Box>
-                            <Typography sx={{
-                                fontSize: { xs: '10px', sm: '11px' },
-                                fontWeight: current ? 800 : 600,
-                                color: current ? TK.primary : done ? TK.success : TK.text3,
-                                textAlign: 'center',
-                                whiteSpace: 'pre-line',
-                                lineHeight: 1.25,
-                            }}>
-                                {s.label}
-                            </Typography>
-                        </Box>
+                            </div>
 
-                        {!isLast && (
-                            <Box sx={{
-                                flex: 1,
-                                height: 3,
-                                mx: { xs: 0.5, sm: 1 },
-                                mb: 2.5,
-                                bgcolor: i < idx ? TK.success : TK.border,
-                                borderRadius: 99,
-                                transition: 'background 0.3s',
-                                position: 'relative',
-                                minWidth: 15
-                            }}>
-                                {i === idx - 1 && (
-                                    <Box sx={{
-                                        position: 'absolute',
-                                        inset: 0,
-                                        background: `linear-gradient(90deg, ${TK.success}, ${TK.primary})`,
-                                        borderRadius: 99
-                                    }} />
-                                )}
-                            </Box>
-                        )}
-                    </React.Fragment>
-                );
-            })}
-        </Box>
+                            {!isLast && (
+                                <div className="flex-1 h-1 mx-2 -mt-4 bg-base-200 rounded-full overflow-hidden relative min-w-[20px]">
+                                    <div
+                                        className={`h-full transition-all duration-500 ${
+                                            i < idx
+                                                ? 'w-full bg-success'
+                                                : i === idx - 1
+                                                    ? 'w-full bg-gradient-to-r from-success to-primary'
+                                                    : 'w-0'
+                                        }`}
+                                    />
+                                </div>
+                            )}
+                        </React.Fragment>
+                    );
+                })}
+            </div>
+        </div>
     );
 };
 
 const statusConfig = {
-    'created': { icon: 'inventory_2', color: '#0050d4', label: 'Created' },
-    'pickup_scheduled': { icon: 'schedule', color: '#0284c7', label: 'Pickup Scheduled' },
-    'ready_for_pickup': { icon: 'inventory', color: '#0284c7', label: 'Ready for Pickup' },
-    'picked_up': { icon: 'local_shipping', color: '#0284c7', label: 'Picked Up' },
-    'in_transit': { icon: 'flight', color: '#0050d4', label: 'In Transit' },
-    'out_for_delivery': { icon: 'local_shipping', color: '#059669', label: 'Out for Delivery' },
-    'delivered': { icon: 'check_circle', color: '#059669', label: 'Delivered' },
-    'exception': { icon: 'warning', color: '#dc2626', label: 'Exception' },
-    'pending': { icon: 'schedule', color: '#b45309', label: 'Pending' },
-    'updated': { icon: 'update', color: '#0050d4', label: 'Updated (Review)' },
-    'default': { icon: 'update', color: '#0050d4', label: 'Update' }
+    'created': { icon: 'inventory_2', label: 'Created' },
+    'pickup_scheduled': { icon: 'schedule', label: 'Pickup Scheduled' },
+    'ready_for_pickup': { icon: 'inventory', label: 'Ready for Pickup' },
+    'picked_up': { icon: 'local_shipping', label: 'Picked Up' },
+    'in_transit': { icon: 'flight', label: 'In Transit' },
+    'out_for_delivery': { icon: 'local_shipping', label: 'Out for Delivery' },
+    'delivered': { icon: 'check_circle', label: 'Delivered' },
+    'exception': { icon: 'warning', label: 'Exception' },
+    'pending': { icon: 'schedule', label: 'Pending' },
+    'updated': { icon: 'update', label: 'Updated (Review)' },
+    'default': { icon: 'update', label: 'Update' }
 };
 
 const getStatusConfig = (status) => {
@@ -230,7 +190,7 @@ const timelineDedupKey = (event) => {
 };
 
 const TrackingTimeline = ({ history = [], currentStatus = 'in_transit' }) => {
-    const { t, lang } = useLanguage();
+    const { lang } = useLanguage();
     const dedupedHistory = dedupeTrackingEvents(history, timelineDedupKey);
     const sortedHistory = [...dedupedHistory].sort((a, b) =>
         new Date(b.timestamp) - new Date(a.timestamp)
@@ -240,76 +200,42 @@ const TrackingTimeline = ({ history = [], currentStatus = 'in_transit' }) => {
     const dateKeys = Object.keys(groupedEvents);
 
     return (
-        <Box sx={{ p: 1 }}>
-            {/* Visual 5-Node Kinetic Horizon Progress Bar */}
+        <div className="space-y-4">
+            {/* Visual Connected Stepper */}
             <TrackingProgress status={currentStatus} />
 
             {(!history || history.length === 0) ? (
-                <Box sx={{
-                    p: 4,
-                    borderRadius: '16px',
-                    background: '#f8fafc',
-                    border: `1px dashed ${TK.border}`,
-                    textAlign: 'center'
-                }}>
-                    <Typography sx={{ color: TK.text2, fontSize: '14px' }}>
-                        {lang === 'ar' ? 'لا توجد محطات تتبع مسجلة حتى الآن. سيتم التحديث تلقائياً فور تحرك الشحنة.' : 'No tracking checkpoint events recorded yet. Check back soon for telemetry updates.'}
-                    </Typography>
-                </Box>
+                <div className="p-8 rounded-2xl bg-base-100 border border-dashed border-base-300 text-center">
+                    <p className="text-sm text-base-content/60">
+                        {lang === 'ar'
+                            ? 'لا توجد محطات تتبع مسجلة حتى الآن. سيتم التحديث تلقائياً فور تحرك الشحنة.'
+                            : 'No tracking checkpoint events recorded yet. Check back soon for telemetry updates.'}
+                    </p>
+                </div>
             ) : (
                 dateKeys.map((dateKey, dateIndex) => {
                     const events = groupedEvents[dateKey];
                     const isLatestDate = dateIndex === 0;
 
                     return (
-                        <Box key={dateKey} sx={{ mb: 4 }}>
+                        <div key={dateKey} className="space-y-3">
                             {/* Date Header */}
-                            <Typography
-                                variant="subtitle2"
-                                fontWeight="800"
-                                sx={{
-                                    color: isLatestDate ? TK.primary : TK.text2,
-                                    mb: 3,
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '1px',
-                                    fontSize: '12px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 2
-                                }}
-                            >
-                                {dateKey}
-                                <Box sx={{ flex: 1, height: '1px', background: TK.border }} />
-                            </Typography>
+                            <div className="flex items-center gap-3">
+                                <span className={`text-xs font-black uppercase tracking-wider ${isLatestDate ? 'text-primary' : 'text-base-content/60'}`}>
+                                    {dateKey}
+                                </span>
+                                <div className="flex-1 h-px bg-base-200" />
+                            </div>
 
                             {/* Events for this date */}
-                            <Box sx={{ position: 'relative', pl: 4, '[dir="rtl"] &': { pl: 0, pr: 4 } }}>
+                            <div className="relative ps-6 rtl:ps-0 rtl:pe-6 space-y-4">
                                 {/* Vertical Timeline Line */}
-                                <Box
-                                    sx={{
-                                        position: 'absolute',
-                                        left: 16,
-                                        transform: 'translateX(-50%)',
-                                        '[dir="rtl"] &': {
-                                            left: 'auto',
-                                            right: 16,
-                                            transform: 'translateX(50%)'
-                                        },
-                                        top: 0,
-                                        bottom: -20,
-                                        width: '2px',
-                                        background: TK.border,
-                                        zIndex: 0
-                                    }}
-                                />
+                                <div className="absolute top-0 bottom-0 start-2.5 rtl:start-auto rtl:end-2.5 w-0.5 bg-base-200" />
 
                                 {events.map((event, eventIndex) => {
                                     const statusStr = typeof event.status === 'object' ? (event.status?.status || event.status?.name || 'Update') : event.status;
                                     const config = getStatusConfig(statusStr);
                                     const { time } = formatDate(event);
-                                    const previousTime = eventIndex > 0 ? formatDate(events[eventIndex - 1]).time : null;
-                                    const showTime = eventIndex === 0 || previousTime !== time;
-                                    const startsTimeGroup = showTime && eventIndex > 0;
                                     const isFirst = dateIndex === 0 && eventIndex === 0;
                                     const source = event.source === 'carrier' 
                                         ? (lang === 'ar' ? 'شبكة النقل الدولية' : 'Global Network') 
@@ -317,108 +243,74 @@ const TrackingTimeline = ({ history = [], currentStatus = 'in_transit' }) => {
                                     const displayMessage = getEventDisplayMessage(event, statusStr || config.label);
 
                                     return (
-                                        <Box
-                                            key={eventIndex}
-                                            sx={{
-                                                position: 'relative',
-                                                mt: startsTimeGroup ? 2 : 0,
-                                                pt: startsTimeGroup ? 2 : 0,
-                                                mb: 3
-                                            }}
-                                        >
+                                        <div key={eventIndex} className="relative">
                                             {/* Node icon */}
-                                            <Box
-                                                sx={{
-                                                    position: 'absolute',
-                                                    left: -32,
-                                                    '[dir="rtl"] &': {
-                                                        left: 'auto',
-                                                        right: -32
-                                                    },
-                                                    width: 28,
-                                                    height: 28,
-                                                    borderRadius: '50%',
-                                                    bgcolor: isFirst ? TK.primary : '#ffffff',
-                                                    border: `2px solid ${isFirst ? TK.primary : TK.border}`,
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    color: isFirst ? '#ffffff' : TK.text2,
-                                                    boxShadow: isFirst ? `0 0 0 4px ${TK.primary}20` : 'none',
-                                                    zIndex: 1
-                                                }}
+                                            <div
+                                                className={`absolute -start-6 rtl:-start-auto rtl:-end-6 top-1.5 w-7 h-7 rounded-full flex items-center justify-center transition-all z-10 ${
+                                                    isFirst
+                                                        ? 'bg-primary text-primary-content ring-4 ring-primary/20 shadow-sm'
+                                                        : 'bg-base-100 text-base-content/60 border-2 border-base-300'
+                                                }`}
                                             >
-                                                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
+                                                <span className="material-symbols-outlined text-sm">
                                                     {config.icon}
                                                 </span>
-                                            </Box>
+                                            </div>
 
-                                            <Box sx={{
-                                                bgcolor: '#ffffff',
-                                                p: 2,
-                                                borderRadius: '14px',
-                                                border: `1px solid ${TK.border}`,
-                                                boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
-                                            }}>
-                                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', mb: 0.5 }}>
-                                                    <Typography sx={{ fontWeight: 800, fontSize: 13, color: TK.text1 }}>
+                                            <div className="bg-base-100 border border-base-200 rounded-xl p-3.5 shadow-xs space-y-1">
+                                                <div className="flex justify-between items-baseline gap-2">
+                                                    <div className="font-bold text-xs text-base-content">
                                                         {displayMessage}
-                                                    </Typography>
-                                                    <Typography sx={{ fontSize: 11.5, color: TK.text3, fontWeight: 600 }}>
+                                                    </div>
+                                                    <div className="text-[11px] font-mono text-base-content/50 shrink-0">
                                                         {time}
-                                                    </Typography>
-                                                </Box>
+                                                    </div>
+                                                </div>
 
                                                 {event.location && (
-                                                    <Typography sx={{ fontSize: 12, color: TK.text2, mt: 0.5 }}>
+                                                    <div className="text-xs text-base-content/70">
                                                         <LocationLabel location={event.location} />
-                                                    </Typography>
+                                                    </div>
                                                 )}
 
                                                 {event.pod && (
-                                                    <Box sx={{
-                                                        mt: 1.5,
-                                                        p: 1.5,
-                                                        bgcolor: '#f0fdf4',
-                                                        border: '1px solid #bbf7d0',
-                                                        borderRadius: '10px'
-                                                    }}>
-                                                        <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#166534', mb: 0.5 }}>
+                                                    <div className="mt-2 p-2.5 bg-success/10 border border-success/20 rounded-lg space-y-1 text-xs text-success">
+                                                        <div className="font-bold">
                                                             {lang === 'ar' ? '✓ تم تسجيل إثبات التسليم (POD)' : '✓ Proof of Delivery Recorded'}
-                                                        </Typography>
-                                                        <Typography sx={{ fontSize: 11.5, color: '#15803d' }}>
+                                                        </div>
+                                                        <div className="text-base-content/80">
                                                             {lang === 'ar' ? 'المستلم:' : 'Received by:'} <strong>{event.pod.recipientName}</strong> ({event.pod.recipientRelationship || (lang === 'ar' ? 'المستلم شخصياً' : 'Self')})
-                                                        </Typography>
+                                                        </div>
                                                         {event.pod.driverName && (
-                                                            <Typography sx={{ fontSize: 11, color: '#15803d' }}>
+                                                            <div className="text-base-content/60 text-[11px]">
                                                                 {lang === 'ar' ? 'بواسطة المندوب:' : 'Delivered by:'} {event.pod.driverName}
-                                                            </Typography>
+                                                            </div>
                                                         )}
                                                         {event.pod.signatureDataUrl && (
-                                                            <Box sx={{ mt: 1, bgcolor: '#ffffff', p: 0.5, borderRadius: '6px', border: '1px solid #dcfce7', display: 'inline-block' }}>
+                                                            <div className="mt-1 bg-white p-1 rounded border border-success/30 inline-block">
                                                                 <img
                                                                     src={event.pod.signatureDataUrl}
                                                                     alt="Recipient Signature"
-                                                                    style={{ height: '40px', maxWidth: '140px', objectFit: 'contain', display: 'block' }}
+                                                                    className="h-9 max-w-[140px] object-contain block"
                                                                 />
-                                                            </Box>
+                                                            </div>
                                                         )}
-                                                    </Box>
+                                                    </div>
                                                 )}
 
-                                                <Typography sx={{ fontSize: 10.5, color: TK.text3, mt: 0.75, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                                <div className="text-[10px] uppercase font-bold tracking-wider text-base-content/40 pt-1">
                                                     {lang === 'ar' ? 'المصدر:' : 'Source:'} {source}
-                                                </Typography>
-                                            </Box>
-                                        </Box>
+                                                </div>
+                                            </div>
+                                        </div>
                                     );
                                 })}
-                            </Box>
-                        </Box>
+                            </div>
+                        </div>
                     );
                 })
             )}
-        </Box>
+        </div>
     );
 };
 

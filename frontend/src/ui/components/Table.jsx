@@ -1,53 +1,47 @@
-import styled from 'styled-components';
+import React from 'react';
 
-export const TableWrapper = styled.div`
-  width: 100%;
-  overflow-x: auto;
-  border-radius: 16px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-`;
+export const TableWrapper = ({ children, className = '', ...props }) => (
+  <div className={`w-full overflow-x-auto rounded-2xl bg-base-100 border border-base-200 shadow-xs ${className}`} {...props}>
+    {children}
+  </div>
+);
 
-export const Table = styled.table`
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-`;
+export const Table = ({ children, className = '', ...props }) => (
+  <table className={`table table-sm w-full ${className}`} {...props}>
+    {children}
+  </table>
+);
 
-export const Thead = styled.thead`
-  background: var(--bg-tertiary);
-`;
+export const Thead = ({ children, className = '', ...props }) => (
+  <thead className={`bg-base-200/60 text-xs text-base-content/70 ${className}`} {...props}>
+    {children}
+  </thead>
+);
 
-export const Tbody = styled.tbody``;
+export const Tbody = ({ children, className = '', ...props }) => (
+  <tbody className={`divide-y divide-base-200 text-xs ${className}`} {...props}>
+    {children}
+  </tbody>
+);
 
-export const Th = styled.th`
-  text-align: left;
-  padding: 14px 16px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid var(--border-color);
+export const Th = ({ children, className = '', style, ...props }) => (
+  <th style={style} className={`text-start font-bold uppercase tracking-wider text-[11px] p-3 ${className}`} {...props}>
+    {children}
+  </th>
+);
 
-  &:first-child { border-radius: 10px 0 0 0; }
-  &:last-child { border-radius: 0 10px 0 0; }
-`;
+export const Tr = ({ children, className = '', onClick, ...props }) => (
+  <tr
+    onClick={onClick}
+    className={`hover:bg-base-200/40 transition-colors ${onClick ? 'cursor-pointer' : ''} ${className}`}
+    {...props}
+  >
+    {children}
+  </tr>
+);
 
-export const Tr = styled.tr`
-  transition: all 0.2s ease;
-  cursor: ${props => props.onClick ? 'pointer' : 'default'};
-
-  &:hover {
-    background: var(--bg-tertiary);
-  }
-`;
-
-export const Td = styled.td`
-  padding: 20px 16px;
-  border-bottom: 1px solid var(--border-color);
-  font-size: 14px;
-  color: var(--text-primary);
-  
-  /* Remove border from last row if needed, but standard is fine */
-`;
+export const Td = ({ children, className = '', style, colSpan, ...props }) => (
+  <td style={style} colSpan={colSpan} className={`p-3 text-base-content ${className}`} {...props}>
+    {children}
+  </td>
+);

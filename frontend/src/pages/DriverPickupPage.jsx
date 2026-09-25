@@ -1,411 +1,52 @@
-import React, { Suspense, lazy, useState, useEffect } from 'react';
-import styled, { keyframes } from 'styled-components';
+import React, { Suspense, lazy, useState, useEffect, useMemo, useCallback } from 'react';
 import { shipmentService, financeService, userService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { Button, Card, StatusPill, Loader } from '../ui';
+import { useLanguage } from '../context/LanguageContext';
+import { StatusBadge } from '../components/common/StatusBadge';
 import ProofOfDeliveryModal from '../components/ProofOfDeliveryModal';
 
 const QrScanner = lazy(() => import('react-qr-scanner'));
 
-// --- Icons (Using SVG directly or imported if available, using SVGs for independence/consistency) ---
-// Simplified icons for this view to reduce dependency on MUI icons if aiming for pure custom look, 
-// but sticking to standard icons is fine if wrapped. 
-// For this refactor, I'll assume we can still keep MUI Icons or replace them. 
-// To allow "MUI-Independence" strictly, we should use SVGs, but for speed, keeping MUI Icons 
-// wrapped in styled components is a common middle ground. 
-// However, the prompt implies "independently of MUI" for *core components*, but often icons are excluded.
-// I will use raw SVGs for the critical main actions to be minimal.
-
-const QrIcon = () => (
-    <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" />
-        <rect x="7" y="7" width="10" height="10" rx="1" />
-        <path d="M7 12h10" /><path d="M12 7v10" />
-    </svg>
-);
-
-const CloseIcon = () => (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
-    </svg>
-);
-
-const TruckIcon = () => (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="1" y="3" width="15" height="13"></rect>
-        <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
-        <circle cx="5.5" cy="18.5" r="2.5"></circle>
-        <circle cx="18.5" cy="18.5" r="2.5"></circle>
-    </svg>
-);
-
-const LogoutIcon = () => (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-        <polyline points="16 17 21 12 16 7"></polyline>
-        <line x1="21" y1="12" x2="9" y2="12"></line>
-    </svg>
-);
-
-const CameraSwitchIcon = () => (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M4 11v7a1 1 0 0 0 1 1h7"></path>
-        <path d="M20 4v7a1 1 0 0 1-1 1h-7"></path>
-        <path d="M12 21a9 9 0 0 0 9-9"></path>
-        <path d="M12 3a9 9 0 0 0-9 9"></path>
-    </svg>
-);
-
-// --- Styled Components ---
-
-const PageContainer = styled.div`
-    min-height: 100vh;
-    background: #0a0e1a;
-    color: #e8eaf0;
-    display: flex;
-    flex-direction: column;
-    padding-bottom: 40px;
-`;
-
-const Header = styled.header`
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 16px 24px;
-    background: transparent;
-`;
-
-const LogoSection = styled.div`
-    display: flex;
-    align-items: center;
-    gap: 12px;
-`;
-
-const LogoIcon = styled.div`
-    width: 40px;
-    height: 40px;
-    border-radius: 12px;
-    background: var(--accent-primary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #0a0e1a;
-`;
-
-const BrandText = styled.div`
-    display: flex;
-    flex-direction: column;
-    
-    strong {
-        font-family: 'Outfit', sans-serif;
-        font-size: 16px;
-        line-height: 1.2;
-    }
-    
-    span {
-        font-size: 12px;
-        color: var(--text-secondary);
-    }
-`;
-
-const IconButton = styled.button`
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    padding: 8px;
-    border-radius: 50%;
-    
-    &:hover {
-        background: rgba(255,255,255,0.05);
-        color: var(--text-primary);
-    }
-`;
-
-const MainContent = styled.main`
-    flex-grow: 1;
-    display: flex;
-    flex-direction: column;
-    padding: 24px;
-    max-width: 600px;
-    margin: 0 auto;
-    width: 100%;
-    gap: 24px;
-`;
-
-const Greeting = styled.h1`
-    font-family: 'Outfit', sans-serif;
-    font-size: 32px;
-    font-weight: 700;
-    margin: 0;
-`;
-
-const StatsGrid = styled.div`
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-`;
-
-const StatCard = styled.div`
-    background: #141929;
-    border: 1px solid var(--border-color);
-    border-radius: 16px;
-    padding: 16px;
-    
-    label {
-        font-size: 12px;
-        color: var(--text-secondary);
-        display: block;
-        margin-bottom: 4px;
-    }
-    
-    div {
-        font-size: 32px;
-        font-weight: 700;
-        color: ${props => props.highlight ? 'var(--accent-primary)' : 'var(--text-primary)'};
-    }
-`;
-
-const ModeSwitcher = styled.div`
-    display: flex;
-    background: #141929;
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    padding: 4px;
-    gap: 4px;
-    margin-bottom: 8px;
-`;
-
-const ModeTab = styled.button`
-    flex: 1;
-    padding: 10px 14px;
-    border-radius: 8px;
-    border: none;
-    background: ${props => props.active ? 'var(--accent-primary)' : 'transparent'};
-    color: ${props => props.active ? '#0a0e1a' : 'var(--text-secondary)'};
-    font-weight: 700;
-    font-size: 13px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-
-    &:hover {
-        color: ${props => props.active ? '#0a0e1a' : 'var(--text-primary)'};
-    }
-`;
-
-const ScanButtonContainer = styled.div`
-    flex-grow: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 280px;
-`;
-
-const BigScanButton = styled.button`
-    width: 220px;
-    height: 220px;
-    border-radius: 50%;
-    background: ${props => props.isDeliver ? 'rgba(59, 130, 246, 0.1)' : 'rgba(0, 217, 184, 0.1)'};
-    border: 2px solid ${props => props.isDeliver ? '#3b82f6' : 'var(--accent-primary)'};
-    color: ${props => props.isDeliver ? '#3b82f6' : 'var(--accent-primary)'};
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-    cursor: pointer;
-    box-shadow: 0 0 40px ${props => props.isDeliver ? 'rgba(59, 130, 246, 0.2)' : 'rgba(0, 217, 184, 0.2)'};
-    transition: all 0.3s ease;
-    
-    &:hover {
-        background: ${props => props.isDeliver ? 'rgba(59, 130, 246, 0.2)' : 'rgba(0, 217, 184, 0.2)'};
-        transform: scale(1.05);
-        box-shadow: 0 0 60px ${props => props.isDeliver ? 'rgba(59, 130, 246, 0.4)' : 'rgba(0, 217, 184, 0.4)'};
-    }
-    
-    span {
-        font-weight: 700;
-        font-size: 18px;
-    }
-`;
-
-// Scanner Overlay Styles
-const ScannerOverlay = styled.div`
-    position: fixed;
-    inset: 0;
-    background: #000;
-    z-index: 2000;
-    display: flex;
-    flex-direction: column;
-`;
-
-const ScannerHeader = styled.div`
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 10;
-    padding: 24px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
-    
-    h2 {
-        margin: 0;
-        font-size: 18px;
-        font-weight: 600;
-    }
-`;
-
-const ScannerViewport = styled.div`
-    flex-grow: 1;
-    position: relative;
-    
-    video {
-        width: 100% !important;
-        height: 100% !important;
-        object-fit: cover !important;
-    }
-`;
-
-const scanAnimation = keyframes`
-    0% { top: 0; opacity: 0; }
-    50% { opacity: 1; }
-    100% { top: 100%; opacity: 0; }
-`;
-
-const TargetBox = styled.div`
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 250px;
-    height: 250px;
-    border: 2px solid var(--accent-primary);
-    border-radius: 16px;
-    box-shadow: 0 0 0 9999px rgba(0,0,0,0.7);
-    
-    &::after {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 2px;
-        background: var(--accent-primary);
-        animation: ${scanAnimation} 2s infinite ease-in-out;
-    }
-`;
-
-const ScannerControls = styled.div`
-    background: #0a0e1a;
-    padding: 32px;
-    display: flex;
-    justify-content: space-around;
-`;
-
-const ControlButton = styled.button`
-    background: transparent;
-    border: 1px solid var(--border-color);
-    color: var(--text-primary);
-    padding: 16px;
-    border-radius: 50%;
-    cursor: pointer;
-    
-    &:hover {
-        background: rgba(255,255,255,0.1);
-    }
-`;
-
-// Result Overlay
-const popIn = keyframes`
-    0% { transform: scale(0); }
-    100% { transform: scale(1); }
-`;
-
-const ResultOverlay = styled.div`
-    position: fixed;
-    inset: 0;
-    background: rgba(10, 14, 26, 0.98);
-    z-index: 2001;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 32px;
-    text-align: center;
-`;
-
-const ResultIcon = styled.div`
-    width: 100px;
-    height: 100px;
-    border-radius: 50%;
-    background: ${props => props.success ? 'rgba(0, 217, 184, 0.2)' : 'rgba(239, 68, 68, 0.2)'};
-    color: ${props => props.success ? '#00d9b8' : '#ef4444'};
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 24px;
-    animation: ${popIn} 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    
-    svg {
-        width: 60px;
-        height: 60px;
-    }
-`;
-
-const ResultTitle = styled.h2`
-    font-size: 24px;
-    font-weight: 700;
-    margin-bottom: 8px;
-`;
-
-const ResultMessage = styled.p`
-    color: var(--text-secondary);
-    margin-bottom: 48px;
-`;
-
-const BottomSheet = styled.div`
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: #141929;
-    border-radius: 24px 24px 0 0;
-    padding: 24px;
-    transform: translateY(${props => props.open ? '0' : '100%'});
-    transition: transform 0.3s ease;
-    z-index: 1000;
-    border-top: 1px solid var(--border-color);
-    max-height: 80vh;
-    overflow-y: auto;
-`;
-
-const DragHandle = styled.div`
-    width: 40px;
-    height: 4px;
-    background: var(--border-color);
-    border-radius: 2px;
-    margin: 0 auto 16px;
-`;
-
-// --- Kuwait Governorate Resolver & Route Builder ---
+// ── Kuwait Governorate Resolver & Multi-Stop Route Builder ──────
 const GOVERNORATE_MAP = {
-    'Capital': ['kuwait city', 'sharq', 'dasman', 'mirqab', 'jibla', 'salhiya', 'bneid al-gar', 'bneid al gar', 'kaifan', 'mansouriya', 'abdullah al-salem', 'nuzha', 'faiha', 'shamiya', 'rawda', 'adailiya', 'khaldiya', 'qadsiya', 'yarmouk', 'shuwaikh', 'sulaibikhat', 'doha', 'ghernata', 'qairawan', 'العاصمة', 'مدينة الكويت', 'الشرق', 'دسمان', 'المرقاب', 'القبلة', 'الصالحية', 'بنيد القار', 'كيفان', 'المنصورية', 'عبدالله السالم', 'النزهة', 'الفيحاء', 'الشامية', 'الروضة', 'العديلية', 'الخالدية', 'القادسية', 'اليرموك', 'الشويخ', 'الصليبخات', 'الدوحة', 'غرناطة', 'القيروان'],
-    'Hawalli': ['hawalli', 'salmiya', 'rumaithiya', 'jabriya', 'mishref', 'bayan', 'salwa', 'bidaa', 'shaab', 'maidan hawalli', 'hateen', 'hitteen', 'al-siddiq', 'siddiq', 'al-salam', 'salam', 'al-zahra', 'zahra', 'shuhada', 'حولي', 'السالمية', 'الرميثية', 'الجابرية', 'مشرف', 'بيان', 'سلوى', 'البدع', 'الشعب', 'ميدان حولي', 'حطين', 'الصديق', 'السلام', 'الزهراء', 'الشهداء'],
-    'Farwaniya': ['farwaniya', 'khaitan', 'omariya', 'rabiya', 'ishbilya', 'jleeb al-shuyoukh', 'jleeb', 'andalus', 'riggae', 'rehab', 'sabah al-nasser', 'abdullah al-mubarak', 'west abdullah al mubarak', 'dajeej', 'ardiya', 'ardhiya', 'الفروانية', 'خيطان', 'العمرية', 'الرابية', 'إشبيلية', 'جليب الشيوخ', 'الأندلس', 'الرقعي', 'الرحاب', 'صباح الناصر', 'عبدالله المبارك', 'غرب عبدالله المبارك', 'الضجيج', 'العارضية'],
-    'Mubarak Al-Kabeer': ['sabah al-salem', 'messila', 'abu fatira', 'al-fnaitees', 'fnaitees', 'al-qurain', 'qurain', 'al-qusour', 'qusour', 'al-adan', 'adan', 'mubarak al-kabeer', 'مبارك الكبير', 'صباح السالم', 'المسيلة', 'أبو فطيرة', 'الفنيطيس', 'القرين', 'القصور', 'العدان'],
-    'Ahmadi': ['ahmadi', 'fahaheel', 'mangaf', 'abu halifa', 'mahboula', 'egaila', 'sabahiya', 'riqqa', 'hadiya', 'fintas', 'wafra', 'khiran', 'الأحمدي', 'الفحيحيل', 'المنقف', 'أبو حليفة', 'المهبولة', 'العقيلة', 'الصباحية', 'الرقة', 'هدية', 'الفنطاس', 'الوفرة', 'الخيران'],
-    'Jahra': ['jahra', 'saad al-abdullah', 'sulaibiya', 'oyoun', 'waha', 'nasseem', 'taima', 'qasr', 'mutlaa', 'الجهراء', 'سعد العبدالله', 'الصليبية', 'العيون', 'الواحة', 'النسيم', 'تيماء', 'القصر', 'المطلاع']
+    'Capital': [
+        'kuwait city', 'sharq', 'dasman', 'mirqab', 'jibla', 'salhiya', 'bneid al-gar', 'bneid al gar',
+        'kaifan', 'mansouriya', 'abdullah al-salem', 'nuzha', 'faiha', 'shamiya', 'rawda', 'adailiya',
+        'khaldiya', 'qadsiya', 'yarmouk', 'shuwaikh', 'sulaibikhat', 'doha', 'ghernata', 'qairawan',
+        'العاصمة', 'مدينة الكويت', 'الشرق', 'دسمان', 'المرقاب', 'القبلة', 'الصالحية', 'بنيد القار',
+        'كيفان', 'المنصورية', 'عبدالله السالم', 'النزهة', 'الفيحاء', 'الشامية', 'الروضة', 'العديلية',
+        'الخالدية', 'القادسية', 'اليرموك', 'الشويخ', 'الصليبخات', 'الدوحة', 'غرناطة', 'القيروان'
+    ],
+    'Hawalli': [
+        'hawalli', 'salmiya', 'rumaithiya', 'jabriya', 'mishref', 'bayan', 'salwa', 'bidaa', 'shaab',
+        'maidan hawalli', 'hateen', 'hitteen', 'al-siddiq', 'siddiq', 'al-salam', 'salam', 'al-zahra',
+        'zahra', 'shuhada', 'حولي', 'السالمية', 'الرميثية', 'الجابرية', 'مشرف', 'بيان', 'سلوى',
+        'البدع', 'الشعب', 'ميدان حولي', 'حطين', 'الصديق', 'السلام', 'الزهراء', 'الشهداء'
+    ],
+    'Farwaniya': [
+        'farwaniya', 'khaitan', 'omariya', 'rabiya', 'ishbilya', 'jleeb al-shuyoukh', 'jleeb', 'andalus',
+        'riggae', 'rehab', 'sabah al-nasser', 'abdullah al-mubarak', 'west abdullah al mubarak', 'dajeej',
+        'ardiya', 'ardhiya', 'الفروانية', 'خيطان', 'العمرية', 'الرابية', 'إشبيلية', 'جليب الشيوخ',
+        'الأندلس', 'الرقعي', 'الرحاب', 'صباح الناصر', 'عبدالله المبارك', 'غرب عبدالله المبارك', 'الضجيج', 'العارضية'
+    ],
+    'Mubarak Al-Kabeer': [
+        'sabah al-salem', 'messila', 'abu fatira', 'al-fnaitees', 'fnaitees', 'al-qurain', 'qurain',
+        'al-qusour', 'qusour', 'al-adan', 'adan', 'mubarak al-kabeer', 'مبارك الكبير', 'صباح السالم',
+        'المسيلة', 'أبو فطيرة', 'الفنيطيس', 'القرين', 'القصور', 'العدان'
+    ],
+    'Ahmadi': [
+        'ahmadi', 'fahaheel', 'mangaf', 'abu halifa', 'mahboula', 'egaila', 'sabahiya', 'riqqa',
+        'hadiya', 'fintas', 'wafra', 'khiran', 'الأحمدي', 'الفحيحيل', 'المنقف', 'أبو حليفة',
+        'المهبولة', 'العقيلة', 'الصباحية', 'الرقة', 'هدية', 'الفنطاس', 'الوفرة', 'الخيران'
+    ],
+    'Jahra': [
+        'jahra', 'saad al-abdullah', 'sulaibiya', 'oyoun', 'waha', 'nasseem', 'taima', 'qasr', 'mutlaa',
+        'الجهراء', 'سعد العبدالله', 'الصليبية', 'العيون', 'الواحة', 'النسيم', 'تيماء', 'القصر', 'المطلاع'
+    ]
 };
 
 const resolveGovernorate = (addressObj = {}) => {
-    const text = `${addressObj.governorate || ''} ${addressObj.state || ''} ${addressObj.city || ''} ${addressObj.street || ''} ${addressObj.formattedAddress || ''}`.toLowerCase();
+    const text = `${addressObj.governorate || ''} ${addressObj.state || ''} ${addressObj.city || ''} ${addressObj.street || ''} ${addressObj.addressLine1 || ''} ${addressObj.area || ''} ${addressObj.formattedAddress || ''}`.toLowerCase();
     for (const [gov, keywords] of Object.entries(GOVERNORATE_MAP)) {
         if (text.includes(gov.toLowerCase())) return gov;
         if (keywords.some(kw => text.includes(kw))) return gov;
@@ -413,14 +54,16 @@ const resolveGovernorate = (addressObj = {}) => {
     return 'Other';
 };
 
-const getDestinationAddress = (shipment) => {
-    const dest = shipment.destination || {};
-    return dest.formattedAddress || [dest.street, dest.city, dest.country].filter(Boolean).join(', ') || 'Kuwait';
+const getPartyAddress = (party = {}) => {
+    return party.formattedAddress || [party.addressLine1 || party.street, party.area, party.city, party.country].filter(Boolean).join(', ') || 'Kuwait';
 };
 
-const generateMultiStopUrl = (shipmentList) => {
+const generateMultiStopUrl = (shipmentList, isDeliverMode) => {
     if (!shipmentList || shipmentList.length === 0) return null;
-    const destinations = shipmentList.map(s => encodeURIComponent(getDestinationAddress(s)));
+    const destinations = shipmentList.map(s => {
+        const party = isDeliverMode ? (s.destination || s.receiver || {}) : (s.origin || s.sender || {});
+        return encodeURIComponent(getPartyAddress(party));
+    });
     if (destinations.length === 1) {
         return `https://www.google.com/maps/dir/?api=1&destination=${destinations[0]}`;
     }
@@ -429,26 +72,31 @@ const generateMultiStopUrl = (shipmentList) => {
     return `https://www.google.com/maps/dir/?api=1&destination=${finalStop}&waypoints=${waypoints}&travelmode=driving`;
 };
 
-// --- Main Component ---
-
+/**
+ * DriverPickupPage — Mobile-First Courier & Pickup Command Center
+ * Built with 100% Tailwind CSS + DaisyUI v4. Zero styled-components, zero MUI.
+ */
 const DriverPickupPage = () => {
     const { logout, user } = useAuth();
+    const { lang, isRTL } = useLanguage();
 
-    // Mode: 'pickup' | 'deliver'
+    // Mode: 'pickup' | 'deliver' | 'cash' | 'scan'
     const [scanMode, setScanMode] = useState('pickup');
     const [selectedGovFilter, setSelectedGovFilter] = useState('ALL');
 
-    // State
+    // Scanner & Camera State
     const [isScanning, setIsScanning] = useState(false);
     const [cameraFacingMode, setCameraFacingMode] = useState('environment');
     const [processing, setProcessing] = useState(false);
-    const [result, setResult] = useState(null); // { type: 'success' | 'error', message: '' }
+    const [manualTracking, setManualTracking] = useState('');
+    const [manualLoading, setManualLoading] = useState(false);
+    const [result, setResult] = useState(null); // { type: 'success' | 'error', message: '', detail: '' }
+
+    // Manifest State
     const [readyShipments, setReadyShipments] = useState([]);
     const [deliveryShipments, setDeliveryShipments] = useState([]);
     const [stats, setStats] = useState({ pickedUpToday: 0, deliveredToday: 0 });
-    const [isListOpen, setIsListOpen] = useState(false);
-    const [manualTracking, setManualTracking] = useState('');
-    const [manualLoading, setManualLoading] = useState(false);
+    const [actionLoadingId, setActionLoadingId] = useState(null);
 
     // COD State
     const [driversList, setDriversList] = useState([]);
@@ -463,6 +111,7 @@ const DriverPickupPage = () => {
         alerts: [],
         shipments: []
     });
+
     const [isRemitModalOpen, setIsRemitModalOpen] = useState(false);
     const [remitAmount, setRemitAmount] = useState('');
     const [remitCurrency, setRemitCurrency] = useState('KWD');
@@ -474,7 +123,7 @@ const DriverPickupPage = () => {
     const [selectedPodShipment, setSelectedPodShipment] = useState(null);
     const [isPodModalOpen, setIsPodModalOpen] = useState(false);
 
-    const fetchDriverData = async (overrideDriverId) => {
+    const fetchDriverData = useCallback(async (overrideDriverId) => {
         try {
             // Load drivers list for staff / admin / managers
             if (['admin', 'staff', 'manager', 'accounting'].includes(user?.role)) {
@@ -487,7 +136,7 @@ const DriverPickupPage = () => {
                         }
                     }
                 } catch (driverErr) {
-                    console.warn('Driver list load warning:', driverErr);
+                    console.debug('Driver list load warning:', driverErr);
                 }
             }
 
@@ -531,16 +180,16 @@ const DriverPickupPage = () => {
                     if (totalKwd > 0) setRemitAmount(String(totalKwd));
                 }
             } catch (codErr) {
-                console.warn('Driver COD summary load warning:', codErr);
+                console.debug('Driver COD summary load warning:', codErr);
             }
         } catch (err) {
             console.error('Error fetching driver data:', err);
         }
-    };
+    }, [user, selectedDriverId]);
 
     useEffect(() => {
         fetchDriverData();
-    }, []);
+    }, [fetchDriverData]);
 
     const handleDriverChange = async (driverId) => {
         setSelectedDriverId(driverId);
@@ -548,6 +197,97 @@ const DriverPickupPage = () => {
         await fetchDriverData(driverId);
     };
 
+    // Confirm Pickup Direct
+    const processPickup = async (trackingNumber) => {
+        setActionLoadingId(trackingNumber);
+        try {
+            const response = await shipmentService.driverPickupScan(trackingNumber);
+            if (response.success) {
+                setResult({
+                    type: 'success',
+                    message: lang === 'ar' ? `تم تأكيد استلام الشحنة #${trackingNumber}` : `Shipment #${trackingNumber} Confirmed`,
+                    detail: lang === 'ar' ? 'تم تسجيل الطرد كـ "تم الاستلام" بنجاح' : 'Package successfully marked as Picked Up'
+                });
+                fetchDriverData();
+            } else {
+                setResult({
+                    type: 'error',
+                    message: lang === 'ar' ? 'فشل تأكيد الاستلام' : 'Pickup Failed',
+                    detail: response.error || 'Server rejected the update'
+                });
+            }
+        } catch (err) {
+            setResult({
+                type: 'error',
+                message: lang === 'ar' ? 'خطأ في عملية الاستلام' : 'Scan Error',
+                detail: err.message || 'Could not connect to server'
+            });
+        } finally {
+            setActionLoadingId(null);
+        }
+    };
+
+    // Initiate POD Flow
+    const initiatePodFlow = async (trackingNumber) => {
+        try {
+            const res = await shipmentService.getShipment(trackingNumber);
+            const shipment = res?.data || res;
+            if (!shipment || !shipment.trackingNumber) {
+                throw new Error('Shipment not found');
+            }
+            setSelectedPodShipment(shipment);
+            setIsPodModalOpen(true);
+        } catch (err) {
+            setResult({
+                type: 'error',
+                message: lang === 'ar' ? 'تعذر جلب تفاصيل الشحنة' : 'Shipment Lookup Failed',
+                detail: err.message || 'Could not fetch package details for POD'
+            });
+        }
+    };
+
+    const handleScan = async (data) => {
+        if (data && (isScanning || manualTracking) && !processing) {
+            setProcessing(true);
+            setIsScanning(false);
+
+            try {
+                const text = data.text || data;
+                let trackingNumber = text;
+                try {
+                    const json = JSON.parse(text);
+                    if (json.tracking) trackingNumber = json.tracking;
+                } catch {
+                    // Plain text tracking ID
+                }
+
+                if (scanMode === 'deliver') {
+                    await initiatePodFlow(trackingNumber);
+                } else {
+                    await processPickup(trackingNumber);
+                }
+            } catch {
+                setResult({
+                    type: 'error',
+                    message: lang === 'ar' ? 'رمز QR غير صالح' : 'Invalid QR Code',
+                    detail: lang === 'ar' ? 'صيغة الباركود غير معتمدة' : 'Format not recognized'
+                });
+            } finally {
+                setProcessing(false);
+            }
+        }
+    };
+
+    const handlePodSuccess = (updatedShipment) => {
+        setResult({
+            type: 'success',
+            message: lang === 'ar' ? `اكتمل التسليم (#${updatedShipment.trackingNumber})` : `Delivery Complete (#${updatedShipment.trackingNumber})`,
+            detail: lang === 'ar' ? 'تم حفظ التوقيع الإلكتروني وإثبات التسليم (POD) بنجاح.' : 'Proof of Delivery and signature captured successfully.'
+        });
+        fetchDriverData();
+    };
+
+    // Add COD Shipment Manually
     const handleAddCodShipment = async (trackingToLookup) => {
         const tracking = (trackingToLookup || codTrackingInput).trim();
         if (!tracking) return;
@@ -628,6 +368,7 @@ const DriverPickupPage = () => {
         }
     };
 
+    // Remit Submit
     const handleRemitSubmit = async () => {
         if (!remitAmount || parseFloat(remitAmount) <= 0) {
             alert('Please enter a valid cash amount to remit');
@@ -662,7 +403,7 @@ const DriverPickupPage = () => {
             const driverName = driverObj?.name || user?.name || 'Driver';
             setResult({
                 type: 'success',
-                message: 'Cash Handover Submitted',
+                message: lang === 'ar' ? 'تم تسجيل تسليم العهدة النقدية' : 'Cash Handover Submitted',
                 detail: `Handover request of ${parseFloat(remitAmount).toFixed(3)} ${remitCurrency} submitted for ${driverName}. Hand physical cash to the hub vault cashier.`
             });
             setCodFeedback({
@@ -678,382 +419,314 @@ const DriverPickupPage = () => {
         }
     };
 
-    const handleScan = async (data) => {
-        if (data && isScanning && !processing) {
-            setProcessing(true);
-            setIsScanning(false); // Pause scanning
-
-            try {
-                const text = data.text || data;
-                let trackingNumber = text;
-                try {
-                    const json = JSON.parse(text);
-                    if (json.tracking) trackingNumber = json.tracking;
-                } catch (e) {
-                    // Non-JSON QR payloads are valid when they contain the tracking number directly.
-                }
-
-                if (scanMode === 'deliver') {
-                    await initiatePodFlow(trackingNumber);
-                } else {
-                    await processPickup(trackingNumber);
-                }
-            } catch (err) {
-                setResult({
-                    type: 'error',
-                    message: 'Invalid QR Code',
-                    detail: 'Format not recognized'
-                });
-            } finally {
-                setProcessing(false);
-            }
-        }
-    };
-
-    const initiatePodFlow = async (trackingNumber) => {
-        try {
-            const res = await shipmentService.getShipment(trackingNumber);
-            const shipment = res?.data || res;
-            if (!shipment || !shipment.trackingNumber) {
-                throw new Error('Shipment not found');
-            }
-            setSelectedPodShipment(shipment);
-            setIsPodModalOpen(true);
-        } catch (err) {
-            setResult({
-                type: 'error',
-                message: 'Shipment Lookup Failed',
-                detail: err.message || 'Could not fetch package details for POD'
-            });
-        }
-    };
-
-    const handleError = (err) => {
-        console.error(err);
-    };
-
-    const processPickup = async (trackingNumber) => {
-        try {
-            const response = await shipmentService.driverPickupScan(trackingNumber);
-            if (response.success) {
-                setResult({
-                    type: 'success',
-                    message: `Shipment ${trackingNumber} Confirmed`,
-                    detail: 'Package successfully marked as Picked Up'
-                });
-                fetchDriverData();
-            } else {
-                setResult({
-                    type: 'error',
-                    message: 'Pickup Failed',
-                    detail: response.error || 'Server rejected the update'
-                });
-            }
-        } catch (err) {
-            setResult({
-                type: 'error',
-                message: 'Scan Error',
-                detail: err.message || 'Could not connect to server'
-            });
-        }
-    };
-
-    const handlePodSuccess = (updatedShipment) => {
-        setResult({
-            type: 'success',
-            message: `Delivery Complete (${updatedShipment.trackingNumber})`,
-            detail: 'Proof of Delivery and signature captured successfully.'
-        });
-        fetchDriverData();
-    };
-
-    const resetScanner = () => {
-        setResult(null);
-        setIsScanning(true);
-    };
-
-    const closeScanner = () => {
-        setResult(null);
-        setIsScanning(false);
-    };
-
-    const rawList = scanMode === 'pickup' ? readyShipments : deliveryShipments;
+    // Calculations
     const isDeliverMode = scanMode === 'deliver';
     const isCashMode = scanMode === 'cash';
+    const rawList = isDeliverMode ? deliveryShipments : readyShipments;
 
-    const totalHeldCashKwd = (codSummary.unremittedTotalsByCurrency?.['KWD'] || 0);
+    const totalHeldCashKwd = parseFloat(codSummary.unremittedTotalsByCurrency?.['KWD'] || 0);
     const totalHeldCashFormatted = Object.entries(codSummary.unremittedTotalsByCurrency || {})
+        .filter(([, amt]) => parseFloat(amt) > 0)
         .map(([curr, amt]) => `${Number(amt).toFixed(3)} ${curr}`)
         .join(', ') || '0.000 KWD';
 
     // Enrich list with detected governorate
-    const enrichedList = rawList.map(s => ({
-        ...s,
-        governorate: resolveGovernorate(isDeliverMode ? s.destination : s.origin)
-    }));
+    const enrichedList = useMemo(() => {
+        return rawList.map(s => {
+            const party = isDeliverMode ? (s.destination || s.receiver || {}) : (s.origin || s.sender || {});
+            return {
+                ...s,
+                governorate: resolveGovernorate(party),
+                targetParty: party
+            };
+        });
+    }, [rawList, isDeliverMode]);
 
-    // Filter by selected governorate
-    const filteredList = selectedGovFilter === 'ALL'
-        ? enrichedList
-        : enrichedList.filter(s => s.governorate === selectedGovFilter);
+    const govCounts = useMemo(() => {
+        return enrichedList.reduce((acc, s) => {
+            acc[s.governorate] = (acc[s.governorate] || 0) + 1;
+            return acc;
+        }, {});
+    }, [enrichedList]);
 
-    // Available Governorates with counts
-    const govCounts = enrichedList.reduce((acc, s) => {
-        acc[s.governorate] = (acc[s.governorate] || 0) + 1;
-        return acc;
-    }, {});
+    const filteredList = useMemo(() => {
+        if (selectedGovFilter === 'ALL') return enrichedList;
+        return enrichedList.filter(s => s.governorate === selectedGovFilter);
+    }, [enrichedList, selectedGovFilter]);
 
-    const multiStopRouteUrl = generateMultiStopUrl(filteredList);
+    const multiStopRouteUrl = useMemo(() => {
+        return generateMultiStopUrl(filteredList, isDeliverMode);
+    }, [filteredList, isDeliverMode]);
 
     return (
-        <PageContainer>
-            <Header>
-                <LogoSection>
-                    <LogoIcon><TruckIcon /></LogoIcon>
-                    <BrandText>
-                        <strong>TARGET</strong>
-                        <span>Driver App</span>
-                    </BrandText>
-                </LogoSection>
-                <IconButton onClick={() => logout()}>
-                    <LogoutIcon />
-                </IconButton>
-            </Header>
+        <div className="min-h-screen bg-slate-50 dark:bg-base-300 pb-20 text-base-content">
+            {/* Top Driver Navigation Header */}
+            <header className="sticky top-0 z-30 bg-base-100/90 backdrop-blur-md border-b border-base-200/80 px-4 py-3">
+                <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shadow-md shadow-primary/20 shrink-0">
+                            <span className="material-symbols-outlined text-2xl">local_shipping</span>
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-1.5">
+                                <span className="font-black text-sm tracking-tight text-base-content">TARGET LOGISTICS</span>
+                                <span className="badge badge-primary badge-xs font-bold uppercase">Driver App</span>
+                            </div>
+                            <div className="text-xs text-base-content/60 font-semibold">
+                                {user?.name || 'Courier Operator'}
+                            </div>
+                        </div>
+                    </div>
 
-            <MainContent>
-                <div>
-                    <Greeting>Hello, {user?.name?.split(' ')[0] || 'Driver'}</Greeting>
-                    
-                    <div style={{ marginTop: '16px' }}>
-                        <ModeSwitcher>
-                            <ModeTab
-                                active={scanMode === 'pickup'}
-                                onClick={() => { setScanMode('pickup'); setSelectedGovFilter('ALL'); }}
-                            >
-                                <TruckIcon /> Pickup
-                            </ModeTab>
-                            <ModeTab
-                                active={scanMode === 'deliver'}
-                                onClick={() => { setScanMode('deliver'); setSelectedGovFilter('ALL'); }}
-                            >
-                                ✍️ Deliver & POD
-                            </ModeTab>
-                            <ModeTab
-                                active={scanMode === 'cash'}
-                                onClick={() => { setScanMode('cash'); }}
-                            >
-                                💵 Cash & COD ({totalHeldCashKwd > 0 ? `${totalHeldCashKwd.toFixed(3)} KWD` : '0 KWD'})
-                            </ModeTab>
-                        </ModeSwitcher>
+                    <div className="flex items-center gap-2">
+                        {/* Logout / Exit */}
+                        <button
+                            type="button"
+                            onClick={() => logout()}
+                            title="Sign Out"
+                            className="btn btn-ghost btn-sm btn-circle text-base-content/60 hover:text-error"
+                        >
+                            <span className="material-symbols-outlined text-xl">logout</span>
+                        </button>
+                    </div>
+                </div>
+            </header>
 
-                        {isCashMode ? (
-                            <StatsGrid>
-                                <StatCard highlight={true}>
-                                    <label>Held COD Cash in Hand</label>
-                                    <div style={{ fontSize: '24px', color: '#10b981' }}>{totalHeldCashFormatted}</div>
-                                </StatCard>
-                                <StatCard highlight={false}>
-                                    <label>Unremitted COD Orders</label>
-                                    <div style={{ fontSize: '24px' }}>{codSummary.unremittedCount || 0}</div>
-                                </StatCard>
-                            </StatsGrid>
-                        ) : (
-                            <StatsGrid>
-                                <StatCard highlight={scanMode === 'pickup'}>
-                                    <label>{scanMode === 'pickup' ? 'Ready for Pickup' : 'Out for Delivery'}</label>
-                                    <div>{scanMode === 'pickup' ? readyShipments.length : deliveryShipments.length}</div>
-                                </StatCard>
-                                <StatCard highlight={scanMode === 'deliver'}>
-                                    <label>{scanMode === 'pickup' ? 'Picked Up Today' : 'Delivered Today'}</label>
-                                    <div>{scanMode === 'pickup' ? stats.pickedUpToday : stats.deliveredToday}</div>
-                                </StatCard>
-                            </StatsGrid>
+            <main className="max-w-4xl mx-auto px-3 sm:px-6 py-4 space-y-5">
+                {/* Driver / Staff Scope Selector */}
+                {['admin', 'staff', 'manager', 'accounting'].includes(user?.role) && driversList.length > 0 && (
+                    <div className="card bg-base-100 shadow-sm border border-base-200/80 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                            <span className="material-symbols-outlined text-primary text-lg">badge</span>
+                            <span className="text-xs font-bold text-base-content/80">
+                                {lang === 'ar' ? 'فحص مسار المندوب:' : 'Dispatch Driver View:'}
+                            </span>
+                        </div>
+                        <select
+                            value={selectedDriverId}
+                            onChange={(e) => handleDriverChange(e.target.value)}
+                            className="select select-bordered select-xs w-full sm:w-64 bg-base-100 text-xs font-semibold focus:select-primary"
+                        >
+                            <option value="">— {lang === 'ar' ? 'اختر مندوب' : 'Select Driver'} —</option>
+                            {driversList.map(d => (
+                                <option key={d.id} value={d.id}>
+                                    {d.name} {d.phone ? `(${d.phone})` : ''}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+
+                {/* Mode Switcher Tabs */}
+                <div className="tabs tabs-boxed bg-base-200/80 p-1.5 rounded-2xl w-full grid grid-cols-3 sm:grid-cols-4 gap-1">
+                    <button
+                        type="button"
+                        onClick={() => { setScanMode('pickup'); setSelectedGovFilter('ALL'); }}
+                        className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                            scanMode === 'pickup' ? 'tab-active !bg-primary !text-white shadow-sm' : 'text-base-content/70 hover:text-base-content'
+                        }`}
+                    >
+                        <span className="material-symbols-outlined text-base">flight_takeoff</span>
+                        <span>{lang === 'ar' ? 'الاستلام' : 'Pickups'}</span>
+                        <span className="badge badge-xs badge-neutral ms-1">{readyShipments.length}</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => { setScanMode('deliver'); setSelectedGovFilter('ALL'); }}
+                        className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                            scanMode === 'deliver' ? 'tab-active !bg-primary !text-white shadow-sm' : 'text-base-content/70 hover:text-base-content'
+                        }`}
+                    >
+                        <span className="material-symbols-outlined text-base">local_shipping</span>
+                        <span>{lang === 'ar' ? 'التسليم' : 'Deliver'}</span>
+                        <span className="badge badge-xs badge-neutral ms-1">{deliveryShipments.length}</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setScanMode('cash')}
+                        className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                            scanMode === 'cash' ? 'tab-active !bg-success !text-white shadow-sm' : 'text-base-content/70 hover:text-base-content'
+                        }`}
+                    >
+                        <span className="material-symbols-outlined text-base">payments</span>
+                        <span>{lang === 'ar' ? 'العهدة' : 'COD'}</span>
+                        {totalHeldCashKwd > 0 && (
+                            <span className="badge badge-xs badge-warning ms-1 font-mono font-bold text-black">{totalHeldCashKwd.toFixed(1)}</span>
                         )}
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setIsScanning(true)}
+                        className="tab tab-sm font-bold gap-1.5 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 col-span-3 sm:col-span-1 hidden sm:flex items-center justify-center"
+                    >
+                        <span className="material-symbols-outlined text-base">qr_code_scanner</span>
+                        <span>{lang === 'ar' ? 'ماسح QR' : 'Scan'}</span>
+                    </button>
+                </div>
+
+                {/* KPI Pulse Ribbon */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="card bg-base-100 shadow-sm border border-base-200/80 p-3.5 space-y-1">
+                        <div className="text-[11px] font-bold text-base-content/60 uppercase">
+                            {isCashMode ? (lang === 'ar' ? 'الطلبات المحصلة' : 'Unremitted Orders')
+                                : (isDeliverMode ? (lang === 'ar' ? 'بانتظار التسليم' : 'Out for Delivery')
+                                : (lang === 'ar' ? 'جاهز للاستلام' : 'Ready for Pickup'))}
+                        </div>
+                        <div className="text-xl sm:text-2xl font-black text-primary font-mono">
+                            {isCashMode ? (codSummary.unremittedCount || 0) : (isDeliverMode ? deliveryShipments.length : readyShipments.length)}
+                        </div>
+                    </div>
+
+                    <div className="card bg-base-100 shadow-sm border border-base-200/80 p-3.5 space-y-1">
+                        <div className="text-[11px] font-bold text-base-content/60 uppercase">
+                            {lang === 'ar' ? 'المنجز اليوم' : 'Completed Today'}
+                        </div>
+                        <div className="text-xl sm:text-2xl font-black text-success font-mono">
+                            {isDeliverMode ? stats.deliveredToday : stats.pickedUpToday}
+                        </div>
+                    </div>
+
+                    <div className="card bg-base-100 shadow-sm border border-base-200/80 p-3.5 space-y-1 col-span-2 sm:col-span-2">
+                        <div className="text-[11px] font-bold text-base-content/60 uppercase">
+                            {lang === 'ar' ? 'العهدة النقدية بيدك (COD)' : 'Held COD Cash in Hand'}
+                        </div>
+                        <div className="text-lg sm:text-2xl font-black text-success font-mono">
+                            {totalHeldCashFormatted}
+                        </div>
                     </div>
                 </div>
 
-                {/* Cash & COD Mode Dedicated View */}
+                {/* Result Feedback Banner */}
+                {result && (
+                    <div className={`alert ${result.type === 'success' ? 'alert-success text-success-content' : 'alert-error text-error-content'} shadow-sm rounded-2xl flex items-center justify-between`}>
+                        <div className="flex items-center gap-3">
+                            <span className="material-symbols-outlined text-2xl">
+                                {result.type === 'success' ? 'check_circle' : 'error'}
+                            </span>
+                            <div>
+                                <div className="font-black text-sm">{result.message}</div>
+                                {result.detail && <div className="text-xs opacity-90">{result.detail}</div>}
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setResult(null)}
+                            className="btn btn-ghost btn-xs btn-circle"
+                        >
+                            ✕
+                        </button>
+                    </div>
+                )}
+
+                {/* CASH ON DELIVERY (COD) VIEW */}
                 {isCashMode ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div className="space-y-4">
                         {/* Alerts Banner */}
                         {codSummary.alerts && codSummary.alerts.length > 0 && (
-                            <div style={{
-                                background: 'rgba(239, 68, 68, 0.15)',
-                                border: '1px solid #ef4444',
-                                borderRadius: '16px',
-                                padding: '16px',
-                                color: '#fca5a5'
-                            }}>
-                                {codSummary.alerts.map((alert, idx) => (
-                                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600 }}>
-                                        <span>⚠️</span>
-                                        <span>{alert.message}</span>
-                                    </div>
-                                ))}
+                            <div className="alert alert-warning shadow-sm rounded-2xl">
+                                <span className="material-symbols-outlined text-xl">warning</span>
+                                <div>
+                                    {codSummary.alerts.map((alert, idx) => (
+                                        <div key={idx} className="text-xs font-bold">{alert.message}</div>
+                                    ))}
+                                </div>
                             </div>
                         )}
 
-                        {/* Remittance Action Card */}
-                        <Card style={{ background: '#141929', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '20px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                        {/* Handover Action Card */}
+                        <div className="card bg-base-100 shadow-sm border border-base-200/80 p-5 space-y-4">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                 <div>
-                                    <div style={{ fontSize: '16px', fontWeight: 700, color: '#e8eaf0' }}>
-                                        💵 Hub Vault Handover
-                                    </div>
-                                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                        Hand over collected cash to the hub cashier at the end of your shift
-                                    </div>
+                                    <h3 className="font-extrabold text-base text-base-content flex items-center gap-2">
+                                        <span className="material-symbols-outlined text-success">account_balance</span>
+                                        {lang === 'ar' ? 'تسليم العهدة النقدية إلى الخزينة' : 'Hub Vault Cash Handover'}
+                                    </h3>
+                                    <p className="text-xs text-base-content/60">
+                                        {lang === 'ar' ? 'تسليم المبالغ المحصلة إلى أمين الصندوق في نهاية الوردية' : 'Submit collected cash to the hub vault cashier at the end of your shift'}
+                                    </p>
                                 </div>
-                                <Button
-                                    variant="primary"
+                                <button
+                                    type="button"
                                     onClick={() => {
                                         setRemitAmount(String(totalHeldCashKwd || ''));
                                         setIsRemitModalOpen(true);
                                     }}
                                     disabled={totalHeldCashKwd <= 0 && codSummary.shipments?.length === 0}
-                                    style={{
-                                        background: '#10b981',
-                                        padding: '10px 18px',
-                                        fontWeight: 700,
-                                        fontSize: '13px',
-                                        boxShadow: '0 2px 10px rgba(16, 185, 129, 0.3)'
-                                    }}
+                                    className="btn btn-success btn-sm font-bold text-success-content shadow-md shadow-success/20 gap-2 shrink-0"
                                 >
-                                    🏦 Handover Cash to Vault
-                                </Button>
-                            </div>
-                        </Card>
-
-                        {/* Driver Selector (staff / admin / manager only) */}
-                        {['admin', 'staff', 'manager', 'accounting'].includes(user?.role) && driversList.length > 0 && (
-                            <Card style={{ background: '#141929', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)' }}>
-                                    👤 Select Driver
-                                </label>
-                                <select
-                                    value={selectedDriverId}
-                                    onChange={(e) => handleDriverChange(e.target.value)}
-                                    style={{
-                                        width: '100%',
-                                        padding: '10px 14px',
-                                        borderRadius: '10px',
-                                        border: '1px solid rgba(255,255,255,0.15)',
-                                        background: '#1c2333',
-                                        color: '#e8eaf0',
-                                        fontSize: '14px',
-                                        fontWeight: 600,
-                                        outline: 'none',
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    <option value="">— Select a driver —</option>
-                                    {driversList.map(d => (
-                                        <option key={d.id} value={d.id}>{d.name} {d.phone ? `(${d.phone})` : ''}</option>
-                                    ))}
-                                </select>
-                            </Card>
-                        )}
-
-                        {/* Add Shipment to Handover */}
-                        <Card style={{ background: '#141929', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)' }}>
-                                📦 Add Shipment to Handover
-                            </label>
-                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                <input
-                                    value={codTrackingInput}
-                                    onChange={(e) => setCodTrackingInput(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && codTrackingInput.trim() && handleAddCodShipment()}
-                                    placeholder="Enter tracking number (e.g. TRK-COD-01)"
-                                    style={{
-                                        flex: 1,
-                                        padding: '10px 14px',
-                                        borderRadius: '10px',
-                                        border: '1px solid rgba(255,255,255,0.15)',
-                                        background: 'rgba(255,255,255,0.05)',
-                                        color: '#e8eaf0',
-                                        fontSize: '14px',
-                                        outline: 'none'
-                                    }}
-                                />
-                                <button
-                                    disabled={!codTrackingInput.trim() || codTrackingLoading}
-                                    onClick={() => handleAddCodShipment()}
-                                    style={{
-                                        padding: '10px 18px',
-                                        borderRadius: '10px',
-                                        border: 'none',
-                                        background: codTrackingLoading ? '#374151' : '#10b981',
-                                        color: '#0a0e1a',
-                                        fontWeight: 700,
-                                        cursor: (!codTrackingInput.trim() || codTrackingLoading) ? 'not-allowed' : 'pointer',
-                                        opacity: (!codTrackingInput.trim() || codTrackingLoading) ? 0.5 : 1,
-                                        whiteSpace: 'nowrap'
-                                    }}
-                                >
-                                    {codTrackingLoading ? '⌛' : '+ Add'}
+                                    <span className="material-symbols-outlined text-base">savings</span>
+                                    <span>{lang === 'ar' ? 'توريد النقدية' : 'Handover Cash to Vault'}</span>
                                 </button>
                             </div>
-                            {codFeedback && (
-                                <div style={{
-                                    fontSize: '13px',
-                                    fontWeight: 600,
-                                    padding: '8px 12px',
-                                    borderRadius: '8px',
-                                    background: codFeedback.type === 'success' ? 'rgba(16, 185, 129, 0.15)'
-                                        : codFeedback.type === 'error' ? 'rgba(239, 68, 68, 0.15)'
-                                        : 'rgba(59, 130, 246, 0.15)',
-                                    color: codFeedback.type === 'success' ? '#6ee7b7'
-                                        : codFeedback.type === 'error' ? '#fca5a5'
-                                        : '#93c5fd',
-                                    border: `1px solid ${codFeedback.type === 'success' ? 'rgba(16,185,129,0.3)' : codFeedback.type === 'error' ? 'rgba(239,68,68,0.3)' : 'rgba(59,130,246,0.3)'}`
-                                }}>
-                                    {codFeedback.type === 'success' ? '✓' : codFeedback.type === 'error' ? '✕' : 'ℹ'} {codFeedback.message}
-                                </div>
-                            )}
-                        </Card>
 
-                        {/* List of Collected COD Shipments */}
-                        <div>
-                            <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: '10px', color: 'var(--text-secondary)' }}>
-                                Collected COD Shipments ({codSummary.shipments?.length || 0})
+                            {/* Add Consignment to Handover Input */}
+                            <div className="pt-3 border-t border-base-200 space-y-2">
+                                <label className="text-xs font-bold text-base-content/80">
+                                    {lang === 'ar' ? 'إضافة بوليصة يدوياً للتسليم' : 'Link Shipment to Cash Handover'}
+                                </label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={codTrackingInput}
+                                        onChange={(e) => setCodTrackingInput(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && codTrackingInput.trim() && handleAddCodShipment()}
+                                        placeholder="Enter tracking number (e.g. TRK-COD-01)"
+                                        className="input input-bordered input-sm flex-1 bg-base-100 font-mono text-sm focus:input-primary"
+                                    />
+                                    <button
+                                        type="button"
+                                        disabled={!codTrackingInput.trim() || codTrackingLoading}
+                                        onClick={() => handleAddCodShipment()}
+                                        className="btn btn-sm btn-primary font-bold px-4"
+                                    >
+                                        {codTrackingLoading ? <span className="loading loading-spinner loading-xs" /> : '+ Add'}
+                                    </button>
+                                </div>
+
+                                {codFeedback && (
+                                    <div className={`text-xs font-bold p-2.5 rounded-xl ${
+                                        codFeedback.type === 'success' ? 'bg-success/10 text-success' : 'bg-error/10 text-error'
+                                    }`}>
+                                        {codFeedback.message}
+                                    </div>
+                                )}
                             </div>
+                        </div>
+
+                        {/* List of Collected COD Orders */}
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between text-xs font-bold text-base-content/80 px-1">
+                                <span>{lang === 'ar' ? 'الشحنات المحصلة' : 'Collected COD Shipments'} ({codSummary.shipments?.length || 0})</span>
+                            </div>
+
                             {(!codSummary.shipments || codSummary.shipments.length === 0) ? (
-                                <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)', background: '#141929', borderRadius: '16px' }}>
-                                    No COD cash collected on record for this shift.
+                                <div className="card bg-base-100 shadow-sm border border-base-200/80 p-8 text-center text-xs text-base-content/50">
+                                    {lang === 'ar' ? 'لا توجد مبالغ دفع عند الاستلام مسجلة في هذه الوردية' : 'No COD cash collected on record for this shift.'}
                                 </div>
                             ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                    {codSummary.shipments.map((s) => {
+                                <div className="space-y-2.5">
+                                    {codSummary.shipments.map(s => {
                                         const isRemitted = s.codStatus === 'REMITTED';
                                         return (
-                                            <Card key={s.id || s.trackingNumber} style={{ background: '#141929', border: '1px solid var(--border-color)', padding: '14px' }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <div>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                            <span style={{ fontWeight: 700, color: '#e8eaf0' }}>{s.trackingNumber}</span>
-                                                            <span style={{
-                                                                fontSize: '10px',
-                                                                fontWeight: 700,
-                                                                padding: '2px 6px',
-                                                                borderRadius: '4px',
-                                                                background: isRemitted ? 'rgba(59, 130, 246, 0.2)' : 'rgba(16, 185, 129, 0.2)',
-                                                                color: isRemitted ? '#93c5fd' : '#6ee7b7'
-                                                            }}>
-                                                                {isRemitted ? 'VAULT REMITTED' : 'HELD IN HAND'}
-                                                            </span>
-                                                        </div>
-                                                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                                                            Updated: {new Date(s.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                        </div>
+                                            <div key={s.id || s.trackingNumber} className="card bg-base-100 shadow-sm border border-base-200/80 p-4 flex flex-row items-center justify-between gap-3">
+                                                <div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-mono font-bold text-sm text-base-content">#{s.trackingNumber}</span>
+                                                        <span className={`badge badge-xs font-bold ${isRemitted ? 'badge-info' : 'badge-success'}`}>
+                                                            {isRemitted ? 'REMITTED' : 'HELD IN HAND'}
+                                                        </span>
                                                     </div>
-                                                    <div style={{ textAlign: 'right' }}>
-                                                        <div style={{ fontSize: '15px', fontWeight: 800, color: '#10b981' }}>
-                                                            {Number(s.codAmount).toFixed(3)} {s.codCurrency || 'KWD'}
-                                                        </div>
+                                                    <div className="text-[11px] text-base-content/50 mt-1">
+                                                        Updated: {new Date(s.updatedAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                     </div>
                                                 </div>
-                                            </Card>
+                                                <div className="text-end font-mono font-black text-base text-success">
+                                                    {Number(s.codAmount).toFixed(3)} {s.codCurrency || 'KWD'}
+                                                </div>
+                                            </div>
                                         );
                                     })}
                                 </div>
@@ -1061,82 +734,54 @@ const DriverPickupPage = () => {
                         </div>
                     </div>
                 ) : (
-                    <>
-                        {/* Route Optimization & Multi-Stop Dispatch Banner */}
+                    /* PICKUPS & DELIVERIES MANIFEST VIEW */
+                    <div className="space-y-4">
+                        {/* Route Optimizer & Governorate Sequence Header */}
                         {filteredList.length > 0 && (
-                            <div style={{
-                                background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(0, 217, 184, 0.08))',
-                                border: '1px solid rgba(59, 130, 246, 0.3)',
-                                borderRadius: '16px',
-                                padding: '16px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '12px'
-                            }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div className="card bg-primary/5 border border-primary/20 p-4 space-y-3">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                                     <div>
-                                        <div style={{ fontWeight: 700, fontSize: '14px', color: '#e8eaf0' }}>
-                                            🗺️ Route Optimizer ({filteredList.length} Stops)
+                                        <div className="text-sm font-extrabold text-base-content flex items-center gap-2">
+                                            <span className="material-symbols-outlined text-primary text-lg">route</span>
+                                            <span>{lang === 'ar' ? `مسار التوصيل الذكي (${filteredList.length} محطات)` : `Route Optimizer (${filteredList.length} Stops)`}</span>
                                         </div>
-                                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                                            Sequenced by Kuwait Governorate
+                                        <div className="text-xs text-base-content/60">
+                                            {lang === 'ar' ? 'مرتبة جغرافياً حسب محافظات الكويت' : 'Sequenced by Kuwait Governorate'}
                                         </div>
                                     </div>
+
                                     {multiStopRouteUrl && (
                                         <a
                                             href={multiStopRouteUrl}
                                             target="_blank"
                                             rel="noreferrer"
-                                            style={{
-                                                display: 'inline-flex',
-                                                alignItems: 'center',
-                                                gap: '6px',
-                                                background: '#3b82f6',
-                                                color: '#fff',
-                                                padding: '8px 14px',
-                                                borderRadius: '10px',
-                                                fontSize: '12px',
-                                                fontWeight: 700,
-                                                textDecoration: 'none',
-                                                boxShadow: '0 2px 10px rgba(59, 130, 246, 0.3)'
-                                            }}
+                                            className="btn btn-primary btn-sm font-bold text-xs gap-1.5 shadow-sm shadow-primary/20 shrink-0"
                                         >
-                                            🚀 Start Google Route
+                                            <span className="material-symbols-outlined text-sm">navigation</span>
+                                            <span>{lang === 'ar' ? 'بدء مسار خرائط جوجل' : 'Start Google Route'}</span>
                                         </a>
                                     )}
                                 </div>
 
                                 {/* Governorate Filter Chips */}
-                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                <div className="flex gap-1.5 flex-wrap pt-1">
                                     <button
+                                        type="button"
                                         onClick={() => setSelectedGovFilter('ALL')}
-                                        style={{
-                                            padding: '4px 10px',
-                                            borderRadius: '8px',
-                                            border: selectedGovFilter === 'ALL' ? '1px solid #00d9b8' : '1px solid rgba(255,255,255,0.1)',
-                                            background: selectedGovFilter === 'ALL' ? 'rgba(0, 217, 184, 0.15)' : 'rgba(255,255,255,0.03)',
-                                            color: selectedGovFilter === 'ALL' ? '#00d9b8' : 'var(--text-secondary)',
-                                            fontSize: '11px',
-                                            fontWeight: 600,
-                                            cursor: 'pointer'
-                                        }}
+                                        className={`badge badge-sm cursor-pointer font-bold ${
+                                            selectedGovFilter === 'ALL' ? 'badge-primary' : 'badge-outline text-base-content/70'
+                                        }`}
                                     >
-                                        All ({enrichedList.length})
+                                        {lang === 'ar' ? 'الكل' : 'All'} ({enrichedList.length})
                                     </button>
                                     {Object.entries(govCounts).map(([gov, count]) => (
                                         <button
                                             key={gov}
+                                            type="button"
                                             onClick={() => setSelectedGovFilter(gov)}
-                                            style={{
-                                                padding: '4px 10px',
-                                                borderRadius: '8px',
-                                                border: selectedGovFilter === gov ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)',
-                                                background: selectedGovFilter === gov ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255,255,255,0.03)',
-                                                color: selectedGovFilter === gov ? '#93c5fd' : 'var(--text-secondary)',
-                                                fontSize: '11px',
-                                                fontWeight: 600,
-                                                cursor: 'pointer'
-                                            }}
+                                            className={`badge badge-sm cursor-pointer font-bold ${
+                                                selectedGovFilter === gov ? 'badge-primary' : 'badge-outline text-base-content/70'
+                                            }`}
                                         >
                                             {gov} ({count})
                                         </button>
@@ -1145,66 +790,209 @@ const DriverPickupPage = () => {
                             </div>
                         )}
 
-                        <ScanButtonContainer>
-                            <BigScanButton isDeliver={isDeliverMode} onClick={() => setIsScanning(true)}>
-                                <QrIcon />
-                                <span>{isDeliverMode ? 'Scan & POD' : 'Tap to Scan'}</span>
-                            </BigScanButton>
-                        </ScanButtonContainer>
+                        {/* Quick Scanner Launch Button & Manual Input */}
+                        <div className="card bg-base-100 shadow-sm border border-base-200/80 p-4 space-y-3">
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsScanning(true)}
+                                    className="btn btn-primary btn-sm font-bold gap-2 flex-1 shadow-md shadow-primary/20"
+                                >
+                                    <span className="material-symbols-outlined text-lg">qr_code_scanner</span>
+                                    <span>{isDeliverMode ? (lang === 'ar' ? 'مسح باركود التسليم' : 'Scan to Deliver (POD)') : (lang === 'ar' ? 'مسح باركود الاستلام' : 'Tap to Scan Pickup')}</span>
+                                </button>
+                            </div>
 
-                        {/* Manual Tracking Input Fallback */}
-                        <div style={{ marginTop: '16px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <input
-                                value={manualTracking}
-                                onChange={e => setManualTracking(e.target.value)}
-                                placeholder={`Enter tracking # for ${isDeliverMode ? 'Delivery POD' : 'Pickup'}`}
-                                style={{
-                                    flex: 1, padding: '12px 16px', borderRadius: '12px',
-                                    border: '1px solid rgba(255,255,255,0.15)',
-                                    background: 'rgba(255,255,255,0.05)', color: '#e8eaf0',
-                                    fontSize: '14px', outline: 'none'
-                                }}
-                                onKeyDown={e => e.key === 'Enter' && manualTracking.trim() && handleScan({ text: manualTracking.trim() })}
-                            />
-                            <button
-                                disabled={!manualTracking.trim() || manualLoading}
-                                onClick={() => {
-                                    setManualLoading(true);
-                                    handleScan({ text: manualTracking.trim() }).finally(() => { setManualLoading(false); setManualTracking(''); });
-                                }}
-                                style={{
-                                    padding: '12px 20px', borderRadius: '12px', border: 'none',
-                                    background: isDeliverMode ? '#3b82f6' : '#00d9b8', color: '#0a0e1a', fontWeight: 700,
-                                    cursor: 'pointer', opacity: (!manualTracking.trim() || manualLoading) ? 0.5 : 1
-                                }}
-                            >
-                                {manualLoading ? '...' : '→'}
-                            </button>
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={manualTracking}
+                                    onChange={e => setManualTracking(e.target.value)}
+                                    placeholder={isDeliverMode ? 'Enter tracking # for Delivery POD' : 'Enter tracking # for Pickup'}
+                                    onKeyDown={e => e.key === 'Enter' && manualTracking.trim() && handleScan({ text: manualTracking.trim() })}
+                                    className="input input-bordered input-sm flex-1 bg-base-100 font-mono text-sm focus:input-primary"
+                                />
+                                <button
+                                    type="button"
+                                    disabled={!manualTracking.trim() || manualLoading}
+                                    onClick={() => {
+                                        setManualLoading(true);
+                                        handleScan({ text: manualTracking.trim() }).finally(() => { setManualLoading(false); setManualTracking(''); });
+                                    }}
+                                    className="btn btn-sm btn-outline border-base-300 font-bold px-4"
+                                >
+                                    {manualLoading ? <span className="loading loading-spinner loading-xs" /> : 'Enter'}
+                                </button>
+                            </div>
                         </div>
 
-                        <Button variant="ghost" onClick={() => setIsListOpen(!isListOpen)}>
-                            {isListOpen ? 'Hide List' : `View ${isDeliverMode ? 'Delivery' : 'Pickup'} List (${filteredList.length})`}
-                        </Button>
-                    </>
+                        {/* Manifest Stops List */}
+                        <div className="space-y-3">
+                            {filteredList.length === 0 ? (
+                                <div className="card bg-base-100 shadow-sm border border-base-200/80 p-10 text-center space-y-2">
+                                    <span className="material-symbols-outlined text-4xl text-base-content/30 mx-auto">task_alt</span>
+                                    <div className="text-sm font-bold text-base-content/60">
+                                        {isDeliverMode
+                                            ? (lang === 'ar' ? 'لا توجد شحنات للتسليم في هذه المحافظة' : 'No packages pending delivery in selected area')
+                                            : (lang === 'ar' ? 'لا توجد شحنات جاهزة للاستلام حالياً' : 'No shipments currently pending pickup')}
+                                    </div>
+                                </div>
+                            ) : (
+                                filteredList.map((shipment, index) => {
+                                    const target = shipment.targetParty || {};
+                                    const address = getPartyAddress(target);
+                                    const phone = target.phone || '';
+                                    const cleanPhone = phone.replace(/\D/g, '');
+                                    const singleNavUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
+                                    const hasCod = shipment.codAmount && parseFloat(shipment.codAmount) > 0;
+                                    const isCurrentLoading = actionLoadingId === shipment.trackingNumber;
+
+                                    return (
+                                        <div
+                                            key={shipment.trackingNumber || index}
+                                            className="card bg-base-100 shadow-sm border border-base-200/80 hover:border-primary/40 transition-all p-4 space-y-3"
+                                        >
+                                            {/* Stop Header */}
+                                            <div className="flex items-center justify-between gap-2 pb-2 border-b border-base-200">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="badge badge-sm badge-neutral font-bold font-mono">
+                                                        Stop #{index + 1}
+                                                    </span>
+                                                    <span className="font-mono font-bold text-sm text-primary">
+                                                        #{shipment.trackingNumber}
+                                                    </span>
+                                                    <span className="badge badge-xs badge-outline font-semibold">
+                                                        {shipment.governorate}
+                                                    </span>
+                                                </div>
+
+                                                <StatusBadge status={shipment.status} size="xs" />
+                                            </div>
+
+                                            {/* Party & Contact Details */}
+                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                                                <div className="space-y-0.5">
+                                                    <div className="font-extrabold text-sm text-base-content">
+                                                        {target.name || target.contactPerson || 'Customer'}
+                                                    </div>
+                                                    {target.company && (
+                                                        <div className="text-base-content/70 font-medium">
+                                                            {target.company}
+                                                        </div>
+                                                    )}
+                                                    <div className="text-base-content/80 pt-0.5">
+                                                        📍 {address}
+                                                    </div>
+                                                </div>
+
+                                                {/* Contact Actions (Call & WhatsApp) */}
+                                                {phone && (
+                                                    <div className="flex items-center gap-1.5 shrink-0">
+                                                        <a
+                                                            href={`tel:${phone}`}
+                                                            className="btn btn-outline btn-xs gap-1 font-bold"
+                                                        >
+                                                            <span className="material-symbols-outlined text-sm text-primary">call</span>
+                                                            <span>Call</span>
+                                                        </a>
+                                                        <a
+                                                            href={`https://wa.me/${cleanPhone}`}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            className="btn btn-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-1 font-bold"
+                                                        >
+                                                            <span className="material-symbols-outlined text-sm">chat</span>
+                                                            <span>WhatsApp</span>
+                                                        </a>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* COD Badge Alert */}
+                                            {hasCod && (
+                                                <div className="p-2.5 rounded-xl bg-success/10 border border-success/30 flex items-center justify-between text-xs font-bold text-success-content">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="material-symbols-outlined text-success text-base">payments</span>
+                                                        <span>{lang === 'ar' ? 'تحصيل نقدي عند الاستلام (COD):' : 'Collect Cash on Delivery:'}</span>
+                                                    </div>
+                                                    <span className="font-mono font-black text-sm text-success">
+                                                        {Number(shipment.codAmount).toFixed(3)} {shipment.codCurrency || 'KWD'}
+                                                    </span>
+                                                </div>
+                                            )}
+
+                                            {/* Card Footer Actions */}
+                                            <div className="flex items-center justify-between gap-2 pt-2 border-t border-base-200">
+                                                <a
+                                                    href={singleNavUrl}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="btn btn-ghost btn-xs text-primary font-bold gap-1"
+                                                >
+                                                    <span className="material-symbols-outlined text-sm">navigation</span>
+                                                    <span>{lang === 'ar' ? 'ملاحة' : 'Navigate'}</span>
+                                                </a>
+
+                                                {isDeliverMode ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setSelectedPodShipment(shipment);
+                                                            setIsPodModalOpen(true);
+                                                        }}
+                                                        className="btn btn-primary btn-sm font-bold gap-1.5 px-4"
+                                                    >
+                                                        <span className="material-symbols-outlined text-sm">draw</span>
+                                                        <span>{lang === 'ar' ? 'إثبات التسليم (POD)' : 'Deliver & POD'}</span>
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        disabled={isCurrentLoading}
+                                                        onClick={() => processPickup(shipment.trackingNumber)}
+                                                        className="btn btn-primary btn-sm font-bold gap-1.5 px-4"
+                                                    >
+                                                        {isCurrentLoading && <span className="loading loading-spinner loading-xs" />}
+                                                        <span className="material-symbols-outlined text-sm">check</span>
+                                                        <span>{lang === 'ar' ? 'تأكيد الاستلام' : 'Confirm Pickup'}</span>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </div>
                 )}
-            </MainContent>
+            </main>
 
-            {/* Scanner Modal */}
+            {/* SCANNER OVERLAY MODAL */}
             {isScanning && (
-                <ScannerOverlay>
-                    <ScannerHeader>
-                        <h2>{isDeliverMode ? 'Scan Package to Deliver (POD)' : 'Scan Waybill to Pickup'}</h2>
-                        <IconButton onClick={closeScanner} style={{ background: 'rgba(255,255,255,0.2)', color: 'white' }}>
-                            <CloseIcon />
-                        </IconButton>
-                    </ScannerHeader>
+                <div className="fixed inset-0 z-50 bg-black flex flex-col justify-between p-4">
+                    <div className="flex items-center justify-between text-white pb-3 border-b border-white/10">
+                        <div className="flex items-center gap-2">
+                            <span className="material-symbols-outlined text-primary text-xl">qr_code_scanner</span>
+                            <span className="font-extrabold text-sm">
+                                {isDeliverMode ? 'Scan Waybill to Deliver (POD)' : 'Scan Waybill to Pickup'}
+                            </span>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setIsScanning(false)}
+                            className="btn btn-ghost btn-xs btn-circle text-white hover:bg-white/10"
+                        >
+                            ✕
+                        </button>
+                    </div>
 
-                    <ScannerViewport>
+                    {/* Camera Viewport */}
+                    <div className="relative flex-1 rounded-2xl overflow-hidden my-4 border-2 border-white/20 bg-black flex items-center justify-center">
                         {navigator.mediaDevices && navigator.mediaDevices.getUserMedia ? (
-                            <Suspense fallback={<Loader />}>
+                            <Suspense fallback={<div className="loading loading-spinner text-primary loading-lg" />}>
                                 <QrScanner
                                     delay={300}
-                                    onError={handleError}
+                                    onError={(err) => console.debug('Scanner error:', err)}
                                     onScan={handleScan}
                                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                     constraints={{
@@ -1213,51 +1001,32 @@ const DriverPickupPage = () => {
                                 />
                             </Suspense>
                         ) : (
-                            <div style={{ padding: '24px', textAlign: 'center', color: '#ef4444', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                Camera access requires a secure connection (HTTPS) or localhost. Please check your URL.
+                            <div className="text-error text-xs p-6 text-center">
+                                Camera access requires HTTPS or localhost. Please check permissions.
                             </div>
                         )}
-                        {navigator.mediaDevices && navigator.mediaDevices.getUserMedia && <TargetBox />}
+
+                        {/* Scanner Target Box */}
+                        <div className="absolute w-64 h-64 border-2 border-primary rounded-2xl pointer-events-none shadow-2xl animate-pulse" />
+
                         {processing && (
-                            <div style={{
-                                position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00d9b8'
-                            }}>
-                                <Loader />
+                            <div className="absolute inset-0 bg-black/70 flex items-center justify-center text-primary">
+                                <span className="loading loading-spinner loading-lg" />
                             </div>
                         )}
-                    </ScannerViewport>
-
-                    <ScannerControls>
-                        <ControlButton onClick={() => setCameraFacingMode(prev => prev === 'environment' ? 'user' : 'environment')}>
-                            <CameraSwitchIcon />
-                        </ControlButton>
-                    </ScannerControls>
-                </ScannerOverlay>
-            )}
-
-            {/* Result Overlay */}
-            {result && (
-                <ResultOverlay>
-                    <ResultIcon success={result.type === 'success'}>
-                        {result.type === 'success' ? (
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                        ) : (
-                            <CloseIcon />
-                        )}
-                    </ResultIcon>
-                    <ResultTitle>{result.message}</ResultTitle>
-                    <ResultMessage>{result.detail}</ResultMessage>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%', maxWidth: '300px' }}>
-                        <Button variant={result.type === 'success' ? 'primary' : 'secondary'} onClick={resetScanner}>
-                            Scan Next
-                        </Button>
-                        <Button variant="ghost" onClick={closeScanner}>
-                            Return to Dashboard
-                        </Button>
                     </div>
-                </ResultOverlay>
+
+                    {/* Camera Switch Controls */}
+                    <div className="flex items-center justify-center gap-4 py-2">
+                        <button
+                            type="button"
+                            onClick={() => setCameraFacingMode(prev => prev === 'environment' ? 'user' : 'environment')}
+                            className="btn btn-circle btn-neutral text-white border-white/20"
+                        >
+                            <span className="material-symbols-outlined">flip_camera_android</span>
+                        </button>
+                    </div>
+                </div>
             )}
 
             {/* Proof of Delivery Modal */}
@@ -1277,71 +1046,58 @@ const DriverPickupPage = () => {
 
             {/* Cash Handover Remittance Modal */}
             {isRemitModalOpen && (
-                <div style={{
-                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
-                    zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
-                }}>
-                    <Card style={{
-                        background: '#141929', border: '1px solid var(--border-color)',
-                        borderRadius: '20px', padding: '24px', width: '100%', maxWidth: '440px',
-                        display: 'flex', flexDirection: 'column', gap: '16px'
-                    }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="card bg-base-100 shadow-2xl border border-base-200/80 w-full max-w-md p-5 space-y-4"
+                    >
+                        <div className="flex items-center justify-between pb-3 border-b border-base-200">
                             <div>
-                                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#e8eaf0' }}>
-                                    💵 Hub Vault Cash Handover
+                                <h3 className="font-extrabold text-base text-base-content flex items-center gap-2">
+                                    <span className="material-symbols-outlined text-success">payments</span>
+                                    {lang === 'ar' ? 'توريد عهدة النقدية إلى الخزينة' : 'Hub Vault Cash Handover'}
                                 </h3>
-                                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                    Submit shift cash count to cashier
+                                <div className="text-xs text-base-content/60">
+                                    {lang === 'ar' ? 'تسليم المبالغ النقدية لأمين الصندوق' : 'Submit shift cash count to hub cashier'}
                                 </div>
                             </div>
                             <button
+                                type="button"
                                 onClick={() => setIsRemitModalOpen(false)}
-                                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '20px', cursor: 'pointer' }}
+                                className="btn btn-ghost btn-xs btn-circle"
                             >
                                 ✕
                             </button>
                         </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                        <div className="form-control w-full">
+                            <label className="text-xs font-bold text-base-content/80 mb-1">
                                 Handover Cash Amount *
                             </label>
-                            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px' }}>
+                            <div className="flex gap-2">
                                 <input
                                     type="number"
                                     step="0.001"
                                     value={remitAmount}
                                     onChange={(e) => setRemitAmount(e.target.value)}
                                     placeholder="0.000"
-                                    style={{
-                                        padding: '12px 14px', borderRadius: '10px',
-                                        border: '1px solid rgba(16, 185, 129, 0.4)', background: 'rgba(16, 185, 129, 0.05)',
-                                        color: '#10b981', fontSize: '16px', fontWeight: 800, outline: 'none'
-                                    }}
+                                    className="input input-bordered input-sm flex-1 bg-success/5 border-success text-success font-mono font-black text-base"
                                 />
                                 <select
                                     value={remitCurrency}
                                     onChange={(e) => setRemitCurrency(e.target.value)}
-                                    style={{
-                                        padding: '12px 10px', borderRadius: '10px',
-                                        border: '1px solid rgba(255,255,255,0.15)', background: '#1c2333',
-                                        color: '#e8eaf0', fontSize: '14px', fontWeight: 700, outline: 'none'
-                                    }}
+                                    className="select select-bordered select-sm w-24 bg-base-100 font-mono font-bold text-xs"
                                 >
                                     <option value="KWD">KWD</option>
                                     <option value="SAR">SAR</option>
                                     <option value="AED">AED</option>
-                                    <option value="BHD">BHD</option>
-                                    <option value="OMR">OMR</option>
-                                    <option value="QAR">QAR</option>
                                     <option value="USD">USD</option>
                                 </select>
                             </div>
                         </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                        <div className="form-control w-full">
+                            <label className="text-xs font-bold text-base-content/80 mb-1">
                                 Cash Bag / Security Envelope Ref (Optional)
                             </label>
                             <input
@@ -1349,16 +1105,12 @@ const DriverPickupPage = () => {
                                 value={remitBagRef}
                                 onChange={(e) => setRemitBagRef(e.target.value)}
                                 placeholder="e.g. BAG-0915"
-                                style={{
-                                    padding: '10px 14px', borderRadius: '10px',
-                                    border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.05)',
-                                    color: '#e8eaf0', fontSize: '14px', outline: 'none'
-                                }}
+                                className="input input-bordered input-sm w-full bg-base-100 text-sm"
                             />
                         </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                        <div className="form-control w-full">
+                            <label className="text-xs font-bold text-base-content/80 mb-1">
                                 Handover Notes (Optional)
                             </label>
                             <input
@@ -1366,137 +1118,34 @@ const DriverPickupPage = () => {
                                 value={remitNotes}
                                 onChange={(e) => setRemitNotes(e.target.value)}
                                 placeholder="e.g. Handed to Cashier Ahmed at Shuwaikh Hub"
-                                style={{
-                                    padding: '10px 14px', borderRadius: '10px',
-                                    border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.05)',
-                                    color: '#e8eaf0', fontSize: '14px', outline: 'none'
-                                }}
+                                className="input input-bordered input-sm w-full bg-base-100 text-sm"
                             />
                         </div>
 
-                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
-                            <Button variant="ghost" onClick={() => setIsRemitModalOpen(false)} disabled={remitLoading}>
+                        <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-base-200">
+                            <button
+                                type="button"
+                                onClick={() => setIsRemitModalOpen(false)}
+                                disabled={remitLoading}
+                                className="btn btn-sm btn-ghost text-base-content/70"
+                            >
                                 Cancel
-                            </Button>
-                            <Button
-                                variant="primary"
+                            </button>
+                            <button
+                                type="button"
                                 onClick={handleRemitSubmit}
                                 disabled={remitLoading || !remitAmount || parseFloat(remitAmount) <= 0}
-                                style={{ background: '#10b981', fontWeight: 700 }}
+                                className="btn btn-sm btn-success font-bold text-success-content shadow-md shadow-success/20 gap-2"
                             >
-                                {remitLoading ? 'Submitting...' : 'Submit Handover'}
-                            </Button>
+                                {remitLoading && <span className="loading loading-spinner loading-xs" />}
+                                <span>{remitLoading ? 'Submitting...' : 'Submit Handover'}</span>
+                            </button>
                         </div>
-                    </Card>
+                    </div>
                 </div>
             )}
-
-            {/* Bottom Sheet List */}
-            <BottomSheet open={isListOpen}>
-                <DragHandle onClick={() => setIsListOpen(false)} />
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                    <h3 style={{ margin: 0 }}>
-                        {isDeliverMode ? 'Delivery Packages' : 'Ready for Pickup'} ({filteredList.length})
-                    </h3>
-                    <Button variant="ghost" onClick={() => setIsListOpen(false)} style={{ padding: '4px' }}>Close</Button>
-                </div>
-
-                {filteredList.length === 0 ? (
-                    <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                        {isDeliverMode ? 'No packages in selected governorate' : 'No shipments pending pickup'}
-                    </div>
-                ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        {filteredList.map((shipment, index) => {
-                            const destAddress = getDestinationAddress(shipment);
-                            const singleNavUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destAddress)}`;
-                            const hasCod = shipment.codAmount && parseFloat(shipment.codAmount) > 0;
-                            return (
-                                <Card key={shipment.trackingNumber}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                        <div style={{
-                                            width: '32px', height: '32px', borderRadius: '50%',
-                                            background: 'rgba(255,255,255,0.08)',
-                                            color: '#fff', fontSize: '12px', fontWeight: 700,
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                        }}>
-                                            #{index + 1}
-                                        </div>
-                                        <div style={{ flexGrow: 1 }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                                <span style={{ fontWeight: 600 }}>{shipment.trackingNumber}</span>
-                                                <span style={{
-                                                    fontSize: '10px',
-                                                    padding: '2px 6px',
-                                                    borderRadius: '4px',
-                                                    background: 'rgba(59, 130, 246, 0.2)',
-                                                    color: '#93c5fd'
-                                                }}>
-                                                    {shipment.governorate}
-                                                </span>
-                                                {hasCod && (
-                                                    <span style={{
-                                                        fontSize: '10px',
-                                                        padding: '2px 6px',
-                                                        borderRadius: '4px',
-                                                        background: 'rgba(16, 185, 129, 0.2)',
-                                                        color: '#6ee7b7',
-                                                        fontWeight: 700
-                                                    }}>
-                                                        💵 {Number(shipment.codAmount).toFixed(3)} {shipment.codCurrency || 'KWD'} COD
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                                {destAddress}
-                                            </div>
-                                        </div>
-                                        <div style={{ display: 'flex', gap: '6px' }}>
-                                            <a
-                                                href={singleNavUrl}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                style={{
-                                                    padding: '6px 10px',
-                                                    borderRadius: '8px',
-                                                    background: 'rgba(255,255,255,0.08)',
-                                                    color: '#e8eaf0',
-                                                    fontSize: '11px',
-                                                    textDecoration: 'none',
-                                                    fontWeight: 600,
-                                                    display: 'flex',
-                                                    alignItems: 'center'
-                                                }}
-                                            >
-                                                📍
-                                            </a>
-                                            {isDeliverMode ? (
-                                                <Button
-                                                    variant="primary"
-                                                    size="sm"
-                                                    style={{ padding: '6px 12px', fontSize: '12px', background: '#3b82f6' }}
-                                                    onClick={() => {
-                                                        setSelectedPodShipment(shipment);
-                                                        setIsPodModalOpen(true);
-                                                        setIsListOpen(false);
-                                                    }}
-                                                >
-                                                    Deliver
-                                                </Button>
-                                            ) : (
-                                                <StatusPill status="ready" />
-                                            )}
-                                        </div>
-                                    </div>
-                                </Card>
-                            );
-                        })}
-                    </div>
-                )}
-            </BottomSheet>
-        </PageContainer>
+        </div>
     );
 };
 
 export default DriverPickupPage;
-

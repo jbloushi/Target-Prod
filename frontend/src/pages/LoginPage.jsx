@@ -1,391 +1,278 @@
-import React, { useState } from 'react';
-import { useNavigate, Link as RouterLink } from 'react-router-dom';
-import styled, { keyframes } from 'styled-components';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Button, Input, Alert } from '../ui';
-import { getClientEnv, isDevelopmentMode } from '../utils/env';
-import { getRoleLabel } from '../utils/roleLabels';
+import { isDevelopmentMode, getClientEnv } from '../utils/env';
 
-// --- Animations ---
-const fadeSlideUp = keyframes`
-  from { opacity: 0; transform: translateY(24px); }
-  to { opacity: 1; transform: translateY(0); }
-`;
+const DEMO_USERS = [
+  { role: 'admin', label: 'Superadmin', tag: 'Full Control', badge: 'badge-primary' },
+  { role: 'manager', label: 'Target Owner', tag: 'Executive', badge: 'badge-secondary' },
+  { role: 'accounting', label: 'Target Accounting', tag: 'Ledgers & Cash', badge: 'badge-accent' },
+  { role: 'staff', label: 'Target Ops Staff', tag: 'Dispatch & Hub', badge: 'badge-info' },
+  { role: 'driver', label: 'Courier Driver', tag: 'Kuwait Fleet', badge: 'badge-warning' },
+  { role: 'org_manager', label: 'Company Manager', tag: 'Corporate B2B', badge: 'badge-neutral' },
+  { role: 'org_agent', label: 'Company Agent', tag: 'Client Staff', badge: 'badge-ghost' },
+  { role: 'client', label: 'Direct Shipper', tag: 'Portal User', badge: 'badge-outline' },
+  { role: 'dgr', label: 'DGR Specialist', tag: 'IATA Class 3/9', badge: 'badge-error', email: 'dgr@demo.com' },
+];
 
-const driftIn = keyframes`
-  from { opacity: 0; transform: translateX(40px); }
-  to { opacity: 1; transform: translateX(0); }
-`;
+export const LoginPage = () => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showDevOptions, setShowDevOptions] = useState(false);
 
-const lineGrow = keyframes`
-  from { transform: scaleY(0); }
-  to { transform: scaleY(1); }
-`;
+  const { login, loading, error, isAuthenticated, user } = useAuth();
+  const navigate = useNavigate();
 
-// --- Styled Components ---
+  const isDev = isDevelopmentMode() || getClientEnv('VITE_IS_DEV') === 'true' || getClientEnv('REACT_APP_IS_DEV') === 'true';
 
-const PageWrapper = styled.div`
-    min-height: 100vh;
-    width: 100%;
-    display: flex;
-    background: var(--surface, #f3f7fb);
-    position: relative;
-    overflow: hidden;
-`;
-
-const FormSide = styled.div`
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    padding: 48px;
-    padding-left: 80px;
-    max-width: 560px;
-    position: relative;
-    z-index: 2;
-    animation: ${fadeSlideUp} 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-
-    @media (max-width: 1024px) {
-        max-width: 100%;
-        padding: 32px;
-        padding-left: 32px;
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      navigate(user.role === 'driver' ? '/driver/pickup' : '/dashboard');
     }
-`;
+  }, [isAuthenticated, user, navigate]);
 
-const HeroSide = styled.div`
-    flex: 1.2;
-    position: relative;
-    overflow: hidden;
-
-    @media (max-width: 1024px) {
-        display: none;
+  const handleLogin = async (emailInput, passInput) => {
+    try {
+      await login(emailInput, passInput);
+    } catch (err) {
+      // Error is handled and surfaced by AuthContext
     }
-`;
+  };
 
-const HeroImage = styled.div`
-    position: absolute;
-    inset: 0;
-    background-image: url('/images/logistics-hero.png');
-    background-size: cover;
-    background-position: center;
-    animation: ${driftIn} 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-    
-    &::after {
-        content: '';
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(to right, var(--surface, #f3f7fb) 0%, rgba(243, 247, 251, 0.3) 30%, transparent 60%);
-    }
-`;
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    handleLogin(email, password);
+  };
 
-const MotionLine = styled.div`
-    position: absolute;
-    top: 0;
-    width: 1px;
-    height: 100%;
-    background: linear-gradient(to bottom, var(--primary, #0050d4), transparent);
-    opacity: 0.08;
-    transform-origin: top;
-    animation: ${lineGrow} 1.2s cubic-bezier(0.4, 0, 0.2, 1);
-`;
+  return (
+    <div className="min-h-screen bg-base-200/50 flex items-stretch font-sans selection:bg-primary selection:text-white">
+      {/* Left Column: Login Form */}
+      <div className="flex-1 flex flex-col justify-center px-6 py-12 sm:px-12 lg:px-20 max-w-xl mx-auto w-full z-10">
+        {/* Brand Header */}
+        <div className="flex items-center gap-3 mb-10">
+          <div className="w-12 h-12 rounded-2xl bg-primary text-white flex items-center justify-center font-black text-lg shadow-lg shadow-primary/30">
+            TL
+          </div>
+          <div>
+            <div className="font-black text-xl text-base-content leading-tight">Target Logistics</div>
+            <div className="text-[11px] font-bold text-primary tracking-widest uppercase">Global Express Operating Suite</div>
+          </div>
+        </div>
 
-const GlassWidget = styled.div`
-    position: absolute;
-    bottom: 64px;
-    right: 48px;
-    background: rgba(255, 255, 255, 0.7);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid rgba(169, 174, 177, 0.15);
-    border-radius: 24px;
-    padding: 24px;
-    min-width: 280px;
-    z-index: 5;
-    box-shadow: 0 20px 48px -8px rgba(42, 47, 50, 0.1);
-    animation: ${fadeSlideUp} 1s cubic-bezier(0.4, 0, 0.2, 1) 0.3s both;
-`;
+        {/* Welcome Text */}
+        <div className="space-y-1 mb-8">
+          <h1 className="text-3xl sm:text-4xl font-black text-base-content tracking-tight">
+            Welcome back
+          </h1>
+          <p className="text-xs sm:text-sm text-base-content/60">
+            Sign in to access consignment telemetry, customs manifests, and GCC linehauls.
+          </p>
+        </div>
 
-const RouteLabel = styled.span`
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--on-surface-variant, #575c60);
-`;
+        {/* Error Notification */}
+        {error && (
+          <div className="alert alert-error text-xs py-3 px-4 shadow-sm mb-6">
+            <span className="material-symbols-outlined text-base">error</span>
+            <div className="flex-1 font-bold">
+              {typeof error === 'string' ? error : 'Authentication failed. Please check credentials.'}
+            </div>
+          </div>
+        )}
 
-const BrandMark = styled.div`
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 48px;
-`;
+        {/* Credentials Form */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-base-content/70 uppercase tracking-wider">
+              Work Email Address *
+            </label>
+            <div className="relative">
+              <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-base-content/40 text-lg pointer-events-none">
+                mail
+              </span>
+              <input
+                type="email"
+                required
+                autoFocus
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@company.com"
+                className="input input-bordered w-full pl-10 pr-4 text-sm font-medium focus:input-primary"
+              />
+            </div>
+          </div>
 
-const BrandIcon = styled.div`
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
-    background: var(--gradient-primary, linear-gradient(135deg, #0EA5E9 0%, #2563EB 100%));
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    box-shadow: 0 8px 24px rgba(0, 80, 212, 0.25);
-`;
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-base-content/70 uppercase tracking-wider">
+                Password *
+              </label>
+              <Link to="/forgot-password" className="link link-primary text-xs font-bold">
+                Forgot password?
+              </Link>
+            </div>
+            <div className="relative">
+              <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-base-content/40 text-lg pointer-events-none">
+                lock
+              </span>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter account password"
+                className="input input-bordered w-full pl-10 pr-10 text-sm font-medium focus:input-primary"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="btn btn-ghost btn-circle btn-xs absolute right-2.5 top-1/2 -translate-y-1/2 text-base-content/40"
+              >
+                <span className="material-symbols-outlined text-base">
+                  {showPassword ? 'visibility_off' : 'visibility'}
+                </span>
+              </button>
+            </div>
+          </div>
 
-const BrandText = styled.span`
-    font-family: 'Manrope', sans-serif;
-    font-size: 20px;
-    font-weight: 800;
-    color: var(--on-surface, #2a2f32);
-    letter-spacing: -0.02em;
-`;
+          <div className="pt-2">
+            <button
+              type="submit"
+              disabled={loading || !email || !password}
+              className="btn btn-primary w-full font-black text-sm shadow-md shadow-primary/20 gap-2"
+            >
+              {loading ? (
+                <>
+                  <span className="loading loading-spinner loading-xs" />
+                  <span>Authenticating...</span>
+                </>
+              ) : (
+                <>
+                  <span>Sign In</span>
+                  <span className="material-symbols-outlined text-lg">arrow_forward</span>
+                </>
+              )}
+            </button>
+          </div>
+        </form>
 
-const Title = styled.h1`
-    font-family: 'Manrope', sans-serif;
-    font-size: 32px;
-    font-weight: 800;
-    margin-bottom: 8px;
-    letter-spacing: -0.02em;
-    color: var(--on-surface, #2a2f32);
-    line-height: 1.2;
-`;
+        {/* Public Links */}
+        <div className="mt-8 pt-6 border-t border-base-200 text-center space-y-3">
+          <p className="text-xs text-base-content/60">
+            Don't have an enterprise account?{' '}
+            <Link to="/signup" className="link link-primary font-bold">
+              Sign Up
+            </Link>
+          </p>
+          <div className="flex items-center justify-center gap-4 text-xs font-bold text-base-content/50">
+            <Link to="/track" className="hover:text-primary">Track Parcel</Link>
+            <span>•</span>
+            <Link to="/returns" className="hover:text-primary">Returns Portal</Link>
+          </div>
+        </div>
 
-const Subtitle = styled.p`
-    font-size: 15px;
-    color: var(--on-surface-variant, #575c60);
-    margin-bottom: 36px;
-    line-height: 1.6;
-`;
+        {/* Dev Quick Role Switcher */}
+        {isDev && (
+          <div className="mt-8 pt-4 border-t border-dashed border-base-300">
+            <button
+              type="button"
+              onClick={() => setShowDevOptions(!showDevOptions)}
+              className="btn btn-ghost btn-xs w-full text-base-content/50 font-bold gap-1"
+            >
+              <span className="material-symbols-outlined text-sm">developer_mode</span>
+              <span>{showDevOptions ? 'Hide Client Showcase Roles' : 'Show Client Showcase Quick Login (All Roles)'}</span>
+            </button>
 
-const Form = styled.form`
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-`;
-
-const LinkText = styled(RouterLink)`
-    color: var(--primary, #0050d4);
-    text-decoration: none;
-    font-size: 14px;
-    font-weight: 700;
-    transition: all 0.2s;
-
-    &:hover {
-        color: var(--primary-dim, #0046bb);
-    }
-`;
-
-const DevOptionsButton = styled.button`
-    background: var(--surface-container-low, #ecf1f6);
-    border: none;
-    color: var(--on-surface-variant, #575c60);
-    width: 100%;
-    padding: 10px;
-    border-radius: 12px;
-    margin-top: 16px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 600;
-    font-family: 'Manrope', sans-serif;
-    transition: all 0.2s;
-    
-    &:hover {
-        background: var(--surface-container, #e3e9ee);
-        color: var(--on-surface, #2a2f32);
-    }
-`;
-
-const DevPanel = styled.div`
-  margin-top: 16px;
-  padding: 16px;
-  background: var(--surface-container-low, #ecf1f6);
-  border-radius: 12px;
-`;
-
-const QuickLoginGrid = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-top: 10px;
-`;
-
-const LoginPage = () => {
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [showDevOptions, setShowDevOptions] = useState(false);
-
-    const { login, loading, error, isAuthenticated, user } = useAuth();
-    const navigate = useNavigate();
-
-    const isDev = isDevelopmentMode() || getClientEnv('VITE_IS_DEV') === 'true' || getClientEnv('REACT_APP_IS_DEV') === 'true';
-
-    React.useEffect(() => {
-        if (isAuthenticated && user) {
-            navigate(user.role === 'driver' ? '/driver/pickup' : '/dashboard');
-        }
-    }, [isAuthenticated, user, navigate]);
-
-    const handleLogin = async (emailInput, passInput) => {
-        try {
-            await login(emailInput, passInput);
-        } catch (err) {
-            // Error handled by context
-        }
-    };
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        handleLogin(email, password);
-    };
-
-    return (
-        <PageWrapper>
-            {/* Left: Form */}
-            <FormSide>
-                <BrandMark>
-                    <BrandIcon>
-                        <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                    </BrandIcon>
-                    <BrandText>Target Logistics</BrandText>
-                </BrandMark>
-
-                <Title>Welcome back</Title>
-                <Subtitle>Sign in to access your logistics dashboard and manage shipments across the globe.</Subtitle>
-
-                {error && (
-                    <div style={{ marginBottom: '8px' }}>
-                        <Alert severity="error" title="Login Failed">
-                            {typeof error === 'string' ? error : 'An unexpected error occurred'}
-                        </Alert>
-                    </div>
-                )}
-
-                <Form onSubmit={handleSubmit}>
-                    <Input
-                        label="Email Address"
-                        type="email"
-                        name="email"
-                        autoComplete="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="name@company.com"
-                        required
-                        autoFocus
-                    />
-                    <Input
-                        label="Password"
-                        name="password"
-                        autoComplete="current-password"
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Enter your password"
-                        required
-                    />
-
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-                        <LinkText to="/forgot-password">
-                            Forgot password?
-                        </LinkText>
-                    </div>
-
-                    <Button
-                        variant="primary"
-                        type="submit"
-                        disabled={loading}
-                        style={{ width: '100%', marginTop: '4px', padding: '16px' }}
-                    >
-                        {loading ? 'Signing In...' : 'Sign In'}
-                    </Button>
-                </Form>
-
-                <div style={{ marginTop: '28px', textAlign: 'center' }}>
-                    <span style={{ color: 'var(--on-surface-variant)', fontSize: '14px' }}>Don't have an account? </span>
-                    <LinkText to="/signup">Sign Up</LinkText>
+            {showDevOptions && (
+              <div className="p-4 rounded-xl bg-base-200/60 border border-base-300 mt-3 space-y-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-base-content/70 uppercase tracking-wider">Demo Accounts (Pass: password123)</span>
+                  <span className="badge badge-xs badge-success font-bold">Local Seed Ready</span>
                 </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {DEMO_USERS.map((item) => (
+                    <button
+                      key={item.role}
+                      type="button"
+                      onClick={() => handleLogin(item.email || `${item.role}@demo.com`, 'password123')}
+                      className="btn btn-outline border-base-300 hover:border-primary hover:bg-primary/5 h-auto py-2 px-2.5 flex flex-col items-start gap-0.5 normal-case"
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <span className="font-black text-xs text-base-content">{item.label}</span>
+                        <span className={`badge badge-xs ${item.badge} text-[9px]`}>{item.tag}</span>
+                      </div>
+                      <span className="font-mono text-[10px] text-base-content/50 truncate w-full text-left">
+                        {item.email || `${item.role}@demo.com`}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
-                {isDev && (
-                    <>
-                        <DevOptionsButton onClick={() => setShowDevOptions(!showDevOptions)}>
-                            {showDevOptions ? 'Hide Developer Options' : 'Show Developer Options'}
-                        </DevOptionsButton>
+      {/* Right Column: Hero Graphic Banner (Desktop Only) */}
+      <div className="hidden lg:flex flex-1 relative bg-gradient-to-br from-primary via-primary-focus to-neutral text-primary-content overflow-hidden p-12 flex-col justify-between">
+        {/* Decorative Grid Lines */}
+        <div className="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:24px_24px]" />
 
-                        {showDevOptions && (
-                            <DevPanel>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                    <div style={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', color: 'var(--on-surface-variant)', letterSpacing: '0.05em' }}>
-                                        Client Showcase Quick Login
-                                    </div>
-                                    <span style={{ fontSize: '10px', color: 'var(--primary)', fontWeight: 600 }}>Pass: password123</span>
-                                </div>
-                                <div style={{ fontSize: '11px', color: 'var(--on-surface-variant)', marginBottom: '8px' }}>
-                                    Idempotent seed-dump dataset ready for local testing. Click any role below:
-                                </div>
-                                <QuickLoginGrid>
-                                    {[
-                                        { role: 'admin', label: 'Superadmin' },
-                                        { role: 'manager', label: 'Ops Manager' },
-                                        { role: 'accounting', label: 'Finance Controller' },
-                                        { role: 'staff', label: 'Ops Staff' },
-                                        { role: 'driver', label: 'Courier Driver' },
-                                        { role: 'org_manager', label: 'Company Manager' },
-                                        { role: 'org_agent', label: 'Company Agent' },
-                                        { role: 'client', label: 'Direct Shipper' },
-                                        { role: 'dgr', label: 'DGR Specialist', email: 'dgr@demo.com' }
-                                    ].map((item) => (
-                                        <Button
-                                            key={item.role}
-                                            variant="secondary"
-                                            onClick={() => handleLogin(item.email || `${item.role}@demo.com`, 'password123')}
-                                            style={{ fontSize: '11px', padding: '7px 6px', textAlign: 'center' }}
-                                        >
-                                            {item.label}
-                                        </Button>
-                                    ))}
-                                </QuickLoginGrid>
-                            </DevPanel>
-                        )}
-                    </>
-                )}
-            </FormSide>
+        {/* Top Floating Badge */}
+        <div className="relative z-10 flex items-center justify-between">
+          <div className="badge badge-neutral/80 backdrop-blur-md text-white font-bold text-xs gap-1.5 py-3 px-3">
+            <span className="w-2 h-2 rounded-full bg-success animate-ping" />
+            <span>Middle East Hub Online</span>
+          </div>
+          <span className="font-mono text-xs opacity-75">Kuwait City UTC+3</span>
+        </div>
 
-            {/* Right: Hero Image */}
-            <HeroSide>
-                <HeroImage />
-                {/* Decorative Motion Lines */}
-                <MotionLine style={{ left: '20%' }} />
-                <MotionLine style={{ left: '50%', animationDelay: '0.2s' }} />
-                <MotionLine style={{ left: '75%', animationDelay: '0.4s' }} />
+        {/* Central Graphic Visual */}
+        <div className="relative z-10 max-w-lg space-y-6">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md text-xs font-bold border border-white/20">
+            <span className="material-symbols-outlined text-sm">flight_takeoff</span>
+            <span>GCC Regional & Worldwide Corridors</span>
+          </div>
+          <h2 className="text-4xl xl:text-5xl font-black leading-tight tracking-tight">
+            Autonomous Freight & Logistics Intelligence.
+          </h2>
+          <p className="text-sm opacity-85 leading-relaxed">
+            Consolidated Air Cargo dispatch with DHL Express, LogesTechs GCC linehauls, automated Kuwait customs clearance, and instant touch-screen Proof of Delivery.
+          </p>
 
-                {/* Glassmorphic Route Widget */}
-                <GlassWidget>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                        <div>
-                            <RouteLabel>Origin</RouteLabel>
-                            <div style={{ fontWeight: 800, color: 'var(--primary)', fontSize: '16px', fontFamily: 'Manrope, sans-serif' }}>KUWAIT</div>
-                        </div>
-                        <svg width="24" height="24" fill="none" stroke="var(--primary)" viewBox="0 0 24 24" strokeWidth="2" style={{ opacity: 0.5 }}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                        </svg>
-                        <div style={{ textAlign: 'right' }}>
-                            <RouteLabel>Coverage</RouteLabel>
-                            <div style={{ fontWeight: 800, color: 'var(--on-surface)', fontSize: '16px', fontFamily: 'Manrope, sans-serif' }}>200+ COUNTRIES</div>
-                        </div>
-                    </div>
-                    <div style={{ height: '4px', background: 'var(--surface-container-high)', borderRadius: '9999px', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: '66%', background: 'var(--gradient-primary)', borderRadius: '9999px' }} />
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px' }}>
-                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#3adffa', boxShadow: '0 0 8px rgba(58, 223, 250, 0.5)' }} />
-                        <span style={{ fontSize: '11px', fontWeight: 700, color: '#006573', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Live Tracking Active</span>
-                    </div>
-                </GlassWidget>
-            </HeroSide>
-        </PageWrapper>
-    );
+          {/* Stat Badges */}
+          <div className="grid grid-cols-3 gap-4 pt-4 border-t border-white/20">
+            <div>
+              <div className="text-2xl font-black font-mono">200+</div>
+              <div className="text-[11px] opacity-75 uppercase font-bold">Global Destinations</div>
+            </div>
+            <div>
+              <div className="text-2xl font-black font-mono">99.4%</div>
+              <div className="text-[11px] opacity-75 uppercase font-bold">On-Time Linehaul</div>
+            </div>
+            <div>
+              <div className="text-2xl font-black font-mono">Sub-Sec</div>
+              <div className="text-[11px] opacity-75 uppercase font-bold">Optical Scanning</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom Floating Consignment Radar Card */}
+        <div className="relative z-10 p-5 rounded-2xl bg-base-100/95 backdrop-blur-xl border border-white/20 text-base-content shadow-2xl flex items-center justify-between gap-4 max-w-md">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined">radar</span>
+            </div>
+            <div>
+              <div className="text-[11px] font-bold text-base-content/50 uppercase">Active Trade Route</div>
+              <div className="font-extrabold text-sm text-base-content">Kuwait (KWI) &rarr; Dubai (DXB)</div>
+            </div>
+          </div>
+          <span className="badge badge-success badge-sm font-bold text-xs">Live In Flight</span>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default LoginPage;

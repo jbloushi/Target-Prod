@@ -119,9 +119,9 @@ export const shipmentService = {
   },
 
   // Get shipment stats
-  getShipmentStats: async () => {
+  getShipmentStats: async (filters = {}) => {
     try {
-      const response = await api.get('shipments/stats');
+      const response = await api.get('shipments/stats', { params: filters });
       return response.data;
     } catch (error) {
       console.error('Error fetching shipment stats:', error);

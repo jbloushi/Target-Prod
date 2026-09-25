@@ -1,437 +1,432 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import styled from 'styled-components';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { shipmentService } from '../services/api';
-import { Card, Button, StatusPill, Loader } from '../ui';
-import { TK } from '../tokens/kineticHorizon';
-import AssignmentReturnIcon from '@mui/icons-material/AssignmentReturn';
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
-import PrintIcon from '@mui/icons-material/Print';
-import LocalShippingIcon from '@mui/icons-material/LocalShipping';
-import StoreIcon from '@mui/icons-material/Store';
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import StatusBadge from '../components/common/StatusBadge';
+import { getApiBaseUrl } from '../utils/env';
 
-const PageWrapper = styled.div`
-    min-height: 100vh;
-    background: #f8fafc;
-    color: ${TK.text1};
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 32px 16px 64px;
-`;
+const API = getApiBaseUrl();
 
-const Container = styled.div`
-    width: 100%;
-    max-width: 680px;
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-`;
+export const PublicReturnPortalPage = () => {
+  const { trackingNumber: initialTracking } = useParams();
+  const navigate = useNavigate();
 
-const HeaderBrand = styled.div`
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    margin-bottom: 8px;
+  const [trackingInput, setTrackingInput] = useState(initialTracking || '');
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [eligibilityData, setEligibilityData] = useState(null);
+  const [errorMsg, setErrorMsg] = useState('');
 
-    .logo-icon {
-        width: 44px;
-        height: 44px;
-        border-radius: 12px;
-        background: ${TK.primary};
-        color: #ffffff;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+  // Form fields
+  const [selectedReason, setSelectedReason] = useState('');
+  const [notes, setNotes] = useState('');
+  const [pickupPreference, setPickupPreference] = useState('DROP_OFF'); // 'DROP_OFF' | 'COURIER_PICKUP'
+  const [completedReturn, setCompletedReturn] = useState(null);
+
+  const checkEligibility = async (tn) => {
+    const queryTracking = (tn || trackingInput).trim();
+    if (!queryTracking) return;
+
+    try {
+      setLoading(true);
+      setErrorMsg('');
+      setEligibilityData(null);
+      setCompletedReturn(null);
+
+      const res = await shipmentService.checkReturnEligibility(queryTracking);
+      if (res.success && res.eligible) {
+        setEligibilityData(res.data);
+        setSelectedReason(res.data.allowedReasons?.[0] || 'Defective or Damaged');
+      } else if (res.alreadyReturned) {
+        setEligibilityData({ ...res, isAlreadyReturned: true });
+      } else {
+        setErrorMsg(res.error || 'This shipment is not eligible for return (must be delivered within 14 days).');
+      }
+    } catch (err) {
+      setErrorMsg(err.response?.data?.error || err.message || 'Failed to verify return eligibility.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (initialTracking) {
+      checkEligibility(initialTracking);
+    }
+  }, [initialTracking]);
+
+  const handleSubmitReturn = async () => {
+    if (!selectedReason) {
+      setErrorMsg('Please select a reason for the return.');
+      return;
     }
 
-    h1 {
-        font-family: 'Outfit', sans-serif;
-        font-size: 22px;
-        font-weight: 800;
-        letter-spacing: -0.02em;
-        margin: 0;
+    try {
+      setSubmitting(true);
+      setErrorMsg('');
+      const payload = {
+        returnReason: selectedReason,
+        customerNotes: notes,
+        pickupPreference,
+      };
+
+      const res = await shipmentService.createPublicReturn(eligibilityData.trackingNumber, payload);
+      if (res.success && res.data) {
+        setCompletedReturn(res.data);
+      } else {
+        setErrorMsg(res.error || 'Failed to create return waybill.');
+      }
+    } catch (err) {
+      setErrorMsg(err.response?.data?.error || err.message || 'Failed to submit return request.');
+    } finally {
+      setSubmitting(false);
     }
-`;
+  };
 
-const StepCard = styled(Card)`
-    padding: 28px;
-    background: #ffffff;
-    border: 1px solid ${TK.border};
-    border-radius: 18px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.03);
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-`;
+  return (
+    <div className="min-h-screen bg-base-200/50 flex flex-col font-sans selection:bg-primary selection:text-white">
+      {/* Top Header */}
+      <header className="navbar bg-base-100 border-b border-base-200 px-4 sm:px-8 py-3 sticky top-0 z-40 shadow-sm">
+        <div className="flex-1 flex items-center gap-3">
+          <Link to="/track" className="flex items-center gap-2.5 text-primary font-black text-lg tracking-tight">
+            <div className="w-9 h-9 rounded-xl bg-primary text-white flex items-center justify-center font-black text-sm shadow-md shadow-primary/20">
+              TL
+            </div>
+            <div className="flex flex-col">
+              <span className="leading-tight font-extrabold text-base-content">Target Logistics</span>
+              <span className="text-[10px] text-primary uppercase font-bold tracking-widest">Self-Service Returns</span>
+            </div>
+          </Link>
+        </div>
+        <div className="flex-none">
+          <Link to="/track" className="btn btn-ghost btn-sm text-xs font-bold gap-1 text-base-content/70 hover:text-primary">
+            <span className="material-symbols-outlined text-sm">search</span>
+            <span>Track Parcel</span>
+          </Link>
+        </div>
+      </header>
 
-const Input = styled.input`
-    width: 100%;
-    padding: 14px 16px;
-    border-radius: 12px;
-    border: 1.5px solid ${TK.border};
-    font-size: 15px;
-    font-weight: 600;
-    color: ${TK.text1};
-    outline: none;
-    transition: all 0.2s ease;
+      {/* Main Container */}
+      <main className="flex-1 max-w-2xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+        {/* Brand Hero */}
+        <div className="text-center space-y-2">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-secondary/10 text-secondary text-xs font-bold border border-secondary/20">
+            <span className="material-symbols-outlined text-sm">assignment_return</span>
+            <span>Reverse Logistics Portal</span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-black text-base-content tracking-tight">
+            Customer Self-Service Returns
+          </h1>
+          <p className="text-xs sm:text-sm text-base-content/60 max-w-md mx-auto">
+            Easily authorize and book reverse courier pickups or hub drop-offs within 14 days of confirmed package delivery.
+          </p>
+        </div>
 
-    &:focus {
-        border-color: ${TK.primary};
-        box-shadow: 0 0 0 3px ${TK.primary}20;
-    }
-`;
+        {/* Step 1: Waybill Lookup */}
+        {!eligibilityData && !completedReturn && (
+          <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
+            <div className="card-body p-6 sm:p-8 space-y-5">
+              <div>
+                <h2 className="text-lg font-black text-base-content tracking-tight">
+                  Enter Delivered Tracking Number
+                </h2>
+                <p className="text-xs text-base-content/60 mt-0.5">
+                  Located on your receipt, delivery SMS, or package shipping label.
+                </p>
+              </div>
 
-const Select = styled.select`
-    width: 100%;
-    padding: 14px 16px;
-    border-radius: 12px;
-    border: 1.5px solid ${TK.border};
-    font-size: 14px;
-    font-weight: 600;
-    color: ${TK.text1};
-    background: #ffffff;
-    outline: none;
-    cursor: pointer;
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="relative flex-1">
+                  <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-base-content/40 text-lg pointer-events-none">
+                    barcode_scanner
+                  </span>
+                  <input
+                    type="text"
+                    value={trackingInput}
+                    onChange={(e) => setTrackingInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && checkEligibility()}
+                    placeholder="e.g. TRK-KW-DELIVERED-007"
+                    className="input input-bordered w-full pl-10 pr-4 font-mono font-medium text-sm focus:input-primary"
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={!trackingInput.trim() || loading}
+                  onClick={() => checkEligibility()}
+                  className="btn btn-primary font-bold px-6 text-sm shadow-md shadow-primary/20"
+                >
+                  {loading ? (
+                    <>
+                      <span className="loading loading-spinner loading-xs" />
+                      <span>Checking...</span>
+                    </>
+                  ) : (
+                    <span>Verify Return</span>
+                  )}
+                </button>
+              </div>
 
-    &:focus {
-        border-color: ${TK.primary};
-    }
-`;
+              {errorMsg && (
+                <div className="alert alert-error text-xs py-3 px-4 shadow-sm">
+                  <span className="material-symbols-outlined text-base">error</span>
+                  <span>{errorMsg}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
-const OptionButton = styled.div`
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 16px;
-    border-radius: 14px;
-    border: 2px solid ${props => props.selected ? TK.primary : TK.border};
-    background: ${props => props.selected ? `${TK.primary}08` : '#ffffff'};
-    cursor: pointer;
-    transition: all 0.2s ease;
+        {/* State: Already Returned */}
+        {eligibilityData?.isAlreadyReturned && (
+          <div className="card bg-base-100 border border-base-200 shadow-sm p-8 text-center space-y-4">
+            <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto text-2xl">
+              <span className="material-symbols-outlined text-3xl">verified</span>
+            </div>
+            <div>
+              <h2 className="text-xl font-black text-base-content">Return Already Authorized</h2>
+              <p className="text-xs text-base-content/60 mt-1">
+                A reverse waybill has already been created for this consignment.
+              </p>
+            </div>
+            <div className="p-3 bg-base-200 rounded-xl font-mono font-black text-base text-primary inline-block">
+              {eligibilityData.existingReturnTracking || eligibilityData.returnTrackingNumber || 'RET-AUTHORIZED'}
+            </div>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setEligibilityData(null);
+                  setTrackingInput('');
+                }}
+                className="btn btn-outline btn-sm font-bold text-xs"
+              >
+                Search Another Consignment
+              </button>
+            </div>
+          </div>
+        )}
 
-    .icon-box {
-        width: 38px;
-        height: 38px;
-        border-radius: 10px;
-        background: ${props => props.selected ? TK.primary : '#f1f5f9'};
-        color: ${props => props.selected ? '#ffffff' : TK.text2};
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
+        {/* Step 2: Return Configuration Form */}
+        {eligibilityData && !eligibilityData.isAlreadyReturned && !completedReturn && (
+          <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
+            <div className="card-body p-6 sm:p-8 space-y-6">
+              {/* Consignment Banner */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-base-200">
+                <div>
+                  <span className="text-[11px] font-bold text-base-content/50 uppercase tracking-wider">
+                    Eligible Consignment
+                  </span>
+                  <div className="font-mono font-black text-lg text-base-content mt-0.5">
+                    {eligibilityData.trackingNumber}
+                  </div>
+                  <div className="text-xs text-base-content/60 mt-0.5">
+                    Merchant: <strong className="text-base-content">{eligibilityData.merchant || 'Target Logistics Client'}</strong> •{' '}
+                    <span className="text-success font-bold">{eligibilityData.daysRemaining ?? 14} days remaining</span>
+                  </div>
+                </div>
+                <StatusBadge status="delivered" size="sm" />
+              </div>
 
-    &:hover {
-        border-color: ${TK.primary};
-    }
-`;
+              {/* Return Reason Select */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-base-content/70 uppercase tracking-wider">
+                  Reason for Return *
+                </label>
+                <select
+                  value={selectedReason}
+                  onChange={(e) => setSelectedReason(e.target.value)}
+                  className="select select-bordered w-full font-medium text-sm focus:select-primary"
+                >
+                  {(eligibilityData.allowedReasons || [
+                    'Defective or Damaged',
+                    'Incorrect Item Received',
+                    'Size / Fit Issue',
+                    'Changed Mind / Not as Described',
+                    'Late Delivery'
+                  ]).map((reason) => (
+                    <option key={reason} value={reason}>
+                      {reason}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-const PublicReturnPortalPage = () => {
-    const { trackingNumber: initialTracking } = useParams();
-    const navigate = useNavigate();
+              {/* Customer Notes */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-base-content/70 uppercase tracking-wider">
+                  Defect Description & Notes (Optional)
+                </label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Provide any additional context or defect details for the merchant inspection team..."
+                  rows={3}
+                  className="textarea textarea-bordered w-full text-sm font-medium focus:textarea-primary"
+                />
+              </div>
 
-    const [trackingInput, setTrackingInput] = useState(initialTracking || '');
-    const [loading, setLoading] = useState(false);
-    const [submitting, setSubmitting] = useState(false);
-    const [eligibilityData, setEligibilityData] = useState(null);
-    const [errorMsg, setErrorMsg] = useState('');
-
-    // Form fields
-    const [selectedReason, setSelectedReason] = useState('');
-    const [notes, setNotes] = useState('');
-    const [pickupPreference, setPickupPreference] = useState('DROP_OFF'); // 'DROP_OFF' | 'COURIER_PICKUP'
-    const [completedReturn, setCompletedReturn] = useState(null);
-
-    const checkEligibility = async (tn) => {
-        const queryTracking = (tn || trackingInput).trim();
-        if (!queryTracking) return;
-
-        try {
-            setLoading(true);
-            setErrorMsg('');
-            setEligibilityData(null);
-            setCompletedReturn(null);
-
-            const res = await shipmentService.checkReturnEligibility(queryTracking);
-            if (res.success && res.eligible) {
-                setEligibilityData(res.data);
-                setSelectedReason(res.data.allowedReasons?.[0] || 'Defective or Damaged');
-            } else if (res.alreadyReturned) {
-                setEligibilityData({ ...res, isAlreadyReturned: true });
-            } else {
-                setErrorMsg(res.error || 'This package is not eligible for return.');
-            }
-        } catch (err) {
-            setErrorMsg(err.response?.data?.error || err.message || 'Failed to verify return eligibility');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        if (initialTracking) {
-            checkEligibility(initialTracking);
-        }
-    }, [initialTracking]);
-
-    const handleSubmitReturn = async () => {
-        if (!selectedReason) {
-            alert('Please select a reason for the return.');
-            return;
-        }
-
-        try {
-            setSubmitting(true);
-            const payload = {
-                returnReason: selectedReason,
-                customerNotes: notes,
-                pickupPreference
-            };
-
-            const res = await shipmentService.createPublicReturn(eligibilityData.trackingNumber, payload);
-            if (res.success && res.data) {
-                setCompletedReturn(res.data);
-            } else {
-                alert(res.error || 'Failed to create return waybill');
-            }
-        } catch (err) {
-            alert(err.response?.data?.error || err.message || 'Failed to submit return request');
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
-    return (
-        <PageWrapper>
-            <Container>
-                <HeaderBrand>
-                    <div className="logo-icon"><AssignmentReturnIcon /></div>
-                    <div>
-                        <h1>Target Logistics</h1>
-                        <div style={{ fontSize: '13px', color: TK.text3, fontWeight: 600 }}>Customer Self-Service Returns</div>
+              {/* Handover Preference (Hub Drop-off vs Courier Pickup) */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-base-content/70 uppercase tracking-wider">
+                  Return Handover Method *
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div
+                    onClick={() => setPickupPreference('DROP_OFF')}
+                    className={`card p-4 border-2 cursor-pointer transition-all ${
+                      pickupPreference === 'DROP_OFF'
+                        ? 'border-primary bg-primary/5 shadow-sm'
+                        : 'border-base-200 hover:border-base-300 bg-base-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                        pickupPreference === 'DROP_OFF' ? 'bg-primary text-white' : 'bg-base-200 text-base-content/70'
+                      }`}>
+                        <span className="material-symbols-outlined">store</span>
+                      </div>
+                      <div>
+                        <div className="font-extrabold text-sm text-base-content">Hub Drop-Off</div>
+                        <div className="text-xs text-base-content/60">Drop at any Target Express branch</div>
+                      </div>
                     </div>
-                </HeaderBrand>
+                  </div>
 
-                {/* Step 1: Look up Package */}
-                {!eligibilityData && !completedReturn && (
-                    <StepCard>
-                        <div>
-                            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800 }}>Enter Delivered Tracking Number</h2>
-                            <p style={{ margin: '4px 0 0', fontSize: '13px', color: TK.text2 }}>
-                                Eligible within 14 days of confirmed package delivery.
-                            </p>
-                        </div>
+                  <div
+                    onClick={() => setPickupPreference('COURIER_PICKUP')}
+                    className={`card p-4 border-2 cursor-pointer transition-all ${
+                      pickupPreference === 'COURIER_PICKUP'
+                        ? 'border-primary bg-primary/5 shadow-sm'
+                        : 'border-base-200 hover:border-base-300 bg-base-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                        pickupPreference === 'COURIER_PICKUP' ? 'bg-primary text-white' : 'bg-base-200 text-base-content/70'
+                      }`}>
+                        <span className="material-symbols-outlined">local_shipping</span>
+                      </div>
+                      <div>
+                        <div className="font-extrabold text-sm text-base-content">Courier Pickup</div>
+                        <div className="text-xs text-base-content/60">Driver picks up from your address</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
-                        <div style={{ display: 'flex', gap: '10px' }}>
-                            <Input
-                                value={trackingInput}
-                                onChange={e => setTrackingInput(e.target.value)}
-                                placeholder="e.g. TRK-KW-100234 or DGR-10029"
-                                onKeyDown={e => e.key === 'Enter' && checkEligibility()}
-                            />
-                            <Button
-                                variant="primary"
-                                disabled={!trackingInput.trim() || loading}
-                                onClick={() => checkEligibility()}
-                                style={{ padding: '0 24px', flexShrink: 0 }}
-                            >
-                                {loading ? 'Verifying...' : 'Check Return'}
-                            </Button>
-                        </div>
+              {errorMsg && (
+                <div className="alert alert-error text-xs py-3 px-4 shadow-sm">
+                  <span className="material-symbols-outlined text-base">error</span>
+                  <span>{errorMsg}</span>
+                </div>
+              )}
 
-                        {errorMsg && (
-                            <div style={{
-                                padding: '14px 16px', borderRadius: '12px',
-                                background: '#fef2f2', border: '1px solid #fecaca',
-                                color: '#991b1b', fontSize: '13px', display: 'flex', gap: '10px', alignItems: 'center'
-                            }}>
-                                <ErrorOutlineIcon fontSize="small" />
-                                <div>{errorMsg}</div>
-                            </div>
-                        )}
-                    </StepCard>
-                )}
+              {/* Action Buttons */}
+              <div className="flex items-center justify-between gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEligibilityData(null);
+                    setTrackingInput('');
+                  }}
+                  className="btn btn-ghost text-xs font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={handleSubmitReturn}
+                  className="btn btn-primary font-bold px-6 text-sm shadow-md shadow-primary/20 gap-2"
+                >
+                  {submitting ? (
+                    <>
+                      <span className="loading loading-spinner loading-xs" />
+                      <span>Generating Label...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-lg">check_circle</span>
+                      <span>Authorize & Create Return</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
-                {/* Already Returned State */}
-                {eligibilityData?.isAlreadyReturned && (
-                    <StepCard>
-                        <div style={{ textAlign: 'center', padding: '16px' }}>
-                            <CheckCircleOutlineIcon sx={{ fontSize: 54, color: TK.primary, mb: 1 }} />
-                            <h2 style={{ fontSize: '20px', fontWeight: 800, margin: '0 0 8px' }}>Return Already Authorized</h2>
-                            <p style={{ color: TK.text2, fontSize: '14px', margin: '0 0 16px' }}>
-                                A return waybill has already been created for this shipment.
-                            </p>
-                            <div style={{
-                                background: '#f1f5f9', padding: '12px 16px', borderRadius: '12px',
-                                fontFamily: 'monospace', fontSize: '16px', fontWeight: 700, display: 'inline-block'
-                            }}>
-                                {eligibilityData.existingReturnTracking}
-                            </div>
-                        </div>
+        {/* Step 3: Success Return Created */}
+        {completedReturn && (
+          <div className="card bg-base-100 border border-base-200 shadow-sm p-6 sm:p-8 space-y-6">
+            <div className="text-center space-y-2">
+              <div className="w-16 h-16 rounded-full bg-success/10 text-success flex items-center justify-center mx-auto text-3xl">
+                <span className="material-symbols-outlined text-4xl">check_circle</span>
+              </div>
+              <h2 className="text-2xl font-black text-base-content tracking-tight">
+                Return Waybill Generated!
+              </h2>
+              <p className="text-xs sm:text-sm text-base-content/60 max-w-sm mx-auto">
+                Please print and attach the return shipping label to your packaged parcel before handover.
+              </p>
+            </div>
 
-                        <Button variant="ghost" onClick={() => { setEligibilityData(null); setTrackingInput(''); }}>
-                            Search Another Waybill
-                        </Button>
-                    </StepCard>
-                )}
+            {/* Summary Details */}
+            <div className="p-4 rounded-xl bg-base-200/50 border border-base-200 space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-base-content/60">RETURN TRACKING #</span>
+                <span className="font-mono font-black text-primary text-sm">
+                  {completedReturn.trackingNumber}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-base-content/60">MERCHANT DESTINATION</span>
+                <span className="font-bold text-base-content">
+                  {completedReturn.destination?.company || completedReturn.destination?.contactPerson || 'Merchant Receiving Center'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-base-content/60">HANDOVER METHOD</span>
+                <span className="badge badge-sm badge-neutral font-bold">
+                  {pickupPreference === 'COURIER_PICKUP' ? 'Driver Collection' : 'Hub Drop-Off'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-base-content/60">CURRENT STATUS</span>
+                <StatusBadge status={completedReturn.status || 'return_initiated'} size="xs" />
+              </div>
+            </div>
 
-                {/* Step 2: Return Configuration Form */}
-                {eligibilityData && !eligibilityData.isAlreadyReturned && !completedReturn && (
-                    <StepCard>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${TK.border}`, pb: 2 }}>
-                            <div>
-                                <span style={{ fontSize: '12px', color: TK.text3, fontWeight: 700, textTransform: 'uppercase' }}>Shipment</span>
-                                <h2 style={{ margin: '2px 0 0', fontSize: '18px', fontWeight: 800 }}>{eligibilityData.trackingNumber}</h2>
-                                <div style={{ fontSize: '13px', color: TK.text2, marginTop: '2px' }}>
-                                    Merchant: <strong>{eligibilityData.merchant}</strong> • {eligibilityData.daysRemaining} days left to return
-                                </div>
-                            </div>
-                            <StatusPill status="delivered" />
-                        </div>
+            {/* Print & Track Actions */}
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              <a
+                href={`${API}/shipments/${completedReturn.trackingNumber}/label`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-primary flex-1 font-bold gap-2 text-sm shadow-md shadow-primary/20"
+              >
+                <span className="material-symbols-outlined text-lg">print</span>
+                <span>Print Return Label</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => navigate(`/track/${completedReturn.trackingNumber}`)}
+                className="btn btn-outline border-base-300 hover:border-primary flex-1 font-bold gap-2 text-sm"
+              >
+                <span className="material-symbols-outlined text-lg">radar</span>
+                <span>Track Return</span>
+              </button>
+            </div>
+          </div>
+        )}
+      </main>
 
-                        {/* Return Reason */}
-                        <div>
-                            <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: TK.text2, marginBottom: '6px' }}>
-                                Reason for Return
-                            </label>
-                            <Select value={selectedReason} onChange={e => setSelectedReason(e.target.value)}>
-                                {eligibilityData.allowedReasons?.map(r => (
-                                    <option key={r} value={r}>{r}</option>
-                                ))}
-                            </Select>
-                        </div>
-
-                        {/* Customer Notes */}
-                        <div>
-                            <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: TK.text2, marginBottom: '6px' }}>
-                                Additional Details / Defect Description (Optional)
-                            </label>
-                            <textarea
-                                value={notes}
-                                onChange={e => setNotes(e.target.value)}
-                                placeholder="Describe the reason for return in detail..."
-                                rows={3}
-                                style={{
-                                    width: '100%', padding: '12px', borderRadius: '12px',
-                                    border: `1.5px solid ${TK.border}`, fontSize: '14px', outline: 'none',
-                                    fontFamily: 'inherit'
-                                }}
-                            />
-                        </div>
-
-                        {/* Return Method */}
-                        <div>
-                            <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: TK.text2, marginBottom: '8px' }}>
-                                Return Handover Preference
-                            </label>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                                <OptionButton
-                                    selected={pickupPreference === 'DROP_OFF'}
-                                    onClick={() => setPickupPreference('DROP_OFF')}
-                                >
-                                    <div className="icon-box"><StoreIcon /></div>
-                                    <div>
-                                        <div style={{ fontWeight: 700, fontSize: '14px' }}>Hub Drop-Off</div>
-                                        <div style={{ fontSize: '12px', color: TK.text3 }}>Drop package at local hub</div>
-                                    </div>
-                                </OptionButton>
-
-                                <OptionButton
-                                    selected={pickupPreference === 'COURIER_PICKUP'}
-                                    onClick={() => setPickupPreference('COURIER_PICKUP')}
-                                >
-                                    <div className="icon-box"><LocalShippingIcon /></div>
-                                    <div>
-                                        <div style={{ fontWeight: 700, fontSize: '14px' }}>Courier Pickup</div>
-                                        <div style={{ fontSize: '12px', color: TK.text3 }}>Driver picks up from address</div>
-                                    </div>
-                                </OptionButton>
-                            </div>
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-                            <Button
-                                variant="ghost"
-                                onClick={() => { setEligibilityData(null); setTrackingInput(''); }}
-                                style={{ flex: 1 }}
-                            >
-                                Cancel
-                            </Button>
-                            <Button
-                                variant="primary"
-                                disabled={submitting}
-                                onClick={handleSubmitReturn}
-                                style={{ flex: 2 }}
-                            >
-                                {submitting ? 'Generating Return Label...' : 'Authorize & Create Return'}
-                            </Button>
-                        </div>
-                    </StepCard>
-                )}
-
-                {/* Step 3: Success & Printable Return Label */}
-                {completedReturn && (
-                    <StepCard>
-                        <div style={{ textAlign: 'center', padding: '12px 0' }}>
-                            <div style={{
-                                width: '64px', height: '64px', borderRadius: '50%',
-                                background: '#f0fdf4', color: '#16a34a', display: 'flex',
-                                alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px'
-                            }}>
-                                <CheckCircleOutlineIcon sx={{ fontSize: 40 }} />
-                            </div>
-                            <h2 style={{ fontSize: '22px', fontWeight: 800, margin: '0 0 6px' }}>Return Waybill Generated!</h2>
-                            <p style={{ color: TK.text2, fontSize: '14px', margin: 0 }}>
-                                Please affix the return label to your packaged item.
-                            </p>
-                        </div>
-
-                        <div style={{
-                            background: '#f8fafc', border: `1px solid ${TK.border}`,
-                            borderRadius: '14px', padding: '16px', display: 'flex',
-                            flexDirection: 'column', gap: '10px'
-                        }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '12px', color: TK.text3, fontWeight: 700 }}>RETURN TRACKING #</span>
-                                <strong style={{ fontFamily: 'monospace', fontSize: '16px', color: TK.primary }}>
-                                    {completedReturn.trackingNumber}
-                                </strong>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '12px', color: TK.text3, fontWeight: 700 }}>DESTINATION</span>
-                                <span style={{ fontSize: '13px', fontWeight: 600 }}>
-                                    {completedReturn.destination?.company || completedReturn.destination?.contactPerson || 'Merchant Hub'}
-                                </span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '12px', color: TK.text3, fontWeight: 700 }}>STATUS</span>
-                                <StatusPill status={completedReturn.status} />
-                            </div>
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '12px' }}>
-                            <Button
-                                variant="primary"
-                                onClick={() => window.open(`/api/shipments/${completedReturn.trackingNumber}/label`, '_blank')}
-                                style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-                            >
-                                <PrintIcon fontSize="small" /> Print Return Label
-                            </Button>
-                            <Button
-                                variant="secondary"
-                                onClick={() => navigate(`/track?tracking=${completedReturn.trackingNumber}`)}
-                                style={{ flex: 1 }}
-                            >
-                                Track Return
-                            </Button>
-                        </div>
-                    </StepCard>
-                )}
-            </Container>
-        </PageWrapper>
-    );
+      {/* Footer */}
+      <footer className="footer footer-center p-6 bg-base-100 text-base-content/60 text-xs border-t border-base-200 mt-12">
+        <p>© 2026 Target Logistics Global Express W.L.L. Reverse Logistics Division.</p>
+      </footer>
+    </div>
+  );
 };
 
 export default PublicReturnPortalPage;

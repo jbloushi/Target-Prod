@@ -1,191 +1,25 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import styled from 'styled-components';
 import { useSnackbar } from 'notistack';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { financeService, organizationService, userService } from '../services/api';
-import { TK } from '../tokens/kineticHorizon';
-import { Modal, WInput, WSelect } from '../ui';
 
-// ── Styled Components ─────────────────────────────────
-
-const PageContainer = styled.div`
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 28px 24px;
-    min-height: 100vh;
-`;
-
-const HeaderRow = styled.div`
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 24px;
-    flex-wrap: wrap;
-    gap: 16px;
-`;
-
-const HeaderTitle = styled.h1`
-    font-size: 24px;
-    font-weight: 800;
-    color: ${TK.text1};
-    letter-spacing: -0.03em;
-    margin: 0;
-`;
-
-const HeaderSubtitle = styled.p`
-    font-size: 13.5px;
-    color: ${TK.text2};
-    margin: 5px 0 0;
-`;
-
-const KpiGrid = styled.div`
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
-    margin-bottom: 24px;
-`;
-
-const KpiCard = styled.div`
-    background: #ffffff;
-    border-radius: 20px;
-    border: 1px solid ${TK.border};
-    padding: 18px 20px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.05);
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    transition: transform 0.15s, box-shadow 0.15s;
-
-    &:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
-    }
-`;
-
-const KpiIconWrapper = styled.div`
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
-    background: ${props => props.$bg || TK.primaryBg};
-    color: ${props => props.$color || TK.primary};
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-`;
-
-const ControlBar = styled.div`
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-    gap: 14px;
-`;
-
-const FilterGroup = styled.div`
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-`;
-
-const FilterChip = styled.button`
-    padding: 6px 14px;
-    border-radius: 10px;
-    border: 1px solid ${props => props.$active ? TK.primary : TK.border};
-    background: ${props => props.$active ? TK.primaryBg : '#ffffff'};
-    color: ${props => props.$active ? TK.primary : TK.text2};
-    font-weight: ${props => props.$active ? '700' : '600'};
-    font-size: 12.5px;
-    cursor: pointer;
-    transition: all 0.15s;
-
-    &:hover {
-        border-color: ${TK.primary};
-        color: ${TK.primary};
-    }
-`;
-
-const TableCard = styled.div`
-    background: #ffffff;
-    border-radius: 20px;
-    border: 1px solid ${TK.border};
-    box-shadow: 0 4px 20px rgba(0,0,0,0.05);
-    overflow: hidden;
-`;
-
-const ActionIconButton = styled.button`
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    border: 1px solid ${TK.border};
-    background: #ffffff;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    color: ${props => props.$color || TK.text2};
-    transition: all 0.15s;
-
-    &:hover {
-        background: ${TK.surfaceAlt};
-        border-color: ${TK.primary};
-        color: ${TK.primary};
-        transform: translateY(-1px);
-    }
-`;
-
-const OrgAvatar = styled.div`
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    background: linear-gradient(135deg, ${TK.primaryBg} 0%, #e0e7ff 100%);
-    color: ${TK.primary};
-    font-weight: 800;
-    font-size: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid #c7d2fe;
-    flex-shrink: 0;
-`;
-
-const TypeChip = styled.span`
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 11px;
-    font-weight: 700;
-    padding: 2px 8px;
-    border-radius: 6px;
-    background: ${props => {
-        switch (props.$type) {
-            case 'internal': return '#fef3c7';
-            case 'GOVERNMENT': return '#d1fae5';
-            case 'INDIVIDUAL': return '#ede9fe';
-            default: return '#e0f2fe';
-        }
-    }};
-    color: ${props => {
-        switch (props.$type) {
-            case 'internal': return '#b45309';
-            case 'GOVERNMENT': return '#059669';
-            case 'INDIVIDUAL': return '#7c3aed';
-            default: return '#0284c7';
-        }
-    }};
-    text-transform: capitalize;
-`;
+const CARRIERS_CONFIG = [
+    { code: 'DGR', name: 'DHL Express (DGR)' },
+    { code: 'OTE', name: 'LogesTechs (OTE Ground)' },
+    { code: 'ARAMEX', name: 'Aramex Express' },
+    { code: 'INTERNAL', name: 'Target Local Fleet' }
+];
 
 const AdminOrganizationsPage = () => {
     const navigate = useNavigate();
     const { enqueueSnackbar } = useSnackbar();
     const { user } = useAuth();
-    const { t, lang, isRTL } = useLanguage();
-    const isAdmin = user?.role === 'admin';
+    const { lang, isRTL } = useLanguage();
+    
+    // Superadmin and Target Owner have full administrative rights
+    const canManage = user?.role === 'admin' || user?.role === 'manager';
 
     const [orgs, setOrgs] = useState([]);
     const [users, setUsers] = useState([]);
@@ -200,16 +34,20 @@ const AdminOrganizationsPage = () => {
     const [openDialog, setOpenDialog] = useState(false);
     const [openMembersDialog, setOpenMembersDialog] = useState(false);
     const [editingOrg, setEditingOrg] = useState(null);
+    const [saveLoading, setSaveLoading] = useState(false);
 
     const [formData, setFormData] = useState({
         name: '',
         taxId: '',
         type: 'BUSINESS',
         creditLimit: 0,
-        active: true
+        active: true,
+        markup: { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 },
+        allowedCarriers: { allowed: ['DGR', 'OTE', 'ARAMEX'], defaultCarrier: 'DGR' }
     });
 
     const [selectedMemberToAdd, setSelectedMemberToAdd] = useState('');
+    const [memberLoading, setMemberLoading] = useState(false);
 
     const fetchOrgs = useCallback(async () => {
         setLoading(true);
@@ -226,18 +64,18 @@ const AdminOrganizationsPage = () => {
                 try {
                     const response = await financeService.getOrganizationOverview(org.id);
                     return [org.id, response.data];
-                } catch (error) {
+                } catch {
                     return [org.id, null];
                 }
             }));
             setOrgOverviews(Object.fromEntries(overviewEntries));
         } catch (error) {
-            console.error(error);
-            enqueueSnackbar(lang === 'ar' ? 'فشل تحميل المؤسسات' : 'Failed to load organizations', { variant: 'error' });
+            console.error('Failed to load organizations', error);
+            enqueueSnackbar(lang === 'ar' ? 'فشل تحميل قائمة المؤسسات' : 'Failed to load organizations', { variant: 'error' });
         } finally {
             setLoading(false);
         }
-    }, [enqueueSnackbar]);
+    }, [enqueueSnackbar, lang]);
 
     useEffect(() => {
         fetchOrgs();
@@ -266,12 +104,12 @@ const AdminOrganizationsPage = () => {
         };
     }, [orgs, orgOverviews]);
 
-    // Filtered Orgs
+    // Filtered Organizations
     const filteredOrgs = useMemo(() => {
         return orgs.filter(org => {
-            const matchesSearch = !search ||
-                org.name?.toLowerCase().includes(search.toLowerCase()) ||
-                org.taxId?.toLowerCase().includes(search.toLowerCase());
+            const matchesSearch = !search.trim() ||
+                (org.name && org.name.toLowerCase().includes(search.toLowerCase())) ||
+                (org.taxId && org.taxId.toLowerCase().includes(search.toLowerCase()));
 
             const matchesType = typeFilter === 'ALL' ||
                 (typeFilter === 'BUSINESS' && org.type?.toUpperCase() === 'BUSINESS') ||
@@ -284,8 +122,8 @@ const AdminOrganizationsPage = () => {
     }, [orgs, search, typeFilter]);
 
     const handleOpenDialog = (org = null) => {
-        if (!isAdmin) {
-            enqueueSnackbar(lang === 'ar' ? 'فقط المسؤولون يمكنهم إنشاء أو تعديل المؤسسات.' : 'Only administrators can create or edit organizations.', { variant: 'warning' });
+        if (!canManage) {
+            enqueueSnackbar(lang === 'ar' ? 'فقط مسؤولو النظام يمكنهم تعديل المؤسسات.' : 'Only administrators or managers can edit organizations.', { variant: 'warning' });
             return;
         }
         if (org) {
@@ -293,10 +131,10 @@ const AdminOrganizationsPage = () => {
             setFormData({
                 name: org.name || '',
                 taxId: org.taxId || '',
-                type: org.type || (lang === 'ar' ? 'أعمال' : 'BUSINESS'),
+                type: org.type || 'BUSINESS',
                 creditLimit: org.creditLimit || 0,
                 active: org.active ?? true,
-                markup: org.markup || { type: 'percentage', value: 0 },
+                markup: org.markup || { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 },
                 allowedCarriers: org.allowedCarriers || { allowed: ['DGR', 'OTE', 'ARAMEX'], defaultCarrier: 'DGR' }
             });
         } else {
@@ -307,14 +145,20 @@ const AdminOrganizationsPage = () => {
                 type: 'BUSINESS',
                 creditLimit: 0,
                 active: true,
-                markup: { type: 'percentage', value: 0 },
+                markup: { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 },
                 allowedCarriers: { allowed: ['DGR', 'OTE', 'ARAMEX'], defaultCarrier: 'DGR' }
             });
         }
         setOpenDialog(true);
     };
 
-    const handleSave = async () => {
+    const handleSave = async (e) => {
+        if (e) e.preventDefault();
+        if (!formData.name.trim()) {
+            enqueueSnackbar(lang === 'ar' ? 'اسم المؤسسة مطلوب' : 'Organization name is required', { variant: 'error' });
+            return;
+        }
+        setSaveLoading(true);
         try {
             if (editingOrg) {
                 await organizationService.updateOrganization(editingOrg.id, formData);
@@ -326,367 +170,407 @@ const AdminOrganizationsPage = () => {
             setOpenDialog(false);
             fetchOrgs();
         } catch (error) {
-            const msg = error.response?.data?.error || lang === 'ar' ? 'فشل حفظ المؤسسة' : 'Failed to save organization';
+            const msg = error.response?.data?.error || (lang === 'ar' ? 'فشل حفظ المؤسسة' : 'Failed to save organization');
             enqueueSnackbar(msg, { variant: 'error' });
+        } finally {
+            setSaveLoading(false);
         }
     };
 
     const handleAddMember = async () => {
-        if (!isAdmin) {
-            enqueueSnackbar(lang === 'ar' ? 'فقط المسؤولون يمكنهم إدارة الأعضاء.' : 'Only admins can manage members.', { variant: 'warning' });
+        if (!canManage) {
+            enqueueSnackbar(lang === 'ar' ? 'غير مصرح لك بإدارة الأعضاء.' : 'Permission denied.', { variant: 'warning' });
             return;
         }
-        if (!selectedMemberToAdd) return;
+        if (!selectedMemberToAdd || !editingOrg) return;
+        setMemberLoading(true);
         try {
             await organizationService.addMember(editingOrg.id, selectedMemberToAdd);
-            enqueueSnackbar(lang === 'ar' ? 'تمت إضافة العضو بنجاح' : 'Member added successfully', { variant: 'success' });
-            fetchOrgs();
+            enqueueSnackbar(lang === 'ar' ? 'تمت إضافة العضو بنجاح' : 'Member assigned successfully', { variant: 'success' });
             const updatedOrgRes = await organizationService.getOrganization(editingOrg.id);
-            setEditingOrg(updatedOrgRes.data);
+            if (updatedOrgRes?.data) {
+                setEditingOrg(updatedOrgRes.data);
+            }
             setSelectedMemberToAdd('');
+            fetchOrgs();
         } catch (err) {
-            const msg = err.response?.data?.error || lang === 'ar' ? 'فشل إضافة العضو' : 'Failed to add member';
+            const msg = err.response?.data?.error || (lang === 'ar' ? 'فشل إضافة العضو' : 'Failed to add member');
             enqueueSnackbar(msg, { variant: 'error' });
+        } finally {
+            setMemberLoading(false);
         }
     };
 
     const handleRemoveMember = async (memberId) => {
-        if (!isAdmin) {
-            enqueueSnackbar(lang === 'ar' ? 'فقط المسؤولون يمكنهم إدارة الأعضاء.' : 'Only admins can manage members.', { variant: 'warning' });
+        if (!canManage) {
+            enqueueSnackbar(lang === 'ar' ? 'غير مصرح لك بإدارة الأعضاء.' : 'Permission denied.', { variant: 'warning' });
             return;
         }
+        if (!editingOrg) return;
         try {
             await organizationService.removeMember(editingOrg.id, memberId);
-            enqueueSnackbar(lang === 'ar' ? 'تمت إزالة العضو' : 'Member removed', { variant: 'success' });
-            fetchOrgs();
+            enqueueSnackbar(lang === 'ar' ? 'تمت إزالة العضو' : 'Member unassigned', { variant: 'success' });
             setEditingOrg(prev => ({
                 ...prev,
                 members: (prev.members || []).filter(m => m.id !== memberId)
             }));
+            fetchOrgs();
         } catch (err) {
-            enqueueSnackbar(lang === 'ar' ? 'فشل إزالة العضو' : 'Failed to remove member', { variant: 'error' });
+            enqueueSnackbar(err.response?.data?.error || (lang === 'ar' ? 'فشل إزالة العضو' : 'Failed to remove member'), { variant: 'error' });
+        }
+    };
+
+    const getTypeBadgeClass = (type) => {
+        switch (type?.toLowerCase()) {
+            case 'internal': return 'badge-warning text-warning-content';
+            case 'government': return 'badge-success text-white';
+            case 'individual': return 'badge-secondary text-white';
+            default: return 'badge-info text-info-content';
         }
     };
 
     return (
-        <PageContainer dir={isRTL ? 'rtl' : 'ltr'}>
-            {/* Header */}
-            <HeaderRow>
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+            {/* Header Ribbon */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-base-200">
                 <div>
-                    <HeaderTitle>{lang === 'ar' ? 'إدارة المؤسسات' : 'Organization Management'}</HeaderTitle>
-                    <HeaderSubtitle>
-                        {lang === 'ar' ? 'إدارة الكيانات التجارية والتعرض الائتماني والأرصدة المشتركة وقوائم أعضاء الشركة.' : 'Manage business entities, credit exposure, shared balances, and company member rosters.'}
-                    </HeaderSubtitle>
+                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                        <span className="badge badge-primary font-mono font-bold text-xs uppercase tracking-wider">
+                            {lang === 'ar' ? 'محفظة العملاء والمؤسسات B2B' : 'B2B Client Portfolio & Corporate Scope'}
+                        </span>
+                        <span className="badge badge-outline border-base-300 text-xs font-mono">
+                            {lang === 'ar' ? 'إدارة الائتمان والفوترة' : 'Credit & Tariff Governance'}
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                            <span className="material-symbols-outlined text-2xl">corporate_fare</span>
+                        </div>
+                        <div>
+                            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-base-content">
+                                {lang === 'ar' ? 'إدارة المؤسسات والعملاء' : 'Organization & Client Management'}
+                            </h1>
+                            <p className="text-xs sm:text-sm text-base-content/60">
+                                {lang === 'ar'
+                                    ? 'إدارة الكيانات التجارية، الحدود الائتمانية، هوامش الربح، وسياسات وصول شركات النقل.'
+                                    : 'Manage corporate entities, credit exposure, rate markups, and carrier access policies.'}
+                            </p>
+                        </div>
+                    </div>
                 </div>
-                <div style={{ display: 'flex', gap: 10 }}>
+
+                {/* Actions */}
+                <div className="flex items-center gap-2 flex-wrap">
                     <button
                         type="button"
                         onClick={fetchOrgs}
                         disabled={loading}
-                        style={{
-                            padding: '9px 16px',
-                            borderRadius: 11,
-                            border: `1px solid ${TK.border}`,
-                            background: '#ffffff',
-                            color: TK.text2,
-                            fontWeight: 600,
-                            fontSize: 13,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            transition: 'all 0.15s'
-                        }}
+                        className="btn btn-sm btn-ghost border border-base-200 gap-1.5 font-bold"
                     >
-                        <span
-                            className="material-symbols-outlined"
-                            style={{
-                                fontSize: 18,
-                                animation: loading ? 'spin 1s linear infinite' : 'none'
-                            }}
-                        >
+                        <span className={`material-symbols-outlined text-[18px] ${loading ? 'animate-spin' : ''}`}>
                             refresh
                         </span>
-                        Refresh
+                        {lang === 'ar' ? 'تحديث' : 'Refresh'}
                     </button>
 
-                    {isAdmin && (
+                    {canManage && (
                         <button
                             type="button"
                             onClick={() => handleOpenDialog()}
-                            style={{
-                                padding: '9px 18px',
-                                borderRadius: 11,
-                                border: 'none',
-                                background: TK.primary,
-                                color: '#ffffff',
-                                fontWeight: 700,
-                                fontSize: 13,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 6,
-                                boxShadow: '0 2px 8px rgba(0,80,212,0.25)',
-                                transition: 'all 0.15s'
-                            }}
+                            className="btn btn-sm btn-primary font-bold shadow-md shadow-primary/20 gap-1.5"
                         >
-                            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>add</span>
-                            New Organization
+                            <span className="material-symbols-outlined text-[18px]">add_business</span>
+                            {lang === 'ar' ? 'إضافة مؤسسة جديدة' : 'New Organization'}
                         </button>
                     )}
                 </div>
-            </HeaderRow>
+            </div>
 
-            {/* KPI Metrics */}
-            <KpiGrid>
-                <KpiCard>
-                    <KpiIconWrapper $bg={TK.primaryBg} $color={TK.primary}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 22 }}>corporate_fare</span>
-                    </KpiIconWrapper>
-                    <div>
-                        <div style={{ fontSize: 12, color: TK.text3, fontWeight: 600 }}>{lang === 'ar' ? 'إجمالي المؤسسات' : 'Total Organizations'}</div>
-                        <div style={{ fontSize: 20, fontWeight: 800, color: TK.text1, marginTop: 2 }}>{kpiData.total}</div>
-                    </div>
-                </KpiCard>
-
-                <KpiCard>
-                    <KpiIconWrapper $bg="#e0f2fe" $color="#0284c7">
-                        <span className="material-symbols-outlined" style={{ fontSize: 22 }}>storefront</span>
-                    </KpiIconWrapper>
-                    <div>
-                        <div style={{ fontSize: 12, color: TK.text3, fontWeight: 600 }}>{lang === 'ar' ? 'حسابات الأعمال' : 'Business Accounts'}</div>
-                        <div style={{ fontSize: 20, fontWeight: 800, color: TK.text1, marginTop: 2 }}>{kpiData.businessCount}</div>
-                    </div>
-                </KpiCard>
-
-                <KpiCard>
-                    <KpiIconWrapper $bg="#fef3c7" $color="#b45309">
-                        <span className="material-symbols-outlined" style={{ fontSize: 22 }}>credit_score</span>
-                    </KpiIconWrapper>
-                    <div>
-                        <div style={{ fontSize: 12, color: TK.text3, fontWeight: 600 }}>{lang === 'ar' ? 'إجمالي الحد الائتماني' : 'Total Credit Limit'}</div>
-                        <div style={{ fontSize: 20, fontWeight: 800, color: TK.text1, marginTop: 2 }}>
-                            {kpiData.totalCreditLimit.toFixed(3)} <span style={{ fontSize: 12, fontWeight: 600, color: TK.text3 }}>KWD</span>
+            {/* KPI Metrics Ribbon */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                <div className="stats bg-base-100 border border-base-200/80 shadow-xs rounded-2xl">
+                    <div className="stat p-4">
+                        <div className="stat-figure text-primary">
+                            <span className="material-symbols-outlined text-3xl">domain</span>
+                        </div>
+                        <div className="stat-title text-xs font-bold text-base-content/60 uppercase">
+                            {lang === 'ar' ? 'إجمالي المؤسسات' : 'Total Organizations'}
+                        </div>
+                        <div className="stat-value text-2xl font-black text-primary font-mono mt-0.5">
+                            {kpiData.total}
+                        </div>
+                        <div className="stat-desc text-[11px] text-base-content/50">
+                            {lang === 'ar' ? 'كيانات مسجلة بالنظام' : 'Active and inactive entities'}
                         </div>
                     </div>
-                </KpiCard>
-
-                <KpiCard>
-                    <KpiIconWrapper
-                        $bg={kpiData.totalOutstanding > 0 ? '#fee2e2' : '#d1fae5'}
-                        $color={kpiData.totalOutstanding > 0 ? '#dc2626' : '#059669'}
-                    >
-                        <span className="material-symbols-outlined" style={{ fontSize: 22 }}>account_balance_wallet</span>
-                    </KpiIconWrapper>
-                    <div>
-                        <div style={{ fontSize: 12, color: TK.text3, fontWeight: 600 }}>{lang === 'ar' ? 'إجمالي المستحقات' : 'Total Outstanding'}</div>
-                        <div style={{
-                            fontSize: 20,
-                            fontWeight: 800,
-                            color: kpiData.totalOutstanding > 0 ? '#dc2626' : '#059669',
-                            marginTop: 2
-                        }}>
-                            {kpiData.totalOutstanding.toFixed(3)} <span style={{ fontSize: 12, fontWeight: 600, color: TK.text3 }}>KWD</span>
-                        </div>
-                    </div>
-                </KpiCard>
-            </KpiGrid>
-
-            {/* Controls: Search & Type Filter */}
-            <ControlBar>
-                <div style={{ flex: 1, minWidth: 260, maxWidth: 380 }}>
-                    <WInput
-                        icon="search"
-                        placeholder={lang === 'ar' ? 'ابحث عن اسم الشركة أو الرقم الضريبي...' : 'Search company name or Tax ID...'}
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        trailing={search && (
-                            <button
-                                type="button"
-                                onClick={() => setSearch('')}
-                                style={{
-                                    border: 'none',
-                                    background: 'transparent',
-                                    cursor: 'pointer',
-                                    color: TK.text3,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    padding: '0 8px'
-                                }}
-                            >
-                                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
-                            </button>
-                        )}
-                    />
                 </div>
 
-                <FilterGroup>
+                <div className="stats bg-base-100 border border-base-200/80 shadow-xs rounded-2xl">
+                    <div className="stat p-4">
+                        <div className="stat-figure text-info">
+                            <span className="material-symbols-outlined text-3xl">storefront</span>
+                        </div>
+                        <div className="stat-title text-xs font-bold text-base-content/60 uppercase">
+                            {lang === 'ar' ? 'حسابات الأعمال B2B' : 'Business Accounts'}
+                        </div>
+                        <div className="stat-value text-2xl font-black text-info font-mono mt-0.5">
+                            {kpiData.businessCount}
+                        </div>
+                        <div className="stat-desc text-[11px] text-base-content/50">
+                            {lang === 'ar' ? 'تجار وشركات تجارية' : 'Commercial merchants'}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="stats bg-base-100 border border-base-200/80 shadow-xs rounded-2xl">
+                    <div className="stat p-4">
+                        <div className="stat-figure text-warning">
+                            <span className="material-symbols-outlined text-3xl">credit_score</span>
+                        </div>
+                        <div className="stat-title text-xs font-bold text-base-content/60 uppercase">
+                            {lang === 'ar' ? 'إجمالي الحد الائتماني' : 'Total Credit Extended'}
+                        </div>
+                        <div className="stat-value text-xl sm:text-2xl font-black text-base-content font-mono mt-0.5">
+                            {kpiData.totalCreditLimit.toFixed(3)} <span className="text-xs font-bold text-base-content/60">KWD</span>
+                        </div>
+                        <div className="stat-desc text-[11px] text-base-content/50">
+                            {lang === 'ar' ? 'حدود التسهيلات المعتمدة' : 'Aggregated approved credit'}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="stats bg-base-100 border border-base-200/80 shadow-xs rounded-2xl">
+                    <div className="stat p-4">
+                        <div className="stat-figure text-error">
+                            <span className="material-symbols-outlined text-3xl">account_balance_wallet</span>
+                        </div>
+                        <div className="stat-title text-xs font-bold text-base-content/60 uppercase">
+                            {lang === 'ar' ? 'إجمالي المستحقات غير المسددة' : 'Outstanding Receivables'}
+                        </div>
+                        <div className={`stat-value text-xl sm:text-2xl font-black font-mono mt-0.5 ${
+                            kpiData.totalOutstanding > 0 ? 'text-error' : 'text-success'
+                        }`}>
+                            {kpiData.totalOutstanding.toFixed(3)} <span className="text-xs font-bold text-base-content/60">KWD</span>
+                        </div>
+                        <div className="stat-desc text-[11px] text-base-content/50">
+                            {kpiData.totalOutstanding > 0
+                                ? (lang === 'ar' ? 'أرصدة تتطلب التحصيل' : 'Receivables requiring collection')
+                                : (lang === 'ar' ? 'جميع الحسابات مسددة' : 'All accounts settled')}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Filter and Search Bar */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <div className="relative flex-1 max-w-md">
+                    <span className="material-symbols-outlined absolute inset-y-0 start-3 my-auto h-fit text-base-content/40 text-[19px]">
+                        search
+                    </span>
+                    <input
+                        type="text"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder={lang === 'ar' ? 'ابحث باسم المؤسسة أو الرقم الضريبي...' : 'Search organization name or Tax ID...'}
+                        className="input input-sm input-bordered w-full ps-10 text-xs bg-base-100 focus:input-primary"
+                    />
+                    {search && (
+                        <button
+                            type="button"
+                            onClick={() => setSearch('')}
+                            className="absolute inset-y-0 end-2.5 my-auto h-fit text-xs text-base-content/40 hover:text-base-content"
+                        >
+                            ✕
+                        </button>
+                    )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
                     {[
-                        { key: 'ALL', label: lang === 'ar' ? 'جميع المؤسسات' : 'All Organizations' },
+                        { key: 'ALL', label: lang === 'ar' ? 'الكل' : 'All' },
                         { key: 'BUSINESS', label: lang === 'ar' ? 'أعمال' : 'Business' },
                         { key: 'INTERNAL', label: lang === 'ar' ? 'داخلي' : 'Internal' },
-                        { key: 'GOVERNMENT', label: lang === 'ar' ? 'حكومي' : 'Government' },
-                    ].map(f => (
-                        <FilterChip
+                        { key: 'GOVERNMENT', label: lang === 'ar' ? 'حكومي' : 'Gov' },
+                        { key: 'INDIVIDUAL', label: lang === 'ar' ? 'أفراد' : 'Individual' },
+                    ].map((f) => (
+                        <button
                             key={f.key}
-                            $active={typeFilter === f.key}
+                            type="button"
                             onClick={() => setTypeFilter(f.key)}
+                            className={`btn btn-xs ${
+                                typeFilter === f.key
+                                    ? 'btn-primary font-bold'
+                                    : 'btn-ghost border border-base-200 text-base-content/70'
+                            }`}
                         >
                             {f.label}
-                        </FilterChip>
+                        </button>
                     ))}
-                </FilterGroup>
-            </ControlBar>
+                </div>
+            </div>
 
-            {/* Organizations Table */}
-            <TableCard>
-                <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+            {/* Organizations Table Card */}
+            <div className="card bg-base-100 border border-base-200/80 shadow-xs overflow-hidden">
+                <div className="overflow-x-auto">
+                    <table className="table table-zebra w-full text-xs">
                         <thead>
-                            <tr style={{ borderBottom: `1px solid ${TK.border}`, background: '#f8fafc' }}>
-                                <th style={{ padding: '13px 18px', fontSize: 11, fontWeight: 700, color: TK.text3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{lang === 'ar' ? 'الكيان التجاري' : 'Company Entity'}</th>
-                                <th style={{ padding: '13px 18px', fontSize: 11, fontWeight: 700, color: TK.text3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{lang === 'ar' ? 'النوع' : 'Type'}</th>
-                                <th style={{ padding: '13px 18px', fontSize: 11, fontWeight: 700, color: TK.text3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{lang === 'ar' ? 'الأعضاء' : 'Members'}</th>
-                                <th style={{ padding: '13px 18px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: TK.text3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{lang === 'ar' ? 'المستحقات' : 'Outstanding'}</th>
-                                <th style={{ padding: '13px 18px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: TK.text3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{lang === 'ar' ? 'الائتمان المتاح' : 'Available Credit'}</th>
-                                <th style={{ padding: '13px 18px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: TK.text3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{lang === 'ar' ? 'الحد الائتماني' : 'Credit Limit'}</th>
-                                <th style={{ padding: '13px 18px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: TK.text3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{lang === 'ar' ? 'الحالة' : 'Status'}</th>
-                                <th style={{ padding: '13px 18px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: TK.text3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{lang === 'ar' ? 'الإجراءات' : 'Actions'}</th>
+                            <tr className="bg-base-200/60 text-base-content/70 uppercase text-[11px] font-bold">
+                                <th>{lang === 'ar' ? 'الكيان التجاري' : 'Company Entity'}</th>
+                                <th>{lang === 'ar' ? 'النوع' : 'Type'}</th>
+                                <th className="text-center">{lang === 'ar' ? 'فريق العمل' : 'Members'}</th>
+                                <th className="text-end">{lang === 'ar' ? 'المستحقات' : 'Outstanding'}</th>
+                                <th className="text-end">{lang === 'ar' ? 'الرصيد المتاح' : 'Available Credit'}</th>
+                                <th className="text-end">{lang === 'ar' ? 'الحد الائتماني' : 'Credit Limit'}</th>
+                                <th className="text-center">{lang === 'ar' ? 'الحالة' : 'Status'}</th>
+                                <th className="text-end">{lang === 'ar' ? 'الإجراءات' : 'Actions'}</th>
                             </tr>
                         </thead>
                         <tbody>
                             {loading ? (
                                 <tr>
-                                    <td colSpan={8} style={{ padding: '48px 20px', textAlign: 'center', color: TK.text3 }}>
-                                        <span className="material-symbols-outlined" style={{ fontSize: 32, animation: 'spin 1s linear infinite', color: TK.primary }}>progress_activity</span>
-                                        <div style={{ marginTop: 8, fontSize: 13, fontWeight: 600 }}>{lang === 'ar' ? 'جاري تحميل بيان المؤسسات...' : 'Loading organizations manifest...'}</div>
+                                    <td colSpan={8} className="py-16 text-center text-base-content/60">
+                                        <div className="flex flex-col items-center justify-center gap-2">
+                                            <span className="loading loading-spinner loading-md text-primary"></span>
+                                            <span className="text-xs font-semibold">
+                                                {lang === 'ar' ? 'جاري تحميل المؤسسات...' : 'Loading organization ledger...'}
+                                            </span>
+                                        </div>
                                     </td>
                                 </tr>
                             ) : filteredOrgs.length === 0 ? (
                                 <tr>
-                                    <td colSpan={8} style={{ padding: '48px 20px', textAlign: 'center', color: TK.text3 }}>
-                                        <span className="material-symbols-outlined" style={{ fontSize: 36, color: TK.text3 }}>domain_disabled</span>
-                                        <div style={{ marginTop: 8, fontSize: 14, fontWeight: 700, color: TK.text1 }}>{lang === 'ar' ? 'لم يتم العثور على مؤسسات' : 'No organizations found'}</div>
-                                        <div style={{ fontSize: 12.5, color: TK.text2, marginTop: 4 }}>{lang === 'ar' ? 'حاول مسح استعلام البحث أو إضافة مؤسسة جديدة.' : 'Try clearing your search query or add a new organization.'}</div>
+                                    <td colSpan={8} className="py-16 text-center text-base-content/50">
+                                        <div className="flex flex-col items-center justify-center gap-2">
+                                            <span className="material-symbols-outlined text-4xl text-base-content/30">domain_disabled</span>
+                                            <p className="text-sm font-bold text-base-content">
+                                                {lang === 'ar' ? 'لم يتم العثور على مؤسسات مطابقة' : 'No matching organizations found'}
+                                            </p>
+                                            <p className="text-xs text-base-content/50">
+                                                {lang === 'ar' ? 'جرب تغيير شروط البحث أو الفرز' : 'Try adjusting your search criteria or add a new account'}
+                                            </p>
+                                        </div>
                                     </td>
                                 </tr>
                             ) : (
-                                filteredOrgs.map((org, index) => {
+                                filteredOrgs.map((org) => {
                                     const overview = orgOverviews[org.id];
                                     const outstanding = overview?.balance ?? 0;
                                     const availableCredit = overview?.availableCredit ?? 0;
                                     const creditLimit = parseFloat(org.creditLimit || 0);
 
                                     return (
-                                        <tr
-                                            key={org.id}
-                                            style={{
-                                                borderBottom: index === filteredOrgs.length - 1 ? 'none' : `1px solid ${TK.border}`,
-                                                transition: 'background 0.1s'
-                                            }}
-                                            onMouseEnter={e => e.currentTarget.style.background = '#fafbfc'}
-                                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                                        >
-                                            <td style={{ padding: '14px 18px' }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                                    <OrgAvatar>
+                                        <tr key={org.id} className="hover">
+                                            {/* Entity name & Avatar */}
+                                            <td>
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary/10 to-indigo-500/20 text-primary font-black flex items-center justify-center text-sm border border-primary/20 shrink-0">
                                                         {org.name?.charAt(0).toUpperCase() || 'O'}
-                                                    </OrgAvatar>
+                                                    </div>
                                                     <div>
-                                                        <div style={{ fontWeight: 700, fontSize: 13.5, color: TK.text1 }}>{org.name}</div>
-                                                        <div style={{ fontSize: 11, color: TK.text3, marginTop: 2 }}>
-                                                            {org.taxId ? `Tax ID: ${org.taxId}` : lang === 'ar' ? 'لا يوجد رقم ضريبي / EORI' : 'No Tax / EORI ID'}
+                                                        <div className="font-bold text-sm text-base-content">
+                                                            {org.name}
+                                                        </div>
+                                                        <div className="text-[11px] text-base-content/50 font-mono">
+                                                            {org.taxId ? `Tax/EORI: ${org.taxId}` : (lang === 'ar' ? 'لا يوجد رقم ضريبي' : 'No Tax ID')}
                                                         </div>
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td style={{ padding: '14px 18px' }}>
-                                                <TypeChip $type={org.type}>{org.type || (lang === 'ar' ? 'أعمال' : 'BUSINESS')}</TypeChip>
+
+                                            {/* Type */}
+                                            <td>
+                                                <span className={`badge badge-sm font-bold uppercase text-[10px] ${getTypeBadgeClass(org.type)}`}>
+                                                    {org.type || 'BUSINESS'}
+                                                </span>
                                             </td>
-                                            <td style={{ padding: '14px 18px' }}>
+
+                                            {/* Members count */}
+                                            <td className="text-center">
                                                 <button
                                                     type="button"
                                                     onClick={() => {
                                                         setEditingOrg(org);
                                                         setOpenMembersDialog(true);
                                                     }}
-                                                    style={{
-                                                        display: 'inline-flex',
-                                                        alignItems: 'center',
-                                                        gap: 4,
-                                                        padding: '3px 8px',
-                                                        borderRadius: 6,
-                                                        border: `1px solid ${TK.border}`,
-                                                        background: '#ffffff',
-                                                        cursor: 'pointer',
-                                                        fontSize: 12,
-                                                        fontWeight: 600,
-                                                        color: TK.text1,
-                                                        transition: 'all 0.15s'
-                                                    }}
-                                                    onMouseEnter={e => e.currentTarget.style.borderColor = TK.primary}
-                                                    onMouseLeave={e => e.currentTarget.style.borderColor = TK.border}
+                                                    className="btn btn-xs btn-outline border-base-300 hover:border-primary gap-1 font-mono"
+                                                    title={lang === 'ar' ? 'عرض وإدارة الأعضاء' : 'Manage members'}
                                                 >
-                                                    <span className="material-symbols-outlined" style={{ fontSize: 14, color: TK.primary }}>group</span>
-                                                    {org.members?.length || 0}
+                                                    <span className="material-symbols-outlined text-[14px] text-primary">group</span>
+                                                    <span>{org.members?.length || 0}</span>
                                                 </button>
                                             </td>
-                                            <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, fontSize: 13 }}>
-                                                <span style={{ color: outstanding > 0 ? '#dc2626' : '#059669' }}>
+
+                                            {/* Outstanding Receivables */}
+                                            <td className="text-end font-mono font-bold text-xs">
+                                                <span className={outstanding > 0 ? 'text-error' : 'text-success'}>
                                                     {Number(outstanding).toFixed(3)}
                                                 </span>
-                                                <span style={{ fontSize: 10, color: TK.text3, marginLeft: 4 }}>KWD</span>
+                                                <span className="text-[10px] text-base-content/50 ms-1">KWD</span>
                                             </td>
-                                            <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600, fontSize: 13, color: TK.text1 }}>
+
+                                            {/* Available Credit */}
+                                            <td className="text-end font-mono text-xs font-semibold text-base-content">
                                                 {Number(availableCredit).toFixed(3)}
-                                                <span style={{ fontSize: 10, color: TK.text3, marginLeft: 4 }}>KWD</span>
+                                                <span className="text-[10px] text-base-content/50 ms-1">KWD</span>
                                             </td>
-                                            <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'monospace', fontSize: 13, color: TK.text2 }}>
+
+                                            {/* Credit Limit */}
+                                            <td className="text-end font-mono text-xs text-base-content/70">
                                                 {creditLimit.toFixed(3)}
-                                                <span style={{ fontSize: 10, color: TK.text3, marginLeft: 4 }}>KWD</span>
+                                                <span className="text-[10px] text-base-content/50 ms-1">KWD</span>
                                             </td>
-                                            <td style={{ padding: '14px 18px', textAlign: 'center' }}>
-                                                <span style={{
-                                                    display: 'inline-block',
-                                                    width: 8,
-                                                    height: 8,
-                                                    borderRadius: '50%',
-                                                    background: org.active ? '#10b981' : '#9ca3af',
-                                                    marginRight: 6
-                                                }} />
-                                                <span style={{ fontSize: 12, fontWeight: 600, color: org.active ? '#059669' : '#6b7280' }}>
-                                                    {org.active ? lang === 'ar' ? 'نشط' : 'Active' : lang === 'ar' ? 'معطل' : 'Disabled'}
+
+                                            {/* Status */}
+                                            <td className="text-center">
+                                                <span className={`badge badge-xs ${org.active ? 'badge-success' : 'badge-ghost'} gap-1 font-bold text-[10px]`}>
+                                                    <span className={`w-1.5 h-1.5 rounded-full ${org.active ? 'bg-white' : 'bg-base-content/40'}`}></span>
+                                                    {org.active ? (lang === 'ar' ? 'نشط' : 'Active') : (lang === 'ar' ? 'معطل' : 'Disabled')}
                                                 </span>
                                             </td>
-                                            <td style={{ padding: '14px 18px', textAlign: 'right' }}>
-                                                <div style={{ display: 'inline-flex', gap: 6 }}>
-                                                    <ActionIconButton
-                                                        title={lang === 'ar' ? 'إدارة الأعضاء' : 'Manage Members'}
+
+                                            {/* Actions */}
+                                            <td className="text-end">
+                                                <div className="flex items-center justify-end gap-1">
+                                                    <button
+                                                        type="button"
                                                         onClick={() => {
                                                             setEditingOrg(org);
                                                             setOpenMembersDialog(true);
                                                         }}
+                                                        className="btn btn-ghost btn-xs btn-square text-base-content/60 hover:text-primary"
+                                                        title={lang === 'ar' ? 'أعضاء المؤسسة' : 'Members'}
                                                     >
-                                                        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>person_add</span>
-                                                    </ActionIconButton>
+                                                        <span className="material-symbols-outlined text-[16px]">person_add</span>
+                                                    </button>
 
-                                                    {isAdmin && (
-                                                        <ActionIconButton
-                                                            title={lang === 'ar' ? 'تعديل المؤسسة' : 'Edit Organization'}
-                                                            $color={TK.primary}
+                                                    {canManage && (
+                                                        <button
+                                                            type="button"
                                                             onClick={() => handleOpenDialog(org)}
+                                                            className="btn btn-ghost btn-xs btn-square text-base-content/60 hover:text-primary"
+                                                            title={lang === 'ar' ? 'تعديل المؤسسة' : 'Edit organization'}
                                                         >
-                                                            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>edit</span>
-                                                        </ActionIconButton>
+                                                            <span className="material-symbols-outlined text-[16px]">edit</span>
+                                                        </button>
                                                     )}
 
-                                                    <ActionIconButton
-                                                        title={lang === 'ar' ? 'عرض البيانات المالية' : 'View Financials'}
-                                                        $color="#059669"
+                                                    <button
+                                                        type="button"
                                                         onClick={() => navigate(`/finance`)}
+                                                        className="btn btn-ghost btn-xs btn-square text-base-content/60 hover:text-success"
+                                                        title={lang === 'ar' ? 'سجل المالية ودفتر الأستاذ' : 'Financial ledger'}
                                                     >
-                                                        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>account_balance_wallet</span>
-                                                    </ActionIconButton>
+                                                        <span className="material-symbols-outlined text-[16px]">account_balance_wallet</span>
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => navigate(`/shipments`)}
+                                                        className="btn btn-ghost btn-xs btn-square text-base-content/60 hover:text-info"
+                                                        title={lang === 'ar' ? 'بوالص الشحن' : 'Waybills'}
+                                                    >
+                                                        <span className="material-symbols-outlined text-[16px]">inventory_2</span>
+                                                    </button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -696,348 +580,378 @@ const AdminOrganizationsPage = () => {
                         </tbody>
                     </table>
                 </div>
-            </TableCard>
+            </div>
 
             {/* Create / Edit Organization Modal */}
-            <Modal
-                isOpen={openDialog}
-                onClose={() => setOpenDialog(false)}
-                title={editingOrg ? (lang === 'ar' ? 'تعديل المؤسسة' : 'Edit Organization') : (lang === 'ar' ? 'إنشاء مؤسسة جديدة' : 'Create New Organization')}
-                width="560px"
-                footer={
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, width: '100%' }}>
+            <div className={`modal modal-bottom sm:modal-middle ${openDialog ? 'modal-open' : ''} z-50`}>
+                <div className="modal-box max-w-xl bg-base-100 border border-base-200/80 shadow-2xl p-6 text-base-content max-h-[92vh] overflow-y-auto">
+                    <div className="flex items-center justify-between pb-3 border-b border-base-200">
+                        <div className="flex items-center gap-2">
+                            <span className="material-symbols-outlined text-primary text-xl">
+                                {editingOrg ? 'edit_note' : 'add_business'}
+                            </span>
+                            <h3 className="font-black text-lg text-base-content">
+                                {editingOrg
+                                    ? (lang === 'ar' ? `تعديل مؤسسة: ${editingOrg.name}` : `Edit Organization: ${editingOrg.name}`)
+                                    : (lang === 'ar' ? 'إنشاء مؤسسة تجارية جديدة' : 'Create New Organization')}
+                            </h3>
+                        </div>
                         <button
                             type="button"
                             onClick={() => setOpenDialog(false)}
-                            style={{
-                                padding: '9px 18px',
-                                borderRadius: 10,
-                                border: `1px solid ${TK.border}`,
-                                background: '#ffffff',
-                                color: TK.text2,
-                                fontWeight: 600,
-                                fontSize: 13,
-                                cursor: 'pointer'
-                            }}
+                            className="btn btn-sm btn-circle btn-ghost text-base-content/60"
                         >
-                            {lang === 'ar' ? 'إلغاء' : 'Cancel'}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={handleSave}
-                            style={{
-                                padding: '9px 20px',
-                                borderRadius: 10,
-                                border: 'none',
-                                background: TK.primary,
-                                color: '#ffffff',
-                                fontWeight: 700,
-                                fontSize: 13,
-                                cursor: 'pointer',
-                                boxShadow: '0 2px 8px rgba(0,80,212,0.25)'
-                            }}
-                        >
-                            {editingOrg ? 'Save Changes' : 'Create Organization'}
+                            ✕
                         </button>
                     </div>
-                }
-            >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '4px 0' }}>
-                    <WInput
-                        label={lang === 'ar' ? 'اسم المؤسسة *' : 'Organization Name *'}
-                        placeholder={lang === 'ar' ? 'مثال: شركة البحر للخدمات اللوجستية العالمية' : 'e.g. Al-Bahar Global Logistics'}
-                        value={formData.name}
-                        onChange={e => setFormData({ ...formData, name: e.target.value })}
-                        required
-                    />
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                        <WInput
-                            label={lang === 'ar' ? 'الرقم الضريبي / EORI' : 'Tax / EORI ID'}
-                            placeholder="KW-1002345"
-                            value={formData.taxId}
-                            onChange={e => setFormData({ ...formData, taxId: e.target.value })}
-                        />
+                    <form onSubmit={handleSave} className="py-4 space-y-4">
+                        {/* Basic Identity */}
+                        <div className="space-y-3">
+                            <div>
+                                <label className="text-xs font-bold text-base-content/70 block mb-1">
+                                    {lang === 'ar' ? 'اسم المؤسسة / الشركة *' : 'Organization Name *'}
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={formData.name}
+                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                    placeholder={lang === 'ar' ? 'مثال: شركة البحر اللوجستية العالمية' : 'e.g. Al-Bahar Global Logistics'}
+                                    className="input input-sm input-bordered w-full font-semibold focus:input-primary"
+                                />
+                            </div>
 
-                        <WSelect
-                            label={lang === 'ar' ? 'نوع المؤسسة' : 'Organization Type'}
-                            value={formData.type}
-                            onChange={e => setFormData({ ...formData, type: e.target.value })}
-                            options={[
-                                { value: 'BUSINESS', label: lang === 'ar' ? 'أعمال (عميل)' : 'Business (Client)' },
-                                { value: 'internal', label: lang === 'ar' ? 'مركز لوجستي داخلي' : 'Internal Logistics Hub' },
-                                { value: 'GOVERNMENT', label: lang === 'ar' ? 'جهة حكومية' : 'Government Agency' },
-                                { value: 'INDIVIDUAL', label: lang === 'ar' ? 'شاحن فردي' : 'Individual Shipper' }
-                            ]}
-                        />
-                    </div>
-
-                    {/* Carrier Access Policy section */}
-                    <div style={{ background: '#f8fafc', borderRadius: 12, padding: 16, border: `1px solid ${TK.border}` }}>
-                        <div style={{ fontWeight: 700, fontSize: 13, color: TK.text1, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: 17, color: TK.primary }}>local_shipping</span>
-                            {lang === 'ar' ? 'سياسة وصول شركات النقل للمؤسسة' : 'Organization Carrier Access Policy'}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-xs font-bold text-base-content/70 block mb-1">
+                                        {lang === 'ar' ? 'الرقم الضريبي / EORI' : 'Tax / EORI ID'}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.taxId}
+                                        onChange={(e) => setFormData({ ...formData, taxId: e.target.value })}
+                                        placeholder="KW-1002345"
+                                        className="input input-sm input-bordered w-full font-mono text-xs focus:input-primary"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-base-content/70 block mb-1">
+                                        {lang === 'ar' ? 'نوع الكيان' : 'Organization Type'}
+                                    </label>
+                                    <select
+                                        value={formData.type}
+                                        onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                                        className="select select-sm select-bordered w-full text-xs font-semibold focus:select-primary"
+                                    >
+                                        <option value="BUSINESS">{lang === 'ar' ? 'أعمال (عميل B2B)' : 'Business (B2B Client)'}</option>
+                                        <option value="internal">{lang === 'ar' ? 'مركز لوجستي داخلي' : 'Internal Logistics Hub'}</option>
+                                        <option value="GOVERNMENT">{lang === 'ar' ? 'جهة حكومية' : 'Government Agency'}</option>
+                                        <option value="INDIVIDUAL">{lang === 'ar' ? 'شاحن فردي' : 'Individual Shipper'}</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
-                        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
-                            {[
-                                { code: 'DGR', name: 'DHL Express (DGR)' },
-                                { code: 'OTE', name: 'LogesTechs (OTE Ground)' },
-                                { code: 'ARAMEX', name: 'Aramex Express' },
-                                { code: 'INTERNAL', name: 'Target Local Fleet' }
-                            ].map(c => {
-                                const currentAllowed = formData.allowedCarriers?.allowed || ['DGR', 'OTE', 'ARAMEX'];
-                                const isChecked = currentAllowed.includes(c.code);
-                                return (
-                                    <label key={c.code} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 600, color: TK.text1, cursor: 'pointer' }}>
+
+                        {/* Carrier Access Policy */}
+                        <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-2xl space-y-2.5">
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-base-content">
+                                <span className="material-symbols-outlined text-[17px] text-primary">local_shipping</span>
+                                {lang === 'ar' ? 'سياسة شركات النقل المعتمدة' : 'Authorized Carrier Gateways'}
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                                {CARRIERS_CONFIG.map((c) => {
+                                    const currentAllowed = formData.allowedCarriers?.allowed || ['DGR', 'OTE', 'ARAMEX'];
+                                    const isChecked = currentAllowed.includes(c.code);
+                                    return (
+                                        <label key={c.code} className="flex items-center gap-2 cursor-pointer p-1.5 rounded-lg hover:bg-base-200/80">
+                                            <input
+                                                type="checkbox"
+                                                checked={isChecked}
+                                                onChange={(e) => {
+                                                    const next = e.target.checked
+                                                        ? [...currentAllowed, c.code]
+                                                        : currentAllowed.filter(x => x !== c.code);
+                                                    setFormData({
+                                                        ...formData,
+                                                        allowedCarriers: { ...(formData.allowedCarriers || {}), allowed: next }
+                                                    });
+                                                }}
+                                                className="checkbox checkbox-xs checkbox-primary"
+                                            />
+                                            <span className="font-semibold text-[11px] text-base-content/80">{c.name}</span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Commercial Pricing & Markup Policy */}
+                        <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-2xl space-y-2.5">
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-base-content">
+                                <span className="material-symbols-outlined text-[17px] text-primary">price_change</span>
+                                {lang === 'ar' ? 'هيكل التسعير وهوامش الربح' : 'Commercial Rate Markup Structure'}
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                                <div>
+                                    <label className="text-[11px] font-bold text-base-content/60 block mb-1">
+                                        {lang === 'ar' ? 'نموذج الهامش' : 'Markup Model'}
+                                    </label>
+                                    <select
+                                        value={formData.markup?.type || 'PERCENTAGE'}
+                                        onChange={(e) => {
+                                            const type = e.target.value;
+                                            setFormData({
+                                                ...formData,
+                                                markup: {
+                                                    ...(formData.markup || {}),
+                                                    type,
+                                                    percentageValue: formData.markup?.percentageValue ?? 15,
+                                                    flatValue: formData.markup?.flatValue ?? 0
+                                                }
+                                            });
+                                        }}
+                                        className="select select-sm select-bordered w-full text-xs font-semibold focus:select-primary"
+                                    >
+                                        <option value="PERCENTAGE">{lang === 'ar' ? 'نسبة مئوية (%)' : 'Percentage (%)'}</option>
+                                        <option value="FLAT">{lang === 'ar' ? 'مبلغ ثابت (د.ك)' : 'Flat Fee (KWD)'}</option>
+                                        <option value="COMBINED">{lang === 'ar' ? 'مدمج (% + د.ك)' : 'Combined (% + KWD)'}</option>
+                                    </select>
+                                </div>
+
+                                {(formData.markup?.type === 'PERCENTAGE' || formData.markup?.type === 'COMBINED' || !formData.markup?.type) && (
+                                    <div>
+                                        <label className="text-[11px] font-bold text-base-content/60 block mb-1">
+                                            {lang === 'ar' ? 'هامش الربح (%)' : 'Percentage Markup (%)'}
+                                        </label>
                                         <input
-                                            type="checkbox"
-                                            checked={isChecked}
+                                            type="number"
+                                            step="0.5"
+                                            value={formData.markup?.percentageValue ?? ''}
                                             onChange={(e) => {
-                                                const next = e.target.checked
-                                                    ? [...currentAllowed, c.code]
-                                                    : currentAllowed.filter(x => x !== c.code);
                                                 setFormData({
                                                     ...formData,
-                                                    allowedCarriers: { ...(formData.allowedCarriers || {}), allowed: next }
+                                                    markup: {
+                                                        ...(formData.markup || {}),
+                                                        percentageValue: parseFloat(e.target.value) || 0
+                                                    }
                                                 });
                                             }}
+                                            className="input input-sm input-bordered w-full font-mono text-xs focus:input-primary"
+                                            placeholder="15.0"
                                         />
-                                        {c.name}
-                                    </label>
-                                );
-                            })}
-                        </div>
-                    </div>
+                                    </div>
+                                )}
 
-                    {/* Rate Markup & Commercial Pricing Cockpit */}
-                    <div style={{ background: '#f8fafc', borderRadius: 12, padding: 16, border: `1px solid ${TK.border}` }}>
-                        <div style={{ fontWeight: 700, fontSize: 13, color: TK.text1, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: 17, color: TK.primary }}>price_change</span>
-                            {lang === 'ar' ? 'سياسة التسعير التجاري وهوامش الربح' : 'Rate Markup & Commercial Pricing Policy'}
+                                {(formData.markup?.type === 'FLAT' || formData.markup?.type === 'COMBINED') && (
+                                    <div>
+                                        <label className="text-[11px] font-bold text-base-content/60 block mb-1">
+                                            {lang === 'ar' ? 'رسوم ثابتة (د.ك)' : 'Flat Surcharge (KWD)'}
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.25"
+                                            value={formData.markup?.flatValue ?? ''}
+                                            onChange={(e) => {
+                                                setFormData({
+                                                    ...formData,
+                                                    markup: {
+                                                        ...(formData.markup || {}),
+                                                        flatValue: parseFloat(e.target.value) || 0
+                                                    }
+                                                });
+                                            }}
+                                            className="input input-sm input-bordered w-full font-mono text-xs focus:input-primary"
+                                            placeholder="1.500"
+                                        />
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-                            <WSelect
-                                label={lang === 'ar' ? 'نموذج هامش الربح الافتراضي' : 'Default Markup Model'}
-                                value={formData.markup?.type || 'PERCENTAGE'}
-                                onChange={(e) => {
-                                    const type = e.target.value;
-                                    setFormData({
-                                        ...formData,
-                                        markup: {
-                                            ...(formData.markup || {}),
-                                            type,
-                                            percentageValue: formData.markup?.percentageValue ?? 15,
-                                            flatValue: formData.markup?.flatValue ?? 0
-                                        }
-                                    });
-                                }}
-                                options={[
-                                    { value: 'PERCENTAGE', label: lang === 'ar' ? 'رسوم إضافية بالنسبة المئوية (%)' : 'Percentage (%) Surcharge' },
-                                    { value: 'FLAT', label: lang === 'ar' ? 'رسوم ثابتة (د.ك) لكل شحنة' : 'Flat Fee (KWD) per Shipment' },
-                                    { value: 'COMBINED', label: lang === 'ar' ? 'مدمج (نسبة + مبلغ ثابت د.ك)' : 'Combined (% + Flat KWD)' }
-                                ]}
+                        {/* Credit Terms & Limit */}
+                        <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-2xl space-y-2">
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-base-content">
+                                <span className="material-symbols-outlined text-[17px] text-primary">credit_card</span>
+                                {lang === 'ar' ? 'الحد الائتماني المعتمد (د.ك)' : 'Approved Credit Limit (KWD)'}
+                            </div>
+                            <input
+                                type="number"
+                                step="50"
+                                value={formData.creditLimit}
+                                onChange={(e) => setFormData({ ...formData, creditLimit: parseFloat(e.target.value) || 0 })}
+                                placeholder="0.000"
+                                className="input input-sm input-bordered w-full font-mono font-bold text-sm focus:input-primary"
                             />
-
-                            {(formData.markup?.type === 'PERCENTAGE' || formData.markup?.type === 'COMBINED' || !formData.markup?.type) && (
-                                <WInput
-                                    label={lang === 'ar' ? 'هامش الربح بالنسبة المئوية (%)' : 'Percentage Markup (%)'}
-                                    type="number"
-                                    placeholder="15.0"
-                                    value={formData.markup?.percentageValue ?? ''}
-                                    onChange={(e) => {
-                                        setFormData({
-                                            ...formData,
-                                            markup: {
-                                                ...(formData.markup || {}),
-                                                percentageValue: parseFloat(e.target.value) || 0
-                                            }
-                                        });
-                                    }}
-                                />
-                            )}
-
-                            {(formData.markup?.type === 'FLAT' || formData.markup?.type === 'COMBINED') && (
-                                <WInput
-                                    label={lang === 'ar' ? 'رسوم إضافية ثابتة (د.ك)' : 'Flat Surcharge (KWD)'}
-                                    type="number"
-                                    placeholder="1.500"
-                                    value={formData.markup?.flatValue ?? ''}
-                                    onChange={(e) => {
-                                        setFormData({
-                                            ...formData,
-                                            markup: {
-                                                ...(formData.markup || {}),
-                                                flatValue: parseFloat(e.target.value) || 0
-                                            }
-                                        });
-                                    }}
-                                />
-                            )}
                         </div>
 
-                        <div style={{ fontSize: 11.5, color: TK.text3, marginTop: 4 }}>
-                            {lang === 'ar' ? 'يُطبق عبر عروض الأسعار وإنشاء بوالص الشحن لجميع المستخدمين التابعين لهذا التاجر.' : 'Applied across quotes and waybill creations for all users affiliated with this merchant.'}
+                        {/* Active Switch */}
+                        <div className="flex items-center justify-between p-3 rounded-xl bg-base-200/30 border border-base-200">
+                            <div>
+                                <div className="text-xs font-bold text-base-content">
+                                    {lang === 'ar' ? 'حالة نشاط المؤسسة' : 'Account Active Status'}
+                                </div>
+                                <div className="text-[11px] text-base-content/60">
+                                    {lang === 'ar' ? 'المؤسسات غير النشطة لا يمكنها إصدار بوالص جديدة' : 'Disabled accounts cannot book new consignments'}
+                                </div>
+                            </div>
+                            <input
+                                type="checkbox"
+                                checked={formData.active}
+                                onChange={(e) => setFormData({ ...formData, active: e.target.checked })}
+                                className="toggle toggle-primary toggle-sm"
+                            />
                         </div>
-                    </div>
 
-                    <div style={{ background: '#f8fafc', borderRadius: 12, padding: 16, border: `1px solid ${TK.border}` }}>
-                        <div style={{ fontWeight: 700, fontSize: 13, color: TK.text1, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: 17, color: TK.primary }}>credit_card</span>
-                            {lang === 'ar' ? 'شروط الائتمان والتعرض المالي' : 'Credit Terms & Financial Exposure'}
+                        {/* Footer */}
+                        <div className="modal-action flex items-center justify-end gap-2 pt-3 border-t border-base-200">
+                            <button
+                                type="button"
+                                onClick={() => setOpenDialog(false)}
+                                className="btn btn-sm btn-ghost"
+                            >
+                                {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={saveLoading}
+                                className="btn btn-sm btn-primary font-bold shadow-md shadow-primary/20 gap-1.5"
+                            >
+                                {saveLoading ? <span className="loading loading-spinner loading-xs"></span> : null}
+                                {editingOrg ? (lang === 'ar' ? 'حفظ التعديلات' : 'Save Changes') : (lang === 'ar' ? 'إنشاء المؤسسة' : 'Create Organization')}
+                            </button>
                         </div>
-                        <WInput
-                            label={lang === 'ar' ? 'الحد الائتماني المعتمد (د.ك)' : 'Approved Credit Limit (KWD)'}
-                            type="number"
-                            placeholder="0.000"
-                            value={formData.creditLimit}
-                            onChange={e => setFormData({ ...formData, creditLimit: parseFloat(e.target.value) || 0 })}
-                        />
-                        <div style={{ fontSize: 11.5, color: TK.text3, marginTop: 8 }}>
-                            {lang === 'ar' ? 'يتم الاحتفاظ بجميع قيود دفتر الأستاذ والخصوم والأرصدة غير المطبقة تلقائيًا في سجل التدقيق المالي.' : 'All ledger entries, debits, and unapplied credits are maintained automatically in the financial audit log.'}
-                        </div>
-                    </div>
+                    </form>
                 </div>
-            </Modal>
+                <div className="modal-backdrop bg-black/60 backdrop-blur-xs" onClick={() => setOpenDialog(false)} />
+            </div>
 
             {/* Members Roster Modal */}
-            <Modal
-                isOpen={openMembersDialog}
-                onClose={() => setOpenMembersDialog(false)}
-                title={lang === 'ar' ? `أعضاء ${editingOrg?.name || 'المؤسسة'}` : `Members of ${editingOrg?.name || 'Organization'}`}
-                width="650px"
-                footer={
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
+            <div className={`modal modal-bottom sm:modal-middle ${openMembersDialog ? 'modal-open' : ''} z-50`}>
+                <div className="modal-box max-w-2xl bg-base-100 border border-base-200/80 shadow-2xl p-6 text-base-content max-h-[92vh] overflow-y-auto">
+                    <div className="flex items-center justify-between pb-3 border-b border-base-200">
+                        <div className="flex items-center gap-2">
+                            <span className="material-symbols-outlined text-primary text-xl">group</span>
+                            <div>
+                                <h3 className="font-black text-lg text-base-content">
+                                    {lang === 'ar' ? `فريق عمل: ${editingOrg?.name || ''}` : `Members Roster: ${editingOrg?.name || ''}`}
+                                </h3>
+                                <p className="text-[11px] text-base-content/60">
+                                    {lang === 'ar' ? 'المستخدمون المعتمدون للشحن ضمن حساب هذه المؤسسة' : 'Authorized users operating under this corporate account'}
+                                </p>
+                            </div>
+                        </div>
                         <button
                             type="button"
                             onClick={() => setOpenMembersDialog(false)}
-                            style={{
-                                padding: '9px 18px',
-                                borderRadius: 10,
-                                border: `1px solid ${TK.border}`,
-                                background: '#ffffff',
-                                color: TK.text2,
-                                fontWeight: 600,
-                                fontSize: 13,
-                                cursor: 'pointer'
-                            }}
+                            className="btn btn-sm btn-circle btn-ghost text-base-content/60"
                         >
-                            {lang === 'ar' ? 'إغلاق' : 'Close'}
+                            ✕
                         </button>
                     </div>
-                }
-            >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 18, padding: '4px 0' }}>
-                    {/* Member List */}
-                    <div style={{ border: `1px solid ${TK.border}`, borderRadius: 14, overflow: 'hidden' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                            <thead>
-                                <tr style={{ background: '#f8fafc', borderBottom: `1px solid ${TK.border}` }}>
-                                    <th style={{ padding: '10px 14px', fontSize: 11, fontWeight: 700, color: TK.text3, textTransform: 'uppercase' }}>{lang === 'ar' ? 'العضو' : 'Member'}</th>
-                                    <th style={{ padding: '10px 14px', fontSize: 11, fontWeight: 700, color: TK.text3, textTransform: 'uppercase' }}>{lang === 'ar' ? 'الدور' : 'Role'}</th>
-                                    <th style={{ padding: '10px 14px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: TK.text3, textTransform: 'uppercase' }}>{lang === 'ar' ? 'الإجراء' : 'Action'}</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {(!editingOrg?.members || editingOrg.members.length === 0) ? (
-                                    <tr>
-                                        <td colSpan={3} style={{ padding: '24px 14px', textAlign: 'center', color: TK.text3, fontSize: 12.5 }}>
-                                            {lang === 'ar' ? 'لم يتم تعيين أي أعضاء لهذه المؤسسة بعد.' : 'No members assigned to this organization yet.'}
-                                        </td>
+
+                    <div className="py-4 space-y-4">
+                        {/* Members Table */}
+                        <div className="border border-base-200 rounded-2xl overflow-hidden">
+                            <table className="table table-zebra w-full text-xs">
+                                <thead>
+                                    <tr className="bg-base-200/60 text-base-content/70 text-[11px] font-bold uppercase">
+                                        <th>{lang === 'ar' ? 'العضو' : 'Member'}</th>
+                                        <th>{lang === 'ar' ? 'الدور' : 'Role'}</th>
+                                        <th className="text-end">{lang === 'ar' ? 'الإجراء' : 'Action'}</th>
                                     </tr>
-                                ) : (
-                                    editingOrg.members.map((member, i) => (
-                                        <tr
-                                            key={member.id}
-                                            style={{
-                                                borderBottom: i === editingOrg.members.length - 1 ? 'none' : `1px solid ${TK.border}`
-                                            }}
-                                        >
-                                            <td style={{ padding: '12px 14px' }}>
-                                                <div style={{ fontWeight: 700, fontSize: 13, color: TK.text1 }}>{member.name}</div>
-                                                <div style={{ fontSize: 11, color: TK.text3 }}>{member.email}</div>
-                                            </td>
-                                            <td style={{ padding: '12px 14px' }}>
-                                                <span style={{
-                                                    fontSize: 11,
-                                                    fontWeight: 700,
-                                                    padding: '2px 8px',
-                                                    borderRadius: 5,
-                                                    background: member.role === 'admin' ? '#ede9fe' : member.role === 'org_manager' ? '#e0f2fe' : '#f3f4f6',
-                                                    color: member.role === 'admin' ? '#7c3aed' : member.role === 'org_manager' ? '#0284c7' : '#4b5563'
-                                                }}>
-                                                    {member.role?.replace('_', ' ').toUpperCase()}
-                                                </span>
-                                            </td>
-                                            <td style={{ padding: '12px 14px', textAlign: 'right' }}>
-                                                {isAdmin && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleRemoveMember(member.id)}
-                                                        style={{
-                                                            border: 'none',
-                                                            background: 'transparent',
-                                                            color: '#dc2626',
-                                                            fontWeight: 600,
-                                                            fontSize: 12,
-                                                            cursor: 'pointer'
-                                                        }}
-                                                    >
-                                                        {lang === 'ar' ? 'إزالة' : 'Remove'}
-                                                    </button>
-                                                )}
+                                </thead>
+                                <tbody>
+                                    {(!editingOrg?.members || editingOrg.members.length === 0) ? (
+                                        <tr>
+                                            <td colSpan={3} className="py-8 text-center text-base-content/50">
+                                                <span className="material-symbols-outlined text-3xl mb-1 text-base-content/30">group_off</span>
+                                                <p className="text-xs font-semibold">
+                                                    {lang === 'ar' ? 'لا يوجد أعضاء معينين لهذه المؤسسة بعد.' : 'No members assigned to this organization yet.'}
+                                                </p>
                                             </td>
                                         </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {/* Add Member Card */}
-                    {isAdmin && (
-                        <div style={{ background: '#f8fafc', borderRadius: 14, padding: 16, border: `1px solid ${TK.border}` }}>
-                            <div style={{ fontWeight: 700, fontSize: 12.5, color: TK.text1, marginBottom: 8 }}>
-                                {lang === 'ar' ? 'تعيين مستخدم حالي' : 'Assign Existing User'}
-                            </div>
-                            <div style={{ display: 'flex', gap: 10 }}>
-                                <WSelect
-                                    value={selectedMemberToAdd}
-                                    onChange={e => setSelectedMemberToAdd(e.target.value)}
-                                    options={[
-                                        { value: '', label: lang === 'ar' ? '-- اختر مستخدم غير معين --' : '-- Choose unassigned user --' },
-                                        ...users
-                                            .filter(u => !editingOrg?.members?.some(m => m.id === u.id) && !u.organizationId)
-                                            .map(u => ({
-                                                value: u.id,
-                                                label: `${u.name} (${u.email}) — ${u.role}`
-                                            }))
-                                    ]}
-                                />
-                                <button
-                                    type="button"
-                                    onClick={handleAddMember}
-                                    disabled={!selectedMemberToAdd}
-                                    style={{
-                                        padding: '9px 18px',
-                                        borderRadius: 10,
-                                        border: 'none',
-                                        background: selectedMemberToAdd ? TK.primary : '#94a3b8',
-                                        color: '#ffffff',
-                                        fontWeight: 700,
-                                        fontSize: 12.5,
-                                        cursor: selectedMemberToAdd ? 'pointer' : 'not-allowed',
-                                        whiteSpace: 'nowrap'
-                                    }}
-                                >
-                                    {lang === 'ar' ? 'إضافة عضو' : 'Add Member'}
-                                </button>
-                            </div>
+                                    ) : (
+                                        editingOrg.members.map((member) => (
+                                            <tr key={member.id} className="hover">
+                                                <td>
+                                                    <div className="font-bold text-base-content">{member.name}</div>
+                                                    <div className="text-[11px] text-base-content/50 font-mono">{member.email}</div>
+                                                </td>
+                                                <td>
+                                                    <span className="badge badge-sm badge-outline font-mono font-bold text-[10px] uppercase">
+                                                        {member.role?.replace('_', ' ') || 'USER'}
+                                                    </span>
+                                                </td>
+                                                <td className="text-end">
+                                                    {canManage && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleRemoveMember(member.id)}
+                                                            className="btn btn-ghost btn-xs text-error hover:bg-error/10 font-bold"
+                                                        >
+                                                            {lang === 'ar' ? 'إلغاء التعيين' : 'Remove'}
+                                                        </button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
-                    )}
+
+                        {/* Add User Section */}
+                        {canManage && (
+                            <div className="p-4 bg-base-200/40 border border-base-200 rounded-2xl space-y-2">
+                                <label className="text-xs font-bold text-base-content/80 block">
+                                    {lang === 'ar' ? 'تعيين مستخدم غير مرتبط بمؤسسة' : 'Assign Unlinked User to Organization'}
+                                </label>
+                                <div className="flex gap-2">
+                                    <select
+                                        value={selectedMemberToAdd}
+                                        onChange={(e) => setSelectedMemberToAdd(e.target.value)}
+                                        className="select select-sm select-bordered flex-1 text-xs font-semibold focus:select-primary"
+                                    >
+                                        <option value="">
+                                            {lang === 'ar' ? '-- اختر مستخدماً غير مرتبط --' : '-- Choose unassigned user --'}
+                                        </option>
+                                        {users
+                                            .filter(u => !editingOrg?.members?.some(m => m.id === u.id) && !u.organizationId)
+                                            .map(u => (
+                                                <option key={u.id} value={u.id}>
+                                                    {u.name} ({u.email}) — {u.role}
+                                                </option>
+                                            ))}
+                                    </select>
+                                    <button
+                                        type="button"
+                                        onClick={handleAddMember}
+                                        disabled={!selectedMemberToAdd || memberLoading}
+                                        className="btn btn-sm btn-primary font-bold gap-1 shadow-xs"
+                                    >
+                                        {memberLoading ? <span className="loading loading-spinner loading-xs"></span> : null}
+                                        {lang === 'ar' ? 'إضافة' : 'Assign'}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="modal-action pt-2">
+                            <button
+                                type="button"
+                                onClick={() => setOpenMembersDialog(false)}
+                                className="btn btn-sm btn-ghost text-base-content/70 ms-auto"
+                            >
+                                {lang === 'ar' ? 'إغلاق' : 'Close'}
+                            </button>
+                        </div>
+                    </div>
                 </div>
-            </Modal>
-        </PageContainer>
+                <div className="modal-backdrop bg-black/60 backdrop-blur-xs" onClick={() => setOpenMembersDialog(false)} />
+            </div>
+        </div>
     );
 };
 

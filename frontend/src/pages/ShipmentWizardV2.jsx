@@ -1,24 +1,17 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import KineticShipmentWizard from '../components/shipment/KineticShipmentWizard';
-import { Box } from '@mui/material';
-import { TK } from '../tokens/kineticHorizon';
 
 /**
  * ShipmentWizardV2 — Target Logistics Global Shipment Creator
- * Renders the reference Kinetic Horizon 6-step creation wizard.
+ * Renders the DaisyUI v4 multi-carrier creation and dispatch wizard.
  */
 const ShipmentWizardV2 = () => {
     const navigate = useNavigate();
     const { trackingNumber } = useParams();
 
     return (
-        <Box sx={{
-            minHeight: '100vh',
-            bgcolor: TK.surface,
-            py: { xs: 2, md: 4 },
-            px: { xs: 1.5, md: 3 }
-        }}>
+        <div className="min-h-screen bg-slate-50 dark:bg-base-300 py-4 md:py-6 px-3 md:px-6">
             <KineticShipmentWizard
                 editing={trackingNumber ? { trackingNumber } : null}
                 onClose={() => navigate(-1)}
@@ -30,7 +23,7 @@ const ShipmentWizardV2 = () => {
                     }
                 }}
             />
-        </Box>
+        </div>
     );
 };
 

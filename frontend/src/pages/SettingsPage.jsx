@@ -2,77 +2,69 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useSnackbar } from 'notistack';
-import { useNavigate } from 'react-router-dom';
 import api, { settingsService } from '../services/api';
-import { TK } from '../tokens/kineticHorizon';
-import { WInput, WSelect } from '../ui';
-import AddressPanel from '../components/AddressPanel';
+import PageHeader from '../components/common/PageHeader';
+
+const ROLE_DISPLAY_NAMES = {
+  admin: 'Superadmin (Full Control)',
+  manager: 'Target Owner (Executive)',
+  accounting: 'Target Accounting (Ledgers & Billing)',
+  staff: 'Target Ops Staff (Dispatch & Clearance)',
+  driver: 'Courier Driver (Field Mobile)',
+  org_manager: 'Company Manager (Client B2B)',
+  org_agent: 'Company Client (Consignor)',
+  client: 'Direct Shipper',
+};
 
 const getTabs = (lang) => [
-  { id: 'profile',       label: lang === 'ar' ? 'ملف الشاحن' : 'Shipper Profile', icon: 'person' },
-  { id: 'addresses',     label: lang === 'ar' ? 'دفتر العناوين' : 'Address Book',    icon: 'location_on' },
-  { id: 'api',           label: lang === 'ar' ? 'واجهة برمجة التطبيقات والويب هوك' : 'API & Webhooks',  icon: 'key' },
-  { id: 'whatsapp',      label: lang === 'ar' ? 'واتساب وميتا ويب هوك' : 'WhatsApp & Meta Webhooks', icon: 'chat' },
-  { id: 'notifications', label: lang === 'ar' ? 'الإشعارات' : 'Notifications',   icon: 'notifications' },
-  { id: 'branding',      label: lang === 'ar' ? 'الناقل والمسار' : 'Carrier & Routing', icon: 'palette' },
-  { id: 'security',      label: lang === 'ar' ? 'الأمان والمصادقة' : 'Security & 2FA',  icon: 'lock' },
+  { id: 'profile', label: lang === 'ar' ? 'ملف الشاحن' : 'Shipper Profile', icon: 'person' },
+  { id: 'addresses', label: lang === 'ar' ? 'سجل العناوين' : 'Address Presets', icon: 'location_on' },
+  { id: 'api', label: lang === 'ar' ? 'واجهة API والويب هوك' : 'API & Webhooks', icon: 'key' },
+  { id: 'whatsapp', label: lang === 'ar' ? 'إشعارات واتساب وميتا' : 'Meta WhatsApp Alerts', icon: 'chat' },
+  { id: 'notifications', label: lang === 'ar' ? 'قنوات الإشعار' : 'Event Triggers', icon: 'notifications' },
+  { id: 'routing', label: lang === 'ar' ? 'مسارات وبوابات النقل' : 'Carrier Gateways', icon: 'hub' },
+  { id: 'security', label: lang === 'ar' ? 'الأمان والحساب' : 'Security & Access', icon: 'lock' },
 ];
-
-const SectionCard = ({ title, children, action, subtitle }) => (
-  <div style={{ background: '#fff', borderRadius: '20px', border: `1px solid ${TK.border}`, boxShadow: '0 4px 20px rgba(0,0,0,0.05)', overflow: 'hidden', marginBottom: 20 }}>
-    <div style={{ padding: '18px 24px', borderBottom: `1px solid ${TK.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <div>
-        <div style={{ fontWeight: 800, fontSize: 15, color: TK.text1 }}>{title}</div>
-        {subtitle && <div style={{ fontSize: 12, color: TK.text3, marginTop: 2 }}>{subtitle}</div>}
-      </div>
-      {action}
-    </div>
-    <div style={{ padding: '22px 24px' }}>{children}</div>
-  </div>
-);
-
-const ToggleRow = ({ value, onChange, label, desc }) => (
-  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 0', borderBottom: `1px solid ${TK.border}` }}>
-    <div style={{ flex: 1, paddingRight: 20 }}>
-      <div style={{ fontWeight: 600, fontSize: 13.5, color: TK.text1 }}>{label}</div>
-      {desc && <div style={{ fontSize: 12, color: TK.text3, marginTop: 3 }}>{desc}</div>}
-    </div>
-    <button
-      type="button"
-      onClick={() => onChange(!value)}
-      style={{
-        width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer', flexShrink: 0,
-        background: value ? TK.primary : '#d1d5db',
-        position: 'relative', transition: 'background 0.2s',
-      }}
-    >
-      <span style={{
-        position: 'absolute', top: 3, left: value ? 23 : 3,
-        width: 18, height: 18, borderRadius: '50%', background: '#fff',
-        boxShadow: '0 1px 4px rgba(0,0,0,0.18)',
-        transition: 'left 0.2s',
-      }} />
-    </button>
-  </div>
-);
-
 
 export const SettingsPage = () => {
   const { t, lang, isRTL } = useLanguage();
   const { user, refreshUser, isStaff, isAdmin } = useAuth();
   const { enqueueSnackbar } = useSnackbar();
-  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('profile');
 
   // API Key State
   const [apiKey, setApiKey] = useState(user?.apiKey || '');
-  const [loading, setLoading] = useState(false);
+  const [loadingKey, setLoadingKey] = useState(false);
 
   // Shipper Profile State
-  const [shipperProfile, setShipperProfile] = useState({});
+  const [shipperProfile, setShipperProfile] = useState({
+    contactPerson: user?.name || '',
+    company: user?.company || '',
+    phone: user?.phone || '',
+    vatNumber: user?.carrierConfig?.vatNo || '',
+    eoriNumber: user?.carrierConfig?.eori || '',
+    reference: user?.carrierConfig?.defaultReference || '',
+  });
   const [savingProfile, setSavingProfile] = useState(false);
 
-  // System Settings
+  // Saved Addresses State
+  const [addresses, setAddresses] = useState(user?.addresses || []);
+  const [showAddressModal, setShowAddressModal] = useState(false);
+  const [newAddr, setNewAddr] = useState({
+    label: '',
+    contactPerson: '',
+    phone: '',
+    city: 'Kuwait City',
+    state: 'Capital',
+    streetLines: [''],
+    buildingName: '',
+    unitNumber: '',
+    postalCode: '',
+    countryCode: 'KW',
+  });
+  const [savingAddr, setSavingAddr] = useState(false);
+
+  // System Settings (WhatsApp, Carrier Defaults)
   const [systemSettings, setSystemSettings] = useState(null);
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -82,7 +74,7 @@ export const SettingsPage = () => {
     email_del: true,
     sms_pickup: false,
     sms_exception: true,
-    whatsapp_tracking: true
+    whatsapp_tracking: true,
   });
 
   // Webhook State
@@ -98,6 +90,25 @@ export const SettingsPage = () => {
   const [selectedWebhookLogs, setSelectedWebhookLogs] = useState(null);
   const [webhookLogs, setWebhookLogs] = useState([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+
+  // Password Change
+  const [passwords, setPasswords] = useState({ current: '', newPass: '', confirm: '' });
+  const [savingPassword, setSavingPassword] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setApiKey(user.apiKey || '');
+      setShipperProfile({
+        contactPerson: user.name || '',
+        company: user.company || '',
+        phone: user.phone || '',
+        vatNumber: user.carrierConfig?.vatNo || '',
+        eoriNumber: user.carrierConfig?.eori || '',
+        reference: user.carrierConfig?.defaultReference || '',
+      });
+      setAddresses(user.addresses || []);
+    }
+  }, [user]);
 
   const fetchWebhooks = async () => {
     try {
@@ -119,83 +130,6 @@ export const SettingsPage = () => {
     }
   }, [activeTab]);
 
-  const handleCreateWebhook = async (e) => {
-    e?.preventDefault();
-    if (!newWebhookUrl.trim()) {
-      enqueueSnackbar(lang === 'ar' ? 'الرجاء إدخال رابط صحيح' : 'Please provide a valid endpoint URL', { variant: 'warning' });
-      return;
-    }
-    try {
-      setCreatingWebhook(true);
-      const res = await api.post('/integrations/webhooks', {
-        targetUrl: newWebhookUrl.trim(),
-        secret: newWebhookSecret.trim() || undefined,
-        events: newWebhookEvents
-      });
-      if (res.data?.success) {
-        enqueueSnackbar(lang === 'ar' ? 'تم تسجيل الويب هوك بنجاح!' : 'Webhook subscription registered successfully!', { variant: 'success' });
-        setShowAddWebhookModal(false);
-        setNewWebhookUrl('');
-        setNewWebhookSecret('');
-        fetchWebhooks();
-      }
-    } catch (err) {
-      enqueueSnackbar(err.response?.data?.error || (lang === 'ar' ? 'فشل في تسجيل الويب هوك' : 'Failed to register webhook'), { variant: 'error' });
-    } finally {
-      setCreatingWebhook(false);
-    }
-  };
-
-  const handleToggleWebhook = async (sub) => {
-    try {
-      await api.put(`/integrations/webhooks/${sub.id}`, { isActive: !sub.isActive });
-      enqueueSnackbar(lang === 'ar' ? `تم ${!sub.isActive ? 'تفعيل' : 'إيقاف'} الويب هوك` : `Webhook ${!sub.isActive ? 'activated' : 'paused'}`, { variant: 'info' });
-      fetchWebhooks();
-    } catch (err) {
-      enqueueSnackbar(lang === 'ar' ? 'فشل في تحديث الحالة' : 'Failed to update status', { variant: 'error' });
-    }
-  };
-
-  const handleDeleteWebhook = async (id) => {
-    if (!window.confirm(lang === 'ar' ? 'هل أنت متأكد من إزالة نقطة النهاية هذه؟' : 'Are you sure you want to remove this webhook endpoint?')) return;
-    try {
-      await api.delete(`/integrations/webhooks/${id}`);
-      enqueueSnackbar(lang === 'ar' ? 'تم حذف الويب هوك' : 'Webhook deleted', { variant: 'success' });
-      fetchWebhooks();
-    } catch (err) {
-      enqueueSnackbar(lang === 'ar' ? 'فشل في حذف الويب هوك' : 'Failed to delete webhook', { variant: 'error' });
-    }
-  };
-
-  const handleTestWebhook = async (id) => {
-    try {
-      setTestingWebhookId(id);
-      setTestResult(null);
-      const res = await api.post(`/integrations/webhooks/${id}/test`);
-      setTestResult({ success: true, message: res.data?.message || 'Ping delivered successfully (HTTP 200 OK)', event: res.data?.event });
-      enqueueSnackbar(lang === 'ar' ? 'تم إرسال اختبار الاتصال بنجاح!' : 'Test ping dispatched successfully!', { variant: 'success' });
-    } catch (err) {
-      const errMsg = err.response?.data?.error || err.message || 'Webhook ping failed';
-      setTestResult({ success: false, message: errMsg, event: err.response?.data?.event });
-      enqueueSnackbar(lang === 'ar' ? `فشل إرسال الاختبار: ${errMsg}` : `Test dispatch failed: ${errMsg}`, { variant: 'error' });
-    } finally {
-      setTestingWebhookId(null);
-    }
-  };
-
-  const handleViewLogs = async (sub) => {
-    setSelectedWebhookLogs(sub);
-    try {
-      setLoadingLogs(true);
-      const res = await api.get(`/integrations/webhooks/${sub.id}/events`);
-      setWebhookLogs(res.data?.data || []);
-    } catch (err) {
-      enqueueSnackbar(lang === 'ar' ? 'فشل في تحميل سجلات الويب هوك' : 'Failed to load webhook logs', { variant: 'error' });
-    } finally {
-      setLoadingLogs(false);
-    }
-  };
-
   useEffect(() => {
     const loadSettings = async () => {
       try {
@@ -210,19 +144,20 @@ export const SettingsPage = () => {
 
   const generateNewKey = async () => {
     try {
-      setLoading(true);
+      setLoadingKey(true);
       const res = await api.post('/auth/api-key');
       setApiKey(res.data.apiKey);
-      enqueueSnackbar(lang === 'ar' ? 'تم إنشاء مفتاح واجهة برمجة تطبيقات جديد بنجاح!' : 'New API Key generated successfully!', { variant: 'success' });
+      enqueueSnackbar(lang === 'ar' ? 'تم إنشاء مفتاح API جديد بنجاح!' : 'New API Key generated successfully!', { variant: 'success' });
       if (refreshUser) await refreshUser();
     } catch (err) {
-      enqueueSnackbar(lang === 'ar' ? 'فشل في إنشاء مفتاح واجهة برمجة التطبيقات' : 'Failed to generate API Key', { variant: 'error' });
+      enqueueSnackbar(lang === 'ar' ? 'فشل في إنشاء مفتاح API' : 'Failed to generate API Key', { variant: 'error' });
     } finally {
-      setLoading(false);
+      setLoadingKey(false);
     }
   };
 
-  const handleSaveProfile = async () => {
+  const handleSaveProfile = async (e) => {
+    if (e) e.preventDefault();
     setSavingProfile(true);
     try {
       await api.patch('/users/profile', {
@@ -232,10 +167,8 @@ export const SettingsPage = () => {
         carrierConfig: {
           vatNo: shipperProfile.vatNumber,
           eori: shipperProfile.eoriNumber,
-          taxId: shipperProfile.taxId,
-          traderType: shipperProfile.traderType,
-          defaultReference: shipperProfile.reference
-        }
+          defaultReference: shipperProfile.reference,
+        },
       });
       enqueueSnackbar(lang === 'ar' ? 'تم تحديث ملف الشاحن بنجاح!' : 'Shipper profile updated successfully!', { variant: 'success' });
       if (refreshUser) await refreshUser();
@@ -243,6 +176,133 @@ export const SettingsPage = () => {
       enqueueSnackbar(lang === 'ar' ? 'فشل في تحديث الملف الشخصي' : 'Failed to update profile', { variant: 'error' });
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  const handleSaveAddress = async (e) => {
+    if (e) e.preventDefault();
+    if (!newAddr.label || !newAddr.contactPerson) {
+      enqueueSnackbar('Label and contact person are required', { variant: 'warning' });
+      return;
+    }
+    setSavingAddr(true);
+    try {
+      const updatedList = [...addresses, { ...newAddr, _id: `addr_${Date.now()}` }];
+      await api.patch('/users/profile', { addresses: updatedList });
+      setAddresses(updatedList);
+      setShowAddressModal(false);
+      setNewAddr({
+        label: '',
+        contactPerson: '',
+        phone: '',
+        city: 'Kuwait City',
+        state: 'Capital',
+        streetLines: [''],
+        buildingName: '',
+        unitNumber: '',
+        postalCode: '',
+        countryCode: 'KW',
+      });
+      enqueueSnackbar('Address saved to presets', { variant: 'success' });
+      if (refreshUser) await refreshUser();
+    } catch (err) {
+      enqueueSnackbar('Failed to save address preset', { variant: 'error' });
+    } finally {
+      setSavingAddr(false);
+    }
+  };
+
+  const handleDeleteAddress = async (indexToDelete) => {
+    if (!window.confirm('Delete this saved address preset?')) return;
+    try {
+      const updatedList = addresses.filter((_, idx) => idx !== indexToDelete);
+      await api.patch('/users/profile', { addresses: updatedList });
+      setAddresses(updatedList);
+      enqueueSnackbar('Address deleted', { variant: 'info' });
+      if (refreshUser) await refreshUser();
+    } catch (err) {
+      enqueueSnackbar('Failed to delete address', { variant: 'error' });
+    }
+  };
+
+  const handleCreateWebhook = async (e) => {
+    if (e) e.preventDefault();
+    if (!newWebhookUrl.trim()) {
+      enqueueSnackbar(lang === 'ar' ? 'الرجاء إدخال رابط صحيح' : 'Please provide a valid endpoint URL', { variant: 'warning' });
+      return;
+    }
+    try {
+      setCreatingWebhook(true);
+      const res = await api.post('/integrations/webhooks', {
+        targetUrl: newWebhookUrl.trim(),
+        secret: newWebhookSecret.trim() || undefined,
+        events: newWebhookEvents,
+      });
+      if (res.data?.success) {
+        enqueueSnackbar(lang === 'ar' ? 'تم تسجيل الويب هوك بنجاح!' : 'Webhook registered successfully!', { variant: 'success' });
+        setShowAddWebhookModal(false);
+        setNewWebhookUrl('');
+        setNewWebhookSecret('');
+        fetchWebhooks();
+      }
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.error || 'Failed to register webhook', { variant: 'error' });
+    } finally {
+      setCreatingWebhook(false);
+    }
+  };
+
+  const handleToggleWebhook = async (sub) => {
+    try {
+      await api.put(`/integrations/webhooks/${sub.id}`, { isActive: !sub.isActive });
+      enqueueSnackbar(`Webhook ${!sub.isActive ? 'activated' : 'paused'}`, { variant: 'info' });
+      fetchWebhooks();
+    } catch (err) {
+      enqueueSnackbar('Failed to update status', { variant: 'error' });
+    }
+  };
+
+  const handleDeleteWebhook = async (id) => {
+    if (!window.confirm('Remove this webhook endpoint?')) return;
+    try {
+      await api.delete(`/integrations/webhooks/${id}`);
+      enqueueSnackbar('Webhook removed', { variant: 'success' });
+      fetchWebhooks();
+    } catch (err) {
+      enqueueSnackbar('Failed to delete webhook', { variant: 'error' });
+    }
+  };
+
+  const handleTestWebhook = async (id) => {
+    try {
+      setTestingWebhookId(id);
+      setTestResult(null);
+      const res = await api.post(`/integrations/webhooks/${id}/test`);
+      setTestResult({
+        success: true,
+        message: res.data?.message || 'Ping delivered successfully (HTTP 200 OK)',
+        event: res.data?.event,
+      });
+      enqueueSnackbar('Test ping dispatched successfully!', { variant: 'success' });
+    } catch (err) {
+      const errMsg = err.response?.data?.error || err.message || 'Webhook ping failed';
+      setTestResult({ success: false, message: errMsg, event: err.response?.data?.event });
+      enqueueSnackbar(`Test dispatch failed: ${errMsg}`, { variant: 'error' });
+    } finally {
+      setTestingWebhookId(null);
+    }
+  };
+
+  const handleViewLogs = async (sub) => {
+    setSelectedWebhookLogs(sub);
+    try {
+      setLoadingLogs(true);
+      const res = await api.get(`/integrations/webhooks/${sub.id}/events`);
+      setWebhookLogs(res.data?.data || []);
+    } catch (err) {
+      enqueueSnackbar('Failed to load webhook logs', { variant: 'error' });
+    } finally {
+      setLoadingLogs(false);
     }
   };
 
@@ -258,99 +318,267 @@ export const SettingsPage = () => {
     }
   };
 
-  return (
-    <div style={{ maxWidth: 1400, margin: '0 auto', padding: '28px 24px', minHeight: '100vh', direction: isRTL ? 'rtl' : 'ltr' }}>
-      {/* Header */}
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontWeight: 800, fontSize: 22, color: TK.text1, letterSpacing: '-0.03em', margin: 0 }}>
-          {lang === 'ar' ? 'الإعدادات والتهيئة' : 'Settings & Configuration'}
-        </h1>
-        <p style={{ fontSize: 13.5, color: TK.text2, margin: '5px 0 0' }}>
-          {lang === 'ar' ? 'إدارة ملف حسابك، سجل العناوين، تفضيلات الناقل، ومفاتيح واجهة برمجة التطبيقات للمطورين.' : 'Manage your account profile, address registry, carrier preferences, and developer API keys.'}
-        </p>
-      </div>
+  const handlePasswordChange = async (e) => {
+    if (e) e.preventDefault();
+    if (!passwords.newPass || passwords.newPass !== passwords.confirm) {
+      enqueueSnackbar('New passwords do not match', { variant: 'warning' });
+      return;
+    }
+    setSavingPassword(true);
+    try {
+      await api.patch('/users/password', {
+        currentPassword: passwords.current,
+        newPassword: passwords.newPass,
+      });
+      enqueueSnackbar('Password updated successfully', { variant: 'success' });
+      setPasswords({ current: '', newPass: '', confirm: '' });
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.error || 'Failed to update password', { variant: 'error' });
+    } finally {
+      setSavingPassword(false);
+    }
+  };
 
-      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        {/* Sidebar Tabs */}
-        <div style={{ width: 220, flexShrink: 0, background: '#fff', borderRadius: 16, border: `1px solid ${TK.border}`, padding: '10px' }}>
-          {getTabs(lang).map(t => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setActiveTab(t.id)}
-              style={{
-                width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                padding: '10px 14px', borderRadius: 11, border: 'none', cursor: 'pointer',
-                background: activeTab === t.id ? TK.primaryBg : 'transparent',
-                color: activeTab === t.id ? TK.primary : TK.text2,
-                fontWeight: activeTab === t.id ? 700 : 500, fontSize: 13.5,
-                transition: 'all 0.12s', textAlign: 'left', marginBottom: 2
-              }}
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: 19, flexShrink: 0 }}>{t.icon}</span>
-              {t.label}
-            </button>
-          ))}
+  return (
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+      {/* Header */}
+      <PageHeader
+        title={lang === 'ar' ? 'الإعدادات والتهيئة التشغيلية' : 'Settings & Operational Hub'}
+        subtitle={lang === 'ar' ? 'إدارة ملف الشاحن، مفاتيح REST API، إشعارات واتساب، وبوابات النقل' : 'Manage shipper identity, REST API credentials, Meta WhatsApp dispatch, and routing gateways.'}
+      >
+        <div className="flex items-center gap-2">
+          <span className="badge badge-primary badge-outline font-bold text-xs py-3 px-3">
+            {ROLE_DISPLAY_NAMES[user?.role] || user?.role || 'Authenticated Account'}
+          </span>
+        </div>
+      </PageHeader>
+
+      {/* Main Grid: Sidebar Menu + Tab Pane */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+        {/* Navigation Menu */}
+        <div className="md:col-span-3 card bg-base-100 border border-base-200 shadow-sm p-3">
+          <ul className="menu menu-sm w-full gap-1 p-0">
+            {getTabs(lang).map((tab) => {
+              const isActive = activeTab === tab.id;
+              return (
+                <li key={tab.id}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex items-center gap-3 py-3 px-3 rounded-lg font-bold text-xs transition-all ${
+                      isActive ? 'active bg-primary text-white font-extrabold shadow-sm' : 'text-base-content/70 hover:bg-base-200'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-base">{tab.icon}</span>
+                    <span>{tab.label}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         </div>
 
         {/* Content Pane */}
-        <div style={{ flex: 1, minWidth: 320 }}>
-          {/* TAB 1: Profile */}
+        <div className="md:col-span-9 space-y-6">
+          {/* TAB 1: Shipper Profile */}
           {activeTab === 'profile' && (
-            <SectionCard
-              title={lang === 'ar' ? 'الجمارك للشاحن وملف الاتصال' : 'Shipper Customs & Contact Profile'}
-              subtitle={lang === 'ar' ? 'معلومات الاتصال الافتراضية والتعريف الجمركي للبيانات' : 'Default contact information and customs identification for manifests'}
-              action={
-                <button
-                  type="button"
-                  onClick={handleSaveProfile}
-                  disabled={savingProfile}
-                  style={{
-                    padding: '9px 18px', borderRadius: 10, border: 'none',
-                    background: TK.primary, color: '#fff', fontWeight: 700, fontSize: 12.5,
-                    cursor: savingProfile ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6
-                  }}
-                >
-                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>save</span>
-                  {savingProfile ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? 'حفظ الملف الشخصي' : 'Save Profile')}
-                </button>
-              }
-            >
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
-                <WInput label={lang === 'ar' ? 'الاسم الكامل / مسؤول الاتصال' : 'Full Name / Contact Person'} value={shipperProfile.contactPerson} onChange={e => setShipperProfile({ ...shipperProfile, contactPerson: e.target.value })} half />
-                <WInput label={lang === 'ar' ? 'اسم الشركة' : 'Company Name'} value={shipperProfile.company} onChange={e => setShipperProfile({ ...shipperProfile, company: e.target.value })} half />
-                <WInput label={lang === 'ar' ? 'رقم الهاتف' : 'Phone Number'} value={shipperProfile.phone} onChange={e => setShipperProfile({ ...shipperProfile, phone: e.target.value })} half />
-                <WInput label={lang === 'ar' ? 'البريد الإلكتروني للحساب' : 'Account Email'} value={user?.email} disabled helper={lang === 'ar' ? 'تدار عبر المصادقة' : 'Managed via Auth'} half />
-                <WInput label={lang === 'ar' ? 'الرقم الضريبي / تسجيل ضريبة القيمة المضافة' : 'Tax ID / VAT Registration'} value={shipperProfile.vatNumber} onChange={e => setShipperProfile({ ...shipperProfile, vatNumber: e.target.value })} half helper={lang === 'ar' ? 'ضريبة القيمة المضافة لدول مجلس التعاون / رقم التسجيل الضريبي' : 'GCC VAT / TRN'} />
-                <WInput label={lang === 'ar' ? 'رقم EORI (جمارك الاتحاد الأوروبي)' : 'EORI Number (EU Customs)'} value={shipperProfile.eoriNumber} onChange={e => setShipperProfile({ ...shipperProfile, eoriNumber: e.target.value })} half helper={lang === 'ar' ? 'للشحنات الأوروبية' : 'For European consignments'} />
-                <WInput label={lang === 'ar' ? 'المرجع الافتراضي للشحنة' : 'Default Consignment Reference'} value={shipperProfile.reference} onChange={e => setShipperProfile({ ...shipperProfile, reference: e.target.value })} placeholder="e.g. TLG-DIRECT" />
+            <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
+              <div className="card-body p-6 sm:p-8 space-y-6">
+                <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-base-200">
+                  <div>
+                    <h2 className="text-lg font-black text-base-content tracking-tight">
+                      {lang === 'ar' ? 'البيانات الجمركية وهوية الشاحن' : 'Shipper Customs & Contact Identity'}
+                    </h2>
+                    <p className="text-xs text-base-content/60 mt-0.5">
+                      Default commercial manifest contact, VAT tax identifier, and Kuwait trade credentials.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSaveProfile}
+                    disabled={savingProfile}
+                    className="btn btn-primary btn-sm font-bold text-xs shadow-md shadow-primary/20 gap-2"
+                  >
+                    {savingProfile ? (
+                      <span className="loading loading-spinner loading-xs" />
+                    ) : (
+                      <span className="material-symbols-outlined text-base">save</span>
+                    )}
+                    <span>{lang === 'ar' ? 'حفظ الملف الشخصي' : 'Save Profile'}</span>
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveProfile} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-base-content/70 uppercase">Full Contact Person *</label>
+                    <input
+                      type="text"
+                      value={shipperProfile.contactPerson}
+                      onChange={(e) => setShipperProfile({ ...shipperProfile, contactPerson: e.target.value })}
+                      placeholder="e.g. Bader Al-Ahmad"
+                      className="input input-bordered w-full text-sm font-medium focus:input-primary"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-base-content/70 uppercase">Company Name</label>
+                    <input
+                      type="text"
+                      value={shipperProfile.company}
+                      onChange={(e) => setShipperProfile({ ...shipperProfile, company: e.target.value })}
+                      placeholder="e.g. Al-Bader Trading Co."
+                      className="input input-bordered w-full text-sm font-medium focus:input-primary"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-base-content/70 uppercase">Phone Number *</label>
+                    <input
+                      type="text"
+                      value={shipperProfile.phone}
+                      onChange={(e) => setShipperProfile({ ...shipperProfile, phone: e.target.value })}
+                      placeholder="+965 9000 0000"
+                      className="input input-bordered w-full font-mono text-sm focus:input-primary"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-base-content/70 uppercase">Account Email (Verified)</label>
+                    <input
+                      type="email"
+                      value={user?.email || ''}
+                      disabled
+                      className="input input-bordered w-full text-sm bg-base-200 text-base-content/60 cursor-not-allowed"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-base-content/70 uppercase">VAT Registration / TRN</label>
+                    <input
+                      type="text"
+                      value={shipperProfile.vatNumber}
+                      onChange={(e) => setShipperProfile({ ...shipperProfile, vatNumber: e.target.value })}
+                      placeholder="e.g. KW-VAT-982347"
+                      className="input input-bordered w-full font-mono text-sm focus:input-primary"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-base-content/70 uppercase">EORI Number (EU Customs)</label>
+                    <input
+                      type="text"
+                      value={shipperProfile.eoriNumber}
+                      onChange={(e) => setShipperProfile({ ...shipperProfile, eoriNumber: e.target.value })}
+                      placeholder="e.g. GB123456789000"
+                      className="input input-bordered w-full font-mono text-sm focus:input-primary"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2 space-y-1">
+                    <label className="text-xs font-bold text-base-content/70 uppercase">Default Consignment Reference Prefix</label>
+                    <input
+                      type="text"
+                      value={shipperProfile.reference}
+                      onChange={(e) => setShipperProfile({ ...shipperProfile, reference: e.target.value })}
+                      placeholder="e.g. TLG-DIRECT-ORD"
+                      className="input input-bordered w-full font-mono text-sm focus:input-primary"
+                    />
+                  </div>
+                </form>
               </div>
-            </SectionCard>
+            </div>
           )}
 
-          {/* TAB 2: Addresses */}
+          {/* TAB 2: Addresses & Hub Presets */}
           {activeTab === 'addresses' && (
-            <AddressPanel />
+            <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
+              <div className="card-body p-6 sm:p-8 space-y-6">
+                <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-base-200">
+                  <div>
+                    <h2 className="text-lg font-black text-base-content tracking-tight">
+                      Saved Address & Hub Presets
+                    </h2>
+                    <p className="text-xs text-base-content/60 mt-0.5">
+                      Fast 1-click address injection for origin collections and destination deliveries.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddressModal(true)}
+                    className="btn btn-primary btn-sm font-bold text-xs gap-1.5 shadow-md shadow-primary/20"
+                  >
+                    <span className="material-symbols-outlined text-base">add_location_alt</span>
+                    <span>Add New Address</span>
+                  </button>
+                </div>
+
+                {addresses.length === 0 ? (
+                  <div className="p-8 text-center bg-base-200/40 rounded-2xl border border-dashed border-base-300 space-y-3">
+                    <span className="material-symbols-outlined text-4xl text-base-content/40">location_off</span>
+                    <div className="font-bold text-sm text-base-content">No Saved Addresses Found</div>
+                    <p className="text-xs text-base-content/60 max-w-sm mx-auto">
+                      Save frequent collection warehouses in Shuwaikh, Farwaniya, or GCC hub locations for quick dispatch.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {addresses.map((addr, idx) => (
+                      <div key={addr._id || idx} className="p-4 rounded-xl bg-base-200/50 border border-base-200 relative group flex flex-col justify-between">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="badge badge-primary font-bold text-xs">{addr.label || 'Saved Location'}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteAddress(idx)}
+                              className="btn btn-ghost btn-circle btn-xs text-error opacity-60 hover:opacity-100"
+                              title="Delete Address"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                          <div className="font-bold text-sm text-base-content">{addr.contactPerson}</div>
+                          <div className="text-xs text-base-content/70">
+                            {addr.streetLines?.[0] || addr.address || ''}
+                            {addr.buildingName && `, ${addr.buildingName}`}
+                          </div>
+                          <div className="text-xs text-base-content/60 font-mono">
+                            {addr.city}, {addr.state} • {addr.countryCode || 'KW'}
+                          </div>
+                        </div>
+                        <div className="pt-3 mt-3 border-t border-base-300/50 flex items-center justify-between text-[11px] text-base-content/50">
+                          <span>Phone: {addr.phone || 'N/A'}</span>
+                          <span className="badge badge-xs badge-neutral">{addr.countryCode || 'KW'}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           )}
 
           {/* TAB 3: API & Webhooks */}
           {activeTab === 'api' && (
-            <div>
-              <SectionCard
-                title={lang === 'ar' ? 'مفاتيح API للمطورين' : 'Developer REST API Keys'}
-                subtitle={lang === 'ar' ? 'قم بالمصادقة برمجياً لإرسال الشحنات والاستعلام عن التتبع' : 'Authenticate programmatically to dispatch consignments and query telemetry'}
-              >
-                <div style={{ padding: '16px', background: '#fafbfc', borderRadius: 12, border: `1px solid ${TK.border}`, marginBottom: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: TK.text2, marginBottom: 6 }}>{lang === 'ar' ? 'المفتاح السري النشط' : 'Active Secret Key'}</div>
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div className="space-y-6">
+              {/* REST API Key Card */}
+              <div className="card bg-base-100 border border-base-200 shadow-sm p-6 sm:p-8 space-y-4">
+                <div>
+                  <h2 className="text-lg font-black text-base-content tracking-tight">
+                    Developer REST API Credentials
+                  </h2>
+                  <p className="text-xs text-base-content/60 mt-0.5">
+                    Programmatic bearer token for B2B e-commerce ERP integration and bulk order injection.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-base-200/50 border border-base-200 space-y-3">
+                  <div className="text-[11px] font-bold text-base-content/60 uppercase">ACTIVE SECRET API KEY</div>
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <input
                       type="text"
                       readOnly
-                      value={apiKey || (lang === 'ar' ? 'No key generated yet' : 'No key generated yet')}
-                      style={{
-                        flex: 1, padding: '10px 14px', borderRadius: 10, border: `1px solid ${TK.border}`,
-                        background: '#fff', fontFamily: 'monospace', fontSize: 13, color: TK.text1, outline: 'none'
-                      }}
+                      value={apiKey || 'No API key generated yet'}
+                      className="input input-bordered flex-1 font-mono text-xs bg-base-100"
                     />
                     <button
                       type="button"
@@ -360,144 +588,122 @@ export const SettingsPage = () => {
                           enqueueSnackbar('API Key copied to clipboard', { variant: 'success' });
                         }
                       }}
-                      style={{
-                        padding: '10px 16px', borderRadius: 10, border: `1px solid ${TK.border}`,
-                        background: '#fff', color: TK.text1, fontWeight: 700, fontSize: 12.5, cursor: 'pointer'
-                      }}
+                      className="btn btn-outline border-base-300 font-bold text-xs gap-1"
                     >
-                      Copy
+                      <span className="material-symbols-outlined text-base">content_copy</span>
+                      <span>Copy</span>
                     </button>
                     <button
                       type="button"
                       onClick={generateNewKey}
-                      disabled={loading}
-                      style={{
-                        padding: '10px 18px', borderRadius: 10, border: 'none',
-                        background: TK.primary, color: '#fff', fontWeight: 700, fontSize: 12.5, cursor: 'pointer'
-                      }}
+                      disabled={loadingKey}
+                      className="btn btn-primary font-bold text-xs gap-1 shadow-md shadow-primary/20"
                     >
-                      {loading ? (lang === 'ar' ? 'جاري التوليد...' : 'Rolling...') : (lang === 'ar' ? 'توليد مفتاح' : 'Roll Key')}
+                      <span className="material-symbols-outlined text-base">refresh</span>
+                      <span>{loadingKey ? 'Rolling...' : 'Roll Key'}</span>
                     </button>
                   </div>
+                  <div className="text-[11px] text-base-content/60">
+                    Include in authorization header: <code className="bg-base-300 px-1.5 py-0.5 rounded font-mono font-bold text-primary">X-API-Key: {apiKey ? `${apiKey.slice(0, 10)}...` : 'tl_live_...'}</code>
+                  </div>
                 </div>
+              </div>
 
-                <div style={{ fontSize: 12.5, color: TK.text2, lineHeight: 1.5 }}>
-                  {lang === 'ar' ? 'قم بتضمين المفتاح في الترويسة:' : 'Include your key in the header:'} <code style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: 4, color: TK.primary, fontWeight: 700 }}>X-API-Key: tl_live_...</code>
-                </div>
-              </SectionCard>
-
-              {/* Webhook Subscriptions Section */}
-              <SectionCard
-                title={lang === 'ar' ? 'اشتراكات الويب هوك والأحداث المباشرة' : 'Webhook Subscriptions & Live Events'}
-                subtitle={lang === 'ar' ? 'تلقي أحداث HTTP POST في الوقت الفعلي حول تغيرات الحالة ومراحل التوصيل' : 'Receive real-time HTTP POST event callbacks on status transitions and delivery milestones'}
-                action={
+              {/* Webhooks Section */}
+              <div className="card bg-base-100 border border-base-200 shadow-sm p-6 sm:p-8 space-y-6">
+                <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-base-200">
+                  <div>
+                    <h2 className="text-lg font-black text-base-content tracking-tight">
+                      Webhook Subscriptions (HTTP Callbacks)
+                    </h2>
+                    <p className="text-xs text-base-content/60 mt-0.5">
+                      Receive real-time signed HMAC SHA-256 webhooks for status updates and proof of delivery.
+                    </p>
+                  </div>
                   <button
                     type="button"
                     onClick={() => setShowAddWebhookModal(true)}
-                    style={{
-                      padding: '9px 16px', borderRadius: 10, border: 'none',
-                      background: TK.primary, color: '#fff', fontWeight: 700, fontSize: 12.5, cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', gap: 6
-                    }}
+                    className="btn btn-primary btn-sm font-bold text-xs gap-1.5 shadow-md shadow-primary/20"
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>add_link</span>
-                    Add Webhook
+                    <span className="material-symbols-outlined text-base">add_link</span>
+                    <span>Add Webhook</span>
                   </button>
-                }
-              >
+                </div>
+
                 {loadingWebhooks ? (
-                  <div style={{ padding: '24px', textAlign: 'center', color: TK.text3 }}>{lang === 'ar' ? 'جاري تحميل الويب هوك...' : 'Loading webhooks...'}</div>
+                  <div className="p-8 text-center">
+                    <span className="loading loading-spinner loading-md text-primary" />
+                  </div>
                 ) : webhooks.length === 0 ? (
-                  <div style={{ padding: '32px 16px', textAlign: 'center', color: TK.text3, background: '#fafbfc', borderRadius: 12, border: `1px dashed ${TK.border}` }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 36, color: TK.text3, marginBottom: 8 }}>webhook</span>
-                    <div style={{ fontWeight: 600, fontSize: 14, color: TK.text2 }}>{lang === 'ar' ? 'لم يتم تكوين أي ويب هوك' : 'No Webhooks Configured'}</div>
-                    <div style={{ fontSize: 12, marginTop: 4 }}>{lang === 'ar' ? 'أضف رابط نقطة نهاية HTTP لبدء تلقي تحديثات الشحنات التلقائية.' : 'Add an HTTP endpoint URL to start receiving automated consignment updates.'}</div>
+                  <div className="p-8 text-center bg-base-200/40 rounded-2xl border border-dashed border-base-300 space-y-2">
+                    <span className="material-symbols-outlined text-4xl text-base-content/40">webhook</span>
+                    <div className="font-bold text-sm text-base-content">No Webhook Endpoints Configured</div>
+                    <p className="text-xs text-base-content/60 max-w-sm mx-auto">
+                      Add your store or logistics server URL to listen for automated consignment events.
+                    </p>
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {webhooks.map(sub => (
-                      <div
-                        key={sub.id}
-                        style={{
-                          padding: '16px', background: '#fafbfc', borderRadius: 12, border: `1px solid ${TK.border}`,
-                          display: 'flex', flexDirection: 'column', gap: 10
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <span style={{
-                              width: 10, height: 10, borderRadius: '50%',
-                              background: sub.isActive ? '#10b981' : '#9ca3af'
-                            }} />
-                            <code style={{ fontSize: 13, fontWeight: 700, color: TK.text1 }}>{sub.targetUrl}</code>
+                  <div className="space-y-4">
+                    {webhooks.map((sub) => (
+                      <div key={sub.id} className="p-4 rounded-xl bg-base-200/50 border border-base-200 space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2.5 h-2.5 rounded-full ${sub.isActive ? 'bg-success' : 'bg-base-content/30'}`} />
+                            <code className="font-mono font-bold text-xs text-base-content break-all">{sub.targetUrl}</code>
                           </div>
-                          <div style={{ display: 'flex', gap: 6 }}>
+                          <div className="flex items-center gap-2">
                             <button
                               type="button"
                               onClick={() => handleTestWebhook(sub.id)}
                               disabled={testingWebhookId === sub.id}
-                              style={{
-                                padding: '6px 12px', borderRadius: 8, border: `1px solid ${TK.border}`,
-                                background: '#fff', color: TK.primary, fontWeight: 700, fontSize: 11.5, cursor: 'pointer'
-                              }}
+                              className="btn btn-xs btn-outline border-base-300 font-bold gap-1 text-primary"
                             >
-                              {testingWebhookId === sub.id ? (lang === 'ar' ? 'جاري الإرسال...' : 'Sending...') : (lang === 'ar' ? '⚡ اختبار الاتصال' : '⚡ Test Ping')}
+                              <span className="material-symbols-outlined text-xs">bolt</span>
+                              <span>{testingWebhookId === sub.id ? 'Sending...' : 'Test Ping'}</span>
                             </button>
                             <button
                               type="button"
                               onClick={() => handleViewLogs(sub)}
-                              style={{
-                                padding: '6px 12px', borderRadius: 8, border: `1px solid ${TK.border}`,
-                                background: '#fff', color: TK.text1, fontWeight: 600, fontSize: 11.5, cursor: 'pointer'
-                              }}
+                              className="btn btn-xs btn-ghost border border-base-300 text-xs font-bold gap-1"
                             >
-                              📋 {lang === 'ar' ? 'سجلات الأحداث' : 'Event Logs'} ({sub._count?.deliveryEvents || 0})
+                              <span className="material-symbols-outlined text-xs">history</span>
+                              <span>Logs ({sub._count?.deliveryEvents || 0})</span>
                             </button>
                             <button
                               type="button"
                               onClick={() => handleToggleWebhook(sub)}
-                              style={{
-                                padding: '6px 10px', borderRadius: 8, border: `1px solid ${TK.border}`,
-                                background: '#fff', color: sub.isActive ? '#d97706' : '#10b981', fontWeight: 600, fontSize: 11.5, cursor: 'pointer'
-                              }}
+                              className={`btn btn-xs font-bold ${sub.isActive ? 'btn-warning btn-outline' : 'btn-success btn-outline'}`}
                             >
-                              {sub.isActive ? (lang === 'ar' ? 'إيقاف مؤقت' : 'Pause') : (lang === 'ar' ? 'تفعيل' : 'Activate')}
+                              {sub.isActive ? 'Pause' : 'Activate'}
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDeleteWebhook(sub.id)}
-                              style={{
-                                padding: '6px 10px', borderRadius: 8, border: '1px solid #fee2e2',
-                                background: '#fff', color: '#ef4444', fontWeight: 600, fontSize: 11.5, cursor: 'pointer'
-                              }}
+                              className="btn btn-xs btn-ghost text-error"
                             >
                               ✕
                             </button>
                           </div>
                         </div>
 
-                        {/* Events & Secret Row */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: TK.text2, flexWrap: 'wrap', gap: 8 }}>
-                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                            <span style={{ fontWeight: 600 }}>{lang === 'ar' ? 'الأحداث المشترك بها:' : 'Subscribed Events:'}</span>
-                            {(Array.isArray(sub.events) ? sub.events : []).map(ev => (
-                              <span key={ev} style={{ background: '#e0f2fe', color: '#0369a1', padding: '1px 6px', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
-                                {ev}
-                              </span>
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs pt-2 border-t border-base-200">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-bold text-base-content/60">Events:</span>
+                            {(Array.isArray(sub.events) ? sub.events : []).map((ev) => (
+                              <span key={ev} className="badge badge-xs badge-info font-bold">{ev}</span>
                             ))}
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ fontWeight: 600 }}>{lang === 'ar' ? 'السر:' : 'Secret:'}</span>
-                            <code style={{ background: '#f1f5f9', padding: '1px 6px', borderRadius: 4, fontSize: 11 }}>{sub.secret?.slice(0, 8)}...</code>
+                          <div className="flex items-center gap-2 font-mono text-[11px] text-base-content/50">
+                            <span>Secret: {sub.secret?.slice(0, 8)}...</span>
                             <button
                               type="button"
                               onClick={() => {
                                 navigator.clipboard.writeText(sub.secret);
-                                enqueueSnackbar('Signing secret copied', { variant: 'success' });
+                                enqueueSnackbar('Webhook secret copied', { variant: 'success' });
                               }}
-                              style={{ border: 'none', background: 'transparent', color: TK.primary, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}
+                              className="link link-primary font-sans text-xs font-bold"
                             >
-                              {lang === 'ar' ? 'نسخ السر' : 'Copy Secret'}
+                              Copy
                             </button>
                           </div>
                         </div>
@@ -506,187 +712,88 @@ export const SettingsPage = () => {
                   </div>
                 )}
 
-                {/* Test Simulator Result Box */}
+                {/* Ping Result Alert */}
                 {testResult && (
-                  <div style={{
-                    marginTop: 16, padding: '14px 16px', borderRadius: 12,
-                    background: testResult.success ? '#f0fdf4' : '#fef2f2',
-                    border: `1px solid ${testResult.success ? '#bbf7d0' : '#fecaca'}`
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: testResult.success ? '#15803d' : '#b91c1c' }}>
-                        {testResult.success ? '✅ ' : '❌ '} {testResult.message}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setTestResult(null)}
-                        style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#6b7280', fontSize: 12 }}
-                      >
-                        Dismiss
-                      </button>
-                    </div>
+                  <div className={`alert ${testResult.success ? 'alert-success' : 'alert-error'} text-xs shadow-sm`}>
+                    <span className="material-symbols-outlined text-base">
+                      {testResult.success ? 'check_circle' : 'error'}
+                    </span>
+                    <span className="flex-1 font-bold">{testResult.message}</span>
+                    <button type="button" onClick={() => setTestResult(null)} className="btn btn-ghost btn-xs">
+                      ✕
+                    </button>
                   </div>
                 )}
-              </SectionCard>
 
-              {/* Event Logs Drawer / Section */}
-              {selectedWebhookLogs && (
-                <SectionCard
-                  title={lang === 'ar' ? `سجلات التوصيل لـ: ${selectedWebhookLogs.targetUrl}` : `Delivery Logs for: ${selectedWebhookLogs.targetUrl}`}
-                  subtitle={lang === 'ar' ? 'فحص محاولات إرسال الويب هوك الأخيرة والتوقيعات' : 'Inspecting recent webhook dispatch attempts and signatures'}
-                  action={
-                    <button
-                      type="button"
-                      onClick={() => setSelectedWebhookLogs(null)}
-                      style={{ padding: '6px 12px', borderRadius: 8, border: `1px solid ${TK.border}`, background: '#fff', cursor: 'pointer', fontSize: 12 }}
-                    >
-                      {lang === 'ar' ? 'إغلاق السجلات' : 'Close Logs'}
-                    </button>
-                  }
-                >
-                  {loadingLogs ? (
-                    <div style={{ padding: '20px', textAlign: 'center', color: TK.text3 }}>{lang === 'ar' ? 'جاري تحميل السجلات...' : 'Loading logs...'}</div>
-                  ) : webhookLogs.length === 0 ? (
-                    <div style={{ padding: '20px', textAlign: 'center', color: TK.text3 }}>{lang === 'ar' ? 'لم يتم تسجيل أي محاولات توصيل بعد.' : 'No delivery attempts recorded yet.'}</div>
-                  ) : (
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                        <thead>
-                          <tr style={{ background: '#f8fafc', borderBottom: `1px solid ${TK.border}`, textAlign: 'left' }}>
-                            <th style={{ padding: '10px 12px' }}>Event</th>
-                            <th style={{ padding: '10px 12px' }}>Status</th>
-                            <th style={{ padding: '10px 12px' }}>Attempts</th>
-                            <th style={{ padding: '10px 12px' }}>Timestamp</th>
-                            <th style={{ padding: '10px 12px' }}>Error Details</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {webhookLogs.map(log => (
-                            <tr key={log.id} style={{ borderBottom: `1px solid ${TK.border}` }}>
-                              <td style={{ padding: '10px 12px', fontWeight: 600 }}>{log.event}</td>
-                              <td style={{ padding: '10px 12px' }}>
-                                <span style={{
-                                  padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700,
-                                  background: log.status === 'success' ? '#dcfce7' : '#fee2e2',
-                                  color: log.status === 'success' ? '#15803d' : '#b91c1c'
-                                }}>
-                                  {log.status}
-                                </span>
-                              </td>
-                              <td style={{ padding: '10px 12px' }}>{log.attempts}</td>
-                              <td style={{ padding: '10px 12px', color: TK.text3 }}>{new Date(log.createdAt).toLocaleString()}</td>
-                              <td style={{ padding: '10px 12px', color: log.lastError ? '#b91c1c' : TK.text3, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {log.lastError || '—'}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </SectionCard>
-              )}
-
-              {/* Add Webhook Modal */}
-              {showAddWebhookModal && (
-                <div style={{
-                  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20
-                }}>
-                  <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 500, padding: 24, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                      <div style={{ fontWeight: 800, fontSize: 16, color: TK.text1 }}>{lang === 'ar' ? 'تسجيل نقطة نهاية ويب هوك' : 'Register Webhook Endpoint'}</div>
-                      <button
-                        type="button"
-                        onClick={() => setShowAddWebhookModal(false)}
-                        style={{ border: 'none', background: 'transparent', fontSize: 18, cursor: 'pointer', color: TK.text3 }}
-                      >
-                        ✕
+                {/* Delivery Logs Viewer */}
+                {selectedWebhookLogs && (
+                  <div className="p-4 rounded-xl bg-base-100 border border-base-300 space-y-3">
+                    <div className="flex items-center justify-between pb-2 border-b border-base-200">
+                      <span className="font-bold text-xs text-base-content">
+                        Delivery Logs for: <code className="text-primary font-mono">{selectedWebhookLogs.targetUrl}</code>
+                      </span>
+                      <button type="button" onClick={() => setSelectedWebhookLogs(null)} className="btn btn-xs btn-ghost">
+                        Close
                       </button>
                     </div>
 
-                    <form onSubmit={handleCreateWebhook} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                      <WInput
-                        label={lang === 'ar' ? 'رابط نقطة النهاية الوجهة *' : 'Destination Endpoint URL *'}
-                        placeholder="https://api.yourdomain.com/webhooks/orders"
-                        value={newWebhookUrl}
-                        onChange={e => setNewWebhookUrl(e.target.value)}
-                        helper={lang === 'ar' ? 'يجب أن يكون رابط HTTPS أو HTTP صحيحاً' : 'Must be a valid HTTPS or HTTP URL'}
-                      />
-
-                      <WInput
-                        label={lang === 'ar' ? 'سر التوقيع (اختياري)' : 'Signing Secret (Optional)'}
-                        placeholder={lang === 'ar' ? 'اتركه فارغاً لإنشاء سر آمن بطول 24 بايت تلقائياً' : 'Leave blank to auto-generate secure 24-byte hex secret'}
-                        value={newWebhookSecret}
-                        onChange={e => setNewWebhookSecret(e.target.value)}
-                        helper={lang === 'ar' ? 'يستخدم لتوقيع ترويسة HMAC SHA256' : 'Used to sign HMAC SHA256 header (X-Webhook-Signature-256)'}
-                      />
-
-                      <div>
-                        <label style={{ fontWeight: 600, fontSize: 12, color: TK.text2, display: 'block', marginBottom: 8 }}>
-                          Subscribed Events
-                        </label>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          {[
-                            { id: 'shipment.created', label: 'shipment.created (When a new shipment is created)' },
-                            { id: 'shipment.status_updated', label: 'shipment.status_updated (When status or milestone changes)' },
-                            { id: 'shipment.delivered', label: 'shipment.delivered (When Proof of Delivery is captured)' },
-                            { id: 'shipment.booked', label: 'shipment.booked (When Carrier AWB is issued)' },
-                            { id: '*', label: '* (All events)' }
-                          ].map(ev => {
-                            const isChecked = newWebhookEvents.includes(ev.id);
-                            return (
-                              <label key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: TK.text1, cursor: 'pointer' }}>
-                                <input
-                                  type="checkbox"
-                                  checked={isChecked}
-                                  onChange={() => {
-                                    if (isChecked) {
-                                      setNewWebhookEvents(newWebhookEvents.filter(x => x !== ev.id));
-                                    } else {
-                                      setNewWebhookEvents([...newWebhookEvents, ev.id]);
-                                    }
-                                  }}
-                                />
-                                {ev.label}
-                              </label>
-                            );
-                          })}
-                        </div>
+                    {loadingLogs ? (
+                      <div className="p-4 text-center">
+                        <span className="loading loading-spinner loading-xs" />
                       </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 12 }}>
-                        <button
-                          type="button"
-                          onClick={() => setShowAddWebhookModal(false)}
-                          style={{ padding: '10px 18px', borderRadius: 10, border: `1px solid ${TK.border}`, background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="submit"
-                          disabled={creatingWebhook}
-                          style={{
-                            padding: '10px 20px', borderRadius: 10, border: 'none',
-                            background: TK.primary, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer'
-                          }}
-                        >
-                          {creatingWebhook ? (lang === 'ar' ? 'جاري التسجيل...' : 'Registering...') : (lang === 'ar' ? 'تسجيل نقطة النهاية' : 'Register Endpoint')}
-                        </button>
+                    ) : webhookLogs.length === 0 ? (
+                      <div className="text-xs text-base-content/50 py-4 text-center">
+                        No dispatch attempts recorded yet.
                       </div>
-                    </form>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="table table-xs table-zebra w-full font-mono">
+                          <thead>
+                            <tr className="text-base-content/60">
+                              <th>Event</th>
+                              <th>Status</th>
+                              <th>Attempts</th>
+                              <th>Timestamp</th>
+                              <th>Error Details</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {webhookLogs.map((log) => (
+                              <tr key={log.id}>
+                                <td className="font-bold">{log.event}</td>
+                                <td>
+                                  <span className={`badge badge-xs font-bold ${log.status === 'success' ? 'badge-success' : 'badge-error'}`}>
+                                    {log.status}
+                                  </span>
+                                </td>
+                                <td>{log.attempts}</td>
+                                <td className="text-base-content/60">{new Date(log.createdAt).toLocaleTimeString()}</td>
+                                <td className="text-error truncate max-w-xs">{log.lastError || '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           )}
 
+          {/* TAB 4: WhatsApp & Meta Cloud API */}
           {activeTab === 'whatsapp' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <SectionCard
-                title={lang === 'ar' ? 'إعدادات واجهة برمجة تطبيقات واتساب للأعمال من ميتا' : 'Meta WhatsApp Business API Settings'}
-                subtitle={lang === 'ar' ? 'تكوين مفاتيح واجهة برمجة تطبيقات سحابة واتساب الرسمية أو تكامل Chatwoot لإشعارات العملاء التلقائية' : 'Configure official WhatsApp Cloud API keys or Chatwoot integration for automated customer notifications'}
-                action={
+            <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
+              <div className="card-body p-6 sm:p-8 space-y-6">
+                <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-base-200">
+                  <div>
+                    <h2 className="text-lg font-black text-base-content tracking-tight">
+                      Meta WhatsApp Business Cloud API
+                    </h2>
+                    <p className="text-xs text-base-content/60 mt-0.5">
+                      Direct automated notifications for pickups, tracking links, and digital delivery confirmations.
+                    </p>
+                  </div>
                   <button
                     type="button"
                     onClick={async () => {
@@ -701,221 +808,481 @@ export const SettingsPage = () => {
                       }
                     }}
                     disabled={savingSettings}
-                    style={{
-                      padding: '9px 18px', borderRadius: 10, border: 'none',
-                      background: TK.primary, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer'
-                    }}
+                    className="btn btn-primary btn-sm font-bold text-xs gap-1.5 shadow-md shadow-primary/20"
                   >
-                    {savingSettings ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? 'حفظ الإعدادات' : 'Save Settings')}
+                    {savingSettings ? <span className="loading loading-spinner loading-xs" /> : <span className="material-symbols-outlined text-base">save</span>}
+                    <span>Save WhatsApp Config</span>
                   </button>
-                }
-              >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                    <div style={{ flex: '1 1 calc(50% - 8px)' }}>
-                      <WSelect
-                        label={lang === 'ar' ? 'وضع مزود واجهة برمجة التطبيقات' : 'API Provider Mode'}
+                </div>
+
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-base-content/70 uppercase">API Provider Mode</label>
+                      <select
                         value={systemSettings?.whatsapp?.provider || 'SHIPMENT_WHATSAPP'}
                         onChange={(e) => setSystemSettings({
                           ...systemSettings,
-                          whatsapp: { ...(systemSettings?.whatsapp || {}), provider: e.target.value }
+                          whatsapp: { ...(systemSettings?.whatsapp || {}), provider: e.target.value },
                         })}
-                        options={[
-                          { value: 'SHIPMENT_WHATSAPP', label: lang === 'ar' ? 'خدمة واتساب تارجت المصغرة (msg.target-kw.com)' : 'Target WhatsApp Microservice (msg.target-kw.com)' },
-                          { value: 'META', label: lang === 'ar' ? 'منصة واتساب للأعمال من ميتا (واجهة برمجة التطبيقات السحابية الرسمية)' : 'Meta WhatsApp Business Platform (Official Cloud API)' },
-                          { value: 'CHATWOOT', label: lang === 'ar' ? 'بوابة صندوق وارد Chatwoot' : 'Chatwoot Inbox Gateway' },
-                          { value: 'MOCK', label: lang === 'ar' ? 'بيئة الاختبار الوهمية (اختبار محلي)' : 'Mock Sandbox (Local Testing)' }
-                        ]}
-                      />
+                        className="select select-bordered w-full text-sm font-medium focus:select-primary"
+                      >
+                        <option value="SHIPMENT_WHATSAPP">Target Microservice (msg.target-kw.com)</option>
+                        <option value="META">Meta Official WhatsApp Cloud API</option>
+                        <option value="CHATWOOT">Chatwoot Omnichannel Inbox</option>
+                        <option value="MOCK">Mock Local Sandbox</option>
+                      </select>
                     </div>
 
-                    {(systemSettings?.whatsapp?.provider === 'SHIPMENT_WHATSAPP' || !systemSettings?.whatsapp?.provider) ? (
-                      <WInput
-                        half
-                        label={lang === 'ar' ? 'رابط الخدمة المصغرة' : 'Microservice Endpoint URL'}
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-base-content/70 uppercase">Service Endpoint URL / Phone ID</label>
+                      <input
+                        type="text"
+                        value={systemSettings?.whatsapp?.serviceUrl || systemSettings?.whatsapp?.phoneNumberId || 'https://msg.target-kw.com'}
+                        onChange={(e) => setSystemSettings({
+                          ...systemSettings,
+                          whatsapp: { ...(systemSettings?.whatsapp || {}), serviceUrl: e.target.value },
+                        })}
                         placeholder="https://msg.target-kw.com"
-                        value={systemSettings?.whatsapp?.serviceUrl || 'https://msg.target-kw.com'}
-                        onChange={(e) => setSystemSettings({
-                          ...systemSettings,
-                          whatsapp: { ...(systemSettings?.whatsapp || {}), serviceUrl: e.target.value }
-                        })}
-                        helper={lang === 'ar' ? 'خدمة إرسال إشعارات واتساب عبر السحابة (shipment-whatsapp)' : 'Cloud API notification dispatcher (shipment-whatsapp)'}
+                        className="input input-bordered w-full font-mono text-sm focus:input-primary"
                       />
-                    ) : (
-                      <WInput
-                        half
-                        label={lang === 'ar' ? 'معرف رقم الهاتف' : 'Phone Number ID'}
-                        placeholder="e.g. 109823471928374"
-                        value={systemSettings?.whatsapp?.phoneNumberId}
-                        onChange={(e) => setSystemSettings({
-                          ...systemSettings,
-                          whatsapp: { ...(systemSettings?.whatsapp || {}), phoneNumberId: e.target.value }
-                        })}
-                      />
-                    )}
+                    </div>
                   </div>
 
-                  {systemSettings?.whatsapp?.provider !== 'SHIPMENT_WHATSAPP' && systemSettings?.whatsapp?.provider && (
-                    <>
-                      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                        <WInput
-                          half
-                          label={lang === 'ar' ? 'معرف حساب واتساب للأعمال (WABA)' : 'WhatsApp Business Account ID (WABA)'}
-                          placeholder="e.g. 209384019283741"
-                          value={systemSettings?.whatsapp?.businessAccountId}
-                          onChange={(e) => setSystemSettings({
-                            ...systemSettings,
-                            whatsapp: { ...(systemSettings?.whatsapp || {}), businessAccountId: e.target.value }
-                          })}
-                        />
-
-                        <WInput
-                          half
-                          label={lang === 'ar' ? 'رمز سر التحقق من الويب هوك' : 'Webhook Verification Secret Token'}
-                          placeholder="e.g. target_logistics_meta_verify_secret_2026"
-                          value={systemSettings?.whatsapp?.webhookVerifyToken}
-                          onChange={(e) => setSystemSettings({
-                            ...systemSettings,
-                            whatsapp: { ...(systemSettings?.whatsapp || {}), webhookVerifyToken: e.target.value }
-                          })}
-                        />
-                      </div>
-
-                      <WInput
-                        label={lang === 'ar' ? 'رمز وصول مستخدم النظام (دائم / حامل)' : 'System User Access Token (Permanent / Bearer)'}
-                        type="password"
-                        placeholder="EAAG..."
-                        value={systemSettings?.whatsapp?.accessToken}
-                        onChange={(e) => setSystemSettings({
-                          ...systemSettings,
-                          whatsapp: { ...(systemSettings?.whatsapp || {}), accessToken: e.target.value }
-                        })}
-                        helper={lang === 'ar' ? 'تم إنشاؤه في مدير أعمال ميتا ضمن مستخدمي النظام' : 'Generated in Meta Business Manager under System Users'}
-                      />
-                    </>
-                  )}
-                </div>
-              </SectionCard>
-
-              <SectionCard
-                title={lang === 'ar' ? 'نقطة نهاية ويب هوك ميتا الواردة' : 'Incoming Meta Webhook Endpoint'}
-                subtitle={lang === 'ar' ? 'الصق هذا الرابط في لوحة معلومات مطوري ميتا -> واتساب -> التكوين -> الويب هوك' : 'Paste this URL into Meta Developer Dashboard -> WhatsApp -> Configuration -> Webhook'}
-              >
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <div style={{
-                    flex: 1, padding: '12px 16px', background: '#f8fafc', borderRadius: 10, border: `1px solid ${TK.border}`,
-                    fontSize: 13, fontFamily: 'monospace', fontWeight: 700, color: TK.primary, wordBreak: 'break-all'
-                  }}>
-                    {`${window.location.origin}/api/whatsapp/webhook`}
+                  {/* Incoming Webhook Box */}
+                  <div className="p-4 rounded-xl bg-base-200/50 border border-base-200 space-y-2">
+                    <div className="text-[11px] font-bold text-base-content/60 uppercase">INCOMING META WEBHOOK ENDPOINT</div>
+                    <div className="flex flex-col sm:flex-row gap-2 items-center">
+                      <code className="input input-bordered w-full flex-1 font-mono text-xs flex items-center bg-base-100 select-all">
+                        {`${window.location.origin}/api/whatsapp/webhook`}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(`${window.location.origin}/api/whatsapp/webhook`);
+                          enqueueSnackbar('Meta Webhook URL copied to clipboard!', { variant: 'info' });
+                        }}
+                        className="btn btn-outline border-base-300 btn-sm font-bold text-xs gap-1.5"
+                      >
+                        <span className="material-symbols-outlined text-base">content_copy</span>
+                        <span>Copy URL</span>
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-base-content/50">
+                      Paste this URL into Meta App Dashboard &rarr; WhatsApp &rarr; Configuration &rarr; Webhook callback.
+                    </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(`${window.location.origin}/api/whatsapp/webhook`);
-                      enqueueSnackbar('Webhook URL copied to clipboard!', { variant: 'info' });
-                    }}
-                    style={{
-                      padding: '11px 18px', borderRadius: 10, border: `1px solid ${TK.border}`,
-                      background: '#fff', color: TK.text1, fontWeight: 700, fontSize: 13, cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', gap: 6
-                    }}
-                  >
-                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>content_copy</span>
-                    Copy URL
-                  </button>
                 </div>
-              </SectionCard>
+              </div>
             </div>
           )}
 
-          {/* TAB 4: Notifications */}
+          {/* TAB 5: Notification Triggers */}
           {activeTab === 'notifications' && (
-            <SectionCard title={lang === 'ar' ? 'إشعارات الأحداث التلقائية' : 'Automated Event Notifications'} subtitle={lang === 'ar' ? 'تكوين القنوات التلقائية لمراحل الشحنة' : 'Configure automated channels for shipment milestones'}>
-              <ToggleRow
-                value={notifs.email_ship}
-                onChange={v => setNotifs({ ...notifs, email_ship: v })}
-                label={lang === 'ar' ? 'تم إنشاء بيان الشحنة (بريد إلكتروني)' : 'Shipment Manifest Created (Email)'}
-                desc={lang === 'ar' ? 'إرسال الإيصال وبوليصة الشحن كملف PDF عند تأكيد الإرسال' : 'Send receipt & waybill PDF upon dispatch confirmation'}
-              />
-              <ToggleRow
-                value={notifs.email_del}
-                onChange={v => setNotifs({ ...notifs, email_del: v })}
-                label={lang === 'ar' ? 'تأكيد إثبات التوصيل (بريد إلكتروني)' : 'Proof of Delivery Confirmation (Email)'}
-                desc={lang === 'ar' ? 'إرسال طابع زمني للتوصيل وإيصال توقيع المستلم' : 'Send delivery timestamp & receiver signature receipt'}
-              />
-              <ToggleRow
-                value={notifs.whatsapp_tracking}
-                onChange={v => setNotifs({ ...notifs, whatsapp_tracking: v })}
-                label={lang === 'ar' ? 'تحديثات التوصيل عبر واتساب (Chatwoot)' : 'WhatsApp Delivery Updates (Chatwoot)'}
-                desc={lang === 'ar' ? 'إرسال رابط التتبع المباشر إلى المرسل إليه عبر واتساب' : 'Send live tracking URL to consignee via WhatsApp'}
-              />
-              <ToggleRow
-                value={notifs.sms_exception}
-                onChange={v => setNotifs({ ...notifs, sms_exception: v })}
-                label={lang === 'ar' ? 'استثناءات الجمارك والناقل (رسالة نصية)' : 'Customs & Carrier Exceptions (SMS)'}
-                desc={lang === 'ar' ? 'تنبيه فوري إذا تم احتجاز البضائع على الحدود أو الجمارك' : 'Immediate alert if cargo is held at border or customs'}
-              />
-            </SectionCard>
-          )}
-
-          {/* TAB 5: Carrier & Routing */}
-          {activeTab === 'branding' && (
-            <SectionCard
-              title={lang === 'ar' ? 'تكوين توجيه الناقل المزدوج' : 'Dual Carrier Routing Configuration'}
-              subtitle={lang === 'ar' ? 'شركاء النقل الافتراضيون والافتراضيات لطبقة الخدمة' : 'Default carrier partners and service tier defaults'}
-              action={
-                isAdmin && (
-                  <button
-                    type="button"
-                    onClick={handleSaveSystemSettings}
-                    disabled={savingSettings}
-                    style={{
-                      padding: '9px 18px', borderRadius: 10, border: 'none',
-                      background: TK.primary, color: '#fff', fontWeight: 700, fontSize: 12.5, cursor: 'pointer'
-                    }}
-                  >
-                    {savingSettings ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? 'حفظ القواعد' : 'Save Rules')}
-                  </button>
-                )
-              }
-            >
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div style={{ padding: '14px', background: '#f8fafc', borderRadius: 12, border: `1px solid ${TK.border}` }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: TK.text1, marginBottom: 4 }}>{lang === 'ar' ? 'شريك الشحن السريع الأساسي: دي إتش إل إكسبرس العالمية' : 'Primary Express Partner: DHL Express Global'}</div>
-                  <div style={{ fontSize: 12, color: TK.text2 }}>{lang === 'ar' ? 'تكامل مباشر مع واجهات برمجة تطبيقات DHL Express XML/REST للشحن الجوي العالمي.' : 'Direct integration with DHL Express XML/REST APIs for worldwide air cargo.'}</div>
+            <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
+              <div className="card-body p-6 sm:p-8 space-y-6">
+                <div>
+                  <h2 className="text-lg font-black text-base-content tracking-tight">
+                    Automated Event Notification Triggers
+                  </h2>
+                  <p className="text-xs text-base-content/60 mt-0.5">
+                    Configure customer alerting rules across SMS, Email, and WhatsApp channels.
+                  </p>
                 </div>
 
-                <div style={{ padding: '14px', background: '#f8fafc', borderRadius: 12, border: `1px solid ${TK.border}` }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: TK.text1, marginBottom: 4 }}>{lang === 'ar' ? 'الشريك البري الإقليمي: لوجستيكس دول مجلس التعاون' : 'Regional Overland Partner: LogesTechs GCC'}</div>
-                  <div style={{ fontSize: 12, color: TK.text2 }}>{lang === 'ar' ? 'التوجيه البري عبر الحدود في الكويت والسعودية والبحرين والإمارات وعمان.' : 'Overland border routing across Kuwait, Saudi Arabia, Bahrain, UAE, and Oman.'}</div>
+                <div className="divide-y divide-base-200 space-y-3">
+                  <div className="flex items-center justify-between pt-3">
+                    <div>
+                      <div className="font-bold text-sm text-base-content">Manifest Created (Email)</div>
+                      <div className="text-xs text-base-content/60">Send PDF waybill receipt upon dispatch creation.</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={notifs.email_ship}
+                      onChange={(e) => setNotifs({ ...notifs, email_ship: e.target.checked })}
+                      className="toggle toggle-primary"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between pt-3">
+                    <div>
+                      <div className="font-bold text-sm text-base-content">Proof of Delivery Captured (Email)</div>
+                      <div className="text-xs text-base-content/60">Send delivery timestamp and signature POD receipt to shipper.</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={notifs.email_del}
+                      onChange={(e) => setNotifs({ ...notifs, email_del: e.target.checked })}
+                      className="toggle toggle-primary"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between pt-3">
+                    <div>
+                      <div className="font-bold text-sm text-base-content">WhatsApp Live Radar Dispatch</div>
+                      <div className="text-xs text-base-content/60">Send tracking web link to recipient mobile upon driver pickup.</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={notifs.whatsapp_tracking}
+                      onChange={(e) => setNotifs({ ...notifs, whatsapp_tracking: e.target.checked })}
+                      className="toggle toggle-primary"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between pt-3">
+                    <div>
+                      <div className="font-bold text-sm text-base-content">Customs & Border Hold Alerts (SMS)</div>
+                      <div className="text-xs text-base-content/60">Immediate alert if consignment is held at border checkpoints.</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={notifs.sms_exception}
+                      onChange={(e) => setNotifs({ ...notifs, sms_exception: e.target.checked })}
+                      className="toggle toggle-primary"
+                    />
+                  </div>
                 </div>
               </div>
-            </SectionCard>
+            </div>
           )}
 
-          {/* TAB 6: Security */}
+          {/* TAB 6: Carrier Gateways */}
+          {activeTab === 'routing' && (
+            <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
+              <div className="card-body p-6 sm:p-8 space-y-6">
+                <div>
+                  <h2 className="text-lg font-black text-base-content tracking-tight">
+                    Active Multi-Carrier Gateways
+                  </h2>
+                  <p className="text-xs text-base-content/60 mt-0.5">
+                    Authorized transport backbones connected to the Target Logistics Global operating network.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="p-4 rounded-xl bg-base-200/50 border border-base-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-black text-sm text-base-content">DHL Express Global</span>
+                      <span className="badge badge-success badge-sm font-bold">API Online</span>
+                    </div>
+                    <p className="text-xs text-base-content/60 leading-relaxed">
+                      Worldwide priority airfreight, Dangerous Goods (DGR), and European bonded customs clearance.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-base-200/50 border border-base-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-black text-sm text-base-content">LogesTechs GCC Corridor</span>
+                      <span className="badge badge-success badge-sm font-bold">Active Linehaul</span>
+                    </div>
+                    <p className="text-xs text-base-content/60 leading-relaxed">
+                      Cross-border overland linehaul between Kuwait, Saudi Arabia, UAE, Bahrain, and Oman.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-base-200/50 border border-base-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-black text-sm text-base-content">Target Direct Courier Fleet</span>
+                      <span className="badge badge-primary badge-sm font-bold">Internal Ops</span>
+                    </div>
+                    <p className="text-xs text-base-content/60 leading-relaxed">
+                      Same-day courier dispatch across all 6 Kuwait Governorates with digital mobile POD.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-base-200/50 border border-base-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-black text-sm text-base-content">OTE Overland Express</span>
+                      <span className="badge badge-info badge-sm font-bold">Regional Freight</span>
+                    </div>
+                    <p className="text-xs text-base-content/60 leading-relaxed">
+                      Heavy parcel, palletized freight, and scheduled regional cargo trailers.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 7: Security & Access */}
           {activeTab === 'security' && (
-            <SectionCard title={lang === 'ar' ? 'الأمان والمصادقة' : 'Security & Authentication'} subtitle={lang === 'ar' ? 'إدارة بيانات اعتماد كلمة المرور وعناصر التحكم في الجلسة النشطة' : 'Manage password credentials and active session controls'}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <WInput label={lang === 'ar' ? 'كلمة المرور الحالية' : 'Current Password'} type="password" placeholder="••••••••" half />
-                <WInput label={lang === 'ar' ? 'كلمة المرور الجديدة' : 'New Password'} type="password" placeholder="••••••••" half />
-                <button
-                  type="button"
-                  style={{
-                    alignSelf: 'flex-start', padding: '10px 20px', borderRadius: 10, border: 'none',
-                    background: TK.primary, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', marginTop: 8
-                  }}
-                >
-                  {lang === 'ar' ? 'تحديث كلمة المرور' : 'Update Password'}
-                </button>
+            <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
+              <div className="card-body p-6 sm:p-8 space-y-6">
+                <div>
+                  <h2 className="text-lg font-black text-base-content tracking-tight">
+                    Security Credentials & Password
+                  </h2>
+                  <p className="text-xs text-base-content/60 mt-0.5">
+                    Update your account credentials and maintain secure platform access.
+                  </p>
+                </div>
+
+                <form onSubmit={handlePasswordChange} className="max-w-md space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-base-content/70 uppercase">Current Password *</label>
+                    <input
+                      type="password"
+                      value={passwords.current}
+                      onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
+                      placeholder="••••••••"
+                      className="input input-bordered w-full text-sm focus:input-primary"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-base-content/70 uppercase">New Password *</label>
+                    <input
+                      type="password"
+                      value={passwords.newPass}
+                      onChange={(e) => setPasswords({ ...passwords, newPass: e.target.value })}
+                      placeholder="Minimum 8 characters"
+                      className="input input-bordered w-full text-sm focus:input-primary"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-base-content/70 uppercase">Confirm New Password *</label>
+                    <input
+                      type="password"
+                      value={passwords.confirm}
+                      onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
+                      placeholder="••••••••"
+                      className="input input-bordered w-full text-sm focus:input-primary"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={savingPassword || !passwords.newPass}
+                    className="btn btn-primary font-bold text-xs shadow-md shadow-primary/20 gap-2"
+                  >
+                    {savingPassword ? <span className="loading loading-spinner loading-xs" /> : <span className="material-symbols-outlined text-base">lock_reset</span>}
+                    <span>Update Password</span>
+                  </button>
+                </form>
               </div>
-            </SectionCard>
+            </div>
           )}
         </div>
       </div>
+
+      {/* Add Address Modal */}
+      {showAddressModal && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-lg p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-base-200">
+              <h3 className="font-black text-base text-base-content">Add Address Preset</h3>
+              <button
+                type="button"
+                onClick={() => setShowAddressModal(false)}
+                className="btn btn-ghost btn-circle btn-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveAddress} className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-base-content/70 uppercase">Preset Label *</label>
+                  <input
+                    type="text"
+                    value={newAddr.label}
+                    onChange={(e) => setNewAddr({ ...newAddr, label: e.target.value })}
+                    placeholder="e.g. Shuwaikh Warehouse"
+                    className="input input-bordered input-sm w-full"
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-base-content/70 uppercase">Contact Person *</label>
+                  <input
+                    type="text"
+                    value={newAddr.contactPerson}
+                    onChange={(e) => setNewAddr({ ...newAddr, contactPerson: e.target.value })}
+                    placeholder="Full Name"
+                    className="input input-bordered input-sm w-full"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-base-content/70 uppercase">Phone Number</label>
+                  <input
+                    type="text"
+                    value={newAddr.phone}
+                    onChange={(e) => setNewAddr({ ...newAddr, phone: e.target.value })}
+                    placeholder="+965 ..."
+                    className="input input-bordered input-sm w-full font-mono"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-base-content/70 uppercase">Governorate</label>
+                  <input
+                    type="text"
+                    value={newAddr.state}
+                    onChange={(e) => setNewAddr({ ...newAddr, state: e.target.value })}
+                    placeholder="Capital, Hawalli..."
+                    className="input input-bordered input-sm w-full"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-base-content/70 uppercase">Street Address / Block</label>
+                <input
+                  type="text"
+                  value={newAddr.streetLines[0]}
+                  onChange={(e) => setNewAddr({ ...newAddr, streetLines: [e.target.value] })}
+                  placeholder="Block, Street, Building"
+                  className="input input-bordered input-sm w-full"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-base-content/70 uppercase">City / Area</label>
+                  <input
+                    type="text"
+                    value={newAddr.city}
+                    onChange={(e) => setNewAddr({ ...newAddr, city: e.target.value })}
+                    className="input input-bordered input-sm w-full"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-base-content/70 uppercase">Country</label>
+                  <select
+                    value={newAddr.countryCode}
+                    onChange={(e) => setNewAddr({ ...newAddr, countryCode: e.target.value })}
+                    className="select select-bordered select-sm w-full"
+                  >
+                    <option value="KW">Kuwait 🇰🇼</option>
+                    <option value="SA">Saudi Arabia 🇸🇦</option>
+                    <option value="AE">UAE 🇦🇪</option>
+                    <option value="BH">Bahrain 🇧🇭</option>
+                    <option value="QA">Qatar 🇶🇦</option>
+                    <option value="OM">Oman 🇴🇲</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="modal-action pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddressModal(false)}
+                  className="btn btn-ghost btn-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingAddr}
+                  className="btn btn-primary btn-sm font-bold"
+                >
+                  {savingAddr ? 'Saving...' : 'Save Preset'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Webhook Modal */}
+      {showAddWebhookModal && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-lg p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-base-200">
+              <h3 className="font-black text-base text-base-content">Register Webhook Endpoint</h3>
+              <button
+                type="button"
+                onClick={() => setShowAddWebhookModal(false)}
+                className="btn btn-ghost btn-circle btn-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateWebhook} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-base-content/70 uppercase">Destination URL *</label>
+                <input
+                  type="url"
+                  value={newWebhookUrl}
+                  onChange={(e) => setNewWebhookUrl(e.target.value)}
+                  placeholder="https://api.yourdomain.com/webhooks/shipments"
+                  className="input input-bordered input-sm w-full font-mono"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-base-content/70 uppercase">Signing Secret (Optional)</label>
+                <input
+                  type="text"
+                  value={newWebhookSecret}
+                  onChange={(e) => setNewWebhookSecret(e.target.value)}
+                  placeholder="Leave empty to auto-generate secure 24-byte hex"
+                  className="input input-bordered input-sm w-full font-mono"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-base-content/70 uppercase">Subscribed Events</label>
+                <div className="space-y-1.5 max-h-40 overflow-y-auto p-2 border border-base-200 rounded-lg bg-base-200/30">
+                  {[
+                    { id: 'shipment.created', label: 'shipment.created (Consignment booking)' },
+                    { id: 'shipment.status_updated', label: 'shipment.status_updated (Milestone transitions)' },
+                    { id: 'shipment.delivered', label: 'shipment.delivered (POD capture)' },
+                    { id: 'shipment.booked', label: 'shipment.booked (Carrier AWB issued)' },
+                    { id: '*', label: '* (All platform events)' },
+                  ].map((ev) => {
+                    const isChecked = newWebhookEvents.includes(ev.id);
+                    return (
+                      <label key={ev.id} className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {
+                            if (isChecked) {
+                              setNewWebhookEvents(newWebhookEvents.filter((x) => x !== ev.id));
+                            } else {
+                              setNewWebhookEvents([...newWebhookEvents, ev.id]);
+                            }
+                          }}
+                          className="checkbox checkbox-primary checkbox-xs"
+                        />
+                        <span>{ev.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="modal-action pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddWebhookModal(false)}
+                  className="btn btn-ghost btn-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingWebhook}
+                  className="btn btn-primary btn-sm font-bold"
+                >
+                  {creatingWebhook ? 'Registering...' : 'Register Endpoint'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default SettingsPage;
-

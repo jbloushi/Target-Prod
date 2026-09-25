@@ -1,358 +1,479 @@
 import React, { useCallback, useState, useEffect, useMemo } from 'react';
-import styled from 'styled-components';
 import { useSnackbar } from 'notistack';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { userService } from '../services/api';
-import { TK } from '../tokens/kineticHorizon';
-import { PageHeader, Button, Card, Modal, WInput } from '../ui';
-import AddressPanel from '../components/AddressPanel';
+import PageHeader from '../components/common/PageHeader';
 
-// --- Styled Components with Kinetic Horizon Tokens ---
-const TableWrapper = styled.div`
-  width: 100%;
-  overflow-x: auto;
-  background: #ffffff;
-  border-radius: 20px;
-  border: 1px solid ${TK.border};
-  box-shadow: 0 4px 20px rgba(0,0,0,0.05);
-`;
+export const AddressBookPage = () => {
+  const { user, refreshUser } = useAuth();
+  const userId = user?._id || user?.id;
+  const userRole = user?.role;
+  const userAddresses = user?.addresses;
+  const { enqueueSnackbar } = useSnackbar();
+  const { lang } = useLanguage();
 
-const StyledTable = styled.table`
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  
-  th {
-    text-align: left;
-    padding: 14px 18px;
-    font-size: 11.5px;
-    font-weight: 700;
-    color: ${TK.text2};
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    border-bottom: 1px solid ${TK.border};
-    background: #f8fafc;
-  }
+  const [allAddresses, setAllAddresses] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [openModal, setOpenModal] = useState(false);
+  const [editingAddress, setEditingAddress] = useState(null);
+  const [editingUser, setEditingUser] = useState(null);
+  const [saving, setSaving] = useState(false);
 
-  th:first-child { border-radius: 20px 0 0 0; }
-  th:last-child { border-radius: 0 20px 0 0; }
+  const isStaff = ['admin', 'staff', 'manager'].includes(userRole);
 
-  td {
-    padding: 16px 18px;
-    border-bottom: 1px solid ${TK.border};
-    font-size: 13.5px;
-    color: ${TK.text1};
-    background: #ffffff;
-  }
-
-  tbody tr:last-child td:first-child { border-radius: 0 0 0 20px; }
-  tbody tr:last-child td:last-child { border-radius: 0 0 20px 0; }
-
-  tbody tr {
-    transition: all 0.15s ease;
-    &:hover td {
-      background: #f8fafc;
-    }
-  }
-`;
-
-const ActionButton = styled.button`
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    color: ${props => props.$color || TK.text2};
-    padding: 6px;
-    border-radius: 8px;
-    transition: all 0.15s;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    &:hover { background: #f3f4f6; color: ${TK.text1}; }
-`;
-
-const SearchContainer = styled.div`
-    background: #ffffff;
-    border: 1px solid ${TK.border};
-    border-radius: 20px;
-    padding: 16px 20px;
-    margin-bottom: 24px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.05);
-`;
-
-const AddressBookPage = () => {
-    const { user, refreshUser } = useAuth();
-    const userId = user?._id || user?.id;
-    const userRole = user?.role;
-    const userAddresses = user?.addresses;
-    const { enqueueSnackbar } = useSnackbar();
-    const [allAddresses, setAllAddresses] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [openDialog, setOpenDialog] = useState(false);
-    const [editingAddress, setEditingAddress] = useState(null);
-    const [editingUser, setEditingUser] = useState(null);
-
-    const isStaff = ['admin', 'staff'].includes(userRole);
-
-    const fetchAddresses = useCallback(async () => {
-        setLoading(true);
-        try {
-            let addresses = [];
-            if (isStaff) {
-                const res = await userService.getUsers();
-                addresses = res.data.flatMap(u =>
-                    (u.addresses || []).map(addr => ({
-                        ...addr,
-                        _ownerId: u._id,
-                        _ownerName: u.name,
-                        _ownerEmail: u.email,
-                        _orgName: u.organization?.name || 'Personal'
-                    }))
-                );
-            } else {
-                await refreshUser();
-                addresses = (userAddresses || []).map(addr => ({
-                    ...addr,
-                    _ownerId: userId,
-                    _ownerName: 'Me'
-                }));
-            }
-            setAllAddresses(addresses);
-        } catch (error) {
-            console.error('Failed to fetch addresses:', error);
-            enqueueSnackbar('Failed to load address book', { variant: 'error' });
-        } finally {
-            setLoading(false);
-        }
-    }, [enqueueSnackbar, isStaff, refreshUser, userAddresses, userId]);
-
-    useEffect(() => {
-        if (userId) fetchAddresses();
-    }, [fetchAddresses, userId]);
-
-    const filteredAddresses = useMemo(() => {
-        if (!searchQuery) return allAddresses;
-        const lowerQ = searchQuery.toLowerCase();
-        return allAddresses.filter(addr =>
-            (addr.label || '').toLowerCase().includes(lowerQ) ||
-            (addr.company || '').toLowerCase().includes(lowerQ) ||
-            (addr.contactPerson || '').toLowerCase().includes(lowerQ) ||
-            (addr.city || '').toLowerCase().includes(lowerQ) ||
-            (addr._ownerName || '').toLowerCase().includes(lowerQ)
+  const fetchAddresses = useCallback(async () => {
+    setLoading(true);
+    try {
+      let addresses = [];
+      if (isStaff) {
+        const res = await userService.getUsers();
+        addresses = (res.data || []).flatMap((u) =>
+          (u.addresses || []).map((addr) => ({
+            ...addr,
+            _ownerId: u._id,
+            _ownerName: u.name,
+            _ownerEmail: u.email,
+            _orgName: u.organization?.name || 'Personal',
+          }))
         );
-    }, [allAddresses, searchQuery]);
+      } else {
+        await refreshUser();
+        addresses = (userAddresses || []).map((addr) => ({
+          ...addr,
+          _ownerId: userId,
+          _ownerName: 'Me',
+        }));
+      }
+      setAllAddresses(addresses);
+    } catch (error) {
+      console.error('Failed to fetch addresses:', error);
+      enqueueSnackbar('Failed to load address book', { variant: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  }, [enqueueSnackbar, isStaff, refreshUser, userAddresses, userId]);
 
-    const handleOpenDialog = (address = null) => {
-        if (address) {
-            setEditingAddress(address);
-            setEditingUser({ _id: address._ownerId });
-        } else {
-            setEditingAddress({ countryCode: 'KW', phoneCountryCode: '+965' });
-            setEditingUser({ _id: user._id });
-        }
-        setOpenDialog(true);
-    };
+  useEffect(() => {
+    if (userId) fetchAddresses();
+  }, [fetchAddresses, userId]);
 
-    const handleSave = async (addressData) => {
-        try {
-            // Logic same as previous implementation
-            const usersRes = await userService.getUsers();
-            const targetUser = usersRes.data.find(u => u._id === editingUser._id);
-
-            if (!targetUser) {
-                enqueueSnackbar('User not found. Cannot save address.', { variant: 'error' });
-                return;
-            }
-
-            let updatedAddresses = [...(targetUser.addresses || [])];
-
-            if (addressData._id) {
-                updatedAddresses = updatedAddresses.map(a =>
-                    a._id === addressData._id ? { ...addressData } : a
-                );
-            } else {
-                const { _ownerId, _ownerName, _ownerEmail, _orgName, ...cleanAddress } = addressData;
-                updatedAddresses.push(cleanAddress);
-            }
-
-            // Cleanup metadata
-            updatedAddresses = updatedAddresses.map(({ _ownerId, _ownerName, _ownerEmail, _orgName, ...rest }) => rest);
-
-            await userService.updateUser(targetUser._id, { addresses: updatedAddresses });
-
-            enqueueSnackbar('Address saved successfully', { variant: 'success' });
-            setOpenDialog(false);
-            fetchAddresses();
-            if (targetUser._id === user._id) refreshUser();
-
-        } catch (error) {
-            console.error('Save failed:', error);
-            enqueueSnackbar('Failed to save address', { variant: 'error' });
-        }
-    };
-
-    const handleDelete = async (address) => {
-        if (!window.confirm(`Are you sure you want to delete "${address.label || 'this address'}"?`)) return;
-
-        try {
-            const usersRes = await userService.getUsers();
-            const targetUser = usersRes.data.find(u => u._id === address._ownerId);
-
-            if (!targetUser) {
-                enqueueSnackbar('User not found.', { variant: 'error' });
-                return;
-            }
-
-            const updatedAddresses = (targetUser.addresses || []).filter(a => a._id !== address._id);
-
-            await userService.updateUser(targetUser._id, { addresses: updatedAddresses });
-
-            enqueueSnackbar('Address deleted', { variant: 'success' });
-            fetchAddresses();
-            if (targetUser._id === user._id) refreshUser();
-
-        } catch (error) {
-            console.error('Delete failed:', error);
-            enqueueSnackbar('Failed to delete address', { variant: 'error' });
-        }
-    };
-
-    return (
-        <div>
-            <PageHeader
-                title="Address Book"
-                description={isStaff ? "Manage all addresses across the system." : "Manage your saved addresses."}
-                action={
-                    <Button
-                        variant="primary"
-                        icon={
-                            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                            </svg>
-                        }
-                        onClick={() => handleOpenDialog()}
-                    >
-                        Add New Address
-                    </Button>
-                }
-                secondaryAction={
-                    <Button variant="secondary" onClick={fetchAddresses}>
-                        Refresh
-                    </Button>
-                }
-            />
-
-            <SearchContainer>
-                <div style={{ position: 'relative' }}>
-                    <svg
-                        style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}
-                        width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                    >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                    <input
-                        type="text"
-                        placeholder="Search by label, company, contact, or user..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        style={{
-                            width: '100%',
-                            padding: '12px 16px 12px 44px',
-                            background: 'var(--bg-tertiary)',
-                            border: '1px solid var(--border-color)',
-                            borderRadius: '8px',
-                            color: 'var(--text-primary)',
-                            fontSize: '14px'
-                        }}
-                    />
-                </div>
-            </SearchContainer>
-
-            <Card>
-                <TableWrapper>
-                    <StyledTable>
-                        <thead>
-                            <tr>
-                                <th>Label / Company</th>
-                                <th>Location</th>
-                                <th>Contact Info</th>
-                                {isStaff && <th>Owner</th>}
-                                <th style={{ textAlign: 'center' }}>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {loading ? (
-                                <tr><td colSpan={isStaff ? 5 : 4} style={{ textAlign: 'center' }}>Loading...</td></tr>
-                            ) : filteredAddresses.map((addr, index) => (
-                                <tr key={addr._id || index}>
-                                    <td>
-                                        <div style={{ fontWeight: 'bold' }}>{addr.label || 'No Label'}</div>
-                                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{addr.company}</div>
-                                    </td>
-                                    <td>
-                                        <div>{addr.city}, {addr.countryCode}</div>
-                                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{addr.streetLines?.[0]}</div>
-                                    </td>
-                                    <td>
-                                        <div>{addr.contactPerson}</div>
-                                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{addr.phone}</div>
-                                    </td>
-                                    {isStaff && (
-                                        <td>
-                                            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{addr._ownerName}</span>
-                                        </td>
-                                    )}
-                                    <td style={{ textAlign: 'center' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
-                                            <ActionButton $color="var(--accent-warning)" onClick={() => handleOpenDialog(addr)}>
-                                                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                                </svg>
-                                            </ActionButton>
-                                            <ActionButton $color="var(--accent-error)" onClick={() => handleDelete(addr)}>
-                                                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                </svg>
-                                            </ActionButton>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                            {!loading && filteredAddresses.length === 0 && (
-                                <tr>
-                                    <td colSpan={isStaff ? 5 : 4} style={{ textAlign: 'center', padding: '40px' }}>
-                                        <div style={{ color: 'var(--text-secondary)' }}>No addresses found.</div>
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </StyledTable>
-                </TableWrapper>
-            </Card>
-
-            <Modal
-                isOpen={openDialog}
-                onClose={() => setOpenDialog(false)}
-                title={editingAddress?._id ? 'Edit Address' : 'Add New Address'}
-                width="800px"
-                footer={
-                    <>
-                        <Button variant="secondary" onClick={() => setOpenDialog(false)}>Cancel</Button>
-                        <Button variant="primary" onClick={() => handleSave(editingAddress)}>Save Address</Button>
-                    </>
-                }
-            >
-                <div style={{ padding: '0 8px' }}>
-                    <AddressPanel
-                        titleOverride="" // No title inside modal
-                        value={editingAddress || {}}
-                        onChange={setEditingAddress}
-                    />
-                </div>
-            </Modal>
-        </div>
+  const filteredAddresses = useMemo(() => {
+    if (!searchQuery) return allAddresses;
+    const lowerQ = searchQuery.toLowerCase();
+    return allAddresses.filter(
+      (addr) =>
+        (addr.label || '').toLowerCase().includes(lowerQ) ||
+        (addr.company || '').toLowerCase().includes(lowerQ) ||
+        (addr.contactPerson || '').toLowerCase().includes(lowerQ) ||
+        (addr.city || '').toLowerCase().includes(lowerQ) ||
+        (addr._ownerName || '').toLowerCase().includes(lowerQ)
     );
+  }, [allAddresses, searchQuery]);
+
+  const handleOpenModal = (address = null) => {
+    if (address) {
+      setEditingAddress({
+        ...address,
+        streetLines: address.streetLines || [address.address || ''],
+      });
+      setEditingUser({ _id: address._ownerId });
+    } else {
+      setEditingAddress({
+        label: '',
+        contactPerson: '',
+        company: '',
+        phone: '',
+        email: '',
+        city: 'Kuwait City',
+        state: 'Capital',
+        streetLines: [''],
+        buildingName: '',
+        unitNumber: '',
+        postalCode: '',
+        countryCode: 'KW',
+      });
+      setEditingUser({ _id: user._id });
+    }
+    setOpenModal(true);
+  };
+
+  const handleSave = async (e) => {
+    if (e) e.preventDefault();
+    if (!editingAddress.label || !editingAddress.contactPerson) {
+      enqueueSnackbar('Label and contact person are required', { variant: 'warning' });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const usersRes = await userService.getUsers();
+      const targetUser = (usersRes.data || []).find((u) => u._id === editingUser._id);
+
+      if (!targetUser) {
+        enqueueSnackbar('User not found. Cannot save address.', { variant: 'error' });
+        return;
+      }
+
+      let updatedAddresses = [...(targetUser.addresses || [])];
+
+      if (editingAddress._id) {
+        updatedAddresses = updatedAddresses.map((a) =>
+          a._id === editingAddress._id ? { ...editingAddress } : a
+        );
+      } else {
+        const { _ownerId, _ownerName, _ownerEmail, _orgName, ...cleanAddress } = editingAddress;
+        updatedAddresses.push({ ...cleanAddress, _id: `addr_${Date.now()}` });
+      }
+
+      // Cleanup metadata before sending
+      updatedAddresses = updatedAddresses.map(({ _ownerId, _ownerName, _ownerEmail, _orgName, ...rest }) => rest);
+
+      await userService.updateUser(targetUser._id, { addresses: updatedAddresses });
+      enqueueSnackbar('Address saved successfully', { variant: 'success' });
+      setOpenModal(false);
+      fetchAddresses();
+      if (targetUser._id === user._id) refreshUser();
+    } catch (error) {
+      console.error('Save failed:', error);
+      enqueueSnackbar('Failed to save address', { variant: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (address) => {
+    if (!window.confirm(`Are you sure you want to delete "${address.label || 'this address'}"?`)) return;
+
+    try {
+      const usersRes = await userService.getUsers();
+      const targetUser = (usersRes.data || []).find((u) => u._id === address._ownerId);
+
+      if (!targetUser) {
+        enqueueSnackbar('User not found.', { variant: 'error' });
+        return;
+      }
+
+      const updatedAddresses = (targetUser.addresses || []).filter((a) => a._id !== address._id);
+      await userService.updateUser(targetUser._id, { addresses: updatedAddresses });
+
+      enqueueSnackbar('Address deleted', { variant: 'success' });
+      fetchAddresses();
+      if (targetUser._id === user._id) refreshUser();
+    } catch (error) {
+      console.error('Delete failed:', error);
+      enqueueSnackbar('Failed to delete address', { variant: 'error' });
+    }
+  };
+
+  return (
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+      {/* Header */}
+      <PageHeader
+        title={lang === 'ar' ? 'سجل العناوين المركزي' : 'Address Registry & Hub Directory'}
+        subtitle={
+          isStaff
+            ? 'Manage all shipper and consignee addresses across the enterprise logistics network.'
+            : 'Manage saved pickup warehouses, corporate offices, and client delivery locations.'
+        }
+      >
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={fetchAddresses}
+            className="btn btn-outline border-base-300 btn-sm font-bold text-xs gap-1"
+          >
+            <span className="material-symbols-outlined text-base">refresh</span>
+            <span>Refresh</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleOpenModal()}
+            className="btn btn-primary btn-sm font-bold text-xs gap-1.5 shadow-md shadow-primary/20"
+          >
+            <span className="material-symbols-outlined text-base">add_location_alt</span>
+            <span>Add New Address</span>
+          </button>
+        </div>
+      </PageHeader>
+
+      {/* Search & Filter Bar */}
+      <div className="card bg-base-100 border border-base-200 shadow-sm p-4">
+        <div className="flex flex-col sm:flex-row items-center gap-3">
+          <div className="relative flex-1 w-full">
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-base-content/40 text-lg pointer-events-none">
+              search
+            </span>
+            <input
+              type="text"
+              placeholder="Search by label, company, contact person, city, or owner..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="input input-bordered input-sm w-full pl-9 pr-8 text-xs focus:input-primary"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="btn btn-ghost btn-circle btn-xs absolute right-2 top-1/2 -translate-y-1/2 text-base-content/40"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          <div className="text-xs font-bold text-base-content/60 shrink-0">
+            Total Locations: <span className="font-mono text-primary font-black">{filteredAddresses.length}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Addresses Table Card */}
+      <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="table table-zebra table-sm w-full">
+            <thead>
+              <tr className="bg-base-200/50 text-base-content/70">
+                <th>Label / Company</th>
+                <th>Location & Area</th>
+                <th>Contact Details</th>
+                {isStaff && <th>Account Owner</th>}
+                <th className="text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={isStaff ? 5 : 4} className="text-center py-12">
+                    <span className="loading loading-spinner loading-md text-primary" />
+                    <p className="text-xs text-base-content/60 mt-2">Loading addresses...</p>
+                  </td>
+                </tr>
+              ) : filteredAddresses.length === 0 ? (
+                <tr>
+                  <td colSpan={isStaff ? 5 : 4} className="text-center py-12">
+                    <span className="material-symbols-outlined text-4xl text-base-content/30 mb-2">location_off</span>
+                    <p className="font-bold text-sm text-base-content">No Addresses Found</p>
+                    <p className="text-xs text-base-content/50 mt-1">
+                      {searchQuery ? 'Try clearing your search query.' : 'Add your first warehouse or recipient preset.'}
+                    </p>
+                  </td>
+                </tr>
+              ) : (
+                filteredAddresses.map((addr, index) => (
+                  <tr key={addr._id || index} className="hover">
+                    <td>
+                      <div className="font-bold text-sm text-base-content">{addr.label || 'Saved Location'}</div>
+                      <div className="text-xs text-base-content/60">{addr.company || '—'}</div>
+                    </td>
+                    <td>
+                      <div className="font-semibold text-xs text-base-content">
+                        {addr.city}, {addr.state || ''}
+                      </div>
+                      <div className="text-[11px] text-base-content/60">
+                        {addr.streetLines?.[0] || addr.address || ''} {addr.buildingName && `(${addr.buildingName})`}
+                      </div>
+                    </td>
+                    <td>
+                      <div className="font-medium text-xs text-base-content">{addr.contactPerson}</div>
+                      <div className="text-[11px] font-mono text-base-content/60">{addr.phone || addr.email || '—'}</div>
+                    </td>
+                    {isStaff && (
+                      <td>
+                        <span className="badge badge-sm badge-neutral font-medium text-[11px]">
+                          {addr._ownerName || 'Staff'}
+                        </span>
+                        {addr._orgName && addr._orgName !== 'Personal' && (
+                          <span className="block text-[10px] text-base-content/50 mt-0.5">{addr._orgName}</span>
+                        )}
+                      </td>
+                    )}
+                    <td className="text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenModal(addr)}
+                          className="btn btn-ghost btn-xs btn-circle text-primary"
+                          title="Edit Address"
+                        >
+                          <span className="material-symbols-outlined text-sm">edit</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(addr)}
+                          className="btn btn-ghost btn-xs btn-circle text-error"
+                          title="Delete Address"
+                        >
+                          <span className="material-symbols-outlined text-sm">delete</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Add / Edit Address Modal */}
+      {openModal && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-xl p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-base-200">
+              <h3 className="font-black text-base text-base-content">
+                {editingAddress?._id ? 'Edit Address Preset' : 'Add New Address Preset'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setOpenModal(false)}
+                className="btn btn-ghost btn-circle btn-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSave} className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-base-content/70 uppercase">Preset Label *</label>
+                  <input
+                    type="text"
+                    value={editingAddress.label || ''}
+                    onChange={(e) => setEditingAddress({ ...editingAddress, label: e.target.value })}
+                    placeholder="e.g. Shuwaikh Central Warehouse"
+                    className="input input-bordered input-sm w-full"
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-base-content/70 uppercase">Company Name</label>
+                  <input
+                    type="text"
+                    value={editingAddress.company || ''}
+                    onChange={(e) => setEditingAddress({ ...editingAddress, company: e.target.value })}
+                    placeholder="Company or Trading Name"
+                    className="input input-bordered input-sm w-full"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-base-content/70 uppercase">Contact Person *</label>
+                  <input
+                    type="text"
+                    value={editingAddress.contactPerson || ''}
+                    onChange={(e) => setEditingAddress({ ...editingAddress, contactPerson: e.target.value })}
+                    placeholder="Full Contact Name"
+                    className="input input-bordered input-sm w-full"
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-base-content/70 uppercase">Phone Number</label>
+                  <input
+                    type="text"
+                    value={editingAddress.phone || ''}
+                    onChange={(e) => setEditingAddress({ ...editingAddress, phone: e.target.value })}
+                    placeholder="+965 9000 0000"
+                    className="input input-bordered input-sm w-full font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-base-content/70 uppercase">Street Address / Block</label>
+                <input
+                  type="text"
+                  value={editingAddress.streetLines?.[0] || ''}
+                  onChange={(e) => setEditingAddress({ ...editingAddress, streetLines: [e.target.value] })}
+                  placeholder="Block 4, Street 12, Plot 89"
+                  className="input input-bordered input-sm w-full"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-base-content/70 uppercase">Building / PACI No</label>
+                  <input
+                    type="text"
+                    value={editingAddress.buildingName || ''}
+                    onChange={(e) => setEditingAddress({ ...editingAddress, buildingName: e.target.value })}
+                    placeholder="Tower name or PACI"
+                    className="input input-bordered input-sm w-full"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-base-content/70 uppercase">Unit / Floor</label>
+                  <input
+                    type="text"
+                    value={editingAddress.unitNumber || ''}
+                    onChange={(e) => setEditingAddress({ ...editingAddress, unitNumber: e.target.value })}
+                    placeholder="Floor 2, Apt 4"
+                    className="input input-bordered input-sm w-full"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-base-content/70 uppercase">City / Area</label>
+                  <input
+                    type="text"
+                    value={editingAddress.city || ''}
+                    onChange={(e) => setEditingAddress({ ...editingAddress, city: e.target.value })}
+                    className="input input-bordered input-sm w-full"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-base-content/70 uppercase">Governorate</label>
+                  <input
+                    type="text"
+                    value={editingAddress.state || ''}
+                    onChange={(e) => setEditingAddress({ ...editingAddress, state: e.target.value })}
+                    className="input input-bordered input-sm w-full"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-base-content/70 uppercase">Country</label>
+                  <select
+                    value={editingAddress.countryCode || 'KW'}
+                    onChange={(e) => setEditingAddress({ ...editingAddress, countryCode: e.target.value })}
+                    className="select select-bordered select-sm w-full"
+                  >
+                    <option value="KW">Kuwait 🇰🇼</option>
+                    <option value="SA">Saudi Arabia 🇸🇦</option>
+                    <option value="AE">UAE 🇦🇪</option>
+                    <option value="BH">Bahrain 🇧🇭</option>
+                    <option value="QA">Qatar 🇶🇦</option>
+                    <option value="OM">Oman 🇴🇲</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="modal-action pt-2">
+                <button
+                  type="button"
+                  onClick={() => setOpenModal(false)}
+                  className="btn btn-ghost btn-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="btn btn-primary btn-sm font-bold shadow-md shadow-primary/20"
+                >
+                  {saving ? 'Saving...' : 'Save Address'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default AddressBookPage;

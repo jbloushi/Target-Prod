@@ -1,36 +1,19 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useShipmentStats } from '../utils/useShipmentStats';
 import { useShipments } from '../utils/useShipments';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
-import { Loader } from '../ui';
-import { 
-  Box, 
-  Grid, 
-  Typography, 
-  Card, 
-  CardContent, 
-  Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  alpha,
-  useTheme,
-  Stack,
-  Avatar,
-  ButtonGroup,
-  Chip
-} from '@mui/material';
-import { TK, STATUS_CONFIG } from '../tokens/kineticHorizon';
+import { STATUS_CONFIG } from '../tokens/kineticHorizon';
+import { getRoleLabel } from '../utils/roleLabels';
+import { organizationService } from '../services/api';
 import VolumeBarChart from '../components/charts/VolumeBarChart';
-import VelocityProgressBar from '../components/charts/VelocityProgressBar';
+import StatusBadge from '../components/common/StatusBadge';
+import TradeRouteDisplay from '../components/common/TradeRouteDisplay';
+import ShipmentInspectorDrawer from '../components/common/ShipmentInspectorDrawer';
 
 /**
- * Animated Number Ticker Component
+ * Animated Number Counter
  */
 const AnimatedNumber = ({ value = 0, duration = 800 }) => {
     const [displayVal, setDisplayVal] = useState(0);
@@ -45,7 +28,6 @@ const AnimatedNumber = ({ value = 0, duration = 800 }) => {
         const step = (timestamp) => {
             if (!startTimestamp) startTimestamp = timestamp;
             const progress = Math.min((timestamp - startTimestamp) / duration, 1);
-            // Ease out cubic
             const easeProgress = 1 - Math.pow(1 - progress, 3);
             const current = Math.round(startValue + (targetValue - startValue) * easeProgress);
             setDisplayVal(current);
@@ -60,672 +42,798 @@ const AnimatedNumber = ({ value = 0, duration = 800 }) => {
 };
 
 /**
- * Target Logistics Global - Kinetic Horizon Dashboard
- * High-polish operational analytics cockpit with zero-dependency SVG charts and Kuwaiti Arabic bilingual support.
+ * Velocity Progress Indicator using DaisyUI
+ */
+const VelocityIndicator = ({ label, value, displayValue, target, targetLabel = 'Target', progressClass = 'progress-primary', icon = 'speed' }) => {
+    const pct = Math.min(100, Math.max(0, value));
+    return (
+        <div className="flex flex-col gap-1 w-full">
+            <div className="flex justify-between items-center text-xs">
+                <div className="flex items-center gap-1.5 font-bold text-base-content">
+                    <span className="material-symbols-outlined text-sm opacity-75">{icon}</span>
+                    <span>{label}</span>
+                </div>
+                <div className="flex items-baseline gap-1.5">
+                    <span className="font-extrabold text-sm text-base-content">{displayValue || `${value}%`}</span>
+                    {target && <span className="text-[10.5px] text-base-content/50 font-medium">({targetLabel}: {target})</span>}
+                </div>
+            </div>
+            <progress className={`progress ${progressClass} w-full h-2`} value={pct} max="100"></progress>
+        </div>
+    );
+};
+
+/**
+ * Target Logistics Global - Hybrid Operations & Client Management Cockpit
+ * Role-tailored: Superadmin, Target Owner, Target Accounting, Target Ops, & Client Accounts.
  */
 const DashboardPage = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
     const { t, lang } = useLanguage();
-    const theme = useTheme();
-    const isDark = theme.palette.mode === 'dark';
+    const isRTL = lang === 'ar';
     
-    // UI State for interactivity
-    const [hoveredCard, setHoveredCard] = useState(null);
-    const [timeframe, setTimeframe] = useState('weekly'); // 'weekly' | 'monthly'
-    const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'pending' | 'in_transit' | 'exception' | 'delivered'
-    
-    const { stats, loading: statsLoading } = useShipmentStats();
-    const { shipments: recentShipments, loading: recentLoading } = useShipments({ limit: 12 });
+    // User Role Hierarchy Analysis
+    const userRole = user?.role || 'staff';
+    const isSuperadmin = userRole === 'admin';
+    const isTargetOwner = userRole === 'manager';
+    const isTargetAccounting = userRole === 'accounting';
+    const isTargetManagement = ['admin', 'manager', 'accounting', 'staff'].includes(userRole);
+    const isClientUser = ['org_manager', 'org_agent', 'client'].includes(userRole);
 
-    const statsCards = [
-        { 
-            id: 'all',
-            label: t('dash_total_shipments', 'Total Shipments'), 
-            value: stats.total || 0, 
-            icon: <span className="material-symbols-outlined" style={{ fontSize: 22 }}>local_shipping</span>, 
-            color: TK.primary,
-            trend: '+12.5%',
-            trendIcon: <span className="material-symbols-outlined" style={{ fontSize: 16 }}>trending_up</span>,
-            isPositive: true,
-            description: t('dash_total_desc', 'Total active lifecycle')
-        },
-        { 
-            id: 'pending',
-            label: t('dash_pending_gate', 'Pending Gate'), 
-            value: stats.pending || 0, 
-            icon: <span className="material-symbols-outlined" style={{ fontSize: 22 }}>pending_actions</span>, 
-            color: TK.warning,
-            trend: t('stable', 'Stable'),
-            trendIcon: null,
-            isPositive: null,
-            description: t('dash_pending_desc', 'Awaiting manifest approval')
-        },
-        { 
-            id: 'in_transit',
-            label: t('dash_global_transit', 'Global Transit'), 
-            value: stats.inTransit || 0, 
-            icon: <span className="material-symbols-outlined" style={{ fontSize: 22 }}>public</span>, 
-            color: TK.info,
-            trend: '+4.2%',
-            trendIcon: <span className="material-symbols-outlined" style={{ fontSize: 16 }}>trending_up</span>,
-            isPositive: true,
-            description: t('dash_transit_desc', 'Cross-border movement')
-        },
-        { 
-            id: 'exception',
-            label: t('dash_exceptions', 'Critical Exceptions'), 
-            value: stats.exceptions || 0, 
-            icon: <span className="material-symbols-outlined" style={{ fontSize: 22 }}>warning</span>, 
-            color: TK.error,
-            trend: '-2.4%',
-            trendIcon: <span className="material-symbols-outlined" style={{ fontSize: 16 }}>trending_down</span>,
-            isPositive: true,
-            description: t('dash_exceptions_desc', 'Requires intervention')
-        },
-        { 
-            id: 'delivered',
-            label: t('dash_success_rate', 'Success Rate'), 
-            value: stats.delivered || 0, 
-            icon: <span className="material-symbols-outlined" style={{ fontSize: 22 }}>check_circle</span>, 
-            color: TK.success,
-            trend: '99.2%',
-            trendIcon: <span className="material-symbols-outlined" style={{ fontSize: 16 }}>speed</span>,
-            isPositive: true,
-            isPrimary: true,
-            description: t('dash_success_desc', 'Successfully delivered')
-        },
+    // Context & Perspective State
+    const [perspective, setPerspective] = useState(isClientUser ? 'client' : isTargetAccounting ? 'accounting' : 'target');
+    const [selectedOrgId, setSelectedOrgId] = useState('all');
+    const [organizations, setOrganizations] = useState([
+        { id: 'all', name: isRTL ? 'جميع الحسابات (نظرة شاملة)' : 'All Network Organizations', balance: 5118.842, creditLimit: 42000, activePkgs: 89 },
+        { id: 'b72fcb2e-4c0e-4b11-bca5-60c6930411e2', name: 'Gulf Apex Trading W.L.L.', balance: 1450.500, creditLimit: 5000, activePkgs: 34, contact: '+965 9988 1122' },
+        { id: '45a1debf-65bd-42ca-a535-d3d9ff08e3fa', name: 'Al-Sabah Medical & Pharma Logistics', balance: 3200.000, creditLimit: 10000, activePkgs: 26, contact: '+965 9771 4455' },
+        { id: '44496cf8-2eb5-43c9-9918-84045be9894c', name: 'Kuwait Ministry of Commerce', balance: 0.000, creditLimit: 25000, activePkgs: 18, contact: '+965 2244 5500' },
+        { id: '1521f1f0-6788-454c-883c-89e1e8922223', name: 'DGR Dangerous Goods Ltd', balance: 432.750, creditLimit: 2000, activePkgs: 11, contact: '+965 9660 3311' },
+    ]);
+
+    // Data filtering & inspection state
+    const [pipelineStage, setPipelineStage] = useState('all'); // 'all' | 'pending' | 'in_transit' | 'exception' | 'delivered'
+    const [timeframe, setTimeframe] = useState('weekly');
+    const [selectedShipment, setSelectedShipment] = useState(null); // Inspector drawer state
+    const [copiedWaybill, setCopiedWaybill] = useState(false);
+
+    // Fetch dynamic organizations from backend
+    useEffect(() => {
+        let isMounted = true;
+        organizationService.getOrganizations()
+            .then(res => {
+                const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+                if (list.length > 0 && isMounted) {
+                    const mapped = list.map(o => ({
+                        id: o.id,
+                        name: o.name,
+                        balance: Number(o.balance) || 0,
+                        creditLimit: Number(o.creditLimit) || 5000,
+                        activePkgs: Math.floor(Math.random() * 25) + 5,
+                        contact: o.billingWhatsappNumber || o.billingEmail || 'Kuwait'
+                    }));
+                    setOrganizations([
+                        { id: 'all', name: isRTL ? 'جميع الحسابات (نظرة شاملة)' : 'All Network Organizations', balance: 5118.842, creditLimit: 42000, activePkgs: 89 },
+                        ...mapped
+                    ]);
+                }
+            })
+            .catch(() => {
+                // Use default established organizations
+            });
+        return () => { isMounted = false; };
+    }, [isRTL]);
+
+    const activeOrg = useMemo(() => {
+        return organizations.find(o => o.id === selectedOrgId) || organizations[0];
+    }, [organizations, selectedOrgId]);
+
+    const { stats, loading: statsLoading } = useShipmentStats();
+    const { shipments: rawShipments, loading: recentLoading } = useShipments({ limit: 16 });
+
+    // Trade Lanes / Corridors Telemetry
+    const tradeCorridors = [
+        { id: 'kwi-ruh', name: 'Kuwait ⇄ Riyadh', nameAr: 'الكويت ⇄ الرياض', code: 'KWI ⇄ RUH', flag1: '🇰🇼', flag2: '🇸🇦', mode: 'Express Air', volume: 42, onTime: '99.1%', trend: '+8%' },
+        { id: 'kwi-dxb', name: 'Kuwait ⇄ Dubai', nameAr: 'الكويت ⇄ دبي', code: 'KWI ⇄ DXB', flag1: '🇰🇼', flag2: '🇦🇪', mode: 'Road & Air', volume: 28, onTime: '98.4%', trend: '+14%' },
+        { id: 'kwi-fra', name: 'Kuwait ⇄ Frankfurt', nameAr: 'الكويت ⇄ فرانكفورت', code: 'KWI ⇄ FRA', flag1: '🇰🇼', flag2: '🇩🇪', mode: 'Global Cargo', volume: 19, onTime: '94.2%', trend: '-2%' },
+        { id: 'kwi-lhr', name: 'Kuwait ⇄ London', nameAr: 'الكويت ⇄ لندن', code: 'KWI ⇄ LHR', flag1: '🇰🇼', flag2: '🇬🇧', mode: 'Air Courier', volume: 15, onTime: '97.5%', trend: '+5%' },
     ];
 
-    // Data for weekly vs monthly volume chart
+    // Actionable Triage Queue (Exceptions requiring operator intervention)
+    const triageExceptions = [
+        {
+            id: 'triage-1',
+            trackingNumber: 'TLG-20250429-004',
+            type: 'customs_hold',
+            title: isRTL ? 'احتجاز جمركي: نقص الفاتورة' : 'Customs Hold: Missing Commercial Invoice',
+            hub: 'Frankfurt Hub (FRA)',
+            urgency: 'critical',
+            actionText: isRTL ? 'إرفاق الفاتورة' : 'Attach Invoice',
+            orgName: 'Al-Sabah Medical & Pharma Logistics',
+            consignee: 'Klaus Weber',
+            timeAgo: '18m ago'
+        },
+        {
+            id: 'triage-2',
+            trackingNumber: 'TLG-20250429-012',
+            type: 'address_verification',
+            title: isRTL ? 'العنوان غير مكتمل في الرياض' : 'Address Incomplete: Riyadh Villa Dropoff',
+            hub: 'Riyadh Hub (RUH)',
+            urgency: 'high',
+            actionText: isRTL ? 'طلب الموقع (واتساب)' : 'WhatsApp GPS Pin',
+            orgName: 'Gulf Apex Trading W.L.L.',
+            consignee: 'Sara Al-Mutairi',
+            timeAgo: '42m ago'
+        },
+        {
+            id: 'triage-3',
+            trackingNumber: 'TLG-20250429-019',
+            type: 'dgr_signoff',
+            title: isRTL ? 'موافقة شحنة مواد خطرة (DGR)' : 'Pending DGR Dangerous Goods Signoff',
+            hub: 'Kuwait Airport (KWI)',
+            urgency: 'warning',
+            actionText: isRTL ? 'اعتماد الإقرار' : 'Sign Declaration',
+            orgName: 'DGR Dangerous Goods Ltd',
+            consignee: 'Dr. Tariq Al-Bader',
+            timeAgo: '1h ago'
+        }
+    ];
+
+    // Filter shipments by pipeline stage and organization
+    const filteredShipments = useMemo(() => {
+        let list = rawShipments || [];
+        if (selectedOrgId !== 'all') {
+            const orgObj = organizations.find(o => o.id === selectedOrgId);
+            if (orgObj) {
+                list = list.filter(s => (s.organization?.name || s.sender?.company || '').toLowerCase().includes(orgObj.name.toLowerCase().slice(0, 8)));
+                if (list.length === 0) list = (rawShipments || []).slice(0, 4); // Keep populated preview
+            }
+        }
+        if (pipelineStage === 'all') return list;
+        return list.filter(s => {
+            const st = (s.status || '').toLowerCase();
+            if (pipelineStage === 'pending') return ['pending', 'ready_for_pickup', 'created', 'draft'].includes(st);
+            if (pipelineStage === 'in_transit') return ['in_transit', 'picked_up'].includes(st);
+            if (pipelineStage === 'exception') return ['exception', 'failed', 'returned', 'cancelled'].includes(st);
+            if (pipelineStage === 'out_for_delivery') return ['out_for_delivery'].includes(st);
+            if (pipelineStage === 'delivered') return ['delivered', 'completed'].includes(st);
+            return true;
+        });
+    }, [rawShipments, selectedOrgId, pipelineStage, organizations]);
+
+    // Volume Chart Data
     const weeklyChartData = useMemo(() => {
-        const days = lang === 'ar' 
+        const days = isRTL 
             ? ['الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد']
             : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
         return [
-            { label: days[0], count: Math.max(12, Math.round((stats.total || 45) * 0.14)) },
-            { label: days[1], count: Math.max(18, Math.round((stats.total || 45) * 0.19)) },
-            { label: days[2], count: Math.max(15, Math.round((stats.total || 45) * 0.16)) },
+            { label: days[0], count: Math.max(14, Math.round((stats.total || 45) * 0.14)) },
+            { label: days[1], count: Math.max(19, Math.round((stats.total || 45) * 0.19)) },
+            { label: days[2], count: Math.max(16, Math.round((stats.total || 45) * 0.16)) },
             { label: days[3], count: Math.max(28, Math.round((stats.total || 45) * 0.28)) },
             { label: days[4], count: Math.max(22, Math.round((stats.total || 45) * 0.22)) },
-            { label: days[5], count: Math.max(8, Math.round((stats.total || 45) * 0.08)) },
-            { label: days[6], count: Math.max(14, Math.round((stats.total || 45) * 0.15)) },
+            { label: days[5], count: Math.max(9, Math.round((stats.total || 45) * 0.09)) },
+            { label: days[6], count: Math.max(15, Math.round((stats.total || 45) * 0.15)) },
         ];
-    }, [stats.total, lang]);
+    }, [stats.total, isRTL]);
 
     const monthlyChartData = useMemo(() => {
-        const months = [];
-        const monthNames = lang === 'ar'
+        const monthNames = isRTL
             ? ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
             : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         const now = new Date();
+        const months = [];
         for (let i = 5; i >= 0; i--) {
             const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-            const mName = monthNames[d.getMonth()];
-            const count = Math.max(25, Math.round((stats.total || 35) * (4.5 + (5 - i) * 0.8)));
-            months.push({ label: mName, count });
+            months.push({ label: monthNames[d.getMonth()], count: Math.max(25, Math.round((stats.total || 35) * (4.5 + (5 - i) * 0.8))) });
         }
         return months;
-    }, [stats.total, lang]);
+    }, [stats.total, isRTL]);
 
-    // Filtered manifests list based on interactive radar selection
-    const filteredShipments = useMemo(() => {
-        if (!recentShipments) return [];
-        if (statusFilter === 'all') return recentShipments;
-        return recentShipments.filter(s => {
-            const st = (s.status || '').toLowerCase();
-            if (statusFilter === 'pending') return ['pending', 'ready_for_pickup', 'created'].includes(st);
-            if (statusFilter === 'in_transit') return ['in_transit', 'out_for_delivery', 'picked_up'].includes(st);
-            if (statusFilter === 'exception') return ['exception', 'failed', 'returned', 'cancelled'].includes(st);
-            if (statusFilter === 'delivered') return ['delivered', 'completed'].includes(st);
-            return true;
-        });
-    }, [recentShipments, statusFilter]);
-
-    // Simulated Real-Time Activity Feed based on recent shipments
-    const activityFeed = useMemo(() => {
-        if (!recentShipments || recentShipments.length === 0) {
-            return [
-                { id: 1, title: lang === 'ar' ? 'تم ترحيل المانيفست' : 'Manifest Dispatched', desc: lang === 'ar' ? 'انطلاق الشحنة من مستودع الكويت إلى دبي' : 'TLG-20250429-001 departed Kuwait Hub to DXB', time: '12m', icon: 'flight_takeoff', color: TK.primary },
-                { id: 2, title: lang === 'ar' ? 'تم التخليص الجمركي' : 'Customs Cleared', desc: lang === 'ar' ? 'اكتمال الإفراج الجمركي في المطار' : 'TLG-20250429-004 cleared Frankfurt customs', time: '45m', icon: 'verified', color: TK.success },
-                { id: 3, title: lang === 'ar' ? 'تم تسليم الطرد' : 'Package Delivered', desc: lang === 'ar' ? 'توقيع المستلم في الرياض' : 'TLG-20250429-002 signed by receiver in Riyadh', time: '2h', icon: 'check_circle', color: TK.success },
-                { id: 4, title: lang === 'ar' ? 'جدولة استلام' : 'Pickup Scheduled', desc: lang === 'ar' ? 'تكليف المندوب باستلام الشحنة' : 'Driver assigned for origin pickup', time: '3h', icon: 'schedule', color: TK.info },
-            ];
-        }
-        return recentShipments.slice(0, 4).map((s, idx) => ({
-            id: s.id || idx,
-            title: s.status === 'delivered' ? (lang === 'ar' ? 'تم تسليم الشحنة' : 'Shipment Delivered') : s.status === 'in_transit' ? (lang === 'ar' ? 'شحنة قيد النقل' : 'In Global Transit') : (lang === 'ar' ? 'تم إصدار البوليصة' : 'Manifest Created'),
-            desc: `#${s.trackingNumber} (${s.origin?.city || 'Kuwait'} → ${s.destination?.city || 'Dest'})`,
-            time: `${(idx + 1) * 25}m`,
-            icon: s.status === 'delivered' ? 'check_circle' : s.status === 'in_transit' ? 'flight' : 'add_circle',
-            color: s.status === 'delivered' ? TK.success : s.status === 'in_transit' ? TK.primary : TK.info,
-        }));
-    }, [recentShipments, lang]);
+    const copyTracking = (num) => {
+        navigator.clipboard.writeText(num);
+        setCopiedWaybill(true);
+        setTimeout(() => setCopiedWaybill(false), 2000);
+    };
 
     if (statsLoading && !stats.total) {
         return (
-            <Box display="flex" justifyContent="center" alignItems="center" minHeight="80vh">
-                <Loader />
-            </Box>
+            <div className="flex justify-center items-center min-h-[70vh]">
+                <span className="loading loading-spinner loading-lg text-primary"></span>
+            </div>
         );
     }
 
     return (
-        <Box sx={{ 
-            p: { xs: 2, md: 4 }, 
-            maxWidth: 1600, 
-            mx: 'auto',
-            background: `radial-gradient(circle at 10% 20%, ${alpha(TK.primary, 0.03)} 0%, transparent 40%)`
-        }}>
-            {/* Header: Target Logistics Global Branding */}
-            <Box sx={{ mb: 4, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' }, gap: 3 }}>
-                <Box>
-                    <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1 }}>
-                        <Box sx={{ 
-                            width: 46, 
-                            height: 46, 
-                            borderRadius: '20px', 
-                            background: isDark ? 'rgba(255,255,255,0.02)' : '#ffffff',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
-                            color: '#0050d4'
-                        }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: 24 }}>hub</span>
-                        </Box>
-                        <Box>
-                            <Typography variant="h4" sx={{ fontWeight: 900, letterSpacing: '-0.03em', color: TK.text1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                                {t('dash_hello', 'Hello,')} {user?.name?.split(' ')[0] || (lang === 'ar' ? 'المشغل' : 'Operator')}
-                                <Box component="span" sx={{ fontSize: '22px', opacity: 0.85 }}>⚡</Box>
-                            </Typography>
-                            <Typography variant="body2" sx={{ color: TK.text2, fontWeight: 600 }}>
-                                {t('dash_subtitle', 'Target Logistics Global Operations Cockpit & Telemetry')}
-                            </Typography>
-                        </Box>
-                    </Stack>
-                </Box>
-                <Box sx={{ display: 'flex', gap: 1.5 }}>
-                    <Button 
-                        startIcon={<span className="material-symbols-outlined" style={{ fontSize: 18 }}>support_agent</span>}
-                        variant="outlined" 
-                        className="press-tactile hover-lift"
-                        sx={{ borderRadius: `${TK.radiusMd}px`, px: 2.5, fontWeight: 700, textTransform: 'none', borderColor: TK.border, color: TK.text1 }}
-                        onClick={() => navigate('/contact')}
-                    >
-                        {t('dash_support', 'Support')}
-                    </Button>
-                    <Button 
-                        startIcon={<span className="material-symbols-outlined" style={{ fontSize: 18 }}>add</span>}
-                        variant="contained" 
-                        className="press-tactile hover-lift"
-                        onClick={() => navigate('/shipment/new')}
-                        sx={{ 
-                            borderRadius: `${TK.radiusMd}px`, 
-                            px: 3, 
-                            fontWeight: 800, 
-                            textTransform: 'none',
-                            background: 'linear-gradient(135deg, #0050d4 0%, #003eaf 100%)',
-                            boxShadow: '0 4px 14px rgba(0,80,212,0.25)',
-                            '&:hover': { boxShadow: '0 8px 24px -4px rgba(0,80,212,0.4)' }
-                        }}
-                    >
-                        {t('dash_create_shipment', 'Create Shipment')}
-                    </Button>
-                </Box>
-            </Box>
+        <div className="w-full max-w-[1600px] mx-auto px-2 sm:px-4 py-3 space-y-6">
+            
+            {/* Top Switcher & Notification Deck */}
+            <div className="alert bg-base-100 border border-primary/20 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 rounded-2xl py-2.5 px-4">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                    <span className="badge badge-primary font-black text-[11px] uppercase tracking-wider">
+                        DaisyUI Hybrid Cockpit
+                    </span>
+                    <span className="text-xs sm:text-sm font-semibold text-base-content">
+                        {isRTL 
+                            ? 'نظام القيادة الهجين: إدارة تارغت (الشبكة) + إدارة حسابات العملاء' 
+                            : 'Dual-Perspective Engine: Target Network Operations + Client Account Management'}
+                    </span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <Link to="/dashboard-v1" className="btn btn-ghost btn-xs text-primary font-bold">
+                        {isRTL ? 'الرجوع إلى v1 القديم' : 'Switch to v1 Dashboard'}
+                    </Link>
+                </div>
+            </div>
 
-            {/* Global Stats Grid (5 Interactive Filter Cards) */}
-            <Grid container spacing={2.5} sx={{ mb: 4 }}>
-                {statsCards.map((stat, idx) => {
-                    const isSelected = statusFilter === stat.id;
-                    return (
-                        <Grid item xs={12} sm={6} lg={2.4} key={idx}>
-                            <Card 
-                                onClick={() => setStatusFilter(statusFilter === stat.id ? 'all' : stat.id)}
-                                onMouseEnter={() => setHoveredCard(idx)}
-                                onMouseLeave={() => setHoveredCard(null)}
-                                className="press-tactile cursor-pointer"
-                                sx={{ 
-                                    height: '100%', 
-                                    position: 'relative',
-                                    borderRadius: '20px',
-                                    background: isDark ? 'rgba(255,255,255,0.02)' : '#ffffff',
-                                    border: `2px solid ${isSelected ? stat.color : hoveredCard === idx ? alpha(stat.color, 0.5) : TK.border}`,
-                                    transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
-                                    transform: hoveredCard === idx || isSelected ? 'translateY(-3px)' : 'none',
-                                    boxShadow: isSelected 
-                                        ? `0 12px 28px -4px ${alpha(stat.color, 0.25)}` 
-                                        : hoveredCard === idx 
-                                            ? `0 14px 30px -6px ${alpha(stat.color, 0.15)}` 
-                                            : '0 4px 20px rgba(0,0,0,0.04)',
-                                    overflow: 'hidden'
-                                }}
-                            >
-                                <CardContent sx={{ p: 3 }}>
-                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                                        <Box sx={{ 
-                                            width: 40,
-                                            height: 40,
-                                            borderRadius: '11px', 
-                                            bgcolor: alpha(stat.color, 0.12), 
-                                            color: stat.color,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center'
-                                        }}>
-                                            {stat.icon}
-                                        </Box>
-                                        <Box sx={{ 
-                                            px: 1.25, 
-                                            py: 0.35, 
-                                            borderRadius: '99px', 
-                                            bgcolor: isSelected ? alpha(stat.color, 0.15) : stat.isPositive === null ? 'rgba(0,0,0,0.04)' : stat.isPositive ? TK.successBg : TK.errorBg,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 0.5
-                                        }}>
-                                            <Typography variant="caption" sx={{ fontWeight: 800, color: isSelected ? stat.color : stat.isPositive === null ? TK.text2 : stat.isPositive ? TK.success : TK.error, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                                {isSelected ? (lang === 'ar' ? 'نشط' : 'Active Filter') : <>{stat.trendIcon} {stat.trend}</>}
-                                            </Typography>
-                                        </Box>
-                                    </Box>
-                                    <Typography variant="caption" sx={{ fontWeight: 800, color: TK.text3, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                                        {stat.label}
-                                    </Typography>
-                                    <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75, mt: 0.5 }}>
-                                        <Typography variant="h4" sx={{ fontWeight: 900, letterSpacing: '-0.03em', color: isSelected ? stat.color : TK.text1 }}>
-                                            <AnimatedNumber value={stat.value} />
-                                        </Typography>
-                                        <Typography variant="caption" sx={{ color: TK.text3, fontWeight: 600 }}>
-                                            {t('units', 'units')}
-                                        </Typography>
-                                    </Box>
-                                    <Typography variant="caption" sx={{ display: 'block', mt: 1, color: TK.text2, fontSize: 11.5 }}>
-                                        {stat.description}
-                                    </Typography>
-                                </CardContent>
-                                
-                                {/* Decorative Sparkline */}
-                                <Box sx={{ 
-                                    position: 'absolute', 
-                                    bottom: 0, 
-                                    left: 0, 
-                                    right: 0, 
-                                    height: 3, 
-                                    bgcolor: alpha(stat.color, 0.15) 
-                                }}>
-                                    <Box sx={{ 
-                                        height: '100%', 
-                                        width: isSelected || hoveredCard === idx ? '100%' : '35%', 
-                                        bgcolor: stat.color,
-                                        transition: 'width 0.4s ease-in-out'
-                                    }} />
-                                </Box>
-                            </Card>
-                        </Grid>
-                    );
-                })}
-            </Grid>
-
-            {/* Operational Deep-Dive & Visualizations */}
-            <Grid container spacing={3} sx={{ mb: 4 }}>
-                {/* Advanced SVG Volume Analytics Chart */}
-                <Grid item xs={12} lg={8}>
-                    <Card sx={{ 
-                        borderRadius: '20px', 
-                        background: isDark ? 'rgba(255,255,255,0.02)' : '#ffffff',
-                        border: `1px solid ${TK.border}`, 
-                        boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
-                        height: '100%',
-                        display: 'flex',
-                        flexDirection: 'column'
-                    }}>
-                        <Box sx={{ p: 3, pb: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1.5 }}>
-                            <Box>
-                                <Typography variant="h6" sx={{ fontWeight: 800, color: TK.text1, fontSize: '1.1rem' }}>
-                                    {t('dash_throughput_title', 'Global Throughput Volume')}
-                                </Typography>
-                                <Typography variant="body2" sx={{ color: TK.text2, fontSize: '0.82rem' }}>
-                                    {t('dash_throughput_desc', 'Cargo volume distribution across international dispatch hubs')}
-                                </Typography>
-                            </Box>
-                            
-                            {/* Timeframe selector */}
-                            <ButtonGroup size="small" sx={{ borderRadius: `${TK.radiusSm}px`, overflow: 'hidden' }}>
-                                <Button 
-                                    onClick={() => setTimeframe('weekly')}
-                                    variant={timeframe === 'weekly' ? 'contained' : 'outlined'}
-                                    className="press-tactile"
-                                    sx={{ 
-                                        fontWeight: 700, 
-                                        fontSize: 12, 
-                                        textTransform: 'none',
-                                        bgcolor: timeframe === 'weekly' ? TK.primary : 'transparent',
-                                        borderColor: TK.border
-                                    }}
-                                >
-                                    {t('weekly', 'Weekly')}
-                                </Button>
-                                <Button 
-                                    onClick={() => setTimeframe('monthly')}
-                                    variant={timeframe === 'monthly' ? 'contained' : 'outlined'}
-                                    className="press-tactile"
-                                    sx={{ 
-                                        fontWeight: 700, 
-                                        fontSize: 12, 
-                                        textTransform: 'none',
-                                        bgcolor: timeframe === 'monthly' ? TK.primary : 'transparent',
-                                        borderColor: TK.border
-                                    }}
-                                >
-                                    {t('monthly', 'Monthly')}
-                                </Button>
-                            </ButtonGroup>
-                        </Box>
-                        
-                        <CardContent sx={{ p: 3, pt: 1, flex: 1, display: 'flex', alignItems: 'center' }}>
-                            <VolumeBarChart 
-                                data={timeframe === 'weekly' ? weeklyChartData : monthlyChartData} 
-                                height={210}
-                                unit={lang === 'ar' ? 'طرد' : 'pkgs'}
-                            />
-                        </CardContent>
-                    </Card>
-                </Grid>
-
-                {/* Efficiency & Velocity Indicators */}
-                <Grid item xs={12} lg={4}>
-                    <Card sx={{ 
-                        borderRadius: '20px', 
-                        background: isDark ? 'rgba(255,255,255,0.02)' : '#ffffff',
-                        border: `1px solid ${TK.border}`, 
-                        boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
-                        height: '100%',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'space-between'
-                    }}>
-                        <Box sx={{ p: 3, pb: 1.5, borderBottom: `1px solid ${TK.border}` }}>
-                            <Typography variant="h6" sx={{ fontWeight: 800, color: TK.text1, fontSize: '1.1rem' }}>
-                                {t('dash_dispatch_performance', 'Dispatch Performance')}
-                            </Typography>
-                            <Typography variant="body2" sx={{ color: TK.text2, fontSize: '0.82rem' }}>
-                                {t('dash_kvi_subtitle', 'Key Velocity Indicators (KVI)')}
-                            </Typography>
-                        </Box>
-                        <CardContent sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-                            <VelocityProgressBar 
-                                label={t('dash_carrier_response', 'Carrier Response Rate')} 
-                                value={96.4} 
-                                displayValue="96.4%" 
-                                target=">95%" 
-                                color={TK.success} 
-                                icon="speed" 
-                            />
-                            <VelocityProgressBar 
-                                label={t('dash_air_punctuality', 'Air-Freight Punctuality')} 
-                                value={91.8} 
-                                displayValue="91.8%" 
-                                target=">90%" 
-                                color={TK.primary} 
-                                icon="flight" 
-                            />
-                            <VelocityProgressBar 
-                                label={t('dash_customs_avg', 'Customs Clearance avg.')} 
-                                value={85} 
-                                displayValue={lang === 'ar' ? '4.2 ساعة' : '4.2 hrs'} 
-                                target="<6h" 
-                                color={TK.purple} 
-                                icon="verified_user" 
-                            />
-                            <VelocityProgressBar 
-                                label={t('dash_client_nps', 'Client Satisfaction (NPS)')} 
-                                value={74} 
-                                displayValue="+74" 
-                                target=">70" 
-                                color={TK.warning} 
-                                icon="sentiment_satisfied" 
-                            />
-
-                            {/* Volume Forecast Card */}
-                            <Box sx={{ 
-                                mt: 1, 
-                                p: 2, 
-                                borderRadius: '20px', 
-                                background: isDark ? 'rgba(255,255,255,0.02)' : '#ffffff',
-                                boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
-                                border: `1px solid rgba(0,80,212,0.15)`,
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 1.5
-                            }}>
-                                <Avatar sx={{ bgcolor: TK.primary, width: 36, height: 36, color: '#fff' }}>
-                                    <span className="material-symbols-outlined" style={{ fontSize: 20 }}>trending_up</span>
-                                </Avatar>
-                                <Box>
-                                    <Typography variant="caption" sx={{ fontWeight: 800, color: TK.primary, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                                        {t('dash_forecast_title', 'Forecast')}
-                                    </Typography>
-                                    <Typography variant="body2" sx={{ fontWeight: 700, color: TK.text1, fontSize: '0.85rem' }}>
-                                        {t('dash_forecast_desc', '+15% Volume projected next week (~340 pkgs)')}
-                                    </Typography>
-                                </Box>
-                            </Box>
-                        </CardContent>
-                    </Card>
-                </Grid>
-            </Grid>
-
-            {/* Live Activity Timeline & Manifest Grid */}
-            <Grid container spacing={3}>
-                {/* Live Activity Stream with Beacon Pulse */}
-                <Grid item xs={12} lg={4}>
-                    <Card sx={{ 
-                        borderRadius: '20px', 
-                        background: isDark ? 'rgba(255,255,255,0.02)' : '#ffffff',
-                        border: `1px solid ${TK.border}`, 
-                        boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
-                        height: '100%' 
-                    }}>
-                        <Box sx={{ p: 3, pb: 2, borderBottom: `1px solid ${TK.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Box>
-                                <Typography variant="h6" sx={{ fontWeight: 800, color: TK.text1, fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    <span className="relative flex h-3 w-3">
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                        <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-                                    </span>
-                                    {t('dash_live_feed_title', 'Live Operations Feed')}
-                                </Typography>
-                                <Typography variant="body2" sx={{ color: TK.text2, fontSize: '0.8rem' }}>
-                                    {t('dash_live_feed_desc', 'Real-time network events & dispatches')}
-                                </Typography>
-                            </Box>
-                            <span className="material-symbols-outlined live-beacon text-blue-600" style={{ fontSize: 22 }}>
-                                sensors
+            {/* Command Header: Role Clearance & Dynamic Context Switcher */}
+            <div className="bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                
+                {/* Operator Profile & Role Indicator */}
+                <div className="flex items-center gap-3.5">
+                    <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+                        <span className="material-symbols-outlined text-2xl">
+                            {isSuperadmin ? 'admin_panel_settings' : isTargetOwner ? 'crown' : isTargetAccounting ? 'account_balance' : 'hub'}
+                        </span>
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-base-content">
+                                {t('dash_hello', 'Hello,')} {user?.name?.split(' ')[0] || (isRTL ? 'المشغل' : 'Operator')}
+                            </h1>
+                            <span className="badge badge-primary text-[11px] font-black uppercase tracking-wider py-2">
+                                {getRoleLabel(userRole)}
                             </span>
-                        </Box>
-                        <CardContent sx={{ p: 3 }}>
-                            <Stack spacing={2.5}>
-                                {activityFeed.map((item) => (
-                                    <Box key={item.id} sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
-                                        <Box sx={{ 
-                                            width: 34, 
-                                            height: 34, 
-                                            borderRadius: '50%', 
-                                            bgcolor: alpha(item.color, 0.12), 
-                                            color: item.color,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            flexShrink: 0
-                                        }}>
-                                            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{item.icon}</span>
-                                        </Box>
-                                        <Box sx={{ flex: 1, minWidth: 0 }}>
-                                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                                                <Typography sx={{ fontWeight: 700, fontSize: 13, color: TK.text1 }}>
-                                                    {item.title}
-                                                </Typography>
-                                                <Typography sx={{ fontSize: 11, color: TK.text3, fontWeight: 500 }}>
-                                                    {item.time}
-                                                </Typography>
-                                            </Box>
-                                            <Typography sx={{ fontSize: 12, color: TK.text2, mt: 0.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                {item.desc}
-                                            </Typography>
-                                        </Box>
-                                    </Box>
-                                ))}
-                            </Stack>
-                        </CardContent>
-                    </Card>
-                </Grid>
+                            {isTargetOwner && <span className="badge badge-warning text-[10px] font-bold">Executive Authority</span>}
+                            {isTargetAccounting && <span className="badge badge-accent text-[10px] font-bold">Finance Controller</span>}
+                        </div>
+                        <p className="text-xs text-base-content/60 font-semibold mt-0.5">
+                            {isTargetManagement 
+                                ? (isRTL ? 'مركز العمليات الدولية والربط الجمركي • مطار الكويت الدولي (KWI)' : 'Global Air Cargo Telemetry & Customs Gate • Kuwait Hub (KWI)')
+                                : (isRTL ? 'بوابة إدارة حساب الشركة والشحنات الصادرة والواردة' : 'B2B Enterprise Portal & Consignment Dispatcher')}
+                        </p>
+                    </div>
+                </div>
 
-                {/* Operations Manifest Table with Zero-Reload Status Radar */}
-                <Grid item xs={12} lg={8}>
-                    <Card sx={{ 
-                        borderRadius: '20px', 
-                        background: isDark ? 'rgba(255,255,255,0.02)' : '#ffffff',
-                        border: `1px solid ${TK.border}`, 
-                        boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
-                        overflow: 'hidden' 
-                    }}>
-                        <Box sx={{ p: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, borderBottom: `1px solid ${TK.border}` }}>
-                            <Box>
-                                <Typography variant="h6" sx={{ fontWeight: 800, color: TK.text1, fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                                    {t('dash_recent_manifests', 'Recent Active Manifests')}
-                                    {statusFilter !== 'all' && (
-                                        <Chip 
-                                            size="small" 
-                                            label={`${statusFilter.replace('_', ' ').toUpperCase()} (${filteredShipments.length})`}
-                                            onDelete={() => setStatusFilter('all')}
-                                            sx={{ fontWeight: 800, fontSize: 11, bgcolor: alpha(TK.primary, 0.1), color: TK.primary }}
-                                        />
-                                    )}
-                                </Typography>
-                                <Typography variant="body2" sx={{ color: TK.text2, fontSize: '0.8rem' }}>
-                                    {t('dash_recent_manifests_desc', 'Live telemetry from Target Logistics Global pipeline')}
-                                </Typography>
-                            </Box>
-                            <Box sx={{ display: 'flex', gap: 1 }}>
-                                {statusFilter !== 'all' && (
-                                    <Button 
-                                        variant="text" 
-                                        size="small" 
-                                        onClick={() => setStatusFilter('all')}
-                                        sx={{ fontWeight: 700, fontSize: 12, textTransform: 'none', color: TK.text2 }}
-                                    >
-                                        {lang === 'ar' ? 'عرض الكل' : 'Reset Filter'}
-                                    </Button>
-                                )}
-                                <Button 
-                                    variant="outlined" 
-                                    size="small" 
-                                    className="press-tactile"
-                                    sx={{ borderRadius: `${TK.radiusSm}px`, fontWeight: 700, textTransform: 'none', borderColor: TK.border, color: TK.text1 }}
-                                    onClick={() => navigate('/shipments')}
+                {/* Perspective & Organization Context Selector */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
+                    
+                    {/* Organization Dropdown */}
+                    {isTargetManagement && (
+                        <div className="form-control">
+                            <label className="label py-0.5 px-1">
+                                <span className="label-text text-[10.5px] font-black uppercase tracking-wider text-base-content/60">
+                                    {isRTL ? 'نطاق الحساب المحدد' : 'Selected Account Scope'}
+                                </span>
+                            </label>
+                            <select 
+                                value={selectedOrgId} 
+                                onChange={(e) => setSelectedOrgId(e.target.value)}
+                                className="select select-bordered select-sm rounded-xl font-bold text-xs bg-base-100 text-base-content w-full sm:w-64"
+                            >
+                                {organizations.map((org) => (
+                                    <option key={org.id} value={org.id}>
+                                        {org.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
+                    {/* Dual Mode Switcher (Target Management vs Client View) */}
+                    {isTargetManagement && (
+                        <div className="form-control">
+                            <label className="label py-0.5 px-1">
+                                <span className="label-text text-[10.5px] font-black uppercase tracking-wider text-base-content/60">
+                                    {isRTL ? 'منظور الواجهة' : 'Cockpit Perspective'}
+                                </span>
+                            </label>
+                            <div className="join w-full">
+                                <button
+                                    onClick={() => setPerspective('target')}
+                                    className={`btn btn-sm join-item font-bold text-xs flex-1 ${
+                                        perspective === 'target' ? 'btn-primary' : 'btn-ghost border-base-300'
+                                    }`}
                                 >
-                                    {t('dash_view_all', 'View All')}
-                                </Button>
-                            </Box>
-                        </Box>
-                        <TableContainer sx={{ border: 'none' }}>
-                            <Table sx={{ minWidth: 650, textAlign: lang === 'ar' ? 'right' : 'left' }}>
-                                <TableHead sx={{ bgcolor: '#f8fafc' }}>
-                                    <TableRow>
-                                        <TableCell sx={{ fontWeight: 800, fontSize: 11, color: TK.text3, textTransform: 'uppercase', py: 1.5, px: 3 }}>
-                                            {t('dash_th_tracking', 'Tracking & Service')}
-                                        </TableCell>
-                                        <TableCell sx={{ fontWeight: 800, fontSize: 11, color: TK.text3, textTransform: 'uppercase' }}>
-                                            {t('dash_th_route', 'Route')}
-                                        </TableCell>
-                                        <TableCell sx={{ fontWeight: 800, fontSize: 11, color: TK.text3, textTransform: 'uppercase' }}>
-                                            {t('dash_th_recipient', 'Recipient')}
-                                        </TableCell>
-                                        <TableCell sx={{ fontWeight: 800, fontSize: 11, color: TK.text3, textTransform: 'uppercase' }} align={lang === 'ar' ? 'left' : 'right'}>
-                                            {t('dash_th_status', 'Status')}
-                                        </TableCell>
-                                    </TableRow>
-                                </TableHead>
-                                <TableBody>
+                                    <span className="material-symbols-outlined text-sm">hub</span>
+                                    {isRTL ? 'إدارة تارغت' : 'Target Ops'}
+                                </button>
+                                <button
+                                    onClick={() => setPerspective('client')}
+                                    className={`btn btn-sm join-item font-bold text-xs flex-1 ${
+                                        perspective === 'client' ? 'btn-primary' : 'btn-ghost border-base-300'
+                                    }`}
+                                >
+                                    <span className="material-symbols-outlined text-sm">apartment</span>
+                                    {isRTL ? 'حساب العميل' : 'Client View'}
+                                </button>
+                                {isTargetAccounting && (
+                                    <button
+                                        onClick={() => setPerspective('accounting')}
+                                        className={`btn btn-sm join-item font-bold text-xs flex-1 ${
+                                            perspective === 'accounting' ? 'btn-primary' : 'btn-ghost border-base-300'
+                                        }`}
+                                    >
+                                        <span className="material-symbols-outlined text-sm">account_balance</span>
+                                        {isRTL ? 'المحاسبة' : 'Finance'}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Quick Action Button */}
+                    <div className="sm:self-end">
+                        <button 
+                            onClick={() => navigate('/shipment/new')}
+                            className="btn btn-primary btn-sm rounded-xl font-extrabold shadow-sm w-full gap-1.5 px-4"
+                        >
+                            <span className="material-symbols-outlined text-base">add_circle</span>
+                            {isRTL ? 'شحنة جديدة' : 'New Waybill'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* DYNAMIC PULSE RIBBON (Adapts to perspective: Target Ops vs Client B2B vs Accounting) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                {perspective === 'target' ? (
+                    // Target Management Pulse
+                    <>
+                        <div className="card bg-base-100 border border-base-200/90 shadow-sm p-4 rounded-2xl flex flex-col justify-between">
+                            <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
+                                <span>{isRTL ? 'إجمالي خط النقل النشط' : 'Active Pipeline'}</span>
+                                <span className="material-symbols-outlined text-primary text-lg">flight_takeoff</span>
+                            </div>
+                            <div className="flex items-baseline gap-2 mt-2">
+                                <span className="text-3xl font-black text-base-content"><AnimatedNumber value={stats.inTransit || 48} /></span>
+                                <span className="text-xs font-bold text-success flex items-center gap-0.5">
+                                    <span className="material-symbols-outlined text-xs">trending_up</span>+12.4%
+                                </span>
+                            </div>
+                            <span className="text-[11px] text-base-content/60 mt-1">{isRTL ? 'طرد قيد الشحن العابر للحدود' : 'Packages currently in flight/transit'}</span>
+                        </div>
+
+                        <div className="card bg-base-100 border border-error/30 shadow-sm p-4 rounded-2xl flex flex-col justify-between bg-error/5">
+                            <div className="flex justify-between items-center text-xs text-error font-extrabold uppercase tracking-wider">
+                                <span>{isRTL ? 'طابور التدخل والاستثناءات' : 'Urgent Triage Queue'}</span>
+                                <span className="material-symbols-outlined text-error text-lg">warning</span>
+                            </div>
+                            <div className="flex items-baseline gap-2 mt-2">
+                                <span className="text-3xl font-black text-error"><AnimatedNumber value={triageExceptions.length} /></span>
+                                <span className="badge badge-error badge-sm font-bold">{isRTL ? 'يتطلب تدخل فوري' : 'Action Required'}</span>
+                            </div>
+                            <span className="text-[11px] text-error/80 mt-1">{isRTL ? 'احتجاز جمركي + عناوين غير مكتملة' : 'Customs holds, docs, address issues'}</span>
+                        </div>
+
+                        <div className="card bg-base-100 border border-base-200/90 shadow-sm p-4 rounded-2xl flex flex-col justify-between">
+                            <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
+                                <span>{isRTL ? 'دقة الالتزام بالمواعيد (SLA)' : 'Network On-Time SLA'}</span>
+                                <span className="material-symbols-outlined text-success text-lg">verified</span>
+                            </div>
+                            <div className="flex items-baseline gap-2 mt-2">
+                                <span className="text-3xl font-black text-base-content">98.4%</span>
+                                <span className="badge badge-success badge-sm font-bold">Nominal</span>
+                            </div>
+                            <span className="text-[11px] text-base-content/60 mt-1">{isRTL ? 'معدل التسليم الدولي بالموعد' : 'Calculated across 8 dispatch corridors'}</span>
+                        </div>
+
+                        <div className="card bg-base-100 border border-base-200/90 shadow-sm p-4 rounded-2xl flex flex-col justify-between">
+                            <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
+                                <span>{isRTL ? 'مستحقات الحسابات (ذمم)' : 'Total B2B Receivables'}</span>
+                                <span className="material-symbols-outlined text-warning text-lg">account_balance_wallet</span>
+                            </div>
+                            <div className="flex items-baseline gap-2 mt-2">
+                                <span className="text-3xl font-black text-base-content">5,118.842</span>
+                                <span className="text-xs font-bold text-base-content/60">KWD</span>
+                            </div>
+                            <span className="text-[11px] text-base-content/60 mt-1">{isRTL ? 'رصيد الشركات الفعلي غير المحصل' : 'Active ledger balances across clients'}</span>
+                        </div>
+                    </>
+                ) : (
+                    // Client / Organization Account Perspective
+                    <>
+                        <div className="card bg-base-100 border border-base-200/90 shadow-sm p-4 rounded-2xl flex flex-col justify-between">
+                            <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
+                                <span>{isRTL ? 'شحنات الشركة النشطة' : 'Active Company Shipments'}</span>
+                                <span className="material-symbols-outlined text-primary text-lg">local_shipping</span>
+                            </div>
+                            <div className="flex items-baseline gap-2 mt-2">
+                                <span className="text-3xl font-black text-base-content"><AnimatedNumber value={activeOrg.activePkgs} /></span>
+                                <span className="badge badge-primary badge-sm font-bold">{activeOrg.name.slice(0, 15)}...</span>
+                            </div>
+                            <span className="text-[11px] text-base-content/60 mt-1">{isRTL ? 'شحنات قيد التوصيل والجمارك' : 'Consignments moving globally'}</span>
+                        </div>
+
+                        <div className="card bg-base-100 border border-base-200/90 shadow-sm p-4 rounded-2xl flex flex-col justify-between">
+                            <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
+                                <span>{isRTL ? 'رصيد الحساب المالي' : 'Account Balance'}</span>
+                                <span className="material-symbols-outlined text-accent text-lg">payments</span>
+                            </div>
+                            <div className="flex items-baseline gap-2 mt-2">
+                                <span className="text-3xl font-black text-base-content">{activeOrg.balance.toFixed(3)}</span>
+                                <span className="text-xs font-bold text-base-content/60">KWD</span>
+                            </div>
+                            <span className="text-[11px] text-base-content/60 mt-1">
+                                {isRTL ? `الحد الائتماني: ${activeOrg.creditLimit.toLocaleString()} د.ك` : `Credit Limit: ${activeOrg.creditLimit.toLocaleString()} KWD`}
+                            </span>
+                        </div>
+
+                        <div className="card bg-base-100 border border-base-200/90 shadow-sm p-4 rounded-2xl flex flex-col justify-between">
+                            <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
+                                <span>{isRTL ? 'طلبات الاستلام اليوم' : 'Pickups Scheduled Today'}</span>
+                                <span className="material-symbols-outlined text-info text-lg">schedule</span>
+                            </div>
+                            <div className="flex items-baseline gap-2 mt-2">
+                                <span className="text-3xl font-black text-base-content">3</span>
+                                <span className="badge badge-info badge-sm font-bold">{isRTL ? 'مجدول مع السائق' : 'Driver Assigned'}</span>
+                            </div>
+                            <span className="text-[11px] text-base-content/60 mt-1">{isRTL ? 'موعد الاستلام القادم: 1:30 م' : 'Next window: 1:30 PM (Capital Hub)'}</span>
+                        </div>
+
+                        <div className="card bg-base-100 border border-base-200/90 shadow-sm p-4 rounded-2xl flex flex-col justify-between">
+                            <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
+                                <span>{isRTL ? 'الفواتير والبيانات الجمركية' : 'Invoices & Customs'}</span>
+                                <span className="material-symbols-outlined text-success text-lg">receipt_long</span>
+                            </div>
+                            <div className="flex items-baseline gap-2 mt-2">
+                                <span className="text-3xl font-black text-base-content">100%</span>
+                                <span className="badge badge-success badge-sm font-bold">{isRTL ? 'مكتملة' : 'Cleared'}</span>
+                            </div>
+                            <span className="text-[11px] text-base-content/60 mt-1">{isRTL ? 'لا توجد فواتير معلقة' : 'All customs declarations validated'}</span>
+                        </div>
+                    </>
+                )}
+            </div>
+
+            {/* TWO-COLUMN COMMAND WORKSPACE */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                
+                {/* LEFT WING (65%): Trade Corridors, Pipeline Lifecycle, & Manifest Grid */}
+                <div className="lg:col-span-8 space-y-5">
+                    
+                    {/* Trade Lane Corridors (GCC & Global Flight Tracks) */}
+                    <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5">
+                        <div className="flex justify-between items-center mb-3">
+                            <div>
+                                <h3 className="text-sm sm:text-base font-black text-base-content flex items-center gap-2">
+                                    <span className="material-symbols-outlined text-primary text-lg">explore</span>
+                                    {isRTL ? 'مسارات الشحن والربط الدولي (Trade Corridors)' : 'Active Trade Lane Corridors & Telemetry'}
+                                </h3>
+                                <p className="text-xs text-base-content/60 font-medium">
+                                    {isRTL ? 'مراقبة خطوط النقل الجوي والبري المباشرة من الكويت' : 'Live volume & on-time performance across high-traffic corridors'}
+                                </p>
+                            </div>
+                            <span className="badge badge-outline badge-sm font-bold text-xs">{isRTL ? 'تحديث فوري' : 'Live Gateway'}</span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                            {tradeCorridors.map((c) => (
+                                <div key={c.id} className="p-3 bg-base-200/50 hover:bg-base-200 border border-base-200 rounded-xl transition-all cursor-pointer">
+                                    <div className="flex justify-between items-center text-xs font-bold text-base-content">
+                                        <span className="flex items-center gap-1 text-sm">{c.flag1} {isRTL ? '←' : '→'} {c.flag2}</span>
+                                        <span className="badge badge-success badge-xs font-bold">{c.onTime}</span>
+                                    </div>
+                                    <div className="font-extrabold text-xs text-base-content mt-1.5">
+                                        {isRTL ? c.nameAr : c.name}
+                                    </div>
+                                    <div className="flex justify-between items-baseline text-[11px] text-base-content/60 mt-1">
+                                        <span>{c.mode}</span>
+                                        <span className="font-black text-base-content">{c.volume} {isRTL ? 'طرد' : 'pkgs'}</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Operational Manifest Table with Pipeline Stage Filter */}
+                    <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl overflow-hidden">
+                        
+                        {/* Table Header & Pipeline Stage Tabs */}
+                        <div className="p-4 sm:p-5 border-b border-base-200/80 space-y-3">
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                                <div>
+                                    <h3 className="text-base font-black text-base-content flex items-center gap-2">
+                                        <span className="material-symbols-outlined text-primary text-xl">inventory_2</span>
+                                        {isRTL ? 'بيان الشحنات والمانيفست التشغيلي' : 'Active Consignment Manifests'}
+                                    </h3>
+                                    <p className="text-xs text-base-content/60 font-medium">
+                                        {isRTL 
+                                            ? `عرض شحنات: ${activeOrg.name} (${filteredShipments.length} شحنة)` 
+                                            : `Displaying consignments for ${activeOrg.name} (${filteredShipments.length} total)`}
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button 
+                                        onClick={() => navigate(`/shipments?org=${selectedOrgId}&status=${pipelineStage === 'exception' ? 'exceptions' : pipelineStage}`)} 
+                                        className="btn btn-outline btn-xs font-bold rounded-lg"
+                                    >
+                                        {isRTL ? 'عرض الجدول الموسع' : 'Full Table View'}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Lifecycle Stage Filter Buttons */}
+                            <div className="flex gap-1.5 overflow-x-auto pb-1 text-xs">
+                                {[
+                                    { id: 'all', label: isRTL ? 'الكل' : 'All' },
+                                    { id: 'pending', label: isRTL ? 'استلام وبوابة' : 'Pending Gate' },
+                                    { id: 'in_transit', label: isRTL ? 'نقل جوي' : 'In Flight' },
+                                    { id: 'out_for_delivery', label: isRTL ? 'مع المندوب' : 'Out for Delivery' },
+                                    { id: 'exception', label: isRTL ? 'استثناء / جمارك' : 'Customs Hold' },
+                                    { id: 'delivered', label: isRTL ? 'تم التسليم' : 'Delivered' },
+                                ].map((tab) => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setPipelineStage(tab.id)}
+                                        className={`btn btn-xs rounded-lg font-bold shrink-0 ${
+                                            pipelineStage === tab.id ? 'btn-primary' : 'btn-ghost border-base-200 text-base-content/70'
+                                        }`}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Manifest Data Table */}
+                        <div className="overflow-x-auto">
+                            <table className="table table-zebra table-hover w-full text-xs">
+                                <thead>
+                                    <tr className="text-xs uppercase text-base-content/60 border-b border-base-200 font-extrabold bg-base-200/30">
+                                        <th className="py-3 px-4">{isRTL ? 'رقم البوليصة والخدمة' : 'Tracking & Service'}</th>
+                                        <th>{isRTL ? 'المسار والاتجاه' : 'Trade Route'}</th>
+                                        <th>{isRTL ? 'الجهة والمستلم' : 'Consignee'}</th>
+                                        <th className={isRTL ? 'text-left' : 'text-right'}>{isRTL ? 'الحالة الجمركية' : 'Status'}</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
                                     {recentLoading ? (
-                                        <TableRow><TableCell colSpan={4} align="center" sx={{ py: 6 }}><Loader /></TableCell></TableRow>
+                                        <tr>
+                                            <td colSpan="5" className="text-center py-10">
+                                                <span className="loading loading-spinner text-primary loading-md"></span>
+                                            </td>
+                                        </tr>
                                     ) : filteredShipments.length === 0 ? (
-                                        <TableRow>
-                                            <TableCell colSpan={4} align="center" sx={{ py: 6 }}>
-                                                <Typography variant="body2" sx={{ color: TK.text3, fontWeight: 600 }}>
-                                                    {lang === 'ar' ? 'لا توجد شحنات مطابقة للتصفية المحددة' : 'No manifests found for this status filter.'}
-                                                </Typography>
-                                            </TableCell>
-                                        </TableRow>
-                                    ) : filteredShipments.map((shipment) => {
-                                        const cfg = STATUS_CONFIG[shipment.status] || STATUS_CONFIG.in_transit;
-                                        return (
-                                            <TableRow 
-                                                key={shipment.id} 
-                                                hover 
-                                                onClick={() => navigate(`/shipment/${shipment.trackingNumber}`)}
-                                                sx={{ 
-                                                    cursor: 'pointer', 
-                                                    '&:hover .tracking-id': { color: TK.primary },
-                                                    transition: 'background 0.12s'
-                                                }}
-                                            >
-                                                <TableCell sx={{ px: 3, py: 1.5 }}>
-                                                    <Typography className="tracking-id" sx={{ fontWeight: 800, fontSize: 13, color: TK.text1, transition: 'color 0.15s' }}>
-                                                        {shipment.trackingNumber}
-                                                    </Typography>
-                                                    <Typography sx={{ color: TK.text3, fontSize: 11 }}>
-                                                        {shipment.carrierCode || 'Express Air'}
-                                                    </Typography>
-                                                </TableCell>
-                                                <TableCell sx={{ py: 1.5 }}>
-                                                    <Stack direction="row" spacing={1} alignItems="center">
-                                                        <Typography sx={{ fontWeight: 600, fontSize: 12.5, color: TK.text1 }}>
-                                                            {shipment.origin?.city || (lang === 'ar' ? 'الكويت' : 'Kuwait')}
-                                                        </Typography>
-                                                        <Typography sx={{ color: TK.primary, fontWeight: 700 }}>
-                                                            {lang === 'ar' ? '←' : '→'}
-                                                        </Typography>
-                                                        <Typography sx={{ fontWeight: 600, fontSize: 12.5, color: TK.text1 }}>
-                                                            {shipment.destination?.city || (lang === 'ar' ? 'الرياض' : 'Riyadh')}
-                                                        </Typography>
-                                                    </Stack>
-                                                </TableCell>
-                                                <TableCell sx={{ py: 1.5 }}>
-                                                    <Typography sx={{ fontWeight: 600, fontSize: 12.5, color: TK.text1 }}>
-                                                        {shipment.receiver?.contactPerson || shipment.receiver?.name || shipment.receiver?.company || (lang === 'ar' ? 'المستلم' : 'Consignee')}
-                                                    </Typography>
-                                                </TableCell>
-                                                <TableCell align={lang === 'ar' ? 'left' : 'right'} sx={{ px: 3, py: 1.5 }}>
-                                                    <Box sx={{ 
-                                                        display: 'inline-flex', 
-                                                        alignItems: 'center',
-                                                        gap: 0.75,
-                                                        px: 1.5, 
-                                                        py: 0.5, 
-                                                        borderRadius: '99px',
-                                                        fontSize: '11px',
-                                                        fontWeight: 700,
-                                                        bgcolor: cfg.bg,
-                                                        color: cfg.color,
-                                                        border: `1px solid ${cfg.border}`
-                                                    }}>
-                                                        <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: cfg.color }} />
-                                                        {t(`status_${shipment.status}`, cfg.label)}
-                                                    </Box>
-                                                </TableCell>
-                                            </TableRow>
-                                        );
-                                    })}
-                                </TableBody>
-                            </Table>
-                        </TableContainer>
-                    </Card>
-                </Grid>
-            </Grid>
-        </Box>
+                                        <tr>
+                                            <td colSpan="5" className="text-center py-10 text-base-content/60 font-semibold">
+                                                {isRTL ? 'لا توجد شحنات في هذه المرحلة' : 'No consignments found in this stage.'}
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        filteredShipments.map((s) => {
+                                            const cfg = STATUS_CONFIG[s.status] || STATUS_CONFIG.in_transit;
+                                            return (
+                                                <tr 
+                                                    key={s.id}
+                                                    onClick={() => setSelectedShipment(s)}
+                                                    className="cursor-pointer transition-colors hover:bg-primary/5"
+                                                >
+                                                    <td className="py-2.5 px-4 font-bold text-base-content">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="hover:text-primary transition-colors font-mono">{s.trackingNumber}</span>
+                                                        </div>
+                                                        <span className="text-[10.5px] text-base-content/50 block font-normal">
+                                                            {s.carrierCode || 'Express Air Cargo'}
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <TradeRouteDisplay origin={s.origin} destination={s.destination} />
+                                                    </td>
+                                                    <td>
+                                                        <span className="font-semibold text-base-content block truncate max-w-[140px]">
+                                                            {s.receiver?.contactPerson || s.receiver?.name || s.receiver?.company || (isRTL ? 'المستلم' : 'Consignee')}
+                                                        </span>
+                                                        <span className="text-[10px] text-base-content/50 block">
+                                                            {s.receiver?.phone || '+965 ********'}
+                                                        </span>
+                                                    </td>
+                                                    <td className={isRTL ? 'text-left' : 'text-right'}>
+                                                        <StatusBadge status={s.status} size="sm" />
+                                                    </td>
+                                                    <td className="text-right px-3">
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); setSelectedShipment(s); }}
+                                                            className="btn btn-ghost btn-xs btn-square text-base-content/60 hover:text-primary"
+                                                            title={isRTL ? 'معاينة سريعة' : 'Quick Inspect'}
+                                                        >
+                                                            <span className="material-symbols-outlined text-base">visibility</span>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {/* Operational Throughput Bar Chart */}
+                    <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3">
+                            <div>
+                                <h3 className="text-sm sm:text-base font-black text-base-content flex items-center gap-2">
+                                    <span className="material-symbols-outlined text-primary text-lg">bar_chart</span>
+                                    {isRTL ? 'حجم المناولة والشحن (Global Volume)' : 'Consignment Volume Distribution'}
+                                </h3>
+                                <p className="text-xs text-base-content/60 font-medium">
+                                    {isRTL ? 'توزيع الطرود والشحنات عبر منافذ الترحيل' : 'Throughput comparison across dispatch cycles'}
+                                </p>
+                            </div>
+                            <div className="join">
+                                <button onClick={() => setTimeframe('weekly')} className={`btn btn-xs join-item font-bold ${timeframe === 'weekly' ? 'btn-primary' : 'btn-ghost'}`}>
+                                    {isRTL ? 'أسبوعي' : 'Weekly'}
+                                </button>
+                                <button onClick={() => setTimeframe('monthly')} className={`btn btn-xs join-item font-bold ${timeframe === 'monthly' ? 'btn-primary' : 'btn-ghost'}`}>
+                                    {isRTL ? 'شهري' : 'Monthly'}
+                                </button>
+                            </div>
+                        </div>
+                        <VolumeBarChart data={timeframe === 'weekly' ? weeklyChartData : monthlyChartData} height={190} unit={isRTL ? 'طرد' : 'pkgs'} />
+                    </div>
+
+                </div>
+
+                {/* RIGHT WING (35%): Actionable Triage Queue & Account Intelligence */}
+                <div className="lg:col-span-4 space-y-5">
+                    
+                    {/* Actionable Triage & Exception Queue (PRIORITY FIRST) */}
+                    <div className="card bg-base-100 border border-error/20 shadow-sm rounded-2xl overflow-hidden">
+                        <div className="p-4 bg-error/5 border-b border-error/15 flex justify-between items-center">
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <span className="relative flex h-2.5 w-2.5">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-error opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-error"></span>
+                                    </span>
+                                    <h3 className="text-sm font-black text-error uppercase tracking-wider">
+                                        {isRTL ? 'طابور التدخل والاستثناءات الفورية' : 'Active Triage & Exceptions'}
+                                    </h3>
+                                </div>
+                                <p className="text-[11px] text-error/70 font-semibold mt-0.5">
+                                    {isRTL ? 'عناصر تتطلب اعتماد أو وثائق فورية' : '3 critical issues blocking delivery'}
+                                </p>
+                            </div>
+                            <span className="badge badge-error badge-sm font-black">3</span>
+                        </div>
+
+                        <div className="p-3.5 space-y-3">
+                            {triageExceptions.map((item) => (
+                                <div key={item.id} className="p-3 rounded-xl border border-base-200 bg-base-100 hover:border-error/40 transition-all space-y-2">
+                                    <div className="flex justify-between items-start gap-2">
+                                        <span className="font-mono text-xs font-bold text-primary">{item.trackingNumber}</span>
+                                        <span className="text-[10px] text-base-content/50 font-semibold">{item.timeAgo}</span>
+                                    </div>
+                                    <p className="text-xs font-bold text-base-content leading-snug">
+                                        {item.title}
+                                    </p>
+                                    <div className="flex justify-between items-center text-[10.5px] text-base-content/60">
+                                        <span>{item.hub}</span>
+                                        <span className="truncate max-w-[120px]">{item.consignee}</span>
+                                    </div>
+                                    <div className="pt-1 flex gap-2">
+                                        <button 
+                                            onClick={() => navigate(`/shipment/${item.trackingNumber}`)}
+                                            className="btn btn-error btn-outline btn-xs flex-1 rounded-lg font-bold"
+                                        >
+                                            {item.actionText}
+                                        </button>
+                                        <button 
+                                            onClick={() => window.open(`https://wa.me/96597691271?text=Urgent%20Action%20Required%20on%20${item.trackingNumber}`, '_blank')}
+                                            className="btn btn-ghost btn-xs btn-square text-success"
+                                            title="WhatsApp Alert"
+                                        >
+                                            <span className="material-symbols-outlined text-base">chat</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="p-3 bg-base-200/40 border-t border-error/15 flex justify-center">
+                            <button 
+                                onClick={() => navigate('/shipments?status=exceptions')}
+                                className="btn btn-ghost btn-xs text-error font-extrabold gap-1"
+                            >
+                                <span>{isRTL ? 'عرض جميع الاستثناءات في جدول الشحنات' : 'View All Exceptions in Shipments'}</span>
+                                <span className="material-symbols-outlined text-sm">{isRTL ? 'arrow_back' : 'arrow_forward'}</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Key Velocity Indicators (KVIs) */}
+                    <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 space-y-4">
+                        <div className="border-b border-base-200/70 pb-2.5">
+                            <h3 className="text-sm font-black text-base-content flex items-center gap-1.5">
+                                <span className="material-symbols-outlined text-primary text-lg">speed</span>
+                                {isRTL ? 'مؤشرات كفاءة الترحيل (KVI)' : 'Key Velocity Indicators (KVI)'}
+                            </h3>
+                            <p className="text-xs text-base-content/60 font-medium">
+                                {isRTL ? 'سرعة استجابة الناقلين والتخليص الجمركي' : 'Operational speed across carriers & customs'}
+                            </p>
+                        </div>
+
+                        <div className="space-y-3.5">
+                            <VelocityIndicator label={isRTL ? 'استجابة الناقل (DHL / الشركاء)' : 'Carrier Response Rate'} value={96.4} displayValue="96.4%" target=">95%" progressClass="progress-success" icon="speed" />
+                            <VelocityIndicator label={isRTL ? 'دقة مواعيد الشحن الجوي' : 'Air-Freight Punctuality'} value={91.8} displayValue="91.8%" target=">90%" progressClass="progress-primary" icon="flight" />
+                            <VelocityIndicator label={isRTL ? 'متوسط وقت التخليص الجمركي' : 'Customs Clearance Avg.'} value={85} displayValue={isRTL ? '3.8 ساعة' : '3.8 hrs'} target="<5h" progressClass="progress-accent" icon="verified_user" />
+                            <VelocityIndicator label={isRTL ? 'رضا عملاء الشركات (NPS)' : 'Client Satisfaction (NPS)'} value={78} displayValue="+78" target=">70" progressClass="progress-warning" icon="sentiment_satisfied" />
+                        </div>
+
+                        {/* Forecast Alert Box */}
+                        <div className="alert bg-primary/5 border border-primary/20 rounded-xl p-3 flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-primary text-primary-content flex items-center justify-center shrink-0">
+                                <span className="material-symbols-outlined text-base">trending_up</span>
+                            </div>
+                            <div className="text-xs">
+                                <span className="font-black text-primary uppercase tracking-wider block">
+                                    {isRTL ? 'توقعات الأسبوع القادم' : 'Weekly Freight Forecast'}
+                                </span>
+                                <span className="font-semibold text-base-content text-[11px]">
+                                    {isRTL ? '+18% زيادة في شحنات الرياض ودبي (~420 طرد)' : '+18% Volume projected for RUH/DXB (~420 pkgs)'}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* B2B Client Posture Card */}
+                    <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5">
+                        <div className="flex justify-between items-center mb-3">
+                            <h3 className="text-sm font-black text-base-content flex items-center gap-1.5">
+                                <span className="material-symbols-outlined text-accent text-lg">apartment</span>
+                                {isRTL ? 'ملف الحساب والذمم' : 'Corporate Account Dossier'}
+                            </h3>
+                            <button onClick={() => navigate('/admin/organizations')} className="btn btn-ghost btn-xs text-primary font-bold">
+                                {isRTL ? 'إدارة' : 'Manage'}
+                            </button>
+                        </div>
+
+                        <div className="p-3 bg-base-200/40 rounded-xl border border-base-200 space-y-2 text-xs">
+                            <div className="flex justify-between items-center font-bold">
+                                <span className="text-base-content/70">{isRTL ? 'اسم الشركة:' : 'Organization:'}</span>
+                                <span className="text-base-content font-extrabold">{activeOrg.name}</span>
+                            </div>
+                            <div className="flex justify-between items-center font-bold">
+                                <span className="text-base-content/70">{isRTL ? 'الرصيد القائم:' : 'Ledger Balance:'}</span>
+                                <span className="text-primary font-black">{activeOrg.balance.toFixed(3)} KWD</span>
+                            </div>
+                            <div className="flex justify-between items-center font-bold">
+                                <span className="text-base-content/70">{isRTL ? 'الحد الائتماني:' : 'Credit Limit:'}</span>
+                                <span className="text-base-content font-black">{activeOrg.creditLimit.toLocaleString()} KWD</span>
+                            </div>
+                            <div className="flex justify-between items-center font-bold">
+                                <span className="text-base-content/70">{isRTL ? 'التواصل المعتمد:' : 'Contact:'}</span>
+                                <span className="text-base-content font-mono text-[11px]">{activeOrg.contact || '+965 9988 1122'}</span>
+                            </div>
+                        </div>
+
+                        <div className="mt-3 flex gap-2">
+                            <button onClick={() => navigate('/financials')} className="btn btn-outline btn-xs flex-1 rounded-lg font-bold">
+                                {isRTL ? 'كشف الحساب' : 'Statement (PDF)'}
+                            </button>
+                            <button onClick={() => navigate('/shipment/new')} className="btn btn-primary btn-xs flex-1 rounded-lg font-bold">
+                                {isRTL ? 'طلب استلام' : 'Book Pickup'}
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+            {/* SLIDE-OVER SHIPMENT INSPECTOR DRAWER (Shared Canonical Component) */}
+            <ShipmentInspectorDrawer
+                shipment={selectedShipment}
+                onClose={() => setSelectedShipment(null)}
+                onDownloadLabel={async (s) => {
+                    const { generateWaybillPDF } = await import('../utils/pdfGenerator');
+                    await generateWaybillPDF(s.raw || s);
+                }}
+            />
+
+        </div>
     );
 };
 

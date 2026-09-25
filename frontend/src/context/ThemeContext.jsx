@@ -1,6 +1,4 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
-import { ThemeProvider as MUIThemeProvider, createTheme } from '@mui/material/styles';
-import { getThemeConfig } from '../theme';
 
 const ThemeContext = createContext();
 
@@ -17,7 +15,7 @@ export const ThemeModeProvider = ({ children }) => {
   const [mode, setMode] = useState(() => {
     const savedMode = localStorage.getItem('theme-mode');
     if (savedMode) return savedMode;
-    return 'light'; // Default to light mode regardless of system preference
+    return 'light'; // Default to light mode
   });
 
   const toggleTheme = () => {
@@ -26,13 +24,15 @@ export const ThemeModeProvider = ({ children }) => {
 
   useEffect(() => {
     localStorage.setItem('theme-mode', mode);
-    // Apply class to body and html for CSS variable overrides and Tailwind dark mode
+    // Apply class to body and html for Tailwind dark mode and DaisyUI themes
     if (mode === 'dark') {
       document.body.classList.add('dark-mode');
       document.documentElement.classList.add('dark');
+      document.documentElement.setAttribute('data-theme', 'targetLogisticsDark');
     } else {
       document.body.classList.remove('dark-mode');
       document.documentElement.classList.remove('dark');
+      document.documentElement.setAttribute('data-theme', 'targetLogistics');
     }
     
     // Add temporary transition class for smooth switching
@@ -44,8 +44,6 @@ export const ThemeModeProvider = ({ children }) => {
     return () => clearTimeout(timer);
   }, [mode]);
 
-  const theme = useMemo(() => createTheme(getThemeConfig(mode)), [mode]);
-
   const value = useMemo(() => ({
     mode,
     toggleTheme,
@@ -54,9 +52,7 @@ export const ThemeModeProvider = ({ children }) => {
 
   return (
     <ThemeContext.Provider value={value}>
-      <MUIThemeProvider theme={theme}>
-        {children}
-      </MUIThemeProvider>
+      {children}
     </ThemeContext.Provider>
   );
 };

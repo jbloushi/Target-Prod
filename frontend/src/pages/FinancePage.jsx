@@ -1,31 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import styled from 'styled-components';
 import { useSnackbar } from 'notistack';
 import { format } from 'date-fns';
 import { financeService, organizationService, shipmentService, userService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
-import {
-    PageHeader,
-    Card,
-    Button,
-    WInput,
-    Select,
-    Modal,
-    TableWrapper,
-    Table,
-    Thead,
-    Tbody,
-    Tr,
-    Th,
-    Td,
-    StatusPill,
-    Alert,
-    Loader
-} from '../ui';
 import ExportButton from '../components/ExportButton';
 import FinanceReports from '../components/FinanceReports';
-import { TK } from '../tokens/kineticHorizon';
 import { generateInvoicePDF } from '../utils/pdfGenerator';
 import CashFlowDualBarChart from '../components/charts/CashFlowDualBarChart';
 import ShareOfWalletBar from '../components/charts/ShareOfWalletBar';
@@ -34,196 +14,7 @@ import GeneralLedgerTab from '../components/accounting/GeneralLedgerTab';
 import AccountsPayableTab from '../components/accounting/AccountsPayableTab';
 import TreasuryTab from '../components/accounting/TreasuryTab';
 import PeriodClosingTab from '../components/accounting/PeriodClosingTab';
-
-// --- Styled Components with Kinetic Horizon Tokens ---
-const SubNav = styled.div`
-    display: flex;
-    gap: 8px;
-    padding: 6px;
-    background: #eef2f6;
-    border-radius: 14px;
-    margin-bottom: 24px;
-    width: fit-content;
-    flex-wrap: wrap;
-`;
-
-const NavTab = styled.button`
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 18px;
-    border-radius: 10px;
-    border: none;
-    background: ${props => props.$active ? '#ffffff' : 'transparent'};
-    color: ${props => props.$active ? TK.primary : TK.text2};
-    font-weight: ${props => props.$active ? '700' : '600'};
-    font-size: 13px;
-    cursor: pointer;
-    box-shadow: ${props => props.$active ? '0 2px 6px rgba(0,0,0,0.06)' : 'none'};
-    transition: all 0.15s ease;
-
-    &:hover {
-        color: ${TK.primary};
-    }
-`;
-
-const MetricsGrid = styled.div`
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 18px;
-    margin-bottom: 24px;
-`;
-
-const MetricCard = styled.div`
-    background: #ffffff;
-    border-radius: 20px;
-    border: 1px solid ${TK.border};
-    padding: 20px 22px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.05);
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    position: relative;
-    overflow: hidden;
-    transition: transform 0.2s, box-shadow 0.2s;
-
-    &:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 24px rgba(0,0,0,0.06);
-    }
-`;
-
-const MetricHeader = styled.div`
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-`;
-
-const MetricIcon = styled.div`
-    width: 38px;
-    height: 38px;
-    border-radius: 10px;
-    background: ${props => props.$bg || TK.primaryBg};
-    color: ${props => props.$color || TK.primary};
-    display: flex;
-    align-items: center;
-    justify-content: center;
-`;
-
-const MetricValue = styled.div`
-    font-size: 26px;
-    font-weight: 800;
-    color: ${TK.text1};
-    letter-spacing: -0.02em;
-
-    span {
-        font-size: 14px;
-        font-weight: 600;
-        color: ${TK.text3};
-        margin-left: 4px;
-    }
-`;
-
-const MetricLabel = styled.div`
-    font-size: 11.5px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: ${TK.text3};
-`;
-
-const MetricTrend = styled.div`
-    font-size: 11px;
-    font-weight: 700;
-    padding: 2px 8px;
-    border-radius: 99px;
-    background: ${props => props.$positive ? TK.successBg : '#f1f5f9'};
-    color: ${props => props.$positive ? TK.success : TK.text2};
-`;
-
-const AllocationGrid = styled.div`
-    display: grid;
-    grid-template-columns: 380px 1fr;
-    gap: 20px;
-    align-items: start;
-
-    @media (max-width: 1024px) {
-        grid-template-columns: 1fr;
-    }
-`;
-
-const ListCard = styled(Card)`
-    display: flex;
-    flex-direction: column;
-    height: 650px;
-    overflow: hidden;
-`;
-
-const ListHeader = styled.div`
-    padding: 16px;
-    border-bottom: 1px solid ${TK.border};
-    background: #f8fafc;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-`;
-
-const ScrollableList = styled.div`
-    flex: 1;
-    overflow-y: auto;
-    padding: 8px;
-`;
-
-const ListItem = styled.div`
-    padding: 12px 16px;
-    border-radius: 12px;
-    margin-bottom: 8px;
-    cursor: pointer;
-    background: ${props => props.$selected ? TK.primaryBg : '#ffffff'};
-    border: 1.5px solid ${props => props.$selected ? TK.primary : TK.border};
-    transition: all 0.15s;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-
-    &:hover {
-        border-color: ${TK.primary};
-        background: ${props => props.$selected ? TK.primaryBg : '#fafbfc'};
-    }
-
-    ${props => props.$disabled && `
-        opacity: 0.55;
-        cursor: not-allowed;
-        background: #f8fafc;
-    `}
-`;
-
-const FilterRow = styled.div`
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    padding: 0 16px 12px 16px;
-    border-bottom: 1px solid ${TK.border};
-    background: #f8fafc;
-`;
-
-const ItemInfo = styled.div`
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-`;
-
-const ItemTitle = styled.div`
-    font-weight: 700;
-    font-size: 13px;
-    color: ${TK.text1};
-`;
-
-const ItemSub = styled.div`
-    font-size: 11.5px;
-    color: ${TK.text3};
-`;
+import StatusBadge from '../components/common/StatusBadge';
 
 const INVOICE_STATUS_OPTIONS = ['DRAFT', 'ISSUED', 'PARTIALLY_PAID', 'PAID', 'VOID', 'OVERDUE'];
 
@@ -255,10 +46,11 @@ const getDefaultInvoicePeriod = () => {
 const FinancePage = () => {
     const { user, refreshUser, can } = useAuth();
     const { enqueueSnackbar } = useSnackbar();
-    const { t, lang, formatRoute, getCityName, getCountryName } = useLanguage();
+    const { t, lang, isRTL, formatRoute } = useLanguage();
 
     const normalizeCurrencyCode = (currency, fallback = 'KWD') => String(currency || fallback || 'KWD').trim().toUpperCase().slice(0, 3);
     const fmtAmount = (val) => parseFloat(val || 0).toFixed(3);
+    const currentCurrency = normalizeCurrencyCode(user?.organization?.currency, 'KWD');
     const money = (val, currency) => `${fmtAmount(val)} ${normalizeCurrencyCode(currency, currentCurrency)}`;
 
     // Ledger State
@@ -293,7 +85,7 @@ const FinancePage = () => {
     const [shipmentsLoading, setShipmentsLoading] = useState(false);
     const [debouncedSearch, setDebouncedSearch] = useState('');
 
-    // Active Tab: 5 subtabs ('overview' | 'transactions' | 'allocations' | 'invoices' | 'reports' | 'cod')
+    // Active Tab
     const [activeTab, setActiveTab] = useState('overview');
 
     // COD & Driver Vault Clearing State
@@ -363,10 +155,10 @@ const FinancePage = () => {
         return months;
     }, [ledger, overview]);
 
-    // Dynamic Spending & Volume Distribution (Share of Wallet)
+    // Dynamic Spending & Volume Distribution
     const spendingDistributionData = useMemo(() => {
         if (Array.isArray(organizations) && organizations.length > 0) {
-            const colors = [TK.primary, '#0284c7', '#7c3aed', '#059669', '#9ca3af'];
+            const colors = ['#0050d4', '#0284c7', '#7c3aed', '#059669', '#9ca3af'];
             const sortedOrgs = [...organizations].sort((a, b) => (parseFloat(b.creditLimit || b.balance || 0)) - (parseFloat(a.creditLimit || a.balance || 0)));
             const top4 = sortedOrgs.slice(0, 4);
             const remainder = sortedOrgs.slice(4);
@@ -400,7 +192,7 @@ const FinancePage = () => {
         }
 
         return [
-            { name: 'Gulf Apex Trading W.L.L.', amount: 16450, percent: 42, color: TK.primary },
+            { name: 'Gulf Apex Trading W.L.L.', amount: 16450, percent: 42, color: '#0050d4' },
             { name: 'Al-Sabah Medical & Pharma', amount: 28200, percent: 35, color: '#0284c7' },
             { name: 'Kuwait Ministry of Commerce', amount: 50000, percent: 18, color: '#7c3aed' },
             { name: 'Direct Shippers (Client)', amount: 2500, percent: 5, color: '#059669' }
@@ -415,7 +207,6 @@ const FinancePage = () => {
         return () => clearTimeout(handler);
     }, [shipmentSearch]);
 
-    // Reset pagination when filters change
     useEffect(() => {
         setShipmentPagination(prev => ({ ...prev, page: 1 }));
     }, [debouncedSearch, statusFilter]);
@@ -477,7 +268,6 @@ const FinancePage = () => {
         fetchShipments();
     }, [fetchShipments]);
 
-    // Reset on Org Change
     useEffect(() => {
         if (!selectedOrgId) return;
         setPagination(prev => ({ ...prev, page: 1 }));
@@ -493,8 +283,6 @@ const FinancePage = () => {
     const currentOrgName = selectedOrgId === 'none'
         ? 'Solo Shippers (Unorganized)'
         : organizations.find(o => o.id === selectedOrgId)?.name || 'Selected Organization';
-
-    const currentCurrency = normalizeCurrencyCode(overview?.currency || user?.organization?.currency);
 
     const loadFinance = useCallback(async () => {
         try {
@@ -556,7 +344,7 @@ const FinancePage = () => {
         } finally {
             setLoading(false);
         }
-    }, [selectedOrgId, pagination.page, fetchLedger, can, user?.organizationId]);
+    }, [selectedOrgId, fetchLedger, can, user?.organizationId, user?.role]);
 
     useEffect(() => {
         loadFinance();
@@ -748,28 +536,18 @@ const FinancePage = () => {
         
         let initialAmount = '';
         let initialShipmentIds = [];
-        
         if (targetShipment) {
-            initialAmount = String(parseFloat(targetShipment.codAmount || 0).toFixed(3));
-            initialShipmentIds = [targetShipment.id || targetShipment.trackingNumber];
+            initialAmount = targetShipment.codAmount?.toString() || '';
+            initialShipmentIds = [targetShipment.id];
         } else if (targetDriver) {
-            const driverShipments = (codSummary.shipments || []).filter(s => 
-                s.assignedDriver?.id === targetDriver.id && s.codStatus !== 'REMITTED'
-            );
-            const sum = driverShipments.reduce((acc, s) => acc + parseFloat(s.codAmount || 0), 0);
-            initialAmount = sum > 0 ? String(sum.toFixed(3)) : String(parseFloat(codSummary.unremittedTotalsByCurrency?.['KWD'] || 0).toFixed(3));
-            initialShipmentIds = driverShipments.map(s => s.id || s.trackingNumber);
-        } else {
-            const sum = parseFloat(codSummary.unremittedTotalsByCurrency?.['KWD'] || 0);
-            if (sum > 0) initialAmount = String(sum.toFixed(3));
-            initialShipmentIds = (codSummary.shipments || []).filter(s => s.codStatus !== 'REMITTED').map(s => s.id || s.trackingNumber);
+            initialAmount = targetDriver.heldCash?.toString() || '';
         }
 
         setReconcileForm({
             driverId: dId,
             driverName: dName,
             amount: initialAmount,
-            currency: targetShipment?.codCurrency || 'KWD',
+            currency: 'KWD',
             bagReference: '',
             notes: '',
             shipmentIds: initialShipmentIds
@@ -778,614 +556,819 @@ const FinancePage = () => {
     };
 
     const handleReconcileSubmit = async () => {
-        if (!reconcileForm.amount || parseFloat(reconcileForm.amount) <= 0) {
-            enqueueSnackbar(lang === 'ar' ? 'يرجى إدخال مبلغ صحيح' : 'Please enter a valid amount', { variant: 'error' });
-            return;
-        }
-        if (!reconcileForm.driverId) {
-            enqueueSnackbar(lang === 'ar' ? 'يرجى اختيار سائق' : 'Please select a driver', { variant: 'error' });
+        if (!reconcileForm.driverId || !reconcileForm.amount || parseFloat(reconcileForm.amount) <= 0) {
+            enqueueSnackbar(lang === 'ar' ? 'يرجى إدخال مبلغ صحيح واختيار السائق' : 'Please provide driver and valid amount', { variant: 'warning' });
             return;
         }
 
+        setReconcileLoading(true);
         try {
-            setReconcileLoading(true);
-            await financeService.confirmDriverCodRemittance({
+            await financeService.reconcileDriverCod({
                 driverId: reconcileForm.driverId,
                 amount: parseFloat(reconcileForm.amount),
-                currency: reconcileForm.currency || 'KWD',
-                shipmentIds: reconcileForm.shipmentIds || [],
-                bagReference: reconcileForm.bagReference.trim(),
-                notes: reconcileForm.notes.trim()
+                currency: reconcileForm.currency,
+                bagReference: reconcileForm.bagReference,
+                notes: reconcileForm.notes,
+                shipmentIds: reconcileForm.shipmentIds
             });
-
-            enqueueSnackbar(
-                lang === 'ar'
-                    ? `تم ترحيل واستلام نقدية التحصيل (${fmtAmount(reconcileForm.amount)} ${reconcileForm.currency}) إلى خزينة الفرع بنجاح`
-                    : `Successfully verified and posted COD remittance (${fmtAmount(reconcileForm.amount)} ${reconcileForm.currency}) to vault ledger`,
-                { variant: 'success' }
-            );
-
+            enqueueSnackbar(lang === 'ar' ? 'تم تسجيل وتوريد النقدية بنجاح إلى الخزينة!' : 'Driver cash successfully reconciled into hub vault!', { variant: 'success' });
             setIsReconcileModalOpen(false);
-            setReconcileForm({ driverId: '', driverName: '', amount: '', currency: 'KWD', bagReference: '', notes: '', shipmentIds: [] });
-            await fetchCodData();
-            if (selectedOrgId && selectedOrgId !== 'none') {
-                await fetchLedger(selectedOrgId);
-            }
+            fetchCodData();
+            loadFinance();
         } catch (err) {
-            console.error('Failed to reconcile COD cash:', err);
-            enqueueSnackbar(err.response?.data?.error || err.message || 'Failed to post remittance', { variant: 'error' });
+            const msg = err.response?.data?.error || err.message || (lang === 'ar' ? 'فشل التوريد النقدي' : 'Failed to reconcile driver cash');
+            enqueueSnackbar(msg, { variant: 'error' });
         } finally {
             setReconcileLoading(false);
         }
     };
 
-    const selectedPayment = payments.find(p => p.id === selectedPaymentId);
+    const summary = overview || {};
     const selectedCount = Object.keys(selectedShipmentsMap).length;
 
-    const summary = overview || {
-        balance: 0,
-        creditLimit: 0,
-        availableCredit: 0,
-        unappliedCash: 0,
-        totalUnpaid: 0,
-        agingBuckets: { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 }
-    };
-
     return (
-        <div style={{ maxWidth: 1400, margin: '0 auto', paddingBottom: 40 }}>
-            <PageHeader
-                title={t('fin_cockpit_title', 'Finance & Ledger Cockpit')}
-                description={t('fin_cockpit_desc', 'Manage customer accounts, track ledger allocations, and visualize cash flow.')}
-                action={null}
-                secondaryAction={
-                    <Button variant="outline" onClick={() => { loadFinance(); fetchShipments(); if (activeTab === 'cod') fetchCodData(); }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 16, marginRight: 6 }}>refresh</span>
-                        {t('refresh', 'Refresh')}
-                    </Button>
-                }
-            />
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+            {/* Header Ribbon */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-base-200">
+                <div>
+                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                        <span className="badge badge-primary font-mono font-bold text-xs uppercase tracking-wider">
+                            {lang === 'ar' ? 'نظام المحاسبة وإدارة النقدية المزدوج' : 'Dual-Perspective ERP & Ledger Hub'}
+                        </span>
+                        <span className="badge badge-outline border-base-300 text-xs font-mono">
+                            {currentCurrency}
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                            <span className="material-symbols-outlined text-2xl">account_balance_wallet</span>
+                        </div>
+                        <div>
+                            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-base-content">
+                                {lang === 'ar' ? 'المالية والمحاسبة والأستاذ العام' : 'Financials, ERP & Double-Entry Ledgers'}
+                            </h1>
+                            <p className="text-xs sm:text-sm text-base-content/60">
+                                {lang === 'ar'
+                                    ? 'دفتر الأستاذ العام، مطابقة الموردين (AP)، تحصيل النقدية (COD)، والقوائم المالية الختامية.'
+                                    : 'Double-entry general ledger, AP reconciliation, receivables, driver COD vault, and period closing.'}
+                            </p>
+                        </div>
+                    </div>
+                </div>
 
-            {/* 5-Tab Navigation */}
-            <SubNav>
-                <NavTab $active={activeTab === 'overview'} onClick={() => setActiveTab('overview')}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>dashboard</span>
-                    {t('fin_tab_overview', 'Overview & Cash Flow')}
-                </NavTab>
-                <NavTab $active={activeTab === 'transactions'} onClick={() => setActiveTab('transactions')}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>receipt_long</span>
-                    {t('fin_tab_transactions', 'Ledger Transactions')}
-                </NavTab>
-                <NavTab $active={activeTab === 'allocations'} onClick={() => setActiveTab('allocations')}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>account_balance_wallet</span>
-                    {t('fin_tab_allocations', 'Allocations & Payments')}
-                </NavTab>
-                {can('VIEW_INVOICES') && (
-                    <NavTab $active={activeTab === 'invoices'} onClick={() => setActiveTab('invoices')}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>description</span>
-                        {t('fin_tab_invoices', 'Invoices & Billing')}
-                    </NavTab>
-                )}
-                {can('VIEW_FINANCE') && (
-                    <NavTab $active={activeTab === 'cod'} onClick={() => { setActiveTab('cod'); fetchCodData(); fetchDrivers(); }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>payments</span>
-                        {lang === 'ar' ? 'تسوية نقدية وتحصيل السائقين (COD)' : 'Driver Cash & COD Vault'}
-                    </NavTab>
-                )}
-                {can('VIEW_FINANCE') && (
-                    <NavTab $active={activeTab === 'reports'} onClick={() => setActiveTab('reports')}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>analytics</span>
-                        {t('fin_tab_reports', 'Profitability Reports')}
-                    </NavTab>
-                )}
-                {can('VIEW_FINANCE') && (
-                    <NavTab $active={activeTab === 'statements'} onClick={() => setActiveTab('statements')}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>account_balance</span>
-                        {lang === 'ar' ? 'القوائم المالية' : 'Financial Statements'}
-                    </NavTab>
-                )}
-                {can('VIEW_FINANCE') && (
-                    <NavTab $active={activeTab === 'gl'} onClick={() => setActiveTab('gl')}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>menu_book</span>
-                        {lang === 'ar' ? 'الأستاذ العام والدليل' : 'General Ledger & COA'}
-                    </NavTab>
-                )}
-                {can('VIEW_FINANCE') && (
-                    <NavTab $active={activeTab === 'ap'} onClick={() => setActiveTab('ap')}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>assignment_returned</span>
-                        {lang === 'ar' ? 'مستحقات الموردين' : 'Accounts Payable (AP)'}
-                    </NavTab>
-                )}
-                {can('VIEW_FINANCE') && (
-                    <NavTab $active={activeTab === 'treasury'} onClick={() => setActiveTab('treasury')}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>savings</span>
-                        {lang === 'ar' ? 'الخزينة والبنوك' : 'Treasury & Banks'}
-                    </NavTab>
-                )}
-                {can('VIEW_FINANCE') && (
-                    <NavTab $active={activeTab === 'periods'} onClick={() => setActiveTab('periods')}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>calendar_month</span>
-                        {lang === 'ar' ? 'الإقفال المالي' : 'Period Closing'}
-                    </NavTab>
-                )}
-            </SubNav>
-
-            {/* Organization Selector (if multi-org access) */}
-            {can('VIEW_FINANCE') && organizations.length > 0 && (
-                <Card style={{ marginBottom: '24px', padding: '14px 20px', borderRadius: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
-                    <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
-                        <div style={{ minWidth: '260px' }}>
-                            <Select
-                                label={t('fin_active_account', 'Active Account / Organization')}
+                {/* Scope & Refresh Actions */}
+                <div className="flex items-center gap-2 flex-wrap">
+                    {can('VIEW_FINANCE') && organizations.length > 0 && (
+                        <div className="flex items-center gap-2">
+                            <select
                                 value={selectedOrgId}
                                 onChange={(e) => setSelectedOrgId(e.target.value)}
+                                className="select select-sm select-bordered font-bold text-xs bg-base-100 max-w-[220px]"
                             >
-                                <option value="none" style={{ fontWeight: 'bold', color: TK.primary }}>
+                                <option value="none">
                                     {t('fin_solo_shippers', 'Solo Shippers (Unorganized)')}
                                 </option>
                                 {organizations.map((org) => (
                                     <option key={org.id} value={org.id}>{org.name}</option>
                                 ))}
-                            </Select>
+                            </select>
                         </div>
-                        <div style={{ fontSize: 12.5, color: TK.text2, flex: 1 }}>
-                            {t('fin_active_scope', 'Active Ledger Scope')}: <strong style={{ color: TK.text1 }}>{currentOrgName}</strong> • {t('fin_realtime_double_entry', 'Real-time double-entry balances')}
-                        </div>
-                    </div>
-                </Card>
-            )}
+                    )}
+
+                    <button
+                        type="button"
+                        onClick={loadFinance}
+                        disabled={loading}
+                        className="btn btn-sm btn-ghost border border-base-200 gap-1.5 font-bold"
+                    >
+                        <span className={`material-symbols-outlined text-[18px] ${loading ? 'animate-spin' : ''}`}>
+                            refresh
+                        </span>
+                        {lang === 'ar' ? 'تحديث' : 'Refresh'}
+                    </button>
+                </div>
+            </div>
+
+            {/* Navigation Tabs Strip */}
+            <div className="tabs tabs-boxed bg-base-200/60 p-1.5 rounded-2xl flex flex-wrap gap-1 border border-base-200">
+                <button
+                    type="button"
+                    onClick={() => setActiveTab('overview')}
+                    className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                        activeTab === 'overview' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                    }`}
+                >
+                    <span className="material-symbols-outlined text-[17px]">dashboard</span>
+                    {t('fin_tab_overview', 'Overview & Cash Flow')}
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => setActiveTab('transactions')}
+                    className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                        activeTab === 'transactions' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                    }`}
+                >
+                    <span className="material-symbols-outlined text-[17px]">receipt_long</span>
+                    {t('fin_tab_transactions', 'Ledger Transactions')}
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => setActiveTab('allocations')}
+                    className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                        activeTab === 'allocations' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                    }`}
+                >
+                    <span className="material-symbols-outlined text-[17px]">account_balance_wallet</span>
+                    {t('fin_tab_allocations', 'Allocations & Payments')}
+                </button>
+
+                {can('VIEW_INVOICES') && (
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('invoices')}
+                        className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                            activeTab === 'invoices' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                        }`}
+                    >
+                        <span className="material-symbols-outlined text-[17px]">description</span>
+                        {t('fin_tab_invoices', 'Invoices & Billing')}
+                    </button>
+                )}
+
+                {can('VIEW_FINANCE') && (
+                    <button
+                        type="button"
+                        onClick={() => { setActiveTab('cod'); fetchCodData(); fetchDrivers(); }}
+                        className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                            activeTab === 'cod' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                        }`}
+                    >
+                        <span className="material-symbols-outlined text-[17px]">payments</span>
+                        {lang === 'ar' ? 'نقدية السائقين (COD)' : 'Driver Cash & COD Vault'}
+                    </button>
+                )}
+
+                {can('VIEW_FINANCE') && (
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('reports')}
+                        className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                            activeTab === 'reports' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                        }`}
+                    >
+                        <span className="material-symbols-outlined text-[17px]">analytics</span>
+                        {t('fin_tab_reports', 'Profitability Reports')}
+                    </button>
+                )}
+
+                {can('VIEW_FINANCE') && (
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('statements')}
+                        className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                            activeTab === 'statements' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                        }`}
+                    >
+                        <span className="material-symbols-outlined text-[17px]">account_balance</span>
+                        {lang === 'ar' ? 'القوائم المالية' : 'Statements'}
+                    </button>
+                )}
+
+                {can('VIEW_FINANCE') && (
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('gl')}
+                        className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                            activeTab === 'gl' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                        }`}
+                    >
+                        <span className="material-symbols-outlined text-[17px]">menu_book</span>
+                        {lang === 'ar' ? 'الأستاذ العام' : 'General Ledger'}
+                    </button>
+                )}
+
+                {can('VIEW_FINANCE') && (
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('ap')}
+                        className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                            activeTab === 'ap' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                        }`}
+                    >
+                        <span className="material-symbols-outlined text-[17px]">assignment_returned</span>
+                        {lang === 'ar' ? 'مستحقات الموردين' : 'Accounts Payable'}
+                    </button>
+                )}
+
+                {can('VIEW_FINANCE') && (
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('treasury')}
+                        className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                            activeTab === 'treasury' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                        }`}
+                    >
+                        <span className="material-symbols-outlined text-[17px]">savings</span>
+                        {lang === 'ar' ? 'الخزينة والبنوك' : 'Treasury'}
+                    </button>
+                )}
+
+                {can('VIEW_FINANCE') && (
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('periods')}
+                        className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                            activeTab === 'periods' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                        }`}
+                    >
+                        <span className="material-symbols-outlined text-[17px]">calendar_month</span>
+                        {lang === 'ar' ? 'الإقفال المالي' : 'Period Closing'}
+                    </button>
+                )}
+            </div>
+
+            {/* Active Ledger Scope Banner */}
+            <div className="bg-base-200/40 border border-base-200 rounded-2xl px-4 py-2.5 flex items-center justify-between flex-wrap gap-2 text-xs">
+                <div className="flex items-center gap-2">
+                    <span className="text-base-content/60 font-semibold">{t('fin_active_scope', 'Active Ledger Scope')}:</span>
+                    <strong className="text-base-content font-bold">{currentOrgName}</strong>
+                </div>
+                <div className="text-base-content/50 font-mono">
+                    {t('fin_realtime_double_entry', 'Real-time audited double-entry balances')}
+                </div>
+            </div>
 
             {/* ── TAB 1: OVERVIEW & CASH FLOW ── */}
             {activeTab === 'overview' && (
-                <>
+                <div className="space-y-6">
                     {/* 4 Balance Metric Cards */}
-                    <MetricsGrid>
-                        <MetricCard>
-                            <MetricHeader>
-                                <MetricLabel>{t('fin_available_balance', 'Available Balance')}</MetricLabel>
-                                <MetricIcon $bg={TK.primaryBg} $color={TK.primary}>
-                                    <span className="material-symbols-outlined" style={{ fontSize: 20 }}>account_balance</span>
-                                </MetricIcon>
-                            </MetricHeader>
-                            <div>
-                                <MetricValue>
-                                    {fmtAmount(summary.availableCredit || summary.balance)} <span>{currentCurrency}</span>
-                                </MetricValue>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                                    <span style={{ fontSize: 11.5, color: TK.text3 }}>{t('fin_credit_limit', 'Credit Limit')}: {money(summary.creditLimit, currentCurrency)}</span>
-                                    <MetricTrend $positive>+8.2% vs last mo</MetricTrend>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
+                                    {t('fin_available_balance', 'Available Balance')}
+                                </span>
+                                <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                                    <span className="material-symbols-outlined text-[18px]">account_balance</span>
                                 </div>
                             </div>
-                        </MetricCard>
+                            <div className="text-2xl font-black font-mono text-base-content">
+                                {fmtAmount(summary.availableCredit || summary.balance)} <span className="text-xs font-semibold text-base-content/60">{currentCurrency}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[11px] text-base-content/50 mt-2">
+                                <span>{t('fin_credit_limit', 'Credit Limit')}: {money(summary.creditLimit, currentCurrency)}</span>
+                                <span className="badge badge-success badge-xs font-bold text-white">+8.2%</span>
+                            </div>
+                        </div>
 
-                        <MetricCard>
-                            <MetricHeader>
-                                <MetricLabel>{t('fin_unapplied_cash', 'Unapplied Cash')}</MetricLabel>
-                                <MetricIcon $bg={TK.successBg} $color={TK.success}>
-                                    <span className="material-symbols-outlined" style={{ fontSize: 20 }}>payments</span>
-                                </MetricIcon>
-                            </MetricHeader>
-                            <div>
-                                <MetricValue style={{ color: TK.success }}>
-                                    {fmtAmount(summary.unappliedCash)} <span>{currentCurrency}</span>
-                                </MetricValue>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                                    <span style={{ fontSize: 11.5, color: TK.text3 }}>{lang === 'ar' ? 'متاح للتسوية' : 'Available to allocate'}</span>
-                                    <MetricTrend $positive>{lang === 'ar' ? 'جاهز' : 'Ready'}</MetricTrend>
+                        <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
+                                    {t('fin_unapplied_cash', 'Unapplied Cash')}
+                                </span>
+                                <div className="w-8 h-8 rounded-lg bg-success/10 text-success flex items-center justify-center">
+                                    <span className="material-symbols-outlined text-[18px]">payments</span>
                                 </div>
                             </div>
-                        </MetricCard>
+                            <div className="text-2xl font-black font-mono text-success">
+                                {fmtAmount(summary.unappliedCash)} <span className="text-xs font-semibold text-base-content/60">{currentCurrency}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[11px] text-base-content/50 mt-2">
+                                <span>{lang === 'ar' ? 'متاح للتسوية' : 'Available to allocate'}</span>
+                                <span className="badge badge-primary badge-xs font-bold">{lang === 'ar' ? 'جاهز' : 'Ready'}</span>
+                            </div>
+                        </div>
 
-                        <MetricCard>
-                            <MetricHeader>
-                                <MetricLabel>{t('fin_unpaid_receivables', 'Total Unpaid Cargo')}</MetricLabel>
-                                <MetricIcon $bg={TK.warningBg} $color={TK.warning}>
-                                    <span className="material-symbols-outlined" style={{ fontSize: 20 }}>inventory_2</span>
-                                </MetricIcon>
-                            </MetricHeader>
-                            <div>
-                                <MetricValue style={{ color: summary.totalUnpaid > 0 ? TK.warning : TK.text1 }}>
-                                    {fmtAmount(summary.totalUnpaid)} <span>{currentCurrency}</span>
-                                </MetricValue>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                                    <span style={{ fontSize: 11.5, color: TK.text3 }}>{lang === 'ar' ? 'فواتير غير مسددة' : 'Outstanding invoices'}</span>
-                                    <MetricTrend>{summary.agingBuckets?.['0-30'] ? (lang === 'ar' ? 'جاري' : 'Current') : (lang === 'ar' ? 'مسوى' : 'Settled')}</MetricTrend>
+                        <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
+                                    {t('fin_unpaid_receivables', 'Total Unpaid Cargo')}
+                                </span>
+                                <div className="w-8 h-8 rounded-lg bg-warning/10 text-warning flex items-center justify-center">
+                                    <span className="material-symbols-outlined text-[18px]">inventory_2</span>
                                 </div>
                             </div>
-                        </MetricCard>
+                            <div className={`text-2xl font-black font-mono ${summary.totalUnpaid > 0 ? 'text-warning' : 'text-base-content'}`}>
+                                {fmtAmount(summary.totalUnpaid)} <span className="text-xs font-semibold text-base-content/60">{currentCurrency}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[11px] text-base-content/50 mt-2">
+                                <span>{lang === 'ar' ? 'فواتير غير مسددة' : 'Outstanding invoices'}</span>
+                                <span className="badge badge-ghost badge-xs font-mono">{summary.agingBuckets?.['0-30'] ? '0-30D' : 'CURRENT'}</span>
+                            </div>
+                        </div>
 
-                        <MetricCard>
-                            <MetricHeader>
-                                <MetricLabel>{lang === 'ar' ? 'صافي الموقف المالي' : 'Net Ledger Position'}</MetricLabel>
-                                <MetricIcon $bg={TK.purpleBg} $color={TK.purple}>
-                                    <span className="material-symbols-outlined" style={{ fontSize: 20 }}>trending_up</span>
-                                </MetricIcon>
-                            </MetricHeader>
-                            <div>
-                                <MetricValue>
-                                    {fmtAmount(parseFloat(summary.unappliedCash || 0) - parseFloat(summary.balance || 0))} <span>{currentCurrency}</span>
-                                </MetricValue>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                                    <span style={{ fontSize: 11.5, color: TK.text3 }}>{lang === 'ar' ? 'المسدد مقابل المطلوب' : 'Cash vs Invoiced'}</span>
-                                    <MetricTrend $positive>{lang === 'ar' ? 'متوازن' : 'Balanced'}</MetricTrend>
+                        <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
+                                    {lang === 'ar' ? 'صافي الموقف المالي' : 'Net Ledger Position'}
+                                </span>
+                                <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+                                    <span className="material-symbols-outlined text-[18px]">trending_up</span>
                                 </div>
                             </div>
-                        </MetricCard>
-                    </MetricsGrid>
-
-                    {/* Charts Grid: 6-Month Cash Flow & Share of Wallet */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(460px, 1fr))', gap: '20px', marginBottom: '24px' }}>
-                        <Card title={lang === 'ar' ? 'حركة التدفق النقدي الشهري (الدائن مقابل المدين)' : 'Monthly Cash Flow (Credits vs Debits)'} style={{ borderRadius: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
-                            <div style={{ padding: '4px 0' }}>
-                                <CashFlowDualBarChart data={cashFlowChartData} currency={currentCurrency} height={220} />
+                            <div className="text-2xl font-black font-mono text-base-content">
+                                {fmtAmount(parseFloat(summary.unappliedCash || 0) - parseFloat(summary.balance || 0))} <span className="text-xs font-semibold text-base-content/60">{currentCurrency}</span>
                             </div>
-                        </Card>
-
-                        <Card title={lang === 'ar' ? 'توزيع حجم الشحن والإنفاق' : 'Volume & Spending Distribution'} style={{ borderRadius: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
-                            <div style={{ padding: '8px 0' }}>
-                                <ShareOfWalletBar items={spendingDistributionData} currency={currentCurrency} />
+                            <div className="flex items-center justify-between text-[11px] text-base-content/50 mt-2">
+                                <span>{lang === 'ar' ? 'المسدد مقابل المطلوب' : 'Cash vs Invoiced'}</span>
+                                <span className="badge badge-outline badge-xs font-bold">{lang === 'ar' ? 'متوازن' : 'Balanced'}</span>
                             </div>
-                        </Card>
+                        </div>
                     </div>
-                </>
+
+                    {/* Dual Charts Grid */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-5">
+                            <h3 className="card-title text-base font-bold text-base-content mb-3">
+                                {lang === 'ar' ? 'حركة التدفق النقدي الشهري (الدائن مقابل المدين)' : 'Monthly Cash Flow (Credits vs Debits)'}
+                            </h3>
+                            <CashFlowDualBarChart data={cashFlowChartData} currency={currentCurrency} height={220} />
+                        </div>
+
+                        <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-5">
+                            <h3 className="card-title text-base font-bold text-base-content mb-3">
+                                {lang === 'ar' ? 'توزيع حجم الشحن والإنفاق' : 'Volume & Spending Distribution'}
+                            </h3>
+                            <ShareOfWalletBar items={spendingDistributionData} currency={currentCurrency} />
+                        </div>
+                    </div>
+                </div>
             )}
 
             {/* ── TAB 2: TRANSACTIONS / LEDGER ── */}
             {activeTab === 'transactions' && (
-                <Card title={`${t('fin_tab_transactions', 'Ledger Transactions')}: ${currentOrgName}`}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                        <div style={{ fontSize: 13, color: TK.text2 }}>
-                            {lang === 'ar' ? 'سجل قيود اليومية المحاسبية المعتمدة لهذا الحساب بنظام القيد المزدوج.' : 'Audited double-entry journal entries for this account.'}
+                <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl overflow-hidden">
+                    <div className="card-body p-5 space-y-4">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div>
+                                <h3 className="card-title text-base font-bold text-base-content">
+                                    {t('fin_tab_transactions', 'Ledger Transactions')}: {currentOrgName}
+                                </h3>
+                                <p className="text-xs text-base-content/60">
+                                    {lang === 'ar' ? 'سجل قيود اليومية المحاسبية المعتمدة لهذا الحساب بنظام القيد المزدوج.' : 'Audited double-entry journal entries for this account.'}
+                                </p>
+                            </div>
+                            <ExportButton data={ledger} filename={`Ledger_${currentOrgName}`} />
                         </div>
-                        <ExportButton data={ledger} filename={`Ledger_${currentOrgName}`} />
+
+                        <div className="overflow-x-auto">
+                            <table className="table table-zebra w-full text-xs">
+                                <thead>
+                                    <tr className="bg-base-200/60 text-base-content/70 text-[11px] font-bold uppercase">
+                                        <th>{t('fin_th_date', 'Date')}</th>
+                                        <th>{t('fin_th_type', 'Type')}</th>
+                                        <th>{lang === 'ar' ? 'التصنيف' : 'Category'}</th>
+                                        <th>{t('fin_th_reference', 'Reference')}</th>
+                                        <th>{t('fin_th_description', 'Description')}</th>
+                                        <th className="text-end">{lang === 'ar' ? 'المبلغ' : 'Amount'}</th>
+                                        <th className="text-end">{t('fin_th_balance', 'Balance')}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {loading ? (
+                                        <tr>
+                                            <td colSpan={7} className="py-16 text-center text-base-content/50">
+                                                <span className="loading loading-spinner loading-md text-primary"></span>
+                                            </td>
+                                        </tr>
+                                    ) : ledger.length > 0 ? (
+                                        ledger.map((entry) => (
+                                            <tr key={entry.id} className="hover">
+                                                <td className="font-mono text-xs">{format(new Date(entry.createdAt), 'yyyy-MM-dd HH:mm')}</td>
+                                                <td>
+                                                    <span className={`badge badge-sm font-bold text-[10px] ${
+                                                        entry.entryType === 'CREDIT' ? 'badge-success text-white' : 'badge-error text-white'
+                                                    }`}>
+                                                        {entry.entryType === 'CREDIT' ? (lang === 'ar' ? 'دائن (CR)' : 'CREDIT') : (lang === 'ar' ? 'مدين (DR)' : 'DEBIT')}
+                                                    </span>
+                                                </td>
+                                                <td className="font-semibold text-xs">{entry.category}</td>
+                                                <td className="font-mono text-xs text-base-content/70">{entry.referenceId || '—'}</td>
+                                                <td className="text-xs max-w-xs truncate">{entry.description || '—'}</td>
+                                                <td className={`text-end font-mono font-bold text-xs ${
+                                                    entry.entryType === 'CREDIT' ? 'text-success' : 'text-error'
+                                                }`}>
+                                                    {entry.entryType === 'CREDIT' ? '+' : '-'}{money(entry.amount, entry.currency)}
+                                                </td>
+                                                <td className="text-end font-mono font-black text-xs text-base-content">
+                                                    {money(entry.balanceAfter, entry.currency)}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr>
+                                            <td colSpan={7} className="py-12 text-center text-base-content/50">
+                                                {t('fin_no_transactions', 'No ledger transactions recorded')}
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                    <TableWrapper>
-                        <Table>
-                            <Thead>
-                                <Tr>
-                                    <Th>{t('fin_th_date', 'Date')}</Th>
-                                    <Th>{t('fin_th_type', 'Type')}</Th>
-                                    <Th>{lang === 'ar' ? 'التصنيف' : 'Category'}</Th>
-                                    <Th>{t('fin_th_reference', 'Reference')}</Th>
-                                    <Th>{t('fin_th_description', 'Description')}</Th>
-                                    <Th style={{ textAlign: lang === 'ar' ? 'left' : 'right' }}>{lang === 'ar' ? 'المبلغ' : 'Amount'}</Th>
-                                    <Th style={{ textAlign: lang === 'ar' ? 'left' : 'right' }}>{t('fin_th_balance', 'Balance')}</Th>
-                                </Tr>
-                            </Thead>
-                            <Tbody>
-                                {loading ? (
-                                    <Tr><Td colSpan={7} style={{ textAlign: 'center', padding: '30px' }}><Loader /></Td></Tr>
-                                ) : ledger.length > 0 ? ledger.map((entry) => (
-                                    <Tr key={entry.id}>
-                                        <Td style={{ fontSize: 12 }}>{format(new Date(entry.createdAt), 'yyyy-MM-dd HH:mm')}</Td>
-                                        <Td>
-                                            <span style={{
-                                                padding: '3px 8px',
-                                                borderRadius: 6,
-                                                fontSize: 11,
-                                                fontWeight: 700,
-                                                background: entry.entryType === 'CREDIT' ? TK.successBg : TK.errorBg,
-                                                color: entry.entryType === 'CREDIT' ? TK.success : TK.error,
-                                            }}>
-                                                {entry.entryType === 'CREDIT' ? (lang === 'ar' ? 'دائن (CR)' : 'CREDIT') : (lang === 'ar' ? 'مدين (DR)' : 'DEBIT')}
-                                            </span>
-                                        </Td>
-                                        <Td style={{ fontSize: 12, fontWeight: 600 }}>{entry.category}</Td>
-                                        <Td style={{ fontSize: 12 }}>{entry.referenceId || '—'}</Td>
-                                        <Td style={{ fontSize: 12 }}>{entry.description || '—'}</Td>
-                                        <Td style={{
-                                            textAlign: lang === 'ar' ? 'left' : 'right',
-                                            fontWeight: 700,
-                                            color: entry.entryType === 'CREDIT' ? TK.success : TK.error
-                                        }}>
-                                            {entry.entryType === 'CREDIT' ? '+' : '-'}{money(entry.amount, entry.currency)}
-                                        </Td>
-                                        <Td style={{ textAlign: lang === 'ar' ? 'left' : 'right', fontWeight: 800 }}>
-                                            {money(entry.balanceAfter, entry.currency)}
-                                        </Td>
-                                    </Tr>
-                                )) : (
-                                    <Tr><Td colSpan={7} style={{ textAlign: 'center', padding: '30px' }}>{t('fin_no_transactions', 'No ledger transactions recorded')}</Td></Tr>
-                                )}
-                            </Tbody>
-                        </Table>
-                    </TableWrapper>
-                </Card>
+                </div>
             )}
 
             {/* ── TAB 3: ALLOCATIONS & PAYMENTS ── */}
             {activeTab === 'allocations' && (
-                <>
+                <div className="space-y-6">
                     {can('MANAGE_PAYMENTS') && (
-                        <Card title={`${lang === 'ar' ? 'تسجيل دفعة مستلمة' : 'Post Received Payment'}: ${currentOrgName}`} style={{ marginBottom: '24px', borderRadius: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', alignItems: 'end' }}>
-                                <WInput
-                                    label={`${lang === 'ar' ? 'المبلغ' : 'Amount'} (${currentCurrency})`}
-                                    type="number"
-                                    min="0.001"
-                                    step="0.001"
-                                    value={paymentForm.amount}
-                                    onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
-                                />
-                                <WInput
-                                    label={lang === 'ar' ? 'رقم الإيصال / السند' : 'Reference / Receipt #'}
-                                    value={paymentForm.reference}
-                                    onChange={(e) => setPaymentForm({ ...paymentForm, reference: e.target.value })}
-                                />
-                                <Select
-                                    label={lang === 'ar' ? 'طريقة الدفع' : 'Method'}
-                                    value={paymentForm.method}
-                                    onChange={(e) => setPaymentForm({ ...paymentForm, method: e.target.value })}
-                                >
-                                    <option value="manual">{lang === 'ar' ? 'قيد يدوي' : 'Manual Entry'}</option>
-                                    <option value="bank_transfer">{lang === 'ar' ? 'تحويل بنكي' : 'Bank Transfer'}</option>
-                                    <option value="cash">{lang === 'ar' ? 'نقدي (كاش)' : 'Cash'}</option>
-                                    <option value="knet">{lang === 'ar' ? 'كي نت (K-Net)' : 'K-Net'}</option>
-                                </Select>
-                                <WInput
-                                    label={lang === 'ar' ? 'ملاحظات داخلية' : 'Internal Notes'}
-                                    value={paymentForm.notes}
-                                    onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
-                                />
-                                <div style={{ display: 'flex', gap: '8px' }}>
-                                    <Button variant="primary" onClick={handlePostPayment} disabled={!paymentForm.amount}>
+                        <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-5">
+                            <h3 className="card-title text-base font-bold text-base-content mb-3">
+                                {lang === 'ar' ? 'تسجيل دفعة مستلمة' : 'Post Received Payment'}: {currentOrgName}
+                            </h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+                                <div>
+                                    <label className="text-[11px] font-bold text-base-content/60 block mb-1">
+                                        {lang === 'ar' ? 'المبلغ' : 'Amount'} ({currentCurrency})
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min="0.001"
+                                        step="0.001"
+                                        value={paymentForm.amount}
+                                        onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
+                                        placeholder="0.000"
+                                        className="input input-sm input-bordered w-full font-mono font-bold"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[11px] font-bold text-base-content/60 block mb-1">
+                                        {lang === 'ar' ? 'رقم الإيصال / السند' : 'Reference / Receipt #'}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={paymentForm.reference}
+                                        onChange={(e) => setPaymentForm({ ...paymentForm, reference: e.target.value })}
+                                        placeholder="RCP-10092"
+                                        className="input input-sm input-bordered w-full font-mono text-xs"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[11px] font-bold text-base-content/60 block mb-1">
+                                        {lang === 'ar' ? 'طريقة الدفع' : 'Method'}
+                                    </label>
+                                    <select
+                                        value={paymentForm.method}
+                                        onChange={(e) => setPaymentForm({ ...paymentForm, method: e.target.value })}
+                                        className="select select-sm select-bordered w-full text-xs font-semibold"
+                                    >
+                                        <option value="manual">{lang === 'ar' ? 'قيد يدوي' : 'Manual Entry'}</option>
+                                        <option value="bank_transfer">{lang === 'ar' ? 'تحويل بنكي' : 'Bank Transfer'}</option>
+                                        <option value="cash">{lang === 'ar' ? 'نقدي (كاش)' : 'Cash'}</option>
+                                        <option value="knet">{lang === 'ar' ? 'كي نت (K-Net)' : 'K-Net'}</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-[11px] font-bold text-base-content/60 block mb-1">
+                                        {lang === 'ar' ? 'ملاحظات داخلية' : 'Internal Notes'}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={paymentForm.notes}
+                                        onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
+                                        placeholder={lang === 'ar' ? 'ملاحظة التدقيق...' : 'Audit note...'}
+                                        className="input input-sm input-bordered w-full text-xs"
+                                    />
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={handlePostPayment}
+                                        disabled={!paymentForm.amount}
+                                        className="btn btn-sm btn-primary flex-1 font-bold shadow-xs"
+                                    >
                                         {lang === 'ar' ? 'تسجيل الدفعة' : 'Post Payment'}
-                                    </Button>
-                                    <Button variant="secondary" onClick={() => setFifoConfirmOpen(true)}>
-                                        {lang === 'ar' ? 'تسوية تلقائية (FIFO)' : 'FIFO Auto'}
-                                    </Button>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFifoConfirmOpen(true)}
+                                        className="btn btn-sm btn-outline border-base-300 font-bold"
+                                        title={lang === 'ar' ? 'تسوية تلقائية (FIFO)' : 'Auto FIFO'}
+                                    >
+                                        FIFO
+                                    </button>
                                 </div>
                             </div>
-                        </Card>
+                        </div>
                     )}
 
-                    <AllocationGrid>
-                        {/* LEFT: Unapplied Payments */}
-                        <ListCard>
-                            <ListHeader>
-                                <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '11.5px', letterSpacing: '0.06em', color: TK.text2 }}>
+                    {/* Allocation 2-Column Grid */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                        {/* LEFT: Unapplied Payments (5 cols) */}
+                        <div className="lg:col-span-5 card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl overflow-hidden h-[620px] flex flex-col">
+                            <div className="p-4 bg-base-200/50 border-b border-base-200">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
                                     {lang === 'ar' ? '١. اختر الدفعة للتسوية' : '1. Select Payment To Allocate'}
-                                </div>
-                            </ListHeader>
-                            <ScrollableList>
-                                {payments.length > 0 ? payments.map(p => (
-                                    <ListItem
-                                        key={p.id}
-                                        $selected={selectedPaymentId === p.id}
-                                        onClick={() => {
-                                            setSelectedPaymentId(p.id);
-                                            setSelectedShipmentsMap({});
-                                        }}
-                                    >
-                                        <ItemInfo>
-                                            <ItemTitle>{p.reference || (lang === 'ar' ? 'دفعة #' + p.id.slice(-6) : 'Payment #' + p.id.slice(-6))}</ItemTitle>
-                                            <ItemSub>
-                                                {format(new Date(p.postedAt || p.createdAt), 'MMM dd, yyyy')} • {p.method}
-                                            </ItemSub>
-                                        </ItemInfo>
-                                        <div style={{ textAlign: lang === 'ar' ? 'left' : 'right' }}>
-                                            <div style={{ fontWeight: 800, color: TK.primary, fontSize: '14px' }}>
-                                                {money(parseFloat(p.amount) - parseFloat(p.allocatedAmount || 0), p.currency)}
+                                </span>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                                {payments.length > 0 ? (
+                                    payments.map((p) => {
+                                        const unapplied = parseFloat(p.amount) - parseFloat(p.allocatedAmount || 0);
+                                        const isSelected = selectedPaymentId === p.id;
+                                        return (
+                                            <div
+                                                key={p.id}
+                                                onClick={() => {
+                                                    setSelectedPaymentId(p.id);
+                                                    setSelectedShipmentsMap({});
+                                                }}
+                                                className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-center justify-between gap-3 ${
+                                                    isSelected
+                                                        ? 'border-primary bg-primary/10 shadow-xs'
+                                                        : 'border-base-200 bg-base-100 hover:bg-base-200/50'
+                                                }`}
+                                            >
+                                                <div>
+                                                    <div className="font-bold text-xs text-base-content">
+                                                        {p.reference || (lang === 'ar' ? `دفعة #${p.id.slice(-6)}` : `Payment #${p.id.slice(-6)}`)}
+                                                    </div>
+                                                    <div className="text-[11px] text-base-content/50">
+                                                        {format(new Date(p.postedAt || p.createdAt), 'MMM dd, yyyy')} • {p.method}
+                                                    </div>
+                                                </div>
+                                                <div className="text-end">
+                                                    <div className="font-mono font-bold text-sm text-primary">
+                                                        {money(unapplied, p.currency)}
+                                                    </div>
+                                                    <div className="text-[10px] text-base-content/50">
+                                                        {lang === 'ar' ? 'الإجمالي:' : 'Total:'} {money(p.amount, p.currency)}
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <div style={{ fontSize: '11px', color: TK.text3 }}>
-                                                {lang === 'ar' ? 'الإجمالي:' : 'Total:'} {money(p.amount, p.currency)}
-                                            </div>
-                                        </div>
-                                    </ListItem>
-                                )) : (
-                                    <div style={{ padding: '30px', textAlign: 'center', color: TK.text3, fontSize: 13 }}>
+                                        );
+                                    })
+                                ) : (
+                                    <div className="py-16 text-center text-base-content/50 text-xs">
                                         {lang === 'ar' ? 'لا توجد دفعات غير مسواة' : 'No unapplied payments found'}
                                     </div>
                                 )}
-                            </ScrollableList>
-                        </ListCard>
+                            </div>
+                        </div>
 
-                        {/* RIGHT: Shipments to Settle */}
-                        <ListCard>
-                            <ListHeader>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '11.5px', letterSpacing: '0.06em', color: TK.text2 }}>
-                                        {lang === 'ar' ? `٢. اختر الشحنات (${selectedCount})` : `2. Select Shipments (${selectedCount})`}
-                                    </div>
-                                    <Button
-                                        variant="primary"
-                                        size="small"
-                                        onClick={handleManualAllocation}
-                                        disabled={allocationLoading || !selectedPaymentId || selectedCount === 0}
-                                    >
-                                        {allocationLoading ? (lang === 'ar' ? 'جاري التسوية...' : 'Allocating...') : (lang === 'ar' ? 'تطبيق التسوية' : 'Apply Allocation')}
-                                    </Button>
-                                </div>
-                            </ListHeader>
-                            <FilterRow>
-                                <div style={{ flex: 1 }}>
-                                    <WInput
-                                        placeholder={lang === 'ar' ? 'بحث برقم الشحنة، المستلم...' : 'Search tracking, recipient...'}
-                                        value={shipmentSearch}
-                                        onChange={(e) => setShipmentSearch(e.target.value)}
-                                        style={{ margin: 0 }}
-                                    />
-                                </div>
-                                <div style={{ minWidth: '140px' }}>
-                                    <Select
-                                        value={statusFilter}
-                                        onChange={(e) => setStatusFilter(e.target.value)}
-                                        style={{ margin: 0, height: '36px', fontSize: '12px' }}
-                                    >
-                                        <option value="all">{lang === 'ar' ? 'الكل' : 'All'}</option>
-                                        <option value="unpaid">{lang === 'ar' ? 'غير مدفوعة فقط' : 'Unpaid Only'}</option>
-                                        <option value="partial">{lang === 'ar' ? 'مدفوعة جزئياً' : 'Partial Only'}</option>
-                                    </Select>
-                                </div>
-                            </FilterRow>
-                            <ScrollableList>
+                        {/* RIGHT: Shipments to Settle (7 cols) */}
+                        <div className="lg:col-span-7 card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl overflow-hidden h-[620px] flex flex-col">
+                            <div className="p-4 bg-base-200/50 border-b border-base-200 flex items-center justify-between gap-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
+                                    {lang === 'ar' ? `٢. اختر الشحنات (${selectedCount})` : `2. Select Shipments (${selectedCount})`}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={handleManualAllocation}
+                                    disabled={allocationLoading || !selectedPaymentId || selectedCount === 0}
+                                    className="btn btn-xs btn-primary font-bold shadow-xs gap-1"
+                                >
+                                    {allocationLoading ? <span className="loading loading-spinner loading-xs"></span> : null}
+                                    {lang === 'ar' ? 'تطبيق التسوية' : 'Apply Allocation'}
+                                </button>
+                            </div>
+
+                            <div className="p-3 bg-base-200/30 border-b border-base-200 flex items-center gap-2">
+                                <input
+                                    type="text"
+                                    placeholder={lang === 'ar' ? 'بحث برقم الشحنة، المستلم...' : 'Search tracking, recipient...'}
+                                    value={shipmentSearch}
+                                    onChange={(e) => setShipmentSearch(e.target.value)}
+                                    className="input input-xs input-bordered flex-1 bg-base-100 text-xs"
+                                />
+                                <select
+                                    value={statusFilter}
+                                    onChange={(e) => setStatusFilter(e.target.value)}
+                                    className="select select-xs select-bordered text-xs"
+                                >
+                                    <option value="all">{lang === 'ar' ? 'الكل' : 'All'}</option>
+                                    <option value="unpaid">{lang === 'ar' ? 'غير مدفوعة فقط' : 'Unpaid Only'}</option>
+                                    <option value="partial">{lang === 'ar' ? 'مدفوعة جزئياً' : 'Partial Only'}</option>
+                                </select>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-3 space-y-2">
                                 {shipmentsLoading ? (
-                                    <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}><Loader /></div>
-                                ) : shipments.filter(s => {
-                                    if (!selectedOrgId) return true;
-                                    if (selectedOrgId === 'none') return !s.organizationId;
-                                    return s.organizationId === selectedOrgId;
-                                }).length > 0 ? shipments.filter(s => {
-                                    if (!selectedOrgId) return true;
-                                    if (selectedOrgId === 'none') return !s.organizationId;
-                                    return s.organizationId === selectedOrgId;
-                                }).map(s => {
-                                    const isSelected = Boolean(selectedShipmentsMap[s.id]);
-                                    const outstanding = s.paid ? 0 : (s.remainingBalance !== undefined ? s.remainingBalance : (s.pricingSnapshot?.totalPrice || s.price || 0) - (s.totalPaid || 0));
+                                    <div className="py-16 text-center text-base-content/50">
+                                        <span className="loading loading-spinner loading-md text-primary"></span>
+                                    </div>
+                                ) : shipments.length > 0 ? (
+                                    shipments.map((s) => {
+                                        const isSelected = Boolean(selectedShipmentsMap[s.id]);
+                                        const outstanding = s.paid ? 0 : (s.remainingBalance !== undefined ? s.remainingBalance : (s.pricingSnapshot?.totalPrice || s.price || 0) - (s.totalPaid || 0));
 
-                                    return (
-                                        <ListItem
-                                            key={s.id}
-                                            $selected={isSelected}
-                                            $disabled={s.paid}
-                                            onClick={() => {
-                                                if (s.paid) return;
-                                                setSelectedShipmentsMap(prev => {
-                                                    const next = { ...prev };
-                                                    if (next[s.id]) delete next[s.id];
-                                                    else next[s.id] = s;
-                                                    return next;
-                                                 });
-                                            }}
-                                        >
-                                            <ItemInfo>
-                                                <ItemTitle>{s.trackingNumber}</ItemTitle>
-                                                <ItemSub>{s.receiver?.contactPerson || (lang === 'ar' ? 'المستلم' : 'Consignee')} • {formatRoute(s.origin, s.destination)}</ItemSub>
-                                            </ItemInfo>
-                                            <div style={{ textAlign: lang === 'ar' ? 'left' : 'right' }}>
-                                                <div style={{ fontWeight: 700, color: s.paid ? TK.success : TK.error, fontSize: '13px' }}>
-                                                    {s.paid ? (lang === 'ar' ? 'مدفوعة' : 'PAID') : money(outstanding, s.currency)}
+                                        return (
+                                            <div
+                                                key={s.id}
+                                                onClick={() => {
+                                                    if (s.paid) return;
+                                                    setSelectedShipmentsMap(prev => {
+                                                        const next = { ...prev };
+                                                        if (next[s.id]) delete next[s.id];
+                                                        else next[s.id] = s;
+                                                        return next;
+                                                    });
+                                                }}
+                                                className={`p-3.5 rounded-xl border transition-all flex items-center justify-between gap-3 ${
+                                                    s.paid
+                                                        ? 'opacity-50 cursor-not-allowed bg-base-200/40 border-base-200'
+                                                        : isSelected
+                                                            ? 'border-primary bg-primary/10 shadow-xs cursor-pointer'
+                                                            : 'border-base-200 bg-base-100 hover:bg-base-200/50 cursor-pointer'
+                                                }`}
+                                            >
+                                                <div className="flex items-center gap-2.5">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        disabled={s.paid}
+                                                        readOnly
+                                                        className="checkbox checkbox-xs checkbox-primary"
+                                                    />
+                                                    <div>
+                                                        <div className="font-mono font-bold text-xs text-base-content">
+                                                            {s.trackingNumber}
+                                                        </div>
+                                                        <div className="text-[11px] text-base-content/50">
+                                                            {s.receiver?.contactPerson || (lang === 'ar' ? 'المستلم' : 'Consignee')} • {formatRoute(s.origin, s.destination)}
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <div style={{ fontSize: '10.5px', color: TK.text3 }}>
-                                                    {lang === 'ar' ? 'الإجمالي:' : 'Total:'} {money(s.pricingSnapshot?.totalPrice || s.price, s.currency)}
+                                                <div className="text-end">
+                                                    <div className={`font-mono font-bold text-xs ${s.paid ? 'text-success' : 'text-error'}`}>
+                                                        {s.paid ? (lang === 'ar' ? 'مدفوعة' : 'PAID') : money(outstanding, s.currency)}
+                                                    </div>
+                                                    <div className="text-[10px] text-base-content/50">
+                                                        {lang === 'ar' ? 'الإجمالي:' : 'Total:'} {money(s.pricingSnapshot?.totalPrice || s.price, s.currency)}
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </ListItem>
-                                    );
-                                }) : (
-                                    <div style={{ padding: '30px', textAlign: 'center', color: TK.text3 }}>
+                                        );
+                                    })
+                                ) : (
+                                    <div className="py-16 text-center text-base-content/50 text-xs">
                                         {lang === 'ar' ? 'لا توجد شحنات غير مسددة' : 'No active unpaid shipments found'}
                                     </div>
                                 )}
-                            </ScrollableList>
-                        </ListCard>
-                    </AllocationGrid>
-                </>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             )}
 
-            {/* ── TAB 4: INVOICES & REPORTS ── */}
+            {/* ── TAB 4: INVOICES & BILLING ── */}
             {activeTab === 'invoices' && (
-                <>
+                <div className="space-y-6">
                     {can('MANAGE_PAYMENTS') && (
-                        <Card title={`${lang === 'ar' ? 'إصدار فاتورة / مطالبة مالية' : 'Generate Statement / Invoice'}: ${currentOrgName}`} style={{ marginBottom: '24px', borderRadius: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', alignItems: 'end' }}>
-                                <WInput
-                                    label={lang === 'ar' ? 'بداية الفترة' : 'Period Start'}
-                                    type="date"
-                                    value={invoiceForm.periodStart}
-                                    onChange={(e) => setInvoiceForm({ ...invoiceForm, periodStart: e.target.value })}
-                                />
-                                <WInput
-                                    label={lang === 'ar' ? 'نهاية الفترة' : 'Period End'}
-                                    type="date"
-                                    value={invoiceForm.periodEnd}
-                                    onChange={(e) => setInvoiceForm({ ...invoiceForm, periodEnd: e.target.value })}
-                                />
-                                <WInput
-                                    label={lang === 'ar' ? 'تاريخ الاستحقاق' : 'Due Date'}
-                                    type="date"
-                                    value={invoiceForm.dueDate}
-                                    onChange={(e) => setInvoiceForm({ ...invoiceForm, dueDate: e.target.value })}
-                                />
-                                <WInput
-                                    label={lang === 'ar' ? 'ملاحظات' : 'Notes'}
-                                    value={invoiceForm.notes}
-                                    onChange={(e) => setInvoiceForm({ ...invoiceForm, notes: e.target.value })}
-                                />
-                                <Button
-                                    variant="primary"
+                        <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-5">
+                            <h3 className="card-title text-base font-bold text-base-content mb-3">
+                                {lang === 'ar' ? 'إصدار فاتورة / مطالبة مالية' : 'Generate Statement / Invoice'}: {currentOrgName}
+                            </h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+                                <div>
+                                    <label className="text-[11px] font-bold text-base-content/60 block mb-1">
+                                        {lang === 'ar' ? 'بداية الفترة' : 'Period Start'}
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={invoiceForm.periodStart}
+                                        onChange={(e) => setInvoiceForm({ ...invoiceForm, periodStart: e.target.value })}
+                                        className="input input-sm input-bordered w-full font-mono text-xs"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[11px] font-bold text-base-content/60 block mb-1">
+                                        {lang === 'ar' ? 'نهاية الفترة' : 'Period End'}
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={invoiceForm.periodEnd}
+                                        onChange={(e) => setInvoiceForm({ ...invoiceForm, periodEnd: e.target.value })}
+                                        className="input input-sm input-bordered w-full font-mono text-xs"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[11px] font-bold text-base-content/60 block mb-1">
+                                        {lang === 'ar' ? 'تاريخ الاستحقاق' : 'Due Date'}
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={invoiceForm.dueDate}
+                                        onChange={(e) => setInvoiceForm({ ...invoiceForm, dueDate: e.target.value })}
+                                        className="input input-sm input-bordered w-full font-mono text-xs"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[11px] font-bold text-base-content/60 block mb-1">
+                                        {lang === 'ar' ? 'ملاحظات' : 'Notes'}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={invoiceForm.notes}
+                                        onChange={(e) => setInvoiceForm({ ...invoiceForm, notes: e.target.value })}
+                                        placeholder={lang === 'ar' ? 'ملاحظات الفاتورة...' : 'Invoice notes...'}
+                                        className="input input-sm input-bordered w-full text-xs"
+                                    />
+                                </div>
+                                <button
+                                    type="button"
                                     onClick={handleCreateInvoice}
                                     disabled={invoiceLoading || !invoiceForm.periodStart || !invoiceForm.periodEnd}
+                                    className="btn btn-sm btn-primary font-bold shadow-xs gap-1"
                                 >
-                                    {invoiceLoading ? (lang === 'ar' ? 'جاري الإصدار...' : 'Creating...') : (lang === 'ar' ? 'إصدار الفاتورة' : 'Create Invoice')}
-                                </Button>
+                                    {invoiceLoading ? <span className="loading loading-spinner loading-xs"></span> : null}
+                                    {lang === 'ar' ? 'إصدار الفاتورة' : 'Create Invoice'}
+                                </button>
                             </div>
-                        </Card>
+                        </div>
                     )}
 
-                    <Card title={`${t('fin_tab_invoices', 'Invoices')}: ${currentOrgName}`} style={{ borderRadius: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
-                        <TableWrapper>
-                            <Table>
-                                <Thead>
-                                    <Tr>
-                                        <Th>{t('fin_th_invoice_num', 'Invoice #')}</Th>
-                                        <Th>{lang === 'ar' ? 'الفترة' : 'Period'}</Th>
-                                        <Th>{lang === 'ar' ? 'عدد الشحنات' : 'Items'}</Th>
-                                        <Th>{t('fin_th_status', 'Status')}</Th>
-                                        <Th>{t('fin_th_due_date', 'Due Date')}</Th>
-                                        <Th style={{ textAlign: lang === 'ar' ? 'left' : 'right' }}>{t('fin_th_amount', 'Total Amount')}</Th>
-                                        <Th style={{ textAlign: lang === 'ar' ? 'left' : 'right' }}>{t('fin_th_actions', 'Action')}</Th>
-                                    </Tr>
-                                </Thead>
-                                <Tbody>
-                                    {invoices.length > 0 ? invoices.map((inv) => (
-                                        <Tr key={inv.id}>
-                                            <Td style={{ fontWeight: 700 }}>{inv.invoiceNumber}</Td>
-                                            <Td style={{ fontSize: 12 }}>
-                                                {format(new Date(inv.periodStart), 'MMM dd')} - {format(new Date(inv.periodEnd), 'MMM dd, yyyy')}
-                                            </Td>
-                                            <Td>{inv.lines?.length || 0}</Td>
-                                            <Td><StatusPill status={inv.status} /></Td>
-                                            <Td style={{ fontSize: 12 }}>{inv.dueDate ? format(new Date(inv.dueDate), 'MMM dd, yyyy') : '—'}</Td>
-                                            <Td style={{ textAlign: lang === 'ar' ? 'left' : 'right', fontWeight: 800 }}>
-                                                {money(inv.total, inv.currency)}
-                                            </Td>
-                                            <Td style={{ textAlign: lang === 'ar' ? 'left' : 'right' }}>
-                                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', justifyContent: lang === 'ar' ? 'flex-start' : 'flex-end', flexWrap: 'wrap' }}>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="small"
-                                                        onClick={() => handleDownloadInvoice(inv)}
-                                                        disabled={downloadingInvoiceId === inv.id}
-                                                        style={{ padding: '4px 8px', fontSize: 12 }}
-                                                        title={lang === 'ar' ? 'تنزيل الفاتورة بصيغة PDF' : 'Download Invoice PDF'}
-                                                    >
-                                                        <span className="material-symbols-outlined" style={{ fontSize: 14, marginInlineEnd: 4 }}>picture_as_pdf</span>
-                                                        {downloadingInvoiceId === inv.id ? '...' : 'PDF'}
-                                                    </Button>
-                                                    <Button
-                                                        variant="secondary"
-                                                        size="small"
-                                                        onClick={() => handleSendInvoiceWhatsApp(inv.id)}
-                                                        disabled={sendingInvoiceId === inv.id}
-                                                        style={{ padding: '4px 8px', fontSize: 12 }}
-                                                        title={lang === 'ar' ? 'إرسال الفاتورة عبر واتساب لمدير الحساب' : 'Send Invoice via WhatsApp to Manager'}
-                                                    >
-                                                        <span className="material-symbols-outlined" style={{ fontSize: 14, marginInlineEnd: 4 }}>send</span>
-                                                        {sendingInvoiceId === inv.id ? '...' : 'WhatsApp'}
-                                                    </Button>
-                                                    {can('MANAGE_PAYMENTS') && (
-                                                        <Select
-                                                            value={inv.status}
-                                                            onChange={(e) => handleInvoiceStatusChange(inv.id, e.target.value)}
-                                                            disabled={invoiceLoading}
-                                                            style={{ margin: 0, minWidth: '105px', height: '32px', fontSize: 12 }}
-                                                        >
-                                                            {INVOICE_STATUS_OPTIONS.map(status => (
-                                                                <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>
-                                                            ))}
-                                                        </Select>
-                                                    )}
-                                                </div>
-                                            </Td>
-                                        </Tr>
-                                    )) : (
-                                        <Tr><Td colSpan={7} style={{ textAlign: 'center', padding: '30px' }}>{t('fin_no_invoices', 'No invoices found')}</Td></Tr>
-                                    )}
-                                </Tbody>
-                            </Table>
-                        </TableWrapper>
-                    </Card>
-                </>
+                    <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl overflow-hidden">
+                        <div className="card-body p-5 space-y-4">
+                            <h3 className="card-title text-base font-bold text-base-content">
+                                {t('fin_tab_invoices', 'Invoices')}: {currentOrgName}
+                            </h3>
+
+                            <div className="overflow-x-auto">
+                                <table className="table table-zebra w-full text-xs">
+                                    <thead>
+                                        <tr className="bg-base-200/60 text-base-content/70 text-[11px] font-bold uppercase">
+                                            <th>{t('fin_th_invoice_num', 'Invoice #')}</th>
+                                            <th>{lang === 'ar' ? 'الفترة' : 'Period'}</th>
+                                            <th className="text-center">{lang === 'ar' ? 'عدد الشحنات' : 'Items'}</th>
+                                            <th className="text-center">{t('fin_th_status', 'Status')}</th>
+                                            <th>{t('fin_th_due_date', 'Due Date')}</th>
+                                            <th className="text-end">{t('fin_th_amount', 'Total Amount')}</th>
+                                            <th className="text-end">{t('fin_th_actions', 'Action')}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {invoices.length > 0 ? (
+                                            invoices.map((inv) => (
+                                                <tr key={inv.id} className="hover">
+                                                    <td className="font-mono font-bold text-xs">{inv.invoiceNumber}</td>
+                                                    <td className="text-xs">
+                                                        {format(new Date(inv.periodStart), 'MMM dd')} - {format(new Date(inv.periodEnd), 'MMM dd, yyyy')}
+                                                    </td>
+                                                    <td className="text-center font-mono">{inv.lines?.length || 0}</td>
+                                                    <td className="text-center">
+                                                        <StatusBadge status={inv.status} />
+                                                    </td>
+                                                    <td className="font-mono text-xs">{inv.dueDate ? format(new Date(inv.dueDate), 'MMM dd, yyyy') : '—'}</td>
+                                                    <td className="text-end font-mono font-black text-xs text-base-content">
+                                                        {money(inv.total, inv.currency)}
+                                                    </td>
+                                                    <td className="text-end">
+                                                        <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleDownloadInvoice(inv)}
+                                                                disabled={downloadingInvoiceId === inv.id}
+                                                                className="btn btn-xs btn-outline border-base-300 hover:border-primary gap-1 font-semibold"
+                                                                title={lang === 'ar' ? 'تنزيل PDF' : 'Download PDF'}
+                                                            >
+                                                                <span className="material-symbols-outlined text-[14px]">picture_as_pdf</span>
+                                                                {downloadingInvoiceId === inv.id ? '...' : 'PDF'}
+                                                            </button>
+
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleSendInvoiceWhatsApp(inv.id)}
+                                                                disabled={sendingInvoiceId === inv.id}
+                                                                className="btn btn-xs btn-outline btn-success gap-1 font-semibold"
+                                                                title={lang === 'ar' ? 'إرسال واتساب' : 'Send WhatsApp'}
+                                                            >
+                                                                <span className="material-symbols-outlined text-[14px]">send</span>
+                                                                {sendingInvoiceId === inv.id ? '...' : 'WhatsApp'}
+                                                            </button>
+
+                                                            {can('MANAGE_PAYMENTS') && (
+                                                                <select
+                                                                    value={inv.status}
+                                                                    onChange={(e) => handleInvoiceStatusChange(inv.id, e.target.value)}
+                                                                    disabled={invoiceLoading}
+                                                                    className="select select-xs select-bordered text-[11px]"
+                                                                >
+                                                                    {INVOICE_STATUS_OPTIONS.map(status => (
+                                                                        <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>
+                                                                    ))}
+                                                                </select>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        ) : (
+                                            <tr>
+                                                <td colSpan={7} className="py-12 text-center text-base-content/50">
+                                                    {t('fin_no_invoices', 'No invoices found')}
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             )}
 
             {/* ── TAB 5: PROFITABILITY REPORTS ── */}
@@ -1393,372 +1376,428 @@ const FinancePage = () => {
                 <FinanceReports ledger={ledger} shipments={shipments} organizations={organizations} />
             )}
 
-            {/* ── TAB: DRIVER COD & VAULT CLEARING ── */}
+            {/* ── TAB 6: DRIVER COD & VAULT CLEARING ── */}
             {activeTab === 'cod' && can('VIEW_FINANCE') && (
-                <>
+                <div className="space-y-6">
                     {/* Alerts Banner */}
                     {codSummary.alerts && codSummary.alerts.length > 0 && (
-                        <div style={{
-                            background: 'rgba(239, 68, 68, 0.1)',
-                            border: `1px solid ${TK.error}`,
-                            borderRadius: '16px',
-                            padding: '16px 20px',
-                            marginBottom: '20px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '8px'
-                        }}>
-                            {codSummary.alerts.map((a, idx) => (
-                                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#dc2626', fontSize: 13, fontWeight: 700 }}>
-                                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>warning</span>
-                                    <span>{a.message}</span>
-                                </div>
-                            ))}
+                        <div className="alert alert-warning shadow-xs border border-warning/40 rounded-2xl">
+                            <span className="material-symbols-outlined text-warning-content text-xl">warning</span>
+                            <div className="space-y-0.5 text-xs text-warning-content">
+                                {codSummary.alerts.map((a, idx) => (
+                                    <div key={idx} className="font-bold">{a.message}</div>
+                                ))}
+                            </div>
                         </div>
                     )}
 
-                    {/* KPI Cards */}
-                    <MetricsGrid>
-                        <MetricCard>
-                            <MetricHeader>
-                                <MetricLabel>{lang === 'ar' ? 'إجمالي نقدية التحصيل لدى السائقين' : 'Total Unremitted Cash with Drivers'}</MetricLabel>
-                                <MetricIcon $bg={TK.successBg} $color={TK.success}>
-                                    <span className="material-symbols-outlined" style={{ fontSize: 20 }}>payments</span>
-                                </MetricIcon>
-                            </MetricHeader>
-                            <div>
-                                <MetricValue style={{ color: TK.success }}>
-                                    {fmtAmount(codSummary.unremittedTotalsByCurrency?.['KWD'] || 0)} <span>KWD</span>
-                                </MetricValue>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                                    <span style={{ fontSize: 11.5, color: TK.text3 }}>
-                                        {Object.entries(codSummary.unremittedTotalsByCurrency || {})
-                                            .filter(([k]) => k !== 'KWD')
-                                            .map(([curr, amt]) => `${fmtAmount(amt)} ${curr}`)
-                                            .join(', ') || (lang === 'ar' ? 'جاهز للاستلام والتسوية' : 'Ready for vault handover')}
-                                    </span>
-                                    <MetricTrend $positive>{lang === 'ar' ? 'تحصيل نقدي' : 'Cash in Hand'}</MetricTrend>
+                    {/* COD KPI Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
+                                    {lang === 'ar' ? 'إجمالي نقدية التحصيل لدى السائقين' : 'Total Cash with Drivers'}
+                                </span>
+                                <div className="w-8 h-8 rounded-lg bg-success/10 text-success flex items-center justify-center">
+                                    <span className="material-symbols-outlined text-[18px]">payments</span>
                                 </div>
                             </div>
-                        </MetricCard>
+                            <div className="text-2xl font-black font-mono text-success">
+                                {fmtAmount(codSummary.unremittedTotalsByCurrency?.['KWD'] || 0)} <span className="text-xs font-semibold text-base-content/60">KWD</span>
+                            </div>
+                            <div className="text-[11px] text-base-content/50 mt-2">
+                                {lang === 'ar' ? 'جاهز للاستلام والتسوية بالخزينة' : 'Ready for vault handover'}
+                            </div>
+                        </div>
 
-                        <MetricCard>
-                            <MetricHeader>
-                                <MetricLabel>{lang === 'ar' ? 'عدد شحنات التحصيل غير المسواة' : 'Unremitted COD Shipments'}</MetricLabel>
-                                <MetricIcon $bg={TK.primaryBg} $color={TK.primary}>
-                                    <span className="material-symbols-outlined" style={{ fontSize: 20 }}>local_shipping</span>
-                                </MetricIcon>
-                            </MetricHeader>
-                            <div>
-                                <MetricValue>
-                                    {codSummary.unremittedCount || 0}
-                                </MetricValue>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                                    <span style={{ fontSize: 11.5, color: TK.text3 }}>{lang === 'ar' ? 'بانتظار التوريد للخزينة' : 'Awaiting cashier check'}</span>
-                                    <MetricTrend>{codSummary.unremittedCount > 0 ? (lang === 'ar' ? 'نشط' : 'Active') : (lang === 'ar' ? 'مسوى بالكامل' : 'Settled')}</MetricTrend>
+                        <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
+                                    {lang === 'ar' ? 'عدد شحنات التحصيل غير المسواة' : 'Unremitted COD Shipments'}
+                                </span>
+                                <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                                    <span className="material-symbols-outlined text-[18px]">local_shipping</span>
                                 </div>
                             </div>
-                        </MetricCard>
+                            <div className="text-2xl font-black font-mono text-base-content">
+                                {codSummary.unremittedCount || 0}
+                            </div>
+                            <div className="text-[11px] text-base-content/50 mt-2">
+                                {lang === 'ar' ? 'بانتظار التوريد للخزينة' : 'Awaiting cashier check'}
+                            </div>
+                        </div>
 
-                        <MetricCard>
-                            <MetricHeader>
-                                <MetricLabel>{lang === 'ar' ? 'سقف احتفاظ السائق بالنقد' : 'Driver Holding Limit'}</MetricLabel>
-                                <MetricIcon $bg={TK.warningBg} $color={TK.warning}>
-                                    <span className="material-symbols-outlined" style={{ fontSize: 20 }}>shield</span>
-                                </MetricIcon>
-                            </MetricHeader>
-                            <div>
-                                <MetricValue style={{ color: codSummary.isLimitExceeded ? TK.error : TK.text1 }}>
-                                    500.000 <span>KWD</span>
-                                </MetricValue>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                                    <span style={{ fontSize: 11.5, color: TK.text3 }}>{lang === 'ar' ? 'الحد الأقصى المسموح به' : 'Max safety threshold'}</span>
-                                    <MetricTrend $positive={!codSummary.isLimitExceeded}>{codSummary.isLimitExceeded ? (lang === 'ar' ? 'تجاوز الحد' : 'Limit Exceeded') : (lang === 'ar' ? 'ضمن الحد' : 'Compliant')}</MetricTrend>
+                        <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
+                                    {lang === 'ar' ? 'سقف احتفاظ السائق بالنقد' : 'Driver Holding Limit'}
+                                </span>
+                                <div className="w-8 h-8 rounded-lg bg-warning/10 text-warning flex items-center justify-center">
+                                    <span className="material-symbols-outlined text-[18px]">shield</span>
                                 </div>
                             </div>
-                        </MetricCard>
+                            <div className={`text-2xl font-black font-mono ${codSummary.isLimitExceeded ? 'text-error' : 'text-base-content'}`}>
+                                500.000 <span className="text-xs font-semibold text-base-content/60">KWD</span>
+                            </div>
+                            <div className="text-[11px] text-base-content/50 mt-2">
+                                <span className={`badge badge-xs font-bold ${codSummary.isLimitExceeded ? 'badge-error text-white' : 'badge-success text-white'}`}>
+                                    {codSummary.isLimitExceeded ? (lang === 'ar' ? 'تجاوز الحد' : 'Limit Exceeded') : (lang === 'ar' ? 'ضمن الحد' : 'Compliant')}
+                                </span>
+                            </div>
+                        </div>
 
-                        <MetricCard>
-                            <MetricHeader>
-                                <MetricLabel>{lang === 'ar' ? 'أقدمية النقد غير المورد' : 'Oldest Unremitted Age'}</MetricLabel>
-                                <MetricIcon $bg={TK.purpleBg} $color={TK.purple}>
-                                    <span className="material-symbols-outlined" style={{ fontSize: 20 }}>schedule</span>
-                                </MetricIcon>
-                            </MetricHeader>
-                            <div>
-                                <MetricValue style={{ color: codSummary.isAgingCritical ? TK.error : TK.text1 }}>
-                                    {codSummary.oldestAgingDays || 0} <span>{lang === 'ar' ? 'يوم' : 'Days'}</span>
-                                </MetricValue>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                                    <span style={{ fontSize: 11.5, color: TK.text3 }}>{lang === 'ar' ? 'التوريد الإجباري خلال 3 أيام' : 'Handover due in ≤ 3 days'}</span>
-                                    <MetricTrend $positive={!codSummary.isAgingCritical}>{codSummary.isAgingCritical ? (lang === 'ar' ? 'متأخر' : 'Overdue') : (lang === 'ar' ? 'طبيعي' : 'Normal')}</MetricTrend>
+                        <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
+                                    {lang === 'ar' ? 'أقدمية النقد غير المورد' : 'Oldest Unremitted Age'}
+                                </span>
+                                <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+                                    <span className="material-symbols-outlined text-[18px]">schedule</span>
                                 </div>
                             </div>
-                        </MetricCard>
-                    </MetricsGrid>
+                            <div className={`text-2xl font-black font-mono ${codSummary.isAgingCritical ? 'text-error' : 'text-base-content'}`}>
+                                {codSummary.oldestAgingDays || 0} <span className="text-xs font-semibold text-base-content/60">{lang === 'ar' ? 'يوم' : 'Days'}</span>
+                            </div>
+                            <div className="text-[11px] text-base-content/50 mt-2">
+                                {lang === 'ar' ? 'التوريد الإجباري خلال 3 أيام' : 'Handover due in ≤ 3 days'}
+                            </div>
+                        </div>
+                    </div>
 
-                    {/* Filter & Action Bar */}
-                    <Card style={{ marginBottom: '20px', borderRadius: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
-                            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
-                                <div style={{ minWidth: '220px' }}>
-                                    <Select
-                                        label={lang === 'ar' ? 'تصفية حسب السائق' : 'Filter by Driver'}
-                                        value={codDriverFilter}
-                                        onChange={(e) => {
-                                            setCodDriverFilter(e.target.value);
-                                            fetchCodData(e.target.value);
-                                        }}
-                                    >
-                                        <option value="ALL">{lang === 'ar' ? 'جميع السائقين' : 'All Drivers'}</option>
-                                        {driversList.map(d => (
-                                            <option key={d.id} value={d.id}>{d.name} {d.phone ? `(${d.phone})` : ''}</option>
-                                        ))}
-                                    </Select>
-                                </div>
-                                <Button
-                                    variant="outline"
-                                    onClick={() => fetchCodData()}
-                                    style={{ height: '42px', marginTop: '18px' }}
-                                >
-                                    <span className="material-symbols-outlined" style={{ fontSize: 16, marginRight: 6 }}>refresh</span>
-                                    {t('refresh', 'Refresh')}
-                                </Button>
-                            </div>
-                            <div style={{ marginTop: '18px' }}>
-                                <Button
-                                    variant="primary"
-                                    onClick={() => openReconcileModal()}
-                                    style={{
-                                        background: TK.success,
-                                        fontWeight: 700,
-                                        boxShadow: '0 2px 10px rgba(16, 185, 129, 0.3)'
+                    {/* Filter and Reconcile Toolbar */}
+                    <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4">
+                        <div className="flex items-center justify-between flex-wrap gap-3">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <select
+                                    value={codDriverFilter}
+                                    onChange={(e) => {
+                                        setCodDriverFilter(e.target.value);
+                                        fetchCodData(e.target.value);
                                     }}
+                                    className="select select-sm select-bordered text-xs font-semibold"
                                 >
-                                    <span className="material-symbols-outlined" style={{ fontSize: 18, marginRight: 6 }}>account_balance</span>
-                                    {lang === 'ar' ? 'تسجيل واستلام توريد نقدي للخزينة' : 'Receive & Reconcile Vault Handover'}
-                                </Button>
-                            </div>
-                        </div>
-                    </Card>
+                                    <option value="ALL">{lang === 'ar' ? 'جميع السائقين' : 'All Drivers'}</option>
+                                    {driversList.map(d => (
+                                        <option key={d.id} value={d.id}>{d.name} {d.phone ? `(${d.phone})` : ''}</option>
+                                    ))}
+                                </select>
 
-                    {/* COD Consignments Log Table */}
-                    <Card title={`${lang === 'ar' ? 'سجل شحنات التحصيل النقدي (COD)' : 'COD Consignments & Remittance Ledger'}`}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                            <div style={{ fontSize: 13, color: TK.text2 }}>
-                                {lang === 'ar'
-                                    ? 'متابعة وتدقيق المبالغ النقدية المحصلة من العملاء عبر السائقين ومطابقتها مع إيداعات الخزينة.'
-                                    : 'Audit and track physical cash collected by couriers with 2-step reconciliation to hub vault.'}
+                                <button
+                                    type="button"
+                                    onClick={() => fetchCodData()}
+                                    className="btn btn-sm btn-ghost border border-base-200"
+                                >
+                                    <span className="material-symbols-outlined text-[16px]">refresh</span>
+                                    {t('refresh', 'Refresh')}
+                                </button>
                             </div>
-                            <ExportButton data={codSummary.shipments || []} filename="Driver_COD_Collections" />
+
+                            <button
+                                type="button"
+                                onClick={() => openReconcileModal()}
+                                className="btn btn-sm btn-success text-white font-bold shadow-md shadow-success/20 gap-1.5"
+                            >
+                                <span className="material-symbols-outlined text-[18px]">account_balance</span>
+                                {lang === 'ar' ? 'استلام وتوريد نقدية للخزينة' : 'Receive & Reconcile Vault Handover'}
+                            </button>
                         </div>
-                        <TableWrapper>
-                            <Table>
-                                <Thead>
-                                    <Tr>
-                                        <Th>{t('fin_th_reference', 'Tracking #')}</Th>
-                                        <Th>{lang === 'ar' ? 'السائق المعين' : 'Assigned Driver'}</Th>
-                                        <Th>{t('fin_th_status', 'Status')}</Th>
-                                        <Th>{lang === 'ar' ? 'حالة التوريد' : 'COD Status'}</Th>
-                                        <Th style={{ textAlign: lang === 'ar' ? 'left' : 'right' }}>{lang === 'ar' ? 'مبلغ التحصيل' : 'COD Amount'}</Th>
-                                        <Th>{lang === 'ar' ? 'آخر تحديث' : 'Last Updated'}</Th>
-                                        <Th style={{ textAlign: lang === 'ar' ? 'left' : 'right' }}>{t('fin_th_actions', 'Actions')}</Th>
-                                    </Tr>
-                                </Thead>
-                                <Tbody>
-                                    {codLoading ? (
-                                        <Tr><Td colSpan={7} style={{ textAlign: 'center', padding: '30px' }}><Loader /></Td></Tr>
-                                    ) : (codSummary.shipments && codSummary.shipments.length > 0) ? (
-                                        codSummary.shipments.map((s) => {
-                                            const isRemitted = s.codStatus === 'REMITTED';
-                                            const isPending = s.codStatus === 'PENDING_REMITTANCE';
-                                            return (
-                                                <Tr key={s.id || s.trackingNumber}>
-                                                    <Td style={{ fontWeight: 700 }}>{s.trackingNumber}</Td>
-                                                    <Td style={{ fontSize: 12.5 }}>
-                                                        <div style={{ fontWeight: 600 }}>{s.assignedDriver?.name || '—'}</div>
-                                                        {s.assignedDriver?.phone && (
-                                                            <div style={{ fontSize: 11, color: TK.text3 }}>{s.assignedDriver.phone}</div>
-                                                        )}
-                                                    </Td>
-                                                    <Td><StatusPill status={s.status} /></Td>
-                                                    <Td>
-                                                        <span style={{
-                                                            padding: '3px 8px',
-                                                            borderRadius: 6,
-                                                            fontSize: 11,
-                                                            fontWeight: 700,
-                                                            background: isRemitted ? 'rgba(59, 130, 246, 0.15)' : isPending ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-                                                            color: isRemitted ? '#2563eb' : isPending ? '#d97706' : '#059669'
-                                                        }}>
-                                                            {isRemitted ? (lang === 'ar' ? 'مورد للخزينة' : 'VAULT REMITTED') : isPending ? (lang === 'ar' ? 'قيد المراجعة' : 'PENDING REVIEW') : (lang === 'ar' ? 'طرف السائق' : 'HELD IN HAND')}
-                                                        </span>
-                                                    </Td>
-                                                    <Td style={{
-                                                        textAlign: lang === 'ar' ? 'left' : 'right',
-                                                        fontWeight: 800,
-                                                        color: isRemitted ? TK.text2 : TK.success
-                                                    }}>
-                                                        {fmtAmount(s.codAmount)} {normalizeCurrencyCode(s.codCurrency, 'KWD')}
-                                                    </Td>
-                                                    <Td style={{ fontSize: 12, color: TK.text3 }}>
-                                                        {s.updatedAt ? format(new Date(s.updatedAt), 'yyyy-MM-dd HH:mm') : '—'}
-                                                    </Td>
-                                                    <Td style={{ textAlign: lang === 'ar' ? 'left' : 'right' }}>
-                                                        {!isRemitted ? (
-                                                            <Button
-                                                                variant="primary"
-                                                                size="small"
-                                                                onClick={() => openReconcileModal(null, s)}
-                                                                style={{ padding: '4px 10px', fontSize: 12, background: TK.success }}
-                                                            >
-                                                                <span className="material-symbols-outlined" style={{ fontSize: 14, marginInlineEnd: 4 }}>check_circle</span>
-                                                                {lang === 'ar' ? 'استلام وتوريد' : 'Reconcile'}
-                                                            </Button>
-                                                        ) : (
-                                                            <span style={{ fontSize: 11, color: TK.text3 }}>✓ {lang === 'ar' ? 'تم القيد' : 'Posted'}</span>
-                                                        )}
-                                                    </Td>
-                                                </Tr>
-                                            );
-                                        })
-                                    ) : (
-                                        <Tr><Td colSpan={7} style={{ textAlign: 'center', padding: '30px' }}>{lang === 'ar' ? 'لا توجد شحنات تحصيل نقدي مسجلة' : 'No COD shipments found'}</Td></Tr>
-                                    )}
-                                </Tbody>
-                            </Table>
-                        </TableWrapper>
-                    </Card>
-                </>
+                    </div>
+
+                    {/* Consignments Table */}
+                    <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl overflow-hidden">
+                        <div className="card-body p-5 space-y-4">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                                <div>
+                                    <h3 className="card-title text-base font-bold text-base-content">
+                                        {lang === 'ar' ? 'سجل شحنات التحصيل النقدي (COD)' : 'COD Consignments & Remittance Ledger'}
+                                    </h3>
+                                    <p className="text-xs text-base-content/60">
+                                        {lang === 'ar' ? 'متابعة وتدقيق المبالغ النقدية المحصلة من العملاء عبر السائقين.' : 'Audit and track physical cash collected by couriers.'}
+                                    </p>
+                                </div>
+                                <ExportButton data={codSummary.shipments || []} filename="Driver_COD_Collections" />
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <table className="table table-zebra w-full text-xs">
+                                    <thead>
+                                        <tr className="bg-base-200/60 text-base-content/70 text-[11px] font-bold uppercase">
+                                            <th>{t('fin_th_reference', 'Tracking #')}</th>
+                                            <th>{lang === 'ar' ? 'السائق المعين' : 'Assigned Driver'}</th>
+                                            <th className="text-center">{t('fin_th_status', 'Status')}</th>
+                                            <th className="text-center">{lang === 'ar' ? 'حالة التوريد' : 'COD Status'}</th>
+                                            <th className="text-end">{lang === 'ar' ? 'مبلغ التحصيل' : 'COD Amount'}</th>
+                                            <th>{lang === 'ar' ? 'آخر تحديث' : 'Last Updated'}</th>
+                                            <th className="text-end">{t('fin_th_actions', 'Actions')}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {codLoading ? (
+                                            <tr>
+                                                <td colSpan={7} className="py-16 text-center text-base-content/50">
+                                                    <span className="loading loading-spinner loading-md text-primary"></span>
+                                                </td>
+                                            </tr>
+                                        ) : codSummary.shipments && codSummary.shipments.length > 0 ? (
+                                            codSummary.shipments.map((s) => {
+                                                const isRemitted = s.codStatus === 'REMITTED';
+                                                return (
+                                                    <tr key={s.id || s.trackingNumber} className="hover">
+                                                        <td className="font-mono font-bold text-xs">{s.trackingNumber}</td>
+                                                        <td>
+                                                            <div className="font-bold text-base-content">{s.assignedDriver?.name || '—'}</div>
+                                                            {s.assignedDriver?.phone && (
+                                                                <div className="text-[11px] text-base-content/50 font-mono">{s.assignedDriver.phone}</div>
+                                                            )}
+                                                        </td>
+                                                        <td className="text-center">
+                                                            <StatusBadge status={s.status} />
+                                                        </td>
+                                                        <td className="text-center">
+                                                            <span className={`badge badge-sm font-bold text-[10px] ${
+                                                                isRemitted ? 'badge-info text-white' : 'badge-warning text-warning-content'
+                                                            }`}>
+                                                                {isRemitted ? (lang === 'ar' ? 'مورد للخزينة' : 'REMITTED') : (lang === 'ar' ? 'طرف السائق' : 'HELD IN HAND')}
+                                                            </span>
+                                                        </td>
+                                                        <td className="text-end font-mono font-bold text-xs text-success">
+                                                            {fmtAmount(s.codAmount)} {normalizeCurrencyCode(s.codCurrency, 'KWD')}
+                                                        </td>
+                                                        <td className="font-mono text-xs text-base-content/60">
+                                                            {s.updatedAt ? format(new Date(s.updatedAt), 'yyyy-MM-dd HH:mm') : '—'}
+                                                        </td>
+                                                        <td className="text-end">
+                                                            {!isRemitted ? (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => openReconcileModal(null, s)}
+                                                                    className="btn btn-xs btn-success text-white font-bold gap-1 shadow-xs"
+                                                                >
+                                                                    <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                                                                    {lang === 'ar' ? 'استلام وتوريد' : 'Reconcile'}
+                                                                </button>
+                                                            ) : (
+                                                                <span className="text-[11px] text-base-content/50 font-semibold">✓ {lang === 'ar' ? 'تم القيد' : 'Posted'}</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })
+                                        ) : (
+                                            <tr>
+                                                <td colSpan={7} className="py-12 text-center text-base-content/50">
+                                                    {lang === 'ar' ? 'لا توجد شحنات تحصيل نقدي مسجلة' : 'No COD shipments found'}
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             )}
 
-            {/* ── TAB: FINANCIAL STATEMENTS ── */}
+            {/* ── TAB 7: FINANCIAL STATEMENTS ── */}
             {activeTab === 'statements' && can('VIEW_FINANCE') && (
                 <FinancialStatementsTab lang={lang} />
             )}
 
-            {/* ── TAB: GENERAL LEDGER & COA ── */}
+            {/* ── TAB 8: GENERAL LEDGER & COA ── */}
             {activeTab === 'gl' && can('VIEW_FINANCE') && (
                 <GeneralLedgerTab lang={lang} />
             )}
 
-            {/* ── TAB: ACCOUNTS PAYABLE ── */}
+            {/* ── TAB 9: ACCOUNTS PAYABLE ── */}
             {activeTab === 'ap' && can('VIEW_FINANCE') && (
                 <AccountsPayableTab lang={lang} />
             )}
 
-            {/* ── TAB: TREASURY & BANKING ── */}
+            {/* ── TAB 10: TREASURY & BANKING ── */}
             {activeTab === 'treasury' && can('VIEW_FINANCE') && (
                 <TreasuryTab lang={lang} />
             )}
 
-            {/* ── TAB: PERIOD CLOSING ── */}
+            {/* ── TAB 11: PERIOD CLOSING ── */}
             {activeTab === 'periods' && can('VIEW_FINANCE') && (
                 <PeriodClosingTab lang={lang} />
             )}
 
             {/* Cash Handover Reconciliation Modal */}
-            <Modal
-                isOpen={isReconcileModalOpen}
-                onClose={() => setIsReconcileModalOpen(false)}
-                title={lang === 'ar' ? '💵 استلام وتوريد نقدية التحصيل (COD) إلى الخزينة' : '💵 Receive & Reconcile Driver COD Handover to Vault'}
-            >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '8px 0' }}>
-                    <div style={{ fontSize: 13, color: TK.text2 }}>
-                        {lang === 'ar'
-                            ? 'إثبات استلام النقدية الفعلية من السائق وترحيلها بنظام القيد المزدوج إلى خزينة الفرع.'
-                            : 'Verify physical cash collected from courier and post credit clearance to financial ledger.'}
-                    </div>
-
-                    <Select
-                        label={lang === 'ar' ? 'السائق المسلم للنقدية *' : 'Driver Handing Over Cash *'}
-                        value={reconcileForm.driverId}
-                        onChange={(e) => {
-                            const d = driversList.find(item => item.id === e.target.value);
-                            setReconcileForm(prev => ({
-                                ...prev,
-                                driverId: e.target.value,
-                                driverName: d?.name || ''
-                            }));
-                        }}
-                    >
-                        <option value="">{lang === 'ar' ? '— اختر السائق —' : '— Select Driver —'}</option>
-                        {driversList.map(d => (
-                            <option key={d.id} value={d.id}>{d.name} {d.phone ? `(${d.phone})` : ''}</option>
-                        ))}
-                    </Select>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
-                        <WInput
-                            label={`${lang === 'ar' ? 'المبلغ المستلم فعلياً' : 'Cash Count Amount'} *`}
-                            type="number"
-                            step="0.001"
-                            min="0.001"
-                            value={reconcileForm.amount}
-                            onChange={(e) => setReconcileForm(prev => ({ ...prev, amount: e.target.value }))}
-                        />
-                        <Select
-                            label={lang === 'ar' ? 'العملة' : 'Currency'}
-                            value={reconcileForm.currency}
-                            onChange={(e) => setReconcileForm(prev => ({ ...prev, currency: e.target.value }))}
+            <div className={`modal modal-bottom sm:modal-middle ${isReconcileModalOpen ? 'modal-open' : ''} z-50`}>
+                <div className="modal-box max-w-lg bg-base-100 border border-base-200 shadow-2xl p-6 text-base-content">
+                    <div className="flex items-center justify-between pb-3 border-b border-base-200">
+                        <div className="flex items-center gap-2">
+                            <span className="material-symbols-outlined text-success text-xl">payments</span>
+                            <h3 className="font-black text-lg text-base-content">
+                                {lang === 'ar' ? 'استلام وتوريد نقدية (COD) للخزينة' : 'Reconcile Driver Cash to Hub Vault'}
+                            </h3>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setIsReconcileModalOpen(false)}
+                            className="btn btn-sm btn-circle btn-ghost text-base-content/60"
                         >
-                            <option value="KWD">KWD</option>
-                            <option value="SAR">SAR</option>
-                            <option value="AED">AED</option>
-                            <option value="BHD">BHD</option>
-                            <option value="OMR">OMR</option>
-                            <option value="QAR">QAR</option>
-                            <option value="USD">USD</option>
-                        </Select>
+                            ✕
+                        </button>
                     </div>
 
-                    <WInput
-                        label={lang === 'ar' ? 'رقم كيس الأمانات / المظروف (اختياري)' : 'Security Bag / Envelope Ref (Optional)'}
-                        value={reconcileForm.bagReference}
-                        onChange={(e) => setReconcileForm(prev => ({ ...prev, bagReference: e.target.value }))}
-                        placeholder="e.g. BAG-KW-0921"
-                    />
+                    <div className="py-4 space-y-3.5">
+                        <p className="text-xs text-base-content/60">
+                            {lang === 'ar'
+                                ? 'إثبات استلام النقدية الفعلية من السائق وترحيلها بنظام القيد المزدوج إلى خزينة الفرع.'
+                                : 'Verify physical cash collected from courier and post credit clearance to financial ledger.'}
+                        </p>
 
-                    <WInput
-                        label={lang === 'ar' ? 'ملاحظات أمين الصندوق' : 'Cashier Verification Notes'}
-                        value={reconcileForm.notes}
-                        onChange={(e) => setReconcileForm(prev => ({ ...prev, notes: e.target.value }))}
-                        placeholder={lang === 'ar' ? 'تم جرد النقد ومطابقته بخزينة الشويخ' : 'Cash verified and placed in hub vault safe'}
-                    />
+                        <div>
+                            <label className="text-[11px] font-bold text-base-content/60 block mb-1">
+                                {lang === 'ar' ? 'السائق المسلم للنقدية *' : 'Driver Handing Over Cash *'}
+                            </label>
+                            <select
+                                value={reconcileForm.driverId}
+                                onChange={(e) => {
+                                    const d = driversList.find(item => item.id === e.target.value);
+                                    setReconcileForm(prev => ({
+                                        ...prev,
+                                        driverId: e.target.value,
+                                        driverName: d?.name || ''
+                                    }));
+                                }}
+                                className="select select-sm select-bordered w-full text-xs font-semibold"
+                            >
+                                <option value="">{lang === 'ar' ? '— اختر السائق —' : '— Select Driver —'}</option>
+                                {driversList.map(d => (
+                                    <option key={d.id} value={d.id}>{d.name} {d.phone ? `(${d.phone})` : ''}</option>
+                                ))}
+                            </select>
+                        </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 12 }}>
-                        <Button variant="secondary" onClick={() => setIsReconcileModalOpen(false)} disabled={reconcileLoading}>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="text-[11px] font-bold text-base-content/60 block mb-1">
+                                    {lang === 'ar' ? 'المبلغ المستلم فعلياً *' : 'Cash Count Amount *'}
+                                </label>
+                                <input
+                                    type="number"
+                                    step="0.001"
+                                    min="0.001"
+                                    value={reconcileForm.amount}
+                                    onChange={(e) => setReconcileForm(prev => ({ ...prev, amount: e.target.value }))}
+                                    placeholder="0.000"
+                                    className="input input-sm input-bordered w-full font-mono font-bold"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[11px] font-bold text-base-content/60 block mb-1">
+                                    {lang === 'ar' ? 'العملة' : 'Currency'}
+                                </label>
+                                <select
+                                    value={reconcileForm.currency}
+                                    onChange={(e) => setReconcileForm(prev => ({ ...prev, currency: e.target.value }))}
+                                    className="select select-sm select-bordered w-full font-mono text-xs font-bold"
+                                >
+                                    <option value="KWD">KWD</option>
+                                    <option value="SAR">SAR</option>
+                                    <option value="AED">AED</option>
+                                    <option value="BHD">BHD</option>
+                                    <option value="OMR">OMR</option>
+                                    <option value="QAR">QAR</option>
+                                    <option value="USD">USD</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="text-[11px] font-bold text-base-content/60 block mb-1">
+                                {lang === 'ar' ? 'رقم كيس الأمانات / المظروف (اختياري)' : 'Security Bag / Envelope Ref'}
+                            </label>
+                            <input
+                                type="text"
+                                value={reconcileForm.bagReference}
+                                onChange={(e) => setReconcileForm(prev => ({ ...prev, bagReference: e.target.value }))}
+                                placeholder="e.g. BAG-KW-0921"
+                                className="input input-sm input-bordered w-full font-mono text-xs"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="text-[11px] font-bold text-base-content/60 block mb-1">
+                                {lang === 'ar' ? 'ملاحظات أمين الصندوق' : 'Cashier Verification Notes'}
+                            </label>
+                            <input
+                                type="text"
+                                value={reconcileForm.notes}
+                                onChange={(e) => setReconcileForm(prev => ({ ...prev, notes: e.target.value }))}
+                                placeholder={lang === 'ar' ? 'تم جرد النقد ومطابقته بخزينة الشويخ' : 'Cash verified and placed in hub vault safe'}
+                                className="input input-sm input-bordered w-full text-xs"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="modal-action pt-3 border-t border-base-200">
+                        <button
+                            type="button"
+                            onClick={() => setIsReconcileModalOpen(false)}
+                            disabled={reconcileLoading}
+                            className="btn btn-sm btn-ghost"
+                        >
                             {t('cancel', 'Cancel')}
-                        </Button>
-                        <Button
-                            variant="primary"
+                        </button>
+                        <button
+                            type="button"
                             onClick={handleReconcileSubmit}
                             disabled={reconcileLoading || !reconcileForm.amount || parseFloat(reconcileForm.amount) <= 0 || !reconcileForm.driverId}
-                            style={{ background: TK.success, fontWeight: 700 }}
+                            className="btn btn-sm btn-success text-white font-bold gap-1 shadow-md shadow-success/20"
                         >
-                            {reconcileLoading ? '...' : (lang === 'ar' ? 'ترحيل إلى الخزينة وقيد اليومية' : 'Post Remittance to Ledger')}
-                        </Button>
+                            {reconcileLoading ? <span className="loading loading-spinner loading-xs"></span> : null}
+                            {lang === 'ar' ? 'ترحيل إلى الخزينة وقيد اليومية' : 'Post Remittance to Ledger'}
+                        </button>
                     </div>
                 </div>
-            </Modal>
+                <div className="modal-backdrop bg-black/60 backdrop-blur-xs" onClick={() => setIsReconcileModalOpen(false)} />
+            </div>
 
             {/* FIFO Confirmation Modal */}
-            <Modal
-                isOpen={fifoConfirmOpen}
-                onClose={() => setFifoConfirmOpen(false)}
-                title={lang === 'ar' ? 'تأكيد التسوية التلقائية (FIFO)' : 'Confirm Automatic FIFO Allocation'}
-            >
-                <div style={{ padding: '8px 0', fontSize: 13.5, lineHeight: 1.5, color: TK.text1 }}>
-                    <p>{lang === 'ar' ? `هل أنت متأكد من تشغيل التسوية التلقائية (FIFO) لحساب ` : `Are you sure you want to run FIFO Auto-Allocation for `}<strong>{currentOrgName}</strong>؟</p>
-                    <p style={{ color: TK.text2, marginTop: 8 }}>
-                        {lang === 'ar' ? 'سيتم توزيع الأرصدة المتاحة تلقائياً لتسوية أقدم الشحنات غير المسددة أولاً بأول.' : 'This will automatically distribute available unapplied credits to settle the oldest outstanding shipments first.'}
-                    </p>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24 }}>
-                        <Button variant="secondary" onClick={() => setFifoConfirmOpen(false)}>{t('cancel', 'Cancel')}</Button>
-                        <Button variant="primary" onClick={handleFifoConfirmed}>{lang === 'ar' ? 'تأكيد التسوية' : 'Confirm FIFO'}</Button>
+            <div className={`modal modal-bottom sm:modal-middle ${fifoConfirmOpen ? 'modal-open' : ''} z-50`}>
+                <div className="modal-box max-w-md bg-base-100 border border-base-200 shadow-2xl p-6 text-base-content">
+                    <div className="flex items-center gap-2 pb-3 border-b border-base-200">
+                        <span className="material-symbols-outlined text-primary text-xl">auto_mode</span>
+                        <h3 className="font-black text-lg text-base-content">
+                            {lang === 'ar' ? 'تأكيد التسوية التلقائية (FIFO)' : 'Confirm Automatic FIFO Allocation'}
+                        </h3>
+                    </div>
+
+                    <div className="py-4 space-y-2 text-xs">
+                        <p>
+                            {lang === 'ar' ? `هل أنت متأكد من تشغيل التسوية التلقائية (FIFO) لحساب ` : `Are you sure you want to run FIFO Auto-Allocation for `}
+                            <strong className="text-primary">{currentOrgName}</strong>؟
+                        </p>
+                        <p className="text-base-content/60">
+                            {lang === 'ar'
+                                ? 'سيتم توزيع الأرصدة المتاحة تلقائياً لتسوية أقدم الشحنات غير المسددة أولاً بأول.'
+                                : 'This will automatically distribute available unapplied credits to settle the oldest outstanding shipments first.'}
+                        </p>
+                    </div>
+
+                    <div className="modal-action pt-3 border-t border-base-200">
+                        <button
+                            type="button"
+                            onClick={() => setFifoConfirmOpen(false)}
+                            className="btn btn-sm btn-ghost"
+                        >
+                            {t('cancel', 'Cancel')}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleFifoConfirmed}
+                            className="btn btn-sm btn-primary font-bold shadow-xs"
+                        >
+                            {lang === 'ar' ? 'تأكيد التسوية' : 'Confirm FIFO'}
+                        </button>
                     </div>
                 </div>
-            </Modal>
+                <div className="modal-backdrop bg-black/60 backdrop-blur-xs" onClick={() => setFifoConfirmOpen(false)} />
+            </div>
         </div>
     );
 };

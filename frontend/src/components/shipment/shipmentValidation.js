@@ -111,9 +111,9 @@ export const isInternationalShipment = (sender = {}, receiver = {}, customs = {}
  */
 export const isDGRCargoRequired = (service = {}, pkg = {}, options = {}) => {
   const carrierCode = (typeof service === 'string' ? service : (service?.carrierCode || options?.carrierCode || '')).toUpperCase();
-  if (Boolean(pkg?.dangerousGoods)) return true;
-  if (Boolean(options?.requireDGR || options?.isDGRCargo)) return true;
-  if (Boolean(pkg?.unCode || pkg?.dgClass || pkg?.properShippingName)) return true;
+  if (pkg?.dangerousGoods) return true;
+  if (options?.requireDGR || options?.isDGRCargo) return true;
+  if (pkg?.unCode || pkg?.dgClass || pkg?.properShippingName) return true;
   if (carrierCode === 'DGR' && (pkg?.dangerousGoods || pkg?.unCode || options?.isDGRCargo)) {
     return true;
   }

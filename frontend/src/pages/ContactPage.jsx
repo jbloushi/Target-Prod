@@ -1,409 +1,237 @@
 import React, { useState } from 'react';
-import {
-  Container,
-  Typography,
-  Box,
-  Grid,
-  TextField,
-  Button,
-  Card,
-  CardContent,
-  MenuItem,
-  Divider,
-  Snackbar,
-  Alert,
-  IconButton,
-  CardMedia,
-  useTheme
-} from '@mui/material';
-import EmailIcon from '@mui/icons-material/Email';
-import PhoneIcon from '@mui/icons-material/Phone';
-import SendIcon from '@mui/icons-material/Send';
-import BusinessIcon from '@mui/icons-material/Business';
-import SupportAgentIcon from '@mui/icons-material/SupportAgent';
+import PageHeader from '../components/common/PageHeader';
 
-const contactReasons = [
-  'General Inquiry',
-  'Shipment Issue',
-  'Technical Support',
-  'Billing Question',
-  'Partnership Opportunity',
-  'Other'
+const CONTACT_REASONS = [
+  'General Consignment Inquiry',
+  'Commercial B2B Rates & Contracts',
+  'Kuwait Customs Clearance Exception',
+  'Airfreight Cargo Booking',
+  'Dangerous Goods (IATA DGR)',
+  'API & Webhook Integration Support',
 ];
 
-const ContactPage = () => {
-  const theme = useTheme();
+export const ContactPage = () => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     phone: '',
-    reason: '',
-    message: ''
-  });
-
-  const [errors, setErrors] = useState({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [snackbar, setSnackbar] = useState({
-    open: false,
+    reason: CONTACT_REASONS[0],
     message: '',
-    severity: 'success'
   });
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-
-    // Clear error when field is edited
-    if (errors[name]) {
-      setErrors(prev => ({
-        ...prev,
-        [name]: ''
-      }));
-    }
-  };
-
-  const validateForm = () => {
-    const newErrors = {};
-
-    if (!formData.name.trim()) {
-      newErrors.name = 'Name is required';
-    }
-
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email is required';
-    } else if (!/^\S+@\S+\.\S+$/.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email address';
-    }
-
-    if (!formData.reason) {
-      newErrors.reason = 'Please select a reason for contact';
-    }
-
-    if (!formData.message.trim()) {
-      newErrors.message = 'Message is required';
-    } else if (formData.message.length < 10) {
-      newErrors.message = 'Message is too short (minimum 10 characters)';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-
-    if (!validateForm()) {
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    // Simulate API call
+    setSubmitting(true);
     setTimeout(() => {
-      setIsSubmitting(false);
-      setSnackbar({
-        open: true,
-        message: 'Your message has been sent successfully! We will get back to you soon.',
-        severity: 'success'
-      });
-
-      // Reset form
+      setSubmitting(false);
+      setSubmitted(true);
       setFormData({
         name: '',
         email: '',
         phone: '',
-        reason: '',
-        message: ''
+        reason: CONTACT_REASONS[0],
+        message: '',
       });
-    }, 1500);
-  };
-
-  const handleSnackbarClose = () => {
-    setSnackbar(prev => ({
-      ...prev,
-      open: false
-    }));
+    }, 1000);
   };
 
   return (
-    <Box
-      sx={{
-        minHeight: 'calc(100vh - 64px)',
-        width: '100%',
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        margin: 0,
-        padding: 0,
-        position: 'relative',
-        bgcolor: theme.palette.background.default
-      }}
-    >
-      {/* Hero section with background image */}
-      <Box
-        sx={{
-          height: '300px',
-          width: '100%',
-          backgroundImage: 'url("/images/contact-background.jpg")',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          position: 'relative',
-          '&::before': {
-            content: '""',
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.6)',
-          }
-        }}
-      >
-        <Container maxWidth="lg" sx={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-          <Box sx={{ position: 'relative', zIndex: 2, textAlign: 'center' }}>
-            <Typography variant="h2" component="h1" gutterBottom sx={{ color: 'white', fontWeight: 'bold' }}>
-              Contact Us
-            </Typography>
-            <Typography variant="h6" sx={{ color: 'rgba(255, 255, 255, 0.9)', maxWidth: 800, mx: 'auto' }}>
-              Have questions or need assistance? Our team is here to help you.
-            </Typography>
-          </Box>
-        </Container>
-      </Box>
+    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-8 font-sans">
+      <PageHeader
+        title="Contact Target Logistics Global"
+        subtitle="Our Kuwait operations desk and GCC regional support team are available 24/7."
+      />
 
-      {/* Main content */}
-      <Container maxWidth="lg" sx={{ mt: -5, mb: 8, position: 'relative', zIndex: 3 }}>
-        <Grid container spacing={4}>
-          {/* Contact form */}
-          <Grid item xs={12} md={8}>
-            <Card sx={{
-              borderRadius: 4,
-              backgroundColor: theme.palette.background.paper,
-              height: '100%'
-            }}>
-              <CardContent sx={{ p: 4 }}>
-                <Typography variant="h5" component="h2" gutterBottom color="primary">
-                  Send Us a Message
-                </Typography>
-                <Typography variant="body1" paragraph color="text.secondary">
-                  Please fill out the form below and we'll get back to you as soon as possible.
-                </Typography>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        {/* Left: Contact Info & Support Channels */}
+        <div className="lg:col-span-5 space-y-4">
+          <div className="card bg-base-100 border border-base-200 shadow-sm p-6 space-y-6">
+            <div>
+              <h3 className="text-lg font-black text-base-content tracking-tight">Kuwait Central Operations Hub</h3>
+              <p className="text-xs text-base-content/60 mt-1">
+                Target Logistics Global Express W.L.L.
+              </p>
+            </div>
 
-                <Divider sx={{ my: 3 }} />
+            <div className="space-y-4 text-xs">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined text-base">location_on</span>
+                </div>
+                <div>
+                  <div className="font-bold text-base-content">Headquarters & Intake Warehouse</div>
+                  <div className="text-base-content/60 mt-0.5">
+                    Shuwaikh Industrial Area 2, Street 18, Building 45, Kuwait City
+                  </div>
+                </div>
+              </div>
 
-                <form onSubmit={handleSubmit}>
-                  <Grid container spacing={3}>
-                    <Grid item xs={12} sm={6}>
-                      <TextField
-                        fullWidth
-                        label="Your Name"
-                        name="name"
-                        value={formData.name}
-                        onChange={handleChange}
-                        error={!!errors.name}
-                        helperText={errors.name}
-                        required
-                        variant="outlined"
-                      />
-                    </Grid>
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-xl bg-success/10 text-success flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined text-base">chat</span>
+                </div>
+                <div>
+                  <div className="font-bold text-base-content">Meta WhatsApp Dispatch Support</div>
+                  <div className="font-mono text-base-content/60 mt-0.5">+965 2200 8899</div>
+                  <a
+                    href="https://wa.me/96522008899"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="link link-primary font-bold text-[11px] block mt-0.5"
+                  >
+                    Open Live WhatsApp Chat &rarr;
+                  </a>
+                </div>
+              </div>
 
-                    <Grid item xs={12} sm={6}>
-                      <TextField
-                        fullWidth
-                        label="Email Address"
-                        name="email"
-                        type="email"
-                        value={formData.email}
-                        onChange={handleChange}
-                        error={!!errors.email}
-                        helperText={errors.email}
-                        required
-                        variant="outlined"
-                      />
-                    </Grid>
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-xl bg-info/10 text-info flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined text-base">mail</span>
+                </div>
+                <div>
+                  <div className="font-bold text-base-content">Enterprise Email Desk</div>
+                  <div className="font-mono text-base-content/60 mt-0.5">ops@target-kw.com</div>
+                </div>
+              </div>
 
-                    <Grid item xs={12} sm={6}>
-                      <TextField
-                        fullWidth
-                        label="Phone Number (Optional)"
-                        name="phone"
-                        value={formData.phone}
-                        onChange={handleChange}
-                        variant="outlined"
-                      />
-                    </Grid>
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-xl bg-secondary/10 text-secondary flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined text-base">schedule</span>
+                </div>
+                <div>
+                  <div className="font-bold text-base-content">Operations Schedule</div>
+                  <div className="text-base-content/60 mt-0.5">
+                    Sunday – Thursday: 07:00 – 21:00 (Kuwait AST)
+                  </div>
+                  <div className="text-base-content/60">
+                    24/7 Air Cargo Gateway Intake & Linehaul Tracking
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
-                    <Grid item xs={12} sm={6}>
-                      <TextField
-                        select
-                        fullWidth
-                        label="Reason for Contact"
-                        name="reason"
-                        value={formData.reason}
-                        onChange={handleChange}
-                        error={!!errors.reason}
-                        helperText={errors.reason}
-                        required
-                        variant="outlined"
-                      >
-                        {contactReasons.map((reason) => (
-                          <MenuItem key={reason} value={reason}>
-                            {reason}
-                          </MenuItem>
-                        ))}
-                      </TextField>
-                    </Grid>
+        {/* Right: Message Form */}
+        <div className="lg:col-span-7 card bg-base-100 border border-base-200 shadow-sm p-6 sm:p-8 space-y-6">
+          <div>
+            <h3 className="text-xl font-black text-base-content tracking-tight">Send Us a Direct Message</h3>
+            <p className="text-xs text-base-content/60 mt-1">
+              Fill in your inquiry details and our logistics coordinators will reply within 30 minutes.
+            </p>
+          </div>
 
-                    <Grid item xs={12}>
-                      <TextField
-                        fullWidth
-                        multiline
-                        rows={5}
-                        label="Your Message"
-                        name="message"
-                        value={formData.message}
-                        onChange={handleChange}
-                        error={!!errors.message}
-                        helperText={errors.message}
-                        required
-                        variant="outlined"
-                      />
-                    </Grid>
-
-                    <Grid item xs={12}>
-                      <Button
-                        type="submit"
-                        variant="contained"
-                        color="primary"
-                        size="large"
-                        disabled={isSubmitting}
-                        endIcon={<SendIcon />}
-                        sx={{ px: 4, py: 1.2, borderRadius: 50, fontWeight: 'bold' }}
-                      >
-                        {isSubmitting ? 'Sending...' : 'Send Message'}
-                      </Button>
-                    </Grid>
-                  </Grid>
-                </form>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Contact info */}
-          <Grid item xs={12} md={4}>
-            <Card sx={{
-              borderRadius: 4,
-              backgroundColor: theme.palette.background.paper,
-              height: '100%',
-              display: 'flex',
-              flexDirection: 'column'
-            }}>
-              <CardContent sx={{ p: 4, flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <Typography variant="h5" component="h2" gutterBottom color="primary">
-                  Get In Touch
-                </Typography>
-                <Typography variant="body1" paragraph color="text.secondary">
-                  We're always happy to hear from you. Reach out to us using any of these channels:
-                </Typography>
-
-                <Box sx={{ mt: 2, mb: 4 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                    <IconButton color="primary" sx={{ mr: 2, bgcolor: 'rgba(25, 118, 210, 0.1)' }}>
-                      <EmailIcon />
-                    </IconButton>
-                    <Box>
-                      <Typography variant="subtitle2" color="text.secondary">
-                        Email Us
-                      </Typography>
-                      <Typography variant="body1" fontWeight="medium">
-                        support@shipmenttracker.com
-                      </Typography>
-                    </Box>
-                  </Box>
-
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                    <IconButton color="primary" sx={{ mr: 2, bgcolor: 'rgba(25, 118, 210, 0.1)' }}>
-                      <PhoneIcon />
-                    </IconButton>
-                    <Box>
-                      <Typography variant="subtitle2" color="text.secondary">
-                        Call Us
-                      </Typography>
-                      <Typography variant="body1" fontWeight="medium">
-                        +1 (555) 123-4567
-                      </Typography>
-                    </Box>
-                  </Box>
-
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                    <IconButton color="primary" sx={{ mr: 2, bgcolor: 'rgba(25, 118, 210, 0.1)' }}>
-                      <SupportAgentIcon />
-                    </IconButton>
-                    <Box>
-                      <Typography variant="subtitle2" color="text.secondary">
-                        Customer Support
-                      </Typography>
-                      <Typography variant="body1" fontWeight="medium">
-                        24/7 Live Support Available
-                      </Typography>
-                    </Box>
-                  </Box>
-
-                  <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 3 }}>
-                    <IconButton color="primary" sx={{ mr: 2, mt: 0.5, bgcolor: 'rgba(25, 118, 210, 0.1)' }}>
-                      <BusinessIcon />
-                    </IconButton>
-                    <Box>
-                      <Typography variant="subtitle2" color="text.secondary">
-                        Visit Our Office
-                      </Typography>
-                      <Typography variant="body1" fontWeight="medium">
-                        123 Shipping Lane<br />
-                        San Francisco, CA 94107<br />
-                        United States
-                      </Typography>
-                    </Box>
-                  </Box>
-                </Box>
-
-                <Box sx={{ mt: 'auto' }}>
-                  <CardMedia
-                    component="img"
-                    height="180"
-                    image="/images/office-location.jpg"
-                    alt="Our Office"
-                    sx={{ borderRadius: 1, mb: 2 }}
+          {submitted ? (
+            <div className="p-8 text-center bg-success/10 border border-success/30 rounded-2xl space-y-3">
+              <div className="w-14 h-14 rounded-full bg-success text-white flex items-center justify-center mx-auto text-3xl">
+                ✓
+              </div>
+              <h4 className="text-lg font-black text-base-content">Inquiry Dispatched!</h4>
+              <p className="text-xs text-base-content/70 max-w-sm mx-auto">
+                Thank you for contacting Target Logistics. Our client operations desk has received your request.
+              </p>
+              <button
+                type="button"
+                onClick={() => setSubmitted(false)}
+                className="btn btn-outline btn-sm font-bold text-xs"
+              >
+                Send Another Message
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-base-content/70 uppercase">Full Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="e.g. Bader Al-Ahmad"
+                    className="input input-bordered w-full text-xs font-medium focus:input-primary"
                   />
-                  <Typography variant="caption" color="text.secondary" textAlign="center" display="block">
-                    Our headquarters in San Francisco
-                  </Typography>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-      </Container>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-base-content/70 uppercase">Work Email *</label>
+                  <input
+                    type="email"
+                    required
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="name@company.com"
+                    className="input input-bordered w-full text-xs font-medium focus:input-primary"
+                  />
+                </div>
+              </div>
 
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={handleSnackbarClose}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-      >
-        <Alert
-          onClose={handleSnackbarClose}
-          severity={snackbar.severity}
-          variant="filled"
-          sx={{ width: '100%' }}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
-    </Box>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-base-content/70 uppercase">Phone Number</label>
+                  <input
+                    type="text"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    placeholder="+965 9000 0000"
+                    className="input input-bordered w-full font-mono text-xs focus:input-primary"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-base-content/70 uppercase">Inquiry Category *</label>
+                  <select
+                    value={formData.reason}
+                    onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+                    className="select select-bordered w-full text-xs font-medium focus:select-primary"
+                  >
+                    {CONTACT_REASONS.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-base-content/70 uppercase">Message & Details *</label>
+                <textarea
+                  rows={4}
+                  required
+                  value={formData.message}
+                  onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+                  placeholder="Provide tracking references, consignment weights, or specific routing questions..."
+                  className="textarea textarea-bordered w-full text-xs font-medium focus:textarea-primary"
+                />
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="btn btn-primary font-bold text-xs shadow-md shadow-primary/20 gap-2 px-6"
+                >
+                  {submitting ? (
+                    <>
+                      <span className="loading loading-spinner loading-xs" />
+                      <span>Sending Message...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-base">send</span>
+                      <span>Send Message</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
   );
 };
 
-export default ContactPage; 
+export default ContactPage;

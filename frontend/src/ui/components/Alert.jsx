@@ -1,55 +1,24 @@
-import styled from 'styled-components';
+import React from 'react';
 
-const AlertContainer = styled.div`
-  padding: 14px 18px;
-  background: ${props => props.$bg};
-  border: none;
-  border-radius: 12px;
-  color: ${props => props.$color};
-  margin-bottom: 16px;
-  font-size: 14px;
-  font-family: 'Manrope', sans-serif;
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  line-height: 1.5;
-  box-shadow: ${props => props.$shadow || 'none'};
-`;
-
-const Alert = ({ severity = 'info', children, title }) => {
-    let style = {
-        bg: 'rgba(0, 101, 115, 0.06)',
-        color: '#006573',
-        shadow: '0 0 0 1px rgba(0, 101, 115, 0.1)'
-    };
-
-    if (severity === 'error') {
-        style = {
-            bg: 'rgba(179, 27, 37, 0.06)',
-            color: '#b31b25',
-            shadow: '0 0 0 1px rgba(179, 27, 37, 0.1)'
-        };
-    } else if (severity === 'success') {
-        style = {
-            bg: 'rgba(46, 125, 50, 0.06)',
-            color: '#2e7d32',
-            shadow: '0 0 0 1px rgba(46, 125, 50, 0.1)'
-        };
-    } else if (severity === 'warning') {
-        style = {
-            bg: 'rgba(230, 138, 0, 0.06)',
-            color: '#b36b00',
-            shadow: '0 0 0 1px rgba(230, 138, 0, 0.1)'
-        };
-    }
+const Alert = ({ severity = 'info', children, title, className = '' }) => {
+    const alertClass = severity === 'error'
+        ? 'alert-error'
+        : severity === 'success'
+            ? 'alert-success'
+            : severity === 'warning'
+                ? 'alert-warning'
+                : 'alert-info';
 
     return (
-        <AlertContainer $bg={style.bg} $color={style.color} $shadow={style.shadow}>
-            <div>
-                {title && <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>{title}</div>}
-                {children}
+        <div className={`alert ${alertClass} text-xs py-3 px-4 rounded-xl shadow-xs mb-4 flex items-start gap-3 ${className}`}>
+            <span className="material-symbols-outlined text-lg">
+                {severity === 'error' ? 'error' : severity === 'success' ? 'check_circle' : severity === 'warning' ? 'warning' : 'info'}
+            </span>
+            <div className="flex-1">
+                {title && <div className="font-extrabold mb-0.5">{title}</div>}
+                <div>{children}</div>
             </div>
-        </AlertContainer>
+        </div>
     );
 };
 

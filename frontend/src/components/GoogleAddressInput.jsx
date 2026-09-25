@@ -1,21 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { getGeocode, getLatLng } from 'use-places-autocomplete';
 import { useJsApiLoader } from '@react-google-maps/api';
-import {
-    TextField,
-    Autocomplete as MuiAutocomplete,
-    Box,
-    Typography,
-    CircularProgress,
-    Alert,
-    Paper,
-    alpha,
-    useTheme
-} from '@mui/material';
-
-import LocationOnIcon from '@mui/icons-material/LocationOn';
-import SearchIcon from '@mui/icons-material/Search';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { getGoogleMapsApiKey } from '../utils/env';
 import { countries } from '../utils/countries';
 
@@ -85,12 +70,13 @@ const GoogleAddressInput = ({
     error,
     helperText
 }) => {
-    const theme = useTheme();
     const apiKey = getGoogleMapsApiKey();
     const [inputValue, setInputValue] = useState(value?.formattedAddress || '');
     const [debouncedInput, setDebouncedInput] = useState(value?.formattedAddress || '');
     const [options, setOptions] = useState([]);
     const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const containerRef = useRef(null);
 
     useEffect(() => {
         if (!apiKey) {
@@ -117,6 +103,17 @@ const GoogleAddressInput = ({
             setInputValue(value.formattedAddress);
         }
     }, [inputValue, value?.formattedAddress]);
+
+    // Close dropdown on outside click
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (containerRef.current && !containerRef.current.contains(e.target)) {
+                setIsDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     useEffect(() => {
         let cancelled = false;
@@ -164,6 +161,7 @@ const GoogleAddressInput = ({
 
                     if (!cancelled) {
                         setOptions(nextOptions);
+                        setIsDropdownOpen(nextOptions.length > 0);
                     }
                     return;
                 }
@@ -172,14 +170,14 @@ const GoogleAddressInput = ({
                 service.getPlacePredictions({ input: debouncedInput }, (predictions = []) => {
                     if (cancelled) return;
 
-                    setOptions(
-                        predictions.map((prediction) => ({
-                            placeId: prediction.place_id,
-                            description: prediction.description,
-                            mainText: prediction.structured_formatting?.main_text || prediction.description,
-                            secondaryText: prediction.structured_formatting?.secondary_text || ''
-                        }))
-                    );
+                    const nextOptions = (predictions || []).map((prediction) => ({
+                        placeId: prediction.place_id,
+                        description: prediction.description,
+                        mainText: prediction.structured_formatting?.main_text || prediction.description,
+                        secondaryText: prediction.structured_formatting?.secondary_text || ''
+                    }));
+                    setOptions(nextOptions);
+                    setIsDropdownOpen(nextOptions.length > 0);
                 });
             } catch (suggestionError) {
                 if (!cancelled) {
@@ -200,100 +198,62 @@ const GoogleAddressInput = ({
         };
     }, [apiKey, debouncedInput, isLoaded]);
 
-    const handleSelect = async (selectedOption) => {
-        if (!selectedOption) return;
+    const handleSelect = async (option) => {
+        if (!option) return;
+        setIsDropdownOpen(false);
 
-        const description = typeof selectedOption === 'string' ? selectedOption : (selectedOption.description || selectedOption.mainText || '');
+        const description = option.description || option.mainText || '';
         setInputValue(description);
 
         try {
             let addressData = null;
-            const placeId = typeof selectedOption === 'object' ? selectedOption.placeId : null;
 
-            // Strategy 0: Google Places Details Service (Best for Places Autocomplete suggestions)
-            if (window.google?.maps?.places?.PlacesService && placeId) {
+            // Strategy 1: Modern Places API fetchFields
+            if (option.prediction?.toPlace) {
                 try {
-                    const dummyDiv = document.createElement('div');
-                    const service = new window.google.maps.places.PlacesService(dummyDiv);
-                    const detailsResult = await new Promise((resolve) => {
-                        service.getDetails({
-                            placeId,
-                            fields: ['address_components', 'formatted_address', 'geometry', 'name']
-                        }, (result, status) => {
-                            if (status === window.google.maps.places.PlacesServiceStatus.OK && result) {
-                                resolve(result);
-                            } else {
-                                resolve(null);
-                            }
-                        });
+                    const place = option.prediction.toPlace();
+                    await place.fetchFields({
+                        fields: ['addressComponents', 'formattedAddress', 'location']
                     });
 
-                    if (detailsResult) {
-                        const lat = typeof detailsResult.geometry?.location?.lat === 'function' ? detailsResult.geometry.location.lat() : detailsResult.geometry?.location?.lat;
-                        const lng = typeof detailsResult.geometry?.location?.lng === 'function' ? detailsResult.geometry.location.lng() : detailsResult.geometry?.location?.lng;
-                        const mapped = mapPlaceComponentsToAddress(detailsResult.address_components || []);
-                        addressData = {
-                            formattedAddress: detailsResult.formatted_address || description,
-                            ...mapped,
-                            latitude: Number(lat),
-                            longitude: Number(lng),
-                            validationStatus: 'CONFIRMED'
-                        };
-                    }
-                } catch (placesDetailsErr) {
-                    console.debug('PlacesService.getDetails failed:', placesDetailsErr.message);
+                    const mapped = mapPlaceComponentsToAddress(place.addressComponents || []);
+                    const lat = place.location?.lat();
+                    const lng = place.location?.lng();
+
+                    addressData = {
+                        formattedAddress: place.formattedAddress || description,
+                        ...mapped,
+                        latitude: typeof lat === 'number' ? lat : undefined,
+                        longitude: typeof lng === 'number' ? lng : undefined,
+                        validationStatus: 'CONFIRMED'
+                    };
+                } catch (placeErr) {
+                    console.debug('Modern place fetch failed, trying Geocoder fallback:', placeErr.message);
                 }
             }
 
-            // Strategy 1: Google Maps Geocoder by placeId (Universal support)
-            if (!addressData && window.google?.maps?.Geocoder && placeId) {
+            // Strategy 2: Google Maps Geocoder by placeId or address
+            if (!addressData && window.google?.maps?.Geocoder) {
                 try {
                     const geocoder = new window.google.maps.Geocoder();
-                    const geoResult = await new Promise((resolve) => {
-                        geocoder.geocode({ placeId }, (results, status) => {
+                    const geocodeReq = option.placeId
+                        ? { placeId: option.placeId }
+                        : { address: description };
+
+                    const geoResult = await new Promise((resolve, reject) => {
+                        geocoder.geocode(geocodeReq, (results, status) => {
                             if (status === 'OK' && results && results[0]) {
                                 resolve(results[0]);
                             } else {
-                                resolve(null);
+                                reject(new Error(`Geocoder status: ${status}`));
                             }
                         });
                     });
 
                     if (geoResult) {
-                        const lat = typeof geoResult.geometry?.location?.lat === 'function' ? geoResult.geometry.location.lat() : geoResult.geometry?.location?.lat;
-                        const lng = typeof geoResult.geometry?.location?.lng === 'function' ? geoResult.geometry.location.lng() : geoResult.geometry?.location?.lng;
                         const mapped = mapPlaceComponentsToAddress(geoResult.address_components || []);
-                        addressData = {
-                            formattedAddress: geoResult.formatted_address || description,
-                            ...mapped,
-                            latitude: Number(lat),
-                            longitude: Number(lng),
-                            validationStatus: 'CONFIRMED'
-                        };
-                    }
-                } catch (geoErr) {
-                    console.debug('Geocoder by placeId failed:', geoErr.message);
-                }
-            }
-
-            // Strategy 2: Google Maps Geocoder by address description
-            if (!addressData && window.google?.maps?.Geocoder && description) {
-                try {
-                    const geocoder = new window.google.maps.Geocoder();
-                    const geoResult = await new Promise((resolve) => {
-                        geocoder.geocode({ address: description }, (results, status) => {
-                            if (status === 'OK' && results && results[0]) {
-                                resolve(results[0]);
-                            } else {
-                                resolve(null);
-                            }
-                        });
-                    });
-
-                    if (geoResult) {
-                        const lat = typeof geoResult.geometry?.location?.lat === 'function' ? geoResult.geometry.location.lat() : geoResult.geometry?.location?.lat;
-                        const lng = typeof geoResult.geometry?.location?.lng === 'function' ? geoResult.geometry.location.lng() : geoResult.geometry?.location?.lng;
-                        const mapped = mapPlaceComponentsToAddress(geoResult.address_components || []);
+                        const lat = geoResult.geometry?.location?.lat();
+                        const lng = geoResult.geometry?.location?.lng();
                         addressData = {
                             formattedAddress: geoResult.formatted_address || description,
                             ...mapped,
@@ -329,13 +289,11 @@ const GoogleAddressInput = ({
 
             // Strategy 4: Fallback to smart text parsing if geocoding services failed
             if (!addressData) {
-                // Split on commas or hyphens with spaces (e.g. "Burj Khalifa - Sheikh Mohammed bin Rashid Blvd - Dubai - United Arab Emirates")
                 const parts = description.split(/\s*[-–—,]\s*/).map(p => p.trim()).filter(Boolean);
                 let detectedCountry = null;
                 let detectedCountryCode = '';
                 let detectedCity = '';
 
-                // Search from right to left for country match
                 for (let i = parts.length - 1; i >= 0; i--) {
                     const candidate = parts[i];
                     const matched = countries.find(c =>
@@ -345,7 +303,6 @@ const GoogleAddressInput = ({
                     if (matched) {
                         detectedCountry = matched.name;
                         detectedCountryCode = matched.code;
-                        // City is usually the component right before country
                         if (i > 0) {
                             detectedCity = parts[i - 1];
                         }
@@ -353,7 +310,6 @@ const GoogleAddressInput = ({
                     }
                 }
 
-                // Known landmark/city heuristics
                 const lowerDesc = description.toLowerCase();
                 if (!detectedCountryCode) {
                     if (lowerDesc.includes('emirates') || lowerDesc.includes('dubai') || lowerDesc.includes('abu dhabi') || lowerDesc.includes('sharjah') || lowerDesc.includes('burj khalifa')) {
@@ -380,12 +336,9 @@ const GoogleAddressInput = ({
                     detectedCity = parts.length > 2 ? parts[parts.length - 2] : (parts[1] || parts[0] || 'Kuwait City');
                 }
 
-                // Ensure city name does not exceed carrier 45 characters
                 detectedCity = String(detectedCity || '').trim().substring(0, 45);
-
                 const cObj = countries.find(c => c.code === detectedCountryCode) || countries.find(c => c.name === detectedCountry);
 
-                // Default coordinates for popular cities if geocoding failed
                 let defaultLat = detectedCountryCode === 'AE' ? 25.1972 : (detectedCountryCode === 'SA' ? 24.7136 : 29.3759);
                 let defaultLng = detectedCountryCode === 'AE' ? 55.2744 : (detectedCountryCode === 'SA' ? 46.6753 : 47.9774);
                 if (lowerDesc.includes('burj khalifa')) {
@@ -434,129 +387,84 @@ const GoogleAddressInput = ({
         return undefined;
     }, [apiKey, helperText, loadError]);
 
+    const handleInputChange = (e) => {
+        const nextVal = e.target.value;
+        setInputValue(nextVal);
+        setIsDropdownOpen(true);
+        if (typeof onChange === 'function') {
+            onChange({
+                ...value,
+                formattedAddress: nextVal,
+                validationStatus: apiKey && isLoaded ? value?.validationStatus : 'MANUAL'
+            });
+        }
+    };
+
     return (
-        <Box sx={{ width: '100%' }}>
-            <MuiAutocomplete
-                id="google-address-search"
-                componentsProps={{
-                    popper: {
-                        style: { zIndex: 10000 }
-                    }
-                }}
-                freeSolo
-                disabled={disabled}
-                options={options}
-                getOptionLabel={(option) => option?.description || ''}
-                filterOptions={(x) => x}
-                inputValue={inputValue}
-                onInputChange={(event, newValue, reason) => {
-                    setInputValue(newValue || '');
-                    if (reason === 'input' && typeof onChange === 'function') {
-                        onChange({
-                            ...value,
-                            formattedAddress: newValue || '',
-                            validationStatus: apiKey && isLoaded ? value?.validationStatus : 'MANUAL'
-                        });
-                    }
-                }}
-                onChange={(event, selectedOption) => {
-                    if (typeof selectedOption === 'string') {
-                        onChange({
-                            ...value,
-                            formattedAddress: selectedOption,
-                            validationStatus: 'MANUAL'
-                        });
-                    } else if (selectedOption) {
-                        handleSelect(selectedOption);
-                    }
-                }}
-                renderInput={(params) => (
-                    <>
-                        <TextField
-                            {...params}
-                            label={label}
-                            disabled={disabled}
-                            required={required}
-                            error={!!error || !!loadError}
-                            helperText={helperMessage}
-                            InputProps={{
-                                ...params.InputProps,
-                                startAdornment: (
-                                    <SearchIcon 
-                                        sx={{ mr: 1, fontSize: 20, color: 'primary.main', opacity: 0.7 }} 
-                                    />
-                                ),
-                                endAdornment: (
-                                    <>
-                                        {(loadingSuggestions || (apiKey && !isLoaded)) && <CircularProgress size={16} sx={{ mr: 1 }} />}
-                                        {params.InputProps.endAdornment}
-                                    </>
-                                )
-                            }}
-                            sx={{
-                                '& .MuiOutlinedInput-root': {
-                                    borderRadius: 3,
-                                    bgcolor: 'surface-container-high'
-                                }
-                            }}
-                        />
-                        {(!apiKey || loadError) && (
-                            <Box mt={1}>
-                                <Alert severity="info" variant="outlined" sx={{ borderRadius: 3 }}>
-                                    {loadError ? 'Google address search is offline. Manual entry is available.' : 'Add VITE_GOOGLE_MAPS_API_KEY to enable Google address search.'}
-                                </Alert>
-                            </Box>
-                        )}
-                    </>
+        <div ref={containerRef} className="relative w-full space-y-1">
+            {label && (
+                <label className="block text-xs font-bold text-base-content/70">
+                    {label} {required && <span className="text-error">*</span>}
+                </label>
+            )}
+
+            <div className="relative">
+                <span className="material-symbols-outlined absolute start-3 top-1/2 -translate-y-1/2 text-primary/70 text-lg pointer-events-none">
+                    search
+                </span>
+
+                <input
+                    type="text"
+                    value={inputValue}
+                    onChange={handleInputChange}
+                    onFocus={() => {
+                        if (options.length > 0) setIsDropdownOpen(true);
+                    }}
+                    placeholder="Type street, landmark, building, city, or PACI..."
+                    disabled={disabled}
+                    className={`input input-bordered w-full ps-10 pe-10 text-xs font-medium bg-base-100 ${
+                        error ? 'input-error' : ''
+                    }`}
+                />
+
+                {(loadingSuggestions || (apiKey && !isLoaded)) && (
+                    <span className="loading loading-spinner loading-xs text-primary absolute end-3 top-1/2 -translate-y-1/2" />
                 )}
-                renderOption={(props, option) => {
-                    const { key, ...rest } = props;
-                    return (
-                        <li key={key} {...rest} style={{ padding: '12px 16px' }}>
-                            <Box display="flex" alignItems="center" sx={{ width: '100%' }}>
-                                <Box sx={{
-                                    mr: 2,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    bgcolor: alpha(theme.palette.primary.main, 0.1),
-                                    borderRadius: 2,
-                                    p: 1
-                                }}>
-                                    <LocationOnIcon sx={{ color: 'primary.main', fontSize: 18 }} />
-                                </Box>
-                                <Box sx={{ flexGrow: 1 }}>
-                                    <Typography variant="body2" sx={{ fontWeight: 800 }}>
-                                        {option.mainText || option.description}
-                                    </Typography>
-                                    <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', opacity: 0.7 }}>
-                                        {option.secondaryText}
-                                    </Typography>
-                                </Box>
-                            </Box>
+            </div>
+
+            {helperMessage && (
+                <div className={`text-[11px] ${error ? 'text-error font-medium' : 'text-base-content/50'}`}>
+                    {helperMessage}
+                </div>
+            )}
+
+            {/* Floating Suggestions Dropdown */}
+            {isDropdownOpen && options.length > 0 && (
+                <ul className="absolute top-full start-0 end-0 mt-1 bg-base-100 border border-base-200 rounded-xl shadow-xl z-[999] max-h-60 overflow-y-auto divide-y divide-base-200/60 p-1">
+                    {options.map((opt) => (
+                        <li
+                            key={opt.placeId}
+                            onClick={() => handleSelect(opt)}
+                            className="px-3 py-2.5 hover:bg-base-200/70 rounded-lg cursor-pointer flex items-center gap-2.5 transition-colors"
+                        >
+                            <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                                <span className="material-symbols-outlined text-sm">location_on</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <div className="text-xs font-bold text-base-content truncate">
+                                    {opt.mainText || opt.description}
+                                </div>
+                                {opt.secondaryText && (
+                                    <div className="text-[11px] text-base-content/50 truncate">
+                                        {opt.secondaryText}
+                                    </div>
+                                )}
+                            </div>
                         </li>
-                    );
-                }}
-                PaperComponent={(paperProps) => (
-                    <Paper {...paperProps} sx={{
-                        bgcolor: 'surface-container-lowest !important',
-                        color: 'text.primary !important',
-                        borderRadius: 3,
-                        boxShadow: 'var(--shadow-ambient)',
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        marginTop: '8px',
-                        overflow: 'hidden',
-                        '& .MuiAutocomplete-option[aria-selected="true"]': {
-                            bgcolor: alpha(theme.palette.primary.main, 0.1) + ' !important',
-                        },
-                        '& .MuiAutocomplete-option:hover': {
-                            bgcolor: 'surface-container-high !important',
-                        }
-                    }} />
-                )}
-            />
-        </Box>
+                    ))}
+                </ul>
+            )}
+        </div>
     );
 };
 

@@ -1,59 +1,62 @@
 import React from 'react';
-import styled from 'styled-components';
-import { PageHeader, Card } from '../ui';
+import PageHeader from '../components/common/PageHeader';
 
-const Container = styled.div`
-  max-width: 1000px;
-  margin: 0 auto;
-  padding: 32px;
-`;
+export const TermsPage = () => {
+  return (
+    <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6 font-sans">
+      <PageHeader
+        title="Commercial Terms of Carriage & Service"
+        subtitle="Last Updated: February 2026 • Target Logistics Global Express W.L.L."
+      />
 
-const Content = styled.div`
-  color: var(--text-secondary);
-  line-height: 1.6;
-  
-  h2 {
-    color: var(--text-primary);
-    margin-top: 24px;
-    margin-bottom: 12px;
-  }
-`;
+      <div className="card bg-base-100 border border-base-200 shadow-sm p-6 sm:p-10 space-y-6 text-sm text-base-content/75 leading-relaxed">
+        <div className="space-y-2">
+          <h2 className="text-base font-black text-base-content uppercase tracking-wider">
+            1. Agreement of Carriage
+          </h2>
+          <p>
+            By booking a shipment, generating an Air Waybill (AWB), or accessing the Target Logistics Global platform, the shipper ("Consignor") accepts these Terms and Conditions on behalf of themselves and the receiver ("Consignee"). All airfreight carriage is subject to the Warsaw and Montreal Conventions where applicable.
+          </p>
+        </div>
 
-const TermsPage = () => {
-    return (
-        <Container>
-            <PageHeader
-                title="Terms of Service"
-                description="Last Updated: February 2026"
-            />
+        <div className="space-y-2">
+          <h2 className="text-base font-black text-base-content uppercase tracking-wider">
+            2. Volumetric Weight & Discrepancy Audits
+          </h2>
+          <p>
+            Chargeable weight is calculated based on the greater of actual gross dead weight or volumetric weight (using the standard IATA divisor: <code className="bg-base-200 px-1 py-0.5 rounded font-mono font-bold">L x W x H (cm) / 5000</code>). In the event of a certified scale discrepancy exceeding 0.05 kg identified during warehouse scan-in, Target Logistics reserves the right to re-rate the consignment based on certified dimensions.
+          </p>
+        </div>
 
-            <Card>
-                <Content>
-                    <h2>1. Terms</h2>
-                    <p>By accessing the website at Target Logistics, you are agreeing to be bound by these terms of service, all applicable laws and regulations, and agree that you are responsible for compliance with any applicable local laws. If you do not agree with any of these terms, you are prohibited from using or accessing this site.</p>
+        <div className="space-y-2">
+          <h2 className="text-base font-black text-base-content uppercase tracking-wider">
+            3. Dangerous Goods & Prohibited Cargo
+          </h2>
+          <p>
+            Shippers booking IATA Dangerous Goods (DGR), including lithium-ion batteries, perfumes, chemicals, and pressurized gases, must declare UN classification codes and supply authentic Material Safety Data Sheets (MSDS). Failure to declare hazardous cargo may result in immediate customs seizure and statutory penalties.
+          </p>
+        </div>
 
-                    <h2>2. Use License</h2>
-                    <p>Permission is granted to temporarily download one copy of the materials (information or software) on Target Logistics' website for personal, non-commercial transitory viewing only. This is the grant of a license, not a transfer of title, and under this license you may not:</p>
-                    <ul>
-                        <li>modify or copy the materials;</li>
-                        <li>use the materials for any commercial purpose, or for any public display (commercial or non-commercial);</li>
-                        <li>attempt to decompile or reverse engineer any software contained on Target Logistics' website;</li>
-                        <li>remove any copyright or other proprietary notations from the materials; or</li>
-                        <li>transfer the materials to another person or "mirror" the materials on any other server.</li>
-                    </ul>
+        <div className="space-y-2">
+          <h2 className="text-base font-black text-base-content uppercase tracking-wider">
+            4. Cash on Delivery (COD) & Settlement Ledgers
+          </h2>
+          <p>
+            COD collections executed by courier drivers in Kuwait are vaulted and reconciled within 48 hours. B2B corporate client settlements are disbursed in accordance with agreed credit terms and billing schedules.
+          </p>
+        </div>
 
-                    <h2>3. Disclaimer</h2>
-                    <p>The materials on Target Logistics' website are provided on an 'as is' basis. Target Logistics makes no warranties, expressed or implied, and hereby disclaims and negates all other warranties including, without limitation, implied warranties or conditions of merchantability, fitness for a particular purpose, or non-infringement of intellectual property or other violation of rights.</p>
-
-                    <h2>4. Limitations</h2>
-                    <p>In no event shall Target Logistics or its suppliers be liable for any damages (including, without limitation, damages for loss of data or profit, or due to business interruption) arising out of the use or inability to use the materials on Target Logistics' website.</p>
-
-                    <h2>5. Governing Law</h2>
-                    <p>These terms and conditions are governed by and construed in accordance with the laws of Kuwait and you irrevocably submit to the exclusive jurisdiction of the courts in that State or location.</p>
-                </Content>
-            </Card>
-        </Container>
-    );
+        <div className="space-y-2">
+          <h2 className="text-base font-black text-base-content uppercase tracking-wider">
+            5. Governing Law & Dispute Resolution
+          </h2>
+          <p>
+            These terms are governed exclusively by the commercial and civil laws of the State of Kuwait. Any disputes arising hereunder shall be submitted to the exclusive jurisdiction of the Commercial Courts of Kuwait.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default TermsPage;

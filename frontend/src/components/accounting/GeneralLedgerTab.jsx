@@ -1,32 +1,23 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import styled from 'styled-components';
 import { useSnackbar } from 'notistack';
 import { format } from 'date-fns';
 import { financeService } from '../../services/api';
 import { TK } from '../../tokens/kineticHorizon';
 import { Card, Button, WInput, Select, Modal, TableWrapper, Table, Thead, Tbody, Tr, Th, Td, Loader } from '../../ui';
 
-const BalanceTicker = styled.div`
-  display: flex;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border-radius: 12px;
-  background: ${props => props.$balanced ? '#ecfdf5' : '#fef2f2'};
-  border: 1px solid ${props => props.$balanced ? '#10b981' : '#ef4444'};
-  margin-top: 14px;
-  margin-bottom: 14px;
-  font-weight: 700;
-  font-size: 13px;
-  color: ${props => props.$balanced ? '#047857' : '#b91c1c'};
-`;
+const BalanceTicker = ({ $balanced, children }) => (
+  <div className={`flex justify-between items-center p-3 px-4 rounded-xl my-3 text-xs font-bold border ${
+    $balanced ? 'bg-success/10 border-success/30 text-success' : 'bg-error/10 border-error/30 text-error'
+  }`}>
+    {children}
+  </div>
+);
 
-const LineRow = styled.div`
-  display: grid;
-  grid-template-columns: 180px 1fr 100px 100px 36px;
-  gap: 10px;
-  align-items: center;
-  margin-bottom: 10px;
-`;
+const LineRow = ({ children }) => (
+  <div className="grid grid-cols-[180px_1fr_100px_100px_36px] gap-2.5 items-center mb-2.5">
+    {children}
+  </div>
+);
 
 const GeneralLedgerTab = ({ lang = 'en' }) => {
   const { enqueueSnackbar } = useSnackbar();

@@ -3,7 +3,6 @@ import { useSnackbar } from 'notistack';
 import { shipmentService } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import { TK } from '../tokens/kineticHorizon';
-import { Modal } from '../ui';
 
 const SAMPLE_CSV = `recipientName,recipientPhone,phoneCountryCode,destinationCountry,destinationCity,formattedAddress,weightKg,itemDescription,codAmount,carrierCode
 "Ahmed Al-Kandari","96599112233","965","KW","Kuwait City","Salmiya, Block 4, Street 12, Bldg 8","1.5","Electronics & Gadgets","","DGR"
@@ -159,118 +158,87 @@ export default function BulkShipmentImportModal({ isOpen, onClose, onImportSucce
   const validCount = parsedRows.filter(r => r.__isValid).length;
   const errorCount = parsedRows.filter(r => !r.__isValid).length;
 
-  return (
-    <Modal
-      isOpen={isOpen}
-      onClose={() => {
-        if (!isSubmitting) {
-          handleReset();
-          onClose();
-        }
-      }}
-      title={t('bulk_modal_title', 'Bulk Consignment Batch Ingestion')}
-      width="920px"
-      footer={
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+  if (!isOpen) return null;
+
+  const handleClose = () => {
+    if (!isSubmitting) {
+      handleReset();
+      onClose();
+    }
+  };
+
+  const renderFooter = () => (
+    <div className="flex justify-between items-center w-full pt-4 border-t border-base-200">
+      <button
+        type="button"
+        onClick={handleDownloadTemplate}
+        className="btn btn-sm btn-outline gap-1.5 font-bold"
+      >
+        <span className="material-symbols-outlined text-base text-primary">download</span>
+        {t('bulk_download_template', 'Download CSV Template')}
+      </button>
+
+      <div className="flex gap-2">
+        {step === 'preview' && (
           <button
             type="button"
-            onClick={handleDownloadTemplate}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              background: 'transparent',
-              border: `1px solid ${TK.border}`,
-              padding: '8px 14px',
-              borderRadius: 10,
-              fontSize: 12.5,
-              fontWeight: 600,
-              color: TK.text1,
-              cursor: 'pointer'
-            }}
+            onClick={() => setStep('upload')}
+            disabled={isSubmitting}
+            className="btn btn-sm btn-ghost font-bold"
           >
-            <span className="material-symbols-outlined" style={{ fontSize: 16, color: TK.primary }}>download</span>
-            {t('bulk_download_template', 'Download CSV Template')}
+            {t('back', 'Back to Upload')}
           </button>
+        )}
 
-          <div style={{ display: 'flex', gap: 10 }}>
-            {step === 'preview' && (
-              <button
-                type="button"
-                onClick={() => setStep('upload')}
-                disabled={isSubmitting}
-                style={{
-                  padding: '9px 18px',
-                  borderRadius: 10,
-                  border: `1px solid ${TK.border}`,
-                  background: '#ffffff',
-                  color: TK.text2,
-                  fontWeight: 600,
-                  fontSize: 13,
-                  cursor: 'pointer'
-                }}
-              >
-                {t('back', 'Back to Upload')}
-              </button>
+        {step === 'results' ? (
+          <button
+            type="button"
+            onClick={handleClose}
+            className="btn btn-sm btn-primary font-bold"
+          >
+            {t('close', 'Done')}
+          </button>
+        ) : step === 'preview' ? (
+          <button
+            type="button"
+            onClick={handleImportSubmit}
+            disabled={isSubmitting || validCount === 0}
+            className="btn btn-sm btn-primary font-bold gap-2"
+          >
+            {isSubmitting ? (
+              <>
+                <span className="loading loading-spinner loading-xs" />
+                {t('loading', 'Ingesting Consignments...')}
+              </>
+            ) : (
+              <>
+                <span className="material-symbols-outlined text-base">rocket_launch</span>
+                {t('bulk_import_btn', 'Import')} ({validCount})
+              </>
             )}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
 
-            {step === 'results' ? (
-              <button
-                type="button"
-                onClick={() => {
-                  handleReset();
-                  onClose();
-                }}
-                style={{
-                  padding: '9px 22px',
-                  borderRadius: 10,
-                  border: 'none',
-                  background: TK.primary,
-                  color: '#ffffff',
-                  fontWeight: 700,
-                  fontSize: 13,
-                  cursor: 'pointer'
-                }}
-              >
-                {t('close', 'Done')}
-              </button>
-            ) : step === 'preview' ? (
-              <button
-                type="button"
-                onClick={handleImportSubmit}
-                disabled={isSubmitting || validCount === 0}
-                style={{
-                  padding: '9px 24px',
-                  borderRadius: 10,
-                  border: 'none',
-                  background: validCount === 0 ? '#9ca3af' : TK.primary,
-                  color: '#ffffff',
-                  fontWeight: 700,
-                  fontSize: 13,
-                  cursor: validCount === 0 ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  boxShadow: validCount > 0 ? '0 2px 10px rgba(0,80,212,0.25)' : 'none'
-                }}
-              >
-                {isSubmitting ? (
-                  <>
-                    <span className="material-symbols-outlined" style={{ fontSize: 18, animation: 'spin 1s linear infinite' }}>progress_activity</span>
-                    {t('loading', 'Ingesting Consignments...')}
-                  </>
-                ) : (
-                  <>
-                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>rocket_launch</span>
-                    {t('bulk_import_btn', 'Import')} ({validCount})
-                  </>
-                )}
-              </button>
-            ) : null}
-          </div>
+  return (
+    <div className="modal modal-open z-50">
+      <div className="modal-box max-w-4xl bg-base-100 border border-base-300 p-6 space-y-4 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-base-200 pb-3">
+          <h3 className="font-black text-lg text-base-content flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary">upload_file</span>
+            {t('bulk_modal_title', 'Bulk Consignment Batch Ingestion')}
+          </h3>
+          <button
+            type="button"
+            onClick={handleClose}
+            disabled={isSubmitting}
+            className="btn btn-sm btn-circle btn-ghost"
+          >
+            ✕
+          </button>
         </div>
-      }
-    >
       {step === 'upload' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           {/* Drag and Drop Zone */}
@@ -572,6 +540,9 @@ export default function BulkShipmentImportModal({ isOpen, onClose, onImportSucce
           </div>
         </div>
       )}
-    </Modal>
+        {renderFooter()}
+      </div>
+      <div className="modal-backdrop bg-black/50" onClick={handleClose} />
+    </div>
   );
 }

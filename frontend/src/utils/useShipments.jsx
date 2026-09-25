@@ -7,11 +7,12 @@ const fetcher = async ([url, params]) => {
     return response; // { data: [...], pagination: {...} }
 };
 
-export const useShipments = ({ page = 1, limit = 10, statusIn = null, q = '' }) => {
+export const useShipments = ({ page = 1, limit = 10, statusIn = null, q = '', organizationId = null }) => {
     // Determine key: if q exists, statusIn might be ignored or combined
     const params = { page, limit, summary: true };
     if (statusIn) params.statusIn = Array.isArray(statusIn) ? statusIn.join(',') : statusIn;
     if (q) params.q = q;
+    if (organizationId && organizationId !== 'all') params.organizationId = organizationId;
 
     // SWR Key: unique identifier for the request
     const key = ['/api/shipments', params];

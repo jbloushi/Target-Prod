@@ -1,23 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import styled from 'styled-components';
 import { useSnackbar } from 'notistack';
 import { format } from 'date-fns';
 import { financeService } from '../../services/api';
 import { TK } from '../../tokens/kineticHorizon';
 import { Card, Button, TableWrapper, Table, Thead, Tbody, Tr, Th, Td, Loader } from '../../ui';
 
-const Banner = styled.div`
-  background: ${props => props.$closed ? '#fef2f2' : '#ecfdf5'};
-  border: 1px solid ${props => props.$closed ? '#f87171' : '#6ee7b7'};
-  border-radius: 16px;
-  padding: 20px 24px;
-  margin-bottom: 24px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
-`;
+const Banner = ({ $closed, children }) => (
+  <div className={`p-5 rounded-2xl mb-6 flex justify-between items-center flex-wrap gap-4 border ${
+    $closed ? 'bg-error/10 border-error/30' : 'bg-success/10 border-success/30'
+  }`}>
+    {children}
+  </div>
+);
 
 const PeriodClosingTab = ({ lang = 'en' }) => {
   const { enqueueSnackbar } = useSnackbar();

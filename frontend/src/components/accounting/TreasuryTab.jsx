@@ -1,38 +1,27 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import styled from 'styled-components';
 import { useSnackbar } from 'notistack';
 import { format } from 'date-fns';
 import { financeService } from '../../services/api';
 import { TK } from '../../tokens/kineticHorizon';
 import { Card, Button, WInput, Select, Modal, TableWrapper, Table, Thead, Tbody, Tr, Th, Td, Loader } from '../../ui';
 
-const TreasuryGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
-`;
+const TreasuryGrid = ({ children }) => (
+  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+    {children}
+  </div>
+);
 
-const TreasuryCard = styled.div`
-  background: #ffffff;
-  border-radius: 18px;
-  border: 1px solid ${TK.border};
-  padding: 18px 22px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.04);
-  position: relative;
-  overflow: hidden;
-`;
+const TreasuryCard = ({ children }) => (
+  <div className="bg-base-100 rounded-2xl border border-base-200 p-5 shadow-xs relative overflow-hidden">
+    {children}
+  </div>
+);
 
-const BankCard = styled.div`
-  background: #ffffff;
-  border-radius: 16px;
-  border: 1px solid ${TK.border};
-  padding: 16px 20px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.03);
-`;
+const BankCard = ({ children }) => (
+  <div className="bg-base-100 rounded-2xl border border-base-200 p-4 flex justify-between items-center shadow-xs">
+    {children}
+  </div>
+);
 
 const TreasuryTab = ({ lang = 'en' }) => {
   const { enqueueSnackbar } = useSnackbar();

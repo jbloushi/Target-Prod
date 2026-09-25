@@ -1,261 +1,267 @@
 import React, { useState } from 'react';
-import { useNavigate, Link as RouterLink } from 'react-router-dom';
-import styled, { keyframes } from 'styled-components';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Button, Input, Alert } from '../ui';
 
-// --- Animations ---
-const fadeSlideUp = keyframes`
-  from { opacity: 0; transform: translateY(24px); }
-  to { opacity: 1; transform: translateY(0); }
-`;
+export const SignupPage = () => {
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+    company: '',
+    phone: '',
+  });
+  const [showPassword, setShowPassword] = useState(false);
+  const [validationError, setValidationError] = useState('');
 
-const driftIn = keyframes`
-  from { opacity: 0; transform: translateX(40px); }
-  to { opacity: 1; transform: translateX(0); }
-`;
+  const { register, loading, error, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
 
-const lineGrow = keyframes`
-  from { transform: scaleY(0); }
-  to { transform: scaleY(1); }
-`;
-
-// --- Styled Components ---
-
-const PageWrapper = styled.div`
-    min-height: 100vh;
-    width: 100%;
-    display: flex;
-    background: var(--surface, #f3f7fb);
-    position: relative;
-    overflow: hidden;
-`;
-
-const FormSide = styled.div`
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    padding: 48px;
-    padding-left: 80px;
-    max-width: 560px;
-    position: relative;
-    z-index: 2;
-    animation: ${fadeSlideUp} 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-
-    @media (max-width: 1024px) {
-        max-width: 100%;
-        padding: 32px;
+  React.useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/dashboard');
     }
-`;
+  }, [isAuthenticated, navigate]);
 
-const HeroSide = styled.div`
-    flex: 1.2;
-    position: relative;
-    overflow: hidden;
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+    if (validationError) setValidationError('');
+  };
 
-    @media (max-width: 1024px) {
-        display: none;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (formData.password !== formData.confirmPassword) {
+      setValidationError('Passwords do not match.');
+      return;
     }
-`;
-
-const HeroImage = styled.div`
-    position: absolute;
-    inset: 0;
-    background-image: url('/images/logistics-hero.png');
-    background-size: cover;
-    background-position: center;
-    animation: ${driftIn} 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-    
-    &::after {
-        content: '';
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(to right, var(--surface, #f3f7fb) 0%, rgba(243, 247, 251, 0.3) 30%, transparent 60%);
+    if (formData.password.length < 8) {
+      setValidationError('Password must be at least 8 characters.');
+      return;
     }
-`;
 
-const MotionLine = styled.div`
-    position: absolute;
-    top: 0;
-    width: 1px;
-    height: 100%;
-    background: linear-gradient(to bottom, var(--primary, #0050d4), transparent);
-    opacity: 0.08;
-    transform-origin: top;
-    animation: ${lineGrow} 1.2s cubic-bezier(0.4, 0, 0.2, 1);
-`;
-
-const BrandMark = styled.div`
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 48px;
-`;
-
-const BrandIcon = styled.div`
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
-    background: var(--gradient-primary, linear-gradient(135deg, #0EA5E9 0%, #2563EB 100%));
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    box-shadow: 0 8px 24px rgba(0, 80, 212, 0.25);
-`;
-
-const BrandText = styled.span`
-    font-family: 'Manrope', sans-serif;
-    font-size: 20px;
-    font-weight: 800;
-    color: var(--on-surface, #2a2f32);
-    letter-spacing: -0.02em;
-`;
-
-const Title = styled.h1`
-    font-family: 'Manrope', sans-serif;
-    font-size: 32px;
-    font-weight: 800;
-    margin-bottom: 8px;
-    letter-spacing: -0.02em;
-    color: var(--on-surface, #2a2f32);
-    line-height: 1.2;
-`;
-
-const Subtitle = styled.p`
-    font-size: 15px;
-    color: var(--on-surface-variant, #575c60);
-    margin-bottom: 36px;
-    line-height: 1.6;
-`;
-
-const Form = styled.form`
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-`;
-
-const LinkText = styled(RouterLink)`
-    color: var(--primary, #0050d4);
-    text-decoration: none;
-    font-size: 14px;
-    font-weight: 700;
-    transition: all 0.2s;
-
-    &:hover {
-        color: var(--primary-dim, #0046bb);
+    try {
+      await register({
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+        company: formData.company,
+        phone: formData.phone,
+        role: 'client',
+      });
+    } catch (err) {
+      // Handled by AuthContext
     }
-`;
+  };
 
-const SignupPage = () => {
-    const [formData, setFormData] = useState({
-        name: '',
-        email: '',
-        password: ''
-    });
-    const { signup, loading, error, isAuthenticated, user } = useAuth();
-    const navigate = useNavigate();
+  const activeError = validationError || (typeof error === 'string' ? error : error?.message);
 
-    React.useEffect(() => {
-        if (isAuthenticated && user) {
-            navigate(user.role === 'driver' ? '/driver/pickup' : '/dashboard');
-        }
-    }, [isAuthenticated, user, navigate]);
+  return (
+    <div className="min-h-screen bg-base-200/50 flex items-stretch font-sans selection:bg-primary selection:text-white">
+      {/* Left Column: Registration Form */}
+      <div className="flex-1 flex flex-col justify-center px-6 py-12 sm:px-12 lg:px-20 max-w-xl mx-auto w-full z-10">
+        {/* Brand Header */}
+        <div className="flex items-center gap-3 mb-8">
+          <div className="w-12 h-12 rounded-2xl bg-primary text-white flex items-center justify-center font-black text-lg shadow-lg shadow-primary/30">
+            TL
+          </div>
+          <div>
+            <div className="font-black text-xl text-base-content leading-tight">Target Logistics</div>
+            <div className="text-[11px] font-bold text-primary tracking-widest uppercase">Shipper Onboarding</div>
+          </div>
+        </div>
 
-    const handleChange = (field, value) => {
-        setFormData(prev => ({ ...prev, [field]: value }));
-    };
+        {/* Welcome Text */}
+        <div className="space-y-1 mb-6">
+          <h1 className="text-3xl font-black text-base-content tracking-tight">
+            Create Shipper Account
+          </h1>
+          <p className="text-xs sm:text-sm text-base-content/60">
+            Join Kuwait's premier logistics network for worldwide express air cargo and GCC corridors.
+          </p>
+        </div>
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        try {
-            await signup(formData);
-            navigate('/');
-        } catch (err) {
-            // Error handled by context
-        }
-    };
+        {/* Error Notification */}
+        {activeError && (
+          <div className="alert alert-error text-xs py-3 px-4 shadow-sm mb-6">
+            <span className="material-symbols-outlined text-base">error</span>
+            <div className="flex-1 font-bold">{activeError}</div>
+          </div>
+        )}
 
-    return (
-        <PageWrapper>
-            <FormSide>
-                <BrandMark>
-                    <BrandIcon>
-                        <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                    </BrandIcon>
-                    <BrandText>Target Logistics</BrandText>
-                </BrandMark>
+        {/* Form Fields */}
+        <form onSubmit={handleSubmit} className="space-y-3.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-base-content/70 uppercase tracking-wider">
+                Full Name *
+              </label>
+              <input
+                type="text"
+                name="name"
+                required
+                value={formData.name}
+                onChange={handleChange}
+                placeholder="e.g. Bader Al-Ahmad"
+                className="input input-bordered input-sm w-full text-xs font-medium focus:input-primary"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-base-content/70 uppercase tracking-wider">
+                Company Name
+              </label>
+              <input
+                type="text"
+                name="company"
+                value={formData.company}
+                onChange={handleChange}
+                placeholder="e.g. Al-Bader Trading"
+                className="input input-bordered input-sm w-full text-xs font-medium focus:input-primary"
+              />
+            </div>
+          </div>
 
-                <Title>Join Target Logistics</Title>
-                <Subtitle>Create your account to start managing shipments and unlock the full power of our logistics platform.</Subtitle>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-base-content/70 uppercase tracking-wider">
+                Work Email *
+              </label>
+              <input
+                type="email"
+                name="email"
+                required
+                value={formData.email}
+                onChange={handleChange}
+                placeholder="name@company.com"
+                className="input input-bordered input-sm w-full text-xs font-medium focus:input-primary"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-base-content/70 uppercase tracking-wider">
+                Phone Number *
+              </label>
+              <input
+                type="text"
+                name="phone"
+                required
+                value={formData.phone}
+                onChange={handleChange}
+                placeholder="+965 9000 0000"
+                className="input input-bordered input-sm w-full font-mono text-xs focus:input-primary"
+              />
+            </div>
+          </div>
 
-                {error && (
-                    <div style={{ marginBottom: '8px' }}>
-                        <Alert severity="error" title="Registration Failed">
-                            {typeof error === 'string' ? error : 'An unexpected error occurred'}
-                        </Alert>
-                    </div>
-                )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-base-content/70 uppercase tracking-wider">
+                Password *
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  required
+                  value={formData.password}
+                  onChange={handleChange}
+                  placeholder="Min 8 characters"
+                  className="input input-bordered input-sm w-full text-xs focus:input-primary pr-8"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="btn btn-ghost btn-circle btn-xs absolute right-1.5 top-1/2 -translate-y-1/2 text-base-content/40"
+                >
+                  <span className="material-symbols-outlined text-xs">
+                    {showPassword ? 'visibility_off' : 'visibility'}
+                  </span>
+                </button>
+              </div>
+            </div>
 
-                <Form onSubmit={handleSubmit}>
-                    <Input
-                        label="Full Name"
-                        name="name"
-                        autoComplete="name"
-                        value={formData.name}
-                        onChange={(e) => handleChange('name', e.target.value)}
-                        placeholder="John Doe"
-                        required
-                    />
-                    <Input
-                        label="Email Address"
-                        name="email"
-                        autoComplete="email"
-                        type="email"
-                        value={formData.email}
-                        onChange={(e) => handleChange('email', e.target.value)}
-                        placeholder="name@company.com"
-                        required
-                    />
-                    <Input
-                        label="Password"
-                        name="new-password"
-                        autoComplete="new-password"
-                        type="password"
-                        value={formData.password}
-                        onChange={(e) => handleChange('password', e.target.value)}
-                        placeholder="Create a strong password"
-                        required
-                    />
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-base-content/70 uppercase tracking-wider">
+                Confirm Password *
+              </label>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                name="confirmPassword"
+                required
+                value={formData.confirmPassword}
+                onChange={handleChange}
+                placeholder="Re-enter password"
+                className="input input-bordered input-sm w-full text-xs focus:input-primary"
+              />
+            </div>
+          </div>
 
-                    <Button
-                        variant="primary"
-                        type="submit"
-                        disabled={loading}
-                        style={{ width: '100%', marginTop: '8px', padding: '16px' }}
-                    >
-                        {loading ? 'Creating Account...' : 'Create Account'}
-                    </Button>
-                </Form>
+          <div className="pt-2">
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn btn-primary w-full font-black text-sm shadow-md shadow-primary/20 gap-2"
+            >
+              {loading ? (
+                <>
+                  <span className="loading loading-spinner loading-xs" />
+                  <span>Creating Account...</span>
+                </>
+              ) : (
+                <>
+                  <span>Create Account & Start Shipping</span>
+                  <span className="material-symbols-outlined text-lg">arrow_forward</span>
+                </>
+              )}
+            </button>
+          </div>
+        </form>
 
-                <div style={{ marginTop: '28px', textAlign: 'center' }}>
-                    <span style={{ color: 'var(--on-surface-variant)', fontSize: '14px' }}>Already have an account? </span>
-                    <LinkText to="/login">Sign In</LinkText>
-                </div>
-            </FormSide>
+        {/* Public Links */}
+        <div className="mt-8 pt-6 border-t border-base-200 text-center space-y-3">
+          <p className="text-xs text-base-content/60">
+            Already have an enterprise account?{' '}
+            <Link to="/login" className="link link-primary font-bold">
+              Sign In
+            </Link>
+          </p>
+        </div>
+      </div>
 
-            <HeroSide>
-                <HeroImage />
-                <MotionLine style={{ left: '20%' }} />
-                <MotionLine style={{ left: '50%', animationDelay: '0.2s' }} />
-                <MotionLine style={{ left: '75%', animationDelay: '0.4s' }} />
-            </HeroSide>
-        </PageWrapper>
-    );
+      {/* Right Column: Hero Graphic Banner (Desktop Only) */}
+      <div className="hidden lg:flex flex-1 relative bg-gradient-to-br from-primary via-primary-focus to-neutral text-primary-content overflow-hidden p-12 flex-col justify-between">
+        <div className="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:24px_24px]" />
+
+        <div className="relative z-10 flex items-center justify-between">
+          <div className="badge badge-neutral/80 backdrop-blur-md text-white font-bold text-xs gap-1.5 py-3 px-3">
+            <span className="w-2 h-2 rounded-full bg-success animate-ping" />
+            <span>Instant Dispatch Approval</span>
+          </div>
+          <span className="font-mono text-xs opacity-75">Kuwait City UTC+3</span>
+        </div>
+
+        <div className="relative z-10 max-w-lg space-y-6">
+          <h2 className="text-4xl xl:text-5xl font-black leading-tight tracking-tight">
+            Connect Your Business to the World.
+          </h2>
+          <p className="text-sm opacity-85 leading-relaxed">
+            Instant AWB label generation, automated commercial invoices, Dangerous Goods IATA documentation, and live corridor radar.
+          </p>
+        </div>
+
+        <div className="relative z-10 p-5 rounded-2xl bg-base-100/95 backdrop-blur-xl border border-white/20 text-base-content shadow-2xl flex items-center justify-between gap-4 max-w-md">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined">verified</span>
+            </div>
+            <div>
+              <div className="text-[11px] font-bold text-base-content/50 uppercase">Zero Platform Fees</div>
+              <div className="font-extrabold text-sm text-base-content">Transparent Carrier Billing</div>
+            </div>
+          </div>
+          <span className="badge badge-primary badge-sm font-bold text-xs">Live B2B Rate</span>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default SignupPage;
