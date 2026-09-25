@@ -24,6 +24,15 @@ npm install --production=false
 
 echo "🔄 Generating Prisma client & running database migrations against MySQL (194.195.87.56:3306)..."
 npx prisma generate
+
+# Resolve any previously failed migration (e.g. from db push creating tables before migrate deploy)
+# This marks the failed migration as applied so migrate deploy can proceed.
+FAILED_MIGRATION=$(npx prisma migrate status 2>&1 | grep -oP '(?<=Migration name: )\S+' || true)
+if [ -n "$FAILED_MIGRATION" ]; then
+    echo "⚠️  Resolving previously failed migration: ${FAILED_MIGRATION}"
+    npx prisma migrate resolve --applied "$FAILED_MIGRATION" || true
+fi
+
 npx prisma migrate deploy || npx prisma db push --accept-data-loss
 
 echo "🌱 Seeding / verifying Chart of Accounts, Bank Accounts, and Accounting Periods..."
