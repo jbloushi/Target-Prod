@@ -1246,13 +1246,21 @@ const ShipmentDetailsPage = () => {
 
                                             <button
                                                 onClick={() => handleSendWhatsAppRole(role.key)}
-                                                disabled={sendingWhatsAppRole === role.key}
-                                                className="btn btn-outline btn-success btn-xs rounded-lg font-bold w-full gap-1"
+                                                disabled={sendingWhatsAppRole === role.key || isSent}
+                                                className={`btn btn-xs rounded-lg font-bold w-full gap-1 ${
+                                                    isSent 
+                                                        ? 'btn-disabled bg-base-300 text-base-content/40 cursor-not-allowed border-base-300' 
+                                                        : 'btn-outline btn-success'
+                                                }`}
                                             >
-                                                <span className="material-symbols-outlined text-sm">send</span>
+                                                <span className="material-symbols-outlined text-sm">
+                                                    {isSent ? 'check_circle' : 'send'}
+                                                </span>
                                                 {sendingWhatsAppRole === role.key 
-                                                    ? 'Dispatching...' 
-                                                    : (isSent ? (isRTL ? 'إعادة الإرسال' : 'Re-send Update') : (isRTL ? 'إرسال الآن' : 'Send WhatsApp Now'))}
+                                                    ? (isRTL ? 'جاري الإرسال...' : 'Dispatching...') 
+                                                    : (isSent 
+                                                        ? (isRTL ? 'تم الإرسال مسبقاً' : 'Delivered (Already Sent)') 
+                                                        : (isRTL ? 'إرسال الآن' : 'Send WhatsApp Now'))}
                                             </button>
                                         </div>
                                     );
