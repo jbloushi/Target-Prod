@@ -58,9 +58,27 @@ const formatLegibleDate = (val) => {
 };
 
 /**
+ * Check if a bill has already been sent via the Shipment-WhatsApp Microservice
+ */
+async function checkMicroserviceSent(billId, role = 'receiver') {
+    if (!billId) return { sent: false };
+    try {
+        const settings = getSystemSettings()?.whatsapp || {};
+        const serviceUrl = String(settings.serviceUrl || 'https://msg.target-kw.com').replace(/\/+$/, '');
+        const res = await axios.get(`${serviceUrl}/api/send/check-sent`, {
+            params: { billId, role },
+            timeout: 5000
+        });
+        return res.data || { sent: false };
+    } catch {
+        return { sent: false };
+    }
+}
+
+/**
  * Dispatch message via the Shipment-WhatsApp Microservice (https://msg.target-kw.com)
  */
-async function sendViaShipmentWhatsappMicroservice({ serviceUrl = 'https://msg.target-kw.com', templateName, language, toPhone, variables = [], headerVariables = [], apiKey = null }) {
+async function sendViaShipmentWhatsappMicroservice({ serviceUrl = 'https://msg.target-kw.com', templateName, language, toPhone, variables = [], headerVariables = [], billId = null, role = 'receiver', apiKey = null }) {
     const cleanPhone = String(toPhone).replace(/\D/g, '');
     const cleanServiceUrl = String(serviceUrl || 'https://msg.target-kw.com').replace(/\/+$/, '');
     const url = `${cleanServiceUrl}/api/send`;
@@ -82,7 +100,9 @@ async function sendViaShipmentWhatsappMicroservice({ serviceUrl = 'https://msg.t
                 to: cleanPhone,
                 variables: variables.map(v => v === null || v === undefined ? '' : String(v)),
                 headerVariables: headerVariables.map(v => v === null || v === undefined ? '' : String(v)),
-                header: (headerVariables && headerVariables.length > 0) ? String(headerVariables[0]) : undefined
+                header: (headerVariables && headerVariables.length > 0) ? String(headerVariables[0]) : undefined,
+                billId: billId || undefined,
+                role: role || undefined
             }
         ]
     };
@@ -295,6 +315,7 @@ class WhatsAppIntegrationService {
             }
 
             try {
+                const billId = shipment.documents?.phenixBillId || null;
                 const result = await sendViaShipmentWhatsappMicroservice({
                     serviceUrl,
                     templateName: chosenTemplate,
@@ -302,6 +323,8 @@ class WhatsAppIntegrationService {
                     toPhone: phone,
                     variables,
                     headerVariables,
+                    billId,
+                    role: recipientRole || 'receiver',
                     apiKey: settings.apiKey || null
                 });
 
@@ -407,6 +430,10 @@ class WhatsAppIntegrationService {
 
     normalizePhone(phone, countryCode = '965') {
         return normalizePhone(phone, countryCode);
+    }
+
+    async checkMicroserviceSent(billId, role = 'receiver') {
+        return await checkMicroserviceSent(billId, role);
     }
 
     /**

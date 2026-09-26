@@ -952,16 +952,45 @@ class PhenixSyncService {
                             }
                         });
 
-                        if (!alreadyNotified) {
-                            await whatsappService.sendNotification({
-                                shipment: item.shipment,
-                                recipientRole: 'customer',
-                                recipientPhone: item.v.receiverPhone,
-                                recipientName: item.v.receiverName,
-                                templateName: 'shipment_confirmation_2',
-                                eventType: 'shipment_created'
-                            });
+                        if (alreadyNotified) {
+                            continue;
                         }
+
+                        // Check if microservice (msg.target-kw.com) already sent it via its autosend cron
+                        const billId = item.v.billId;
+                        if (billId) {
+                            const microSent = await whatsappService.checkMicroserviceSent(billId, 'receiver');
+                            if (microSent?.sent) {
+                                logger.info(`[PhenixSync Background] Bill #${billId} already messaged via msg.target-kw.com autosend (at ${microSent.sentAt}). Skipping dispatch and logging state.`);
+                                await prisma.shipmentNotificationLog.create({
+                                    data: {
+                                        shipmentId: item.shipment.id,
+                                        trackingNumber: item.shipment.trackingNumber,
+                                        eventType: 'shipment_created',
+                                        recipientRole: 'customer',
+                                        recipientName: item.v.receiverName || null,
+                                        recipientPhone: item.v.receiverPhone,
+                                        provider: 'SHIPMENT_WHATSAPP',
+                                        templateName: 'shipment_confirmation_2',
+                                        status: 'SENT',
+                                        chatwootMessageId: `msg-autosend-${microSent.sentAt || Date.now()}`,
+                                        payloadJson: { source: 'MICROSERVICE_AUTOSEND', billId },
+                                        responseJson: { autoSent: true, sentAt: microSent.sentAt },
+                                        sentAt: microSent.sentAt ? new Date(microSent.sentAt) : new Date()
+                                    }
+                                });
+                                continue;
+                            }
+                        }
+
+                        await whatsappService.sendNotification({
+                            shipment: item.shipment,
+                            recipientRole: 'customer',
+                            recipientPhone: item.v.receiverPhone,
+                            recipientName: item.v.receiverName,
+                            templateName: 'shipment_confirmation_2',
+                            eventType: 'shipment_created'
+                        });
                     } catch (err) {
                         logger.warn(`[PhenixSync Background] WhatsApp dispatch failed for ${item.shipment.trackingNumber}: ${err.message}`);
                     }
