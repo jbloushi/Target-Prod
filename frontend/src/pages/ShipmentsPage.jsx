@@ -33,11 +33,7 @@ const ShipmentsPage = () => {
     const [selectedOrgId, setSelectedOrgId] = useState(initialOrgId);
 
     const [organizations, setOrganizations] = useState([
-        { id: 'all', name: isRTL ? 'جميع الحسابات (نظرة شاملة)' : 'All Network Organizations', balance: 5118.842 },
-        { id: 'b72fcb2e-4c0e-4b11-bca5-60c6930411e2', name: 'Gulf Apex Trading W.L.L.', balance: 1450.500 },
-        { id: '45a1debf-65bd-42ca-a535-d3d9ff08e3fa', name: 'Al-Sabah Medical & Pharma Logistics', balance: 3200.000 },
-        { id: '44496cf8-2eb5-43c9-9918-84045be9894c', name: 'Kuwait Ministry of Commerce', balance: 0.000 },
-        { id: '1521f1f0-6788-454c-883c-89e1e8922223', name: 'DGR Dangerous Goods Ltd', balance: 432.750 },
+        { id: 'all', name: isRTL ? 'جميع الحسابات (نظرة شاملة)' : 'All Network Organizations', balance: 0 },
     ]);
 
     // Fetch live organizations from backend
@@ -47,19 +43,20 @@ const ShipmentsPage = () => {
             .then(res => {
                 const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
                 if (list.length > 0 && isMounted) {
+                    const totalBal = list.reduce((acc, o) => acc + (Number(o.balance) || 0), 0);
                     const mapped = list.map(o => ({
                         id: o.id,
                         name: o.name,
                         balance: Number(o.balance) || 0,
                     }));
                     setOrganizations([
-                        { id: 'all', name: isRTL ? 'جميع الحسابات (نظرة شاملة)' : 'All Network Organizations', balance: 5118.842 },
+                        { id: 'all', name: isRTL ? 'جميع الحسابات (نظرة شاملة)' : 'All Network Organizations', balance: totalBal },
                         ...mapped
                     ]);
                 }
             })
             .catch(() => {
-                // Fallback to default established accounts
+                // Keep initial state
             });
         return () => { isMounted = false; };
     }, [isRTL]);

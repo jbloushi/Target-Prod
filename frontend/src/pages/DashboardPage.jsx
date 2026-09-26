@@ -86,11 +86,7 @@ const DashboardPage = () => {
     const [perspective, setPerspective] = useState(isClientUser ? 'client' : isTargetAccounting ? 'accounting' : 'target');
     const [selectedOrgId, setSelectedOrgId] = useState('all');
     const [organizations, setOrganizations] = useState([
-        { id: 'all', name: isRTL ? 'جميع الحسابات (نظرة شاملة)' : 'All Network Organizations', balance: 5118.842, creditLimit: 42000, activePkgs: 89 },
-        { id: 'b72fcb2e-4c0e-4b11-bca5-60c6930411e2', name: 'Gulf Apex Trading W.L.L.', balance: 1450.500, creditLimit: 5000, activePkgs: 34, contact: '+965 9988 1122' },
-        { id: '45a1debf-65bd-42ca-a535-d3d9ff08e3fa', name: 'Al-Sabah Medical & Pharma Logistics', balance: 3200.000, creditLimit: 10000, activePkgs: 26, contact: '+965 9771 4455' },
-        { id: '44496cf8-2eb5-43c9-9918-84045be9894c', name: 'Kuwait Ministry of Commerce', balance: 0.000, creditLimit: 25000, activePkgs: 18, contact: '+965 2244 5500' },
-        { id: '1521f1f0-6788-454c-883c-89e1e8922223', name: 'DGR Dangerous Goods Ltd', balance: 432.750, creditLimit: 2000, activePkgs: 11, contact: '+965 9660 3311' },
+        { id: 'all', name: isRTL ? 'جميع الحسابات (نظرة شاملة)' : 'All Network Organizations', balance: 0, creditLimit: 0 }
     ]);
 
     // Data filtering & inspection state
@@ -106,22 +102,23 @@ const DashboardPage = () => {
             .then(res => {
                 const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
                 if (list.length > 0 && isMounted) {
+                    const totalBal = list.reduce((acc, o) => acc + (Number(o.balance) || 0), 0);
+                    const totalCred = list.reduce((acc, o) => acc + (Number(o.creditLimit) || 0), 0);
                     const mapped = list.map(o => ({
                         id: o.id,
                         name: o.name,
                         balance: Number(o.balance) || 0,
-                        creditLimit: Number(o.creditLimit) || 5000,
-                        activePkgs: Math.floor(Math.random() * 25) + 5,
-                        contact: o.billingWhatsappNumber || o.billingEmail || 'Kuwait'
+                        creditLimit: Number(o.creditLimit) || 0,
+                        contact: o.billingWhatsappNumber || o.billingEmail || '+965 9000 1000'
                     }));
                     setOrganizations([
-                        { id: 'all', name: isRTL ? 'جميع الحسابات (نظرة شاملة)' : 'All Network Organizations', balance: 5118.842, creditLimit: 42000, activePkgs: 89 },
+                        { id: 'all', name: isRTL ? 'جميع الحسابات (نظرة شاملة)' : 'All Network Organizations', balance: totalBal, creditLimit: totalCred },
                         ...mapped
                     ]);
                 }
             })
             .catch(() => {
-                // Use default established organizations
+                // Keep initial state
             });
         return () => { isMounted = false; };
     }, [isRTL]);
@@ -149,6 +146,13 @@ const DashboardPage = () => {
             { id: 'kwi-lhr', name: 'Kuwait ⇄ London', nameAr: 'الكويت ⇄ لندن', code: 'KWI ⇄ LHR', flag1: '🇰🇼', flag2: '🇬🇧', mode: 'Air Courier', volume: 0, onTime: '97.5%' },
         ];
     }, [stats?.corridors]);
+
+    // Top active corridor by volume
+    const topCorridor = useMemo(() => {
+        if (!tradeCorridors || tradeCorridors.length === 0) return null;
+        const active = [...tradeCorridors].filter(c => (c.volume || 0) > 0).sort((a, b) => b.volume - a.volume);
+        return active[0] || null;
+    }, [tradeCorridors]);
 
     // Live Total B2B Receivables from live database accounts
     const totalReceivables = useMemo(() => {
@@ -377,9 +381,13 @@ const DashboardPage = () => {
                                 <span className="text-3xl font-black text-base-content">
                                     <AnimatedNumber value={(stats?.inTransit || 0) + (stats?.pickedUp || 0)} />
                                 </span>
-                                <span className="text-xs font-bold text-success flex items-center gap-0.5">
-                                    <span className="material-symbols-outlined text-xs">trending_up</span>+12.4%
-                                </span>
+                                {stats?.total > 0 ? (
+                                    <span className="badge badge-success badge-sm font-bold">
+                                        {Math.round((((stats?.inTransit || 0) + (stats?.pickedUp || 0)) / stats.total) * 100)}% {isRTL ? 'نشط' : 'active'}
+                                    </span>
+                                ) : (
+                                    <span className="badge badge-ghost badge-sm text-[10px] font-bold">Nominal</span>
+                                )}
                             </div>
                             <span className="text-[11px] text-base-content/60 mt-1">{isRTL ? 'طرد قيد الشحن العابر للحدود' : 'Packages currently in flight/transit'}</span>
                         </div>
@@ -794,17 +802,25 @@ const DashboardPage = () => {
                             <VelocityIndicator label={isRTL ? 'رضا عملاء الشركات (NPS)' : 'Client Satisfaction (NPS)'} value={82} displayValue={stats?.kvi?.clientSatisfaction || '+82'} target=">70" progressClass="progress-warning" icon="sentiment_satisfied" />
                         </div>
 
-                        {/* Forecast Alert Box */}
+                        {/* Corridor Telemetry Alert Box */}
                         <div className="alert bg-primary/5 border border-primary/20 rounded-xl p-3 flex items-center gap-3">
                             <div className="w-8 h-8 rounded-lg bg-primary text-primary-content flex items-center justify-center shrink-0">
                                 <span className="material-symbols-outlined text-base">trending_up</span>
                             </div>
                             <div className="text-xs">
                                 <span className="font-black text-primary uppercase tracking-wider block">
-                                    {isRTL ? 'توقعات الأسبوع القادم' : 'Weekly Freight Forecast'}
+                                    {isRTL ? 'بيان حركة الشحن والمسارات' : 'Active Corridors Telemetry'}
                                 </span>
                                 <span className="font-semibold text-base-content text-[11px]">
-                                    {isRTL ? '+18% زيادة في شحنات الرياض ودبي (~420 طرد)' : '+18% Volume projected for RUH/DXB (~420 pkgs)'}
+                                    {topCorridor ? (
+                                        isRTL 
+                                            ? `${topCorridor.nameAr || topCorridor.name}: ${topCorridor.volume} طرد (التزام بالمواعيد ${topCorridor.onTime})`
+                                            : `High-Traffic Lane: ${topCorridor.name} (${topCorridor.volume} pkgs • ${topCorridor.onTime} SLA)`
+                                    ) : (
+                                        isRTL 
+                                            ? 'جميع مسارات الشحن الجوي والبري الدولية تعمل بالقدرة التشغيلية المعتادة'
+                                            : 'All international air & road corridors operating within normal parameters'
+                                    )}
                                 </span>
                             </div>
                         </div>
@@ -837,7 +853,7 @@ const DashboardPage = () => {
                             </div>
                             <div className="flex justify-between items-center font-bold">
                                 <span className="text-base-content/70">{isRTL ? 'التواصل المعتمد:' : 'Contact:'}</span>
-                                <span className="text-base-content font-mono text-[11px]">{activeOrg.contact || '+965 9988 1122'}</span>
+                                <span className="text-base-content font-mono text-[11px]">{activeOrg.contact || (isRTL ? 'غير مسجل' : 'Not recorded')}</span>
                             </div>
                         </div>
 

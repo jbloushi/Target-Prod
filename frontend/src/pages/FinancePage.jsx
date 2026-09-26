@@ -163,11 +163,11 @@ const FinancePage = () => {
             const top4 = sortedOrgs.slice(0, 4);
             const remainder = sortedOrgs.slice(4);
 
-            let totalVal = sortedOrgs.reduce((sum, o) => sum + Math.max(1000, parseFloat(o.creditLimit || 0) + parseFloat(o.balance || 0)), 0);
-            if (totalVal === 0) totalVal = 1;
+            let totalVal = sortedOrgs.reduce((sum, o) => sum + (parseFloat(o.creditLimit || 0) + parseFloat(o.balance || 0)), 0);
+            if (totalVal === 0) return [];
 
             const items = top4.map((o, idx) => {
-                const val = Math.max(1000, parseFloat(o.creditLimit || 0) + parseFloat(o.balance || 0));
+                const val = parseFloat(o.creditLimit || 0) + parseFloat(o.balance || 0);
                 const pct = Math.round((val / totalVal) * 100);
                 return {
                     name: o.name,
@@ -178,7 +178,7 @@ const FinancePage = () => {
             });
 
             if (remainder.length > 0) {
-                const remVal = remainder.reduce((sum, o) => sum + Math.max(1000, parseFloat(o.creditLimit || 0) + parseFloat(o.balance || 0)), 0);
+                const remVal = remainder.reduce((sum, o) => sum + (parseFloat(o.creditLimit || 0) + parseFloat(o.balance || 0)), 0);
                 const remPct = Math.max(0, 100 - items.reduce((sum, i) => sum + i.percent, 0));
                 items.push({
                     name: 'Others',
@@ -191,12 +191,7 @@ const FinancePage = () => {
             return items;
         }
 
-        return [
-            { name: 'Gulf Apex Trading W.L.L.', amount: 16450, percent: 42, color: '#0050d4' },
-            { name: 'Al-Sabah Medical & Pharma', amount: 28200, percent: 35, color: '#0284c7' },
-            { name: 'Kuwait Ministry of Commerce', amount: 50000, percent: 18, color: '#7c3aed' },
-            { name: 'Direct Shippers (Client)', amount: 2500, percent: 5, color: '#059669' }
-        ];
+        return [];
     }, [organizations]);
 
     // Debounce Search
@@ -303,7 +298,7 @@ const FinancePage = () => {
                 if (user?.organizationId && user?.role !== 'admin' && user?.role !== 'accounting' && user?.role !== 'manager' && user?.role !== 'staff') {
                     setSelectedOrgId(user.organizationId);
                 } else {
-                    const businessOrg = orgList.find(o => o.name?.includes('Gulf Apex') || o.type === 'BUSINESS') || orgList[0];
+                    const businessOrg = orgList.find(o => o.type === 'BUSINESS') || orgList[0];
                     setSelectedOrgId(businessOrg?.id || orgList[0].id);
                 }
                 return;
