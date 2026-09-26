@@ -421,12 +421,21 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
         if (req.query.refresh === 'true' || req.query.sync === 'true' || hasOnlyBaseline) {
             const updates = await syncCarrierTrackingHistory(shipment);
             if (updates) {
+                const dataToUpdate = {
+                    history: updates.history,
+                    status: updates.status
+                };
+                if (updates.actualWeight && (!shipment.actualWeight || Number(shipment.actualWeight) === 0)) {
+                    dataToUpdate.actualWeight = updates.actualWeight;
+                    shipment.actualWeight = updates.actualWeight;
+                }
+                if (updates.totalPieces && (!shipment.totalPieces || Number(shipment.totalPieces) === 0)) {
+                    dataToUpdate.totalPieces = updates.totalPieces;
+                    shipment.totalPieces = updates.totalPieces;
+                }
                 await prisma.shipment.update({
                     where: { id: shipment.id },
-                    data: {
-                        history: updates.history,
-                        status: updates.status
-                    }
+                    data: dataToUpdate
                 });
                 shipment.history = updates.history;
                 shipment.status = updates.status;

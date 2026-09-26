@@ -424,7 +424,9 @@ const syncCarrierTrackingHistory = async (shipment) => {
             compactedHistory.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
             return {
                 history: compactedHistory,
-                status: currentStatus
+                status: currentStatus,
+                actualWeight: tracking?.carrierWeight > 0 ? tracking.carrierWeight : undefined,
+                totalPieces: tracking?.carrierPieces > 0 ? tracking.carrierPieces : undefined
             };
         }
         

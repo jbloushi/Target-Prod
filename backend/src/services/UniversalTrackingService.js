@@ -16,9 +16,9 @@ const CARRIER_CODE_TO_17TRACK = {
     'DGR': 100001,      // DHL Express
     'DHL': 100001,
     'FEDEX': 100003,    // FedEx
-    'ARAMEX': 190001,   // Aramex
+    'ARAMEX': 100006,   // Aramex (17TRACK official carrier code 100006)
     'UPS': 100002,      // UPS
-    'OTE': 190001       // Fallback
+    'OTE': 100006       // GCC / Aramex fallback
 };
 
 class UniversalTrackingService {
@@ -68,7 +68,7 @@ class UniversalTrackingService {
     }
 
     /**
-     * 17TRACK API V2.2 integration with automatic auto-registration
+     * 17TRACK API V2.4 / V2.2 integration with automatic auto-registration
      * @private
      */
     async _fetch17Track(carrierCode, trackingNumber, apiKey) {
@@ -83,29 +83,43 @@ class UniversalTrackingService {
             carrier: carrier17Id || undefined
         };
 
-        // Step 1: Auto-register tracking number with 17TRACK
+        // Step 1: Auto-register tracking number with 17TRACK (V2.4 preferred, fallback to V2.2)
         try {
-            await axios.post('https://api.17track.net/track/v2.2/register', [item], {
+            await axios.post('https://api.17track.net/track/v2.4/register', [item], {
                 headers,
                 timeout: 8000
             });
         } catch (regErr) {
-            // If already registered or minor warning, continue to query
-            logger.debug(`[UniversalTracking] 17TRACK registration note: ${regErr.response?.data?.message || regErr.message}`);
+            try {
+                await axios.post('https://api.17track.net/track/v2.2/register', [item], {
+                    headers,
+                    timeout: 8000
+                });
+            } catch (fallbackRegErr) {
+                logger.debug(`[UniversalTracking] 17TRACK registration note: ${fallbackRegErr.response?.data?.message || fallbackRegErr.message}`);
+            }
         }
 
-        // Step 2: Fetch tracking info
-        const response = await axios.post('https://api.17track.net/track/v2.2/gettrackinfo', [item], {
-            headers,
-            timeout: 10000
-        });
+        // Step 2: Fetch tracking info (V2.4 preferred, fallback to V2.2)
+        let response;
+        try {
+            response = await axios.post('https://api.17track.net/track/v2.4/gettrackinfo', [item], {
+                headers,
+                timeout: 10000
+            });
+        } catch (v24Err) {
+            response = await axios.post('https://api.17track.net/track/v2.2/gettrackinfo', [item], {
+                headers,
+                timeout: 10000
+            });
+        }
 
         const accepted = response.data?.data?.accepted?.[0];
-        if (!accepted || !accepted.track) {
+        if (!accepted) {
             return null;
         }
 
-        const trackInfo = accepted.track || accepted;
+        const trackInfo = accepted.track_info || accepted.track || accepted;
         const rawEvents = trackInfo.tracking?.providers?.[0]?.events || trackInfo.events || trackInfo.z0?.z || trackInfo.z1?.z || [];
 
         if (rawEvents.length === 0) {
@@ -121,9 +135,12 @@ class UniversalTrackingService {
 
         const finalStatus = this._map17TrackStatus(trackInfo.e || trackInfo.latest_status?.status || events[events.length - 1]?.statusCode);
 
+        const misc = trackInfo.misc_info || {};
         return {
             status: finalStatus,
-            events
+            events,
+            carrierWeight: parseFloat(misc.weight_kg || misc.weight_raw || 0),
+            carrierPieces: parseInt(misc.item_count || misc.pieces || 0, 10)
         };
     }
 
