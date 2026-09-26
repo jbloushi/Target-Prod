@@ -416,8 +416,9 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
             shipment.awbUrl = null; 
         }
 
-        // Sync tracking from carrier if requested explicitly, or trigger non-blocking background refresh if due
-        if (req.query.refresh === 'true' || req.query.sync === 'true') {
+        // Sync tracking from carrier if requested explicitly, has only baseline event, or trigger non-blocking background refresh if due
+        const hasOnlyBaseline = !shipment.history || (Array.isArray(shipment.history) && shipment.history.length <= 1);
+        if (req.query.refresh === 'true' || req.query.sync === 'true' || hasOnlyBaseline) {
             const updates = await syncCarrierTrackingHistory(shipment);
             if (updates) {
                 await prisma.shipment.update({

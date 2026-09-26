@@ -22,9 +22,10 @@ exports.getPublicShipment = async (req, res) => {
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
         const isExplicitRefresh = req.query.refresh === 'true' || req.query.sync === 'true';
+        const hasOnlyBaseline = !shipment.history || (Array.isArray(shipment.history) && shipment.history.length <= 1);
 
-        // Sync carrier tracking into the unified history (synchronous if explicit refresh requested, otherwise background)
-        if (isExplicitRefresh) {
+        // Sync carrier tracking into the unified history (synchronous if explicit or has only baseline event)
+        if (isExplicitRefresh || hasOnlyBaseline) {
             try {
                 const updates = await syncCarrierTrackingHistory(shipment);
                 if (updates) {

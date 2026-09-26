@@ -31,9 +31,9 @@ function isTrackingSyncDue(shipment, ttlMs) {
         return false;
     }
 
-    // Draft or non-carrier shipments don't have external tracking
+    // Non-carrier shipments don't have external tracking
     const carrierCode = String(shipment.carrierCode || shipment.carrier || '').toUpperCase();
-    if (status === 'draft' || carrierCode === 'MANUAL' || carrierCode === 'INTERNAL') {
+    if (carrierCode === 'MANUAL' || carrierCode === 'INTERNAL') {
         return false;
     }
 
