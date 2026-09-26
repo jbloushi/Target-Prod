@@ -126,14 +126,24 @@ class UniversalTrackingService {
             return null;
         }
 
-        const events = rawEvents.map(evt => ({
-            timestamp: (evt.time_iso || evt.time_utc || evt.a) ? new Date(evt.time_iso || evt.time_utc || evt.a).toISOString() : new Date().toISOString(),
-            location: evt.location || evt.c || evt.d || 'Carrier Facility',
-            description: evt.description || evt.z || evt.stage || 'Status update',
-            statusCode: this._map17TrackStatus(trackInfo.e || trackInfo.latest_status?.status || evt.stage)
-        }));
+        const events = rawEvents.map(evt => {
+            const desc = evt.description || evt.z || evt.stage || 'Status update';
+            const evtStage = evt.stage || evt.z || evt.description;
+            const statusCode = this._map17TrackStatus(evtStage, desc);
+            return {
+                timestamp: (evt.time_iso || evt.time_utc || evt.a) ? new Date(evt.time_iso || evt.time_utc || evt.a).toISOString() : new Date().toISOString(),
+                location: evt.location || evt.c || evt.d || 'Carrier Facility',
+                description: desc,
+                statusCode
+            };
+        });
 
-        const finalStatus = this._map17TrackStatus(trackInfo.e || trackInfo.latest_status?.status || events[events.length - 1]?.statusCode);
+        // Sort events chronologically (oldest to newest)
+        events.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        const latestEvent = events[events.length - 1];
+        const overallStage = trackInfo.latest_status?.status || trackInfo.e;
+        const finalStatus = this._map17TrackStatus(overallStage, latestEvent?.description) || latestEvent?.statusCode || 'in_transit';
 
         const misc = trackInfo.misc_info || {};
         return {
@@ -144,15 +154,67 @@ class UniversalTrackingService {
         };
     }
 
-    _map17TrackStatus(statusCode) {
-        if (!statusCode) return 'in_transit';
-        const str = String(statusCode).toLowerCase();
-        if (str === '40' || str.includes('deliver')) return 'delivered';
-        if (str === '35' || str.includes('out_for_delivery') || str.includes('outfordelivery')) return 'out_for_delivery';
-        if (str === '30' || str.includes('transit')) return 'in_transit';
-        if (str === '20' || str.includes('pickup') || str.includes('collected')) return 'picked_up';
-        if (str === '10' || str.includes('inforeceived') || str.includes('notfound')) return 'booked';
-        if (str === '50' || str.includes('exception') || str.includes('alert') || str.includes('undelivered')) return 'exception';
+    _map17TrackStatus(stage, desc = '') {
+        const str = String(stage || '').toLowerCase();
+        const text = String(desc || '').toLowerCase();
+
+        // 1. Check Out for delivery FIRST before delivered!
+        if (
+            str === '35' ||
+            str.includes('out_for_delivery') ||
+            str.includes('outfordelivery') ||
+            text.includes('out for delivery') ||
+            text.includes('delivery champion') ||
+            text.includes('doorstep')
+        ) {
+            return 'out_for_delivery';
+        }
+
+        // 2. Check Delivered
+        if (
+            str === '40' ||
+            str === 'delivered' ||
+            text.includes('delivered to') ||
+            text.includes('shipment delivered') ||
+            (text.includes('delivered') && !text.includes('out for delivery') && !text.includes('delivery champion'))
+        ) {
+            return 'delivered';
+        }
+
+        // 3. Picked up / Collected
+        if (
+            str === '20' ||
+            str.includes('pickup') ||
+            str.includes('collected') ||
+            text.includes('collected from') ||
+            text.includes('shipment collected') ||
+            text.includes('picked up')
+        ) {
+            return 'picked_up';
+        }
+
+        // 4. Exception / Held / Alert
+        if (
+            str === '50' ||
+            str.includes('exception') ||
+            str.includes('alert') ||
+            str.includes('undelivered') ||
+            text.includes('delayed') ||
+            text.includes('exception')
+        ) {
+            return 'exception';
+        }
+
+        // 5. Booked / Info received / Manifested
+        if (
+            str === '10' ||
+            str.includes('inforeceived') ||
+            str.includes('notfound') ||
+            text.includes('manifested')
+        ) {
+            return 'booked';
+        }
+
         return 'in_transit';
     }
 

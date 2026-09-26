@@ -413,7 +413,14 @@ const syncCarrierTrackingHistory = async (shipment) => {
             }
         });
 
-        if (highestCarrierStatus && isStatusAhead(currentStatus, highestCarrierStatus)) {
+        // If carrier reports active status (e.g. out_for_delivery) but shipment was falsely marked delivered, correct it!
+        const latestEvent = events[events.length - 1];
+        const latestCarrierStatus = latestEvent ? normalizeStatus(latestEvent.statusCode) : highestCarrierStatus;
+        if (latestCarrierStatus && latestCarrierStatus !== 'delivered' && currentStatus === 'delivered') {
+            logger.info(`Correcting premature delivered status for ${shipment.trackingNumber}: ${currentStatus} -> ${latestCarrierStatus}`);
+            currentStatus = latestCarrierStatus;
+            hasUpdates = true;
+        } else if (highestCarrierStatus && isStatusAhead(currentStatus, highestCarrierStatus)) {
             logger.info(`Detected status promotion for ${shipment.trackingNumber}: ${currentStatus} -> ${highestCarrierStatus}`);
             currentStatus = highestCarrierStatus;
             hasUpdates = true;

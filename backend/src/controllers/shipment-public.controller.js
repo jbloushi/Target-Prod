@@ -17,6 +17,7 @@ const financeLedgerService = require('../services/financeLedger.service');
  */
 exports.getPublicShipment = async (req, res) => {
     try {
+        const { trackingNumber } = req.params;
         const cleanNumeric = String(trackingNumber || '').replace(/^TRK-/i, '').replace(/^ARM-/i, '').trim();
         const shipment = await prisma.shipment.findFirst({
             where: {
