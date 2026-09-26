@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const { prisma } = require('./src/config/database');
 const { hashPassword } = require('./src/utils/security');
+const { seedAccounting } = require('./src/scripts/seedAccounting');
 const fs = require('fs');
 const path = require('path');
 
@@ -951,6 +952,10 @@ async function seedShowcaseDemo() {
   const dumpPath = path.join(dumpDir, 'showcase_demo_dump.json');
   fs.writeFileSync(dumpPath, JSON.stringify(showcaseSummary, null, 2), 'utf-8');
   console.log(`\n💾 Exported demo showcase manifest dump: ${dumpPath}`);
+
+  // ── 7. Seed Enterprise Chart of Accounts & Banking ─────────────────
+  console.log('\n🏛️  Seeding Enterprise Chart of Accounts, Banking & Periods...');
+  await seedAccounting();
 
   console.log('\n====================================================');
   console.log('✅ SHOWCASE SEED COMPLETED SUCCESSFULLY!');

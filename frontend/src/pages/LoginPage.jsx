@@ -1,30 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { isDevelopmentMode, getClientEnv } from '../utils/env';
-
-const DEMO_USERS = [
-  { role: 'admin', label: 'Superadmin', tag: 'Full Control', badge: 'badge-primary' },
-  { role: 'manager', label: 'Target Owner', tag: 'Executive', badge: 'badge-secondary' },
-  { role: 'accounting', label: 'Target Accounting', tag: 'Ledgers & Cash', badge: 'badge-accent' },
-  { role: 'staff', label: 'Target Ops Staff', tag: 'Dispatch & Hub', badge: 'badge-info' },
-  { role: 'driver', label: 'Courier Driver', tag: 'Kuwait Fleet', badge: 'badge-warning' },
-  { role: 'org_manager', label: 'Company Manager', tag: 'Corporate B2B', badge: 'badge-neutral' },
-  { role: 'org_agent', label: 'Company Agent', tag: 'Client Staff', badge: 'badge-ghost' },
-  { role: 'client', label: 'Direct Shipper', tag: 'Portal User', badge: 'badge-outline' },
-  { role: 'dgr', label: 'DGR Specialist', tag: 'IATA Class 3/9', badge: 'badge-error', email: 'dgr@demo.com' },
-];
 
 export const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [showDevOptions, setShowDevOptions] = useState(false);
 
   const { login, loading, error, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
-
-  const isDev = isDevelopmentMode() || getClientEnv('VITE_IS_DEV') === 'true' || getClientEnv('REACT_APP_IS_DEV') === 'true';
 
   useEffect(() => {
     if (isAuthenticated && user) {
@@ -170,47 +154,6 @@ export const LoginPage = () => {
             <Link to="/returns" className="hover:text-primary">Returns Portal</Link>
           </div>
         </div>
-
-        {/* Dev Quick Role Switcher */}
-        {isDev && (
-          <div className="mt-8 pt-4 border-t border-dashed border-base-300">
-            <button
-              type="button"
-              onClick={() => setShowDevOptions(!showDevOptions)}
-              className="btn btn-ghost btn-xs w-full text-base-content/50 font-bold gap-1"
-            >
-              <span className="material-symbols-outlined text-sm">developer_mode</span>
-              <span>{showDevOptions ? 'Hide Client Showcase Roles' : 'Show Client Showcase Quick Login (All Roles)'}</span>
-            </button>
-
-            {showDevOptions && (
-              <div className="p-4 rounded-xl bg-base-200/60 border border-base-300 mt-3 space-y-3">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-base-content/70 uppercase tracking-wider">Demo Accounts (Pass: password123)</span>
-                  <span className="badge badge-xs badge-success font-bold">Local Seed Ready</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {DEMO_USERS.map((item) => (
-                    <button
-                      key={item.role}
-                      type="button"
-                      onClick={() => handleLogin(item.email || `${item.role}@demo.com`, 'password123')}
-                      className="btn btn-outline border-base-300 hover:border-primary hover:bg-primary/5 h-auto py-2 px-2.5 flex flex-col items-start gap-0.5 normal-case"
-                    >
-                      <div className="flex items-center justify-between w-full">
-                        <span className="font-black text-xs text-base-content">{item.label}</span>
-                        <span className={`badge badge-xs ${item.badge} text-[9px]`}>{item.tag}</span>
-                      </div>
-                      <span className="font-mono text-[10px] text-base-content/50 truncate w-full text-left">
-                        {item.email || `${item.role}@demo.com`}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Right Column: Hero Graphic Banner (Desktop Only) */}

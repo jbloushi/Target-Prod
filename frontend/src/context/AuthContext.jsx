@@ -151,6 +151,8 @@ export const AuthProvider = ({ children }) => {
             isAuthenticated: !!user,
             isStaff: ['staff', 'admin', 'manager', 'accounting', 'driver'].includes(user?.role),
             isAdmin: user?.role === 'admin',
+            isManager: user?.role === 'manager',
+            isAccounting: user?.role === 'accounting',
             isAccountant: user?.role === 'accounting' || user?.role === 'admin',
             can,
         }}>

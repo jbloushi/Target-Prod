@@ -201,7 +201,6 @@ CREATE TABLE IF NOT EXISTS `BankTransaction` (
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
-
 -- Foreign Key Constraints
 -- AddForeignKey
 ALTER TABLE `JournalEntry` ADD CONSTRAINT `JournalEntry_periodId_fkey` FOREIGN KEY (`periodId`) REFERENCES `AccountingPeriod`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
