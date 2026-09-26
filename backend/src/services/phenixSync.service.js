@@ -4,6 +4,7 @@ const config = require('../config/config');
 const { prisma } = require('../config/database');
 const { syncCarrierTrackingHistory } = require('../controllers/shipment.helpers');
 const whatsappService = require('./whatsappIntegration.service');
+const financeLedgerService = require('./financeLedger.service');
 
 /**
  * Phenix ERP Synchronization Service
@@ -231,6 +232,184 @@ async function resolveOrCreateMerchantOrg(merchantName, senderPhone, merchantId)
         } catch {
             return null;
         }
+    }
+}
+
+/**
+ * Automatically posts Double-Entry Ledger entries, Payments, Allocations, and Invoices
+ * for synced Phenix consignments into Target-Prod's Finance subsystem.
+ */
+async function syncPhenixFinancialRecord({ shipment, v, orgId, defaultUserId }) {
+    if (!v.totalAmount || v.totalAmount <= 0) {
+        return;
+    }
+
+    try {
+        const isPaid = Boolean(
+            (v.paymentMethod && (
+                v.paymentMethod.includes('نقداً') || 
+                v.paymentMethod.toLowerCase().includes('cash') || 
+                v.paymentMethod.toLowerCase().includes('knet') || 
+                v.paymentMethod.toLowerCase().includes('card') ||
+                v.paymentMethod.toLowerCase().includes('pos')
+            )) ||
+            (v.paidAmount >= v.totalAmount && v.totalAmount > 0)
+        );
+
+        // 1. Ensure Debit Ledger Entry exists (Freight Charge)
+        let chargeEntry = await prisma.organizationLedger.findFirst({
+            where: {
+                sourceRepo: 'Shipment',
+                sourceId: shipment.id,
+                category: 'SHIPMENT_CHARGE'
+            }
+        });
+
+        if (!chargeEntry) {
+            chargeEntry = await financeLedgerService.createLedgerEntry(orgId, {
+                amount: v.totalAmount,
+                currency: 'KWD',
+                entryType: 'DEBIT',
+                category: 'SHIPMENT_CHARGE',
+                description: `Consignment Freight Charge (Phenix Bill #${v.billId} - ${shipment.trackingNumber})`,
+                reference: v.receiptNo || v.billId,
+                sourceRepo: 'Shipment',
+                sourceId: shipment.id,
+                createdBy: defaultUserId,
+                metadata: {
+                    phenixBillId: v.billId,
+                    phenixReceiptNo: v.receiptNo,
+                    merchantId: v.merchantId,
+                    merchantName: v.merchantName,
+                    paymentMethod: v.paymentMethod,
+                    isPaid
+                }
+            });
+        }
+
+        // 2. If Paid at counter / KNET, record Payment & Credit Ledger Entry
+        if (isPaid) {
+            const paymentRef = `PHENIX-${v.receiptNo || v.billId}`;
+            let payment = await prisma.payment.findFirst({
+                where: {
+                    reference: paymentRef
+                }
+            });
+
+            if (!payment) {
+                payment = await prisma.payment.create({
+                    data: {
+                        organizationId: orgId,
+                        amount: v.totalAmount,
+                        currency: 'KWD',
+                        status: 'APPLIED',
+                        method: v.paymentMethod || 'CASH',
+                        reference: paymentRef,
+                        notes: `Automated payment receipt from Phenix ERP Bill #${v.billId} (${v.paymentMethod || 'Cash'})`,
+                        createdById: defaultUserId,
+                        postedAt: v.date ? new Date(v.date) : new Date(),
+                        metadata: {
+                            phenixBillId: v.billId,
+                            phenixReceiptNo: v.receiptNo,
+                            shipmentId: shipment.id
+                        }
+                    }
+                });
+
+                // Link payment allocation to shipment
+                await prisma.paymentAllocation.create({
+                    data: {
+                        organizationId: orgId,
+                        paymentId: payment.id,
+                        shipmentId: shipment.id,
+                        amount: v.totalAmount,
+                        currency: 'KWD',
+                        status: 'ACTIVE',
+                        createdBy: defaultUserId
+                    }
+                });
+
+                // Create Credit Ledger entry for the payment
+                await financeLedgerService.createLedgerEntry(orgId, {
+                    amount: v.totalAmount,
+                    currency: 'KWD',
+                    entryType: 'CREDIT',
+                    category: 'PAYMENT',
+                    description: `Payment Receipt (${v.paymentMethod || 'CASH'} - Phenix #${v.receiptNo || v.billId})`,
+                    reference: paymentRef,
+                    sourceRepo: 'Payment',
+                    sourceId: payment.id,
+                    createdBy: defaultUserId,
+                    metadata: {
+                        phenixBillId: v.billId,
+                        paymentId: payment.id,
+                        shipmentId: shipment.id
+                    }
+                });
+            }
+
+            // Update shipment paid state
+            await prisma.shipment.update({
+                where: { id: shipment.id },
+                data: {
+                    paid: true,
+                    totalPaid: v.totalAmount,
+                    remainingBalance: 0
+                }
+            });
+        } else {
+            // Unpaid / On Account (آجل)
+            await prisma.shipment.update({
+                where: { id: shipment.id },
+                data: {
+                    paid: false,
+                    totalPaid: 0,
+                    remainingBalance: v.totalAmount
+                }
+            });
+        }
+
+        // 3. Auto-generate / link official Invoice in Finance Module
+        const invoiceNumber = `INV-PH-${v.receiptNo || v.billId}`;
+        let invoice = await prisma.invoice.findUnique({
+            where: { invoiceNumber }
+        });
+
+        if (!invoice && chargeEntry) {
+            const billDate = v.date ? new Date(v.date) : new Date();
+            invoice = await prisma.invoice.create({
+                data: {
+                    invoiceNumber,
+                    organizationId: orgId,
+                    periodStart: billDate,
+                    periodEnd: billDate,
+                    subtotal: v.totalAmount,
+                    vat: 0,
+                    total: v.totalAmount,
+                    currency: 'KWD',
+                    status: isPaid ? 'paid' : 'issued',
+                    paidAt: isPaid ? billDate : null,
+                    notes: `Phenix ERP Official Tax Invoice (Bill #${v.billId}, Receipt #${v.receiptNo}) - Method: ${v.paymentMethod || 'Standard'}`,
+                    createdById: defaultUserId,
+                    lines: {
+                        create: {
+                            shipmentId: shipment.id,
+                            ledgerEntryId: chargeEntry.id,
+                            trackingNumber: shipment.trackingNumber,
+                            shipmentDate: billDate,
+                            amount: v.totalAmount,
+                            currency: 'KWD',
+                            paid: isPaid,
+                            totalPaid: isPaid ? v.totalAmount : 0,
+                            remainingBalance: isPaid ? 0 : v.totalAmount
+                        }
+                    }
+                }
+            });
+            logger.info(`[PhenixSync] Generated official Invoice ${invoiceNumber} (${isPaid ? 'PAID' : 'ISSUED'}) for Merchant "${v.merchantName}"`);
+        }
+    } catch (finErr) {
+        logger.warn(`[PhenixSync] Financial sync error for shipment ${shipment.trackingNumber}: ${finErr.message}`);
     }
 }
 
@@ -693,7 +872,15 @@ class PhenixSyncService {
                     logger.info(`[PhenixSync] Updated existing shipment ${shipment.trackingNumber} with Phenix metadata`);
                 }
 
-                // 2. Fetch live tracking checkpoints from Carrier API
+                // 2. Post financial transactions (Double-Entry Ledger, Invoice, Payment Receipt)
+                await syncPhenixFinancialRecord({
+                    shipment,
+                    v,
+                    orgId: shipment.organizationId || assignedOrgId,
+                    defaultUserId: defaultUser.id
+                });
+
+                // 3. Fetch live tracking checkpoints from Carrier API
                 let carrierSynced = false;
                 let carrierUpdates = null;
                 if (v.carrierTracking && v.derivedCarrier !== 'INTERNAL' && v.derivedCarrier !== 'MANUAL') {
