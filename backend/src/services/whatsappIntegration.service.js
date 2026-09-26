@@ -250,42 +250,51 @@ class WhatsAppIntegrationService {
 
         const billId = shipment?.documents?.phenixBillId || null;
         const role = recipientRole || 'customer';
+        const roleGroup = (role === 'sender') ? ['sender'] : ['receiver', 'customer'];
+        const microRole = (role === 'sender') ? 'sender' : 'receiver';
         const chosenTemplate = templateName || 'shipment_confirmation_2';
         const provider = settings.provider || 'SHIPMENT_WHATSAPP';
 
-        // STRICT DEDUPLICATION GUARD: Prevent duplicate WhatsApp sends from any entry point
+        // STRICT DEDUPLICATION GUARD: Prevent duplicate WhatsApp sends to the same recipient role
         if (!force) {
-            // 1. Check local database for successful sends to this shipment / tracking number
+            // 1. Check local database for successful sends to this specific recipient role
             const existingLog = await prisma.shipmentNotificationLog.findFirst({
                 where: {
                     OR: [
                         { shipmentId: shipment.id },
                         { trackingNumber: shipment.trackingNumber }
                     ],
+                    recipientRole: { in: roleGroup },
                     status: { in: ['SENT', 'DELIVERED', 'READ'] }
                 },
                 orderBy: { sentAt: 'desc' }
             });
 
             if (existingLog) {
-                logger.info(`[WhatsApp Dedup Guard] Blocked duplicate send for shipment ${shipment.trackingNumber} (Already sent at ${existingLog.sentAt})`);
+                logger.info(`[WhatsApp Dedup Guard] Blocked duplicate send for shipment ${shipment.trackingNumber} to role ${role} (Already sent at ${existingLog.sentAt})`);
                 return {
                     status: 'SKIPPED',
                     logId: existingLog.id,
                     alreadySent: true,
                     sentAt: existingLog.sentAt,
-                    message: `Notification was already sent for ${shipment.trackingNumber} on ${formatLegibleDate(existingLog.sentAt)}.`
+                    message: `Notification was already sent for ${shipment.trackingNumber} (${role}) on ${formatLegibleDate(existingLog.sentAt)}.`
                 };
             }
 
             // 2. Check microservice (msg.target-kw.com) sent store
             if (billId) {
-                const microSent = await checkMicroserviceSent(billId, role === 'sender' ? 'sender' : 'receiver');
+                const microSent = await checkMicroserviceSent(billId, microRole);
                 if (microSent?.sent) {
-                    logger.info(`[WhatsApp Dedup Guard] Blocked duplicate send: Bill #${billId} was already sent by microservice (at ${microSent.sentAt})`);
+                    logger.info(`[WhatsApp Dedup Guard] Blocked duplicate send: Bill #${billId} (${microRole}) was already sent by microservice (at ${microSent.sentAt})`);
                     // Ensure local log reflects that it was sent by microservice
                     let savedLog = await prisma.shipmentNotificationLog.findFirst({
-                        where: { shipmentId: shipment.id, recipientPhone: phone }
+                        where: {
+                            OR: [
+                                { shipmentId: shipment.id },
+                                { trackingNumber: shipment.trackingNumber }
+                            ],
+                            recipientRole: { in: roleGroup }
+                        }
                     });
                     if (!savedLog) {
                         savedLog = await prisma.shipmentNotificationLog.create({
@@ -311,7 +320,7 @@ class WhatsAppIntegrationService {
                         logId: savedLog.id,
                         alreadySent: true,
                         sentAt: microSent.sentAt,
-                        message: `Notification was already sent via auto-send service on ${formatLegibleDate(microSent.sentAt)}.`
+                        message: `Notification was already sent to ${role} via auto-send service on ${formatLegibleDate(microSent.sentAt)}.`
                     };
                 }
             }

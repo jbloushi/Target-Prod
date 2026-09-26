@@ -610,7 +610,9 @@ class ChatwootNotificationService {
                         recipientPhone: target.phone,
                         recipientCountryCode: target.countryCode,
                         recipientName: target.name,
-                        eventType
+                        eventType,
+                        templateName: options.templateName,
+                        force: Boolean(options.force)
                     });
                     results.push({ target: target.role, status: res.status || 'submitted', externalMessageId: res.externalMessageId });
                 } catch (err) {
