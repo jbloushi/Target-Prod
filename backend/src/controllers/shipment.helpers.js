@@ -158,20 +158,28 @@ const buildDisplayHistory = (events = [], options = {}) => {
         'cancelled'
     ]);
     const originReplayStatuses = new Set(['pickup', 'arrived_facility', 'processed', 'departed_facility', 'customs_update', 'hold']);
-    const prepared = (Array.isArray(events) ? events : []).map((event) => {
-        const timestamp = event?.timestamp ? new Date(event.timestamp) : null;
-        if (!timestamp || Number.isNaN(timestamp.getTime())) return null;
-        const location = event?.location?.formattedAddress || event?.location?.address || event?.location?.city || event?.location || '';
-        const canonicalStatus = canonicalStatusFromDescription(event?.status, event?.description);
-        const dayBucket = timestamp.toISOString().slice(0, 10);
-        return {
-            ...event,
-            timestamp: timestamp.toISOString(),
-            canonicalStatus,
-            normalizedLocation: normalizeLocationLabel(location),
-            dayBucket
-        };
-    }).filter(Boolean).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const prepared = (Array.isArray(events) ? events : [])
+        .filter((event) => {
+            if (!event) return false;
+            if (event.source === 'phenix_erp') return false;
+            const desc = (event.description || '').toLowerCase();
+            if (desc.includes('synchronized from phenix') || desc.includes('phenix erp')) return false;
+            return true;
+        })
+        .map((event) => {
+            const timestamp = event?.timestamp ? new Date(event.timestamp) : null;
+            if (!timestamp || Number.isNaN(timestamp.getTime())) return null;
+            const location = event?.location?.formattedAddress || event?.location?.address || event?.location?.city || event?.location || '';
+            const canonicalStatus = canonicalStatusFromDescription(event?.status, event?.description);
+            const dayBucket = timestamp.toISOString().slice(0, 10);
+            return {
+                ...event,
+                timestamp: timestamp.toISOString(),
+                canonicalStatus,
+                normalizedLocation: normalizeLocationLabel(location),
+                dayBucket
+            };
+        }).filter(Boolean).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
     const replayStableStatuses = new Set(['pickup', 'arrived_facility', 'processed', 'departed_facility']);
     const byKey = new Map();

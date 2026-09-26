@@ -6,47 +6,28 @@ const logger = require('../utils/logger');
 
 function normalizePhone(phone, phoneCountryCode = '965') {
     if (!phone) return null;
-    
-    // If phone already starts with '+', keep as-is with only digits
-    if (String(phone).trim().startsWith('+')) {
-        const clean = String(phone).replace(/\D/g, '');
-        return clean ? `+${clean}` : null;
-    }
+    let s = String(phone).trim();
+    if (!s) return null;
 
-    let digits = String(phone).replace(/\D/g, '');
+    let digits = s.replace(/\D/g, '');
     if (!digits) return null;
 
-    // Strip leading zero if present (e.g. 097959567 -> 97959567)
-    if (digits.startsWith('0')) {
-        digits = digits.substring(1);
+    // Strip leading 00 (e.g. 00966555 -> 966555)
+    if (s.startsWith('00') || digits.startsWith('00')) {
+        digits = digits.replace(/^00/, '');
     }
 
-    // Kuwait standard mobile numbers are 8 digits starting with 5, 6, 9 or 2
-    if (digits.length === 8) {
+    // Kuwait local 8-digit mobile numbers starting with 2, 5, 6, 9 (e.g. 97959567 -> +96597959567)
+    if (digits.length === 8 && ['2', '5', '6', '9'].includes(digits[0])) {
         return `+965${digits}`;
     }
 
-    // If starts with 965 and length is 11 (e.g. 96597959567)
-    if (digits.startsWith('965') && digits.length === 11) {
+    // E.164 standard is 8 to 15 digits
+    if (digits.length >= 8 && digits.length <= 16) {
         return `+${digits}`;
     }
 
-    // If starts with 966 and length is 12 (Saudi)
-    if (digits.startsWith('966') && digits.length === 12) {
-        return `+${digits}`;
-    }
-
-    // If starts with 971 and length is 12 (UAE)
-    if (digits.startsWith('971') && digits.length === 12) {
-        return `+${digits}`;
-    }
-
-    const ccDigits = String(phoneCountryCode || '965').replace(/\D/g, '');
-    if (ccDigits && !digits.startsWith(ccDigits)) {
-        digits = `${ccDigits}${digits}`;
-    }
-
-    return `+${digits}`;
+    return null;
 }
 
 const DEV_SAFE_PHONE = '+201040957289';

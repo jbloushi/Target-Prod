@@ -47,7 +47,11 @@ export const ShipmentInspectorDrawer = ({
     };
 
     const cleanPhone = consigneePhone.replace(/\D/g, '') || '96597691271';
-    const waText = encodeURIComponent(`Hello ${consigneeName}, regarding your Target Logistics consignment #${trackingNumber}:`);
+    const waText = encodeURIComponent(
+        isRTL 
+            ? `مرحباً ${consigneeName}، بخصوص شحنتك رقم ${trackingNumber}. يمكنك متابعة مسار الشحنة مباشرة عبر الرابط:\nhttps://target-kw.com/track/${trackingNumber}`
+            : `Hello ${consigneeName}, regarding your shipment #${trackingNumber}. You can track its live status here:\nhttps://target-kw.com/track/${trackingNumber}`
+    );
 
     return (
         <div className="fixed inset-0 z-50 flex justify-end">

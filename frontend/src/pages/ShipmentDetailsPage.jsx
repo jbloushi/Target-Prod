@@ -445,9 +445,16 @@ const ShipmentDetailsPage = () => {
     const carrierAwbDoc = rawDocuments.find(d => ['label', 'awb', 'waybilldoc'].includes(String(d?.type || '').toLowerCase()));
     const carrierInvoiceDoc = rawDocuments.find(d => ['invoice', 'customs_invoice'].includes(String(d?.type || '').toLowerCase()));
 
+    const isImported = Boolean(
+        shipment.documents?.phenixBillId ||
+        shipment.documents?.source === 'PHENIX_ERP' ||
+        shipment.source === 'phenix_erp' ||
+        (typeof shipment.documents === 'object' && !Array.isArray(shipment.documents) && (shipment.documents?.source === 'PHENIX_ERP' || shipment.documents?.phenixBillId))
+    );
+
     const resolvedCarrierAwb = shipment.labelUrl || shipment.awbUrl || extractDocUrl(carrierAwbDoc);
     const resolvedCarrierInvoice = shipment.invoiceUrl || extractDocUrl(carrierInvoiceDoc);
-    const canGenerateCarrierDocs = isStaff && (!resolvedCarrierAwb || !resolvedCarrierInvoice);
+    const canGenerateCarrierDocs = !isImported && isStaff && (!resolvedCarrierAwb || !resolvedCarrierInvoice);
 
     const statusEditOptions = getAllowedStatusOptions(user, shipment);
 
@@ -940,124 +947,126 @@ const ShipmentDetailsPage = () => {
                         )}
                     </div>
 
-                    {/* Official Carrier Documents & Customs Hub */}
-                    <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 space-y-4">
-                        <div className="flex justify-between items-center border-b border-base-200 pb-3">
-                            <div className="flex items-center gap-2">
-                                <span className="material-symbols-outlined text-primary text-lg">description</span>
-                                <h3 className="text-sm font-black text-base-content">
-                                    {isRTL ? 'وثائق الناقل والبيانات الجمركية الرسمية' : 'Official Carrier Paperwork & Customs Hub'}
-                                </h3>
+                    {/* Official Carrier Documents & Customs Hub (Hidden when imported from ERP) */}
+                    {!isImported && (
+                        <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 space-y-4">
+                            <div className="flex justify-between items-center border-b border-base-200 pb-3">
+                                <div className="flex items-center gap-2">
+                                    <span className="material-symbols-outlined text-primary text-lg">description</span>
+                                    <h3 className="text-sm font-black text-base-content">
+                                        {isRTL ? 'وثائق الناقل والبيانات الجمركية الرسمية' : 'Official Carrier Paperwork & Customs Hub'}
+                                    </h3>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {isStaff && (
+                                        <button
+                                            type="button"
+                                            disabled={isGeneratingCarrierDocs || isProcessing}
+                                            onClick={() => handleGenerateCarrierDocs('awb')}
+                                            className="btn btn-outline btn-xs font-bold rounded-lg"
+                                        >
+                                            <span className="material-symbols-outlined text-sm">
+                                                {isGeneratingCarrierDocs ? 'hourglass_top' : (!resolvedCarrierAwb ? 'bolt' : 'sync')}
+                                            </span>
+                                            {isGeneratingCarrierDocs 
+                                                ? 'Generating...' 
+                                                : (!resolvedCarrierAwb ? 'Generate Docs' : 'Sync Docs')}
+                                        </button>
+                                    )}
+                                </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                                {isStaff && (
-                                    <button
-                                        type="button"
-                                        disabled={isGeneratingCarrierDocs || isProcessing}
-                                        onClick={() => handleGenerateCarrierDocs('awb')}
-                                        className="btn btn-outline btn-xs font-bold rounded-lg"
-                                    >
-                                        <span className="material-symbols-outlined text-sm">
-                                            {isGeneratingCarrierDocs ? 'hourglass_top' : (!resolvedCarrierAwb ? 'bolt' : 'sync')}
-                                        </span>
-                                        {isGeneratingCarrierDocs 
-                                            ? 'Generating...' 
-                                            : (!resolvedCarrierAwb ? 'Generate Docs' : 'Sync Docs')}
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                
+                                {/* Document 1: Official Carrier AWB */}
+                                <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">
+                                    <div className="space-y-1">
+                                        <div className="flex items-center justify-between">
+                                            <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                                                <span className="material-symbols-outlined text-base">local_shipping</span>
+                                            </div>
+                                            <span className={`badge badge-xs font-bold py-1 px-2 ${resolvedCarrierAwb ? 'badge-success' : 'badge-warning'}`}>
+                                                {resolvedCarrierAwb ? 'READY' : 'PENDING'}
+                                            </span>
+                                        </div>
+                                        <h4 className="font-extrabold text-xs text-base-content">
+                                            {carrierDisplayName} Air Waybill (AWB)
+                                        </h4>
+                                        <p className="text-[11px] text-base-content/60">
+                                            Official barcoded consignment label
+                                        </p>
+                                    </div>
+                                    {resolvedCarrierAwb ? (
+                                        <button onClick={() => handleOpenPdf(resolvedCarrierAwb)} className="btn btn-primary btn-xs font-bold rounded-lg w-full">
+                                            <span className="material-symbols-outlined text-sm">print</span>
+                                            Print AWB
+                                        </button>
+                                    ) : isStaff ? (
+                                        <button onClick={() => handleGenerateCarrierDocs('awb')} disabled={isGeneratingCarrierDocs} className="btn btn-primary btn-xs font-bold rounded-lg w-full">
+                                            <span className="material-symbols-outlined text-sm">bolt</span>
+                                            Generate
+                                        </button>
+                                    ) : null}
+                                </div>
+
+                                {/* Document 2: Carrier Customs Invoice */}
+                                <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">
+                                    <div className="space-y-1">
+                                        <div className="flex items-center justify-between">
+                                            <div className="w-8 h-8 rounded-lg bg-warning/10 text-warning flex items-center justify-center">
+                                                <span className="material-symbols-outlined text-base">receipt_long</span>
+                                            </div>
+                                            <span className={`badge badge-xs font-bold py-1 px-2 ${resolvedCarrierInvoice ? 'badge-success' : 'badge-warning'}`}>
+                                                {resolvedCarrierInvoice ? 'READY' : 'PENDING'}
+                                            </span>
+                                        </div>
+                                        <h4 className="font-extrabold text-xs text-base-content">
+                                            Carrier Customs Invoice
+                                        </h4>
+                                        <p className="text-[11px] text-base-content/60">
+                                            Itemized customs export declaration
+                                        </p>
+                                    </div>
+                                    {resolvedCarrierInvoice ? (
+                                        <button onClick={() => handleOpenPdf(resolvedCarrierInvoice)} className="btn btn-outline btn-xs font-bold rounded-lg w-full">
+                                            <span className="material-symbols-outlined text-sm">print</span>
+                                            Print Invoice
+                                        </button>
+                                    ) : isStaff ? (
+                                        <button onClick={() => handleGenerateCarrierDocs('invoice')} disabled={isGeneratingCarrierDocs} className="btn btn-outline btn-xs font-bold rounded-lg w-full">
+                                            <span className="material-symbols-outlined text-sm">bolt</span>
+                                            Generate
+                                        </button>
+                                    ) : null}
+                                </div>
+
+                                {/* Document 3: Target Hub Handover / Invoice QR */}
+                                <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">
+                                    <div className="space-y-1">
+                                        <div className="flex items-center justify-between">
+                                            <div className="w-8 h-8 rounded-lg bg-base-300 text-base-content flex items-center justify-center">
+                                                <span className="material-symbols-outlined text-base">qr_code_2</span>
+                                            </div>
+                                            <span className="badge badge-neutral badge-xs font-bold py-1 px-2">
+                                                SYSTEM
+                                            </span>
+                                        </div>
+                                        <h4 className="font-extrabold text-xs text-base-content">
+                                            Target Hub Invoice & QR
+                                        </h4>
+                                        <p className="text-[11px] text-base-content/60">
+                                            Hub handover & warehouse scan sheet
+                                        </p>
+                                    </div>
+                                    <button onClick={handleGenerateInvoiceQR} className="btn btn-outline btn-xs font-bold rounded-lg w-full">
+                                        <span className="material-symbols-outlined text-sm">print</span>
+                                        Print Document
                                     </button>
-                                )}
+                                </div>
+
                             </div>
                         </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            
-                            {/* Document 1: Official Carrier AWB */}
-                            <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">
-                                <div className="space-y-1">
-                                    <div className="flex items-center justify-between">
-                                        <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-                                            <span className="material-symbols-outlined text-base">local_shipping</span>
-                                        </div>
-                                        <span className={`badge badge-xs font-bold py-1 px-2 ${resolvedCarrierAwb ? 'badge-success' : 'badge-warning'}`}>
-                                            {resolvedCarrierAwb ? 'READY' : 'PENDING'}
-                                        </span>
-                                    </div>
-                                    <h4 className="font-extrabold text-xs text-base-content">
-                                        {carrierDisplayName} Air Waybill (AWB)
-                                    </h4>
-                                    <p className="text-[11px] text-base-content/60">
-                                        Official barcoded consignment label
-                                    </p>
-                                </div>
-                                {resolvedCarrierAwb ? (
-                                    <button onClick={() => handleOpenPdf(resolvedCarrierAwb)} className="btn btn-primary btn-xs font-bold rounded-lg w-full">
-                                        <span className="material-symbols-outlined text-sm">print</span>
-                                        Print AWB
-                                    </button>
-                                ) : isStaff ? (
-                                    <button onClick={() => handleGenerateCarrierDocs('awb')} disabled={isGeneratingCarrierDocs} className="btn btn-primary btn-xs font-bold rounded-lg w-full">
-                                        <span className="material-symbols-outlined text-sm">bolt</span>
-                                        Generate
-                                    </button>
-                                ) : null}
-                            </div>
-
-                            {/* Document 2: Carrier Customs Invoice */}
-                            <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">
-                                <div className="space-y-1">
-                                    <div className="flex items-center justify-between">
-                                        <div className="w-8 h-8 rounded-lg bg-warning/10 text-warning flex items-center justify-center">
-                                            <span className="material-symbols-outlined text-base">receipt_long</span>
-                                        </div>
-                                        <span className={`badge badge-xs font-bold py-1 px-2 ${resolvedCarrierInvoice ? 'badge-success' : 'badge-warning'}`}>
-                                            {resolvedCarrierInvoice ? 'READY' : 'PENDING'}
-                                        </span>
-                                    </div>
-                                    <h4 className="font-extrabold text-xs text-base-content">
-                                        Carrier Customs Invoice
-                                    </h4>
-                                    <p className="text-[11px] text-base-content/60">
-                                        Itemized customs export declaration
-                                    </p>
-                                </div>
-                                {resolvedCarrierInvoice ? (
-                                    <button onClick={() => handleOpenPdf(resolvedCarrierInvoice)} className="btn btn-outline btn-xs font-bold rounded-lg w-full">
-                                        <span className="material-symbols-outlined text-sm">print</span>
-                                        Print Invoice
-                                    </button>
-                                ) : isStaff ? (
-                                    <button onClick={() => handleGenerateCarrierDocs('invoice')} disabled={isGeneratingCarrierDocs} className="btn btn-outline btn-xs font-bold rounded-lg w-full">
-                                        <span className="material-symbols-outlined text-sm">bolt</span>
-                                        Generate
-                                    </button>
-                                ) : null}
-                            </div>
-
-                            {/* Document 3: Target Hub Handover / Invoice QR */}
-                            <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">
-                                <div className="space-y-1">
-                                    <div className="flex items-center justify-between">
-                                        <div className="w-8 h-8 rounded-lg bg-base-300 text-base-content flex items-center justify-center">
-                                            <span className="material-symbols-outlined text-base">qr_code_2</span>
-                                        </div>
-                                        <span className="badge badge-neutral badge-xs font-bold py-1 px-2">
-                                            SYSTEM
-                                        </span>
-                                    </div>
-                                    <h4 className="font-extrabold text-xs text-base-content">
-                                        Target Hub Invoice & QR
-                                    </h4>
-                                    <p className="text-[11px] text-base-content/60">
-                                        Hub handover & warehouse scan sheet
-                                    </p>
-                                </div>
-                                <button onClick={handleGenerateInvoiceQR} className="btn btn-outline btn-xs font-bold rounded-lg w-full">
-                                    <span className="material-symbols-outlined text-sm">print</span>
-                                    Print Document
-                                </button>
-                            </div>
-
-                        </div>
-                    </div>
+                    )}
 
                     {/* Milestone History & Checkpoints (DaisyUI Vertical Timeline) */}
                     <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 space-y-4">

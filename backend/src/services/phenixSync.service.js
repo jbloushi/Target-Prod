@@ -392,17 +392,6 @@ class PhenixSyncService {
 
                 if (!existing) {
                     // Create new shipment
-                    const initialHistory = [{
-                        status: 'booked',
-                        description: `Shipment synchronized from Phenix ERP (Invoice #${v.receiptNo || v.billId})`,
-                        timestamp: new Date(),
-                        source: 'phenix_erp',
-                        location: {
-                            formattedAddress: 'Kuwait City, KW',
-                            city: 'Kuwait City'
-                        }
-                    }];
-
                     shipment = await prisma.shipment.create({
                         data: {
                             trackingNumber,
@@ -429,7 +418,7 @@ class PhenixSyncService {
                                 name: v.receiverName,
                                 phone: v.receiverPhone
                             },
-                            history: initialHistory,
+                            history: [],
                             documents: {
                                 phenixBillId: v.billId,
                                 phenixReceiptNo: v.receiptNo,
