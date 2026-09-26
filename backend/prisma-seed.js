@@ -657,6 +657,65 @@ async function seedShowcaseDemo() {
       parcels: [{ length: 20, width: 15, height: 10, weight: 1.0, description: 'Exchange Return - Wrong Size' }]
     },
     {
+      trackingNumber: 'TRK-KW-EXCEPTION-009',
+      status: 'exception',
+      userId: seededUsers.staff.id,
+      organizationId: orgAlSabah.id,
+      carrierCode: 'DHL',
+      price: 48.500,
+      currency: 'KWD',
+      origin: {
+        contactPerson: 'Dr. Fatima Al-Sabah',
+        company: 'Al-Sabah Medical & Pharma',
+        phone: '+965 9955 4433',
+        city: 'Kuwait City',
+        countryCode: 'KW'
+      },
+      destination: {
+        contactPerson: 'Klaus Weber',
+        company: 'PharmaTech Germany GmbH',
+        phone: '+49 69 1234 5678',
+        city: 'Frankfurt',
+        countryCode: 'DE',
+        streetLines: ['Mainzer Landstrasse 180']
+      },
+      history: [
+        { status: 'created', timestamp: '2026-09-20T08:00:00Z', description: 'Air cargo waybill created' },
+        { status: 'in_transit', timestamp: '2026-09-21T14:00:00Z', description: 'Departed Kuwait International Airport (KWI)' },
+        { status: 'exception', timestamp: '2026-09-22T09:30:00Z', description: 'Customs Hold: Missing Commercial Invoice in Frankfurt Hub', location: 'Frankfurt Hub (FRA)' }
+      ],
+      parcels: [{ length: 30, width: 25, height: 20, weight: 4.2, description: 'Medical Diagnostic Consumables' }]
+    },
+    {
+      trackingNumber: 'TRK-KW-FAILED-010',
+      status: 'failed',
+      userId: seededUsers.staff.id,
+      organizationId: orgGulfApex.id,
+      carrierCode: 'ARAMEX',
+      price: 18.000,
+      currency: 'KWD',
+      origin: {
+        contactPerson: 'Yousef Al-Mutawa',
+        company: 'Gulf Apex Trading W.L.L.',
+        phone: '+965 9911 2233',
+        city: 'Shuwaikh',
+        countryCode: 'KW'
+      },
+      destination: {
+        contactPerson: 'Sara Al-Mutairi',
+        phone: '+966 55 987 6543',
+        city: 'Riyadh',
+        countryCode: 'SA',
+        streetLines: ['Al-Olaya District, Villa 14B']
+      },
+      history: [
+        { status: 'created', timestamp: '2026-09-21T10:00:00Z', description: 'Waybill generated for GCC road express' },
+        { status: 'out_for_delivery', timestamp: '2026-09-23T08:00:00Z', description: 'Courier dispatched in Riyadh' },
+        { status: 'failed', timestamp: '2026-09-23T11:45:00Z', description: 'Delivery Attempt Failed: Incomplete Address - GPS Pin Required', location: 'Riyadh Hub (RUH)' }
+      ],
+      parcels: [{ length: 25, width: 20, height: 15, weight: 2.5, description: 'Retail Apparel Sample Kit' }]
+    },
+    {
       trackingNumber: 'TRK-COD-UNREMITTED-01',
       status: 'delivered',
       userId: seededUsers.org_agent.id,

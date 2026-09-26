@@ -60,6 +60,11 @@ router.get('/stats', (req, res, next) => {
   next();
 }, shipmentController.getShipmentStats);
 
+router.get('/triage', (req, res, next) => {
+  logger.info(`[DEBUG] Shipment Triage Route Hit: ${req.method} ${req.originalUrl}`);
+  next();
+}, shipmentController.getTriageShipments);
+
 router.get('/carriers', (req, res, next) => {
   logger.info(`[DEBUG] Routing to getAvailableCarriers`);
   next();

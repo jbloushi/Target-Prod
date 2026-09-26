@@ -29,6 +29,7 @@ module.exports = {
   deleteShipment: crud.deleteShipment,
   updateShipment: crud.updateShipment,
   getShipmentStats: crud.getShipmentStats,
+  getTriageShipments: crud.getTriageShipments,
   getShipmentAuditLogs: crud.getShipmentAuditLogs,
   bulkImportShipments: crud.bulkImportShipments,
 

@@ -129,6 +129,17 @@ export const shipmentService = {
     }
   },
 
+  // Get active triage and exception consignments requiring operator action
+  getTriageShipments: async (filters = {}) => {
+    try {
+      const response = await api.get('shipments/triage', { params: filters });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching triage shipments:', error);
+      throw error;
+    }
+  },
+
   // Get shipment by tracking number
   getShipment: async (trackingNumber) => {
     try {
