@@ -468,7 +468,7 @@ class PhenixSyncService {
                 // 2. Fetch live tracking checkpoints from Carrier API
                 let carrierSynced = false;
                 let carrierUpdates = null;
-                if (v.carrierTracking && (v.derivedCarrier === 'DGR' || v.derivedCarrier === 'ARAMEX' || v.derivedCarrier === 'FEDEX')) {
+                if (v.carrierTracking && v.derivedCarrier !== 'INTERNAL' && v.derivedCarrier !== 'MANUAL') {
                     try {
                         carrierUpdates = await syncCarrierTrackingHistory(shipment);
                         if (carrierUpdates) {

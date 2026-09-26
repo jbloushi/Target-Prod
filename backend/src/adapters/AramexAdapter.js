@@ -80,6 +80,10 @@ class AramexAdapter {
             ]
         };
     }
+
+    async getTracking(trackingNumber) {
+        return this.track(trackingNumber);
+    }
 }
 
 module.exports = AramexAdapter;
