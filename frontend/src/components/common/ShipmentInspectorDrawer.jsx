@@ -32,9 +32,8 @@ export const ShipmentInspectorDrawer = ({
     const trackingNumber = shipment.trackingNumber || '—';
     const status = shipment.status || 'draft';
     const origin = shipment.origin || { city: shipment.originCity || 'Kuwait City', country: shipment.originCountry || 'KW' };
-    const destination = shipment.destination || { city: shipment.destCity || 'Riyadh', country: shipment.destCountry || 'SA' };
-    const consigneeName = shipment.receiver?.contactPerson || shipment.receiver?.name || shipment.customer || (isRTL ? 'المستلم' : 'Consignee');
-    const consigneePhone = shipment.receiver?.phone || shipment.phone || '+965 9988 7766';
+    const consigneeName = shipment.receiver?.contactPerson || shipment.receiver?.name || (typeof shipment.destination === 'object' ? (shipment.destination?.contactPerson || shipment.destination?.name) : null) || (typeof shipment.customer === 'object' ? (shipment.customer?.name || shipment.customer?.contactPerson) : (typeof shipment.customer === 'string' ? shipment.customer : null)) || (isRTL ? 'المستلم' : 'Consignee');
+    const consigneePhone = shipment.receiver?.phone || (typeof shipment.destination === 'object' ? shipment.destination?.phone : null) || (typeof shipment.customer === 'object' ? shipment.customer?.phone : (typeof shipment.phone === 'string' ? shipment.phone : null)) || '+965 9988 7766';
     const orgName = shipment.organization?.name || shipment.org || 'Target Logistics';
     const serviceType = shipment.serviceType || shipment.service || 'Express Air Cargo';
     const weight = shipment.weight || shipment.package?.weight || 3.5;

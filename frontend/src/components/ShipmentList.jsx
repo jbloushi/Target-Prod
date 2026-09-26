@@ -30,6 +30,32 @@ const toRowShape = (s) => {
     s.pricingSnapshot?.environment === 'test'
   );
 
+  const resolveCustomerName = () => {
+    if (typeof s.receiver?.name === 'string') return s.receiver.name;
+    if (typeof s.receiver?.contactPerson === 'string') return s.receiver.contactPerson;
+    if (typeof s.receiverName === 'string') return s.receiverName;
+    if (typeof s.destination === 'object') {
+      if (typeof s.destination?.contactPerson === 'string') return s.destination.contactPerson;
+      if (typeof s.destination?.name === 'string') return s.destination.name;
+      if (typeof s.destination?.customer === 'string') return s.destination.customer;
+    }
+    if (typeof s.customer === 'object') {
+      if (typeof s.customer?.name === 'string') return s.customer.name;
+      if (typeof s.customer?.contactPerson === 'string') return s.customer.contactPerson;
+    }
+    if (typeof s.customer === 'string') return s.customer;
+    return '—';
+  };
+
+  const resolveCustomerPhone = () => {
+    if (typeof s.receiver?.phone === 'string') return s.receiver.phone;
+    if (typeof s.receiverPhone === 'string') return s.receiverPhone;
+    if (typeof s.destination === 'object' && typeof s.destination?.phone === 'string') return s.destination.phone;
+    if (typeof s.customer === 'object' && typeof s.customer?.phone === 'string') return s.customer.phone;
+    if (typeof s.phone === 'string') return s.phone;
+    return '—';
+  };
+
   return {
     raw: s,
     id: s.id || s._id || s.trackingNumber,
@@ -42,8 +68,8 @@ const toRowShape = (s) => {
     destCity,
     destCountry,
     status: s.status || 'draft',
-    customer: s.receiver?.name || s.receiverName || (typeof s.destination === 'object' && typeof s.destination?.customer === 'string' ? s.destination.customer : null) || s.customer || '—',
-    phone: s.receiver?.phone || s.receiverPhone || (typeof s.destination === 'object' && typeof s.destination?.phone === 'string' ? s.destination.phone : null) || s.phone || '—',
+    customer: resolveCustomerName(),
+    phone: resolveCustomerPhone(),
     created: s.createdAt ? new Date(s.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—',
     eta: s.status === 'delivered' ? 'Delivered' : (s.estimatedDelivery ? new Date(s.estimatedDelivery).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '~2 Days'),
     service: s.serviceType || s.service || 'Express Air',
