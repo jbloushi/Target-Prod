@@ -97,30 +97,38 @@ if (rateLimitEnabled) {
     message: { success: false, error: 'Too many requests, please try again later.' },
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => {
+      if (req.method === 'OPTIONS') return true;
+      if (req.path === '/health' || req.path === '/api/health') return true;
+      if (req.path.includes('/webhook')) return true;
+      return false;
+    }
   });
 
   // Apply global rate limiter to all /api routes
-  // CORS middleware already ran, so these responses will have CORS headers
   app.use('/api', globalLimiter);
 
-  // Stricter limiter for auth and public routes
+  // Stricter limiter specifically for sensitive login and public endpoints (brute force protection)
   const authLimiter = rateLimit({
-    windowMs: 60 * 60 * 1000, // 1 hour
+    windowMs: 15 * 60 * 1000, // 15 minutes
     max: rateLimitAuthMax,
-    message: { success: false, error: 'Security limit reached. Please try again later.' }
+    message: { success: false, error: 'Security limit reached. Please try again in a few minutes.' },
+    skip: (req) => req.method === 'OPTIONS' || req.path === '/me' || req.path === '/api/auth/me'
   });
-  app.use('/api/auth', authLimiter);
+  app.use('/api/auth/login', authLimiter);
+  app.use('/api/auth/register', authLimiter);
   app.use('/api/public/shipments', authLimiter);
 
   // Stricter limiter for external client API (API-key authenticated routes)
   const externalApiLimiter = rateLimit({
     windowMs: 60 * 1000, // 1 minute
-    max: 30, // 30 requests per minute per API key
-    keyGenerator: (req) => req.headers['x-api-key'] || 'no-key',
+    max: 60, // 60 requests per minute per API key
+    keyGenerator: (req) => req.headers['x-api-key'] || req.ip || 'no-key',
     validate: false,
     message: { success: false, error: 'External API rate limit reached.' },
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => req.method === 'OPTIONS'
   });
   app.use('/api/client', externalApiLimiter);
   app.use('/api/v1', externalApiLimiter);
