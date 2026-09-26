@@ -237,15 +237,22 @@ class UniversalTrackingService {
             });
 
             if (res.data && Array.isArray(res.data.events) && res.data.events.length > 0) {
-                const events = res.data.events.map(e => ({
-                    timestamp: e.dateTime || new Date().toISOString(),
-                    location: e.location || 'Aramex Facility',
-                    description: e.updateDescription || e.status || 'Carrier update',
-                    statusCode: (e.status || '').toLowerCase().includes('delivered') ? 'delivered' : 'in_transit'
-                }));
+                const events = res.data.events.map(e => {
+                    const desc = e.updateDescription || e.status || 'Carrier update';
+                    const statusCode = this._map17TrackStatus(e.status, desc);
+                    return {
+                        timestamp: e.dateTime || new Date().toISOString(),
+                        location: e.location || 'Aramex Facility',
+                        description: desc,
+                        statusCode
+                    };
+                });
+
+                events.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+                const latestEvent = events[events.length - 1];
 
                 return {
-                    status: events[0]?.statusCode || 'in_transit',
+                    status: latestEvent?.statusCode || 'in_transit',
                     events
                 };
             }
@@ -253,18 +260,9 @@ class UniversalTrackingService {
             logger.debug(`[UniversalTracking] Aramex direct scrape fallback: ${err.message}`);
         }
 
-        // Standard timeline event
-        const now = new Date();
         return {
             status: 'in_transit',
-            events: [
-                {
-                    timestamp: now.toISOString(),
-                    location: 'Aramex Operations Gateway',
-                    description: `Shipment manifested under Aramex AWB #${trackingNumber}`,
-                    statusCode: 'in_transit'
-                }
-            ]
+            events: []
         };
     }
 
@@ -304,15 +302,22 @@ class UniversalTrackingService {
 
             const packageList = res.data?.TrackPackagesResponse?.packageList;
             if (Array.isArray(packageList) && packageList.length > 0 && Array.isArray(packageList[0]?.scanEventList)) {
-                const events = packageList[0].scanEventList.map(evt => ({
-                    timestamp: evt.date && evt.time ? `${evt.date}T${evt.time}` : new Date().toISOString(),
-                    location: evt.scanLocation || 'FedEx Sort Facility',
-                    description: evt.status || 'FedEx update',
-                    statusCode: (evt.status || '').toLowerCase().includes('delivered') ? 'delivered' : 'in_transit'
-                }));
+                const events = packageList[0].scanEventList.map(evt => {
+                    const desc = evt.status || 'FedEx update';
+                    const statusCode = this._map17TrackStatus(evt.status, desc);
+                    return {
+                        timestamp: evt.date && evt.time ? `${evt.date}T${evt.time}` : new Date().toISOString(),
+                        location: evt.scanLocation || 'FedEx Sort Facility',
+                        description: desc,
+                        statusCode
+                    };
+                });
+
+                events.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+                const latestEvent = events[events.length - 1];
 
                 return {
-                    status: (packageList[0]?.keyStatus || '').toLowerCase().includes('delivered') ? 'delivered' : 'in_transit',
+                    status: latestEvent?.statusCode || 'in_transit',
                     events
                 };
             }
@@ -320,17 +325,9 @@ class UniversalTrackingService {
             logger.debug(`[UniversalTracking] FedEx direct scrape fallback: ${err.message}`);
         }
 
-        const now = new Date();
         return {
             status: 'in_transit',
-            events: [
-                {
-                    timestamp: now.toISOString(),
-                    location: 'FedEx Global Sort Facility',
-                    description: `Shipment processed with FedEx tracking #${trackingNumber}`,
-                    statusCode: 'in_transit'
-                }
-            ]
+            events: []
         };
     }
 
@@ -339,17 +336,9 @@ class UniversalTrackingService {
      * @private
      */
     _genericCarrierFallback(carrierCode, trackingNumber) {
-        const now = new Date();
         return {
             status: 'in_transit',
-            events: [
-                {
-                    timestamp: now.toISOString(),
-                    location: 'Regional International Gateway',
-                    description: `Consignment registered with ${carrierCode} (#${trackingNumber})`,
-                    statusCode: 'in_transit'
-                }
-            ]
+            events: []
         };
     }
 }

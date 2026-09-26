@@ -18,22 +18,30 @@ const financeLedgerService = require('../services/financeLedger.service');
 exports.getPublicShipment = async (req, res) => {
     try {
         const { trackingNumber } = req.params;
-        const cleanNumeric = String(trackingNumber || '').replace(/^TRK-/i, '').replace(/^ARM-/i, '').trim();
-        const shipment = await prisma.shipment.findFirst({
-            where: {
-                OR: [
-                    { trackingNumber },
-                    { trackingNumber: `TRK-${cleanNumeric}` },
-                    { trackingNumber: cleanNumeric },
-                    { dhlTrackingNumber: cleanNumeric },
-                    { carrierShipmentId: cleanNumeric }
-                ]
-            }
+        let shipment = await prisma.shipment.findUnique({
+            where: { trackingNumber }
         });
+
+        if (!shipment) {
+            const cleanNumeric = String(trackingNumber || '').replace(/^TRK-/i, '').replace(/^ARM-/i, '').trim();
+            shipment = await prisma.shipment.findFirst({
+                where: {
+                    OR: [
+                        { trackingNumber: `TRK-${cleanNumeric}` },
+                        { trackingNumber: cleanNumeric },
+                        { dhlTrackingNumber: cleanNumeric },
+                        { carrierShipmentId: cleanNumeric }
+                    ]
+                }
+            });
+        }
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
         const isExplicitRefresh = req.query.refresh === 'true' || req.query.sync === 'true';
-        const hasOnlyBaseline = !shipment.history || (Array.isArray(shipment.history) && shipment.history.length <= 1);
+        const hasOnlyBaseline = !shipment.history || (Array.isArray(shipment.history) && (
+            shipment.history.length === 0 ||
+            (shipment.history.length === 1 && shipment.history[0]?.source !== 'carrier')
+        ));
 
         // Sync carrier tracking into the unified history (synchronous if explicit or has only baseline event)
         if (isExplicitRefresh || hasOnlyBaseline) {

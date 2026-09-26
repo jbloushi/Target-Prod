@@ -118,12 +118,14 @@ const normalizeText = (value = '') => String(value)
 const canonicalStatusFromDescription = (status, description) => {
     const text = normalizeText(`${status || ''} ${description || ''}`);
     if (text.includes('shipment draft created') || text.includes('draft created')) return 'created';
-    if (text.includes('shipment picked up')) return 'pickup';
-    if (text.includes('arrived at dhl sort facility') || text.startsWith('arrived at')) return 'arrived_facility';
-    if (text.includes('processed at')) return 'processed';
-    if (text.includes('shipment has departed from a dhl facility') || text.includes('has departed from a dhl facility')) return 'departed_facility';
-    if (text.includes('customs clearance status updated')) return 'customs_update';
-    if (text.includes('shipment is on hold') || text.endsWith(' on hold')) return 'hold';
+    if (text.includes('shipment picked up') || text.includes('picked up') || text.includes('collected')) return 'pickup';
+    if (text.includes('arrived at dhl sort facility') || text.startsWith('arrived at') || text.includes('arrived facility') || text.includes('arrived at operations')) return 'arrived_facility';
+    if (text.includes('processed at') || text.includes('transferred to operations')) return 'processed';
+    if (text.includes('shipment has departed') || text.includes('departed from') || text.includes('departed facility') || text.includes('departed operations')) return 'departed_facility';
+    if (text.includes('customs clearance status updated') || text.includes('customs')) return 'customs_update';
+    if (text.includes('delivery champion') || text.includes('out for delivery') || text.includes('doorstep')) return 'out_for_delivery';
+    if (text.includes('delivered to') || text.includes('shipment delivered') || text === 'delivered') return 'delivered';
+    if (text.includes('shipment is on hold') || text.endsWith(' on hold') || text.includes('delivery instructions')) return 'hold';
     return normalizeText(status || description || 'updated').replace(/\s+/g, '_');
 };
 
@@ -158,12 +160,19 @@ const buildDisplayHistory = (events = [], options = {}) => {
         'cancelled'
     ]);
     const originReplayStatuses = new Set(['pickup', 'arrived_facility', 'processed', 'departed_facility', 'customs_update', 'hold']);
+    const hasRealCarrierEvents = (Array.isArray(events) ? events : []).some(e => {
+        const desc = (e?.description || '').toLowerCase();
+        return !desc.includes('manifested under') && !desc.includes('operations gateway') && !desc.includes('synchronized from phenix') && !desc.includes('phenix erp');
+    });
+
     const prepared = (Array.isArray(events) ? events : [])
         .filter((event) => {
             if (!event) return false;
             if (event.source === 'phenix_erp') return false;
             const desc = (event.description || '').toLowerCase();
+            const loc = (typeof event.location === 'string' ? event.location : (event.location?.formattedAddress || event.location?.city || '')).toLowerCase();
             if (desc.includes('synchronized from phenix') || desc.includes('phenix erp')) return false;
+            if (hasRealCarrierEvents && (desc.includes('manifested under') || loc.includes('operations gateway'))) return false;
             return true;
         })
         .map((event) => {
@@ -264,7 +273,22 @@ const buildDisplayHistory = (events = [], options = {}) => {
 const compactHistory = (history = []) => {
     if (!Array.isArray(history) || history.length === 0) return [];
 
-    const prepared = history
+    const hasRealCarrierEvents = history.some(e => {
+        const desc = (e?.description || '').toLowerCase();
+        const loc = (typeof e?.location === 'string' ? e.location : (e?.location?.formattedAddress || e?.location?.city || '')).toLowerCase();
+        return !desc.includes('manifested under') && !loc.includes('operations gateway') && !desc.includes('synchronized from phenix') && !desc.includes('phenix erp');
+    });
+
+    const filtered = hasRealCarrierEvents
+        ? history.filter(e => {
+            const desc = (e?.description || '').toLowerCase();
+            const loc = (typeof e?.location === 'string' ? e.location : (e?.location?.formattedAddress || e?.location?.city || '')).toLowerCase();
+            if (desc.includes('manifested under') || loc.includes('operations gateway')) return false;
+            return true;
+        })
+        : history;
+
+    const prepared = filtered
         .filter(Boolean)
         .map((event) => {
             const timestamp = event?.timestamp ? new Date(event.timestamp) : null;
@@ -415,7 +439,7 @@ const syncCarrierTrackingHistory = async (shipment) => {
 
         // If carrier reports active status (e.g. out_for_delivery) but shipment was falsely marked delivered, correct it!
         const latestEvent = events[events.length - 1];
-        const latestCarrierStatus = latestEvent ? normalizeStatus(latestEvent.statusCode) : highestCarrierStatus;
+        const latestCarrierStatus = normalizeStatus(tracking?.status || latestEvent?.statusCode || highestCarrierStatus);
         if (latestCarrierStatus && latestCarrierStatus !== 'delivered' && currentStatus === 'delivered') {
             logger.info(`Correcting premature delivered status for ${shipment.trackingNumber}: ${currentStatus} -> ${latestCarrierStatus}`);
             currentStatus = latestCarrierStatus;
@@ -423,6 +447,10 @@ const syncCarrierTrackingHistory = async (shipment) => {
         } else if (highestCarrierStatus && isStatusAhead(currentStatus, highestCarrierStatus)) {
             logger.info(`Detected status promotion for ${shipment.trackingNumber}: ${currentStatus} -> ${highestCarrierStatus}`);
             currentStatus = highestCarrierStatus;
+            hasUpdates = true;
+        } else if (latestCarrierStatus && currentStatus !== latestCarrierStatus && latestCarrierStatus === 'out_for_delivery') {
+            logger.info(`Updating status to out_for_delivery for ${shipment.trackingNumber}: ${currentStatus} -> ${latestCarrierStatus}`);
+            currentStatus = latestCarrierStatus;
             hasUpdates = true;
         }
 

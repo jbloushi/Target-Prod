@@ -26,8 +26,8 @@ function isTrackingSyncDue(shipment, ttlMs) {
         : (parseInt(process.env.TRACKING_CACHE_TTL_MS, 10) || DEFAULT_TTL_MS);
 
     const status = String(shipment.status || '').toLowerCase();
-    // Terminal statuses are immutable from carrier perspective
-    if (['delivered', 'cancelled', 'returned', 'rejected'].includes(status)) {
+    // Terminal statuses and draft shipments are not due for carrier tracking
+    if (['draft', 'delivered', 'cancelled', 'returned', 'rejected'].includes(status)) {
         return false;
     }
 

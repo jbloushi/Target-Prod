@@ -1,6 +1,7 @@
 require('dotenv').config();
 const { prisma } = require('../src/config/database');
-const { syncCarrierTrackingHistory } = require('../src/controllers/shipment.helpers');
+const { syncCarrierTrackingHistory, compactHistory, buildDisplayHistory } = require('../src/controllers/shipment.helpers');
+const { normalizeStatus } = require('../src/constants/statusConstants');
 
 async function main() {
     const trackingArg = process.argv[2] || 'TRK-38290175630';
@@ -26,35 +27,66 @@ async function main() {
     }
 
     console.log(`[SyncScript] Found shipment: ID=${shipment.id}, Tracking=${shipment.trackingNumber}, Carrier=${shipment.carrierCode}, CurrentStatus=${shipment.status}`);
-    console.log(`[SyncScript] Existing checkpoints: ${Array.isArray(shipment.history) ? shipment.history.length : 0}`);
+    const originalHistory = Array.isArray(shipment.history) ? shipment.history : [];
+    console.log(`[SyncScript] Existing checkpoints in DB: ${originalHistory.length}`);
+
+    // Pre-clean synthetic placeholder checkpoints
+    const cleanedHistory = compactHistory(originalHistory);
 
     console.log(`[SyncScript] Querying carrier tracking...`);
-    const updates = await syncCarrierTrackingHistory(shipment);
+    const updates = await syncCarrierTrackingHistory({
+        ...shipment,
+        history: cleanedHistory
+    });
 
-    if (!updates) {
-        console.log(`[SyncScript] No new updates returned by carrier feed.`);
-        process.exit(0);
+    let finalHistory = updates ? updates.history : cleanedHistory;
+    let finalStatus = updates ? updates.status : shipment.status;
+
+    // Verify latest event to ensure status isn't prematurely 'delivered'
+    if (Array.isArray(finalHistory) && finalHistory.length > 0) {
+        const sorted = [...finalHistory].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        const latest = sorted[sorted.length - 1];
+        const latestDesc = (latest?.description || '').toLowerCase();
+        
+        if (
+            latestDesc.includes('delivery champion') ||
+            latestDesc.includes('doorstep') ||
+            latestDesc.includes('out for delivery') ||
+            latest?.status === 'out_for_delivery'
+        ) {
+            finalStatus = 'out_for_delivery';
+        }
     }
 
-    console.log(`[SyncScript] Received updates!`);
-    console.log(`  New Status: ${updates.status}`);
-    console.log(`  Total Checkpoints: ${updates.history?.length || 0}`);
-    if (updates.actualWeight) console.log(`  Actual Weight: ${updates.actualWeight} KG`);
-    if (updates.totalPieces) console.log(`  Total Pieces: ${updates.totalPieces}`);
-
     const dataToUpdate = {
-        history: updates.history,
-        status: updates.status
+        history: finalHistory,
+        status: finalStatus
     };
-    if (updates.actualWeight) dataToUpdate.actualWeight = updates.actualWeight;
-    if (updates.totalPieces) dataToUpdate.totalPieces = updates.totalPieces;
+
+    if (updates?.actualWeight) dataToUpdate.actualWeight = updates.actualWeight;
+    if (updates?.totalPieces) dataToUpdate.totalPieces = updates.totalPieces;
 
     await prisma.shipment.update({
         where: { id: shipment.id },
         data: dataToUpdate
     });
 
-    console.log(`[SyncScript] Successfully updated database for shipment #${shipment.trackingNumber}!`);
+    console.log(`\n========================================`);
+    console.log(`[SyncScript] SUCCESSFUL SYNC & REPAIR`);
+    console.log(`========================================`);
+    console.log(`Tracking Number: ${shipment.trackingNumber}`);
+    console.log(`Carrier:         ${shipment.carrierCode}`);
+    console.log(`New Status:      ${finalStatus}`);
+    if (dataToUpdate.actualWeight) console.log(`Actual Weight:   ${dataToUpdate.actualWeight} KG`);
+    if (dataToUpdate.totalPieces) console.log(`Total Pieces:    ${dataToUpdate.totalPieces}`);
+    console.log(`Total Events:    ${finalHistory.length}`);
+    console.log(`----------------------------------------`);
+    console.log(`Milestone Timeline:`);
+    finalHistory.forEach((evt, idx) => {
+        const loc = typeof evt.location === 'object' ? (evt.location.formattedAddress || evt.location.city || '') : (evt.location || '');
+        console.log(` [${idx + 1}] ${new Date(evt.timestamp).toLocaleString()} | [${evt.status}] ${evt.description} (${loc})`);
+    });
+    console.log(`========================================\n`);
 }
 
 main()
