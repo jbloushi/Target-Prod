@@ -669,12 +669,13 @@ exports.handle17TrackWebhook = async (req, res) => {
             // Update weight & pieces if available from carrier telemetry and currently missing
             const misc = trackInfo.misc_info || {};
             const carrierWeight = parseFloat(misc.weight_kg || misc.weight_raw || 0);
-            if (carrierWeight > 0 && (!shipment.actualWeight || Number(shipment.actualWeight) === 0)) {
-                updateData.actualWeight = carrierWeight;
-            }
             const carrierPieces = parseInt(misc.item_count || misc.pieces || 0, 10);
-            if (carrierPieces > 0 && (!shipment.totalPieces || Number(shipment.totalPieces) === 0)) {
-                updateData.totalPieces = carrierPieces;
+            if (carrierWeight > 0 || carrierPieces > 0) {
+                updateData.pricingSnapshot = {
+                    ...(shipment.pricingSnapshot || {}),
+                    carrierWeight: carrierWeight > 0 ? carrierWeight : shipment.pricingSnapshot?.carrierWeight,
+                    carrierPieces: carrierPieces > 0 ? carrierPieces : shipment.pricingSnapshot?.carrierPieces
+                };
             }
 
             const updatedShipment = await prisma.shipment.update({

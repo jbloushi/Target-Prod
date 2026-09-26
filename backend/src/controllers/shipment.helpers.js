@@ -172,7 +172,7 @@ const buildDisplayHistory = (events = [], options = {}) => {
             const desc = (event.description || '').toLowerCase();
             const loc = (typeof event.location === 'string' ? event.location : (event.location?.formattedAddress || event.location?.city || '')).toLowerCase();
             if (desc.includes('synchronized from phenix') || desc.includes('phenix erp')) return false;
-            if (hasRealCarrierEvents && (desc.includes('manifested under') || loc.includes('operations gateway'))) return false;
+            if (desc.includes('manifested under') || loc.includes('operations gateway')) return false;
             return true;
         })
         .map((event) => {
@@ -273,20 +273,13 @@ const buildDisplayHistory = (events = [], options = {}) => {
 const compactHistory = (history = []) => {
     if (!Array.isArray(history) || history.length === 0) return [];
 
-    const hasRealCarrierEvents = history.some(e => {
+    const filtered = history.filter(e => {
+        if (!e) return false;
         const desc = (e?.description || '').toLowerCase();
         const loc = (typeof e?.location === 'string' ? e.location : (e?.location?.formattedAddress || e?.location?.city || '')).toLowerCase();
-        return !desc.includes('manifested under') && !loc.includes('operations gateway') && !desc.includes('synchronized from phenix') && !desc.includes('phenix erp');
+        if (desc.includes('manifested under') || loc.includes('operations gateway') || desc.includes('synchronized from phenix') || desc.includes('phenix erp')) return false;
+        return true;
     });
-
-    const filtered = hasRealCarrierEvents
-        ? history.filter(e => {
-            const desc = (e?.description || '').toLowerCase();
-            const loc = (typeof e?.location === 'string' ? e.location : (e?.location?.formattedAddress || e?.location?.city || '')).toLowerCase();
-            if (desc.includes('manifested under') || loc.includes('operations gateway')) return false;
-            return true;
-        })
-        : history;
 
     const prepared = filtered
         .filter(Boolean)

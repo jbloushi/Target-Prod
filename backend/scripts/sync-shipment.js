@@ -63,8 +63,13 @@ async function main() {
         status: finalStatus
     };
 
-    if (updates?.actualWeight) dataToUpdate.actualWeight = updates.actualWeight;
-    if (updates?.totalPieces) dataToUpdate.totalPieces = updates.totalPieces;
+    if (updates?.actualWeight || updates?.totalPieces) {
+        dataToUpdate.pricingSnapshot = {
+            ...(shipment.pricingSnapshot || {}),
+            carrierWeight: updates.actualWeight || shipment.pricingSnapshot?.carrierWeight,
+            carrierPieces: updates.totalPieces || shipment.pricingSnapshot?.carrierPieces
+        };
+    }
 
     await prisma.shipment.update({
         where: { id: shipment.id },
@@ -77,8 +82,8 @@ async function main() {
     console.log(`Tracking Number: ${shipment.trackingNumber}`);
     console.log(`Carrier:         ${shipment.carrierCode}`);
     console.log(`New Status:      ${finalStatus}`);
-    if (dataToUpdate.actualWeight) console.log(`Actual Weight:   ${dataToUpdate.actualWeight} KG`);
-    if (dataToUpdate.totalPieces) console.log(`Total Pieces:    ${dataToUpdate.totalPieces}`);
+    if (dataToUpdate.pricingSnapshot?.carrierWeight) console.log(`Actual Weight:   ${dataToUpdate.pricingSnapshot.carrierWeight} KG`);
+    if (dataToUpdate.pricingSnapshot?.carrierPieces) console.log(`Total Pieces:    ${dataToUpdate.pricingSnapshot.carrierPieces}`);
     console.log(`Total Events:    ${finalHistory.length}`);
     console.log(`----------------------------------------`);
     console.log(`Milestone Timeline:`);

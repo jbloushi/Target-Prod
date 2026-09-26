@@ -131,14 +131,22 @@ async function main() {
                         }
                     }
 
+                    const dataToUpdate = {
+                        history: finalHistory,
+                        status: finalStatus
+                    };
+
+                    if (updates?.actualWeight || updates?.totalPieces) {
+                        dataToUpdate.pricingSnapshot = {
+                            ...(s.pricingSnapshot && typeof s.pricingSnapshot === 'object' ? s.pricingSnapshot : {}),
+                            carrierWeight: updates.actualWeight || s.pricingSnapshot?.carrierWeight,
+                            carrierPieces: updates.totalPieces || s.pricingSnapshot?.carrierPieces
+                        };
+                    }
+
                     await prisma.shipment.update({
                         where: { id: s.id },
-                        data: {
-                            history: finalHistory,
-                            status: finalStatus,
-                            ...(updates?.actualWeight ? { actualWeight: updates.actualWeight } : {}),
-                            ...(updates?.totalPieces ? { totalPieces: updates.totalPieces } : {})
-                        }
+                        data: dataToUpdate
                     });
 
                     fixedCount++;
