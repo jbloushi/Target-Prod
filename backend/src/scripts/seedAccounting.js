@@ -129,6 +129,14 @@ async function seedAccounting() {
   });
   console.log(`✅ Seeded Accounting Period ${periodName} (Active & Open).`);
 
+  // 5. Ensure Superadmin Accounts
+  try {
+    const { ensureAdmin } = require('../../scripts/ensure-admin');
+    await ensureAdmin();
+  } catch (adminErr) {
+    console.warn('⚠️ Could not run ensureAdmin during accounting seed:', adminErr.message);
+  }
+
   console.log('🎉 Enterprise Accounting Seed completed successfully.');
 }
 

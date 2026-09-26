@@ -15,7 +15,8 @@
     "format": "prettier --write .",
     "seed": "node prisma-seed.js",
     "db:fresh": "node scripts/fresh-database.js --confirm --mode=demo",
-    "db:fresh:clean": "node scripts/fresh-database.js --confirm --mode=clean"
+    "db:fresh:clean": "node scripts/fresh-database.js --confirm --mode=clean",
+    "admin:ensure": "node scripts/ensure-admin.js"
   },
   "keywords": [],
   "author": "",
