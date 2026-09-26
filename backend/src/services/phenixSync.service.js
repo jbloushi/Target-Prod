@@ -77,6 +77,164 @@ function buildPhenixRequestBody(from, to) {
 }
 
 /**
+ * Country normalization dictionary and helper
+ */
+const COUNTRY_MAP = {
+    'KSA': { code: 'SA', name: 'Saudi Arabia' },
+    'SAUDI ARABIA': { code: 'SA', name: 'Saudi Arabia' },
+    'SA': { code: 'SA', name: 'Saudi Arabia' },
+    'QATAR': { code: 'QA', name: 'Qatar' },
+    'QA': { code: 'QA', name: 'Qatar' },
+    'KUWAIT': { code: 'KW', name: 'Kuwait' },
+    'KW': { code: 'KW', name: 'Kuwait' },
+    'UAE': { code: 'AE', name: 'United Arab Emirates' },
+    'UNITED ARAB EMIRATES': { code: 'AE', name: 'United Arab Emirates' },
+    'DUBAI': { code: 'AE', name: 'United Arab Emirates' },
+    'ABU DHABI': { code: 'AE', name: 'United Arab Emirates' },
+    'AE': { code: 'AE', name: 'United Arab Emirates' },
+    'BAHRAIN': { code: 'BH', name: 'Bahrain' },
+    'BH': { code: 'BH', name: 'Bahrain' },
+    'OMAN': { code: 'OM', name: 'Oman' },
+    'OM': { code: 'OM', name: 'Oman' },
+    'USA': { code: 'US', name: 'United States' },
+    'UNITED STATES': { code: 'US', name: 'United States' },
+    'US': { code: 'US', name: 'United States' },
+    'UK': { code: 'GB', name: 'United Kingdom' },
+    'UNITED KINGDOM': { code: 'GB', name: 'United Kingdom' },
+    'GREAT BRITAIN': { code: 'GB', name: 'United Kingdom' },
+    'GB': { code: 'GB', name: 'United Kingdom' },
+    'CANADA': { code: 'CA', name: 'Canada' },
+    'CA': { code: 'CA', name: 'Canada' },
+    'FRANCE': { code: 'FR', name: 'France' },
+    'FR': { code: 'FR', name: 'France' },
+    'GERMANY': { code: 'DE', name: 'Germany' },
+    'DE': { code: 'DE', name: 'Germany' },
+    'ITALY': { code: 'IT', name: 'Italy' },
+    'IT': { code: 'IT', name: 'Italy' },
+    'SPAIN': { code: 'ES', name: 'Spain' },
+    'ES': { code: 'ES', name: 'Spain' },
+    'AUSTRALIA': { code: 'AU', name: 'Australia' },
+    'AU': { code: 'AU', name: 'Australia' },
+    'EGYPT': { code: 'EG', name: 'Egypt' },
+    'EG': { code: 'EG', name: 'Egypt' },
+    'JORDAN': { code: 'JO', name: 'Jordan' },
+    'JO': { code: 'JO', name: 'Jordan' },
+    'LEBANON': { code: 'LB', name: 'Lebanon' },
+    'LB': { code: 'LB', name: 'Lebanon' },
+    'TURKEY': { code: 'TR', name: 'Turkey' },
+    'TR': { code: 'TR', name: 'Turkey' },
+    'IRAQ': { code: 'IQ', name: 'Iraq' },
+    'IQ': { code: 'IQ', name: 'Iraq' },
+    'INDIA': { code: 'IN', name: 'India' },
+    'IN': { code: 'IN', name: 'India' },
+    'CHINA': { code: 'CN', name: 'China' },
+    'CN': { code: 'CN', name: 'China' },
+    'HONG KONG': { code: 'HK', name: 'Hong Kong' },
+    'HK': { code: 'HK', name: 'Hong Kong' },
+    'JAPAN': { code: 'JP', name: 'Japan' },
+    'JP': { code: 'JP', name: 'Japan' },
+    'SWITZERLAND': { code: 'CH', name: 'Switzerland' },
+    'CH': { code: 'CH', name: 'Switzerland' },
+    'NETHERLANDS': { code: 'NL', name: 'Netherlands' },
+    'NL': { code: 'NL', name: 'Netherlands' },
+    'BELGIUM': { code: 'BE', name: 'Belgium' },
+    'BE': { code: 'BE', name: 'Belgium' },
+    'AUSTRIA': { code: 'AT', name: 'Austria' },
+    'AT': { code: 'AT', name: 'Austria' },
+    'SWEDEN': { code: 'SE', name: 'Sweden' },
+    'SE': { code: 'SE', name: 'Sweden' },
+    'NORWAY': { code: 'NO', name: 'Norway' },
+    'NO': { code: 'NO', name: 'Norway' },
+    'DENMARK': { code: 'DK', name: 'Denmark' },
+    'DK': { code: 'DK', name: 'Denmark' },
+    'IRELAND': { code: 'IE', name: 'Ireland' },
+    'IE': { code: 'IE', name: 'Ireland' },
+    'SINGAPORE': { code: 'SG', name: 'Singapore' },
+    'SG': { code: 'SG', name: 'Singapore' },
+    'MALAYSIA': { code: 'MY', name: 'Malaysia' },
+    'MY': { code: 'MY', name: 'Malaysia' },
+    'THAILAND': { code: 'TH', name: 'Thailand' },
+    'TH': { code: 'TH', name: 'Thailand' },
+    'MOROCCO': { code: 'MA', name: 'Morocco' },
+    'MA': { code: 'MA', name: 'Morocco' },
+    'TUNISIA': { code: 'TN', name: 'Tunisia' },
+    'TN': { code: 'TN', name: 'Tunisia' },
+    'ALGERIA': { code: 'DZ', name: 'Algeria' },
+    'DZ': { code: 'DZ', name: 'Algeria' }
+};
+
+function resolveCountry(rawCountry, phone) {
+    if (rawCountry) {
+        const key = String(rawCountry).trim().toUpperCase();
+        if (COUNTRY_MAP[key]) {
+            return COUNTRY_MAP[key];
+        }
+        if (key.length === 2 && /^[A-Z]{2}$/.test(key)) {
+            return { code: key, name: String(rawCountry).trim() };
+        }
+    }
+    // Phone prefix fallback if rawCountry is empty or unrecognized
+    if (phone) {
+        const cleanPhone = String(phone).replace(/\D/g, '');
+        if (cleanPhone.startsWith('966')) return { code: 'SA', name: 'Saudi Arabia' };
+        if (cleanPhone.startsWith('974')) return { code: 'QA', name: 'Qatar' };
+        if (cleanPhone.startsWith('971')) return { code: 'AE', name: 'United Arab Emirates' };
+        if (cleanPhone.startsWith('973')) return { code: 'BH', name: 'Bahrain' };
+        if (cleanPhone.startsWith('968')) return { code: 'OM', name: 'Oman' };
+        if (cleanPhone.startsWith('965')) return { code: 'KW', name: 'Kuwait' };
+        if (cleanPhone.startsWith('962')) return { code: 'JO', name: 'Jordan' };
+        if (cleanPhone.startsWith('961')) return { code: 'LB', name: 'Lebanon' };
+        if (cleanPhone.startsWith('20'))  return { code: 'EG', name: 'Egypt' };
+        if (cleanPhone.startsWith('44'))  return { code: 'GB', name: 'United Kingdom' };
+        if (cleanPhone.startsWith('33'))  return { code: 'FR', name: 'France' };
+        if (cleanPhone.startsWith('49'))  return { code: 'DE', name: 'Germany' };
+        if (cleanPhone.startsWith('1'))   return { code: 'US', name: 'United States' };
+    }
+    return { code: 'KW', name: 'Kuwait' };
+}
+
+/**
+ * Resolve or auto-create Merchant Organization in database
+ */
+async function resolveOrCreateMerchantOrg(merchantName, senderPhone, merchantId) {
+    if (!merchantName || merchantName.toLowerCase() === 'target logistics' || merchantName.toLowerCase() === 'target') {
+        return null;
+    }
+
+    const trimmedName = merchantName.trim();
+    try {
+        let org = await prisma.organization.findFirst({
+            where: {
+                name: trimmedName
+            }
+        });
+
+        if (!org) {
+            org = await prisma.organization.create({
+                data: {
+                    name: trimmedName,
+                    type: 'BUSINESS',
+                    billingContactName: trimmedName,
+                    billingWhatsappNumber: senderPhone || null,
+                    currency: 'KWD',
+                    active: true
+                }
+            });
+            logger.info(`[PhenixSync] Created new Organization "${trimmedName}" (ID: ${org.id}) for merchant`);
+        }
+
+        return org;
+    } catch (err) {
+        logger.warn(`[PhenixSync] Merchant organization lookup/create failed for "${trimmedName}": ${err.message}`);
+        try {
+            return await prisma.organization.findFirst({ where: { name: trimmedName } });
+        } catch {
+            return null;
+        }
+    }
+}
+
+/**
  * Normalize Phenix phone numbers toward E.164 without corrupting international codes.
  * Phenix fields already contain international prefixes (e.g. 966..., 971..., 1..., 33..., 44..., 852...).
  */
@@ -143,11 +301,24 @@ function validatePhenixRow(row) {
     const costCenter = String(row.Cost_Center || '').trim();
     const derivedCarrier = deriveCarrier(costCenter);
 
+    // Merchant / Store / Sender info
+    const merchantName = String(row.Client || '').trim() || 'Target Logistics';
+    const merchantId = String(row.client_id || '').trim();
+    const rawSenderPhone = String(row.billCustomField_1 || '').trim();
+    const senderPhone = normalizePhenixPhone(rawSenderPhone) || '+96597691271';
+
+    // Consignee / Recipient info
     const receiverName = String(row.bill_detailCustomField_3 || '').trim();
     const rawReceiverPhone = String(row.bill_detailCustomField_4 || '').trim();
     const receiverPhone = normalizePhenixPhone(rawReceiverPhone);
-    const rawSenderPhone = String(row.billCustomField_1 || '').trim();
-    const senderPhone = normalizePhenixPhone(rawSenderPhone) || '+96597691271';
+
+    // Destination Country
+    const rawCountry = row.Mcolor || '';
+    const destCountry = resolveCountry(rawCountry, receiverPhone || rawReceiverPhone);
+
+    // Financials
+    const totalAmount = parseFloat(row.Total || row.payment || 0) || 0;
+    const paymentMethod = String(row.Payment_method || '').trim();
 
     const missing = [];
     if (!billId) missing.push('Bill ID');
@@ -165,10 +336,17 @@ function validatePhenixRow(row) {
         carrierTracking,
         costCenter,
         derivedCarrier,
+        merchantName,
+        merchantId,
+        senderPhone,
+        rawSenderPhone,
         receiverName,
         receiverPhone,
         rawReceiverPhone,
-        senderPhone,
+        destCountryCode: destCountry.code,
+        destCountryName: destCountry.name,
+        totalAmount,
+        paymentMethod,
         date: row.Date
     };
 }
@@ -276,9 +454,15 @@ class PhenixSyncService {
                 carrierTracking: v.carrierTracking,
                 costCenter: v.costCenter,
                 derivedCarrier: v.derivedCarrier,
+                merchantName: v.merchantName,
+                merchantId: v.merchantId,
+                destCountryCode: v.destCountryCode,
+                destCountryName: v.destCountryName,
                 receiverName: v.receiverName || '-',
                 receiverPhone: v.receiverPhone || (v.rawReceiverPhone ? `Invalid: ${v.rawReceiverPhone}` : 'Missing Phone'),
                 senderPhone: v.senderPhone,
+                totalAmount: v.totalAmount,
+                paymentMethod: v.paymentMethod,
                 date: v.date,
                 isComplete: v.isComplete,
                 missingFields: v.missingFields,
@@ -376,6 +560,10 @@ class PhenixSyncService {
                     ? baseTracking 
                     : `TRK-${baseTracking}`;
 
+                // Resolve or auto-create Merchant Store Organization
+                const merchantOrg = await resolveOrCreateMerchantOrg(v.merchantName, v.senderPhone, v.merchantId);
+                const assignedOrgId = merchantOrg?.id || defaultUser.organizationId || null;
+
                 // 1. Check if shipment already exists
                 let existing = await prisma.shipment.findFirst({
                     where: {
@@ -391,7 +579,7 @@ class PhenixSyncService {
                 let wasCreated = false;
 
                 if (!existing) {
-                    // Create new shipment
+                    // Create new shipment with proper Merchant (Origin) & Consignee (Destination)
                     shipment = await prisma.shipment.create({
                         data: {
                             trackingNumber,
@@ -401,27 +589,36 @@ class PhenixSyncService {
                             status: 'booked',
                             dhlTrackingNumber: v.carrierTracking || null,
                             userId: defaultUser.id,
-                            organizationId: defaultUser.organizationId || null,
+                            organizationId: assignedOrgId,
+                            price: v.totalAmount > 0 ? v.totalAmount : null,
+                            currency: 'KWD',
                             origin: {
                                 city: 'Kuwait City',
                                 countryCode: 'KW',
                                 phone: v.senderPhone,
-                                contactPerson: 'Target Logistics'
+                                contactPerson: v.merchantName,
+                                companyName: v.merchantName
                             },
                             destination: {
-                                city: 'Kuwait',
-                                countryCode: 'KW',
+                                city: v.destCountryName,
+                                countryCode: v.destCountryCode,
                                 contactPerson: v.receiverName,
                                 phone: v.receiverPhone
                             },
                             customer: {
                                 name: v.receiverName,
-                                phone: v.receiverPhone
+                                phone: v.receiverPhone,
+                                merchant: v.merchantName
                             },
                             history: [],
                             documents: {
                                 phenixBillId: v.billId,
                                 phenixReceiptNo: v.receiptNo,
+                                phenixClientId: v.merchantId,
+                                merchantName: v.merchantName,
+                                paymentMethod: v.paymentMethod,
+                                destCountry: v.destCountryName,
+                                destCountryCode: v.destCountryCode,
                                 costCenter: v.costCenter,
                                 source: 'PHENIX_ERP',
                                 rawDate: v.date,
@@ -432,14 +629,19 @@ class PhenixSyncService {
 
                     wasCreated = true;
                     summary.createdCount++;
-                    logger.info(`[PhenixSync] Created new shipment ${trackingNumber} for Phenix Bill #${v.billId} (Carrier AWB: ${v.carrierTracking})`);
+                    logger.info(`[PhenixSync] Created new shipment ${trackingNumber} for Merchant "${v.merchantName}" -> Dest: ${v.destCountryName} (AWB: ${v.carrierTracking})`);
                 } else {
-                    // Update existing record with any missing Phenix metadata
+                    // Update existing record with any missing Phenix metadata & link org if unassigned
                     const currentDocs = (existing.documents && typeof existing.documents === 'object') ? existing.documents : {};
                     const updatedDocs = {
                         ...currentDocs,
                         phenixBillId: v.billId,
                         phenixReceiptNo: v.receiptNo,
+                        phenixClientId: v.merchantId,
+                        merchantName: v.merchantName,
+                        paymentMethod: v.paymentMethod,
+                        destCountry: v.destCountryName,
+                        destCountryCode: v.destCountryCode,
                         costCenter: v.costCenter,
                         lastSyncedAt: new Date().toISOString()
                     };
@@ -448,14 +650,27 @@ class PhenixSyncService {
                         where: { id: existing.id },
                         data: {
                             dhlTrackingNumber: v.carrierTracking || existing.dhlTrackingNumber,
+                            organizationId: existing.organizationId || assignedOrgId,
+                            price: existing.price || (v.totalAmount > 0 ? v.totalAmount : undefined),
                             customer: {
                                 name: v.receiverName || existing.customer?.name,
-                                phone: v.receiverPhone || existing.customer?.phone
+                                phone: v.receiverPhone || existing.customer?.phone,
+                                merchant: v.merchantName
+                            },
+                            origin: {
+                                ...(typeof existing.origin === 'object' ? existing.origin : {}),
+                                contactPerson: v.merchantName,
+                                companyName: v.merchantName,
+                                phone: v.senderPhone || existing.origin?.phone,
+                                city: 'Kuwait City',
+                                countryCode: 'KW'
                             },
                             destination: {
                                 ...(typeof existing.destination === 'object' ? existing.destination : {}),
                                 contactPerson: v.receiverName || existing.destination?.contactPerson,
-                                phone: v.receiverPhone || existing.destination?.phone
+                                phone: v.receiverPhone || existing.destination?.phone,
+                                city: v.destCountryName || existing.destination?.city,
+                                countryCode: v.destCountryCode || existing.destination?.countryCode
                             },
                             documents: updatedDocs
                         }

@@ -72,7 +72,7 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
 
     return (
         <div className="modal modal-open z-50">
-            <div className="modal-box max-w-4xl max-h-[90vh] flex flex-col p-6 rounded-2xl bg-base-100 shadow-2xl border border-base-200">
+            <div className="modal-box max-w-5xl max-h-[90vh] flex flex-col p-6 rounded-2xl bg-base-100 shadow-2xl border border-base-200">
                 {/* Header */}
                 <div className="flex items-center justify-between pb-4 border-b border-base-200 shrink-0">
                     <div className="flex items-center gap-3">
@@ -194,7 +194,7 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                     <div className="p-3 bg-info/10 border border-info/20 rounded-xl text-xs text-base-content/80 flex items-center gap-2.5">
                         <span className="material-symbols-outlined text-info text-lg shrink-0">verified</span>
                         <span>
-                            <strong>Branded Security:</strong> Customers only receive <code>https://target-kw.com/track/TRK-...</code> links. Incomplete rows missing carrier AWBs, recipient names, or phone numbers are filtered out automatically.
+                            <strong>Branded Security:</strong> Consignments are automatically linked to Merchant Store accounts. Customers receive clean <code>https://target-kw.com/track/TRK-...</code> links with real-time checkpoints.
                         </span>
                     </div>
 
@@ -287,15 +287,16 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                                     (Total ERP Bills: {previewData.totalFetched} | Complete: {previewData.completeCount} | Incomplete Skipped: {previewData.incompleteCount})
                                 </span>
                             </div>
-                            <div className="overflow-x-auto max-h-64 border border-base-200 rounded-xl">
+                            <div className="overflow-x-auto max-h-72 border border-base-200 rounded-xl">
                                 <table className="table table-xs w-full">
                                     <thead className="bg-base-200 sticky top-0">
                                         <tr>
                                             <th>Bill / Invoice</th>
-                                            <th>Carrier</th>
-                                            <th>Carrier AWB</th>
-                                            <th>Recipient</th>
-                                            <th>Phone (E.164)</th>
+                                            <th>Merchant (Sender)</th>
+                                            <th>Carrier / AWB</th>
+                                            <th>Recipient (Consignee)</th>
+                                            <th>Destination</th>
+                                            <th>Price</th>
                                             <th>Data Quality</th>
                                             <th>Target DB Status</th>
                                         </tr>
@@ -305,11 +306,30 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                                             <tr key={idx} className="hover">
                                                 <td className="font-bold">#{item.receiptNo || item.billId}</td>
                                                 <td>
-                                                    <span className="badge badge-outline badge-xs font-bold">{item.derivedCarrier}</span>
+                                                    <div className="font-bold text-primary">{item.merchantName || 'Target Logistics'}</div>
+                                                    <div className="font-mono text-[10px] text-base-content/50">{item.senderPhone}</div>
                                                 </td>
-                                                <td className="font-mono font-bold text-primary">{item.carrierTracking || '-'}</td>
-                                                <td className="font-medium">{item.receiverName}</td>
-                                                <td className="font-mono text-xs font-semibold">{item.receiverPhone}</td>
+                                                <td>
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="badge badge-outline badge-xs font-bold">{item.derivedCarrier}</span>
+                                                        <span className="font-mono font-bold text-xs">{item.carrierTracking || '-'}</span>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <div className="font-semibold">{item.receiverName}</div>
+                                                    <div className="font-mono text-[10px] text-base-content/60">{item.receiverPhone}</div>
+                                                </td>
+                                                <td>
+                                                    <div className="font-bold flex items-center gap-1">
+                                                        <span className="badge badge-sm badge-ghost font-mono">{item.destCountryCode || 'KW'}</span>
+                                                        <span className="text-xs">{item.destCountryName || 'Kuwait'}</span>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <span className="font-mono font-bold text-xs">
+                                                        {item.totalAmount > 0 ? `${item.totalAmount.toFixed(3)} KWD` : '-'}
+                                                    </span>
+                                                </td>
                                                 <td>
                                                     {item.isComplete ? (
                                                         <span className="badge badge-success badge-xs font-bold">Full Data</span>
