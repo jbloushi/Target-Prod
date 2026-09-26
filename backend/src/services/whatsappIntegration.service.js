@@ -136,6 +136,10 @@ async function sendViaShipmentWhatsappMicroservice({ serviceUrl = 'https://msg.t
                 try {
                     const parsed = JSON.parse(line.slice(5).trim());
                     if (parsed.messageId) messageId = parsed.messageId;
+                    if (parsed.status === 'skipped') {
+                        status = 'skipped';
+                        errorMessage = parsed.message || parsed.error || 'Already sent previously';
+                    }
                     if (parsed.status === 'failed') {
                         status = 'failed';
                         errorMessage = parsed.error || 'Microservice reported delivery failure';
@@ -148,10 +152,24 @@ async function sendViaShipmentWhatsappMicroservice({ serviceUrl = 'https://msg.t
         }
     } else if (typeof rawData === 'object' && rawData !== null) {
         messageId = rawData.messageId || rawData.id || null;
-        if (rawData.error) {
+        if (rawData.status === 'skipped') {
+            status = 'skipped';
+            errorMessage = rawData.message || 'Already sent previously';
+        } else if (rawData.error) {
             status = 'failed';
             errorMessage = rawData.error;
         }
+    }
+
+    if (status === 'skipped') {
+        return {
+            status: 'SKIPPED',
+            alreadySent: true,
+            message: errorMessage,
+            messageId: messageId || `wamid.SKIPPED_${Date.now()}`,
+            rawResponse: rawData,
+            payload
+        };
     }
 
     if (status === 'failed' && errorMessage) {
@@ -237,24 +255,26 @@ class WhatsAppIntegrationService {
 
         // STRICT DEDUPLICATION GUARD: Prevent duplicate WhatsApp sends from any entry point
         if (!force) {
-            // 1. Check local database for successful sends to this shipment / recipient phone
+            // 1. Check local database for successful sends to this shipment / tracking number
             const existingLog = await prisma.shipmentNotificationLog.findFirst({
                 where: {
-                    shipmentId: shipment.id,
-                    recipientPhone: phone,
+                    OR: [
+                        { shipmentId: shipment.id },
+                        { trackingNumber: shipment.trackingNumber }
+                    ],
                     status: { in: ['SENT', 'DELIVERED', 'READ'] }
                 },
                 orderBy: { sentAt: 'desc' }
             });
 
             if (existingLog) {
-                logger.info(`[WhatsApp Dedup Guard] Blocked duplicate send for shipment ${shipment.trackingNumber} to ${phone} (Already sent at ${existingLog.sentAt})`);
+                logger.info(`[WhatsApp Dedup Guard] Blocked duplicate send for shipment ${shipment.trackingNumber} (Already sent at ${existingLog.sentAt})`);
                 return {
                     status: 'SKIPPED',
                     logId: existingLog.id,
                     alreadySent: true,
                     sentAt: existingLog.sentAt,
-                    message: `Notification was already sent to ${phone} on ${formatLegibleDate(existingLog.sentAt)}.`
+                    message: `Notification was already sent for ${shipment.trackingNumber} on ${formatLegibleDate(existingLog.sentAt)}.`
                 };
             }
 

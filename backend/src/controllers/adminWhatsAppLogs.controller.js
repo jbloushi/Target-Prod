@@ -90,11 +90,20 @@ async function resendNotification(req, res) {
             return res.status(404).json({ error: 'Notification log entry not found' });
         }
 
-        if (['SENT', 'DELIVERED', 'READ'].includes(existing.status) && !force) {
-            return res.status(400).json({ 
-                error: `This message was already sent to ${existing.recipientPhone}. Resending is disabled to prevent sending duplicate notifications to the customer.`,
-                alreadySent: true
+        if (!force) {
+            const anySent = await prisma.shipmentNotificationLog.findFirst({
+                where: {
+                    trackingNumber: existing.trackingNumber,
+                    status: { in: ['SENT', 'DELIVERED', 'READ'] }
+                }
             });
+
+            if (anySent || ['SENT', 'DELIVERED', 'READ'].includes(existing.status)) {
+                return res.status(400).json({ 
+                    error: `A notification was already successfully delivered for shipment ${existing.trackingNumber}. Resending is disabled to prevent duplicate customer messages.`,
+                    alreadySent: true
+                });
+            }
         }
 
         const shipment = await prisma.shipment.findFirst({
