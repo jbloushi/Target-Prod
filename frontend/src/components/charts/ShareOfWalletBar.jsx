@@ -5,15 +5,18 @@ import { TK } from '../../tokens/kineticHorizon';
  * ShareOfWalletBar - Horizontal spending / volume distribution breakdown
  */
 export const ShareOfWalletBar = ({
-  items = [
-    { name: 'Al-Fardan Trading', amount: 8420, percent: 38, color: TK.primary },
-    { name: 'Gulf Exports Ltd', amount: 5310, percent: 24, color: '#0284c7' },
-    { name: 'Khalij Freight Co.', amount: 3980, percent: 18, color: '#7c3aed' },
-    { name: 'Noor Logistics', amount: 2650, percent: 12, color: '#059669' },
-    { name: 'Others', amount: 1770, percent: 8, color: '#9ca3af' },
-  ],
+  items = [],
   currency = 'KD'
 }) => {
+  if (!items || items.length === 0) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '36px 16px', color: '#94a3b8', fontSize: 13, textAlign: 'center' }}>
+        <span className="material-symbols-outlined" style={{ fontSize: 32, marginBottom: 8, opacity: 0.4 }}>pie_chart</span>
+        <span>No shipping volume or spend recorded for this period</span>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, width: '100%' }}>
       {/* Multi-segment stacked bar */}

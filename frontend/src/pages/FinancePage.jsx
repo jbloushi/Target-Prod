@@ -142,57 +142,62 @@ const FinancePage = () => {
             });
         }
 
-        const hasActivity = months.some(m => m.credits > 0 || m.debits > 0);
-        if (!hasActivity) {
-            const baseCredit = parseFloat(overview?.balance || 1450.5);
-            months.forEach((m, idx) => {
-                const factor = 0.65 + (idx * 0.11);
-                m.credits = Math.round(baseCredit * factor * 2.4);
-                m.debits = Math.round(baseCredit * factor * 1.5);
-            });
-        }
-
         return months;
-    }, [ledger, overview]);
+    }, [ledger]);
 
     // Dynamic Spending & Volume Distribution
     const spendingDistributionData = useMemo(() => {
-        if (Array.isArray(organizations) && organizations.length > 0) {
-            const colors = ['#0050d4', '#0284c7', '#7c3aed', '#059669', '#9ca3af'];
-            const sortedOrgs = [...organizations].sort((a, b) => (parseFloat(b.creditLimit || b.balance || 0)) - (parseFloat(a.creditLimit || a.balance || 0)));
-            const top4 = sortedOrgs.slice(0, 4);
-            const remainder = sortedOrgs.slice(4);
+        // 1. Prefer real aggregated spending distribution from backend overview
+        if (Array.isArray(overview?.spendingDistribution) && overview.spendingDistribution.length > 0) {
+            return overview.spendingDistribution;
+        }
 
-            let totalVal = sortedOrgs.reduce((sum, o) => sum + (parseFloat(o.creditLimit || 0) + parseFloat(o.balance || 0)), 0);
-            if (totalVal === 0) return [];
+        // 2. Client-side fallback: aggregate from loaded shipments
+        if (Array.isArray(shipments) && shipments.length > 0) {
+            const colors = ['#0050d4', '#0284c7', '#7c3aed', '#059669', '#f59e0b', '#9ca3af'];
+            const carrierLabels = {
+                'ARAMEX': 'Aramex Express',
+                'DHL': 'DHL Express',
+                'DGR': 'DHL Express (DGR)',
+                'FEDEX': 'FedEx International',
+                'INTERNAL': 'Target Local Fleet',
+                'MANUAL': 'Direct Courier'
+            };
+            const carrierStats = {};
+            let totalVal = 0;
 
-            const items = top4.map((o, idx) => {
-                const val = parseFloat(o.creditLimit || 0) + parseFloat(o.balance || 0);
-                const pct = Math.round((val / totalVal) * 100);
+            shipments.forEach(s => {
+                const carrier = (s.carrierCode || s.carrier || 'OTHER').toUpperCase();
+                const amt = parseFloat(s.pricingSnapshot?.totalPrice ?? s.price ?? s.customerFee ?? s.totalCharge ?? 0);
+                if (!carrierStats[carrier]) {
+                    carrierStats[carrier] = { amount: 0, count: 0 };
+                }
+                carrierStats[carrier].amount += amt;
+                carrierStats[carrier].count += 1;
+                totalVal += amt;
+            });
+
+            const useAmount = totalVal > 0;
+            const entries = Object.entries(carrierStats).sort((a, b) => {
+                return useAmount ? b[1].amount - a[1].amount : b[1].count - a[1].count;
+            });
+            const divisor = useAmount ? totalVal : shipments.length;
+
+            return entries.map(([carrier, data], idx) => {
+                const val = useAmount ? data.amount : data.count;
+                const pct = Math.round((val / divisor) * 100);
                 return {
-                    name: o.name,
-                    amount: Math.round(val),
+                    name: carrierLabels[carrier] || carrier,
+                    amount: Math.round(data.amount),
+                    count: data.count,
                     percent: pct,
                     color: colors[idx % colors.length]
                 };
             });
-
-            if (remainder.length > 0) {
-                const remVal = remainder.reduce((sum, o) => sum + (parseFloat(o.creditLimit || 0) + parseFloat(o.balance || 0)), 0);
-                const remPct = Math.max(0, 100 - items.reduce((sum, i) => sum + i.percent, 0));
-                items.push({
-                    name: 'Others',
-                    amount: Math.round(remVal),
-                    percent: remPct,
-                    color: colors[4]
-                });
-            }
-
-            return items;
         }
 
         return [];
-    }, [organizations]);
+    }, [overview, shipments]);
 
     // Debounce Search
     useEffect(() => {

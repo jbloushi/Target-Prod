@@ -341,6 +341,74 @@ const getOrganizationOverview = async (organizationId, creditLimit = 0, currency
     const limit = normalizeAmount(creditLimit);
     const bal = normalizeAmount(balance);
 
+    // Compute actual shipping volume & spending distribution by carrier
+    let spendingDistribution = [];
+    try {
+        const shipmentsWhere = {
+            status: { notIn: ['draft', 'cancelled'] }
+        };
+        if (organizationId && organizationId !== 'none') {
+            shipmentsWhere.organizationId = organizationId;
+        }
+
+        const orgShipments = await prisma.shipment.findMany({
+            where: shipmentsWhere,
+            select: {
+                carrierCode: true,
+                price: true,
+                pricingSnapshot: true
+            },
+            take: 1000
+        });
+
+        if (orgShipments.length > 0) {
+            const carrierLabels = {
+                'ARAMEX': 'Aramex Express',
+                'DHL': 'DHL Express',
+                'DGR': 'DHL Express (DGR)',
+                'FEDEX': 'FedEx International',
+                'INTERNAL': 'Target Local Fleet',
+                'MANUAL': 'Direct Courier'
+            };
+            const colors = ['#0050d4', '#0284c7', '#7c3aed', '#059669', '#f59e0b', '#9ca3af'];
+            const carrierStats = {};
+            let totalSpend = new Decimal(0);
+
+            orgShipments.forEach(s => {
+                const carrier = (s.carrierCode || 'OTHER').toUpperCase();
+                const amt = normalizeAmount(s.pricingSnapshot?.totalPrice ?? s.price ?? s.pricingSnapshot?.customerRate ?? 0);
+                if (!carrierStats[carrier]) {
+                    carrierStats[carrier] = { amount: new Decimal(0), count: 0 };
+                }
+                carrierStats[carrier].amount = carrierStats[carrier].amount.plus(amt);
+                carrierStats[carrier].count += 1;
+                totalSpend = totalSpend.plus(amt);
+            });
+
+            const useSpend = totalSpend.gt(0);
+            const entries = Object.entries(carrierStats).sort((a, b) => {
+                return useSpend
+                    ? (b[1].amount.minus(a[1].amount)).toNumber()
+                    : (b[1].count - a[1].count);
+            });
+            const totalBase = useSpend ? totalSpend : new Decimal(orgShipments.length);
+
+            spendingDistribution = entries.map(([carrier, stat], idx) => {
+                const val = useSpend ? stat.amount : new Decimal(stat.count);
+                const pct = Math.round(val.dividedBy(totalBase).times(100).toNumber());
+                return {
+                    name: carrierLabels[carrier] || carrier,
+                    amount: Math.round(stat.amount.toNumber()),
+                    count: stat.count,
+                    percent: pct,
+                    color: colors[idx % colors.length]
+                };
+            });
+        }
+    } catch (distErr) {
+        logger.warn(`Failed to aggregate spending distribution: ${distErr.message}`);
+    }
+
     return {
         currency: baseCurrency,
         balance,
@@ -352,7 +420,8 @@ const getOrganizationOverview = async (organizationId, creditLimit = 0, currency
         totalUnpaid: aging.totalUnpaid,
         totalUnpaidByCurrency: aging.totalUnpaidByCurrency,
         agingBuckets: aging.buckets,
-        agingBucketsByCurrency: aging.agingBucketsByCurrency
+        agingBucketsByCurrency: aging.agingBucketsByCurrency,
+        spendingDistribution
     };
 };
 
