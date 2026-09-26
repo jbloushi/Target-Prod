@@ -80,12 +80,21 @@ async function getNotificationLogs(req, res) {
 async function resendNotification(req, res) {
     try {
         const { id } = req.params;
+        const force = Boolean(req.body?.force);
+
         const existing = await prisma.shipmentNotificationLog.findUnique({
             where: { id }
         });
 
         if (!existing) {
             return res.status(404).json({ error: 'Notification log entry not found' });
+        }
+
+        if (['SENT', 'DELIVERED', 'READ'].includes(existing.status) && !force) {
+            return res.status(400).json({ 
+                error: `This message was already sent to ${existing.recipientPhone}. Resending is disabled to prevent sending duplicate notifications to the customer.`,
+                alreadySent: true
+            });
         }
 
         const shipment = await prisma.shipment.findFirst({
@@ -102,7 +111,8 @@ async function resendNotification(req, res) {
             recipientPhone: existing.recipientPhone,
             recipientName: existing.recipientName,
             eventType: existing.eventType,
-            templateName: existing.templateName
+            templateName: existing.templateName,
+            force
         });
 
         return res.json({ success: true, result });
@@ -119,7 +129,7 @@ async function resendNotification(req, res) {
 async function sendShipmentWhatsApp(req, res) {
     try {
         const { trackingNumber } = req.params;
-        const { recipientRole, recipientPhone, recipientName, eventType, templateName, customMessage } = req.body;
+        const { recipientRole, recipientPhone, recipientName, eventType, templateName, customMessage, force } = req.body;
 
         const shipment = await prisma.shipment.findFirst({
             where: { trackingNumber }
@@ -156,7 +166,8 @@ async function sendShipmentWhatsApp(req, res) {
             recipientName: recipientName || (recipientRole === 'driver' ? shipment.driverName : shipment.customerName),
             eventType: eventType || 'out_for_delivery',
             templateName,
-            customMessage
+            customMessage,
+            force: Boolean(force)
         });
 
         return res.json({ success: true, result });

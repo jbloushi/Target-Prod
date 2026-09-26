@@ -222,7 +222,7 @@ class WhatsAppIntegrationService {
     /**
      * Send automatic or manual shipment event notification via WhatsApp
      */
-    async sendNotification({ shipment, recipientRole, recipientPhone, recipientCountryCode, recipientName, eventType, templateName, customMessage }) {
+    async sendNotification({ shipment, recipientRole, recipientPhone, recipientCountryCode, recipientName, eventType, templateName, customMessage, force = false }) {
         const settings = getSystemSettings()?.whatsapp || {};
         const phone = resolveRecipientPhone(recipientPhone, recipientCountryCode || '965');
 
@@ -230,9 +230,74 @@ class WhatsAppIntegrationService {
             throw new Error('Recipient phone number is required and must be valid');
         }
 
-        const context = chatwootService.buildShipmentNotificationContext(shipment);
-        const provider = settings.provider || 'SHIPMENT_WHATSAPP';
+        const billId = shipment?.documents?.phenixBillId || null;
+        const role = recipientRole || 'customer';
         const chosenTemplate = templateName || 'shipment_confirmation_2';
+        const provider = settings.provider || 'SHIPMENT_WHATSAPP';
+
+        // STRICT DEDUPLICATION GUARD: Prevent duplicate WhatsApp sends from any entry point
+        if (!force) {
+            // 1. Check local database for successful sends to this shipment / recipient phone
+            const existingLog = await prisma.shipmentNotificationLog.findFirst({
+                where: {
+                    shipmentId: shipment.id,
+                    recipientPhone: phone,
+                    status: { in: ['SENT', 'DELIVERED', 'READ'] }
+                },
+                orderBy: { sentAt: 'desc' }
+            });
+
+            if (existingLog) {
+                logger.info(`[WhatsApp Dedup Guard] Blocked duplicate send for shipment ${shipment.trackingNumber} to ${phone} (Already sent at ${existingLog.sentAt})`);
+                return {
+                    status: 'SKIPPED',
+                    logId: existingLog.id,
+                    alreadySent: true,
+                    sentAt: existingLog.sentAt,
+                    message: `Notification was already sent to ${phone} on ${formatLegibleDate(existingLog.sentAt)}.`
+                };
+            }
+
+            // 2. Check microservice (msg.target-kw.com) sent store
+            if (billId) {
+                const microSent = await checkMicroserviceSent(billId, role === 'sender' ? 'sender' : 'receiver');
+                if (microSent?.sent) {
+                    logger.info(`[WhatsApp Dedup Guard] Blocked duplicate send: Bill #${billId} was already sent by microservice (at ${microSent.sentAt})`);
+                    // Ensure local log reflects that it was sent by microservice
+                    let savedLog = await prisma.shipmentNotificationLog.findFirst({
+                        where: { shipmentId: shipment.id, recipientPhone: phone }
+                    });
+                    if (!savedLog) {
+                        savedLog = await prisma.shipmentNotificationLog.create({
+                            data: {
+                                shipmentId: shipment.id,
+                                trackingNumber: shipment.trackingNumber,
+                                eventType: eventType || 'shipment_created',
+                                recipientRole: role,
+                                recipientName: recipientName || null,
+                                recipientPhone: phone,
+                                provider,
+                                templateName: chosenTemplate,
+                                status: 'SENT',
+                                chatwootMessageId: `msg-autosend-${microSent.sentAt || Date.now()}`,
+                                payloadJson: { source: 'MICROSERVICE_AUTOSEND', billId },
+                                responseJson: { autoSent: true, sentAt: microSent.sentAt },
+                                sentAt: microSent.sentAt ? new Date(microSent.sentAt) : new Date()
+                            }
+                        });
+                    }
+                    return {
+                        status: 'SKIPPED',
+                        logId: savedLog.id,
+                        alreadySent: true,
+                        sentAt: microSent.sentAt,
+                        message: `Notification was already sent via auto-send service on ${formatLegibleDate(microSent.sentAt)}.`
+                    };
+                }
+            }
+        }
+
+        const context = chatwootService.buildShipmentNotificationContext(shipment);
 
         // Initial DB log creation
         const log = await prisma.shipmentNotificationLog.create({
@@ -240,7 +305,7 @@ class WhatsAppIntegrationService {
                 shipmentId: shipment.id,
                 trackingNumber: shipment.trackingNumber,
                 eventType: eventType || 'manual_trigger',
-                recipientRole: recipientRole || 'customer',
+                recipientRole: role,
                 recipientName: recipientName || null,
                 recipientPhone: phone,
                 provider,
