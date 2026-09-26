@@ -32,5 +32,17 @@ router.delete('/webhooks/:id', integrationController.deleteWebhook);
 router.get('/webhooks/:id/events', integrationController.getWebhookEvents);
 router.post('/webhooks/:id/test', integrationController.testWebhook);
 
+// Phenix ERP Ingestion & Synchronization
+router.get(
+    '/phenix/preview',
+    authorize('VIEW_ALL_SHIPMENTS'),
+    integrationController.previewPhenixShipments
+);
+router.post(
+    '/phenix/sync',
+    authorize('CREATE_SHIPMENTS'),
+    integrationController.syncPhenixShipments
+);
+
 module.exports = router;
 

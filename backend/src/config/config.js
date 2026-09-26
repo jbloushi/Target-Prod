@@ -84,6 +84,17 @@ module.exports = {
     webhookSecret: process.env.CHATWOOT_WEBHOOK_SECRET || null
   },
 
+  // Phenix ERP Configuration
+  phenix: {
+    apiUser: process.env.PHENIX_API_USER || '',
+    apiPassword: process.env.PHENIX_API_PASSWORD || '',
+    token: process.env.PHENIX_TOKEN || '',
+    endpoint: process.env.PHENIX_ENDPOINT || 'https://apigateway.phenix.software/api/rest/TPhenixApi/%22Report%22/201',
+    syncDaysBack: parseInt(process.env.PHENIX_SYNC_DAYS_BACK, 10) || 3,
+    cronEnabled: process.env.PHENIX_SYNC_CRON_ENABLED === 'true',
+    intervalMs: parseInt(process.env.PHENIX_SYNC_INTERVAL_MS, 10) || 15 * 60 * 1000
+  },
+
   // Logging Configuration
   logLevel: process.env.LOG_LEVEL || 'info',
   logToFile: process.env.LOG_TO_FILE === 'true',

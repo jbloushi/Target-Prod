@@ -511,3 +511,66 @@ exports.testWebhook = async (req, res) => {
     }
 };
 
+/**
+ * Preview shipments available in Phenix ERP without saving to DB
+ * GET /api/v1/integrations/phenix/preview
+ */
+exports.previewPhenixShipments = async (req, res) => {
+    try {
+        const phenixSyncService = require('../services/phenixSync.service');
+        const carrier = req.query.carrier || 'ALL';
+        const daysBack = parseInt(req.query.daysBack, 10) || 3;
+
+        const result = await phenixSyncService.previewPhenixShipments({
+            carrier,
+            daysBack
+        });
+
+        res.status(200).json({
+            success: true,
+            data: result
+        });
+    } catch (error) {
+        logger.error('[integration] previewPhenixShipments error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to fetch preview from Phenix ERP'
+        });
+    }
+};
+
+/**
+ * Trigger manual or scheduled pull of shipments from Phenix ERP
+ * POST /api/v1/integrations/phenix/sync
+ */
+exports.syncPhenixShipments = async (req, res) => {
+    try {
+        const phenixSyncService = require('../services/phenixSync.service');
+        const { carrier = 'DHL', daysBack = 3, sendWhatsApp = false } = req.body || {};
+
+        const userId = req.user?.id || null;
+        const organizationId = req.user?.organizationId || null;
+
+        const result = await phenixSyncService.syncPhenixShipments({
+            carrier,
+            daysBack: parseInt(daysBack, 10) || 3,
+            sendWhatsApp: Boolean(sendWhatsApp),
+            triggeredBy: req.user?.email || 'manual',
+            userId,
+            organizationId
+        });
+
+        res.status(200).json({
+            success: true,
+            message: `Successfully synchronized ${result.matchedCount} shipments (${result.createdCount} created, ${result.updatedCount} updated, ${result.carrierSyncedCount} carrier synced)`,
+            data: result
+        });
+    } catch (error) {
+        logger.error('[integration] syncPhenixShipments error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to synchronize shipments from Phenix ERP'
+        });
+    }
+};
+

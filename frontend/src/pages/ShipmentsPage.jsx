@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import ShipmentList from '../components/ShipmentList';
 import BulkShipmentImportModal from '../components/BulkShipmentImportModal';
+import PhenixSyncModal from '../components/PhenixSyncModal';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { getRoleLabel } from '../utils/roleLabels';
@@ -25,6 +26,7 @@ const ShipmentsPage = () => {
     const isTargetManagement = ['admin', 'manager', 'accounting', 'staff'].includes(userRole);
 
     const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+    const [isPhenixModalOpen, setIsPhenixModalOpen] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
 
     // Organization Scope State (synchronized with URL params)
@@ -140,6 +142,16 @@ const ShipmentsPage = () => {
 
                     {/* Action Buttons */}
                     <div className="flex items-center gap-2 sm:self-end">
+                        {isTargetManagement && (
+                            <button
+                                type="button"
+                                onClick={() => setIsPhenixModalOpen(true)}
+                                className="btn btn-outline btn-accent btn-sm rounded-xl font-bold flex-1 sm:flex-initial gap-1.5"
+                            >
+                                <span className="material-symbols-outlined text-base">sync_alt</span>
+                                {t('sync_phenix_erp', 'Sync Phenix')}
+                            </button>
+                        )}
                         <button
                             type="button"
                             onClick={() => setIsBulkModalOpen(true)}
@@ -198,6 +210,13 @@ const ShipmentsPage = () => {
                 isOpen={isBulkModalOpen}
                 onClose={() => setIsBulkModalOpen(false)}
                 onImportSuccess={() => setRefreshKey(prev => prev + 1)}
+            />
+
+            {/* Phenix ERP Ingestion & Synchronization Modal */}
+            <PhenixSyncModal
+                isOpen={isPhenixModalOpen}
+                onClose={() => setIsPhenixModalOpen(false)}
+                onSyncSuccess={() => setRefreshKey(prev => prev + 1)}
             />
         </div>
     );
