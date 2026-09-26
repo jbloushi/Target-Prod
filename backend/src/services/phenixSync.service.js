@@ -712,6 +712,9 @@ class PhenixSyncService {
             results: []
         };
 
+        const shipmentsToSyncCarrier = [];
+        const notificationsToSend = [];
+
         for (const row of rows) {
             const v = validatePhenixRow(row);
 
@@ -880,56 +883,12 @@ class PhenixSyncService {
                     defaultUserId: defaultUser.id
                 });
 
-                // 3. Fetch live tracking checkpoints from Carrier API
-                let carrierSynced = false;
-                let carrierUpdates = null;
                 if (v.carrierTracking && v.derivedCarrier !== 'INTERNAL' && v.derivedCarrier !== 'MANUAL') {
-                    try {
-                        carrierUpdates = await syncCarrierTrackingHistory(shipment);
-                        if (carrierUpdates) {
-                            shipment = await prisma.shipment.update({
-                                where: { id: shipment.id },
-                                data: {
-                                    history: carrierUpdates.history,
-                                    status: carrierUpdates.status
-                                }
-                            });
-                            carrierSynced = true;
-                            summary.carrierSyncedCount++;
-                            logger.info(`[PhenixSync] Synced carrier checkpoints for ${shipment.trackingNumber} (Status: ${carrierUpdates.status})`);
-                        }
-                    } catch (carrierErr) {
-                        logger.warn(`[PhenixSync] Carrier API sync failed for ${shipment.trackingNumber}: ${carrierErr.message}`);
-                    }
+                    shipmentsToSyncCarrier.push(shipment);
                 }
 
-                // 3. Send WhatsApp notification if requested and not previously messaged
-                let waSent = false;
                 if (sendWhatsApp && v.receiverPhone) {
-                    try {
-                        // Check if already notified
-                        const alreadyNotified = await prisma.shipmentNotificationLog.findFirst({
-                            where: {
-                                shipmentId: shipment.id,
-                                status: 'SENT'
-                            }
-                        });
-
-                        if (!alreadyNotified) {
-                            await whatsappService.sendNotification({
-                                shipment,
-                                recipientRole: 'customer',
-                                recipientPhone: v.receiverPhone,
-                                recipientName: v.receiverName,
-                                templateName: 'shipment_confirmation_2',
-                                eventType: 'shipment_created'
-                            });
-                            waSent = true;
-                            summary.whatsAppSentCount++;
-                        }
-                    } catch (waErr) {
-                        logger.warn(`[PhenixSync] WhatsApp dispatch failed for ${shipment.trackingNumber}: ${waErr.message}`);
-                    }
+                    notificationsToSend.push({ shipment, v });
                 }
 
                 summary.results.push({
@@ -942,8 +901,8 @@ class PhenixSyncService {
                     receiverPhone: v.receiverPhone,
                     status: shipment.status,
                     action: wasCreated ? 'CREATED' : 'UPDATED',
-                    carrierSynced,
-                    whatsAppSent: waSent,
+                    carrierSynced: false,
+                    whatsAppSent: false,
                     publicTrackingUrl: `https://target-kw.com/track/${shipment.trackingNumber}`
                 });
 
@@ -955,6 +914,59 @@ class PhenixSyncService {
                     error: itemErr.message
                 });
             }
+        }
+
+        // Trigger background carrier checkpoints & WhatsApp dispatches asynchronously
+        if (shipmentsToSyncCarrier.length > 0) {
+            setImmediate(async () => {
+                logger.info(`[PhenixSync Background] Starting carrier checkpoints sync for ${shipmentsToSyncCarrier.length} shipments...`);
+                for (const s of shipmentsToSyncCarrier) {
+                    try {
+                        const carrierUpdates = await syncCarrierTrackingHistory(s);
+                        if (carrierUpdates) {
+                            await prisma.shipment.update({
+                                where: { id: s.id },
+                                data: {
+                                    history: carrierUpdates.history,
+                                    status: carrierUpdates.status
+                                }
+                            });
+                        }
+                    } catch (err) {
+                        logger.warn(`[PhenixSync Background] Carrier sync failed for ${s.trackingNumber}: ${err.message}`);
+                    }
+                }
+                logger.info(`[PhenixSync Background] Finished carrier checkpoints sync`);
+            });
+        }
+
+        if (notificationsToSend.length > 0) {
+            setImmediate(async () => {
+                logger.info(`[PhenixSync Background] Starting WhatsApp notification queue for ${notificationsToSend.length} recipients...`);
+                for (const item of notificationsToSend) {
+                    try {
+                        const alreadyNotified = await prisma.shipmentNotificationLog.findFirst({
+                            where: {
+                                shipmentId: item.shipment.id,
+                                status: 'SENT'
+                            }
+                        });
+
+                        if (!alreadyNotified) {
+                            await whatsappService.sendNotification({
+                                shipment: item.shipment,
+                                recipientRole: 'customer',
+                                recipientPhone: item.v.receiverPhone,
+                                recipientName: item.v.receiverName,
+                                templateName: 'shipment_confirmation_2',
+                                eventType: 'shipment_created'
+                            });
+                        }
+                    } catch (err) {
+                        logger.warn(`[PhenixSync Background] WhatsApp dispatch failed for ${item.shipment.trackingNumber}: ${err.message}`);
+                    }
+                }
+            });
         }
 
         logger.info(`[PhenixSync] Sync completed: Matched=${summary.matchedCount}, FullData=${summary.completeCount}, SkippedIncomplete=${summary.skippedIncompleteCount}, Created=${summary.createdCount}, Updated=${summary.updatedCount}`);

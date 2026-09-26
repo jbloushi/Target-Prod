@@ -1465,7 +1465,10 @@ export const whatsappService = {
 export const phenixService = {
   previewShipments: async (params = {}) => {
     try {
-      const response = await api.get('integrations/phenix/preview', { params });
+      const response = await api.get('integrations/phenix/preview', { 
+        params,
+        timeout: 120000 
+      });
       return response.data;
     } catch (error) {
       console.error('Error previewing Phenix ERP shipments:', error);
@@ -1475,7 +1478,9 @@ export const phenixService = {
 
   syncShipments: async (payload = {}) => {
     try {
-      const response = await api.post('integrations/phenix/sync', payload);
+      const response = await api.post('integrations/phenix/sync', payload, {
+        timeout: 120000
+      });
       return response.data;
     } catch (error) {
       console.error('Error synchronizing Phenix ERP shipments:', error);
