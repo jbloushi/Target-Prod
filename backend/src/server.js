@@ -161,6 +161,7 @@ const apiRoutes = require('./routes/api.routes');
 const financeRoutes = require('./routes/finance.routes');
 const organizationRoutes = require('./routes/organization.routes');
 const integrationRoutes = require('./routes/integration.routes');
+const sallaRoutes = require('./routes/salla.routes');
 
 const shipmentPublicRoutes = require('./routes/shipment-public.routes');
 const settingsRoutes = require('./routes/settings.routes');
@@ -175,6 +176,7 @@ app.use('/api/finance', financeRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/organizations', organizationRoutes);
 app.use('/api/integrations', integrationRoutes);
+app.use('/api/salla', sallaRoutes);
 app.use('/api/pickups', pickupRoutes);
 app.use('/api/client', externalRoutes);
 app.use('/api/v1', apiRoutes);
