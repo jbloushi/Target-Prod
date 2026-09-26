@@ -89,8 +89,7 @@ async function resendNotification(req, res) {
         }
 
         const shipment = await prisma.shipment.findFirst({
-            where: { trackingNumber: existing.trackingNumber },
-            include: { origin: true, destination: true }
+            where: { trackingNumber: existing.trackingNumber }
         });
 
         if (!shipment) {
