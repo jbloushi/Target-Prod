@@ -6,11 +6,15 @@ const { normalizeStatus } = require('../src/constants/statusConstants');
 async function main() {
     const args = process.argv.slice(2);
     const shouldFix = args.includes('--fix') || args.includes('-f') || args.includes('--sync');
+    const isAll = args.includes('--all') || args.includes('-a');
+    const limitArg = args.find(a => a.startsWith('--limit='));
+    const customLimit = limitArg ? parseInt(limitArg.split('=')[1], 10) : null;
     const specificTracking = args.find(a => !a.startsWith('-')) || null;
 
     console.log(`\n================================================================`);
     console.log(`🔍 TARGET LOGISTICS — SHIPMENT TRACKING INVESTIGATION & AUDIT`);
     console.log(`Mode: ${shouldFix ? '⚡ AUDIT & AUTO-REPAIR (--fix)' : '📋 READ-ONLY AUDIT (pass --fix to repair)'}`);
+    if (isAll) console.log(`Scope: ALL shipments in database`);
     if (specificTracking) console.log(`Filter: ${specificTracking}`);
     console.log(`================================================================\n`);
 
@@ -25,14 +29,16 @@ async function main() {
             { carrierShipmentId: cleanNumeric }
         ];
     } else {
-        // Audit recent shipments
+        // Audit non-draft shipments
         where.status = { not: 'draft' };
     }
+
+    const take = specificTracking ? 10 : (isAll ? undefined : (customLimit || 50));
 
     const shipments = await prisma.shipment.findMany({
         where,
         orderBy: { createdAt: 'desc' },
-        take: specificTracking ? 10 : 50
+        ...(take ? { take } : {})
     });
 
     if (shipments.length === 0) {
