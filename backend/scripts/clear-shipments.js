@@ -28,20 +28,34 @@ async function main() {
             return;
         }
 
-        console.log('\n[1/6] Deleting Shipment Audit entries...');
-        await prisma.shipmentAudit.deleteMany({});
+        console.log('\n[1/5] Deleting Shipment Audit entries...');
+        if (prisma.shipmentAuditLog?.deleteMany) {
+            await prisma.shipmentAuditLog.deleteMany({});
+        }
 
-        console.log('[2/6] Deleting Shipment Notification Logs (WhatsApp logs)...');
-        await prisma.shipmentNotificationLog.deleteMany({});
+        console.log('[2/5] Deleting Shipment Notification Logs (WhatsApp logs)...');
+        if (prisma.shipmentNotificationLog?.deleteMany) {
+            await prisma.shipmentNotificationLog.deleteMany({});
+        }
 
-        console.log('[3/6] Clearing Shipment relations from Pickups, Ledger & Bills...');
-        await prisma.pickupRequest.updateMany({ data: { shipmentId: null } });
-        await prisma.journalEntryLine.updateMany({ data: { shipmentId: null } });
-        await prisma.carrierBillLine.updateMany({ data: { shipmentId: null } });
-        await prisma.invoiceLine.deleteMany({});
-        await prisma.paymentAllocation.deleteMany({});
+        console.log('[3/5] Clearing Shipment relations from Pickups, Ledger & Bills...');
+        if (prisma.pickupRequest?.updateMany) {
+            await prisma.pickupRequest.updateMany({ data: { shipmentId: null } });
+        }
+        if (prisma.journalEntryLine?.updateMany) {
+            await prisma.journalEntryLine.updateMany({ data: { shipmentId: null } });
+        }
+        if (prisma.carrierBillLine?.updateMany) {
+            await prisma.carrierBillLine.updateMany({ data: { shipmentId: null } });
+        }
+        if (prisma.invoiceLine?.deleteMany) {
+            await prisma.invoiceLine.deleteMany({});
+        }
+        if (prisma.paymentAllocation?.deleteMany) {
+            await prisma.paymentAllocation.deleteMany({});
+        }
 
-        console.log('[4/6] Deleting all Shipments...');
+        console.log('[4/5] Deleting all Shipments...');
         const deleted = await prisma.shipment.deleteMany({});
 
         console.log(`\n================================================================`);
