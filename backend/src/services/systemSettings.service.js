@@ -50,6 +50,17 @@ const DEFAULT_SETTINGS = {
         webhookVerifyToken: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || 'target_logistics_meta_verify_secret_2026',
         metaAppId: process.env.WHATSAPP_META_APP_ID || '',
         metaAppSecret: process.env.WHATSAPP_META_APP_SECRET || ''
+    },
+    phenixSync: {
+        autoSyncEnabled: false,
+        intervalMinutes: 15,
+        carrier: 'ALL',
+        daysBack: 3,
+        sendWhatsApp: false,
+        onlyComplete: true,
+        lastAutoSyncAt: null,
+        lastAutoSyncStatus: null,
+        lastAutoSyncSummary: null
     }
 };
 
@@ -87,6 +98,10 @@ function getSystemSettings() {
             whatsapp: {
                 ...DEFAULT_SETTINGS.whatsapp,
                 ...(parsed.whatsapp || {})
+            },
+            phenixSync: {
+                ...DEFAULT_SETTINGS.phenixSync,
+                ...(parsed.phenixSync || {})
             }
         };
     } catch (err) {
@@ -117,6 +132,10 @@ function updateSystemSettings(updates) {
             whatsapp: {
                 ...current.whatsapp,
                 ...(updates.whatsapp || {})
+            },
+            phenixSync: {
+                ...current.phenixSync,
+                ...(updates.phenixSync || {})
             }
         };
         fs.writeFileSync(SETTINGS_FILE_PATH, JSON.stringify(next, null, 2), 'utf8');

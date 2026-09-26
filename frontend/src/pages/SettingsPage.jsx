@@ -20,6 +20,7 @@ const getTabs = (lang) => [
   { id: 'profile', label: lang === 'ar' ? 'ملف الشاحن' : 'Shipper Profile', icon: 'person' },
   { id: 'addresses', label: lang === 'ar' ? 'سجل العناوين' : 'Address Presets', icon: 'location_on' },
   { id: 'api', label: lang === 'ar' ? 'واجهة API والويب هوك' : 'API & Webhooks', icon: 'key' },
+  { id: 'phenix', label: lang === 'ar' ? 'مزامنة فينيكس ERP' : 'Phenix ERP Sync', icon: 'sync_alt' },
   { id: 'whatsapp', label: lang === 'ar' ? 'إشعارات واتساب وميتا' : 'Meta WhatsApp Alerts', icon: 'chat' },
   { id: 'notifications', label: lang === 'ar' ? 'قنوات الإشعار' : 'Event Triggers', icon: 'notifications' },
   { id: 'routing', label: lang === 'ar' ? 'مسارات وبوابات النقل' : 'Carrier Gateways', icon: 'hub' },
@@ -777,6 +778,179 @@ export const SettingsPage = () => {
                     )}
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB: Phenix ERP Sync & Auto-Pull */}
+          {activeTab === 'phenix' && (
+            <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
+              <div className="card-body p-6 sm:p-8 space-y-6">
+                <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-base-200">
+                  <div>
+                    <h2 className="text-lg font-black text-base-content tracking-tight">
+                      Phenix ERP Gateway & Background Auto-Sync
+                    </h2>
+                    <p className="text-xs text-base-content/60 mt-0.5">
+                      Automated background synchronization, merchant organization attribution, and multi-carrier live checkpoints.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        setSavingSettings(true);
+                        await settingsService.updateSystemSettings({ phenixSync: systemSettings?.phenixSync });
+                        enqueueSnackbar('Phenix ERP settings saved successfully', { variant: 'success' });
+                      } catch (err) {
+                        enqueueSnackbar('Failed to update Phenix ERP settings: ' + err.message, { variant: 'error' });
+                      } finally {
+                        setSavingSettings(false);
+                      }
+                    }}
+                    disabled={savingSettings}
+                    className="btn btn-primary btn-sm font-bold text-xs gap-1.5 shadow-md shadow-primary/20"
+                  >
+                    {savingSettings ? <span className="loading loading-spinner loading-xs" /> : <span className="material-symbols-outlined text-base">save</span>}
+                    <span>Save Phenix Config</span>
+                  </button>
+                </div>
+
+                {/* Auto-Sync Master Toggle */}
+                <div className="p-4 rounded-xl bg-base-200/50 border border-base-200 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                        systemSettings?.phenixSync?.autoSyncEnabled ? 'bg-success text-success-content' : 'bg-base-300 text-base-content/60'
+                      }`}>
+                        <span className="material-symbols-outlined text-2xl">
+                          {systemSettings?.phenixSync?.autoSyncEnabled ? 'autorenew' : 'pause_circle'}
+                        </span>
+                      </div>
+                      <div>
+                        <div className="font-bold text-sm text-base-content flex items-center gap-2">
+                          <span>Periodic Background Auto-Pull (Cron Worker)</span>
+                          <span className={`badge badge-xs font-bold ${systemSettings?.phenixSync?.autoSyncEnabled ? 'badge-success' : 'badge-ghost'}`}>
+                            {systemSettings?.phenixSync?.autoSyncEnabled ? 'ACTIVE' : 'DISABLED'}
+                          </span>
+                        </div>
+                        <div className="text-xs text-base-content/60">
+                          Automatically query Phenix API on a recurring schedule to ingest new consignments and link merchant stores.
+                        </div>
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(systemSettings?.phenixSync?.autoSyncEnabled)}
+                      onChange={(e) => setSystemSettings({
+                        ...systemSettings,
+                        phenixSync: { ...(systemSettings?.phenixSync || {}), autoSyncEnabled: e.target.checked }
+                      })}
+                      className="toggle toggle-success toggle-md"
+                    />
+                  </div>
+
+                  {systemSettings?.phenixSync?.lastAutoSyncAt && (
+                    <div className="p-3 bg-base-100 rounded-lg border border-base-200 text-xs flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-sm text-success">schedule</span>
+                        <span className="font-semibold">Last Background Sync:</span>
+                        <span className="font-mono text-base-content/70">{new Date(systemSettings.phenixSync.lastAutoSyncAt).toLocaleString()}</span>
+                      </div>
+                      <div className="flex items-center gap-2 font-mono text-[11px]">
+                        <span className="badge badge-sm badge-outline font-bold">
+                          Created: {systemSettings.phenixSync.lastAutoSyncSummary?.createdCount || 0}
+                        </span>
+                        <span className="badge badge-sm badge-outline font-bold">
+                          Updated: {systemSettings.phenixSync.lastAutoSyncSummary?.updatedCount || 0}
+                        </span>
+                        <span className="badge badge-sm badge-accent font-bold">
+                          Carrier Synced: {systemSettings.phenixSync.lastAutoSyncSummary?.carrierSyncedCount || 0}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Configuration Options */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-base-content/70 uppercase">Sync Frequency</label>
+                    <select
+                      value={systemSettings?.phenixSync?.intervalMinutes || 15}
+                      onChange={(e) => setSystemSettings({
+                        ...systemSettings,
+                        phenixSync: { ...(systemSettings?.phenixSync || {}), intervalMinutes: Number(e.target.value) }
+                      })}
+                      className="select select-bordered select-sm w-full font-bold text-xs"
+                    >
+                      <option value={5}>Every 5 Minutes (Real-Time)</option>
+                      <option value={15}>Every 15 Minutes (Standard)</option>
+                      <option value={30}>Every 30 Minutes</option>
+                      <option value={60}>Every 1 Hour</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-base-content/70 uppercase">Carrier Filter</label>
+                    <select
+                      value={systemSettings?.phenixSync?.carrier || 'ALL'}
+                      onChange={(e) => setSystemSettings({
+                        ...systemSettings,
+                        phenixSync: { ...(systemSettings?.phenixSync || {}), carrier: e.target.value }
+                      })}
+                      className="select select-bordered select-sm w-full font-bold text-xs"
+                    >
+                      <option value="ALL">All Carriers in Report</option>
+                      <option value="DHL">DHL Express (DGR)</option>
+                      <option value="ARAMEX">Aramex</option>
+                      <option value="FEDEX">FedEx</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-base-content/70 uppercase">Rolling Lookback Window</label>
+                    <select
+                      value={systemSettings?.phenixSync?.daysBack || 3}
+                      onChange={(e) => setSystemSettings({
+                        ...systemSettings,
+                        phenixSync: { ...(systemSettings?.phenixSync || {}), daysBack: Number(e.target.value) }
+                      })}
+                      className="select select-bordered select-sm w-full font-bold text-xs"
+                    >
+                      <option value={1}>1 Day (Today Only)</option>
+                      <option value={3}>3 Days (Rolling Window)</option>
+                      <option value={7}>7 Days (Weekly)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-base-content/70 uppercase">Consignment Validation</label>
+                    <label className="label cursor-pointer py-1.5 px-3 bg-base-200/50 rounded-lg border border-base-200">
+                      <span className="label-text text-xs font-bold">Require Full Data</span>
+                      <input
+                        type="checkbox"
+                        checked={systemSettings?.phenixSync?.onlyComplete !== false}
+                        onChange={(e) => setSystemSettings({
+                          ...systemSettings,
+                          phenixSync: { ...(systemSettings?.phenixSync || {}), onlyComplete: e.target.checked }
+                        })}
+                        className="toggle toggle-primary toggle-sm"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {/* Info Card */}
+                <div className="p-4 bg-info/10 border border-info/20 rounded-xl text-xs space-y-1.5">
+                  <div className="font-bold flex items-center gap-1.5 text-info">
+                    <span className="material-symbols-outlined text-sm">info</span>
+                    <span>Automated Organization & Consignee Architecture</span>
+                  </div>
+                  <p className="text-base-content/80">
+                    When consignments are fetched from Phenix ERP, the system matches <code>Client</code> (Merchant Store Name) to an existing <strong>Organization</strong> in Target-Prod or creates one on the fly. The recipient name and phone are stored as the Consignee with normalized destination country codes.
+                  </p>
+                </div>
               </div>
             </div>
           )}

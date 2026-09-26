@@ -1,12 +1,16 @@
-import React, { useState } from 'react';
-import { phenixService } from '../services/api';
+import React, { useState, useEffect } from 'react';
+import { phenixService, settingsService } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
+import { useSnackbar } from 'notistack';
 
 const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
     const { t, lang } = useLanguage();
+    const { isAdmin, isStaff } = useAuth();
+    const { enqueueSnackbar } = useSnackbar();
     const isRTL = lang === 'ar';
 
-    const [carrier, setCarrier] = useState('DHL');
+    const [carrier, setCarrier] = useState('ALL');
     const [daysBack, setDaysBack] = useState(3);
     const [sendWhatsApp, setSendWhatsApp] = useState(false);
     const [onlyComplete, setOnlyComplete] = useState(true);
@@ -16,6 +20,55 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
     const [previewData, setPreviewData] = useState(null);
     const [syncResult, setSyncResult] = useState(null);
     const [error, setError] = useState(null);
+
+    // Superadmin Auto-Sync Background State
+    const [systemSettings, setSystemSettings] = useState(null);
+    const [togglingAutoSync, setTogglingAutoSync] = useState(false);
+
+    useEffect(() => {
+        if (isOpen && (isAdmin || isStaff)) {
+            loadSystemSettings();
+        }
+    }, [isOpen, isAdmin, isStaff]);
+
+    const loadSystemSettings = async () => {
+        try {
+            const res = await settingsService.getSystemSettings();
+            setSystemSettings(res.data || res);
+        } catch (err) {
+            console.debug('Failed to load system settings:', err.message);
+        }
+    };
+
+    const handleToggleAutoSync = async (enabled) => {
+        setTogglingAutoSync(true);
+        try {
+            const currentPhenix = systemSettings?.phenixSync || {};
+            const updated = {
+                ...currentPhenix,
+                autoSyncEnabled: enabled,
+                carrier,
+                daysBack,
+                sendWhatsApp,
+                onlyComplete
+            };
+            await settingsService.updateSystemSettings({ phenixSync: updated });
+            setSystemSettings(prev => ({
+                ...prev,
+                phenixSync: updated
+            }));
+            enqueueSnackbar(
+                enabled 
+                    ? 'Phenix ERP Auto-Pull enabled! Background worker will pull consignments automatically.' 
+                    : 'Phenix ERP Auto-Pull disabled.', 
+                { variant: enabled ? 'success' : 'info' }
+            );
+        } catch (err) {
+            enqueueSnackbar('Failed to update Auto-Sync setting: ' + err.message, { variant: 'error' });
+        } finally {
+            setTogglingAutoSync(false);
+        }
+    };
 
     if (!isOpen) return null;
 
@@ -70,9 +123,12 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
         onClose();
     };
 
+    const phenixConfig = systemSettings?.phenixSync || {};
+    const autoSyncActive = Boolean(phenixConfig.autoSyncEnabled);
+
     return (
         <div className="modal modal-open z-50">
-            <div className="modal-box max-w-5xl max-h-[90vh] flex flex-col p-6 rounded-2xl bg-base-100 shadow-2xl border border-base-200">
+            <div className="modal-box max-w-6xl max-h-[92vh] flex flex-col p-6 rounded-2xl bg-base-100 shadow-2xl border border-base-200">
                 {/* Header */}
                 <div className="flex items-center justify-between pb-4 border-b border-base-200 shrink-0">
                     <div className="flex items-center gap-3">
@@ -81,11 +137,11 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                         </div>
                         <div>
                             <h3 className="font-black text-lg text-base-content flex items-center gap-2">
-                                {t('phenix_sync_title', 'Phenix ERP Shipment Ingestion')}
+                                {t('phenix_sync_title', 'Phenix ERP Shipment Ingestion & Auto-Sync')}
                                 <span className="badge badge-primary badge-sm font-bold">API Gateway</span>
                             </h3>
                             <p className="text-xs text-base-content/60 font-medium">
-                                {t('phenix_sync_subtitle', 'Pull consignments from Phenix ERP, sync live carrier API checkpoints, and issue branded tracking.')}
+                                {t('phenix_sync_subtitle', 'Pull consignments from Phenix ERP, separate merchant sender vs consignee, sync live carrier API checkpoints, and issue branded tracking.')}
                             </p>
                         </div>
                     </div>
@@ -99,13 +155,62 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                 </div>
 
                 {/* Body Content */}
-                <div className="py-4 space-y-5 overflow-y-auto flex-1 pr-1">
+                <div className="py-4 space-y-4 overflow-y-auto flex-1 pr-1">
                     {error && (
                         <div className="alert alert-error text-xs rounded-xl shadow-sm flex items-start gap-2">
                             <span className="material-symbols-outlined text-base mt-0.5">error</span>
                             <div className="flex-1">
                                 <span className="font-bold">Sync Error: </span>
                                 <span>{error}</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Superadmin Background Auto-Sync Banner */}
+                    {(isAdmin || isStaff) && (
+                        <div className={`p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 transition-all ${
+                            autoSyncActive 
+                                ? 'bg-success/10 border-success/30 text-success-content' 
+                                : 'bg-base-200/60 border-base-300 text-base-content'
+                        }`}>
+                            <div className="flex items-center gap-3">
+                                <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+                                    autoSyncActive ? 'bg-success text-success-content' : 'bg-base-300 text-base-content/60'
+                                }`}>
+                                    <span className="material-symbols-outlined text-xl">
+                                        {autoSyncActive ? 'autorenew' : 'pause_circle'}
+                                    </span>
+                                </div>
+                                <div>
+                                    <div className="font-black text-xs uppercase tracking-wider flex items-center gap-2">
+                                        <span>Automated Background Pull (Cron Worker)</span>
+                                        <span className={`badge badge-xs font-bold ${autoSyncActive ? 'badge-success' : 'badge-ghost'}`}>
+                                            {autoSyncActive ? 'ACTIVE (Every 15m)' : 'DISABLED'}
+                                        </span>
+                                    </div>
+                                    <p className="text-[11px] opacity-70">
+                                        {autoSyncActive
+                                            ? `Background worker is periodically pulling consignments, creating merchant organizations, and syncing carrier AWBs.`
+                                            : `Toggle to allow server background process to automatically ingest new Phenix bills without manual clicks.`}
+                                    </p>
+                                    {phenixConfig.lastAutoSyncAt && (
+                                        <div className="text-[10px] opacity-60 mt-0.5 font-mono">
+                                            Last Auto-Run: {new Date(phenixConfig.lastAutoSyncAt).toLocaleString()} • Status: {phenixConfig.lastAutoSyncStatus || 'OK'}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 self-end sm:self-center">
+                                <label className="label cursor-pointer gap-2 bg-base-100 px-3 py-1.5 rounded-lg border border-base-200 shadow-sm">
+                                    <span className="label-text text-xs font-bold">Auto-Pull</span>
+                                    <input
+                                        type="checkbox"
+                                        checked={autoSyncActive}
+                                        disabled={togglingAutoSync}
+                                        onChange={(e) => handleToggleAutoSync(e.target.checked)}
+                                        className="toggle toggle-success toggle-sm"
+                                    />
+                                </label>
                             </div>
                         </div>
                     )}
@@ -124,10 +229,10 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                                 onChange={(e) => { setCarrier(e.target.value); resetState(); }}
                                 className="select select-bordered select-sm rounded-lg font-bold text-xs"
                             >
+                                <option value="ALL">All Carriers in Report</option>
                                 <option value="DHL">DHL Express (DGR)</option>
                                 <option value="ARAMEX">Aramex</option>
                                 <option value="FEDEX">FedEx</option>
-                                <option value="ALL">All Carriers in Report</option>
                             </select>
                         </div>
 
@@ -157,7 +262,7 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                                         Full Data Only
                                     </span>
                                     <span className="text-[10px] text-base-content/50">
-                                        Require AWB + Phone
+                                        Require AWB + Recipient
                                     </span>
                                 </div>
                                 <input
@@ -194,7 +299,7 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                     <div className="p-3 bg-info/10 border border-info/20 rounded-xl text-xs text-base-content/80 flex items-center gap-2.5">
                         <span className="material-symbols-outlined text-info text-lg shrink-0">verified</span>
                         <span>
-                            <strong>Branded Security:</strong> Consignments are automatically linked to Merchant Store accounts. Customers receive clean <code>https://target-kw.com/track/TRK-...</code> links with real-time checkpoints.
+                            <strong>Merchant & Consignee Isolation:</strong> Stores are linked to Client Organization IDs. Sender contact person is mapped to Origin, Consignee is mapped to Destination with ISO country normalization.
                         </span>
                     </div>
 
@@ -228,34 +333,63 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
 
                             {/* Details Table */}
                             {syncResult.results?.length > 0 && (
-                                <div className="overflow-x-auto max-h-60 border border-base-200 rounded-xl">
+                                <div className="overflow-x-auto max-h-64 border border-base-200 rounded-xl">
                                     <table className="table table-xs w-full">
                                         <thead className="bg-base-200 sticky top-0">
                                             <tr>
                                                 <th>Target Tracking #</th>
-                                                <th>Invoice</th>
-                                                <th>Carrier AWB</th>
-                                                <th>Recipient</th>
-                                                <th>Phone</th>
+                                                <th>Merchant Org (ID)</th>
+                                                <th>Sender (Origin)</th>
+                                                <th>Carrier / AWB</th>
+                                                <th>Recipient & Destination</th>
                                                 <th>Status</th>
-                                                <th>Carrier Checkpoints</th>
+                                                <th>Carrier Sync</th>
                                                 <th>Action</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {syncResult.results.map((row, idx) => (
                                                 <tr key={idx} className="hover">
-                                                    <td className="font-mono font-bold text-primary">{row.trackingNumber}</td>
-                                                    <td>#{row.receiptNo || row.billId}</td>
-                                                    <td className="font-mono">{row.carrierTracking || '-'}</td>
-                                                    <td className="font-bold">{row.receiverName}</td>
-                                                    <td className="font-mono text-xs">{row.receiverPhone}</td>
+                                                    <td className="font-mono font-bold text-primary">
+                                                        <a 
+                                                            href={row.publicTrackingUrl} 
+                                                            target="_blank" 
+                                                            rel="noopener noreferrer"
+                                                            className="link link-primary hover:underline flex items-center gap-1"
+                                                        >
+                                                            {row.trackingNumber}
+                                                            <span className="material-symbols-outlined text-[12px]">open_in_new</span>
+                                                        </a>
+                                                    </td>
+                                                    <td>
+                                                        <div className="font-bold text-base-content">{row.merchantName || 'Target Logistics'}</div>
+                                                        {row.merchantId && (
+                                                            <span className="badge badge-neutral badge-xs font-mono font-semibold">ID: {row.merchantId}</span>
+                                                        )}
+                                                    </td>
+                                                    <td>
+                                                        <div className="font-semibold text-xs">{row.senderName || row.merchantName}</div>
+                                                        <div className="font-mono text-[10px] text-base-content/50">{row.senderPhone}</div>
+                                                    </td>
+                                                    <td>
+                                                        <div className="flex items-center gap-1">
+                                                            <span className="badge badge-outline badge-xs font-bold">{row.carrierCode}</span>
+                                                            <span className="font-mono font-bold text-xs">{row.carrierTracking || '-'}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td>
+                                                        <div className="font-bold text-xs">{row.receiverName}</div>
+                                                        <div className="text-[10px] text-base-content/60 flex items-center gap-1">
+                                                            <span className="badge badge-xs badge-ghost font-mono">{row.destCountryCode || 'KW'}</span>
+                                                            <span className="font-mono">{row.receiverPhone}</span>
+                                                        </div>
+                                                    </td>
                                                     <td>
                                                         <span className="badge badge-ghost badge-xs font-bold uppercase">{row.status}</span>
                                                     </td>
                                                     <td>
                                                         {row.carrierSynced ? (
-                                                            <span className="text-success font-bold flex items-center gap-1">
+                                                            <span className="text-success font-bold flex items-center gap-1 text-xs">
                                                                 <span className="material-symbols-outlined text-xs">done_all</span> Live API
                                                             </span>
                                                         ) : (
@@ -292,13 +426,14 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                                     <thead className="bg-base-200 sticky top-0">
                                         <tr>
                                             <th>Bill / Invoice</th>
-                                            <th>Merchant (Sender)</th>
+                                            <th>Merchant Org (Client ID)</th>
+                                            <th>Sender Contact (Origin)</th>
                                             <th>Carrier / AWB</th>
                                             <th>Recipient (Consignee)</th>
                                             <th>Destination</th>
                                             <th>Price</th>
                                             <th>Data Quality</th>
-                                            <th>Target DB Status</th>
+                                            <th>Target DB</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -307,6 +442,14 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                                                 <td className="font-bold">#{item.receiptNo || item.billId}</td>
                                                 <td>
                                                     <div className="font-bold text-primary">{item.merchantName || 'Target Logistics'}</div>
+                                                    {item.merchantId ? (
+                                                        <span className="badge badge-neutral badge-xs font-mono font-bold">ID: {item.merchantId}</span>
+                                                    ) : (
+                                                        <span className="text-[10px] text-base-content/40 font-mono">No ERP ID</span>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    <div className="font-semibold text-xs text-base-content">{item.senderName || item.merchantName}</div>
                                                     <div className="font-mono text-[10px] text-base-content/50">{item.senderPhone}</div>
                                                 </td>
                                                 <td>
@@ -316,7 +459,7 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                                                     </div>
                                                 </td>
                                                 <td>
-                                                    <div className="font-semibold">{item.receiverName}</div>
+                                                    <div className="font-semibold text-xs">{item.receiverName}</div>
                                                     <div className="font-mono text-[10px] text-base-content/60">{item.receiverPhone}</div>
                                                 </td>
                                                 <td>
@@ -388,7 +531,7 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                             {loading ? (
                                 <>
                                     <span className="loading loading-spinner loading-xs"></span>
-                                    Ingesting & Syncing DHL...
+                                    Ingesting & Syncing Carriers...
                                 </>
                             ) : (
                                 <>

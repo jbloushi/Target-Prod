@@ -301,9 +301,13 @@ function validatePhenixRow(row) {
     const costCenter = String(row.Cost_Center || '').trim();
     const derivedCarrier = deriveCarrier(costCenter);
 
-    // Merchant / Store / Sender info
+    // Merchant Store Organization & Client ID
     const merchantName = String(row.Client || '').trim() || 'Target Logistics';
     const merchantId = String(row.client_id || '').trim();
+    
+    // Sender Contact (may differ from Merchant Store Name)
+    const rawSenderContact = String(row.billCustomField_2 || row.Sender || '').trim();
+    const senderName = rawSenderContact || merchantName;
     const rawSenderPhone = String(row.billCustomField_1 || '').trim();
     const senderPhone = normalizePhenixPhone(rawSenderPhone) || '+96597691271';
 
@@ -338,6 +342,8 @@ function validatePhenixRow(row) {
         derivedCarrier,
         merchantName,
         merchantId,
+        senderName,
+        rawSenderContact,
         senderPhone,
         rawSenderPhone,
         receiverName,
@@ -456,11 +462,12 @@ class PhenixSyncService {
                 derivedCarrier: v.derivedCarrier,
                 merchantName: v.merchantName,
                 merchantId: v.merchantId,
+                senderName: v.senderName,
+                senderPhone: v.senderPhone,
                 destCountryCode: v.destCountryCode,
                 destCountryName: v.destCountryName,
                 receiverName: v.receiverName || '-',
                 receiverPhone: v.receiverPhone || (v.rawReceiverPhone ? `Invalid: ${v.rawReceiverPhone}` : 'Missing Phone'),
-                senderPhone: v.senderPhone,
                 totalAmount: v.totalAmount,
                 paymentMethod: v.paymentMethod,
                 date: v.date,
@@ -596,8 +603,9 @@ class PhenixSyncService {
                                 city: 'Kuwait City',
                                 countryCode: 'KW',
                                 phone: v.senderPhone,
-                                contactPerson: v.merchantName,
-                                companyName: v.merchantName
+                                contactPerson: v.senderName,
+                                companyName: v.merchantName,
+                                merchantId: v.merchantId
                             },
                             destination: {
                                 city: v.destCountryName,
@@ -608,7 +616,8 @@ class PhenixSyncService {
                             customer: {
                                 name: v.receiverName,
                                 phone: v.receiverPhone,
-                                merchant: v.merchantName
+                                merchant: v.merchantName,
+                                merchantId: v.merchantId
                             },
                             history: [],
                             documents: {
@@ -616,6 +625,7 @@ class PhenixSyncService {
                                 phenixReceiptNo: v.receiptNo,
                                 phenixClientId: v.merchantId,
                                 merchantName: v.merchantName,
+                                senderName: v.senderName,
                                 paymentMethod: v.paymentMethod,
                                 destCountry: v.destCountryName,
                                 destCountryCode: v.destCountryCode,
@@ -629,7 +639,7 @@ class PhenixSyncService {
 
                     wasCreated = true;
                     summary.createdCount++;
-                    logger.info(`[PhenixSync] Created new shipment ${trackingNumber} for Merchant "${v.merchantName}" -> Dest: ${v.destCountryName} (AWB: ${v.carrierTracking})`);
+                    logger.info(`[PhenixSync] Created new shipment ${trackingNumber} for Merchant "${v.merchantName}" (ID: ${v.merchantId}) -> Dest: ${v.destCountryName} (AWB: ${v.carrierTracking})`);
                 } else {
                     // Update existing record with any missing Phenix metadata & link org if unassigned
                     const currentDocs = (existing.documents && typeof existing.documents === 'object') ? existing.documents : {};
@@ -639,6 +649,7 @@ class PhenixSyncService {
                         phenixReceiptNo: v.receiptNo,
                         phenixClientId: v.merchantId,
                         merchantName: v.merchantName,
+                        senderName: v.senderName,
                         paymentMethod: v.paymentMethod,
                         destCountry: v.destCountryName,
                         destCountryCode: v.destCountryCode,
@@ -655,12 +666,14 @@ class PhenixSyncService {
                             customer: {
                                 name: v.receiverName || existing.customer?.name,
                                 phone: v.receiverPhone || existing.customer?.phone,
-                                merchant: v.merchantName
+                                merchant: v.merchantName,
+                                merchantId: v.merchantId
                             },
                             origin: {
                                 ...(typeof existing.origin === 'object' ? existing.origin : {}),
-                                contactPerson: v.merchantName,
+                                contactPerson: v.senderName || existing.origin?.contactPerson,
                                 companyName: v.merchantName,
+                                merchantId: v.merchantId,
                                 phone: v.senderPhone || existing.origin?.phone,
                                 city: 'Kuwait City',
                                 countryCode: 'KW'

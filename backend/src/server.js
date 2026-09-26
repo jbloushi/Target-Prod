@@ -237,6 +237,10 @@ const startServer = async () => {
       eomStatementCronService.start();
     }
 
+    // Start background Phenix ERP auto-sync cron monitor
+    const phenixSyncCronService = require('./services/phenixSyncCron.service');
+    phenixSyncCronService.start();
+
     // Start Express server
     const serverInstance = app.listen(port, () => {
       logger.info(`Server running in ${process.env.NODE_ENV} mode on port ${port}`);
@@ -266,6 +270,7 @@ const startServer = async () => {
         try {
           carrierSyncCronService.stop();
           eomStatementCronService.stop();
+          phenixSyncCronService.stop();
           const { jobQueue } = require('./services/queue');
           jobQueue.stop();
           const { closeDB } = require('./config/database');
