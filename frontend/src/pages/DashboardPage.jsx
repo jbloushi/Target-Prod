@@ -137,14 +137,9 @@ const DashboardPage = () => {
     // Dynamic Trade Lanes / Corridors Telemetry from live database
     const tradeCorridors = useMemo(() => {
         if (Array.isArray(stats?.corridors) && stats.corridors.length > 0) {
-            return stats.corridors;
+            return stats.corridors.filter(c => (c.volume || 0) > 0);
         }
-        return [
-            { id: 'kwi-ruh', name: 'Kuwait ⇄ Riyadh', nameAr: 'الكويت ⇄ الرياض', code: 'KWI ⇄ RUH', flag1: '🇰🇼', flag2: '🇸🇦', mode: 'Express Air', volume: 0, onTime: '99.1%' },
-            { id: 'kwi-dxb', name: 'Kuwait ⇄ Dubai', nameAr: 'الكويت ⇄ دبي', code: 'KWI ⇄ DXB', flag1: '🇰🇼', flag2: '🇦🇪', mode: 'Road & Air', volume: 0, onTime: '98.4%' },
-            { id: 'kwi-fra', name: 'Kuwait ⇄ Frankfurt', nameAr: 'الكويت ⇄ فرانكفورت', code: 'KWI ⇄ FRA', flag1: '🇰🇼', flag2: '🇩🇪', mode: 'Global Cargo', volume: 0, onTime: '94.2%' },
-            { id: 'kwi-lhr', name: 'Kuwait ⇄ London', nameAr: 'الكويت ⇄ لندن', code: 'KWI ⇄ LHR', flag1: '🇰🇼', flag2: '🇬🇧', mode: 'Air Courier', volume: 0, onTime: '97.5%' },
-        ];
+        return [];
     }, [stats?.corridors]);
 
     // Top active corridor by volume
@@ -159,12 +154,12 @@ const DashboardPage = () => {
         return organizations.reduce((acc, o) => acc + (o.id !== 'all' ? (Number(o.balance) || 0) : 0), 0);
     }, [organizations]);
 
-    // Dynamic On-Time SLA
+    // Dynamic On-Time SLA from live database
     const networkSla = useMemo(() => {
         if (stats?.kvi?.onTimeRate) return stats.kvi.onTimeRate;
         const totalTracked = (stats?.delivered || 0) + (stats?.inTransit || 0) + (stats?.exceptions || 0);
-        if (totalTracked === 0) return '100%';
-        const rate = Math.min(99.9, Math.max(85, (((stats?.delivered || 0) + (stats?.inTransit || 0)) / totalTracked) * 100));
+        if (totalTracked === 0) return '—';
+        const rate = (((stats?.delivered || 0) + (stats?.inTransit || 0)) / totalTracked) * 100;
         return `${rate.toFixed(1)}%`;
     }, [stats]);
 
@@ -517,23 +512,35 @@ const DashboardPage = () => {
                             <span className="badge badge-outline badge-sm font-bold text-xs">{isRTL ? 'تحديث فوري' : 'Live Gateway'}</span>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-                            {tradeCorridors.map((c) => (
-                                <div key={c.id} className="p-3 bg-base-200/50 hover:bg-base-200 border border-base-200 rounded-xl transition-all cursor-pointer">
-                                    <div className="flex justify-between items-center text-xs font-bold text-base-content">
-                                        <span className="flex items-center gap-1 text-sm">{c.flag1} {isRTL ? '←' : '→'} {c.flag2}</span>
-                                        <span className="badge badge-success badge-xs font-bold">{c.onTime}</span>
+                        {tradeCorridors.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                                {tradeCorridors.map((c) => (
+                                    <div key={c.id} className="p-3 bg-base-200/50 hover:bg-base-200 border border-base-200 rounded-xl transition-all cursor-pointer">
+                                        <div className="flex justify-between items-center text-xs font-bold text-base-content">
+                                            <span className="flex items-center gap-1 text-sm">{c.flag1} {isRTL ? '←' : '→'} {c.flag2}</span>
+                                            <span className="badge badge-success badge-xs font-bold">{c.onTime}</span>
+                                        </div>
+                                        <div className="font-extrabold text-xs text-base-content mt-1.5">
+                                            {isRTL ? c.nameAr : c.name}
+                                        </div>
+                                        <div className="flex justify-between items-baseline text-[11px] text-base-content/60 mt-1">
+                                            <span>{c.mode}</span>
+                                            <span className="font-black text-base-content">{c.volume} {isRTL ? 'طرد' : 'pkgs'}</span>
+                                        </div>
                                     </div>
-                                    <div className="font-extrabold text-xs text-base-content mt-1.5">
-                                        {isRTL ? c.nameAr : c.name}
-                                    </div>
-                                    <div className="flex justify-between items-baseline text-[11px] text-base-content/60 mt-1">
-                                        <span>{c.mode}</span>
-                                        <span className="font-black text-base-content">{c.volume} {isRTL ? 'طرد' : 'pkgs'}</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="p-6 text-center bg-base-200/30 rounded-xl border border-dashed border-base-300">
+                                <span className="material-symbols-outlined text-2xl text-base-content/40 block mb-1">explore</span>
+                                <p className="text-xs font-bold text-base-content/60">
+                                    {isRTL ? 'لا توجد مسارات شحن مسجلة حالياً' : 'No active trade lane corridors recorded'}
+                                </p>
+                                <span className="text-[11px] text-base-content/40 block mt-0.5">
+                                    {isRTL ? 'ستظهر بيانات المسارات تلقائياً فور استيراد الشحنات' : 'Corridor volume & SLA metrics will populate automatically when shipments are active'}
+                                </span>
+                            </div>
+                        )}
                     </div>
 
                     {/* Operational Manifest Table with Pipeline Stage Filter */}
@@ -795,12 +802,56 @@ const DashboardPage = () => {
                             </p>
                         </div>
 
-                        <div className="space-y-3.5">
-                            <VelocityIndicator label={isRTL ? 'استجابة الناقل (DHL / الشركاء)' : 'Carrier Response Rate'} value={Number(String(stats?.kvi?.carrierResponseRate || '96.8').replace('%', '')) || 96.8} displayValue={stats?.kvi?.carrierResponseRate || '96.8%'} target=">95%" progressClass="progress-success" icon="speed" />
-                            <VelocityIndicator label={isRTL ? 'دقة مواعيد الشحن الجوي' : 'Air-Freight Punctuality'} value={Number(String(networkSla).replace('%', '')) || 94.6} displayValue={networkSla} target=">90%" progressClass="progress-primary" icon="flight" />
-                            <VelocityIndicator label={isRTL ? 'متوسط وقت التخليص الجمركي' : 'Customs Clearance Avg.'} value={85} displayValue={stats?.kvi?.customsClearanceAvg || (isRTL ? '3.4 ساعة' : '3.4 hrs')} target="<5h" progressClass="progress-accent" icon="verified_user" />
-                            <VelocityIndicator label={isRTL ? 'رضا عملاء الشركات (NPS)' : 'Client Satisfaction (NPS)'} value={82} displayValue={stats?.kvi?.clientSatisfaction || '+82'} target=">70" progressClass="progress-warning" icon="sentiment_satisfied" />
-                        </div>
+                        {stats?.total > 0 ? (
+                            <div className="space-y-3.5">
+                                <VelocityIndicator 
+                                    label={isRTL ? 'استجابة الناقل (DHL / الشركاء)' : 'Carrier Response Rate'} 
+                                    value={stats?.kvi?.carrierResponseRate ? Number(String(stats.kvi.carrierResponseRate).replace('%', '')) : (((stats.total - (stats.exceptions || 0)) / stats.total) * 100)} 
+                                    displayValue={stats?.kvi?.carrierResponseRate || `${(((stats.total - (stats.exceptions || 0)) / stats.total) * 100).toFixed(1)}%`} 
+                                    target=">95%" 
+                                    progressClass="progress-success" 
+                                    icon="speed" 
+                                />
+                                <VelocityIndicator 
+                                    label={isRTL ? 'دقة مواعيد الشحن الجوي' : 'Air-Freight Punctuality'} 
+                                    value={Number(String(networkSla).replace('%', '')) || 0} 
+                                    displayValue={networkSla} 
+                                    target=">90%" 
+                                    progressClass="progress-primary" 
+                                    icon="flight" 
+                                />
+                                {stats?.kvi?.customsClearanceAvg ? (
+                                    <VelocityIndicator 
+                                        label={isRTL ? 'متوسط وقت التخليص الجمركي' : 'Customs Clearance Avg.'} 
+                                        value={80} 
+                                        displayValue={stats.kvi.customsClearanceAvg} 
+                                        target="<5h" 
+                                        progressClass="progress-accent" 
+                                        icon="verified_user" 
+                                    />
+                                ) : null}
+                                {stats?.kvi?.clientSatisfaction ? (
+                                    <VelocityIndicator 
+                                        label={isRTL ? 'رضا عملاء الشركات (NPS)' : 'Client Satisfaction (NPS)'} 
+                                        value={Number(stats.kvi.clientSatisfaction) || 80} 
+                                        displayValue={stats.kvi.clientSatisfaction} 
+                                        target=">70" 
+                                        progressClass="progress-warning" 
+                                        icon="sentiment_satisfied" 
+                                    />
+                                ) : null}
+                            </div>
+                        ) : (
+                            <div className="p-5 text-center bg-base-200/30 rounded-xl border border-dashed border-base-300">
+                                <span className="material-symbols-outlined text-2xl text-base-content/40 block mb-1">speed</span>
+                                <p className="text-xs font-bold text-base-content/60">
+                                    {isRTL ? 'لا توجد مؤشرات مسجلة حتى الآن' : 'No performance telemetry recorded yet'}
+                                </p>
+                                <span className="text-[11px] text-base-content/40 block mt-0.5">
+                                    {isRTL ? 'ستظهر المؤشرات آلياً فور استيراد الشحنات' : 'Metrics calculate live once consignments are active'}
+                                </span>
+                            </div>
+                        )}
 
                         {/* Corridor Telemetry Alert Box */}
                         <div className="alert bg-primary/5 border border-primary/20 rounded-xl p-3 flex items-center gap-3">
@@ -818,8 +869,8 @@ const DashboardPage = () => {
                                             : `High-Traffic Lane: ${topCorridor.name} (${topCorridor.volume} pkgs • ${topCorridor.onTime} SLA)`
                                     ) : (
                                         isRTL 
-                                            ? 'جميع مسارات الشحن الجوي والبري الدولية تعمل بالقدرة التشغيلية المعتادة'
-                                            : 'All international air & road corridors operating within normal parameters'
+                                            ? 'لا توجد بيانات مسارات مسجلة حالياً'
+                                            : 'No active trade lane telemetry recorded'
                                     )}
                                 </span>
                             </div>
