@@ -158,8 +158,8 @@ class AramexAdapter {
 
     _mapAramexStatusCode(code, desc = '') {
         const text = String(desc || '').toLowerCase();
-        if (text.includes('delivered') || code === 'SH005' || code === 'SH006') return 'delivered';
-        if (text.includes('out for delivery') || code === 'SH014' || code === 'SH041') return 'out_for_delivery';
+        if (text.includes('out for delivery') || text.includes('delivery champion') || text.includes('doorstep') || code === 'SH014' || code === 'SH041') return 'out_for_delivery';
+        if (text.includes('delivered to') || text.includes('shipment delivered') || text === 'delivered' || (text.includes('delivered') && !text.includes('delivery champion')) || code === 'SH005' || code === 'SH006') return 'delivered';
         if (text.includes('collected') || text.includes('picked up') || code === 'SH001' || code === 'SH003') return 'picked_up';
         if (text.includes('arrived at') || text.includes('departed') || text.includes('in transit') || code === 'SH012' || code === 'SH016') return 'in_transit';
         return 'in_transit';
