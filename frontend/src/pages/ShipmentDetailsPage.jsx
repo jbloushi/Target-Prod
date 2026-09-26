@@ -1225,22 +1225,39 @@ const ShipmentDetailsPage = () => {
                                     { key: 'sender', label: isRTL ? 'إشعار الراسل' : 'Sender Notification' },
                                     { key: 'receiver', label: isRTL ? 'إشعار المستلم' : 'Receiver Notification' }
                                 ].map((role) => {
-                                    const roleLogs = (shipment.notificationLogs || []).filter(l => l.recipientRole === role.key);
+                                    const isSenderRole = role.key === 'sender';
+                                    const roleAliases = isSenderRole ? ['sender', 'shipper', 'merchant'] : ['receiver', 'consignee', 'customer'];
+                                    const roleLogs = (shipment.notificationLogs || []).filter(l => 
+                                        roleAliases.includes((l.recipientRole || '').toLowerCase())
+                                    );
                                     const latestLog = roleLogs[0] || null;
-                                    const isSent = latestLog && ['sent', 'delivered', 'read'].includes(latestLog.status);
+                                    const logStatus = (latestLog?.status || '').toUpperCase();
+                                    const isSent = ['SENT', 'DELIVERED', 'READ'].includes(logStatus);
+                                    const isFailed = logStatus === 'FAILED';
 
                                     return (
                                         <div key={role.key} className="p-3 bg-base-200/40 border border-base-200 rounded-xl space-y-2 text-xs">
                                             <div className="flex justify-between items-center">
                                                 <span className="font-extrabold text-base-content">{role.label}</span>
-                                                <span className={`badge badge-xs font-bold py-1 px-2 ${isSent ? 'badge-success' : 'badge-warning'}`}>
-                                                    {latestLog ? latestLog.status.toUpperCase() : 'QUEUED'}
+                                                <span className={`badge badge-xs font-bold py-1 px-2 ${
+                                                    isSent ? 'badge-success text-white' : isFailed ? 'badge-error text-white' : latestLog ? 'badge-warning' : 'badge-ghost text-base-content/60'
+                                                }`}>
+                                                    {latestLog ? logStatus : (isRTL ? 'لم يُرسل' : 'NOT SENT')}
                                                 </span>
                                             </div>
 
                                             {latestLog && (
-                                                <div className="text-[11px] text-base-content/60 font-mono">
-                                                    To: {latestLog.recipientPhone || 'Customer'} • Event: {latestLog.eventType}
+                                                <div className="space-y-1">
+                                                    <div className="text-[11px] text-base-content/60 font-mono flex justify-between items-center">
+                                                        <span>To: {latestLog.recipientPhone || 'Customer'}</span>
+                                                        <span>{latestLog.sentAt ? new Date(latestLog.sentAt).toLocaleDateString() : ''}</span>
+                                                    </div>
+                                                    {isFailed && latestLog.errorMessage && (
+                                                        <div className="text-[10px] text-error bg-error/10 p-1.5 rounded flex items-center gap-1">
+                                                            <span className="material-symbols-outlined text-xs">error</span>
+                                                            <span>{latestLog.errorMessage}</span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
 
@@ -1250,22 +1267,80 @@ const ShipmentDetailsPage = () => {
                                                 className={`btn btn-xs rounded-lg font-bold w-full gap-1 ${
                                                     isSent 
                                                         ? 'btn-disabled bg-base-300 text-base-content/40 cursor-not-allowed border-base-300' 
-                                                        : 'btn-outline btn-success'
+                                                        : isFailed 
+                                                            ? 'btn-outline btn-error' 
+                                                            : 'btn-outline btn-success'
                                                 }`}
                                             >
                                                 <span className="material-symbols-outlined text-sm">
-                                                    {isSent ? 'check_circle' : 'send'}
+                                                    {isSent ? 'check_circle' : isFailed ? 'replay' : 'send'}
                                                 </span>
                                                 {sendingWhatsAppRole === role.key 
                                                     ? (isRTL ? 'جاري الإرسال...' : 'Dispatching...') 
                                                     : (isSent 
-                                                        ? (isRTL ? 'تم الإرسال مسبقاً' : 'Delivered (Already Sent)') 
-                                                        : (isRTL ? 'إرسال الآن' : 'Send WhatsApp Now'))}
+                                                        ? (isRTL ? 'تم الإرسال بنجاح' : 'Delivered (Already Sent)') 
+                                                        : isFailed 
+                                                            ? (isRTL ? 'إعادة المحاولة' : 'Retry WhatsApp') 
+                                                            : (isRTL ? 'إرسال الآن' : 'Send WhatsApp Now'))}
                                             </button>
                                         </div>
                                     );
                                 })}
                             </div>
+
+                            {/* Detailed Dispatch Attempts & History Audit List */}
+                            {Array.isArray(shipment.notificationLogs) && shipment.notificationLogs.length > 0 ? (
+                                <div className="pt-2 border-t border-base-200/80 space-y-2">
+                                    <div className="flex justify-between items-center text-[11px] font-black text-base-content/70 uppercase">
+                                        <span>{isRTL ? 'سجل المحاولات' : 'Dispatch History'}</span>
+                                        <Link to={`/admin/whatsapp-logs?search=${shipment.trackingNumber}`} className="text-primary hover:underline font-bold text-[10px]">
+                                            {isRTL ? 'سجلات النظام ↗' : 'System Logs ↗'}
+                                        </Link>
+                                    </div>
+                                    <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                                        {shipment.notificationLogs.map((log) => {
+                                            const s = (log.status || '').toUpperCase();
+                                            const badgeStyle = s === 'DELIVERED' || s === 'READ' ? 'badge-success text-white'
+                                                : s === 'SENT' ? 'badge-info text-white'
+                                                : s === 'FAILED' ? 'badge-error text-white'
+                                                : 'badge-ghost';
+                                            const roleName = ['receiver', 'consignee', 'customer'].includes((log.recipientRole || '').toLowerCase())
+                                                ? (isRTL ? 'المستلم' : 'Receiver')
+                                                : (isRTL ? 'الراسل' : 'Sender');
+
+                                            return (
+                                                <div key={log.id} className="p-2 bg-base-200/40 rounded-lg text-[11px] space-y-1 border border-base-200/70">
+                                                    <div className="flex justify-between items-center gap-1">
+                                                        <span className="font-bold text-base-content flex items-center gap-1">
+                                                            <span className="material-symbols-outlined text-[13px] text-base-content/60">
+                                                                {roleName === 'Receiver' || roleName === 'المستلم' ? 'person' : 'storefront'}
+                                                            </span>
+                                                            {roleName}: {log.recipientPhone || 'N/A'}
+                                                        </span>
+                                                        <span className={`badge badge-xs font-bold py-0.5 px-1.5 ${badgeStyle}`}>
+                                                            {s || 'QUEUED'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center text-[10px] text-base-content/60 font-mono">
+                                                        <span>{log.templateName || log.eventType || 'Notification'}</span>
+                                                        <span>{log.sentAt || log.createdAt ? new Date(log.sentAt || log.createdAt).toLocaleDateString() : ''}</span>
+                                                    </div>
+                                                    {s === 'FAILED' && log.errorMessage && (
+                                                        <div className="text-[10px] text-error font-medium flex items-start gap-1 bg-error/10 p-1.5 rounded">
+                                                            <span className="material-symbols-outlined text-xs flex-shrink-0">error</span>
+                                                            <span>{log.errorMessage}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="text-center py-2 text-[11px] text-base-content/50 italic border-t border-base-200/60">
+                                    {isRTL ? 'لا توجد محاولات إرسال مسجلة حتى الآن' : 'No previous dispatch attempts recorded'}
+                                </div>
+                            )}
                         </div>
                     )}
 
