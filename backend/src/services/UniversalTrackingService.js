@@ -105,36 +105,38 @@ class UniversalTrackingService {
             return null;
         }
 
-        const trackInfo = accepted.track;
-        const rawEvents = trackInfo.z0?.z || trackInfo.z1?.z || [];
+        const trackInfo = accepted.track || accepted;
+        const rawEvents = trackInfo.tracking?.providers?.[0]?.events || trackInfo.events || trackInfo.z0?.z || trackInfo.z1?.z || [];
 
         if (rawEvents.length === 0) {
             return null;
         }
 
         const events = rawEvents.map(evt => ({
-            timestamp: evt.a ? new Date(evt.a).toISOString() : new Date().toISOString(),
-            location: evt.c || evt.d || 'In Transit',
-            description: evt.z || 'Status update',
-            statusCode: this._map17TrackStatus(trackInfo.e)
+            timestamp: (evt.time_iso || evt.time_utc || evt.a) ? new Date(evt.time_iso || evt.time_utc || evt.a).toISOString() : new Date().toISOString(),
+            location: evt.location || evt.c || evt.d || 'Carrier Facility',
+            description: evt.description || evt.z || evt.stage || 'Status update',
+            statusCode: this._map17TrackStatus(trackInfo.e || trackInfo.latest_status?.status || evt.stage)
         }));
 
+        const finalStatus = this._map17TrackStatus(trackInfo.e || trackInfo.latest_status?.status || events[events.length - 1]?.statusCode);
+
         return {
-            status: this._map17TrackStatus(trackInfo.e),
+            status: finalStatus,
             events
         };
     }
 
     _map17TrackStatus(statusCode) {
-        switch (Number(statusCode)) {
-            case 10: return 'draft';
-            case 20: return 'picked_up';
-            case 30: return 'in_transit';
-            case 35: return 'out_for_delivery';
-            case 40: return 'delivered';
-            case 50: return 'exception';
-            default: return 'in_transit';
-        }
+        if (!statusCode) return 'in_transit';
+        const str = String(statusCode).toLowerCase();
+        if (str === '40' || str.includes('deliver')) return 'delivered';
+        if (str === '35' || str.includes('out_for_delivery') || str.includes('outfordelivery')) return 'out_for_delivery';
+        if (str === '30' || str.includes('transit')) return 'in_transit';
+        if (str === '20' || str.includes('pickup') || str.includes('collected')) return 'picked_up';
+        if (str === '10' || str.includes('inforeceived') || str.includes('notfound')) return 'booked';
+        if (str === '50' || str.includes('exception') || str.includes('alert') || str.includes('undelivered')) return 'exception';
+        return 'in_transit';
     }
 
     /**

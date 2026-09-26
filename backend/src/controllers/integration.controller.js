@@ -574,3 +574,131 @@ exports.syncPhenixShipments = async (req, res) => {
     }
 };
 
+/**
+ * 17TRACK Universal Webhook Receiver (V2.2 & V2.4)
+ * POST /api/integrations/17track/webhook
+ */
+exports.handle17TrackWebhook = async (req, res) => {
+    try {
+        const body = req.body || {};
+        logger.info(`[17TRACK-Webhook] Received webhook notification: event=${body.event || 'TRACKING_UPDATED'}`);
+
+        // 17TRACK sends data either as single object or array
+        const items = Array.isArray(body) ? body : (Array.isArray(body.data) ? body.data : [body.data || body]);
+
+        for (const item of items) {
+            if (!item) continue;
+            const trackingNum = item.number || item.tracking_number;
+            if (!trackingNum) continue;
+
+            const cleanTracking = String(trackingNum).trim();
+            const cleanNumeric = cleanTracking.replace(/^TRK-/i, '').replace(/^ARM-/i, '');
+
+            const shipment = await prisma.shipment.findFirst({
+                where: {
+                    OR: [
+                        { trackingNumber: cleanTracking },
+                        { trackingNumber: `TRK-${cleanNumeric}` },
+                        { trackingNumber: cleanNumeric },
+                        { dhlTrackingNumber: cleanNumeric },
+                        { carrierShipmentId: cleanNumeric }
+                    ]
+                }
+            });
+
+            if (!shipment) {
+                logger.debug(`[17TRACK-Webhook] Shipment not found for #${cleanTracking}`);
+                continue;
+            }
+
+            const trackInfo = item.track_info || item.track || item;
+            
+            // Extract raw events across V2.2 & V2.4
+            let rawEvents = [];
+            if (trackInfo.tracking?.providers?.[0]?.events) {
+                rawEvents = trackInfo.tracking.providers[0].events;
+            } else if (Array.isArray(trackInfo.events)) {
+                rawEvents = trackInfo.events;
+            } else if (Array.isArray(trackInfo.z0?.z)) {
+                rawEvents = trackInfo.z0.z;
+            } else if (Array.isArray(trackInfo.z1?.z)) {
+                rawEvents = trackInfo.z1.z;
+            }
+
+            if (rawEvents.length === 0) continue;
+
+            // Map events into standard checkpoint format
+            const parsedEvents = rawEvents.map(evt => {
+                const ts = evt.time_iso || evt.time_utc || evt.a || evt.timestamp || new Date().toISOString();
+                const loc = evt.location || evt.c || evt.d || evt.address || 'Carrier Network Hub';
+                const desc = evt.description || evt.z || evt.stage || 'Carrier Checkpoint';
+                const stage = evt.stage || evt.statusCode || trackInfo.latest_status?.status || trackInfo.e;
+                
+                let mappedStatus = 'in_transit';
+                const stageStr = String(stage || desc).toLowerCase();
+                if (stageStr.includes('deliver') || stageStr === '40') mappedStatus = 'delivered';
+                else if (stageStr.includes('out_for_delivery') || stageStr.includes('outfordelivery') || stageStr === '35') mappedStatus = 'out_for_delivery';
+                else if (stageStr.includes('pickup') || stageStr.includes('picked_up') || stageStr.includes('collected') || stageStr === '20') mappedStatus = 'picked_up';
+                else if (stageStr.includes('exception') || stageStr.includes('alert') || stageStr.includes('undelivered') || stageStr === '50') mappedStatus = 'exception';
+
+                return {
+                    status: mappedStatus,
+                    description: desc,
+                    source: 'carrier',
+                    timestamp: new Date(ts),
+                    location: {
+                        formattedAddress: typeof loc === 'string' ? loc : (loc.city || 'Carrier Facility'),
+                        city: typeof loc === 'string' ? loc : loc.city
+                    }
+                };
+            });
+
+            // Merge with existing history
+            const existingHistory = Array.isArray(shipment.history) ? shipment.history : [];
+            const mergedHistory = compactHistory([...existingHistory, ...parsedEvents]);
+
+            // Determine latest status
+            const latestEvent = parsedEvents[parsedEvents.length - 1];
+            const newStatus = latestEvent?.status || shipment.status;
+
+            const updateData = {
+                history: mergedHistory,
+                status: newStatus
+            };
+
+            // Update weight & pieces if available from carrier telemetry and currently missing
+            const misc = trackInfo.misc_info || {};
+            const carrierWeight = parseFloat(misc.weight_kg || misc.weight_raw || 0);
+            if (carrierWeight > 0 && (!shipment.actualWeight || Number(shipment.actualWeight) === 0)) {
+                updateData.actualWeight = carrierWeight;
+            }
+            const carrierPieces = parseInt(misc.item_count || misc.pieces || 0, 10);
+            if (carrierPieces > 0 && (!shipment.totalPieces || Number(shipment.totalPieces) === 0)) {
+                updateData.totalPieces = carrierPieces;
+            }
+
+            const updatedShipment = await prisma.shipment.update({
+                where: { id: shipment.id },
+                data: updateData
+            });
+
+            logger.info(`[17TRACK-Webhook] Successfully synced #${shipment.trackingNumber}: status=${newStatus}, events=${mergedHistory.length}`);
+
+            // Trigger proactive customer notification on milestone progression
+            if (newStatus !== shipment.status) {
+                const eventType = chatwootNotificationService.mapStatusToNotificationEvent(newStatus);
+                if (eventType) {
+                    chatwootNotificationService.triggerShipmentNotification(eventType, updatedShipment);
+                }
+            }
+        }
+
+        // 17TRACK requires { code: 0 } or { ok: true }
+        return res.status(200).json({ code: 0, message: 'success' });
+    } catch (err) {
+        logger.error(`[17TRACK-Webhook Error] ${err.message}`);
+        return res.status(200).json({ code: 0, message: 'error_logged' });
+    }
+};
+
+

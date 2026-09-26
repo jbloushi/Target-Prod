@@ -5,10 +5,10 @@ const { authorize } = require('../middleware/authorize.middleware');
 
 const router = express.Router();
 
-// Chatwoot webhook — no auth, called by Chatwoot on message status changes.
-// Configure in Chatwoot → Settings → Integrations → Webhooks, subscribe to message_updated.
+// Webhook receivers — no auth, called by external providers
 router.post('/chatwoot/webhook', integrationController.handleChatwootWebhook);
 router.post('/logestechs/webhook', integrationController.handleLogesTechsWebhook);
+router.post('/17track/webhook', integrationController.handle17TrackWebhook);
 
 router.use(authController.protect);
 
