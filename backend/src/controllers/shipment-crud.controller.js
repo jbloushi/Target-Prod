@@ -365,8 +365,18 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
             return exports.getShipmentStats(req, res);
         }
 
-        const shipment = await prisma.shipment.findUnique({
-            where: { trackingNumber },
+        const cleanNumeric = String(trackingNumber || '').replace(/^TRK-/i, '').replace(/^ARM-/i, '').trim();
+
+        const shipment = await prisma.shipment.findFirst({
+            where: {
+                OR: [
+                    { trackingNumber },
+                    { trackingNumber: `TRK-${cleanNumeric}` },
+                    { trackingNumber: cleanNumeric },
+                    { dhlTrackingNumber: cleanNumeric },
+                    { carrierShipmentId: cleanNumeric }
+                ]
+            },
             include: {
                 user: {
                     select: { id: true, name: true, email: true, role: true }

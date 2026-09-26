@@ -17,8 +17,18 @@ const financeLedgerService = require('../services/financeLedger.service');
  */
 exports.getPublicShipment = async (req, res) => {
     try {
-        const { trackingNumber } = req.params;
-        const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
+        const cleanNumeric = String(trackingNumber || '').replace(/^TRK-/i, '').replace(/^ARM-/i, '').trim();
+        const shipment = await prisma.shipment.findFirst({
+            where: {
+                OR: [
+                    { trackingNumber },
+                    { trackingNumber: `TRK-${cleanNumeric}` },
+                    { trackingNumber: cleanNumeric },
+                    { dhlTrackingNumber: cleanNumeric },
+                    { carrierShipmentId: cleanNumeric }
+                ]
+            }
+        });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
         const isExplicitRefresh = req.query.refresh === 'true' || req.query.sync === 'true';
