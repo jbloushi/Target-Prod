@@ -77,7 +77,7 @@ class CarrierSyncCronService {
                 return summary;
             }
 
-            const activeStatuses = ['booked', 'picked_up', 'in_transit', 'out_for_delivery', 'received_at_hub', 'verified'];
+            const activeStatuses = ['created', 'pending', 'booked', 'picked_up', 'in_transit', 'out_for_delivery', 'received_at_hub', 'verified'];
             
             const whereClause = {
                 status: { in: activeStatuses }

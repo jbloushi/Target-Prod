@@ -34,7 +34,7 @@ class UniversalTrackingService {
      */
     async getTracking(carrierCode, trackingNumber) {
         const normalizedCarrier = String(carrierCode || '').toUpperCase();
-        const cleanTracking = String(trackingNumber || '').trim();
+        const cleanTracking = String(trackingNumber || '').replace(/^TRK-/i, '').trim();
 
         if (!cleanTracking) {
             return { status: 'pending', events: [] };
