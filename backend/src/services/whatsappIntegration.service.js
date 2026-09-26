@@ -60,7 +60,7 @@ const formatLegibleDate = (val) => {
 /**
  * Dispatch message via the Shipment-WhatsApp Microservice (https://msg.target-kw.com)
  */
-async function sendViaShipmentWhatsappMicroservice({ serviceUrl = 'https://msg.target-kw.com', templateName, language, toPhone, variables = [], apiKey = null }) {
+async function sendViaShipmentWhatsappMicroservice({ serviceUrl = 'https://msg.target-kw.com', templateName, language, toPhone, variables = [], headerVariables = [], apiKey = null }) {
     const cleanPhone = String(toPhone).replace(/\D/g, '');
     const cleanServiceUrl = String(serviceUrl || 'https://msg.target-kw.com').replace(/\/+$/, '');
     const url = `${cleanServiceUrl}/api/send`;
@@ -76,21 +76,33 @@ async function sendViaShipmentWhatsappMicroservice({ serviceUrl = 'https://msg.t
     const payload = {
         templateName,
         language: lang,
+        headerVariables: headerVariables.map(v => v === null || v === undefined ? '' : String(v)),
         rows: [
             {
                 to: cleanPhone,
-                variables: variables.map(v => v === null || v === undefined ? '' : String(v))
+                variables: variables.map(v => v === null || v === undefined ? '' : String(v)),
+                headerVariables: headerVariables.map(v => v === null || v === undefined ? '' : String(v)),
+                header: (headerVariables && headerVariables.length > 0) ? String(headerVariables[0]) : undefined
             }
         ]
     };
 
     logger.info(`[Shipment-WhatsApp Dispatch] URL: ${url} Template: ${templateName} [${lang}] Recipient: ${cleanPhone}`, payload);
 
-    const response = await axios.post(url, payload, {
-        headers,
-        timeout: 18000,
-        responseType: 'text'
-    });
+    let response;
+    try {
+        response = await axios.post(url, payload, {
+            headers,
+            timeout: 18000,
+            responseType: 'text'
+        });
+    } catch (httpErr) {
+        const errData = httpErr.response?.data || httpErr.message;
+        const e = new Error(`WhatsApp microservice connection error: ${httpErr.message}`);
+        e.payload = payload;
+        e.rawResponse = errData;
+        throw e;
+    }
 
     const rawData = response.data;
     let messageId = null;
@@ -123,7 +135,10 @@ async function sendViaShipmentWhatsappMicroservice({ serviceUrl = 'https://msg.t
     }
 
     if (status === 'failed' && errorMessage) {
-        throw new Error(`WhatsApp microservice dispatch failed: ${errorMessage}`);
+        const e = new Error(`WhatsApp microservice dispatch failed: ${errorMessage}`);
+        e.payload = payload;
+        e.rawResponse = rawData;
+        throw e;
     }
 
     return {
@@ -197,7 +212,7 @@ class WhatsAppIntegrationService {
 
         const context = chatwootService.buildShipmentNotificationContext(shipment);
         const provider = settings.provider || 'SHIPMENT_WHATSAPP';
-        const chosenTemplate = templateName || 'shipment_tracking_quick';
+        const chosenTemplate = templateName || 'shipment_confirmation_2';
 
         // Initial DB log creation
         const log = await prisma.shipmentNotificationLog.create({
@@ -228,56 +243,65 @@ class WhatsAppIntegrationService {
 
         // 1. Primary Shipment-WhatsApp Microservice Dispatch (msg.target-kw.com)
         if (provider === 'SHIPMENT_WHATSAPP' || provider === 'TARGET_MSG') {
+            const serviceUrl = settings.serviceUrl || 'https://msg.target-kw.com';
+            const estDeliveryFormatted = formatLegibleDate(context.estimatedDeliveryDate);
+            const dateFormatted = context.updatedAt ? formatLegibleDate(context.updatedAt) : formatLegibleDate(new Date());
+            const timeFormatted = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+            const fullUpdatedText = `${dateFormatted} at ${timeFormatted}`;
+            const trackingUrl = context.publicTrackingLink || `https://target-kw.com/track/${context.trackingNumber}`;
+            const displayTracking = shipment.dhlTrackingNumber || context.trackingNumber || shipment.trackingNumber;
+
+            let variables = [];
+            let headerVariables = [displayTracking];
+
+            if (chosenTemplate === 'new_shipment_created') {
+                variables = [
+                    context.route || 'Kuwait City, KW → Destination',
+                    estDeliveryFormatted,
+                    context.currentStatus || 'Shipment In Transit',
+                    fullUpdatedText,
+                    trackingUrl
+                ];
+            } else if (chosenTemplate === 'shipment_confirmation_2') {
+                // Meta template: HEADER={{1}} (trackingNumber)
+                // BODY: {{1}}=Invoice/Receipt, {{2}}=Date, {{3}}=Receiver Name, {{4}}=Receiver Tel, {{5}}=Tracking Link
+                const receiptNo = shipment.documents?.phenixReceiptNo || shipment.documents?.phenixBillId || displayTracking;
+                variables = [
+                    receiptNo,
+                    dateFormatted,
+                    recipientName || shipment.customerName || shipment.customer?.name || 'Valued Customer',
+                    phone,
+                    trackingUrl
+                ];
+                headerVariables = [displayTracking];
+            } else if (chosenTemplate === 'shipment_tracking_quick') {
+                variables = [
+                    displayTracking,
+                    dateFormatted,
+                    displayTracking,
+                    recipientName || shipment.customerName || shipment.customer?.name || 'Valued Customer',
+                    phone,
+                    trackingUrl
+                ];
+                headerVariables = [displayTracking];
+            } else {
+                variables = [
+                    context.route || 'Kuwait City, KW → Destination',
+                    estDeliveryFormatted,
+                    context.currentStatus || 'Shipment In Transit',
+                    fullUpdatedText,
+                    trackingUrl
+                ];
+            }
+
             try {
-                const serviceUrl = settings.serviceUrl || 'https://msg.target-kw.com';
-                const estDeliveryFormatted = formatLegibleDate(context.estimatedDeliveryDate);
-                const dateFormatted = context.updatedAt ? formatLegibleDate(context.updatedAt) : formatLegibleDate(new Date());
-                const timeFormatted = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-                const fullUpdatedText = `${dateFormatted} at ${timeFormatted}`;
-                const trackingUrl = context.publicTrackingLink || `https://target-kw.com/track/${context.trackingNumber}`;
-
-                let variables = [];
-                if (chosenTemplate === 'new_shipment_created') {
-                    variables = [
-                        context.route || 'Kuwait City, KW → Destination',
-                        estDeliveryFormatted,
-                        context.currentStatus || 'Shipment In Transit',
-                        fullUpdatedText,
-                        trackingUrl
-                    ];
-                } else if (chosenTemplate === 'shipment_tracking_quick') {
-                    variables = [
-                        context.trackingNumber,
-                        dateFormatted,
-                        context.trackingNumber,
-                        recipientName || shipment.customerName || 'Valued Customer',
-                        phone,
-                        trackingUrl
-                    ];
-                } else if (chosenTemplate === 'shipment_confirmation_2') {
-                    variables = [
-                        context.trackingNumber,
-                        dateFormatted,
-                        recipientName || shipment.customerName || 'Valued Customer',
-                        phone,
-                        trackingUrl
-                    ];
-                } else {
-                    variables = [
-                        context.route || 'Kuwait City, KW → Destination',
-                        estDeliveryFormatted,
-                        context.currentStatus || 'Shipment In Transit',
-                        fullUpdatedText,
-                        trackingUrl
-                    ];
-                }
-
                 const result = await sendViaShipmentWhatsappMicroservice({
                     serviceUrl,
                     templateName: chosenTemplate,
                     language: getTemplateLanguage(chosenTemplate),
                     toPhone: phone,
                     variables,
+                    headerVariables,
                     apiKey: settings.apiKey || null
                 });
 
@@ -298,10 +322,11 @@ class WhatsAppIntegrationService {
                     where: { id: log.id },
                     data: {
                         status: 'FAILED',
-                        errorMessage: err.message
+                        errorMessage: err.message,
+                        payloadJson: err.payload || { templateName: chosenTemplate, variables, headerVariables },
+                        responseJson: err.rawResponse || { error: err.message }
                     }
                 });
-                throw err;
             }
         }
 
