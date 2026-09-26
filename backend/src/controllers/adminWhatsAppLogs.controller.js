@@ -91,16 +91,20 @@ async function resendNotification(req, res) {
         }
 
         if (!force) {
+            const isSender = (existing.recipientRole || '').toLowerCase() === 'sender';
+            const roleGroup = isSender ? ['sender'] : ['receiver', 'customer', 'consignee'];
+
             const anySent = await prisma.shipmentNotificationLog.findFirst({
                 where: {
                     trackingNumber: existing.trackingNumber,
+                    recipientRole: { in: roleGroup },
                     status: { in: ['SENT', 'DELIVERED', 'READ'] }
                 }
             });
 
             if (anySent || ['SENT', 'DELIVERED', 'READ'].includes(existing.status)) {
                 return res.status(400).json({ 
-                    error: `A notification was already successfully delivered for shipment ${existing.trackingNumber}. Resending is disabled to prevent duplicate customer messages.`,
+                    error: `A notification was already successfully delivered for shipment ${existing.trackingNumber} to ${isSender ? 'Sender' : 'Consignee'}. Resending is disabled to prevent duplicate customer messages.`,
                     alreadySent: true
                 });
             }

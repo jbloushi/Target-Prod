@@ -328,6 +328,15 @@ class WhatsAppIntegrationService {
 
         const context = chatwootService.buildShipmentNotificationContext(shipment);
 
+        // Resolve explicit Sender and Consignee parties from shipment data
+        const resolvedSenderName = shipment.origin?.contactPerson || shipment.origin?.companyName || shipment.documents?.senderName || shipment.documents?.merchantName || (role === 'sender' ? recipientName : null) || 'Shipper';
+        const resolvedSenderPhone = normalizePhone(shipment.origin?.phone || shipment.documents?.senderPhone || (role === 'sender' ? phone : '')) || phone;
+
+        const resolvedReceiverName = shipment.destination?.contactPerson || shipment.destination?.name || shipment.customer?.name || shipment.customerName || shipment.documents?.receiverName || (role === 'receiver' || role === 'customer' ? recipientName : null) || 'Valued Consignee';
+        const resolvedReceiverPhone = normalizePhone(shipment.destination?.phone || shipment.customer?.phone || shipment.customerPhone || shipment.documents?.receiverPhone || (role === 'receiver' || role === 'customer' ? phone : '')) || phone;
+
+        const effectiveRecipientName = (role === 'sender') ? resolvedSenderName : resolvedReceiverName;
+
         // Initial DB log creation
         const log = await prisma.shipmentNotificationLog.create({
             data: {
@@ -335,7 +344,7 @@ class WhatsAppIntegrationService {
                 trackingNumber: shipment.trackingNumber,
                 eventType: eventType || 'manual_trigger',
                 recipientRole: role,
-                recipientName: recipientName || null,
+                recipientName: effectiveRecipientName,
                 recipientPhone: phone,
                 provider,
                 templateName: chosenTemplate,
@@ -380,11 +389,13 @@ class WhatsAppIntegrationService {
                 // Meta template: HEADER={{1}} (trackingNumber)
                 // BODY: {{1}}=Invoice/Receipt, {{2}}=Date, {{3}}=Receiver Name, {{4}}=Receiver Tel, {{5}}=Tracking Link
                 const receiptNo = shipment.documents?.phenixReceiptNo || shipment.documents?.phenixBillId || displayTracking;
+                
+                // Receiver Name & Tel in the template body MUST ALWAYS be the destination Consignee
                 variables = [
                     receiptNo,
                     dateFormatted,
-                    recipientName || shipment.customerName || shipment.customer?.name || 'Valued Customer',
-                    phone,
+                    resolvedReceiverName,
+                    resolvedReceiverPhone,
                     trackingUrl
                 ];
                 headerVariables = [displayTracking];
@@ -393,8 +404,8 @@ class WhatsAppIntegrationService {
                     displayTracking,
                     dateFormatted,
                     displayTracking,
-                    recipientName || shipment.customerName || shipment.customer?.name || 'Valued Customer',
-                    phone,
+                    resolvedReceiverName,
+                    resolvedReceiverPhone,
                     trackingUrl
                 ];
                 headerVariables = [displayTracking];
@@ -422,12 +433,25 @@ class WhatsAppIntegrationService {
                     apiKey: settings.apiKey || null
                 });
 
+                const enrichedPayload = {
+                    ...result.payload,
+                    auditMetadata: {
+                        recipientParty: role === 'sender' ? 'SENDER (Shipper)' : 'RECEIVER (Consignee)',
+                        recipientToPhone: phone,
+                        sender: { name: resolvedSenderName, phone: resolvedSenderPhone },
+                        consignee: { name: resolvedReceiverName, phone: resolvedReceiverPhone, destination: shipment.destination?.city || shipment.destination?.countryCode || 'Destination' },
+                        carrierCode: shipment.carrierCode,
+                        carrierAwb: displayTracking,
+                        trackingUrl
+                    }
+                };
+
                 const updated = await prisma.shipmentNotificationLog.update({
                     where: { id: log.id },
                     data: {
                         status: 'SENT',
                         chatwootMessageId: result.messageId,
-                        payloadJson: result.payload,
+                        payloadJson: enrichedPayload,
                         responseJson: result.rawResponse
                     }
                 });

@@ -281,14 +281,29 @@ export const AdminWhatsAppLogsPage = () => {
                             ) : (
                                 logs.map((log) => {
                                     const badge = getStatusBadge(log.status);
+                                    const isSender = (log.recipientRole || '').toLowerCase() === 'sender';
                                     return (
                                         <tr key={log.id} className="hover">
                                             <td className="font-mono font-bold text-xs text-primary">
                                                 {log.trackingNumber}
                                             </td>
                                             <td>
-                                                <div className="font-bold text-base-content">{log.recipientName || log.recipientRole}</div>
-                                                <div className="text-[11px] text-base-content/50 font-mono" dir="ltr">{log.recipientPhone}</div>
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                    <span className={`badge badge-xs font-bold gap-1 ${
+                                                        isSender
+                                                            ? 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30'
+                                                            : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
+                                                    }`}>
+                                                        <span className="material-symbols-outlined text-[11px]">
+                                                            {isSender ? 'flight_takeoff' : 'flight_land'}
+                                                        </span>
+                                                        {isSender
+                                                            ? (lang === 'ar' ? 'المرسل' : 'SENDER')
+                                                            : (lang === 'ar' ? 'المستلم' : 'CONSIGNEE')}
+                                                    </span>
+                                                    <span className="font-bold text-base-content">{log.recipientName || log.recipientRole}</span>
+                                                </div>
+                                                <div className="text-[11px] text-base-content/50 font-mono mt-0.5" dir="ltr">{log.recipientPhone}</div>
                                             </td>
                                             <td>
                                                 <div className="font-semibold text-xs text-base-content">{log.eventType}</div>
@@ -344,12 +359,12 @@ export const AdminWhatsAppLogsPage = () => {
 
             {/* Modal for Raw Payload Inspection */}
             <div className={`modal modal-bottom sm:modal-middle ${selectedLog ? 'modal-open' : ''} z-50`}>
-                <div className="modal-box max-w-2xl bg-base-100 border border-base-200 shadow-2xl p-6 text-base-content max-h-[92vh] overflow-y-auto">
+                <div className="modal-box max-w-3xl bg-base-100 border border-base-200 shadow-2xl p-6 text-base-content max-h-[92vh] overflow-y-auto">
                     <div className="flex items-center justify-between pb-3 border-b border-base-200">
                         <div className="flex items-center gap-2">
                             <span className="material-symbols-outlined text-primary text-xl">data_object</span>
                             <h3 className="font-black text-lg text-base-content">
-                                {lang === 'ar' ? 'سجل حمولة إشعارات واتساب' : 'WhatsApp Notification Payload Log'}
+                                {lang === 'ar' ? 'تفاصيل وحمولة إشعار واتساب' : 'WhatsApp Notification & Variable Audit'}
                             </h3>
                         </div>
                         <button
@@ -361,53 +376,162 @@ export const AdminWhatsAppLogsPage = () => {
                         </button>
                     </div>
 
-                    {selectedLog && (
-                        <div className="py-4 space-y-3.5 text-xs">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 bg-base-200/40 rounded-xl border border-base-200">
-                                <div>
-                                    <span className="text-[11px] font-bold text-base-content/60 block">{lang === 'ar' ? 'رقم التتبع:' : 'Tracking Number:'}</span>
-                                    <span className="font-mono font-bold text-sm text-primary">{selectedLog.trackingNumber}</span>
-                                </div>
-                                <div>
-                                    <span className="text-[11px] font-bold text-base-content/60 block">{lang === 'ar' ? 'هاتف المستلم:' : 'Recipient Phone:'}</span>
-                                    <span className="font-mono font-semibold" dir="ltr">{selectedLog.recipientPhone}</span>
-                                </div>
-                                <div className="sm:col-span-2">
-                                    <span className="text-[11px] font-bold text-base-content/60 block">{lang === 'ar' ? 'معرف الرسالة الخارجي:' : 'External Message ID:'}</span>
-                                    <span className="font-mono text-xs text-base-content/80 break-all">{selectedLog.externalMessageId || (lang === 'ar' ? 'لا يوجد' : 'None')}</span>
-                                </div>
-                            </div>
+                    {selectedLog && (() => {
+                        const isSender = (selectedLog.recipientRole || '').toLowerCase() === 'sender';
+                        const payload = selectedLog.payloadJson || {};
+                        const audit = payload.auditMetadata || {};
+                        const firstRow = payload.rows?.[0] || {};
+                        const vars = firstRow.variables || [];
+                        const headerVars = firstRow.headerVariables || payload.headerVariables || [];
 
-                            {selectedLog.errorMessage && (
-                                <div className="alert alert-error text-xs py-2.5 rounded-xl font-semibold">
-                                    <span className="material-symbols-outlined text-base">error</span>
-                                    <span>{lang === 'ar' ? 'خطأ:' : 'Error:'} {selectedLog.errorMessage}</span>
+                        return (
+                            <div className="py-4 space-y-4 text-xs">
+                                {/* Recipient & Dispatch Header Card */}
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 bg-base-200/40 rounded-xl border border-base-200">
+                                    <div>
+                                        <span className="text-[11px] font-bold text-base-content/60 block">{lang === 'ar' ? 'رقم التتبع:' : 'Tracking Number:'}</span>
+                                        <span className="font-mono font-bold text-sm text-primary">{selectedLog.trackingNumber}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-[11px] font-bold text-base-content/60 block">{lang === 'ar' ? 'المستلم الفعلي:' : 'Target Recipient:'}</span>
+                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                            <span className={`badge badge-xs font-bold ${
+                                                isSender
+                                                    ? 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30'
+                                                    : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
+                                            }`}>
+                                                {isSender ? 'SENDER' : 'CONSIGNEE'}
+                                            </span>
+                                            <span className="font-bold text-base-content">{selectedLog.recipientName || '—'}</span>
+                                        </div>
+                                        <span className="font-mono text-[11px] text-base-content/60" dir="ltr">{selectedLog.recipientPhone}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-[11px] font-bold text-base-content/60 block">{lang === 'ar' ? 'القالب / الحدث:' : 'Template / Event:'}</span>
+                                        <span className="font-mono font-bold text-base-content">{selectedLog.templateName}</span>
+                                        <div className="text-[11px] text-base-content/50">{selectedLog.eventType}</div>
+                                    </div>
+                                    <div className="sm:col-span-3 pt-2 border-t border-base-200/60 flex items-center justify-between gap-2 flex-wrap">
+                                        <div>
+                                            <span className="text-[10px] font-bold text-base-content/50 uppercase">{lang === 'ar' ? 'معرف الرسالة الخارجي (WAMID):' : 'External WAMID:'}</span>
+                                            <div className="font-mono text-xs text-base-content/80 break-all">{selectedLog.externalMessageId || (lang === 'ar' ? 'لا يوجد' : 'None')}</div>
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] font-bold text-base-content/50 uppercase">{lang === 'ar' ? 'تاريخ ووقت الإرسال:' : 'Dispatch Timestamp:'}</span>
+                                            <div className="font-mono text-xs text-base-content/80">{new Date(selectedLog.sentAt).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')}</div>
+                                        </div>
+                                    </div>
                                 </div>
-                            )}
 
-                            <div>
-                                <div className="flex items-center justify-between mb-1.5">
-                                    <span className="text-xs font-bold text-base-content">
-                                        {lang === 'ar' ? 'الحمولة الخام واستجابة Meta API:' : 'Raw Payload & Meta API Response:'}
-                                    </span>
-                                    <button
-                                        type="button"
-                                        onClick={handleCopyPayload}
-                                        className="btn btn-xs btn-ghost gap-1 text-base-content/60 hover:text-primary"
-                                    >
-                                        <span className="material-symbols-outlined text-[14px]">
-                                            {copiedJson ? 'check' : 'content_copy'}
+                                {/* Parties Separation Verification Box */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div className="p-3 bg-purple-500/5 rounded-xl border border-purple-500/20">
+                                        <div className="flex items-center gap-1.5 mb-1.5 text-purple-700 dark:text-purple-400 font-bold text-xs">
+                                            <span className="material-symbols-outlined text-sm">flight_takeoff</span>
+                                            {lang === 'ar' ? 'بيانات الشاحن / التاجر (Origin Shipper)' : 'Shipper / Store (Origin)'}
+                                        </div>
+                                        <div className="space-y-1 text-[11px]">
+                                            <div className="flex justify-between">
+                                                <span className="text-base-content/60">{lang === 'ar' ? 'الاسم:' : 'Name:'}</span>
+                                                <span className="font-bold text-base-content">{audit.sender?.name || (isSender ? selectedLog.recipientName : '—')}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-base-content/60">{lang === 'ar' ? 'الهاتف:' : 'Phone:'}</span>
+                                                <span className="font-mono text-base-content" dir="ltr">{audit.sender?.phone || (isSender ? selectedLog.recipientPhone : '—')}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-3 bg-emerald-500/5 rounded-xl border border-emerald-500/20">
+                                        <div className="flex items-center gap-1.5 mb-1.5 text-emerald-700 dark:text-emerald-400 font-bold text-xs">
+                                            <span className="material-symbols-outlined text-sm">flight_land</span>
+                                            {lang === 'ar' ? 'بيانات المستلم (Destination Consignee)' : 'Consignee (Destination)'}
+                                        </div>
+                                        <div className="space-y-1 text-[11px]">
+                                            <div className="flex justify-between">
+                                                <span className="text-base-content/60">{lang === 'ar' ? 'الاسم:' : 'Name:'}</span>
+                                                <span className="font-bold text-base-content">{audit.consignee?.name || (!isSender ? selectedLog.recipientName : (vars[2] || '—'))}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-base-content/60">{lang === 'ar' ? 'الهاتف:' : 'Phone:'}</span>
+                                                <span className="font-mono text-base-content" dir="ltr">{audit.consignee?.phone || (!isSender ? selectedLog.recipientPhone : (vars[3] || '—'))}</span>
+                                            </div>
+                                            {audit.consignee?.destination && (
+                                                <div className="flex justify-between">
+                                                    <span className="text-base-content/60">{lang === 'ar' ? 'الوجهة:' : 'Destination:'}</span>
+                                                    <span className="text-base-content">{audit.consignee.destination}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Meta Template Variables Breakdown */}
+                                {vars.length > 0 && (
+                                    <div className="p-3.5 bg-base-200/40 rounded-xl border border-base-200">
+                                        <div className="font-bold text-xs mb-2 text-base-content flex items-center gap-1.5">
+                                            <span className="material-symbols-outlined text-primary text-sm">tune</span>
+                                            {lang === 'ar' ? 'متغيرات قالب واتساب (Meta Template Variables)' : 'Meta Template Variable Breakdown'}
+                                        </div>
+                                        <div className="space-y-1.5 text-[11px]">
+                                            {headerVars.length > 0 && (
+                                                <div className="flex items-start justify-between py-1 border-b border-base-200/60 font-mono">
+                                                    <span className="text-primary font-bold">Header &#123;&#123;1&#125;&#125; (AWB / Tracking)</span>
+                                                    <span className="font-bold text-base-content">{headerVars[0]}</span>
+                                                </div>
+                                            )}
+                                            {vars.map((val, idx) => {
+                                                const labels = [
+                                                    lang === 'ar' ? 'رقم الإيصال / الفاتورة' : 'Receipt / Invoice #',
+                                                    lang === 'ar' ? 'تاريخ الشحنة' : 'Consignment Date',
+                                                    lang === 'ar' ? 'اسم المستلم (Consignee)' : 'Consignee Name',
+                                                    lang === 'ar' ? 'هاتف المستلم (Consignee Tel)' : 'Consignee Phone',
+                                                    lang === 'ar' ? 'رابط التتبع' : 'Tracking Link'
+                                                ];
+                                                return (
+                                                    <div key={idx} className="flex items-start justify-between py-1 border-b border-base-200/40 last:border-0 font-mono">
+                                                        <span className="text-base-content/70">
+                                                            Body &#123;&#123;{idx + 1}&#125;&#125; <span className="text-base-content/40 font-sans">({labels[idx] || `Param ${idx + 1}`})</span>
+                                                        </span>
+                                                        <span className="font-bold text-base-content max-w-[60%] text-end break-all" dir="ltr">{val}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {selectedLog.errorMessage && (
+                                    <div className="alert alert-error text-xs py-2.5 rounded-xl font-semibold">
+                                        <span className="material-symbols-outlined text-base">error</span>
+                                        <span>{lang === 'ar' ? 'خطأ:' : 'Error:'} {selectedLog.errorMessage}</span>
+                                    </div>
+                                )}
+
+                                <div>
+                                    <div className="flex items-center justify-between mb-1.5">
+                                        <span className="text-xs font-bold text-base-content">
+                                            {lang === 'ar' ? 'الحمولة الخام واستجابة Meta API:' : 'Raw Payload & Meta API Response:'}
                                         </span>
-                                        {copiedJson ? (lang === 'ar' ? 'تم النسخ!' : 'Copied!') : (lang === 'ar' ? 'نسخ JSON' : 'Copy JSON')}
-                                    </button>
-                                </div>
+                                        <button
+                                            type="button"
+                                            onClick={handleCopyPayload}
+                                            className="btn btn-xs btn-ghost gap-1 text-base-content/60 hover:text-primary"
+                                        >
+                                            <span className="material-symbols-outlined text-[14px]">
+                                                {copiedJson ? 'check' : 'content_copy'}
+                                            </span>
+                                            {copiedJson ? (lang === 'ar' ? 'تم النسخ!' : 'Copied!') : (lang === 'ar' ? 'نسخ JSON' : 'Copy JSON')}
+                                        </button>
+                                    </div>
 
-                                <pre className="bg-slate-950 text-cyan-400 p-4 rounded-xl font-mono text-[11px] overflow-x-auto max-h-72 border border-slate-800" dir="ltr">
-                                    {JSON.stringify({ payload: selectedLog.payloadJson, response: selectedLog.responseJson }, null, 2)}
-                                </pre>
+                                    <pre className="bg-slate-950 text-cyan-400 p-4 rounded-xl font-mono text-[11px] overflow-x-auto max-h-60 border border-slate-800" dir="ltr">
+                                        {JSON.stringify({ payload: selectedLog.payloadJson, response: selectedLog.responseJson }, null, 2)}
+                                    </pre>
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        );
+                    })()}
 
                     <div className="modal-action pt-3 border-t border-base-200">
                         <button
