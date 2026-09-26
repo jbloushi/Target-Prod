@@ -9,6 +9,7 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
     const [carrier, setCarrier] = useState('DHL');
     const [daysBack, setDaysBack] = useState(3);
     const [sendWhatsApp, setSendWhatsApp] = useState(false);
+    const [onlyComplete, setOnlyComplete] = useState(true);
 
     const [loading, setLoading] = useState(false);
     const [previewLoading, setPreviewLoading] = useState(false);
@@ -23,7 +24,11 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
         setError(null);
         setSyncResult(null);
         try {
-            const res = await phenixService.previewShipments({ carrier, daysBack });
+            const res = await phenixService.previewShipments({
+                carrier,
+                daysBack,
+                onlyComplete
+            });
             setPreviewData(res.data);
         } catch (err) {
             setError(err.message || 'Failed to fetch preview from Phenix ERP');
@@ -39,7 +44,8 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
             const res = await phenixService.syncShipments({
                 carrier,
                 daysBack,
-                sendWhatsApp
+                sendWhatsApp,
+                onlyComplete
             });
             setSyncResult(res.data);
             setPreviewData(null);
@@ -105,7 +111,7 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                     )}
 
                     {/* Filter Controls */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-base-200/50 p-4 rounded-xl border border-base-300/40">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-base-200/50 p-4 rounded-xl border border-base-300/40">
                         {/* Carrier Select */}
                         <div className="form-control">
                             <label className="label py-1">
@@ -118,7 +124,7 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                                 onChange={(e) => { setCarrier(e.target.value); resetState(); }}
                                 className="select select-bordered select-sm rounded-lg font-bold text-xs"
                             >
-                                <option value="DHL">DHL Express (DGR) - Recommended</option>
+                                <option value="DHL">DHL Express (DGR)</option>
                                 <option value="ARAMEX">Aramex</option>
                                 <option value="FEDEX">FedEx</option>
                                 <option value="ALL">All Carriers in Report</option>
@@ -138,9 +144,29 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                                 className="select select-bordered select-sm rounded-lg font-bold text-xs"
                             >
                                 <option value={1}>Today Only (1 Day)</option>
-                                <option value={3}>Last 3 Days (Standard Rolling)</option>
+                                <option value={3}>Last 3 Days (Rolling Window)</option>
                                 <option value={7}>Last 7 Days (Weekly Backlog)</option>
                             </select>
+                        </div>
+
+                        {/* Strict Complete Data Filter */}
+                        <div className="form-control justify-end">
+                            <label className="label cursor-pointer py-1.5 px-2 bg-base-100 rounded-lg border border-base-200">
+                                <div className="flex flex-col">
+                                    <span className="label-text text-xs font-bold text-base-content">
+                                        Full Data Only
+                                    </span>
+                                    <span className="text-[10px] text-base-content/50">
+                                        Require AWB + Phone
+                                    </span>
+                                </div>
+                                <input
+                                    type="checkbox"
+                                    checked={onlyComplete}
+                                    onChange={(e) => { setOnlyComplete(e.target.checked); resetState(); }}
+                                    className="toggle toggle-success toggle-sm"
+                                />
+                            </label>
                         </div>
 
                         {/* WhatsApp Toggle */}
@@ -148,10 +174,10 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                             <label className="label cursor-pointer py-1.5 px-2 bg-base-100 rounded-lg border border-base-200">
                                 <div className="flex flex-col">
                                     <span className="label-text text-xs font-bold text-base-content">
-                                        Auto-Send WhatsApp
+                                        Auto WhatsApp
                                     </span>
                                     <span className="text-[10px] text-base-content/50">
-                                        Sends target-kw.com URL
+                                        target-kw.com URL
                                     </span>
                                 </div>
                                 <input
@@ -168,7 +194,7 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                     <div className="p-3 bg-info/10 border border-info/20 rounded-xl text-xs text-base-content/80 flex items-center gap-2.5">
                         <span className="material-symbols-outlined text-info text-lg shrink-0">verified</span>
                         <span>
-                            <strong>Branded Tracking Security:</strong> Customers will only receive <code>https://target-kw.com/track/TRK-...</code> tracking links. Checkpoint history will be synced live via the carrier's API (DHL Express).
+                            <strong>Branded Security:</strong> Customers only receive <code>https://target-kw.com/track/TRK-...</code> links. Incomplete rows missing carrier AWBs, recipient names, or phone numbers are filtered out automatically.
                         </span>
                     </div>
 
@@ -182,8 +208,8 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                                 </div>
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-semibold">
                                     <div className="bg-base-100 p-2.5 rounded-lg border border-base-200">
-                                        <div className="text-[10px] text-base-content/50">Total Matched</div>
-                                        <div className="text-base font-black text-base-content">{syncResult.matchedCount}</div>
+                                        <div className="text-[10px] text-base-content/50">Full Data Matched</div>
+                                        <div className="text-base font-black text-base-content">{syncResult.completeCount}</div>
                                     </div>
                                     <div className="bg-base-100 p-2.5 rounded-lg border border-base-200">
                                         <div className="text-[10px] text-base-content/50">Created (New)</div>
@@ -207,10 +233,12 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                                         <thead className="bg-base-200 sticky top-0">
                                             <tr>
                                                 <th>Target Tracking #</th>
-                                                <th>Phenix Invoice</th>
+                                                <th>Invoice</th>
                                                 <th>Carrier AWB</th>
+                                                <th>Recipient</th>
+                                                <th>Phone</th>
                                                 <th>Status</th>
-                                                <th>Carrier Synced</th>
+                                                <th>Carrier Checkpoints</th>
                                                 <th>Action</th>
                                             </tr>
                                         </thead>
@@ -220,6 +248,8 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                                                     <td className="font-mono font-bold text-primary">{row.trackingNumber}</td>
                                                     <td>#{row.receiptNo || row.billId}</td>
                                                     <td className="font-mono">{row.carrierTracking || '-'}</td>
+                                                    <td className="font-bold">{row.receiverName}</td>
+                                                    <td className="font-mono text-xs">{row.receiverPhone}</td>
                                                     <td>
                                                         <span className="badge badge-ghost badge-xs font-bold uppercase">{row.status}</span>
                                                     </td>
@@ -251,10 +281,10 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                         <div className="space-y-3">
                             <div className="flex items-center justify-between">
                                 <h4 className="font-bold text-xs text-base-content">
-                                    Preview: {previewData.matchedCount} Shipments Found in Phenix ERP
+                                    Preview: {previewData.matchedCount} Valid Consignments Found
                                 </h4>
                                 <span className="text-[11px] text-base-content/60 font-medium">
-                                    (Total ERP Bills in window: {previewData.totalFetched})
+                                    (Total ERP Bills: {previewData.totalFetched} | Complete: {previewData.completeCount} | Incomplete Skipped: {previewData.incompleteCount})
                                 </span>
                             </div>
                             <div className="overflow-x-auto max-h-64 border border-base-200 rounded-xl">
@@ -265,7 +295,8 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                                             <th>Carrier</th>
                                             <th>Carrier AWB</th>
                                             <th>Recipient</th>
-                                            <th>Phone</th>
+                                            <th>Phone (E.164)</th>
+                                            <th>Data Quality</th>
                                             <th>Target DB Status</th>
                                         </tr>
                                     </thead>
@@ -277,13 +308,22 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                                                     <span className="badge badge-outline badge-xs font-bold">{item.derivedCarrier}</span>
                                                 </td>
                                                 <td className="font-mono font-bold text-primary">{item.carrierTracking || '-'}</td>
-                                                <td>{item.receiverName}</td>
-                                                <td className="font-mono text-xs">{item.receiverPhone}</td>
+                                                <td className="font-medium">{item.receiverName}</td>
+                                                <td className="font-mono text-xs font-semibold">{item.receiverPhone}</td>
+                                                <td>
+                                                    {item.isComplete ? (
+                                                        <span className="badge badge-success badge-xs font-bold">Full Data</span>
+                                                    ) : (
+                                                        <span className="badge badge-error badge-xs font-bold">
+                                                            Missing: {item.missingFields.join(', ')}
+                                                        </span>
+                                                    )}
+                                                </td>
                                                 <td>
                                                     {item.existsInDb ? (
                                                         <span className="badge badge-warning badge-xs font-bold">Already Ingested</span>
                                                     ) : (
-                                                        <span className="badge badge-success badge-xs font-bold">Ready to Pull</span>
+                                                        <span className="badge badge-primary badge-xs font-bold">Ready to Pull</span>
                                                     )}
                                                 </td>
                                             </tr>

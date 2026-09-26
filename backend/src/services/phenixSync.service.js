@@ -2,7 +2,6 @@ const axios = require('axios');
 const logger = require('../utils/logger');
 const config = require('../config/config');
 const { prisma } = require('../config/database');
-const { normalizePhone } = require('./whatsappIntegration.service');
 const { syncCarrierTrackingHistory } = require('../controllers/shipment.helpers');
 const whatsappService = require('./whatsappIntegration.service');
 
@@ -10,8 +9,9 @@ const whatsappService = require('./whatsappIntegration.service');
  * Phenix ERP Synchronization Service
  * 
  * Fetches billing / shipment records from Phenix Reporting API,
+ * validates and normalizes recipient data & international phones,
  * maps them to Target-Prod database models, fetches real-time carrier
- * checkpoints via Carrier Adapters, and supports automated or manual dispatch.
+ * checkpoints via Carrier Adapters, and issues branded tracking URLs.
  */
 
 function assertPhenixConfigured() {
@@ -77,6 +77,36 @@ function buildPhenixRequestBody(from, to) {
 }
 
 /**
+ * Normalize Phenix phone numbers toward E.164 without corrupting international codes.
+ * Phenix fields already contain international prefixes (e.g. 966..., 971..., 1..., 33..., 44..., 852...).
+ */
+function normalizePhenixPhone(raw) {
+    if (raw == null) return null;
+    let s = String(raw).trim();
+    if (!s) return null;
+
+    let digits = s.replace(/\D/g, '');
+    if (!digits) return null;
+
+    // Strip leading 00 (e.g. 00966555 -> 966555)
+    if (s.startsWith('00') || digits.startsWith('00')) {
+        digits = digits.replace(/^00/, '');
+    }
+
+    // Kuwait local 8-digit mobile numbers starting with 2, 5, 6, 9 (e.g. 97959567 -> +96597959567)
+    if (digits.length === 8 && ['2', '5', '6', '9'].includes(digits[0])) {
+        return `+965${digits}`;
+    }
+
+    // E.164 standard is 8 to 15 digits
+    if (digits.length >= 8 && digits.length <= 16) {
+        return `+${digits}`;
+    }
+
+    return null;
+}
+
+/**
  * Derive carrier code from Phenix Cost_Center
  * @param {string} costCenter
  * @returns {'DGR'|'ARAMEX'|'FEDEX'|'OTE'|'IW_EXPRESS'|'MANUAL'}
@@ -101,6 +131,46 @@ function deriveCarrier(costCenter) {
         return 'IW_EXPRESS';
     }
     return 'DGR';
+}
+
+/**
+ * Validates whether a Phenix row has complete actionable consignment data
+ */
+function validatePhenixRow(row) {
+    const billId = String(row.bill_id || '').trim();
+    const receiptNo = String(row.Receipt_no || '').trim();
+    const carrierTracking = String(row.bill_detailCustomField_1 || '').trim();
+    const costCenter = String(row.Cost_Center || '').trim();
+    const derivedCarrier = deriveCarrier(costCenter);
+
+    const receiverName = String(row.bill_detailCustomField_3 || '').trim();
+    const rawReceiverPhone = String(row.bill_detailCustomField_4 || '').trim();
+    const receiverPhone = normalizePhenixPhone(rawReceiverPhone);
+    const rawSenderPhone = String(row.billCustomField_1 || '').trim();
+    const senderPhone = normalizePhenixPhone(rawSenderPhone) || '+96597691271';
+
+    const missing = [];
+    if (!billId) missing.push('Bill ID');
+    if (!carrierTracking) missing.push('Carrier AWB');
+    if (!receiverName) missing.push('Receiver Name');
+    if (!receiverPhone) missing.push('Receiver Phone');
+
+    const isComplete = missing.length === 0;
+
+    return {
+        isComplete,
+        missingFields: missing,
+        billId,
+        receiptNo,
+        carrierTracking,
+        costCenter,
+        derivedCarrier,
+        receiverName,
+        receiverPhone,
+        rawReceiverPhone,
+        senderPhone,
+        date: row.Date
+    };
 }
 
 class PhenixSyncService {
@@ -156,39 +226,44 @@ class PhenixSyncService {
     async previewPhenixShipments(opts = {}) {
         const { rows, from, to } = await this.fetchPhenixReportData(opts);
         const targetCarrier = String(opts.carrier || 'ALL').toUpperCase();
+        const onlyComplete = opts.onlyComplete !== false && opts.onlyComplete !== 'false';
 
         const previewList = [];
+        let totalMatched = 0;
+        let completeCount = 0;
+        let incompleteCount = 0;
 
         for (const row of rows) {
-            const billId = String(row.bill_id || '').trim();
-            const receiptNo = String(row.Receipt_no || '').trim();
-            const carrierTracking = String(row.bill_detailCustomField_1 || '').trim();
-            const costCenter = String(row.Cost_Center || '').trim();
-            const derivedCarrier = deriveCarrier(costCenter);
+            const v = validatePhenixRow(row);
 
             // Filter by carrier
             if (targetCarrier !== 'ALL') {
-                if (targetCarrier === 'DHL' && derivedCarrier !== 'DGR') continue;
-                if (targetCarrier === 'DGR' && derivedCarrier !== 'DGR') continue;
-                if (targetCarrier === 'ARAMEX' && derivedCarrier !== 'ARAMEX') continue;
-                if (targetCarrier === 'FEDEX' && derivedCarrier !== 'FEDEX') continue;
-                if (targetCarrier === 'OTE' && derivedCarrier !== 'OTE') continue;
+                if ((targetCarrier === 'DHL' || targetCarrier === 'DGR') && v.derivedCarrier !== 'DGR') continue;
+                if (targetCarrier === 'ARAMEX' && v.derivedCarrier !== 'ARAMEX') continue;
+                if (targetCarrier === 'FEDEX' && v.derivedCarrier !== 'FEDEX') continue;
+                if (targetCarrier === 'OTE' && v.derivedCarrier !== 'OTE') continue;
             }
 
-            const receiverName = String(row.bill_detailCustomField_3 || '').trim();
-            const rawReceiverPhone = String(row.bill_detailCustomField_4 || '').trim();
-            const receiverPhone = normalizePhone(rawReceiverPhone) || rawReceiverPhone;
-            const senderPhone = normalizePhone(String(row.billCustomField_1 || '').trim());
+            totalMatched++;
+            if (v.isComplete) {
+                completeCount++;
+            } else {
+                incompleteCount++;
+            }
+
+            if (onlyComplete && !v.isComplete) {
+                continue;
+            }
 
             // Check if already in DB
             let existing = null;
-            if (carrierTracking) {
+            if (v.carrierTracking) {
                 existing = await prisma.shipment.findFirst({
                     where: {
                         OR: [
-                            { dhlTrackingNumber: carrierTracking },
-                            { trackingNumber: `TRK-${carrierTracking}` },
-                            { trackingNumber: carrierTracking }
+                            { dhlTrackingNumber: v.carrierTracking },
+                            { trackingNumber: `TRK-${v.carrierTracking}` },
+                            { trackingNumber: v.carrierTracking }
                         ]
                     },
                     select: { id: true, trackingNumber: true, status: true, carrierCode: true }
@@ -196,15 +271,17 @@ class PhenixSyncService {
             }
 
             previewList.push({
-                billId,
-                receiptNo,
-                carrierTracking,
-                costCenter,
-                derivedCarrier,
-                receiverName,
-                receiverPhone,
-                senderPhone,
-                date: row.Date,
+                billId: v.billId,
+                receiptNo: v.receiptNo,
+                carrierTracking: v.carrierTracking,
+                costCenter: v.costCenter,
+                derivedCarrier: v.derivedCarrier,
+                receiverName: v.receiverName || '-',
+                receiverPhone: v.receiverPhone || (v.rawReceiverPhone ? `Invalid: ${v.rawReceiverPhone}` : 'Missing Phone'),
+                senderPhone: v.senderPhone,
+                date: v.date,
+                isComplete: v.isComplete,
+                missingFields: v.missingFields,
                 existsInDb: Boolean(existing),
                 existingTrackingNumber: existing?.trackingNumber || null,
                 existingStatus: existing?.status || null
@@ -215,6 +292,10 @@ class PhenixSyncService {
             window: { from, to },
             totalFetched: rows.length,
             carrierFilter: targetCarrier,
+            totalMatched,
+            completeCount,
+            incompleteCount,
+            onlyComplete,
             matchedCount: previewList.length,
             items: previewList
         };
@@ -222,11 +303,13 @@ class PhenixSyncService {
 
     /**
      * Ingest / Synchronize Phenix Shipments into Target-Prod Database
+     * Enforces complete data requirements so incomplete consignments are skipped safely.
      */
     async syncPhenixShipments(opts = {}) {
         const { rows, from, to } = await this.fetchPhenixReportData(opts);
         const targetCarrier = String(opts.carrier || 'ALL').toUpperCase();
         const sendWhatsApp = Boolean(opts.sendWhatsApp);
+        const onlyComplete = opts.onlyComplete !== false; // default true
 
         // Resolve default admin / user for assigning shipment ownership
         let defaultUser = null;
@@ -249,6 +332,8 @@ class PhenixSyncService {
             totalFetched: rows.length,
             carrierFilter: targetCarrier,
             matchedCount: 0,
+            completeCount: 0,
+            skippedIncompleteCount: 0,
             createdCount: 0,
             updatedCount: 0,
             carrierSyncedCount: 0,
@@ -258,38 +343,35 @@ class PhenixSyncService {
         };
 
         for (const row of rows) {
-            const billId = String(row.bill_id || '').trim();
-            const receiptNo = String(row.Receipt_no || '').trim();
-            const carrierTracking = String(row.bill_detailCustomField_1 || '').trim();
-            const costCenter = String(row.Cost_Center || '').trim();
-            const derivedCarrier = deriveCarrier(costCenter);
+            const v = validatePhenixRow(row);
 
             // Filter by carrier
             if (targetCarrier !== 'ALL') {
-                if ((targetCarrier === 'DHL' || targetCarrier === 'DGR') && derivedCarrier !== 'DGR') continue;
-                if (targetCarrier === 'ARAMEX' && derivedCarrier !== 'ARAMEX') continue;
-                if (targetCarrier === 'FEDEX' && derivedCarrier !== 'FEDEX') continue;
-                if (targetCarrier === 'OTE' && derivedCarrier !== 'OTE') continue;
+                if ((targetCarrier === 'DHL' || targetCarrier === 'DGR') && v.derivedCarrier !== 'DGR') continue;
+                if (targetCarrier === 'ARAMEX' && v.derivedCarrier !== 'ARAMEX') continue;
+                if (targetCarrier === 'FEDEX' && v.derivedCarrier !== 'FEDEX') continue;
+                if (targetCarrier === 'OTE' && v.derivedCarrier !== 'OTE') continue;
             }
 
             summary.matchedCount++;
 
-            if (!carrierTracking && !receiptNo) {
+            // Strictly require full data
+            if (!v.isComplete) {
+                summary.skippedIncompleteCount++;
                 summary.errors.push({
-                    billId,
-                    error: 'Missing both carrier tracking number and invoice receipt number'
+                    billId: v.billId,
+                    receiptNo: v.receiptNo,
+                    carrierTracking: v.carrierTracking,
+                    error: `Incomplete consignment data. Missing: ${v.missingFields.join(', ')}`
                 });
                 continue;
             }
 
-            const receiverName = String(row.bill_detailCustomField_3 || '').trim() || 'Valued Customer';
-            const rawReceiverPhone = String(row.bill_detailCustomField_4 || '').trim();
-            const receiverPhone = normalizePhone(rawReceiverPhone) || rawReceiverPhone;
-            const senderPhone = normalizePhone(String(row.billCustomField_1 || '').trim()) || '96597691271';
+            summary.completeCount++;
 
             try {
-                // Determine unique tracking number: TRK-{carrierTracking} or TRK-{receiptNo}
-                const baseTracking = carrierTracking || receiptNo;
+                // Determine unique tracking number: TRK-{carrierTracking}
+                const baseTracking = v.carrierTracking || v.receiptNo;
                 const trackingNumber = baseTracking.startsWith('TRK-') || baseTracking.startsWith('DGR-') 
                     ? baseTracking 
                     : `TRK-${baseTracking}`;
@@ -299,8 +381,8 @@ class PhenixSyncService {
                     where: {
                         OR: [
                             { trackingNumber },
-                            { dhlTrackingNumber: carrierTracking },
-                            { trackingNumber: carrierTracking }
+                            { dhlTrackingNumber: v.carrierTracking },
+                            { trackingNumber: v.carrierTracking }
                         ]
                     }
                 });
@@ -312,7 +394,7 @@ class PhenixSyncService {
                     // Create new shipment
                     const initialHistory = [{
                         status: 'booked',
-                        description: `Shipment synchronized from Phenix ERP (Invoice #${receiptNo || billId})`,
+                        description: `Shipment synchronized from Phenix ERP (Invoice #${v.receiptNo || v.billId})`,
                         timestamp: new Date(),
                         source: 'phenix_erp',
                         location: {
@@ -324,36 +406,36 @@ class PhenixSyncService {
                     shipment = await prisma.shipment.create({
                         data: {
                             trackingNumber,
-                            carrierCode: derivedCarrier,
-                            serviceCode: derivedCarrier === 'DGR' ? 'P' : 'STD',
+                            carrierCode: v.derivedCarrier,
+                            serviceCode: v.derivedCarrier === 'DGR' ? 'P' : 'STD',
                             shipmentType: 'package',
                             status: 'booked',
-                            dhlTrackingNumber: carrierTracking || null,
+                            dhlTrackingNumber: v.carrierTracking || null,
                             userId: defaultUser.id,
                             organizationId: defaultUser.organizationId || null,
                             origin: {
                                 city: 'Kuwait City',
                                 countryCode: 'KW',
-                                phone: senderPhone,
+                                phone: v.senderPhone,
                                 contactPerson: 'Target Logistics'
                             },
                             destination: {
                                 city: 'Kuwait',
                                 countryCode: 'KW',
-                                contactPerson: receiverName,
-                                phone: receiverPhone
+                                contactPerson: v.receiverName,
+                                phone: v.receiverPhone
                             },
                             customer: {
-                                name: receiverName,
-                                phone: receiverPhone
+                                name: v.receiverName,
+                                phone: v.receiverPhone
                             },
                             history: initialHistory,
                             documents: {
-                                phenixBillId: billId,
-                                phenixReceiptNo: receiptNo,
-                                costCenter,
+                                phenixBillId: v.billId,
+                                phenixReceiptNo: v.receiptNo,
+                                costCenter: v.costCenter,
                                 source: 'PHENIX_ERP',
-                                rawDate: row.Date,
+                                rawDate: v.date,
                                 ingestedAt: new Date().toISOString()
                             }
                         }
@@ -361,22 +443,31 @@ class PhenixSyncService {
 
                     wasCreated = true;
                     summary.createdCount++;
-                    logger.info(`[PhenixSync] Created new shipment ${trackingNumber} for Phenix Bill #${billId} (Carrier AWB: ${carrierTracking})`);
+                    logger.info(`[PhenixSync] Created new shipment ${trackingNumber} for Phenix Bill #${v.billId} (Carrier AWB: ${v.carrierTracking})`);
                 } else {
                     // Update existing record with any missing Phenix metadata
                     const currentDocs = (existing.documents && typeof existing.documents === 'object') ? existing.documents : {};
                     const updatedDocs = {
                         ...currentDocs,
-                        phenixBillId: billId,
-                        phenixReceiptNo: receiptNo,
-                        costCenter,
+                        phenixBillId: v.billId,
+                        phenixReceiptNo: v.receiptNo,
+                        costCenter: v.costCenter,
                         lastSyncedAt: new Date().toISOString()
                     };
 
                     shipment = await prisma.shipment.update({
                         where: { id: existing.id },
                         data: {
-                            dhlTrackingNumber: carrierTracking || existing.dhlTrackingNumber,
+                            dhlTrackingNumber: v.carrierTracking || existing.dhlTrackingNumber,
+                            customer: {
+                                name: v.receiverName || existing.customer?.name,
+                                phone: v.receiverPhone || existing.customer?.phone
+                            },
+                            destination: {
+                                ...(typeof existing.destination === 'object' ? existing.destination : {}),
+                                contactPerson: v.receiverName || existing.destination?.contactPerson,
+                                phone: v.receiverPhone || existing.destination?.phone
+                            },
                             documents: updatedDocs
                         }
                     });
@@ -388,7 +479,7 @@ class PhenixSyncService {
                 // 2. Fetch live tracking checkpoints from Carrier API
                 let carrierSynced = false;
                 let carrierUpdates = null;
-                if (carrierTracking && (derivedCarrier === 'DGR' || derivedCarrier === 'ARAMEX' || derivedCarrier === 'FEDEX')) {
+                if (v.carrierTracking && (v.derivedCarrier === 'DGR' || v.derivedCarrier === 'ARAMEX' || v.derivedCarrier === 'FEDEX')) {
                     try {
                         carrierUpdates = await syncCarrierTrackingHistory(shipment);
                         if (carrierUpdates) {
@@ -410,7 +501,7 @@ class PhenixSyncService {
 
                 // 3. Send WhatsApp notification if requested and not previously messaged
                 let waSent = false;
-                if (sendWhatsApp && receiverPhone) {
+                if (sendWhatsApp && v.receiverPhone) {
                     try {
                         // Check if already notified
                         const alreadyNotified = await prisma.shipmentNotificationLog.findFirst({
@@ -424,8 +515,8 @@ class PhenixSyncService {
                             await whatsappService.sendNotification({
                                 shipment,
                                 recipientRole: 'customer',
-                                recipientPhone: receiverPhone,
-                                recipientName: receiverName,
+                                recipientPhone: v.receiverPhone,
+                                recipientName: v.receiverName,
                                 templateName: 'shipment_confirmation_2',
                                 eventType: 'shipment_created'
                             });
@@ -439,10 +530,12 @@ class PhenixSyncService {
 
                 summary.results.push({
                     trackingNumber: shipment.trackingNumber,
-                    billId,
-                    receiptNo,
-                    carrierTracking,
+                    billId: v.billId,
+                    receiptNo: v.receiptNo,
+                    carrierTracking: v.carrierTracking,
                     carrierCode: shipment.carrierCode,
+                    receiverName: v.receiverName,
+                    receiverPhone: v.receiverPhone,
                     status: shipment.status,
                     action: wasCreated ? 'CREATED' : 'UPDATED',
                     carrierSynced,
@@ -451,16 +544,16 @@ class PhenixSyncService {
                 });
 
             } catch (itemErr) {
-                logger.error(`[PhenixSync] Error processing bill #${billId}: ${itemErr.message}`);
+                logger.error(`[PhenixSync] Error processing bill #${v.billId}: ${itemErr.message}`);
                 summary.errors.push({
-                    billId,
-                    carrierTracking,
+                    billId: v.billId,
+                    carrierTracking: v.carrierTracking,
                     error: itemErr.message
                 });
             }
         }
 
-        logger.info(`[PhenixSync] Sync completed: Created=${summary.createdCount}, Updated=${summary.updatedCount}, CarrierSynced=${summary.carrierSyncedCount}`);
+        logger.info(`[PhenixSync] Sync completed: Matched=${summary.matchedCount}, FullData=${summary.completeCount}, SkippedIncomplete=${summary.skippedIncompleteCount}, Created=${summary.createdCount}, Updated=${summary.updatedCount}`);
         return summary;
     }
 }
