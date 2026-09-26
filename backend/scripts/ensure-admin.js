@@ -32,8 +32,21 @@ async function ensureAdmin() {
     console.log(`✓ Created Primary Organization: "${org.name}" (${org.id})`);
   }
 
+  // Helper to ensure phone uniqueness constraint is never violated
+  async function getAvailablePhone(preferredPhone, targetEmail) {
+    if (!preferredPhone) return null;
+    const existing = await prisma.user.findFirst({
+      where: {
+        phone: preferredPhone,
+        NOT: { email: targetEmail }
+      }
+    });
+    return existing ? null : preferredPhone;
+  }
+
   // 2. Upsert admin@target-kw.com (Password: TargetAdmin2026!)
   const targetAdminPassword = await hashPassword('TargetAdmin2026!');
+  const phone1 = await getAvailablePhone('+965 9000 0000', 'admin@target-kw.com');
   const admin1 = await prisma.user.upsert({
     where: { email: 'admin@target-kw.com' },
     update: {
@@ -47,7 +60,7 @@ async function ensureAdmin() {
       password: targetAdminPassword,
       name: 'System Administrator',
       role: 'admin',
-      phone: '+965 9000 0001',
+      phone: phone1,
       active: true,
       organizationId: org.id,
       creditLimit: 100000
@@ -57,6 +70,7 @@ async function ensureAdmin() {
 
   // 3. Upsert admin@demo.com (Password: password123)
   const demoAdminPassword = await hashPassword('password123');
+  const phone2 = await getAvailablePhone('+965 9000 0001', 'admin@demo.com');
   const admin2 = await prisma.user.upsert({
     where: { email: 'admin@demo.com' },
     update: {
@@ -70,7 +84,7 @@ async function ensureAdmin() {
       password: demoAdminPassword,
       name: 'Showcase Superadmin',
       role: 'admin',
-      phone: '+965 9000 0002',
+      phone: phone2,
       active: true,
       organizationId: org.id,
       creditLimit: 100000

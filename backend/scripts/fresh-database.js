@@ -73,7 +73,7 @@ async function main() {
         password: hashedPassword,
         name: 'System Administrator',
         role: 'admin',
-        phone: '+965 9000 0001',
+        phone: '+965 9000 0000',
         organizationId: internalOrg.id,
         creditLimit: 100000,
         active: true
