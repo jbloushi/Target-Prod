@@ -142,6 +142,21 @@ async function handleWebhookEvent(req, res) {
                 logger.info(`[WhatsApp Status Webhook] Successfully updated log ${existingLog.id} (#${existingLog.trackingNumber}) -> ${normalizedStatus}`);
             }
         }
+
+        // If received directly from Meta (not forwarded), also forward to msg.target-kw.com so its analytics dashboard stays synced
+        const isForwarded = req.headers['x-forwarded-from'];
+        const settings = getSystemSettings()?.whatsapp || {};
+        const serviceUrl = String(settings.serviceUrl || 'https://msg.target-kw.com').replace(/\/+$/, '');
+        if (!isForwarded && (body.object === 'whatsapp_business_account' || body.object === 'whatsapp_account')) {
+            const axios = require('axios');
+            axios.post(`${serviceUrl}/api/webhook`, body, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Forwarded-From': 'target-prod'
+                },
+                timeout: 5000
+            }).catch(err => logger.debug(`[WhatsApp Webhook Forward to Microservice failed] ${err.message}`));
+        }
     } catch (err) {
         logger.error(`[WhatsApp Webhook Error] ${err.message}`);
     }
