@@ -36,7 +36,7 @@ const handleWebhook = async (req, res) => {
             case 'order.created':
                 // Forward the new order to LogesTechs fulfillment
                 if (payload.data) {
-                    await sallaIntegration.forwardOrderToLogesTechs(payload.data);
+                    await sallaIntegration.forwardOrderToLogesTechs(payload.data, payload.merchant);
                 }
                 break;
                 

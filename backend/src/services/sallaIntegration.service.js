@@ -3,6 +3,8 @@ const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
 const logger = require('../utils/logger');
+const { prisma } = require('../config/database');
+const { generateUniqueCarrierTrackingNumber } = require('../utils/shipmentUtils');
 
 const SALLA_TOKENS_FILE = path.resolve(process.cwd(), 'data', 'salla_tokens.json');
 const SALLA_API_BASE = 'https://api.salla.dev/admin/v2';
@@ -116,45 +118,183 @@ class SallaIntegrationService {
     }
 
     /**
-     * Maps a Salla order to LogesTechs format and forwards it
+     * Builds a native Target Logistics Shipment, dispatches to LogesTechs (OTE),
+     * triggers WhatsApp notification, and attaches Target tracking to Salla.
      */
-    async forwardOrderToLogesTechs(sallaOrder) {
-        const CarrierFactory = require('./CarrierFactory');
-        const logestechs = CarrierFactory.getAdapter('OTE');
-        
+    async forwardOrderToLogesTechs(sallaOrder, merchantId = null) {
         const address = sallaOrder.shipping?.address || {};
         const customer = sallaOrder.customer || {};
+        const invoiceNumber = String(sallaOrder.reference_id || sallaOrder.id || '');
+
+        const receiverName = `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'Salla Customer';
+        const receiverPhone = String(customer.mobile || '').replace(/^\+/, '');
+        const receiverAddressLine = address.shipping_address || address.street || '.';
+        const city = address.city || 'Kuwait';
+        const country = address.country || 'KW';
+        const isCod = sallaOrder.payment_method === 'cod';
+        const orderTotal = Number(sallaOrder.amounts?.total?.amount || 0);
+
+        // 1. Find default system user and organization
+        let systemUser = await prisma.user.findFirst({
+            where: { role: { in: ['admin', 'manager'] } },
+            include: { organization: true }
+        });
+        if (!systemUser) {
+            systemUser = await prisma.user.findFirst({ include: { organization: true } });
+        }
+        if (!systemUser) {
+            throw new Error('No system user found in database to attach Salla shipment.');
+        }
+
+        // 2. Generate unique Target Tracking Number (e.g. TRG-XXXXXXXXXXXX)
+        const targetTrackingNumber = await generateUniqueCarrierTrackingNumber(prisma, 'OTE');
+
+        logger.info(`[SallaIntegration] Creating native Target Shipment #${targetTrackingNumber} for Salla Order #${invoiceNumber}...`);
+
+        const originAddress = {
+            company: 'Target Logistics Fulfillment',
+            contactPerson: 'Target Operations',
+            phone: process.env.SUPPORT_WHATSAPP_PHONE || '96597691271',
+            city: 'Kuwait City',
+            countryCode: 'KW',
+            streetLines: ['Target Logistics Central Warehouse']
+        };
+
+        const destinationAddress = {
+            contactPerson: receiverName,
+            phone: receiverPhone,
+            email: customer.email || undefined,
+            city: city,
+            countryCode: country,
+            streetLines: [receiverAddressLine],
+            addressLine1: receiverAddressLine
+        };
+
+        const items = (sallaOrder.items || []).map(item => ({
+            sku: item.sku || String(item.product_id),
+            name: item.name || 'Product Item',
+            price: Number(item.amounts?.total?.amount || item.price || 0),
+            quantity: Number(item.quantity || 1)
+        }));
+
+        // 3. Create Shipment in Target database
+        const createdShipment = await prisma.shipment.create({
+            data: {
+                trackingNumber: targetTrackingNumber,
+                userId: systemUser.id,
+                organizationId: systemUser.organizationId,
+                carrierCode: 'OTE',
+                serviceCode: 'STD',
+                status: 'booked',
+                origin: originAddress,
+                destination: destinationAddress,
+                currentLocation: originAddress,
+                customer: {
+                    name: receiverName,
+                    phone: receiverPhone,
+                    email: customer.email || ''
+                },
+                items: items,
+                parcels: [{
+                    weight: 1,
+                    description: `Salla Order #${invoiceNumber}`,
+                    quantity: items.reduce((sum, it) => sum + (it.quantity || 1), 0)
+                }],
+                price: orderTotal,
+                currency: sallaOrder.currency || 'KWD',
+                codAmount: isCod ? orderTotal : null,
+                codCurrency: isCod ? (sallaOrder.currency || 'KWD') : null,
+                codStatus: isCod ? 'pending' : null,
+                history: [{
+                    status: 'booked',
+                    description: `Order #${invoiceNumber} received from Salla store and booked with Target Logistics`,
+                    timestamp: new Date().toISOString(),
+                    location: originAddress
+                }]
+            }
+        });
+
+        // 4. Dispatch to Carrier OTE (LogesTechs)
+        const CarrierFactory = require('./CarrierFactory');
+        const logestechs = CarrierFactory.getAdapter('OTE');
 
         const logestechsPayload = {
-            receiverName: `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'Salla Customer',
-            receiverPhone: String(customer.mobile || '').replace(/^\+/, ''),
+            receiverName,
+            receiverPhone,
             receiverAddress: {
-                city: address.city || '',
-                region: address.country || 'KW',
-                addressLine1: address.shipping_address || address.street || '.',
+                city,
+                region: country,
+                addressLine1: receiverAddressLine,
             },
             notes: sallaOrder.notes || '',
-            shipmentType: 'REGULAR',
-            cod: String(sallaOrder.payment_method === 'cod' ? (sallaOrder.amounts?.total?.amount || 0) : '0'),
-            codCollectionMethod: sallaOrder.payment_method === 'cod' ? 'COD' : 'PREPAID',
-            invoiceNumber: String(sallaOrder.reference_id || sallaOrder.id || ''),
-            items: (sallaOrder.items || []).map(item => ({
-                sku: item.sku || String(item.product_id),
-                price: Number(item.amounts?.total?.amount || item.price || 0),
-                quantity: Number(item.quantity || 1)
+            shipmentType: isCod ? 'COD' : 'REGULAR',
+            cod: String(isCod ? orderTotal : 0),
+            codCollectionMethod: isCod ? 'COD' : 'PREPAID',
+            invoiceNumber: invoiceNumber,
+            items: items.map(item => ({
+                sku: item.sku,
+                price: item.price,
+                quantity: item.quantity
             }))
         };
 
-        logger.info(`Forwarding Salla Order ${logestechsPayload.invoiceNumber} to LogesTechs...`, logestechsPayload);
-        
+        let logestechsResult = null;
         try {
-            const result = await logestechs.addFulfillmentOrder(logestechsPayload);
-            logger.info(`Successfully forwarded Salla order ${logestechsPayload.invoiceNumber} to LogesTechs`, result);
-            return result;
-        } catch (error) {
-            logger.error(`Failed to forward Salla order ${logestechsPayload.invoiceNumber} to LogesTechs`, error);
-            throw error;
+            logestechsResult = await logestechs.addFulfillmentOrder(logestechsPayload);
+            logger.info(`[SallaIntegration] Successfully booked with LogesTechs warehouse: Barcode #${logestechsResult.barcode || logestechsResult.id}`);
+
+            // Update Target Shipment with Carrier Barcode & Label
+            await prisma.shipment.update({
+                where: { id: createdShipment.id },
+                data: {
+                    carrierShipmentId: String(logestechsResult.id || ''),
+                    dhlTrackingNumber: logestechsResult.barcode || targetTrackingNumber,
+                    dhlConfirmed: true,
+                    labelUrl: logestechsResult.barcodeImage || null
+                }
+            });
+        } catch (oteError) {
+            logger.error(`[SallaIntegration] LogesTechs warehouse dispatch error for #${targetTrackingNumber}: ${oteError.message}`);
         }
+
+        // 5. Send automated WhatsApp notification with Target Tracking URL
+        try {
+            const chatwootService = require('./chatwootNotificationService');
+            await chatwootService.triggerShipmentNotification('shipment_created', createdShipment);
+            logger.info(`[SallaIntegration] Automated WhatsApp notification triggered for customer ${receiverPhone} with tracking ${targetTrackingNumber}`);
+        } catch (waError) {
+            logger.warn(`[SallaIntegration] WhatsApp notification non-fatal warning: ${waError.message}`);
+        }
+
+        // 6. Attach Target Tracking Number & URL to Salla Order
+        if (merchantId) {
+            const token = await this.getValidAccessToken(merchantId);
+            if (token) {
+                try {
+                    const targetTrackingUrl = `https://target-kw.com/track/${targetTrackingNumber}`;
+                    await axios.post(`${SALLA_API_BASE}/orders/${invoiceNumber}/shipments`, {
+                        shipment_type: 'standard',
+                        tracking_number: targetTrackingNumber,
+                        tracking_link: targetTrackingUrl,
+                        shipping_company: 'Target Logistics'
+                    }, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    logger.info(`[SallaIntegration] Attached Target tracking URL (${targetTrackingUrl}) to Salla Order #${invoiceNumber}`);
+                } catch (sallaShipError) {
+                    logger.warn(`[SallaIntegration] Warning attaching shipment to Salla: ${sallaShipError.response?.data?.message || sallaShipError.message}`);
+                }
+            }
+        }
+
+        return {
+            targetTrackingNumber,
+            shipmentId: createdShipment.id,
+            logestechsResult
+        };
     }
 
     /**
