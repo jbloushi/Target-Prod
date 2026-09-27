@@ -297,24 +297,35 @@ const getAgingReport = async (organizationId, currency = null) => {
     const totalsByCurrency = {};
     let unpaidShipmentsCount = 0;
 
-    const where = organizationId === 'all' ? {} : { organizationId: organizationId || null };
-    const shipments = await prisma.shipment.findMany({
-        where,
-        select: {
-            id: true,
-            price: true,
-            pricingSnapshot: true,
-            currency: true,
-            createdAt: true,
-            allocations: {
-                where: { status: 'ACTIVE' },
-                select: { amount: true, currency: true }
+    const baseWhere = organizationId === 'all' ? {} : { organizationId: organizationId || null };
+    const unpaidWhere = {
+        ...baseWhere,
+        OR: [
+            { paid: false },
+            { paid: null }
+        ]
+    };
+
+    const [unpaidShipments, totalShipmentsCount] = await Promise.all([
+        prisma.shipment.findMany({
+            where: unpaidWhere,
+            select: {
+                id: true,
+                price: true,
+                pricingSnapshot: true,
+                currency: true,
+                createdAt: true,
+                allocations: {
+                    where: { status: 'ACTIVE' },
+                    select: { amount: true, currency: true }
+                }
             }
-        }
-    });
+        }),
+        prisma.shipment.count({ where: baseWhere })
+    ]);
 
     const now = new Date();
-    for (const shipment of shipments) {
+    for (const shipment of unpaidShipments) {
         const shipmentCurrency = getShipmentCurrency(shipment);
         if (requestedCurrency && shipmentCurrency !== requestedCurrency) continue;
 
@@ -340,7 +351,7 @@ const getAgingReport = async (organizationId, currency = null) => {
     return {
         totalUnpaid: toApiAmount(totalsByCurrency[defaultCurrency] || 0),
         unpaidShipmentsCount,
-        totalShipmentsCount: shipments.length,
+        totalShipmentsCount,
         buckets: bucketsByCurrency[defaultCurrency] || emptyBuckets(),
         totalUnpaidByCurrency: totalsByCurrency,
         agingBucketsByCurrency: bucketsByCurrency

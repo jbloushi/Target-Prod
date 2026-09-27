@@ -674,21 +674,6 @@ const FinancePage = () => {
             <div className="tabs tabs-boxed bg-base-200/60 p-1.5 rounded-2xl flex flex-wrap gap-1 border border-base-200">
                 <button
                     type="button"
-                    onClick={() => {
-                        setActiveTab('all_sections');
-                        fetchCodData();
-                        fetchDrivers();
-                    }}
-                    className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
-                        activeTab === 'all_sections' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
-                    }`}
-                >
-                    <span className="material-symbols-outlined text-[17px]">grid_view</span>
-                    {lang === 'ar' ? 'عرض الكل معاً (لوحة شاملة)' : 'View All at Once (Master Hub)'}
-                </button>
-
-                <button
-                    type="button"
                     onClick={() => setActiveTab('overview')}
                     className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
                         activeTab === 'overview' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
@@ -823,33 +808,38 @@ const FinancePage = () => {
                         {lang === 'ar' ? 'الإقفال المالي' : 'Period Closing'}
                     </button>
                 )}
+
+                {can('VIEW_FINANCE') && (
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setActiveTab('all_sections');
+                            fetchCodData();
+                            fetchDrivers();
+                        }}
+                        className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                            activeTab === 'all_sections' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                        }`}
+                    >
+                        <span className="material-symbols-outlined text-[17px]">grid_view</span>
+                        {lang === 'ar' ? 'عرض الكل معاً (لوحة شاملة)' : 'View All at Once (Master Hub)'}
+                    </button>
+                )}
             </div>
 
             {/* Active Ledger Scope Banner */}
-            <div className="bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4 flex items-center justify-between flex-wrap gap-3 text-xs">
-                <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                        <span className="material-symbols-outlined text-[20px]">domain</span>
-                    </div>
-                    <div>
-                        <div className="text-[10px] text-base-content/60 font-bold uppercase tracking-wider">{t('fin_active_scope', 'Active Ledger Scope')}</div>
-                        <div className="text-sm font-black text-base-content flex items-center gap-2">
-                            <span>{currentOrgName}</span>
-                            {selectedOrgId === 'all' && (
-                                <span className="badge badge-xs badge-primary font-mono font-bold">
-                                    {summary.totalOrganizationsCount || organizations.length} {lang === 'ar' ? 'منظمات' : 'Orgs'}
-                                </span>
-                            )}
-                        </div>
-                    </div>
+            <div className="bg-base-200/40 border border-base-200 rounded-2xl px-4 py-2.5 flex items-center justify-between flex-wrap gap-2 text-xs">
+                <div className="flex items-center gap-2">
+                    <span className="text-base-content/60 font-semibold">{t('fin_active_scope', 'Active Ledger Scope')}:</span>
+                    <strong className="text-base-content font-bold">{currentOrgName}</strong>
+                    {selectedOrgId === 'all' && (
+                        <span className="badge badge-xs badge-primary font-mono font-bold">
+                            {summary.totalOrganizationsCount || organizations.length} {lang === 'ar' ? 'منظمات' : 'Orgs'}
+                        </span>
+                    )}
                 </div>
-                <div className="flex items-center gap-2 flex-wrap font-mono text-xs">
-                    <span className="badge badge-outline border-base-300 font-bold">
-                        {summary.totalShipmentsCount ? `${summary.totalShipmentsCount} ${lang === 'ar' ? 'شحنة مسجلة' : 'Total Shipments'}` : t('fin_realtime_double_entry', 'Real-time double-entry balances')}
-                    </span>
-                    <span className="badge badge-primary badge-outline font-bold">
-                        {currentCurrency}
-                    </span>
+                <div className="text-base-content/50 font-mono text-xs">
+                    {t('fin_realtime_double_entry', 'Real-time audited double-entry balances')}
                 </div>
             </div>
 
@@ -875,10 +865,10 @@ const FinancePage = () => {
                         </div>
                     )}
 
-                    {/* 5 Executive Balance Metric Cards */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-                        {/* Card 1: Available Credit / Balance */}
-                        <div className="card bg-base-100 border border-base-200/80 shadow-xs hover:shadow-md hover:border-primary/40 transition-all rounded-2xl p-4">
+                    {/* 4 Balance Metric Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {/* Card 1: Available Balance */}
+                        <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4">
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
                                     {t('fin_available_balance', 'Available Balance')}
@@ -887,21 +877,21 @@ const FinancePage = () => {
                                     <span className="material-symbols-outlined text-[18px]">account_balance</span>
                                 </div>
                             </div>
-                            <div className="text-xl sm:text-2xl font-black font-mono text-base-content tracking-tight">
+                            <div className="text-2xl font-black font-mono text-base-content">
                                 {fmtAmount(summary.availableCredit || summary.balance)} <span className="text-xs font-semibold text-base-content/60">{currentCurrency}</span>
                             </div>
-                            <div className="flex items-center justify-between text-[11px] text-base-content/60 mt-2.5 pt-2 border-t border-base-200/60">
-                                <span className="font-semibold truncate">
+                            <div className="flex items-center justify-between text-[11px] text-base-content/50 mt-2">
+                                <span>
                                     {selectedOrgId === 'all'
-                                        ? `👥 ${summary.totalOrganizationsCount || organizations.length} ${lang === 'ar' ? 'منظمات' : 'Organizations'}`
-                                        : `${t('fin_credit_limit', 'Limit')}: ${money(summary.creditLimit, currentCurrency)}`}
+                                        ? `${summary.totalOrganizationsCount || organizations.length} ${lang === 'ar' ? 'منظمات' : 'Organizations'}`
+                                        : `${t('fin_credit_limit', 'Credit Limit')}: ${money(summary.creditLimit, currentCurrency)}`}
                                 </span>
-                                <span className="badge badge-success badge-xs font-bold text-white shrink-0">Active</span>
+                                <span className="badge badge-success badge-xs font-bold text-white">Active</span>
                             </div>
                         </div>
 
                         {/* Card 2: Unapplied Cash */}
-                        <div className="card bg-base-100 border border-base-200/80 shadow-xs hover:shadow-md hover:border-success/40 transition-all rounded-2xl p-4">
+                        <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4">
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
                                     {t('fin_unapplied_cash', 'Unapplied Cash')}
@@ -910,77 +900,56 @@ const FinancePage = () => {
                                     <span className="material-symbols-outlined text-[18px]">payments</span>
                                 </div>
                             </div>
-                            <div className="text-xl sm:text-2xl font-black font-mono text-success tracking-tight">
+                            <div className="text-2xl font-black font-mono text-success">
                                 {fmtAmount(summary.unappliedCash)} <span className="text-xs font-semibold text-base-content/60">{currentCurrency}</span>
                             </div>
-                            <div className="flex items-center justify-between text-[11px] text-base-content/60 mt-2.5 pt-2 border-t border-base-200/60">
-                                <span className="font-semibold truncate">
-                                    📄 {summary.unappliedPaymentsCount ?? payments.length} {lang === 'ar' ? 'دفعات متاحة' : 'Payments'}
+                            <div className="flex items-center justify-between text-[11px] text-base-content/50 mt-2">
+                                <span>
+                                    {summary.unappliedPaymentsCount ?? payments.length} {lang === 'ar' ? 'دفعات متاحة' : 'Payments'}
                                 </span>
-                                <span className="badge badge-primary badge-xs font-bold shrink-0">{lang === 'ar' ? 'جاهز' : 'Ready'}</span>
+                                <span className="badge badge-primary badge-xs font-bold">{lang === 'ar' ? 'جاهز' : 'Ready'}</span>
                             </div>
                         </div>
 
                         {/* Card 3: Total Unpaid Cargo */}
-                        <div className="card bg-base-100 border border-base-200/80 shadow-xs hover:shadow-md hover:border-warning/40 transition-all rounded-2xl p-4">
+                        <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4">
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
-                                    {t('fin_unpaid_receivables', 'Unpaid Cargo')}
+                                    {t('fin_unpaid_receivables', 'Total Unpaid Cargo')}
                                 </span>
                                 <div className="w-8 h-8 rounded-lg bg-warning/10 text-warning flex items-center justify-center">
                                     <span className="material-symbols-outlined text-[18px]">inventory_2</span>
                                 </div>
                             </div>
-                            <div className={`text-xl sm:text-2xl font-black font-mono tracking-tight ${summary.totalUnpaid > 0 ? 'text-warning' : 'text-base-content'}`}>
+                            <div className={`text-2xl font-black font-mono ${summary.totalUnpaid > 0 ? 'text-warning' : 'text-base-content'}`}>
                                 {fmtAmount(summary.totalUnpaid)} <span className="text-xs font-semibold text-base-content/60">{currentCurrency}</span>
                             </div>
-                            <div className="flex items-center justify-between text-[11px] text-base-content/60 mt-2.5 pt-2 border-t border-base-200/60">
-                                <span className="font-semibold truncate">
-                                    📦 {summary.unpaidShipmentsCount ?? shipments.filter(s => !s.paid).length} {lang === 'ar' ? 'شحنات غير مسددة' : 'Unpaid Shipments'}
+                            <div className="flex items-center justify-between text-[11px] text-base-content/50 mt-2">
+                                <span>
+                                    {summary.unpaidShipmentsCount ?? shipments.filter(s => !s.paid).length} {lang === 'ar' ? 'شحنات غير مسددة' : 'Outstanding invoices'}
                                 </span>
-                                <span className="badge badge-ghost badge-xs font-mono shrink-0">{summary.agingBuckets?.['0-30'] ? '0-30D' : 'CURRENT'}</span>
+                                <span className="badge badge-ghost badge-xs font-mono">{summary.agingBuckets?.['0-30'] ? '0-30D' : 'CURRENT'}</span>
                             </div>
                         </div>
 
-                        {/* Card 4: Invoices & Statements */}
-                        <div className="card bg-base-100 border border-base-200/80 shadow-xs hover:shadow-md hover:border-indigo-500/40 transition-all rounded-2xl p-4">
+                        {/* Card 4: Net Ledger Position */}
+                        <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4">
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
-                                    {lang === 'ar' ? 'إجمالي الفواتير' : 'Invoiced Billing'}
+                                    {lang === 'ar' ? 'صافي الموقف المالي' : 'Net Ledger Position'}
                                 </span>
                                 <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
-                                    <span className="material-symbols-outlined text-[18px]">receipt</span>
+                                    <span className="material-symbols-outlined text-[18px]">trending_up</span>
                                 </div>
                             </div>
-                            <div className="text-xl sm:text-2xl font-black font-mono text-base-content tracking-tight">
-                                {fmtAmount(summary.totalInvoicesAmount ?? invoices.reduce((acc, inv) => acc + parseFloat(inv.total || 0), 0))} <span className="text-xs font-semibold text-base-content/60">{currentCurrency}</span>
+                            <div className="text-2xl font-black font-mono text-base-content">
+                                {fmtAmount(parseFloat(summary.unappliedCash || 0) - parseFloat(summary.balance || 0))} <span className="text-xs font-semibold text-base-content/60">{currentCurrency}</span>
                             </div>
-                            <div className="flex items-center justify-between text-[11px] text-base-content/60 mt-2.5 pt-2 border-t border-base-200/60">
-                                <span className="font-semibold truncate">
-                                    🧾 {summary.totalInvoicesCount ?? invoices.length} {lang === 'ar' ? 'مطالبات' : 'Statements'}
+                            <div className="flex items-center justify-between text-[11px] text-base-content/50 mt-2">
+                                <span>
+                                    {summary.totalInvoicesCount ?? invoices.length} {lang === 'ar' ? 'فواتير ومطالبات' : 'Statements'}
                                 </span>
-                                <span className="badge badge-outline badge-xs font-bold shrink-0">{lang === 'ar' ? 'فواتير' : 'Billed'}</span>
-                            </div>
-                        </div>
-
-                        {/* Card 5: Driver COD Cash in Field */}
-                        <div className="card bg-base-100 border border-base-200/80 shadow-xs hover:shadow-md hover:border-teal-500/40 transition-all rounded-2xl p-4">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
-                                    {lang === 'ar' ? 'نقدية التحصيل (COD)' : 'Driver Cash (COD)'}
-                                </span>
-                                <div className="w-8 h-8 rounded-lg bg-teal-500/10 text-teal-600 flex items-center justify-center">
-                                    <span className="material-symbols-outlined text-[18px]">shield_with_heart</span>
-                                </div>
-                            </div>
-                            <div className="text-xl sm:text-2xl font-black font-mono text-teal-600 tracking-tight">
-                                {fmtAmount(codSummary.unremittedTotalsByCurrency?.['KWD'] || 0)} <span className="text-xs font-semibold text-base-content/60">KWD</span>
-                            </div>
-                            <div className="flex items-center justify-between text-[11px] text-base-content/60 mt-2.5 pt-2 border-t border-base-200/60">
-                                <span className="font-semibold truncate">
-                                    🚚 {codSummary.unremittedCount || 0} {lang === 'ar' ? 'شحنات بالعهد' : 'COD Active'}
-                                </span>
-                                <span className="badge badge-info badge-xs text-white font-bold shrink-0">{lang === 'ar' ? 'الخزينة' : 'Vault'}</span>
+                                <span className="badge badge-outline badge-xs font-bold">{lang === 'ar' ? 'متوازن' : 'Balanced'}</span>
                             </div>
                         </div>
                     </div>
