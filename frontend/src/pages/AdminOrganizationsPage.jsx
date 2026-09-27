@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useSnackbar } from 'notistack';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
-import { financeService, organizationService, userService } from '../services/api';
+import { organizationService, userService } from '../services/api';
 
 const CARRIERS_CONFIG = [
     { code: 'DGR', name: 'DHL Express (DGR)' },
@@ -24,7 +24,6 @@ const AdminOrganizationsPage = () => {
     const [orgs, setOrgs] = useState([]);
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [orgOverviews, setOrgOverviews] = useState({});
 
     // Filter & Search
     const [search, setSearch] = useState('');
@@ -58,19 +57,8 @@ const AdminOrganizationsPage = () => {
                 organizationService.getOrganizations(),
                 userService.getUsers()
             ]);
-            const organizations = orgRes.data || [];
-            setOrgs(organizations);
+            setOrgs(orgRes.data || []);
             setUsers(userRes.data || []);
-
-            const overviewEntries = await Promise.all(organizations.map(async (org) => {
-                try {
-                    const response = await financeService.getOrganizationOverview(org.id);
-                    return [org.id, response.data];
-                } catch {
-                    return [org.id, null];
-                }
-            }));
-            setOrgOverviews(Object.fromEntries(overviewEntries));
         } catch (error) {
             console.error('Failed to load organizations', error);
             enqueueSnackbar(lang === 'ar' ? 'فشل تحميل قائمة المؤسسات' : 'Failed to load organizations', { variant: 'error' });
@@ -92,10 +80,7 @@ const AdminOrganizationsPage = () => {
 
         orgs.forEach(o => {
             totalCreditLimit += parseFloat(o.creditLimit || 0);
-            const overview = orgOverviews[o.id];
-            if (overview?.balance) {
-                totalOutstanding += parseFloat(overview.balance || 0);
-            }
+            totalOutstanding += parseFloat(o.balance || 0);
         });
 
         return {
@@ -104,7 +89,7 @@ const AdminOrganizationsPage = () => {
             totalCreditLimit,
             totalOutstanding
         };
-    }, [orgs, orgOverviews]);
+    }, [orgs]);
 
     // Filtered Organizations
     const filteredOrgs = useMemo(() => {
@@ -479,10 +464,9 @@ const AdminOrganizationsPage = () => {
                                 </tr>
                             ) : (
                                 filteredOrgs.map((org) => {
-                                    const overview = orgOverviews[org.id];
-                                    const outstanding = overview?.balance ?? 0;
-                                    const availableCredit = overview?.availableCredit ?? 0;
+                                    const outstanding = parseFloat(org.balance || 0);
                                     const creditLimit = parseFloat(org.creditLimit || 0);
+                                    const availableCredit = Math.max(0, creditLimit - outstanding);
 
                                     return (
                                         <tr key={org.id} className="hover">

@@ -229,8 +229,8 @@ exports.deleteOrganization = async (req, res) => {
         logger.info(`Admin ${req.user.id} initiated complete deletion of organization ${orgId} (${org.name}) with records:`, org._count);
 
         await prisma.$transaction(async (tx) => {
-            // 1. Delete webhook logs and subscriptions
-            await tx.webhookDeliveryLog.deleteMany({
+            // 1. Delete webhook events and subscriptions
+            await tx.webhookEvent.deleteMany({
                 where: { subscription: { organizationId: orgId } }
             });
             await tx.webhookSubscription.deleteMany({
