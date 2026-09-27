@@ -138,8 +138,8 @@ if (rateLimitEnabled) {
 
 
 // Body parser middleware
-app.use(express.json({ limit: '10kb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
-app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+app.use(express.json({ limit: '1mb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // Logging middleware (verbose logs in production can noticeably impact throughput)
 app.use((req, res, next) => {
