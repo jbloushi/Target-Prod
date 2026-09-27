@@ -14,10 +14,15 @@ async function verifyWebhook(req, res) {
         const challenge = req.query['hub.challenge'];
 
         const settings = getSystemSettings()?.whatsapp || {};
-        const expectedToken = settings.webhookVerifyToken || 'target_logistics_meta_verify_secret_2026';
+        const validTokens = [
+            settings.webhookVerifyToken,
+            process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN,
+            'target_logistics_meta_verify_secret_2026',
+            'change-me-verify-token'
+        ].filter(Boolean);
 
-        if (mode === 'subscribe' && token === expectedToken) {
-            logger.info('[Meta Webhook Verified] Successfully responded to Meta hub challenge');
+        if (mode === 'subscribe' && token && validTokens.includes(token)) {
+            logger.info(`[Meta Webhook Verified] Successfully responded to Meta hub challenge (token: ${token})`);
             return res.status(200).send(challenge);
         }
 
@@ -30,7 +35,7 @@ async function verifyWebhook(req, res) {
 }
 
 /**
- * POST /api/integrations/whatsapp/webhook
+ * POST /api/whatsapp/webhook (and aliases)
  * Incoming delivery receipts, status updates, and message logs from Meta
  */
 async function handleWebhookEvent(req, res) {
@@ -93,7 +98,7 @@ async function handleWebhookEvent(req, res) {
                 statusUpdates.push({
                     id: messageId,
                     rawStatus,
-                    timestamp: new Date(),
+                    timestamp: body.timestamp ? new Date(body.timestamp) : new Date(),
                     error: body.error || body.errorMessage || null,
                     raw: body
                 });
@@ -126,36 +131,68 @@ async function handleWebhookEvent(req, res) {
                     continue;
                 }
 
+                const existingResp = (existingLog.responseJson && typeof existingLog.responseJson === 'object') ? existingLog.responseJson : {};
+                const nowIso = new Date().toISOString();
+                const tsIso = update.timestamp ? update.timestamp.toISOString() : nowIso;
+
+                const responseJson = {
+                    ...existingResp,
+                    webhookReceipt: update.raw,
+                    receiptReceivedAt: nowIso
+                };
+
+                if (normalizedStatus === 'DELIVERED') {
+                    responseJson.deliveredAt = responseJson.deliveredAt || tsIso;
+                } else if (normalizedStatus === 'READ') {
+                    responseJson.readAt = responseJson.readAt || tsIso;
+                    if (!responseJson.deliveredAt) {
+                        responseJson.deliveredAt = responseJson.readAt;
+                    }
+                }
+
                 await prisma.shipmentNotificationLog.update({
                     where: { id: existingLog.id },
                     data: {
                         status: normalizedStatus,
                         errorMessage: update.error || existingLog.errorMessage,
-                        responseJson: {
-                            ...(existingLog.responseJson && typeof existingLog.responseJson === 'object' ? existingLog.responseJson : {}),
-                            webhookReceipt: update.raw,
-                            receiptReceivedAt: new Date().toISOString()
-                        }
+                        responseJson
                     }
                 });
 
-                logger.info(`[WhatsApp Status Webhook] Successfully updated log ${existingLog.id} (#${existingLog.trackingNumber}) -> ${normalizedStatus}`);
+                logger.info(`[WhatsApp Status Webhook] Updated log ${existingLog.id} (#${existingLog.trackingNumber}) -> ${normalizedStatus} (deliveredAt: ${responseJson.deliveredAt}, readAt: ${responseJson.readAt})`);
             }
         }
 
-        // If received directly from Meta (not forwarded), also forward to msg.target-kw.com so its analytics dashboard stays synced
+        // If received directly from Meta (not forwarded), forward to msg.target-kw.com microservice
         const isForwarded = req.headers['x-forwarded-from'];
         const settings = getSystemSettings()?.whatsapp || {};
         const serviceUrl = String(settings.serviceUrl || 'https://msg.target-kw.com').replace(/\/+$/, '');
-        if (!isForwarded && (body.object === 'whatsapp_business_account' || body.object === 'whatsapp_account')) {
+        if (!isForwarded && serviceUrl) {
             const axios = require('axios');
-            axios.post(`${serviceUrl}/api/webhook`, body, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Forwarded-From': 'target-prod'
-                },
-                timeout: 5000
-            }).catch(err => logger.debug(`[WhatsApp Webhook Forward to Microservice failed] ${err.message}`));
+            if (body.object === 'whatsapp_business_account' || body.object === 'whatsapp_account') {
+                axios.post(`${serviceUrl}/api/webhook`, body, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Forwarded-From': 'target-prod'
+                    },
+                    timeout: 5000
+                }).catch(err => logger.debug(`[WhatsApp Webhook Forward to Microservice failed] ${err.message}`));
+            }
+
+            // Also forward normalized individual status receipts to microservice sync endpoint
+            for (const upd of statusUpdates) {
+                const s = String(upd.rawStatus || '').toLowerCase();
+                const norm = s.includes('read') ? 'read' : s.includes('deliver') ? 'delivered' : s.includes('fail') ? 'failed' : 'sent';
+                axios.post(`${serviceUrl}/api/webhook/sync-receipt`, {
+                    wamid: upd.id,
+                    status: norm,
+                    timestamp: upd.timestamp ? upd.timestamp.getTime() : Date.now(),
+                    error: upd.error
+                }, {
+                    headers: { 'Content-Type': 'application/json', 'X-Forwarded-From': 'target-prod' },
+                    timeout: 4000
+                }).catch(() => {});
+            }
         }
     } catch (err) {
         logger.error(`[WhatsApp Webhook Error] ${err.message}`);

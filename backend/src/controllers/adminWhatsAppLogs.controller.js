@@ -336,9 +336,106 @@ async function getMetaTemplates(req, res) {
     }
 }
 
+/**
+ * POST /api/admin/whatsapp/sync-telemetry
+ * Pull recent delivery lifecycle telemetry (sent, delivered, read) from msg.target-kw.com
+ * and sync them into Prisma shipmentNotificationLog records.
+ */
+async function syncMicroserviceTelemetry(req, res) {
+    try {
+        const { getSystemSettings } = require('../services/systemSettings.service');
+        const axios = require('axios');
+        const settings = getSystemSettings()?.whatsapp || {};
+        const serviceUrl = String(settings.serviceUrl || 'https://msg.target-kw.com').replace(/\/+$/, '');
+        const adminToken = process.env.ADMIN_TOKEN || 'target-admin-secret-token-2026';
+
+        let microMessages = [];
+        try {
+            const resp = await axios.get(`${serviceUrl}/api/stats/messages`, {
+                params: { limit: 500 },
+                headers: {
+                    'Authorization': `Bearer ${adminToken}`,
+                    'x-admin-token': adminToken
+                },
+                timeout: 8000
+            });
+            microMessages = resp.data?.messages || [];
+        } catch (fetchErr) {
+            logger.warn(`[Sync Telemetry] Could not fetch messages from microservice: ${fetchErr.message}`);
+            return res.status(502).json({ error: `Could not reach WhatsApp microservice: ${fetchErr.message}` });
+        }
+
+        let updatedCount = 0;
+        for (const msg of microMessages) {
+            if (!msg.wamid) continue;
+
+            const targetLog = await prisma.shipmentNotificationLog.findFirst({
+                where: {
+                    OR: [
+                        { chatwootMessageId: msg.wamid },
+                        { chatwootMessageId: msg.id }
+                    ]
+                }
+            });
+
+            if (!targetLog) continue;
+
+            const microStatus = String(msg.status || '').toUpperCase();
+            const currentStatus = String(targetLog.status || '').toUpperCase();
+
+            // Status precedence: READ (3) > DELIVERED (2) > SENT (1)
+            const rank = { SENT: 1, DELIVERED: 2, READ: 3, FAILED: 2 };
+            const newRank = rank[microStatus] || 1;
+            const curRank = rank[currentStatus] || 1;
+
+            const existingResp = (targetLog.responseJson && typeof targetLog.responseJson === 'object') ? targetLog.responseJson : {};
+            let changed = false;
+            const updatedResp = { ...existingResp };
+
+            if (msg.deliveredAt && !updatedResp.deliveredAt) {
+                updatedResp.deliveredAt = new Date(msg.deliveredAt).toISOString();
+                changed = true;
+            }
+            if (msg.readAt && !updatedResp.readAt) {
+                updatedResp.readAt = new Date(msg.readAt).toISOString();
+                if (!updatedResp.deliveredAt) updatedResp.deliveredAt = updatedResp.readAt;
+                changed = true;
+            }
+
+            let nextStatus = currentStatus;
+            if (newRank > curRank) {
+                nextStatus = microStatus;
+                changed = true;
+            }
+
+            if (changed) {
+                await prisma.shipmentNotificationLog.update({
+                    where: { id: targetLog.id },
+                    data: {
+                        status: nextStatus,
+                        responseJson: updatedResp
+                    }
+                });
+                updatedCount++;
+            }
+        }
+
+        return res.json({
+            success: true,
+            totalFromMicroservice: microMessages.length,
+            updatedCount,
+            message: `Successfully synchronized telemetry: ${updatedCount} records updated.`
+        });
+    } catch (err) {
+        logger.error(`[Sync Microservice Telemetry Error] ${err.message}`);
+        return res.status(500).json({ error: err.message });
+    }
+}
+
 module.exports = {
     getNotificationLogs,
     resendNotification,
     sendShipmentWhatsApp,
-    getMetaTemplates
+    getMetaTemplates,
+    syncMicroserviceTelemetry
 };

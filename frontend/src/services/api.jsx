@@ -1459,6 +1459,16 @@ export const whatsappService = {
       console.error('Error fetching WhatsApp templates:', error);
       throw error;
     }
+  },
+
+  syncTelemetry: async () => {
+    try {
+      const response = await api.post('admin/whatsapp/sync-telemetry');
+      return response.data;
+    } catch (error) {
+      console.error('Error syncing WhatsApp telemetry:', error);
+      throw error;
+    }
   }
 };
 

@@ -4,6 +4,93 @@ import { useSnackbar } from 'notistack';
 import { whatsappService } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 
+/** Format human-readable message text matching exact Meta template copy */
+export function formatExactMessageCopy(log) {
+    if (!log) return '';
+    const payload = log.payloadJson || {};
+    const firstRow = payload.rows?.[0] || {};
+    const vars = firstRow.variables || payload.variables || [];
+    const headerVars = firstRow.headerVariables || payload.headerVariables || [];
+    const shipmentAwb = headerVars[0] || log.trackingNumber || log.shipment?.dhlTrackingNumber || log.shipment?.carrierShipmentId || '';
+    const tmpl = String(log.templateName || payload.templateName || 'shipment_confirmation_2').toLowerCase();
+
+    // Template: shipment_confirmation_2 (Official approved Meta template copy)
+    if (tmpl === 'shipment_confirmation_2') {
+        const [invoice = '', date = '', recvName = '', recvTel = '', trackUrl = ''] = vars;
+        const effDate = date || (log.sentAt ? new Date(log.sentAt).toISOString().slice(0, 10) : '');
+        const effTel = recvTel || log.recipientPhone || '';
+        const effInvoice = invoice || log.shipment?.documents?.phenixBillId || shipmentAwb || '';
+        const effUrl = trackUrl || (shipmentAwb ? `https://target-kw.com/track/${shipmentAwb}` : '');
+
+        return (
+            (shipmentAwb ? `Shipment: ${shipmentAwb}\n\n` : '') +
+            `Invoice: ${effInvoice}\n` +
+            `Date: ${effDate}\n` +
+            `Receiver Name: ${recvName || log.recipientName || 'Customer'}\n` +
+            `Receiver Tel: ${effTel}\n` +
+            `Track Order: ${effUrl}`
+        ).trim();
+    }
+
+    // Template: shipment_tracking_quick
+    if (tmpl === 'shipment_tracking_quick') {
+        const [headerAwb = '', date = '', receipt = '', recvName = '', recvTel = '', trackUrl = ''] = vars;
+        const effAwb = shipmentAwb || headerAwb;
+        return (
+            (effAwb ? `Shipment: ${effAwb}\n\n` : '') +
+            `Track Order: ${trackUrl || `https://target-kw.com/track/${effAwb}`}\n` +
+            `Date: ${date || ''}\n` +
+            `Receiver: ${recvName || log.recipientName || 'Recipient'}\n` +
+            `Phone: ${recvTel || log.recipientPhone || ''}`
+        ).trim();
+    }
+
+    // Template: new_shipment_created
+    if (tmpl === 'new_shipment_created') {
+        const [route = '', estDelivery = '', status = '', updated = '', trackUrl = ''] = vars;
+        return (
+            (shipmentAwb ? `Shipment: ${shipmentAwb}\n\n` : '') +
+            `Route: ${route || 'Kuwait City, KW → Destination'}\n` +
+            (estDelivery ? `Estimated Delivery: ${estDelivery}\n` : '') +
+            `Status: ${status || 'Shipment In Transit'}\n` +
+            (updated ? `Updated: ${updated}\n` : '') +
+            `Track Order: ${trackUrl || `https://target-kw.com/track/${shipmentAwb}`}`
+        ).trim();
+    }
+
+    // Template: account_statement_v1
+    if (tmpl === 'account_statement_v1') {
+        const [contactName = '', orgName = '', balance = '', date = ''] = vars;
+        return (
+            `Account Statement\n\n` +
+            `Contact: ${contactName || 'Valued Partner'}\n` +
+            `Company: ${orgName || ''}\n` +
+            `Current Outstanding: ${balance || '0.000 KWD'}\n` +
+            `Date: ${date || new Date().toLocaleDateString('en-GB')}`
+        ).trim();
+    }
+
+    // Template: invoice_notification_v1
+    if (tmpl === 'invoice_notification_v1') {
+        const [contactName = '', invNum = '', total = '', dueDate = ''] = vars;
+        return (
+            `Invoice Notification\n\n` +
+            `Client: ${contactName || 'Valued Client'}\n` +
+            `Invoice #: ${invNum || ''}\n` +
+            `Total Due: ${total || '0.000 KWD'}\n` +
+            `Payment Due Date: ${dueDate || 'Upon receipt'}`
+        ).trim();
+    }
+
+    const lines = [];
+    if (shipmentAwb) lines.push(`Shipment: ${shipmentAwb}`);
+    vars.forEach((v, idx) => {
+        if (v) lines.push(`Field ${idx + 1}: ${v}`);
+    });
+    if (lines.length > 0) return lines.join('\n');
+    return `Shipment Notification\nTracking: ${log.trackingNumber}\nRecipient: ${log.recipientPhone || 'On File'}`;
+}
+
 export const AdminWhatsAppLogsPage = () => {
     const { lang, isRTL } = useLanguage();
     const { enqueueSnackbar } = useSnackbar();
@@ -27,10 +114,32 @@ export const AdminWhatsAppLogsPage = () => {
     const [dateRangeFilter, setDateRangeFilter] = useState('ALL');
     const [search, setSearch] = useState('');
     const [selectedLog, setSelectedLog] = useState(null);
+    const [previewMessageLog, setPreviewMessageLog] = useState(null);
+    const [copiedMessageText, setCopiedMessageText] = useState(false);
+    const [syncingTelemetry, setSyncingTelemetry] = useState(false);
     const [resendingId, setResendingId] = useState(null);
     const [copiedJson, setCopiedJson] = useState(false);
     const [copiedPhone, setCopiedPhone] = useState(null);
     const [copiedId, setCopiedId] = useState(null);
+
+    const handleSyncTelemetry = async () => {
+        try {
+            setSyncingTelemetry(true);
+            const res = await whatsappService.syncTelemetry();
+            enqueueSnackbar(
+                lang === 'ar' 
+                    ? `تمت المزامنة بنجاح! تم تحديث ${res.updatedCount || 0} سجل استلام.` 
+                    : `Telemetry synchronized! Updated ${res.updatedCount || 0} delivery records.`, 
+                { variant: 'success' }
+            );
+            fetchLogs(pagination.page);
+        } catch (err) {
+            const errorMsg = err.response?.data?.error || err.message;
+            enqueueSnackbar(lang === 'ar' ? `فشل مزامنة الإيصالات: ${errorMsg}` : `Sync failed: ${errorMsg}`, { variant: 'error' });
+        } finally {
+            setSyncingTelemetry(false);
+        }
+    };
 
     const fetchLogs = useCallback(async (page = 1) => {
         try {
@@ -177,6 +286,18 @@ export const AdminWhatsAppLogsPage = () => {
                 </div>
 
                 <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={handleSyncTelemetry}
+                        disabled={syncingTelemetry || loading}
+                        className="btn btn-sm btn-outline border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 gap-1.5 font-bold"
+                        title={lang === 'ar' ? 'مزامنة إيصالات التسليم والقراءة من بوابة msg' : 'Sync delivery & read receipts from msg.target-kw.com'}
+                    >
+                        <span className={`material-symbols-outlined text-[18px] ${syncingTelemetry ? 'animate-spin' : ''}`}>
+                            sync_alt
+                        </span>
+                        {lang === 'ar' ? 'مزامنة إيصالات الاستلام' : 'Sync Delivery Receipts'}
+                    </button>
                     <button
                         type="button"
                         onClick={() => fetchLogs(pagination.page)}
@@ -412,15 +533,16 @@ export const AdminWhatsAppLogsPage = () => {
                                 <th>{lang === 'ar' ? 'المستلم والوجهة' : 'Recipient & Route'}</th>
                                 <th>{lang === 'ar' ? 'البوابة والقالب' : 'Gateway & Template'}</th>
                                 <th className="text-center">{lang === 'ar' ? 'الحالة' : 'Status'}</th>
+                                <th>{lang === 'ar' ? 'معاينة الرسالة' : 'Message Content'}</th>
+                                <th>{lang === 'ar' ? 'مراحل التوصيل' : 'Delivery Lifecycle'}</th>
                                 <th>{lang === 'ar' ? 'معرف الرسالة الخارجي' : 'External Message ID'}</th>
-                                <th>{lang === 'ar' ? 'تاريخ الإرسال' : 'Sent Timestamp'}</th>
                                 <th className="text-end">{lang === 'ar' ? 'الإجراءات' : 'Actions'}</th>
                             </tr>
                         </thead>
                         <tbody>
                             {loading ? (
                                 <tr>
-                                    <td colSpan={7} className="py-16 text-center text-base-content/50">
+                                    <td colSpan={8} className="py-16 text-center text-base-content/50">
                                         <div className="flex flex-col items-center justify-center gap-2">
                                             <span className="loading loading-spinner loading-md text-primary"></span>
                                             <span className="text-xs font-semibold">
@@ -431,7 +553,7 @@ export const AdminWhatsAppLogsPage = () => {
                                 </tr>
                             ) : logs.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="py-16 text-center text-base-content/50">
+                                    <td colSpan={8} className="py-16 text-center text-base-content/50">
                                         <div className="flex flex-col items-center justify-center gap-2">
                                             <span className="material-symbols-outlined text-4xl text-base-content/30">chat_bubble_outline</span>
                                             <p className="text-sm font-bold text-base-content">
@@ -453,6 +575,8 @@ export const AdminWhatsAppLogsPage = () => {
                                     const carrierAwb = log.shipment?.carrierShipmentId || log.shipment?.dhlTrackingNumber;
                                     const phenixBillId = log.shipment?.documents?.phenixBillId;
                                     const externalId = log.chatwootMessageId || log.payloadJson?.messageId || log.responseJson?.messages?.[0]?.id || log.responseJson?.messageId;
+                                    const deliveredAt = log.responseJson?.deliveredAt;
+                                    const readAt = log.responseJson?.readAt;
 
                                     return (
                                         <tr key={log.id} className="hover">
@@ -542,6 +666,43 @@ export const AdminWhatsAppLogsPage = () => {
                                                 )}
                                             </td>
 
+                                            {/* Message Content Preview Button */}
+                                            <td>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPreviewMessageLog(log)}
+                                                    className="btn btn-xs btn-outline btn-success gap-1 font-bold text-[11px]"
+                                                    title={lang === 'ar' ? 'عرض نص رسالة واتساب المطابقة' : 'View exact WhatsApp message copy'}
+                                                >
+                                                    <span className="material-symbols-outlined text-[14px]">chat</span>
+                                                    {lang === 'ar' ? 'عرض الرسالة' : 'View Message'}
+                                                </button>
+                                            </td>
+
+                                            {/* Delivery Lifecycle (Sent / Delivered / Read) */}
+                                            <td className="font-mono text-[11px] min-w-[140px]">
+                                                <div className="flex items-center gap-1.5 text-base-content/80" title="Sent to WhatsApp Gateway">
+                                                    <span className="material-symbols-outlined text-[13px] text-base-content/50">done</span>
+                                                    <span>{log.sentAt || log.createdAt ? new Date(log.sentAt || log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'numeric', day: 'numeric' }) : '—'}</span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 mt-0.5" title="Delivered to Handset">
+                                                    {deliveredAt ? (
+                                                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                                                            <span className="material-symbols-outlined text-[13px]">done_all</span>
+                                                            {new Date(deliveredAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'numeric', day: 'numeric' })}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-base-content/30 text-[10px] ms-4">— Pending</span>
+                                                    )}
+                                                </div>
+                                                {readAt && (
+                                                    <div className="flex items-center gap-1.5 mt-0.5 text-cyan-600 dark:text-cyan-400 font-bold" title="Read by Recipient">
+                                                        <span className="material-symbols-outlined text-[13px] text-[#53bdeb]">done_all</span>
+                                                        <span>{new Date(readAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'numeric', day: 'numeric' })}</span>
+                                                    </div>
+                                                )}
+                                            </td>
+
                                             {/* External Message ID / WAMID */}
                                             <td>
                                                 {externalId ? (
@@ -563,14 +724,6 @@ export const AdminWhatsAppLogsPage = () => {
                                                 ) : (
                                                     <span className="text-base-content/40 font-mono text-xs">—</span>
                                                 )}
-                                            </td>
-
-                                            {/* Sent Timestamp */}
-                                            <td className="font-mono text-xs text-base-content/60">
-                                                <div>{log.sentAt || log.createdAt ? new Date(log.sentAt || log.createdAt).toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US') : '—'}</div>
-                                                <div className="text-[10px] text-base-content/40">
-                                                    {log.sentAt || log.createdAt ? new Date(log.sentAt || log.createdAt).toLocaleTimeString(lang === 'ar' ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit' }) : ''}
-                                                </div>
                                             </td>
 
                                             {/* Actions */}
@@ -731,6 +884,28 @@ export const AdminWhatsAppLogsPage = () => {
                                     </div>
                                 </div>
 
+                                {/* Simulated WhatsApp Speech Bubble inside Inspect Modal */}
+                                <div className="p-3.5 bg-[#efeae2] dark:bg-slate-900 rounded-2xl flex justify-start border border-black/5">
+                                    <div className="bg-[#dcf8c6] dark:bg-emerald-950/70 text-[#111b21] dark:text-emerald-100 p-3.5 rounded-xl rounded-tl-none max-w-[92%] shadow-sm relative space-y-2">
+                                        <div className="text-[10px] font-bold uppercase tracking-wider text-[#128c7e] dark:text-emerald-400">
+                                            {selectedLog.templateName || 'WhatsApp Template'}
+                                        </div>
+                                        <div className="text-[13px] leading-relaxed whitespace-pre-wrap font-sans">
+                                            {formatExactMessageCopy(selectedLog)}
+                                        </div>
+                                        <div className="flex items-center justify-end gap-1 text-[10px] text-[#667781] dark:text-emerald-300/60 pt-1">
+                                            <span>{new Date(selectedLog.sentAt || selectedLog.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                            {selectedLog.responseJson?.readAt ? (
+                                                <span className="material-symbols-outlined text-[14px] text-[#53bdeb]">done_all</span>
+                                            ) : selectedLog.responseJson?.deliveredAt ? (
+                                                <span className="material-symbols-outlined text-[14px] text-[#667781]">done_all</span>
+                                            ) : (
+                                                <span className="material-symbols-outlined text-[14px] text-[#8696a0]">done</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
                                 {/* Parties Separation Verification Box */}
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div className="p-3 bg-purple-500/5 rounded-xl border border-purple-500/20">
@@ -863,6 +1038,129 @@ export const AdminWhatsAppLogsPage = () => {
                     </div>
                 </div>
                 <div className="modal-backdrop bg-black/60 backdrop-blur-xs" onClick={() => setSelectedLog(null)} />
+            </div>
+
+            {/* Dedicated WhatsApp Message Preview Dialog Modal */}
+            <div className={`modal modal-bottom sm:modal-middle ${previewMessageLog ? 'modal-open' : ''} z-50`}>
+                <div className="modal-box max-w-lg bg-base-100 border border-base-200 shadow-2xl p-5 text-base-content">
+                    <div className="flex items-center justify-between pb-3 border-b border-base-200">
+                        <div className="flex items-center gap-2">
+                            <span className="material-symbols-outlined text-success text-2xl">chat</span>
+                            <h3 className="font-black text-base text-base-content">
+                                {lang === 'ar' ? 'معاينة رسالة واتساب المطابقة' : 'WhatsApp Message Preview'}
+                            </h3>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setPreviewMessageLog(null)}
+                            className="btn btn-sm btn-circle btn-ghost text-base-content/60"
+                        >
+                            ✕
+                        </button>
+                    </div>
+
+                    {previewMessageLog && (() => {
+                        const exactCopy = formatExactMessageCopy(previewMessageLog);
+                        const isSender = (previewMessageLog.recipientRole || '').toLowerCase() === 'sender';
+                        const deliveredAt = previewMessageLog.responseJson?.deliveredAt;
+                        const readAt = previewMessageLog.responseJson?.readAt;
+                        const failedAt = previewMessageLog.status === 'FAILED' ? previewMessageLog.updatedAt : null;
+
+                        return (
+                            <div className="py-4 space-y-4 text-xs">
+                                {/* Meta Badges */}
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="badge badge-sm font-bold font-mono bg-base-200 text-base-content">
+                                        {previewMessageLog.trackingNumber}
+                                    </span>
+                                    <span className={`badge badge-sm font-bold ${
+                                        isSender ? 'bg-purple-500/15 text-purple-700' : 'bg-emerald-500/15 text-emerald-700'
+                                    }`}>
+                                        {isSender ? 'SENDER' : 'CONSIGNEE'}
+                                    </span>
+                                    <span className="badge badge-sm font-mono border border-base-300">
+                                        {previewMessageLog.recipientPhone}
+                                    </span>
+                                </div>
+
+                                {/* Simulated WhatsApp Speech Bubble */}
+                                <div className="p-3.5 bg-[#efeae2] dark:bg-slate-900 rounded-2xl flex justify-start border border-black/5">
+                                    <div className="bg-[#dcf8c6] dark:bg-emerald-950/70 text-[#111b21] dark:text-emerald-100 p-3.5 rounded-xl rounded-tl-none max-w-[92%] shadow-sm relative space-y-2">
+                                        <div className="text-[13px] leading-relaxed whitespace-pre-wrap font-sans">
+                                            {exactCopy}
+                                        </div>
+                                        <div className="flex items-center justify-end gap-1 text-[10px] text-[#667781] dark:text-emerald-300/60 pt-1">
+                                            <span>{new Date(previewMessageLog.sentAt || previewMessageLog.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                            {readAt ? (
+                                                <span className="material-symbols-outlined text-[14px] text-[#53bdeb]">done_all</span>
+                                            ) : deliveredAt ? (
+                                                <span className="material-symbols-outlined text-[14px] text-[#667781]">done_all</span>
+                                            ) : (
+                                                <span className="material-symbols-outlined text-[14px] text-[#8696a0]">done</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Delivery Lifecycle Telemetry Table */}
+                                <div className="p-3 bg-base-200/50 rounded-xl border border-base-200 text-[11px] space-y-1.5 font-mono">
+                                    <div className="font-sans font-bold text-base-content/60 uppercase text-[10px] mb-1">
+                                        {lang === 'ar' ? 'سجل وتوقيت التسليم الفعلي' : 'Delivery Lifecycle Telemetry'}
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-base-content/60">Sent to Gateway:</span>
+                                        <span className="font-semibold text-base-content">{new Date(previewMessageLog.sentAt || previewMessageLog.createdAt).toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-base-content/60">Delivered to Handset:</span>
+                                        <span className={`font-semibold ${deliveredAt ? 'text-emerald-600' : 'text-base-content/40'}`}>
+                                            {deliveredAt ? new Date(deliveredAt).toLocaleString() : 'Pending confirmation'}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-base-content/60">Read by Recipient:</span>
+                                        <span className={`font-semibold ${readAt ? 'text-cyan-600' : 'text-base-content/40'}`}>
+                                            {readAt ? new Date(readAt).toLocaleString() : 'Unread'}
+                                        </span>
+                                    </div>
+                                    {failedAt && (
+                                        <div className="flex justify-between text-error font-semibold">
+                                            <span>Failed At:</span>
+                                            <span>{new Date(failedAt).toLocaleString()}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    <div className="modal-action pt-3 border-t border-base-200 flex justify-between items-center">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (previewMessageLog) {
+                                    navigator.clipboard.writeText(formatExactMessageCopy(previewMessageLog));
+                                    setCopiedMessageText(true);
+                                    setTimeout(() => setCopiedMessageText(false), 2000);
+                                }
+                            }}
+                            className="btn btn-sm btn-outline gap-1.5 font-semibold"
+                        >
+                            <span className="material-symbols-outlined text-base">
+                                {copiedMessageText ? 'check' : 'content_copy'}
+                            </span>
+                            {copiedMessageText ? (lang === 'ar' ? 'تم النسخ!' : 'Copied!') : (lang === 'ar' ? 'نسخ نص الرسالة' : 'Copy Message')}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setPreviewMessageLog(null)}
+                            className="btn btn-sm btn-ghost text-base-content/70"
+                        >
+                            {lang === 'ar' ? 'إغلاق' : 'Close'}
+                        </button>
+                    </div>
+                </div>
+                <div className="modal-backdrop bg-black/60 backdrop-blur-xs" onClick={() => setPreviewMessageLog(null)} />
             </div>
         </div>
     );
