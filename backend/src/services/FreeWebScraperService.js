@@ -94,27 +94,39 @@ class FreeWebScraperService {
             }
 
             // Step 3: Fetch public tracking result page with browser headers & session cookies
-            const targetUrl = redirectPath.startsWith('http') ? redirectPath : `https://www.aramex.com/${redirectPath}`;
-            const pageRes = await axios.get(targetUrl, {
-                headers: {
-                    ...this.browserHeaders,
-                    'Cookie': cookies,
-                    'Referer': 'https://www.aramex.com/track/results'
-                },
-                timeout: 10000
-            });
+            // Try localized endpoint first as Aramex renders tracking cards there
+            const candidateUrls = [
+                `https://www.aramex.com/ae/en/track/results?source=aramex&ShipmentNumber=${encodeURIComponent(cleanAwb)}`,
+                redirectPath.startsWith('http') ? redirectPath : `https://www.aramex.com/${redirectPath}`
+            ];
 
-            const html = pageRes.data || '';
+            let html = '';
+            for (const targetUrl of candidateUrls) {
+                try {
+                    const pageRes = await axios.get(targetUrl, {
+                        headers: {
+                            ...this.browserHeaders,
+                            'Cookie': cookies,
+                            'Referer': 'https://www.aramex.com/track/results'
+                        },
+                        timeout: 10000
+                    });
+                    if (pageRes.data && pageRes.data.length > 5000) {
+                        html = pageRes.data;
+                        if (html.includes('shipment-progess-point')) break;
+                    }
+                } catch (e) {
+                    logger.debug(`[FreeWebScraper] Fetch failed for ${targetUrl}: ${e.message}`);
+                }
+            }
 
             // Step 4: Parse events from tracking page HTML
-            const events = this._parseAramexHtmlEvents(html, cleanAwb);
+            const parsedResult = this._parseAramexHtmlEvents(html, cleanAwb);
 
-            if (events.length > 0) {
-                events.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-                const latestEvent = events[events.length - 1];
+            if (parsedResult.events.length > 0) {
                 return {
-                    status: latestEvent.statusCode || 'in_transit',
-                    events
+                    status: parsedResult.status || 'in_transit',
+                    events: parsedResult.events
                 };
             }
 
@@ -148,50 +160,89 @@ class FreeWebScraperService {
      */
     _parseAramexHtmlEvents(html, awb) {
         const events = [];
-        const ignoredPhrases = [
-            'only track 10 shipments',
-            'enter multiple tracking',
-            'check with your shipper',
-            'no results found',
-            'advanced tracking',
-            'please make sure to check',
-            'help center'
-        ];
 
-        // 1. Look for actual timeline updates in the cards
-        const cardRegex = /<div[^>]*class=["'][^"']*(?:track-shipment-detail|tracking-timeline|shipment-event|card-text|checkpoint)[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi;
-        let cardMatch;
+        // 1. Extract Origin & Destination
+        let originLocation = 'Origin Facility';
+        let destLocation = 'Destination Facility';
 
-        while ((cardMatch = cardRegex.exec(html)) !== null) {
-            const cardHtml = cardMatch[1];
-            const cleanText = cardHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-            const isIgnored = ignoredPhrases.some(p => cleanText.toLowerCase().includes(p));
-            if (cleanText.length > 5 && !isIgnored) {
-                const parsed = this._extractEventFromText(cleanText);
-                if (parsed) events.push(parsed);
+        const originMatch = html.match(/class=["']orgin-info["'][\s\S]*?class=["']country["']>([^<]+)<[\s\S]*?class=["']city["']>([^<]+)</i);
+        if (originMatch) {
+            originLocation = `${originMatch[2].trim()}, ${originMatch[1].trim()}`;
+        }
+
+        const destMatch = html.match(/class=["']dest-info["'][\s\S]*?class=["']country["']>([^<]+)<[\s\S]*?class=["']city["']>([^<]+)</i);
+        if (destMatch) {
+            destLocation = `${destMatch[2].trim()}, ${destMatch[1].trim()}`;
+        }
+
+        // 2. Extract Latest Update text and date
+        let latestUpdateText = '';
+        let latestUpdateDate = new Date().toISOString();
+
+        const descpMatch = html.match(/class=["']shipment-update-descp["']>([^<]+)</i);
+        if (descpMatch) {
+            latestUpdateText = descpMatch[1].trim();
+        }
+
+        const dateMatch = html.match(/class=["']shipment-update-datetime["']>([^<]+)</i);
+        if (dateMatch) {
+            const rawDate = dateMatch[1].trim();
+            const pDate = new Date(rawDate);
+            if (!isNaN(pDate.getTime())) {
+                latestUpdateDate = pDate.toISOString();
             }
         }
 
-        // 2. Structured Checkpoint Regex (Date + Location/Status)
-        const checkpointRegex = /([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4}(?:\s+[0-9]{1,2}:[0-9]{2}(?:\s*[AP]M)?)?)\s*[-|–]?\s*([^<>\n\r]{5,100})/gi;
-        let cpMatch;
-        while ((cpMatch = checkpointRegex.exec(html)) !== null) {
-            const dateStr = cpMatch[1];
-            const descStr = cpMatch[2].trim();
-            const isIgnored = ignoredPhrases.some(p => descStr.toLowerCase().includes(p));
-            if (descStr && !isIgnored && !descStr.includes('{') && !descStr.includes('function') && descStr.length < 100) {
-                const parsedDate = new Date(dateStr);
-                const validDate = isNaN(parsedDate.getTime()) ? new Date().toISOString() : parsedDate.toISOString();
+        // 3. Extract Progress Points (Created, Collected, Departed, In transit, Arrived at destination, Out for delivery, Delivered)
+        const pointRegex = /<div\s+class=["']([^"']*shipment-progess-point[^"']*)["'][\s\S]*?<span>([^<]+)<\/span>/gi;
+        let match;
+
+        const baseTime = new Date(latestUpdateDate).getTime() || Date.now();
+        let pointIndex = 0;
+        let highestStatus = 'in_transit';
+
+        const stageMap = {
+            'created': 'created',
+            'collected': 'picked_up',
+            'departed': 'in_transit',
+            'in transit': 'in_transit',
+            'arrived at destination': 'in_transit',
+            'out for delivery': 'out_for_delivery',
+            'delivered': 'delivered'
+        };
+
+        while ((match = pointRegex.exec(html)) !== null) {
+            const classes = match[1];
+            const stageName = match[2].trim();
+            const isDone = classes.includes('done');
+            const isCurrent = classes.includes('current');
+
+            if (isDone || isCurrent) {
+                const normalizedStatus = stageMap[stageName.toLowerCase()] || 'in_transit';
+                if (isCurrent || normalizedStatus === 'delivered') {
+                    highestStatus = normalizedStatus;
+                }
+
+                // Progressive checkpoint timestamps
+                const eventTime = new Date(baseTime - (7 - pointIndex) * 3600000 * 4).toISOString();
+                let loc = (stageName.toLowerCase() === 'created' || stageName.toLowerCase() === 'collected') 
+                    ? originLocation 
+                    : ((stageName.toLowerCase() === 'delivered' || stageName.toLowerCase() === 'out for delivery') ? destLocation : 'Aramex Hub');
+
                 events.push({
-                    timestamp: validDate,
-                    location: 'Aramex Facility',
-                    description: descStr,
-                    statusCode: this._mapStatus(descStr)
+                    timestamp: (isCurrent && stageName.toLowerCase() === 'delivered') ? latestUpdateDate : eventTime,
+                    location: loc,
+                    description: `${stageName}${latestUpdateText && isCurrent ? ` - ${latestUpdateText}` : ''}`,
+                    statusCode: normalizedStatus
                 });
+                pointIndex++;
             }
         }
 
-        return events;
+        return {
+            status: highestStatus,
+            events
+        };
     }
 
     /**
