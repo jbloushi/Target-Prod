@@ -295,6 +295,7 @@ const getAgingReport = async (organizationId, currency = null) => {
     const requestedCurrency = currency ? normalizeCurrencyCode(currency) : null;
     const bucketsByCurrency = {};
     const totalsByCurrency = {};
+    let unpaidShipmentsCount = 0;
 
     const where = organizationId === 'all' ? {} : { organizationId: organizationId || null };
     const shipments = await prisma.shipment.findMany({
@@ -325,6 +326,8 @@ const getAgingReport = async (organizationId, currency = null) => {
 
         if (remaining.lte(0.001)) continue;
 
+        unpaidShipmentsCount++;
+
         if (!bucketsByCurrency[shipmentCurrency]) bucketsByCurrency[shipmentCurrency] = emptyBuckets();
         totalsByCurrency[shipmentCurrency] = toApiAmount(normalizeAmount(totalsByCurrency[shipmentCurrency] || 0).plus(remaining));
 
@@ -336,6 +339,8 @@ const getAgingReport = async (organizationId, currency = null) => {
     const defaultCurrency = requestedCurrency || (organizationId === 'all' ? BASE_CURRENCY : normalizeCurrencyCode(await getOrganizationCurrency(organizationId)));
     return {
         totalUnpaid: toApiAmount(totalsByCurrency[defaultCurrency] || 0),
+        unpaidShipmentsCount,
+        totalShipmentsCount: shipments.length,
         buckets: bucketsByCurrency[defaultCurrency] || emptyBuckets(),
         totalUnpaidByCurrency: totalsByCurrency,
         agingBucketsByCurrency: bucketsByCurrency
@@ -356,6 +361,37 @@ const getOrganizationOverview = async (organizationId, creditLimit = 0, currency
 
     const limit = normalizeAmount(creditLimit);
     const bal = normalizeAmount(balance);
+
+    // Compute live operational counts
+    let totalOrganizationsCount = 0;
+    let totalInvoicesCount = 0;
+    let totalInvoicesAmount = 0;
+    let unappliedPaymentsCount = 0;
+
+    try {
+        const invWhere = organizationId === 'all' ? {} : { organizationId: organizationId || null };
+        const payWhere = {
+            ...(organizationId === 'all' ? {} : { organizationId: organizationId || null }),
+            status: { not: 'APPLIED' }
+        };
+
+        const [orgsCount, invAggregate, payCount] = await Promise.all([
+            prisma.organization.count(),
+            prisma.invoice.aggregate({
+                where: invWhere,
+                _count: { id: true },
+                _sum: { total: true }
+            }),
+            prisma.payment.count({ where: payWhere })
+        ]);
+
+        totalOrganizationsCount = orgsCount;
+        totalInvoicesCount = invAggregate._count.id || 0;
+        totalInvoicesAmount = toApiAmount(invAggregate._sum.total || 0);
+        unappliedPaymentsCount = payCount;
+    } catch (cntErr) {
+        logger.warn(`Failed to query overview counts: ${cntErr.message}`);
+    }
 
     // Compute actual shipping volume & spending distribution by carrier
     let spendingDistribution = [];
@@ -437,6 +473,12 @@ const getOrganizationOverview = async (organizationId, creditLimit = 0, currency
         unappliedCashByCurrency: { ...unappliedCashByCurrency, [baseCurrency]: unappliedCashByCurrency[baseCurrency] ?? unappliedCash },
         totalUnpaid: aging.totalUnpaid,
         totalUnpaidByCurrency: aging.totalUnpaidByCurrency,
+        unpaidShipmentsCount: aging.unpaidShipmentsCount,
+        totalShipmentsCount: aging.totalShipmentsCount,
+        totalOrganizationsCount,
+        totalInvoicesCount,
+        totalInvoicesAmount,
+        unappliedPaymentsCount,
         agingBuckets: aging.buckets,
         agingBucketsByCurrency: aging.agingBucketsByCurrency,
         spendingDistribution
