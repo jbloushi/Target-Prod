@@ -55,15 +55,15 @@ async function getOrganizationOrThrow(organizationId) {
 
 async function findShipmentChargeEntries({ organizationId, periodStart, periodEnd, currency }) {
     const where = {
-            organizationId: organizationId || null,
-            sourceRepo: 'Shipment',
-            category: 'SHIPMENT_CHARGE',
-            entryType: 'DEBIT',
-            amount: { gt: 0 },
-            createdAt: {
-                gte: new Date(periodStart),
-                lte: new Date(periodEnd)
-            }
+        organizationId: organizationId || null,
+        sourceRepo: 'Shipment',
+        category: { in: ['SHIPMENT_CHARGE', 'FREIGHT_CHARGE'] },
+        entryType: 'DEBIT',
+        amount: { gt: 0 },
+        createdAt: {
+            gte: new Date(periodStart),
+            lte: new Date(periodEnd)
+        }
     };
     if (currency) where.currency = normalizeCurrencyCode(currency);
 
@@ -85,7 +85,51 @@ async function findShipmentChargeEntries({ organizationId, periodStart, periodEn
 async function createInvoiceFromPeriod({ organizationId, periodStart, periodEnd, dueDate, notes, createdBy, vatRate = 0, currency }) {
     const organization = await getOrganizationOrThrow(organizationId);
     const invoiceCurrency = normalizeCurrencyCode(currency || organization?.currency);
-    const ledgerEntries = await findShipmentChargeEntries({ organizationId, periodStart, periodEnd, currency: invoiceCurrency });
+    let ledgerEntries = await findShipmentChargeEntries({ organizationId, periodStart, periodEnd, currency: invoiceCurrency });
+
+    if (!ledgerEntries.length) {
+        // Check if there are shipments in this period for this organization that need ledger entries
+        const shipmentsInPeriod = await prisma.shipment.findMany({
+            where: {
+                organizationId: organizationId || null,
+                createdAt: {
+                    gte: new Date(periodStart),
+                    lte: new Date(periodEnd)
+                },
+                status: { notIn: ['draft', 'cancelled'] }
+            },
+            select: {
+                id: true,
+                trackingNumber: true,
+                price: true,
+                currency: true,
+                pricingSnapshot: true,
+                createdAt: true
+            }
+        });
+
+        if (shipmentsInPeriod.length > 0) {
+            const financeLedgerService = require('./financeLedger.service');
+            for (const s of shipmentsInPeriod) {
+                const sPrice = s.price || s.pricingSnapshot?.totalPrice || 0;
+                if (Number(sPrice) > 0) {
+                    await financeLedgerService.createLedgerEntry(organizationId, {
+                        amount: Number(sPrice),
+                        currency: normalizeCurrencyCode(s.currency || invoiceCurrency),
+                        entryType: 'DEBIT',
+                        category: 'SHIPMENT_CHARGE',
+                        description: `Freight charge for shipment #${s.trackingNumber}`,
+                        reference: s.trackingNumber,
+                        sourceRepo: 'Shipment',
+                        sourceId: s.id,
+                        createdBy
+                    }).catch(() => null);
+                }
+            }
+            ledgerEntries = await findShipmentChargeEntries({ organizationId, periodStart, periodEnd, currency: invoiceCurrency });
+        }
+    }
+
     if (!ledgerEntries.length) {
         const error = new Error(`No ${invoiceCurrency} shipment charges found for this period`);
         error.statusCode = 400;
@@ -121,7 +165,16 @@ async function createInvoiceFromPeriod({ organizationId, periodStart, periodEnd,
     });
     const shipmentMap = new Map(shipments.map(shipment => [shipment.id, shipment]));
 
-    const lineItems = uninvoicedEntries.map(entry => {
+    // Only include entries whose corresponding shipment actually exists in the database
+    const validEntries = uninvoicedEntries.filter(entry => entry.sourceId && shipmentMap.has(entry.sourceId));
+
+    if (!validEntries.length) {
+        const error = new Error('No uninvoiced shipment charges linked to active shipments found for this period');
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const lineItems = validEntries.map(entry => {
         const shipment = shipmentMap.get(entry.sourceId) || {};
         const amount = toApiAmount(entry.amount);
         return {
