@@ -624,6 +624,11 @@ const ShipmentDetailsPage = () => {
             progressPct = 25;
             indicatorIcon = 'package_2';
             break;
+        case 'exception':
+            visualStep = 2;
+            progressPct = 50;
+            indicatorIcon = 'warning';
+            break;
         case 'cancelled':
             visualStep = -1;
             progressPct = 100;
@@ -927,11 +932,13 @@ const ShipmentDetailsPage = () => {
                                     <span className={`badge badge-sm font-black tracking-wide ${
                                         normStatus === 'delivered'
                                             ? 'badge-success text-white shadow-sm'
-                                            : normStatus === 'cancelled'
-                                            ? 'badge-error text-white'
+                                            : (normStatus === 'cancelled' || normStatus === 'exception')
+                                            ? 'badge-error text-white animate-pulse shadow-sm'
                                             : 'badge-primary text-white shadow-sm'
                                     }`}>
-                                        {progressPct}% {normStatus === 'delivered' ? (isRTL ? 'مكتمل' : 'Delivered') : (isRTL ? 'قيد المعالجة' : 'In Progress')}
+                                        {normStatus === 'exception'
+                                            ? (isRTL ? 'تنبيه استثناء وعائق' : 'Action Required / Exception')
+                                            : `${progressPct}% ${normStatus === 'delivered' ? (isRTL ? 'مكتمل' : 'Delivered') : (isRTL ? 'قيد المعالجة' : 'In Progress')}`}
                                     </span>
                                 </div>
                                 
@@ -946,6 +953,8 @@ const ShipmentDetailsPage = () => {
                                                     ? 'bg-gradient-to-r from-emerald-500 via-green-500 to-emerald-400 shadow-[0_0_15px_rgba(34,197,94,0.7)]'
                                                     : normStatus === 'cancelled'
                                                     ? 'bg-gradient-to-r from-red-600 via-rose-500 to-red-500'
+                                                    : normStatus === 'exception'
+                                                    ? 'bg-gradient-to-r from-amber-600 via-rose-600 to-red-600 shadow-[0_0_15px_rgba(239,68,68,0.7)]'
                                                     : 'bg-gradient-to-r from-primary via-blue-500 to-indigo-500 shadow-[0_0_15px_rgba(59,130,246,0.6)]'
                                             }`}
                                             style={{
@@ -974,8 +983,8 @@ const ShipmentDetailsPage = () => {
                                             className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center shadow-xl border-2 border-base-100 ${
                                                 normStatus === 'delivered'
                                                     ? 'bg-success text-white ring-4 ring-success/30 shadow-success/40'
-                                                    : normStatus === 'cancelled'
-                                                    ? 'bg-error text-white ring-4 ring-error/30'
+                                                    : (normStatus === 'cancelled' || normStatus === 'exception')
+                                                    ? 'bg-error text-white ring-4 ring-error/30 shadow-error/40'
                                                     : 'bg-primary text-white ring-4 ring-primary/30 shadow-primary/40'
                                             }`}
                                             title={`${progressPct}% - ${normStatus}`}
