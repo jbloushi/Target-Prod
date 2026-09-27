@@ -38,6 +38,11 @@ router.get(
     authorize('VIEW_ALL_SHIPMENTS'),
     integrationController.previewPhenixShipments
 );
+router.get(
+    '/phenix/audit',
+    authorize('VIEW_ALL_SHIPMENTS'),
+    integrationController.previewPhenixShipments
+);
 router.post(
     '/phenix/sync',
     authorize('CREATE_SHIPMENTS'),

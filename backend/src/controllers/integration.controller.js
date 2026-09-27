@@ -519,12 +519,20 @@ exports.previewPhenixShipments = async (req, res) => {
     try {
         const phenixSyncService = require('../services/phenixSync.service');
         const carrier = req.query.carrier || 'ALL';
-        const daysBack = parseInt(req.query.daysBack, 10) || 3;
+        const daysBack = parseInt(req.query.daysBack, 10) || 7;
+        const onlyIncomplete = req.query.onlyIncomplete === 'true' || req.query.onlyIncomplete === true;
+        const onlyComplete = req.query.onlyComplete === 'true' || req.query.onlyComplete === true;
 
         const result = await phenixSyncService.previewPhenixShipments({
             carrier,
-            daysBack
+            daysBack,
+            onlyComplete: onlyComplete ? true : false
         });
+
+        if (onlyIncomplete) {
+            result.items = result.items.filter(it => !it.isComplete);
+            result.matchedCount = result.items.length;
+        }
 
         res.status(200).json({
             success: true,

@@ -257,6 +257,19 @@ const Header = () => {
                                                 </Link>
                                             )}
 
+                                            {isAdminOrOwnerOrAcct && (
+                                                <Link
+                                                    to="/admin/phenix-audit"
+                                                    className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
+                                                >
+                                                    <span className="material-symbols-outlined text-base text-warning">fact_check</span>
+                                                    <div>
+                                                        <p>{isRTL ? 'تدقيق شحنات فينيكس' : 'Phenix Consignment Audit'}</p>
+                                                        <p className="text-[10px] text-base-content/50 font-normal">{isRTL ? 'فحص اكتمال بيانات ERP' : 'ERP Data Completeness & Health'}</p>
+                                                    </div>
+                                                </Link>
+                                            )}
+
                                             <div className="my-1 border-t border-base-200" />
 
                                             <Link
@@ -524,6 +537,15 @@ const Header = () => {
                                     >
                                         <span className="material-symbols-outlined text-base text-success">chat</span>
                                         <span>{isRTL ? 'سجلات واتساب' : 'WhatsApp Delivery Logs'}</span>
+                                    </Link>
+                                )}
+                                {isAdminOrOwnerOrAcct && (
+                                    <Link
+                                        to="/admin/phenix-audit"
+                                        className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
+                                    >
+                                        <span className="material-symbols-outlined text-base text-warning">fact_check</span>
+                                        <span>{isRTL ? 'تدقيق شحنات فينيكس' : 'Phenix Consignment Audit'}</span>
                                     </Link>
                                 )}
                                 <Link

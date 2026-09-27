@@ -679,9 +679,30 @@ class PhenixSyncService {
                 missingFields: v.missingFields,
                 existsInDb: Boolean(existing),
                 existingTrackingNumber: existing?.trackingNumber || null,
-                existingStatus: existing?.status || null
+                existingStatus: existing?.status || null,
+                rawRow: row
             });
         }
+
+        const missingBreakdown = {
+            missingPhone: 0,
+            missingAwb: 0,
+            missingName: 0,
+            missingCountry: 0,
+            missingSenderPhone: 0
+        };
+
+        for (const it of previewList) {
+            if (!it.isComplete) {
+                if (it.missingFields.includes('Receiver Phone')) missingBreakdown.missingPhone++;
+                if (it.missingFields.includes('Carrier AWB')) missingBreakdown.missingAwb++;
+                if (it.missingFields.includes('Receiver Name')) missingBreakdown.missingName++;
+                if (it.missingFields.includes('Destination Country')) missingBreakdown.missingCountry++;
+                if (it.missingFields.includes('Sender Phone')) missingBreakdown.missingSenderPhone++;
+            }
+        }
+
+        const completionRate = totalMatched > 0 ? Math.round((completeCount / totalMatched) * 100) : 100;
 
         return {
             window: { from, to },
@@ -690,6 +711,8 @@ class PhenixSyncService {
             totalMatched,
             completeCount,
             incompleteCount,
+            completionRate,
+            missingBreakdown,
             onlyComplete,
             matchedCount: previewList.length,
             items: previewList
