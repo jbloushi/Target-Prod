@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useShipment } from '../context/ShipmentContext';
 import { useAuth } from '../context/AuthContext';
@@ -610,29 +610,25 @@ const ShipmentDetailsPage = () => {
     };
 
     // Tab 1: Formatted Milestone Events
-    const milestoneEvents = useMemo(() => {
-        return sortedHistory.map(reformatToTargetMilestone);
-    }, [sortedHistory, isRTL, shipment]);
+    const milestoneEvents = sortedHistory.map(reformatToTargetMilestone);
 
     // Tab 2: Raw Telemetry Events
-    const telemetryEvents = useMemo(() => {
-        return rawHistory.map((evt, idx) => {
-            const dateParts = formatTimestampKuwait(evt.timestamp);
-            const loc = typeof evt.location === 'object' ? (evt.location?.formattedAddress || evt.location?.city || '') : (evt.location || '—');
-            return {
-                idx: rawHistory.length - idx,
-                timestamp: evt.timestamp,
-                dateParts,
-                location: loc,
-                description: evt.description || (typeof evt.status === 'object' ? evt.status?.status : evt.status) || 'Scan Event',
-                statusCode: evt.statusCode || evt.code || (typeof evt.status === 'string' ? evt.status.toUpperCase() : 'SCAN'),
-                source: evt.source || shipment.carrierCode || 'CARRIER'
-            };
-        });
-    }, [rawHistory, shipment]);
+    const telemetryEvents = rawHistory.map((evt, idx) => {
+        const dateParts = formatTimestampKuwait(evt.timestamp);
+        const loc = typeof evt.location === 'object' ? (evt.location?.formattedAddress || evt.location?.city || '') : (evt.location || '—');
+        return {
+            idx: rawHistory.length - idx,
+            timestamp: evt.timestamp,
+            dateParts,
+            location: loc,
+            description: evt.description || (typeof evt.status === 'object' ? evt.status?.status : evt.status) || 'Scan Event',
+            statusCode: evt.statusCode || evt.code || (typeof evt.status === 'string' ? evt.status.toUpperCase() : 'SCAN'),
+            source: evt.source || shipment.carrierCode || 'CARRIER'
+        };
+    });
 
     // Tab 3: Comments & Operational Notes
-    const commentEvents = useMemo(() => {
+    const commentEvents = (() => {
         const list = [];
         sortedHistory.forEach((evt) => {
             if (evt.comment || evt.notes || evt.remarks || evt.type === 'comment' || evt.type === 'note' || evt.source === 'staff') {
@@ -661,7 +657,7 @@ const ShipmentDetailsPage = () => {
             });
         }
         return list.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    }, [sortedHistory, shipment]);
+    })();
 
     // Active Triage & Health Status: check for exceptions or delivery blockers
     const isTriageException = ['exception', 'failed', 'cancelled', 'returned', 'rto_in_transit'].includes(normStatus)
