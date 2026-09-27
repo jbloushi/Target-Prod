@@ -25,6 +25,57 @@ class FreeWebScraperService {
             'sec-fetch-user': '?1',
             'upgrade-insecure-requests': '1'
         };
+
+        // Aramex session cache to reduce AntiForgery requests and avoid Akamai rate-limits
+        this.aramexSession = {
+            token: '',
+            cookies: '',
+            expiresAt: 0
+        };
+    }
+
+    /**
+     * Randomized jitter delay to prevent robotic request cadence
+     */
+    async _politeDelay(minMs = 250, maxMs = 600) {
+        const ms = Math.floor(minMs + Math.random() * (maxMs - minMs));
+        await new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    /**
+     * Get or refresh Aramex session token and cookies (cached for 15 mins)
+     */
+    async _getAramexSession(ajaxHeaders) {
+        const now = Date.now();
+        if (this.aramexSession.token && now < this.aramexSession.expiresAt) {
+            return {
+                antiForgeryToken: this.aramexSession.token,
+                cookies: this.aramexSession.cookies
+            };
+        }
+
+        try {
+            await this._politeDelay(150, 350);
+            const tokenRes = await axios.post('https://www.aramex.com/track/results/GetAntiforgery/', {}, {
+                headers: ajaxHeaders,
+                timeout: 8000
+            });
+            const antiForgeryToken = tokenRes.data?.Data || '';
+            const setCookies = tokenRes.headers['set-cookie'] || [];
+            const cookies = setCookies.map(c => c.split(';')[0]).join('; ');
+
+            if (antiForgeryToken) {
+                this.aramexSession = {
+                    token: antiForgeryToken,
+                    cookies,
+                    expiresAt: now + (15 * 60 * 1000)
+                };
+            }
+            return { antiForgeryToken, cookies };
+        } catch (tokenErr) {
+            logger.debug(`[FreeWebScraper] Aramex Antiforgery note: ${tokenErr.message}`);
+            return { antiForgeryToken: '', cookies: '' };
+        }
     }
 
     /**
@@ -37,6 +88,9 @@ class FreeWebScraperService {
         if (!cleanAwb) return { status: 'pending', events: [] };
 
         logger.info(`[FreeWebScraper] Scraping Aramex public tracking for AWB #${cleanAwb}`);
+
+        // Add polite jitter delay before hitting endpoint
+        await this._politeDelay(200, 500);
 
         const ajaxHeaders = {
             'User-Agent': this.browserHeaders['User-Agent'],
@@ -53,21 +107,8 @@ class FreeWebScraperService {
         };
 
         try {
-            // Step 1: Negotiate AntiForgery Token and Akamai session cookies
-            let cookies = '';
-            let antiForgeryToken = '';
-
-            try {
-                const tokenRes = await axios.post('https://www.aramex.com/track/results/GetAntiforgery/', {}, {
-                    headers: ajaxHeaders,
-                    timeout: 8000
-                });
-                antiForgeryToken = tokenRes.data?.Data || '';
-                const setCookies = tokenRes.headers['set-cookie'] || [];
-                cookies = setCookies.map(c => c.split(';')[0]).join('; ');
-            } catch (tokenErr) {
-                logger.debug(`[FreeWebScraper] Aramex Antiforgery note: ${tokenErr.message}`);
-            }
+            // Step 1: Negotiate AntiForgery Token and Akamai session cookies (using cache when valid)
+            const { antiForgeryToken, cookies } = await this._getAramexSession(ajaxHeaders);
 
             // Step 2: Initialize tracking session card details
             let redirectPath = `track/results?source=aramex&ShipmentNumber=${encodeURIComponent(cleanAwb)}`;

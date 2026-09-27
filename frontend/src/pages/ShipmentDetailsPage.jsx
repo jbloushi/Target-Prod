@@ -7,7 +7,7 @@ import { useSnackbar } from 'notistack';
 import { financeService, integrationService, shipmentService, userService } from '../services/api';
 import api from '../services/api';
 import {
-    STATUS_ORDER, STATUS_LABELS, INTERNAL_SHIPMENT_STATUSES, getStepIndex
+    STATUS_ORDER, STATUS_LABELS, INTERNAL_SHIPMENT_STATUSES, getStepIndex, normalizeStatus
 } from '../constants/statusConfig';
 import {
     buildShipmentDeleteBlockedMessage,
@@ -473,9 +473,45 @@ const ShipmentDetailsPage = () => {
     const dedupedHistory = dedupeTrackingEvents(rawHistory, (e) => `${e?.status}|${e?.timestamp}|${e?.description}`);
     const sortedHistory = [...dedupedHistory].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
-    // Calculate progression percentage across standard 5 steps
-    const stepIdx = getStepIndex(shipment.status);
-    const progressPct = Math.min(100, Math.max(15, (stepIdx / (STATUS_ORDER.length - 1)) * 100));
+    // Calculate progression percentage across standard 5 visual milestones
+    const normStatus = normalizeStatus(shipment.status);
+    let visualStep = 0;
+    let progressPct = 10;
+    let indicatorIcon = 'inventory_2';
+
+    switch (normStatus) {
+        case 'delivered':
+            visualStep = 4;
+            progressPct = 100;
+            indicatorIcon = 'check_circle';
+            break;
+        case 'out_for_delivery':
+            visualStep = 3;
+            progressPct = 75;
+            indicatorIcon = 'local_shipping';
+            break;
+        case 'in_transit':
+            visualStep = 2;
+            progressPct = 50;
+            indicatorIcon = 'flight_takeoff';
+            break;
+        case 'picked_up':
+        case 'ready_for_pickup':
+            visualStep = 1;
+            progressPct = 25;
+            indicatorIcon = 'package_2';
+            break;
+        case 'cancelled':
+            visualStep = -1;
+            progressPct = 100;
+            indicatorIcon = 'cancel';
+            break;
+        default:
+            visualStep = 0;
+            progressPct = 10;
+            indicatorIcon = 'inventory_2';
+            break;
+    }
 
     return (
         <div className="w-full max-w-[1600px] mx-auto px-2 sm:px-4 py-3 space-y-6">
@@ -671,12 +707,55 @@ const ShipmentDetailsPage = () => {
                                 </span>
                             </div>
 
-                            <div className="flex-1 mx-2 flex flex-col items-center gap-1">
+                            <div className="flex-1 mx-2 sm:mx-4 flex flex-col items-center gap-1.5 min-w-[200px]">
                                 <div className="flex items-center gap-1.5 text-xs font-black text-primary">
                                     <span className="material-symbols-outlined text-base">flight_takeoff</span>
                                     <span>{getShipmentTypeLabel(shipment.shipmentType)}</span>
                                 </div>
-                                <progress className="progress progress-primary w-full h-2.5" value={progressPct} max="100"></progress>
+                                
+                                {/* Custom Progress Track with Live Position Indicator Pin */}
+                                <div className="relative w-full py-2">
+                                    {/* Track Bar Background */}
+                                    <div className="w-full h-3 bg-base-300/80 rounded-full overflow-hidden shadow-inner relative">
+                                        <div 
+                                            className={`h-full transition-all duration-700 ease-out rounded-full ${
+                                                normStatus === 'delivered'
+                                                    ? 'bg-success shadow-[0_0_12px_rgba(34,197,94,0.6)]'
+                                                    : normStatus === 'cancelled'
+                                                    ? 'bg-error shadow-[0_0_12px_rgba(239,68,68,0.6)]'
+                                                    : 'bg-primary shadow-[0_0_12px_rgba(59,130,246,0.5)]'
+                                            }`}
+                                            style={{
+                                                width: `${progressPct}%`,
+                                                float: isRTL ? 'right' : 'left'
+                                            }}
+                                        />
+                                    </div>
+
+                                    {/* Moving Position Indicator Icon */}
+                                    <div 
+                                        className="absolute top-1/2 transition-all duration-700 ease-out pointer-events-none z-10"
+                                        style={{
+                                            [isRTL ? 'right' : 'left']: `${Math.min(98, Math.max(2, progressPct))}%`,
+                                            transform: isRTL ? 'translate(50%, -50%)' : 'translate(-50%, -50%)'
+                                        }}
+                                    >
+                                        <div 
+                                            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-base-100 ${
+                                                normStatus === 'delivered'
+                                                    ? 'bg-success text-success-content ring-4 ring-success/25'
+                                                    : normStatus === 'cancelled'
+                                                    ? 'bg-error text-error-content ring-4 ring-error/25'
+                                                    : 'bg-primary text-primary-content ring-4 ring-primary/25'
+                                            }`}
+                                            title={`${progressPct}% - ${normStatus}`}
+                                        >
+                                            <span className="material-symbols-outlined text-xs sm:text-sm font-black">
+                                                {indicatorIcon}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="text-end">
@@ -692,11 +771,26 @@ const ShipmentDetailsPage = () => {
 
                     {/* Step Nodes Ribbon */}
                     <div className="flex justify-between items-center text-[10px] sm:text-xs font-extrabold text-base-content/60 px-1 pt-1">
-                        <span className={stepIdx >= 0 ? 'text-primary' : ''}>{isRTL ? 'تم الإنشاء' : 'Created'}</span>
-                        <span className={stepIdx >= 1 ? 'text-primary' : ''}>{isRTL ? 'تم الاستلام' : 'Picked Up'}</span>
-                        <span className={stepIdx >= 2 ? 'text-primary' : ''}>{isRTL ? 'نقل جوي دولي' : 'In Transit'}</span>
-                        <span className={stepIdx >= 3 ? 'text-primary' : ''}>{isRTL ? 'مع المندوب' : 'Out for Delivery'}</span>
-                        <span className={stepIdx >= 4 ? 'text-success' : ''}>{isRTL ? 'تم التسليم' : 'Delivered'}</span>
+                        <span className={`flex items-center gap-1 ${visualStep >= 0 ? 'text-primary font-black' : ''}`}>
+                            {visualStep >= 0 && <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block"></span>}
+                            {isRTL ? 'تم الإنشاء' : 'Created'}
+                        </span>
+                        <span className={`flex items-center gap-1 ${visualStep >= 1 ? 'text-primary font-black' : ''}`}>
+                            {visualStep >= 1 && <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block"></span>}
+                            {isRTL ? 'تم الاستلام' : 'Picked Up'}
+                        </span>
+                        <span className={`flex items-center gap-1 ${visualStep >= 2 ? 'text-primary font-black' : ''}`}>
+                            {visualStep >= 2 && <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block"></span>}
+                            {isRTL ? 'نقل جوي دولي' : 'In Transit'}
+                        </span>
+                        <span className={`flex items-center gap-1 ${visualStep >= 3 ? 'text-primary font-black' : ''}`}>
+                            {visualStep >= 3 && <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block"></span>}
+                            {isRTL ? 'مع المندوب' : 'Out for Delivery'}
+                        </span>
+                        <span className={`flex items-center gap-1 ${visualStep >= 4 ? 'text-success font-black' : ''}`}>
+                            {visualStep >= 4 && <span className="w-1.5 h-1.5 rounded-full bg-success inline-block"></span>}
+                            {isRTL ? 'تم التسليم' : 'Delivered'}
+                        </span>
                     </div>
                 </div>
 

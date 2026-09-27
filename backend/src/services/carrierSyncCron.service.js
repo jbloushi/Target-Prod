@@ -12,7 +12,7 @@ class CarrierSyncCronService {
         // Default interval: 15 minutes
         this.intervalMs = parseInt(process.env.CARRIER_CRON_SYNC_INTERVAL_MS, 10) || 15 * 60 * 1000;
         this.batchSize = parseInt(process.env.CARRIER_CRON_SYNC_BATCH_SIZE, 10) || 20;
-        this.concurrency = 5;
+        this.concurrency = 2; // Polite scraper concurrency to protect server IP
     }
 
     /**
@@ -110,7 +110,8 @@ class CarrierSyncCronService {
                 chunks.push(candidates.slice(i, i + this.concurrency));
             }
 
-            for (const chunk of chunks) {
+            for (let i = 0; i < chunks.length; i++) {
+                const chunk = chunks[i];
                 const chunkPromises = chunk.map(async (shipment) => {
                     const carrierTracking = resolveCarrierTrackingNumber(shipment);
                     const carrierCode = String(shipment.carrierCode || shipment.carrier || '').toUpperCase();
@@ -183,6 +184,11 @@ class CarrierSyncCronService {
 
                 const chunkResults = await Promise.all(chunkPromises);
                 summary.results.push(...chunkResults);
+
+                // Add polite delay between chunks to avoid rate limiting and bot detection
+                if (i < chunks.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 600));
+                }
             }
 
             logger.info(`[CarrierSyncCron] Batch finished: scanned=${summary.scanned}, synced=${summary.synced}, updated=${summary.updated}, errors=${summary.errors}`);
