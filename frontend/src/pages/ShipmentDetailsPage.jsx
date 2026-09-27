@@ -406,14 +406,18 @@ const ShipmentDetailsPage = () => {
 
     // Delete Consignment
     const handleDelete = async () => {
-        if (!canDeleteShipmentStatus(shipment.status)) {
+        if (user?.role !== 'admin' && !canDeleteShipmentStatus(shipment.status, shipment, user?.role)) {
             enqueueSnackbar(buildShipmentDeleteBlockedMessage(shipment.status).short, { variant: 'warning' });
             return;
         }
-        if (window.confirm(`Delete consignment ${shipment.trackingNumber}? This action is irreversible.`)) {
+        const confirmMsg = isRTL
+            ? `هل أنت متأكد من حذف الشحنة ${shipment.trackingNumber} وجميع السجلات المالية المرتبطة بها نهائياً؟ هذا الإجراء لا يمكن التراجع عنه.`
+            : `Delete consignment ${shipment.trackingNumber} and all associated financial/ledger records? This action is irreversible.`;
+            
+        if (window.confirm(confirmMsg)) {
             try {
                 await shipmentService.deleteShipment(shipment.trackingNumber);
-                enqueueSnackbar(isRTL ? 'تم حذف الشحنة بنجاح' : 'Consignment deleted successfully', { variant: 'success' });
+                enqueueSnackbar(isRTL ? 'تم حذف الشحنة وسجلاتها المالية بنجاح' : 'Consignment and related finance records deleted successfully', { variant: 'success' });
                 navigate('/shipments');
             } catch (err) {
                 enqueueSnackbar(getShipmentDeleteErrorMessage(err, shipment.status), { variant: 'warning' });
@@ -911,10 +915,9 @@ const ShipmentDetailsPage = () => {
                         {user?.role === 'admin' && (
                             <button
                                 type="button"
-                                disabled={!canDeleteShipmentStatus(shipment.status)}
                                 onClick={handleDelete}
                                 className="btn btn-error btn-outline btn-sm rounded-xl font-bold gap-1 text-xs"
-                                title={!canDeleteShipmentStatus(shipment.status) ? buildShipmentDeleteBlockedMessage(shipment.status).tooltip : ''}
+                                title={isRTL ? 'حذف الشحنة وسجلاتها المالية' : 'Delete shipment and related financial records'}
                             >
                                 <span className="material-symbols-outlined text-base">delete</span>
                                 {isRTL ? 'حذف' : 'Delete'}

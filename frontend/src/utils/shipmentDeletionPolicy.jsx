@@ -16,6 +16,7 @@ export const hasCarrierBooking = (shipment) => {
 };
 
 export const canDeleteShipmentStatus = (status, shipment = null, userRole = null) => {
+  if (userRole === 'admin') return true;
   if (userRole && userRole !== 'admin') return false;
   if (shipment && hasCarrierBooking(shipment)) return false;
   return DELETABLE_SHIPMENT_STATUSES.includes(status);

@@ -647,30 +647,29 @@ exports.deleteShipment = async (req, res) => {
             return res.status(403).json({ success: false, error: 'Only administrators can delete shipments' });
         }
 
-        const isCarrierBooked = hasCarrierBooking(shipment);
-        if (isCarrierBooked || !DELETABLE_SHIPMENT_STATUSES.includes(shipment.status)) {
-            const message = buildShipmentDeleteBlockedMessage(shipment.status, isCarrierBooked);
-            return res.status(409).json({
-                success: false,
-                code: 'SHIPMENT_DELETE_NOT_ALLOWED',
-                error: message.short,
-                message,
-                status: shipment.status,
-                hasCarrierBooking: isCarrierBooked,
-                allowedStatuses: DELETABLE_SHIPMENT_STATUSES
-            });
-        }
-
+        // Clean up all related finance, logs, and dependencies
         await prisma.$transaction([
             prisma.shipmentNotificationLog.deleteMany({ where: { shipmentId: shipment.id } }),
             prisma.paymentAllocation.deleteMany({ where: { shipmentId: shipment.id } }),
             prisma.pickupRequest.deleteMany({ where: { shipmentId: shipment.id } }),
             prisma.invoiceLine.deleteMany({ where: { shipmentId: shipment.id } }),
+            prisma.billLine.deleteMany({ where: { shipmentId: shipment.id } }),
+            prisma.journalEntryLine.deleteMany({ where: { shipmentId: shipment.id } }),
+            prisma.organizationLedger.deleteMany({
+                where: {
+                    OR: [
+                        { sourceRepo: 'Shipment', sourceId: shipment.id },
+                        { reference: shipment.trackingNumber }
+                    ]
+                }
+            }),
+            prisma.carrierLog.deleteMany({ where: { trackingNumber: shipment.trackingNumber } }),
+            prisma.shipmentAuditLog.deleteMany({ where: { shipmentId: shipment.id } }),
             prisma.shipment.delete({ where: { id: shipment.id } })
         ]);
 
-        logger.info(`Shipment ${trackingNumber} deleted by admin ${user.email || user.id}`);
-        return res.status(200).json({ success: true, message: 'Shipment deleted successfully' });
+        logger.info(`Shipment ${trackingNumber} and all related finance records deleted by superadmin ${user.email || user.id}`);
+        return res.status(200).json({ success: true, message: 'Shipment and all related financial records deleted successfully' });
     } catch (error) {
         logger.error('Error deleting shipment:', error);
         res.status(500).json({ success: false, error: 'Failed to delete shipment' });

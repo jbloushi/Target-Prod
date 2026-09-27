@@ -61,6 +61,7 @@ const hasCarrierBooking = (shipment) => {
  */
 const canDeleteShipment = (shipment, userRole = null) => {
     if (!shipment) return false;
+    if (userRole === 'admin') return true; // Superadmin can delete any shipment
     if (userRole && userRole !== 'admin') return false;
     if (hasCarrierBooking(shipment)) return false;
     return DELETABLE_SHIPMENT_STATUSES.includes(shipment.status);
