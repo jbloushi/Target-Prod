@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import axios from 'axios';
+import { useLanguage } from '../context/LanguageContext';
 import { getApiBaseUrl } from '../utils/env';
 import { dedupeTrackingEvents } from '../utils/dedupeTrackingEvents';
 import LocationLabel from '../components/LocationLabel';
@@ -97,9 +98,11 @@ const DEMO_PRESETS = [
 
 export const PublicTrackingLandingPage = () => {
   const { trackingNumber: paramTrackingNumber } = useParams();
+  const { lang } = useLanguage();
   const navigate = useNavigate();
   const fetchedRef = useRef(null);
 
+  const [showNotificationBanner, setShowNotificationBanner] = useState(true);
   const [searchInput, setSearchInput] = useState(paramTrackingNumber || '');
   const [trackingNumber, setTrackingNumber] = useState(paramTrackingNumber || '');
   const [shipment, setShipment] = useState(null);
@@ -202,38 +205,35 @@ export const PublicTrackingLandingPage = () => {
 
   return (
     <div className="min-h-screen bg-base-200/50 bg-target-pattern flex flex-col font-sans selection:bg-primary selection:text-white">
-      {/* Top Navbar */}
-      <header className="navbar bg-base-100 border-b border-base-200 px-4 sm:px-8 py-3 sticky top-0 z-40 shadow-sm backdrop-blur-md bg-base-100/90">
-        <div className="flex-1 flex items-center gap-3">
-          <Link to="/track" className="flex items-center">
-            <img 
-              src="/images/target-logo.png" 
-              alt="Target Logistics" 
-              className="h-8 sm:h-9 w-auto object-contain dark:hidden" 
-            />
-            <img 
-              src="/images/target-logo-white.png" 
-              alt="Target Logistics" 
-              className="h-8 sm:h-9 w-auto object-contain hidden dark:block" 
-            />
-          </Link>
-        </div>
-        <div className="flex-none flex items-center gap-2">
-          <Link to="/returns" className="btn btn-ghost btn-sm text-xs font-bold gap-1 text-base-content/70 hover:text-primary">
-            <span className="material-symbols-outlined text-sm">assignment_return</span>
-            <span>Returns Portal</span>
-          </Link>
-          <a
-            href="https://wa.me/96590000000"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn btn-outline btn-primary btn-sm text-xs font-bold gap-1"
-          >
-            <span className="material-symbols-outlined text-sm">support_agent</span>
-            <span>Kuwait Support</span>
-          </a>
-        </div>
-      </header>
+      {/* Semi-transparent Green Notification Banner with Close Button */}
+      {showNotificationBanner && (
+        <aside
+          aria-label="Tracking Status Notification"
+          className="bg-emerald-500/15 border-b border-emerald-500/25 px-4 sm:px-8 py-2.5 sticky top-0 z-40 backdrop-blur-md text-emerald-950 dark:text-emerald-100 shadow-xs transition-all duration-300"
+        >
+          <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 text-xs sm:text-sm font-semibold">
+              <span className="flex h-2.5 w-2.5 relative shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+              </span>
+              <span>
+                {lang === 'ar' 
+                  ? 'رادار التتبع المباشر نشط • تحديثات لحظية ومزامنة فورية لمسارات الشحن والتخليص الجمركي في الكويت ودول الخليج.'
+                  : 'Live Consignment Radar Active • Real-time telemetry & customs clearance updates synchronized across Kuwait & GCC corridors.'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowNotificationBanner(false)}
+              className="btn btn-ghost btn-xs btn-circle text-emerald-800 dark:text-emerald-200 hover:bg-emerald-500/25 shrink-0"
+              aria-label="Close notification"
+            >
+              <span className="material-symbols-outlined text-base">close</span>
+            </button>
+          </div>
+        </aside>
+      )}
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
