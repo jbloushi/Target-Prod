@@ -16,7 +16,8 @@
     "seed": "node prisma-seed.js",
     "db:fresh": "node scripts/fresh-database.js --confirm --mode=demo",
     "db:fresh:clean": "node scripts/fresh-database.js --confirm --mode=clean",
-    "admin:ensure": "node scripts/ensure-admin.js"
+    "admin:ensure": "node scripts/ensure-admin.js",
+    "verify:tracking": "node scripts/verify-carrier-scraping.js"
   },
   "keywords": [],
   "author": "",
