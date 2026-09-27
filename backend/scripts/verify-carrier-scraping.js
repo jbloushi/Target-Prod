@@ -61,33 +61,28 @@ async function verifyCarrierTracking() {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Check 2: Direct Carrier Public Scraper
+    // Check 2: Direct Carrier Public Web Scraper (FreeWebScraperService)
     // ─────────────────────────────────────────────────────────────
-    console.log('\n[Check 2] Testing Direct Public Web Scraper...');
-    if (carrierCode === 'ARAMEX') {
-        const scrapeUrl = `https://www.aramex.com/api/v2/shipment/track?shipmentNumber=${encodeURIComponent(trackingNumber)}`;
-        console.log(`Target URL: ${scrapeUrl}`);
-        try {
-            const res = await axios.get(scrapeUrl, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                    'Accept': 'application/json, text/plain, */*',
-                    'Referer': 'https://www.aramex.com/us/en/track/results'
-                },
-                timeout: 10000
-            });
-            console.log(`✅ Direct Scraper Status: HTTP ${res.status}`);
-            console.log(`   Events: ${Array.isArray(res.data?.events) ? res.data.events.length : 0}`);
-        } catch (err) {
-            console.log(`❌ Direct Scraper Failed: HTTP ${err.response?.status || 'Network Error'}`);
-            if (err.response?.status === 403) {
-                console.log('   Reason: 403 Forbidden (Blocked by Akamai Bot Manager / WAF)');
-            } else {
-                console.log('   Error:', err.message);
-            }
+    console.log('\n[Check 2] Testing Direct Public Web Scraper (FreeWebScraperService)...');
+    const freeScraper = require('../src/services/FreeWebScraperService');
+    try {
+        let scraped;
+        if (carrierCode === 'ARAMEX') {
+            scraped = await freeScraper.scrapeAramex(trackingNumber);
+        } else if (carrierCode === 'FEDEX') {
+            scraped = await freeScraper.scrapeFedex(trackingNumber);
         }
-    } else {
-        console.log(`(Direct scraper check not implemented for ${carrierCode})`);
+
+        if (scraped && scraped.events && scraped.events.length > 0) {
+            console.log(`✅ Direct Scraper Succeeded! Status: ${scraped.status}, Checkpoints: ${scraped.events.length}`);
+            scraped.events.forEach((ev, i) => {
+                console.log(`   ${i + 1}. [${ev.timestamp}] (${ev.statusCode}) ${ev.description} - ${ev.location}`);
+            });
+        } else {
+            console.log(`ℹ️ Direct Scraper returned 0 events (status: ${scraped?.status || 'unknown'})`);
+        }
+    } catch (err) {
+        console.log(`❌ Direct Scraper error: ${err.message}`);
     }
 
     // ─────────────────────────────────────────────────────────────

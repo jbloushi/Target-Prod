@@ -54,12 +54,21 @@ class UniversalTrackingService {
             }
         }
 
-        // 2. Carrier-specific Public Web Scraper Fallbacks
+        // 2. Carrier-specific Public Web Scraper Fallbacks (Free & No API Credentials Needed)
+        const freeScraper = require('./FreeWebScraperService');
         if (normalizedCarrier === 'ARAMEX') {
+            const scraped = await freeScraper.scrapeAramex(cleanTracking);
+            if (scraped && scraped.events && scraped.events.length > 0) {
+                return scraped;
+            }
             return this._scrapeAramexPublic(cleanTracking);
         }
 
         if (normalizedCarrier === 'FEDEX') {
+            const scraped = await freeScraper.scrapeFedex(cleanTracking);
+            if (scraped && scraped.events && scraped.events.length > 0) {
+                return scraped;
+            }
             return this._scrapeFedexPublic(cleanTracking);
         }
 
