@@ -119,13 +119,13 @@ const canonicalStatusFromDescription = (status, description) => {
     const text = normalizeText(`${status || ''} ${description || ''}`);
     if (text.includes('shipment draft created') || text.includes('draft created')) return 'created';
     if (text.includes('shipment picked up') || text.includes('picked up') || text.includes('collected')) return 'pickup';
-    if (text.includes('arrived at dhl sort facility') || text.startsWith('arrived at') || text.includes('arrived facility') || text.includes('arrived at operations')) return 'arrived_facility';
+    if (text.includes('arrived at dhl sort facility') || text.startsWith('arrived at') || text.includes('arrived facility') || text.includes('arrived at operations') || text.includes('sorting hub')) return 'arrived_facility';
     if (text.includes('processed at') || text.includes('transferred to operations')) return 'processed';
     if (text.includes('shipment has departed') || text.includes('departed from') || text.includes('departed facility') || text.includes('departed operations')) return 'departed_facility';
     if (text.includes('customs clearance status updated') || text.includes('customs')) return 'customs_update';
-    if (text.includes('delivery champion') || text.includes('out for delivery') || text.includes('doorstep')) return 'out_for_delivery';
-    if (text.includes('delivered to') || text.includes('shipment delivered') || text === 'delivered') return 'delivered';
-    if (text.includes('shipment is on hold') || text.endsWith(' on hold') || text.includes('delivery instructions')) return 'hold';
+    if (text.includes('delivery champion') || text.includes('out for delivery') || text.includes('doorstep') || text.includes('with courier') || text.includes('with driver')) return 'out_for_delivery';
+    if (text.includes('delivered to') || text.includes('shipment delivered') || text.includes('delivered') || text.includes('consignee') || text.includes('proof of delivery') || text === 'dlv') return 'delivered';
+    if (text.includes('shipment is on hold') || text.endsWith(' on hold') || text.includes('delivery instructions') || text.includes('exception') || text.includes('delayed')) return 'hold';
     return normalizeText(status || description || 'updated').replace(/\s+/g, '_');
 };
 
@@ -391,9 +391,17 @@ const syncCarrierTrackingHistory = async (shipment) => {
         const newHistory = [...currentHistory];
         let currentStatus = shipment.status;
 
-        events.forEach((event) => {
-            const rawStatus = event.statusCode || tracking.status || 'transit';
-            const normalizedStatus = normalizeStatus(rawStatus);
+        const sortedEvents = [...events].sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
+
+        sortedEvents.forEach((event) => {
+            const rawStatus = event.statusCode || event.status || event.description || tracking?.status || 'transit';
+            let normalizedStatus = normalizeStatus(rawStatus);
+            if (normalizedStatus === 'in_transit' && event.description) {
+                const descNorm = normalizeStatus(event.description);
+                if (descNorm && descNorm !== 'in_transit') {
+                    normalizedStatus = descNorm;
+                }
+            }
 
             const historyEntry = {
                 status: normalizedStatus,
@@ -418,10 +426,16 @@ const syncCarrierTrackingHistory = async (shipment) => {
                 hasUpdates = true;
             } else {
                 const existingEntry = existingByKey.get(key);
-                if (existingEntry && event.localTimestamp && !existingEntry.localTimestamp) {
-                    existingEntry.localTimestamp = event.localTimestamp;
-                    existingEntry.timezoneOffset = event.timezoneOffset || existingEntry.timezoneOffset || null;
-                    hasUpdates = true;
+                if (existingEntry) {
+                    if (event.localTimestamp && !existingEntry.localTimestamp) {
+                        existingEntry.localTimestamp = event.localTimestamp;
+                        existingEntry.timezoneOffset = event.timezoneOffset || existingEntry.timezoneOffset || null;
+                        hasUpdates = true;
+                    }
+                    if (existingEntry.status !== normalizedStatus && isStatusAhead(existingEntry.status, normalizedStatus)) {
+                        existingEntry.status = normalizedStatus;
+                        hasUpdates = true;
+                    }
                 }
             }
 
@@ -430,10 +444,21 @@ const syncCarrierTrackingHistory = async (shipment) => {
             }
         });
 
-        // If carrier reports active status (e.g. out_for_delivery) but shipment was falsely marked delivered, correct it!
-        const latestEvent = events[events.length - 1];
-        const latestCarrierStatus = normalizeStatus(tracking?.status || latestEvent?.statusCode || highestCarrierStatus);
-        if (latestCarrierStatus && latestCarrierStatus !== 'delivered' && currentStatus === 'delivered') {
+        // Check if any event in newHistory or sortedEvents reports delivered
+        const anyDelivered = newHistory.some((e) => normalizeStatus(e.status || e.description) === 'delivered');
+
+        // Most recent chronological event
+        const latestEvent = sortedEvents[sortedEvents.length - 1];
+        const latestRaw = latestEvent ? (latestEvent.statusCode || latestEvent.status || latestEvent.description) : null;
+        const latestCarrierStatus = normalizeStatus(tracking?.status || latestRaw || highestCarrierStatus);
+
+        if (anyDelivered || latestCarrierStatus === 'delivered' || highestCarrierStatus === 'delivered') {
+            if (currentStatus !== 'delivered') {
+                logger.info(`Detected delivered status for ${shipment.trackingNumber}: ${currentStatus} -> delivered`);
+                currentStatus = 'delivered';
+                hasUpdates = true;
+            }
+        } else if (latestCarrierStatus && latestCarrierStatus !== 'delivered' && currentStatus === 'delivered') {
             logger.info(`Correcting premature delivered status for ${shipment.trackingNumber}: ${currentStatus} -> ${latestCarrierStatus}`);
             currentStatus = latestCarrierStatus;
             hasUpdates = true;

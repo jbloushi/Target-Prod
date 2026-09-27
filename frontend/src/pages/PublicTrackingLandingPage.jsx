@@ -14,6 +14,7 @@ import {
   PUBLIC_PROGRESS_STEPS,
   getPublicStepIndex,
   normalizeStatus,
+  isStatusAhead,
 } from '../constants/statusConfig';
 
 const API = getApiBaseUrl();
@@ -141,9 +142,27 @@ export const PublicTrackingLandingPage = () => {
   const events = useMemo(() => mergeEvents(shipment), [shipment]);
   const rawEvents = useMemo(() => rawEventsForLog(shipment), [shipment]);
   const timelineEvents = events.length > 0 ? events : rawEvents;
-  const lastEvent = events[0];
-  const stepIndex = shipment ? getPublicStepIndex(shipment.status) : 0;
-  const normalizedStatus = normalizeStatus(shipment?.status);
+  const lastEvent = events[0] || timelineEvents[0];
+
+  const effectiveStatus = useMemo(() => {
+    if (!shipment) return 'draft';
+    const rawNorm = normalizeStatus(shipment.status);
+    if (rawNorm === 'cancelled') return 'cancelled';
+    const hasDelivered = timelineEvents.some(e => {
+      const s = normalizeStatus(e.status || e.description);
+      return s === 'delivered';
+    });
+    if (rawNorm === 'delivered' || hasDelivered) return 'delivered';
+    if (lastEvent) {
+      const lastNorm = normalizeStatus(lastEvent.status || lastEvent.description);
+      if (lastNorm === 'exception') return 'exception';
+      if (isStatusAhead(rawNorm, lastNorm)) return lastNorm;
+    }
+    return rawNorm;
+  }, [shipment, timelineEvents, lastEvent]);
+
+  const stepIndex = shipment ? getPublicStepIndex(effectiveStatus) : 0;
+  const normalizedStatus = effectiveStatus;
 
   const handleCopy = () => {
     if (!shipment?.trackingNumber) return;
@@ -348,7 +367,7 @@ export const PublicTrackingLandingPage = () => {
                       <span className="material-symbols-outlined text-sm">local_shipping</span>
                       {shipment.carrierCode || shipment.carrier || 'Target Network'}
                     </span>
-                    <StatusBadge status={shipment.status} size="md" />
+                    <StatusBadge status={effectiveStatus} size="md" />
                   </div>
                 </div>
 

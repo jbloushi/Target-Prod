@@ -8,7 +8,7 @@ const ShipmentDraftService = require('../services/ShipmentDraftService');
 const { handleControllerError } = require('../utils/controllerError');
 const { hasCapability, isPlatformRole } = require('../middleware/rbac.policy');
 const { canAccessShipment, scopeShipmentWhere } = require('../middleware/authorize.middleware');
-const { INTERNAL_SHIPMENT_STATUSES, SHIPMENT_STATUSES } = require('../constants/statusConstants');
+const { INTERNAL_SHIPMENT_STATUSES, SHIPMENT_STATUSES, normalizeStatus } = require('../constants/statusConstants');
 const { DELETABLE_SHIPMENT_STATUSES, buildShipmentDeleteBlockedMessage, hasCarrierBooking, canDeleteShipment } = require('../utils/shipmentDeletionPolicy');
 const { syncCarrierTrackingHistory, hasCriticalChanges, canUpdateShipmentStatus, isInternalShipment, buildDisplayHistory } = require('./shipment.helpers');
 const chatwootNotificationService = require('../services/chatwootNotificationService');
@@ -455,6 +455,19 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
         }
 
         const rawHistory = Array.isArray(shipment.history) ? shipment.history : [];
+        const hasDeliveredScan = rawHistory.some((e) => {
+            const s = normalizeStatus(e.status || e.description || e.statusCode);
+            return s === 'delivered';
+        });
+        if (hasDeliveredScan && shipment.status !== 'delivered') {
+            logger.info(`Auto-healing delivered status for ${shipment.trackingNumber}: ${shipment.status} -> delivered`);
+            await prisma.shipment.update({
+                where: { id: shipment.id },
+                data: { status: 'delivered' }
+            });
+            shipment.status = 'delivered';
+        }
+
         const originLocation = shipment.origin?.formattedAddress || shipment.origin?.city || '';
         const displayHistory = buildDisplayHistory(rawHistory, { originLocation });
         const dangerousGoods = shipment.dangerousGoods || shipment.origin?.dangerousGoods || (shipment.serviceCode === 'Y' ? { contains: true, code: '1266', unCode: '1266', properShippingName: 'PERFUMERY PRODUCTS', hazardClass: '3', packingGroup: 'II' } : { contains: false });

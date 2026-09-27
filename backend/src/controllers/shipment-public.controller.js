@@ -131,6 +131,16 @@ exports.getPublicShipment = async (req, res) => {
             if (rawEvents.length === 0) rawEvents = fallbackRaw;
         }
 
+        const anyDeliveredEvent = rawEvents.some((e) => normalizeStatus(e.status || e.description) === 'delivered')
+            || (Array.isArray(shipment.history) && shipment.history.some((e) => normalizeStatus(e.status || e.description) === 'delivered'));
+        if (anyDeliveredEvent && shipment.status !== 'delivered') {
+            await prisma.shipment.update({
+                where: { id: shipment.id },
+                data: { status: 'delivered' }
+            }).catch(() => {});
+            shipment.status = 'delivered';
+        }
+
         res.status(200).json({
             success: true,
             data: {

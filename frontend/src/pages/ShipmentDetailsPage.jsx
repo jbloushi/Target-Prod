@@ -7,7 +7,7 @@ import { useSnackbar } from 'notistack';
 import { financeService, integrationService, shipmentService, userService } from '../services/api';
 import api from '../services/api';
 import {
-    STATUS_ORDER, STATUS_LABELS, INTERNAL_SHIPMENT_STATUSES, getStepIndex, normalizeStatus
+    STATUS_ORDER, STATUS_LABELS, INTERNAL_SHIPMENT_STATUSES, getStepIndex, normalizeStatus, isStatusAhead
 } from '../constants/statusConfig';
 import {
     buildShipmentDeleteBlockedMessage,
@@ -506,46 +506,6 @@ const ShipmentDetailsPage = () => {
     const dedupedHistory = dedupeTrackingEvents(rawHistory, (e) => `${e?.status}|${e?.timestamp}|${e?.description}`);
     const sortedHistory = [...dedupedHistory].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
-    // Calculate progression percentage across standard 5 visual milestones
-    const normStatus = normalizeStatus(shipment.status);
-    let visualStep = 0;
-    let progressPct = 10;
-    let indicatorIcon = 'inventory_2';
-
-    switch (normStatus) {
-        case 'delivered':
-            visualStep = 4;
-            progressPct = 100;
-            indicatorIcon = 'check_circle';
-            break;
-        case 'out_for_delivery':
-            visualStep = 3;
-            progressPct = 75;
-            indicatorIcon = 'local_shipping';
-            break;
-        case 'in_transit':
-            visualStep = 2;
-            progressPct = 50;
-            indicatorIcon = 'flight_takeoff';
-            break;
-        case 'picked_up':
-        case 'ready_for_pickup':
-            visualStep = 1;
-            progressPct = 25;
-            indicatorIcon = 'package_2';
-            break;
-        case 'cancelled':
-            visualStep = -1;
-            progressPct = 100;
-            indicatorIcon = 'cancel';
-            break;
-        default:
-            visualStep = 0;
-            progressPct = 10;
-            indicatorIcon = 'inventory_2';
-            break;
-    }
-
     // Helper to map carrier tracking events into clean, readable Target statuses & milestones
     const reformatToTargetMilestone = (evt) => {
         const rawStatus = typeof evt.status === 'object' ? (evt.status?.status || evt.status?.name || 'in_transit') : (evt.status || 'in_transit');
@@ -558,24 +518,24 @@ const ShipmentDetailsPage = () => {
 
         let isExceptionEvent = false;
 
-        if (s.includes('deliver') || desc.includes('delivered') || evt.pod || s === 'dlv') {
-            targetStatus = 'delivered';
-            badgeColor = 'badge-success text-white';
-            friendlyTitle = isRTL ? 'تم التسليم للمستلم' : 'Delivered to Consignee';
-        } else if (s.includes('exception') || s.includes('hold') || desc.includes('held') || desc.includes('delay') || desc.includes('undelivered') || desc.includes('failed') || desc.includes('incomplete')) {
+        if (s.includes('exception') || s.includes('hold') || desc.includes('held') || desc.includes('delay') || desc.includes('undelivered') || desc.includes('failed') || desc.includes('incomplete') || desc.includes('damage') || desc.includes('clearance_delay')) {
             targetStatus = 'exception';
             badgeColor = 'badge-error text-white';
             friendlyTitle = isRTL ? 'طابور التدخل والاستثناءات الفورية' : 'Active Triage & Exception Flag';
             isExceptionEvent = true;
-        } else if (s.includes('out_for_delivery') || desc.includes('out for delivery') || s === 'od' || desc.includes('with courier')) {
+        } else if (s.includes('out_for_delivery') || desc.includes('out for delivery') || s.includes('for_delivery') || desc.includes('for delivery') || s === 'od' || desc.includes('with courier') || desc.includes('with driver')) {
             targetStatus = 'out_for_delivery';
             badgeColor = 'badge-secondary text-white';
             friendlyTitle = isRTL ? 'مع المندوب للتسليم' : 'Out for Delivery with Courier';
+        } else if (s.includes('delivered') || desc.includes('delivered') || desc.includes('consignee') || evt.pod || s === 'dlv' || desc.includes('proof of delivery')) {
+            targetStatus = 'delivered';
+            badgeColor = 'badge-success text-white';
+            friendlyTitle = isRTL ? 'تم التسليم للمستلم' : 'Delivered to Consignee';
         } else if (s.includes('custom') || desc.includes('customs') || desc.includes('clearance') || desc.includes('duty')) {
             targetStatus = 'in_transit';
             badgeColor = 'badge-accent text-white';
             friendlyTitle = isRTL ? 'التخليص الجمركي' : 'Customs Clearance Processed';
-        } else if (s.includes('arrive') || desc.includes('arrived') || desc.includes('received at hub') || s === 'af') {
+        } else if (s.includes('arrive') || desc.includes('arrived') || desc.includes('received at hub') || desc.includes('facility') || s === 'af') {
             targetStatus = 'received_at_hub';
             badgeColor = 'badge-primary';
             friendlyTitle = isRTL ? 'وصل مركز الفرز والعمليات' : 'Arrived at Sorting Hub';
@@ -611,6 +571,70 @@ const ShipmentDetailsPage = () => {
 
     // Tab 1: Formatted Milestone Events
     const milestoneEvents = sortedHistory.map(reformatToTargetMilestone);
+
+    // Compute effective status linking normalized milestones directly to progression and top badge
+    const latestMilestone = milestoneEvents[0];
+    const hasDeliveredMilestone = milestoneEvents.some(m => m.targetStatus === 'delivered');
+
+    const getEffectiveStatus = () => {
+        const rawNorm = normalizeStatus(shipment.status);
+        if (rawNorm === 'cancelled') return 'cancelled';
+        if (rawNorm === 'delivered' || hasDeliveredMilestone) return 'delivered';
+        if (latestMilestone?.isExceptionEvent || latestMilestone?.targetStatus === 'exception') return 'exception';
+        if (latestMilestone?.targetStatus) {
+            if (isStatusAhead(rawNorm, latestMilestone.targetStatus)) {
+                return latestMilestone.targetStatus;
+            }
+        }
+        return rawNorm;
+    };
+
+    const effectiveStatus = getEffectiveStatus();
+    const normStatus = effectiveStatus;
+
+    // Calculate progression percentage across standard 5 visual milestones
+    let visualStep = 0;
+    let progressPct = 10;
+    let indicatorIcon = 'inventory_2';
+
+    switch (effectiveStatus) {
+        case 'delivered':
+            visualStep = 4;
+            progressPct = 100;
+            indicatorIcon = 'check_circle';
+            break;
+        case 'out_for_delivery':
+            visualStep = 3;
+            progressPct = 75;
+            indicatorIcon = 'local_shipping';
+            break;
+        case 'in_transit':
+            visualStep = 2;
+            progressPct = 50;
+            indicatorIcon = 'flight_takeoff';
+            break;
+        case 'received_at_hub':
+            visualStep = 2;
+            progressPct = 40;
+            indicatorIcon = 'warehouse';
+            break;
+        case 'picked_up':
+        case 'ready_for_pickup':
+            visualStep = 1;
+            progressPct = 25;
+            indicatorIcon = 'package_2';
+            break;
+        case 'cancelled':
+            visualStep = -1;
+            progressPct = 100;
+            indicatorIcon = 'cancel';
+            break;
+        default:
+            visualStep = 0;
+            progressPct = 10;
+            indicatorIcon = 'inventory_2';
+            break;
+    }
 
     // Tab 2: Raw Telemetry Events
     const telemetryEvents = rawHistory.map((evt, idx) => {
@@ -746,7 +770,7 @@ const ShipmentDetailsPage = () => {
                                     {copiedTracking ? 'done' : 'content_copy'}
                                 </span>
                             </button>
-                            <StatusBadge status={shipment.status} size="md" />
+                            <StatusBadge status={effectiveStatus} size="md" />
                             {shipment.isTest && (
                                 <span className="badge badge-warning font-black text-xs">TEST</span>
                             )}
@@ -830,7 +854,7 @@ const ShipmentDetailsPage = () => {
                         </button>
 
                         {/* Capture POD (For In Transit or Out for Delivery) */}
-                        {['out_for_delivery', 'in_transit'].includes(shipment.status) && (
+                        {['out_for_delivery', 'in_transit'].includes(effectiveStatus) && (
                             <button
                                 type="button"
                                 onClick={() => setIsPodModalOpen(true)}
@@ -842,7 +866,7 @@ const ShipmentDetailsPage = () => {
                         )}
 
                         {/* Customer Return (If Delivered) */}
-                        {String(shipment.status || '').toLowerCase() === 'delivered' && (
+                        {effectiveStatus === 'delivered' && (
                             <button
                                 type="button"
                                 onClick={() => window.open(`/returns/${shipment.trackingNumber}`, '_blank')}

@@ -95,6 +95,18 @@ function normalizeStatus(raw) {
     if (LEGACY_STATUS_MAP[s]) return LEGACY_STATUS_MAP[s];
     if (OTE_STATUS_MAP[s]) return OTE_STATUS_MAP[s];
     if (DHL_STATUS_MAP[s] != null) return DHL_STATUS_MAP[s];
+
+    // Semantic matching for carrier descriptions and freeform statuses (Aramex, FedEx, DHL, OTE, etc.)
+    if (s.includes('exception') || s.includes('hold') || s.includes('delay') || s.includes('undeliver') || s.includes('failed') || s.includes('damage') || s.includes('clearance_delay')) return 'exception';
+    if (s.includes('out_for_delivery') || s.includes('for_delivery') || s.includes('with_courier') || s.includes('with_driver') || s === 'od') return 'out_for_delivery';
+    if (s.includes('delivered') || s.includes('consignee') || s === 'dlv' || s.includes('pod') || s === 'delivered_to_recipient') return 'delivered';
+    if (s.includes('rto') || s.includes('returned')) return 'returned';
+    if (s.includes('received_at_hub') || s.includes('arrived') || s === 'af' || s.includes('sorting_hub') || s.includes('facility')) return 'received_at_hub';
+    if (s.includes('picked') || s.includes('collected') || s === 'pu') return 'picked_up';
+    if (s.includes('transit') || s.includes('flight') || s.includes('depart') || s === 'sh' || s.includes('custom')) return 'in_transit';
+    if (s.includes('cancel')) return 'cancelled';
+    if (s.includes('book') || s.includes('creat')) return 'booked';
+
     return 'in_transit'; // safe fallback for unknown carrier codes
 }
 
@@ -111,9 +123,14 @@ function getStatusIndex(status) {
  * Check if statusB is ahead of statusA in the pipeline.
  */
 function isStatusAhead(statusA, statusB) {
+    const normA = normalizeStatus(statusA);
+    const normB = normalizeStatus(statusB);
+    if (normA === normB) return false;
+    if (normB === 'delivered') return true;
+    if (normA === 'delivered') return false;
     // Exception is a lateral move, not "ahead"
-    if (normalizeStatus(statusB) === 'exception') return true;
-    return getStatusIndex(statusB) > getStatusIndex(statusA);
+    if (normB === 'exception') return true;
+    return getStatusIndex(normB) > getStatusIndex(normA);
 }
 
 module.exports = {
