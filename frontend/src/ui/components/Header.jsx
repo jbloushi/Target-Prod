@@ -98,21 +98,21 @@ const Header = () => {
                     {/* Target Logistics Brand Logo */}
                     <Link 
                         to={isAuthenticated ? "/dashboard" : "/"} 
-                        className="flex items-center gap-2.5 group cursor-pointer"
+                        className="flex items-center gap-2 group cursor-pointer"
                     >
-                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-blue-700 flex items-center justify-center text-white shadow-md shadow-primary/25 group-hover:scale-105 active:scale-95 transition-transform duration-200">
-                            <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
-                                rocket_launch
-                            </span>
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="text-base font-black tracking-tight text-base-content group-hover:text-primary transition-colors">
-                                TARGET<span className="text-primary font-bold">.</span>
-                            </span>
-                            <span className="text-[9.5px] font-extrabold tracking-widest uppercase text-base-content/50 -mt-1">
-                                {isStaff ? (isRTL ? 'إدارة الشبكة' : 'Network Ops') : (isRTL ? 'حساب الشركات' : 'Client Portal')}
-                            </span>
-                        </div>
+                        <img 
+                            src="/images/target-logo.png" 
+                            alt="Target Logistics" 
+                            className="h-8 sm:h-9 w-auto object-contain dark:hidden group-hover:opacity-90 transition-opacity" 
+                        />
+                        <img 
+                            src="/images/target-logo-white.png" 
+                            alt="Target Logistics" 
+                            className="h-8 sm:h-9 w-auto object-contain hidden dark:block group-hover:opacity-90 transition-opacity" 
+                        />
+                        <span className="hidden sm:inline-block px-2 py-0.5 rounded-full text-[9px] font-extrabold tracking-widest uppercase bg-primary/10 text-primary self-center ml-1">
+                            {isStaff ? (isRTL ? 'إدارة الشبكة' : 'Ops') : (isRTL ? 'حساب الشركات' : 'Portal')}
+                        </span>
                     </Link>
 
                     {/* Desktop Navigation Links */}

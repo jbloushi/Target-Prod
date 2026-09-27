@@ -60,6 +60,18 @@
     radial-gradient(at 50% 100%, rgba(99, 102, 241, 0.04) 0px, transparent 50%);
 }
 
+/* Target Logistics Memphis Pattern Background */
+.bg-target-pattern {
+  background-image: url('/images/target-pattern.svg');
+  background-repeat: repeat;
+  background-size: 220px 220px;
+}
+
+[data-theme='dark'] .bg-target-pattern,
+.dark .bg-target-pattern {
+  background-image: url('/images/target-pattern-dark.svg');
+}
+
 .perspective-1000 {
   perspective: 1000px;
 }

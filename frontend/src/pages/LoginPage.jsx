@@ -30,18 +30,24 @@ export const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-base-200/50 flex items-stretch font-sans selection:bg-primary selection:text-white">
+    <div className="min-h-screen bg-base-200/50 bg-target-pattern flex items-stretch font-sans selection:bg-primary selection:text-white">
       {/* Left Column: Login Form */}
       <div className="flex-1 flex flex-col justify-center px-6 py-12 sm:px-12 lg:px-20 max-w-xl mx-auto w-full z-10">
         {/* Brand Header */}
-        <div className="flex items-center gap-3 mb-10">
-          <div className="w-12 h-12 rounded-2xl bg-primary text-white flex items-center justify-center font-black text-lg shadow-lg shadow-primary/30">
-            TL
-          </div>
-          <div>
-            <div className="font-black text-xl text-base-content leading-tight">Target Logistics</div>
-            <div className="text-[11px] font-bold text-primary tracking-widest uppercase">Global Express Operating Suite</div>
-          </div>
+        <div className="mb-10">
+          <Link to="/" className="inline-block">
+            <img 
+              src="/images/target-logo.png" 
+              alt="Target Logistics" 
+              className="h-10 sm:h-11 w-auto object-contain dark:hidden" 
+            />
+            <img 
+              src="/images/target-logo-white.png" 
+              alt="Target Logistics" 
+              className="h-10 sm:h-11 w-auto object-contain hidden dark:block" 
+            />
+          </Link>
+          <div className="text-[11px] font-bold text-primary tracking-widest uppercase mt-2">Global Express Operating Suite</div>
         </div>
 
         {/* Welcome Text */}
@@ -157,17 +163,21 @@ export const LoginPage = () => {
       </div>
 
       {/* Right Column: Hero Graphic Banner (Desktop Only) */}
-      <div className="hidden lg:flex flex-1 relative bg-gradient-to-br from-primary via-primary-focus to-neutral text-primary-content overflow-hidden p-12 flex-col justify-between">
+      <div className="hidden lg:flex flex-1 relative bg-gradient-to-br from-primary via-primary-focus to-neutral text-primary-content overflow-hidden p-12 flex-col justify-between bg-target-pattern">
         {/* Decorative Grid Lines */}
         <div className="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:24px_24px]" />
 
         {/* Top Floating Badge */}
         <div className="relative z-10 flex items-center justify-between">
+          <img 
+            src="/images/target-logo-white.png" 
+            alt="Target Logistics" 
+            className="h-8 w-auto object-contain opacity-95" 
+          />
           <div className="badge badge-neutral/80 backdrop-blur-md text-white font-bold text-xs gap-1.5 py-3 px-3">
             <span className="w-2 h-2 rounded-full bg-success animate-ping" />
             <span>Middle East Hub Online</span>
           </div>
-          <span className="font-mono text-xs opacity-75">Kuwait City UTC+3</span>
         </div>
 
         {/* Central Graphic Visual */}

@@ -201,18 +201,21 @@ export const PublicTrackingLandingPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-base-200/50 flex flex-col font-sans selection:bg-primary selection:text-white">
+    <div className="min-h-screen bg-base-200/50 bg-target-pattern flex flex-col font-sans selection:bg-primary selection:text-white">
       {/* Top Navbar */}
       <header className="navbar bg-base-100 border-b border-base-200 px-4 sm:px-8 py-3 sticky top-0 z-40 shadow-sm backdrop-blur-md bg-base-100/90">
         <div className="flex-1 flex items-center gap-3">
-          <Link to="/track" className="flex items-center gap-2.5 text-primary font-black text-lg tracking-tight">
-            <div className="w-9 h-9 rounded-xl bg-primary text-white flex items-center justify-center font-black text-sm shadow-md shadow-primary/20">
-              TL
-            </div>
-            <div className="flex flex-col">
-              <span className="leading-tight font-extrabold text-base-content">Target Logistics</span>
-              <span className="text-[10px] text-primary uppercase font-bold tracking-widest">Global Express</span>
-            </div>
+          <Link to="/track" className="flex items-center">
+            <img 
+              src="/images/target-logo.png" 
+              alt="Target Logistics" 
+              className="h-8 sm:h-9 w-auto object-contain dark:hidden" 
+            />
+            <img 
+              src="/images/target-logo-white.png" 
+              alt="Target Logistics" 
+              className="h-8 sm:h-9 w-auto object-contain hidden dark:block" 
+            />
           </Link>
         </div>
         <div className="flex-none flex items-center gap-2">

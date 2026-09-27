@@ -464,9 +464,11 @@ const DriverPickupPage = () => {
             <header className="sticky top-0 z-30 bg-base-100/90 backdrop-blur-md border-b border-base-200/80 px-4 py-3">
                 <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5">
-                        <div className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shadow-md shadow-primary/20 shrink-0">
-                            <span className="material-symbols-outlined text-2xl">local_shipping</span>
-                        </div>
+                        <img 
+                            src="/images/target-icon.png" 
+                            alt="Target Logistics" 
+                            className="w-10 h-10 object-contain rounded-xl bg-white p-1 shadow-sm border border-base-200" 
+                        />
                         <div>
                             <div className="flex items-center gap-1.5">
                                 <span className="font-black text-sm tracking-tight text-base-content">TARGET LOGISTICS</span>

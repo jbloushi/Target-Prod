@@ -78,14 +78,12 @@ export const PublicCheckoutPage = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-base-200/50 flex flex-col font-sans">
+      <div className="min-h-screen bg-base-200/50 bg-target-pattern flex flex-col font-sans">
         <header className="navbar bg-base-100 border-b border-base-200 px-6 py-3">
-          <div className="flex items-center gap-2.5 text-primary font-black text-lg">
-            <div className="w-8 h-8 rounded-lg bg-primary text-white flex items-center justify-center font-black text-sm">
-              TL
-            </div>
-            <span>Target Logistics</span>
-          </div>
+          <Link to="/" className="flex items-center">
+            <img src="/images/target-logo.png" alt="Target Logistics" className="h-8 w-auto object-contain dark:hidden" />
+            <img src="/images/target-logo-white.png" alt="Target Logistics" className="h-8 w-auto object-contain hidden dark:block" />
+          </Link>
         </header>
         <div className="flex-1 flex flex-col items-center justify-center gap-3">
           <span className="loading loading-ring loading-lg text-primary" />
@@ -97,14 +95,12 @@ export const PublicCheckoutPage = () => {
 
   if (error && !data) {
     return (
-      <div className="min-h-screen bg-base-200/50 flex flex-col font-sans">
+      <div className="min-h-screen bg-base-200/50 bg-target-pattern flex flex-col font-sans">
         <header className="navbar bg-base-100 border-b border-base-200 px-6 py-3">
-          <div className="flex items-center gap-2.5 text-primary font-black text-lg">
-            <div className="w-8 h-8 rounded-lg bg-primary text-white flex items-center justify-center font-black text-sm">
-              TL
-            </div>
-            <span>Target Logistics</span>
-          </div>
+          <Link to="/" className="flex items-center">
+            <img src="/images/target-logo.png" alt="Target Logistics" className="h-8 w-auto object-contain dark:hidden" />
+            <img src="/images/target-logo-white.png" alt="Target Logistics" className="h-8 w-auto object-contain hidden dark:block" />
+          </Link>
         </header>
         <div className="max-w-md mx-auto my-16 p-8 card bg-base-100 border border-base-200 shadow-sm text-center space-y-4">
           <div className="w-14 h-14 rounded-2xl bg-error/10 text-error flex items-center justify-center mx-auto text-2xl">
@@ -123,19 +119,15 @@ export const PublicCheckoutPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-base-200/50 flex flex-col font-sans selection:bg-primary selection:text-white">
+    <div className="min-h-screen bg-base-200/50 bg-target-pattern flex flex-col font-sans selection:bg-primary selection:text-white">
       {/* Top Bar */}
       <header className="navbar bg-base-100 border-b border-base-200 px-4 sm:px-8 py-3 sticky top-0 z-40 shadow-sm">
         <div className="flex-1 flex items-center gap-3">
-          <div className="flex items-center gap-2.5 text-primary font-black text-lg tracking-tight">
-            <div className="w-9 h-9 rounded-xl bg-primary text-white flex items-center justify-center font-black text-sm shadow-md shadow-primary/20">
-              TL
-            </div>
-            <div className="flex flex-col">
-              <span className="leading-tight font-extrabold text-base-content">Target Logistics</span>
-              <span className="text-[10px] text-primary uppercase font-bold tracking-widest">Pay-by-Link Gateway</span>
-            </div>
-          </div>
+          <Link to="/" className="flex items-center gap-2.5">
+            <img src="/images/target-logo.png" alt="Target Logistics" className="h-8 w-auto object-contain dark:hidden" />
+            <img src="/images/target-logo-white.png" alt="Target Logistics" className="h-8 w-auto object-contain hidden dark:block" />
+            <span className="text-[10px] text-primary uppercase font-bold tracking-widest hidden sm:inline-block border-l border-base-300 pl-2.5 ml-1">Pay-by-Link Gateway</span>
+          </Link>
         </div>
         <div className="flex-none">
           <div className="badge badge-success badge-outline font-bold text-xs gap-1.5 py-3 px-3">

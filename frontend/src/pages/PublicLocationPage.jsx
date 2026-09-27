@@ -224,14 +224,12 @@ export const PublicLocationPage = () => {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-base-200/50 flex flex-col font-sans">
+      <div className="min-h-screen bg-base-200/50 bg-target-pattern flex flex-col font-sans">
         <header className="navbar bg-base-100 border-b border-base-200 px-6 py-3">
-          <div className="flex items-center gap-2.5 text-primary font-black text-lg">
-            <div className="w-8 h-8 rounded-lg bg-primary text-white flex items-center justify-center font-black text-sm">
-              TL
-            </div>
-            <span>Target Logistics</span>
-          </div>
+          <Link to="/" className="flex items-center">
+            <img src="/images/target-logo.png" alt="Target Logistics" className="h-8 w-auto object-contain dark:hidden" />
+            <img src="/images/target-logo-white.png" alt="Target Logistics" className="h-8 w-auto object-contain hidden dark:block" />
+          </Link>
         </header>
 
         <div className="flex-1 flex items-center justify-center p-4">
@@ -260,15 +258,13 @@ export const PublicLocationPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-base-200/50 flex flex-col font-sans selection:bg-primary selection:text-white">
+    <div className="min-h-screen bg-base-200/50 bg-target-pattern flex flex-col font-sans selection:bg-primary selection:text-white">
       {/* Top Header */}
       <header className="navbar bg-base-100 border-b border-base-200 px-4 sm:px-8 py-3 sticky top-0 z-40 shadow-sm">
         <div className="flex-1 flex items-center gap-3">
-          <Link to={`/track/${trackingNumber}`} className="flex items-center gap-2.5 text-primary font-black text-lg">
-            <div className="w-8 h-8 rounded-lg bg-primary text-white flex items-center justify-center font-black text-sm shadow-md shadow-primary/20">
-              TL
-            </div>
-            <span className="font-extrabold text-base-content">Target Logistics</span>
+          <Link to={`/track/${trackingNumber}`} className="flex items-center">
+            <img src="/images/target-logo.png" alt="Target Logistics" className="h-8 w-auto object-contain dark:hidden" />
+            <img src="/images/target-logo-white.png" alt="Target Logistics" className="h-8 w-auto object-contain hidden dark:block" />
           </Link>
         </div>
         <div className="flex-none">

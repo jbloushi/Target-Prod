@@ -9,10 +9,8 @@ const Footer = ({ compact = false }) => {
       <footer className="bg-base-100 border-t border-base-200 py-4 px-6 mt-auto">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-3">
           <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary text-xl">local_shipping</span>
-            <span className="font-extrabold text-sm tracking-tight text-base-content">
-              TARGET <span className="text-primary">LOGISTICS</span>
-            </span>
+            <img src="/images/target-logo.png" alt="Target Logistics" className="h-6 w-auto object-contain dark:hidden" />
+            <img src="/images/target-logo-white.png" alt="Target Logistics" className="h-6 w-auto object-contain hidden dark:block" />
           </div>
 
           <div className="flex flex-wrap items-center gap-4 text-xs font-semibold text-base-content/60">
@@ -36,10 +34,8 @@ const Footer = ({ compact = false }) => {
         <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
           <div className="md:col-span-2 space-y-3">
             <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary text-2xl">local_shipping</span>
-              <span className="font-black text-lg tracking-tight text-base-content">
-                TARGET <span className="text-primary">LOGISTICS</span>
-              </span>
+              <img src="/images/target-logo.png" alt="Target Logistics" className="h-8 w-auto object-contain dark:hidden" />
+              <img src="/images/target-logo-white.png" alt="Target Logistics" className="h-8 w-auto object-contain hidden dark:block" />
             </div>
             <p className="text-xs text-base-content/60 leading-relaxed max-w-sm">
               State-of-the-art multi-carrier freight management, express GCC road transport, and certified IATA Dangerous Goods handling. Operating across Kuwait and worldwide.
