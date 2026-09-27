@@ -118,72 +118,34 @@ class SallaIntegrationService {
     }
 
     /**
-     * Normalizes phone numbers from Salla, ensuring full country code prefix (e.g. +2010..., +965..., +966...)
+     * Combines the exact phone and mobile_code provided directly by Salla (no guesswork).
      */
-    normalizePhoneWithCountryCode(mobile, mobileCode, country) {
-        if (!mobile) return '';
-        let phoneStr = String(mobile).trim().replace(/[^\d+]/g, '');
-        
-        // If phone already starts with full international format (+20..., +965..., +966...)
-        if (phoneStr.startsWith('+')) {
-            return phoneStr;
-        }
-        if (phoneStr.startsWith('00')) {
-            return '+' + phoneStr.slice(2);
-        }
+    extractSallaPhone(customer = {}, address = {}) {
+        const rawMobile = String(customer.mobile || customer.phone || address.phone || address.mobile || '').trim();
+        const mobileCode = String(customer.mobile_code || customer.phone_code || '').trim();
 
-        // Extract dial code from mobile_code (e.g. "+20" -> "20", "965", "966")
-        let dialCode = String(mobileCode || '').replace(/[^\d]/g, '');
-        if (dialCode.startsWith('00')) dialCode = dialCode.slice(2);
+        if (!rawMobile) return '';
 
-        const COUNTRY_DIAL_CODES = {
-            'KW': '965', 'KWT': '965', 'KUWAIT': '965',
-            'SA': '966', 'SAU': '966', 'KSA': '966',
-            'AE': '971', 'ARE': '971', 'UAE': '971',
-            'EG': '20',  'EGY': '20',  'EGYPT': '20',
-            'BH': '973', 'BHR': '973', 'BAHRAIN': '973',
-            'OM': '968', 'OMN': '968', 'OMAN': '968',
-            'QA': '974', 'QAT': '974', 'QATAR': '974',
-            'JO': '962', 'JOR': '962', 'JORDAN': '962'
-        };
+        // If Salla already provided the full number starting with + or 00
+        if (rawMobile.startsWith('+')) return rawMobile;
+        if (rawMobile.startsWith('00')) return '+' + rawMobile.slice(2);
 
-        if (dialCode) {
-            if (phoneStr.startsWith(dialCode)) {
-                return '+' + phoneStr;
+        // If Salla provided an explicit mobile_code (e.g. "+20", "0020", "966")
+        if (mobileCode) {
+            const cleanCode = mobileCode.startsWith('+') ? mobileCode : (mobileCode.startsWith('00') ? '+' + mobileCode.slice(2) : '+' + mobileCode);
+            const digitsCode = cleanCode.replace(/\D/g, '');
+            const digitsMobile = rawMobile.replace(/\D/g, '');
+
+            if (digitsMobile.startsWith(digitsCode)) {
+                return '+' + digitsMobile;
             }
-            if (phoneStr.startsWith('0')) {
-                phoneStr = phoneStr.slice(1);
-            }
-            return '+' + dialCode + phoneStr;
+
+            const cleanMobile = rawMobile.startsWith('0') ? rawMobile.slice(1) : rawMobile;
+            return `${cleanCode}${cleanMobile}`;
         }
 
-        // If no explicit mobile_code, check destination country
-        if (country) {
-            const upper = String(country).trim().toUpperCase();
-            const countryDial = COUNTRY_DIAL_CODES[upper];
-            if (countryDial) {
-                if (phoneStr.startsWith(countryDial)) {
-                    return '+' + phoneStr;
-                }
-                if (phoneStr.startsWith('0')) {
-                    phoneStr = phoneStr.slice(1);
-                }
-                return '+' + countryDial + phoneStr;
-            }
-        }
-
-        // Smart Length & Prefix Detection
-        if (phoneStr.length === 8) return '+965' + phoneStr; // Kuwait standard 8 digits
-        if (phoneStr.length === 9 && phoneStr.startsWith('5')) return '+966' + phoneStr; // Saudi 5XXXXXXXX
-        if (phoneStr.length === 10 && phoneStr.startsWith('05')) return '+966' + phoneStr.slice(1); // Saudi 05XXXXXXXX
-        if (phoneStr.length === 10 && (phoneStr.startsWith('10') || phoneStr.startsWith('11') || phoneStr.startsWith('12') || phoneStr.startsWith('15'))) {
-            return '+20' + phoneStr; // Egypt 1040957289 -> +201040957289
-        }
-        if (phoneStr.length === 11 && phoneStr.startsWith('01')) {
-            return '+20' + phoneStr.slice(1); // Egypt 01040957289 -> +201040957289
-        }
-
-        return '+' + phoneStr;
+        // Return the exact number stored in Salla as-is
+        return rawMobile;
     }
 
     /**
@@ -195,14 +157,11 @@ class SallaIntegrationService {
         const customer = sallaOrder.customer || {};
         const invoiceNumber = String(sallaOrder.reference_id || sallaOrder.id || '');
 
-        const rawMobile = customer.mobile || customer.phone || address.phone || address.mobile || '';
-        const mobileCode = customer.mobile_code || customer.phone_code || sallaOrder.customer?.mobile_code || '';
-        const country = address.country || address.country_code || 'KW';
-
         const receiverName = `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'Salla Customer';
-        const receiverPhone = this.normalizePhoneWithCountryCode(rawMobile, mobileCode, country);
+        const receiverPhone = this.extractSallaPhone(customer, address);
         const receiverAddressLine = address.shipping_address || address.street || '.';
         const city = address.city || 'Kuwait';
+        const country = address.country || address.country_code || 'KW';
         const isCod = sallaOrder.payment_method === 'cod';
         const orderTotal = Number(sallaOrder.amounts?.total?.amount || 0);
 
