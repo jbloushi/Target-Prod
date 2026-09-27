@@ -10,7 +10,8 @@
     "db:migrate:deploy": "npm run db:migrate:deploy --prefix backend",
     "deploy:prepare": "npm run deploy:prepare --prefix backend && npm run build",
     "verify:tracking": "npm run verify:tracking --prefix backend --",
-    "sync:carriers": "npm run sync:carriers --prefix backend --"
+    "sync:carriers": "npm run sync:carriers --prefix backend --",
+    "dispatch:whatsapp": "npm run dispatch:whatsapp --prefix backend"
   },
   "dependencies": {
     "playwright": "^1.58.2"

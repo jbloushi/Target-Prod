@@ -117,10 +117,30 @@ export const AdminWhatsAppLogsPage = () => {
     const [previewMessageLog, setPreviewMessageLog] = useState(null);
     const [copiedMessageText, setCopiedMessageText] = useState(false);
     const [syncingTelemetry, setSyncingTelemetry] = useState(false);
+    const [dispatchingQueued, setDispatchingQueued] = useState(false);
     const [resendingId, setResendingId] = useState(null);
     const [copiedJson, setCopiedJson] = useState(false);
     const [copiedPhone, setCopiedPhone] = useState(null);
     const [copiedId, setCopiedId] = useState(null);
+
+    const handleDispatchQueued = async () => {
+        try {
+            setDispatchingQueued(true);
+            const res = await whatsappService.dispatchQueued(200);
+            enqueueSnackbar(
+                lang === 'ar'
+                    ? `تم إرسال ${res.dispatched || 0} رسالة بنجاح، وتخطي ${res.skipped || 0} رسالة مكررة.`
+                    : `Dispatched ${res.dispatched || 0} notifications (${res.skipped || 0} duplicates protected).`,
+                { variant: res.dispatched > 0 ? 'success' : 'info' }
+            );
+            fetchLogs(1);
+        } catch (err) {
+            const errorMsg = err.response?.data?.error || err.message;
+            enqueueSnackbar(lang === 'ar' ? `فشل إرسال الرسائل المعلقة: ${errorMsg}` : `Failed to dispatch queued: ${errorMsg}`, { variant: 'error' });
+        } finally {
+            setDispatchingQueued(false);
+        }
+    };
 
     const handleSyncTelemetry = async () => {
         try {
@@ -285,7 +305,21 @@ export const AdminWhatsAppLogsPage = () => {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                    {stats.totalQueued > 0 && (
+                        <button
+                            type="button"
+                            onClick={handleDispatchQueued}
+                            disabled={dispatchingQueued || loading}
+                            className="btn btn-sm btn-primary gap-1.5 font-bold shadow-md shadow-primary/20"
+                            title={lang === 'ar' ? 'إرسال كافة الرسائل المعلقة بأمان مع منع التكرار' : 'Safely dispatch all pending notifications with duplicate protection'}
+                        >
+                            <span className={`material-symbols-outlined text-[18px] ${dispatchingQueued ? 'animate-spin' : ''}`}>
+                                {dispatchingQueued ? 'progress_activity' : 'send_and_archive'}
+                            </span>
+                            {lang === 'ar' ? `إرسال المعلق (${stats.totalQueued})` : `Dispatch Pending (${stats.totalQueued})`}
+                        </button>
+                    )}
                     <button
                         type="button"
                         onClick={handleSyncTelemetry}

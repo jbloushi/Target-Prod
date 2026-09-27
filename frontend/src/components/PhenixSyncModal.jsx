@@ -12,7 +12,7 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
 
     const [carrier, setCarrier] = useState('ALL');
     const [daysBack, setDaysBack] = useState(3);
-    const [sendWhatsApp, setSendWhatsApp] = useState(false);
+    const [sendWhatsApp, setSendWhatsApp] = useState(true);
     const [onlyComplete, setOnlyComplete] = useState(true);
 
     const [loading, setLoading] = useState(false);

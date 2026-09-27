@@ -56,7 +56,7 @@ const DEFAULT_SETTINGS = {
         intervalMinutes: 15,
         carrier: 'ALL',
         daysBack: 3,
-        sendWhatsApp: false,
+        sendWhatsApp: true,
         onlyComplete: true,
         lastAutoSyncAt: null,
         lastAutoSyncStatus: null,

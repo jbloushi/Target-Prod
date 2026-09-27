@@ -62,28 +62,34 @@ function addDays({ year, month, day }, daysOffset) {
 }
 
 /**
- * Checks if a Phenix date string represents today in the configured timezone.
- * Outdated shipments from prior dates must NEVER trigger live outbound WhatsApp messages.
+ * Checks if a Phenix date string represents a recent consignment eligible for customer notification.
+ * Consignments from today, yesterday, or within the rolling sync window (default 2 days) are notified.
+ * Historical consignments older than maxDaysBack (e.g. from weeks ago) are safely skipped to avoid notifying outdated orders.
  */
-function isDateToday(rawDate, timeZone = 'Asia/Kuwait') {
+function isDateEligibleForNotification(rawDate, maxDaysBack = 2, timeZone = 'Asia/Kuwait') {
     if (!rawDate) return true;
     const s = String(rawDate).trim();
     if (!s) return true;
 
-    const today = dateParts(new Date(), timeZone);
-    const todayStr = `${today.year}-${String(today.month).padStart(2, '0')}-${String(today.day).padStart(2, '0')}`;
-
+    let parsedDate = null;
     let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
     if (m) {
-        const dStr = `${m[1]}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`;
-        return dStr === todayStr;
+        parsedDate = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+    } else {
+        m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (m) {
+            parsedDate = new Date(Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1])));
+        }
     }
-    m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-    if (m) {
-        const dStr = `${m[3]}-${String(m[2]).padStart(2, '0')}-${String(m[1]).padStart(2, '0')}`;
-        return dStr === todayStr;
-    }
-    return true;
+
+    if (!parsedDate || Number.isNaN(parsedDate.getTime())) return true;
+
+    const now = new Date();
+    const diffMs = now.getTime() - parsedDate.getTime();
+    const diffDays = diffMs / (24 * 60 * 60 * 1000);
+
+    // Allow today, yesterday, or up to maxDaysBack days old (and handle future timezone tolerance)
+    return diffDays >= -1 && diffDays <= Math.max(1, maxDaysBack);
 }
 
 function buildPhenixRequestBody(from, to) {
@@ -936,8 +942,8 @@ class PhenixSyncService {
                 }
 
                 if (sendWhatsApp) {
-                    const isToday = isDateToday(v.date);
-                    if (isToday) {
+                    const isEligible = isDateEligibleForNotification(v.date, opts.daysBack || 2);
+                    if (isEligible) {
                         if (v.receiverPhone) {
                             notificationsToSend.push({
                                 shipment,

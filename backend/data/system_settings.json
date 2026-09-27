@@ -44,5 +44,16 @@
     "webhookVerifyToken": "target_logistics_meta_verify_secret_2026",
     "metaAppId": "",
     "metaAppSecret": ""
+  },
+  "phenixSync": {
+    "autoSyncEnabled": false,
+    "intervalMinutes": 15,
+    "carrier": "ALL",
+    "daysBack": 3,
+    "sendWhatsApp": true,
+    "onlyComplete": true,
+    "lastAutoSyncAt": null,
+    "lastAutoSyncStatus": null,
+    "lastAutoSyncSummary": null
   }
 }

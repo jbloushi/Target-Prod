@@ -18,7 +18,8 @@
     "db:fresh:clean": "node scripts/fresh-database.js --confirm --mode=clean",
     "admin:ensure": "node scripts/ensure-admin.js",
     "verify:tracking": "node scripts/verify-carrier-scraping.js",
-    "sync:carriers": "node scripts/sync-all-carriers.js"
+    "sync:carriers": "node scripts/sync-all-carriers.js",
+    "dispatch:whatsapp": "node scripts/dispatch-pending-whatsapp.js"
   },
   "keywords": [],
   "author": "",

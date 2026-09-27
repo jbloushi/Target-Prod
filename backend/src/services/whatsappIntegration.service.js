@@ -243,7 +243,7 @@ class WhatsAppIntegrationService {
     /**
      * Send automatic or manual shipment event notification via WhatsApp
      */
-    async sendNotification({ shipment, recipientRole, recipientPhone, recipientCountryCode, recipientName, eventType, templateName, customMessage, force = false }) {
+    async sendNotification({ shipment, recipientRole, recipientPhone, recipientCountryCode, recipientName, eventType, templateName, customMessage, force = false, existingLogId = null }) {
         const settings = getSystemSettings()?.whatsapp || {};
         const phone = resolveRecipientPhone(recipientPhone, recipientCountryCode || '965');
 
@@ -268,7 +268,8 @@ class WhatsAppIntegrationService {
                         { trackingNumber: shipment.trackingNumber }
                     ],
                     recipientRole: { in: roleGroup },
-                    status: { in: ['SENT', 'DELIVERED', 'READ'] }
+                    status: { in: ['SENT', 'DELIVERED', 'READ'] },
+                    ...(existingLogId ? { id: { not: existingLogId } } : {})
                 },
                 orderBy: { sentAt: 'desc' }
             });
@@ -340,21 +341,37 @@ class WhatsAppIntegrationService {
 
         const effectiveRecipientName = (role === 'sender') ? resolvedSenderName : resolvedReceiverName;
 
-        // Initial DB log creation
-        const log = await prisma.shipmentNotificationLog.create({
-            data: {
-                shipmentId: shipment.id,
-                trackingNumber: shipment.trackingNumber,
-                eventType: eventType || 'manual_trigger',
-                recipientRole: role,
-                recipientName: effectiveRecipientName,
-                recipientPhone: phone,
-                provider,
-                templateName: chosenTemplate,
-                status: 'QUEUED',
-                sentAt: new Date()
-            }
-        });
+        // Initial DB log creation or update existing log
+        let log;
+        if (existingLogId) {
+            log = await prisma.shipmentNotificationLog.update({
+                where: { id: existingLogId },
+                data: {
+                    recipientName: effectiveRecipientName,
+                    recipientPhone: phone,
+                    provider,
+                    templateName: chosenTemplate,
+                    status: 'QUEUED',
+                    errorMessage: null,
+                    sentAt: new Date()
+                }
+            });
+        } else {
+            log = await prisma.shipmentNotificationLog.create({
+                data: {
+                    shipmentId: shipment.id,
+                    trackingNumber: shipment.trackingNumber,
+                    eventType: eventType || 'manual_trigger',
+                    recipientRole: role,
+                    recipientName: effectiveRecipientName,
+                    recipientPhone: phone,
+                    provider,
+                    templateName: chosenTemplate,
+                    status: 'QUEUED',
+                    sentAt: new Date()
+                }
+            });
+        }
 
         if (!settings.enabled) {
             await prisma.shipmentNotificationLog.update({

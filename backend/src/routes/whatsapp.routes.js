@@ -17,6 +17,7 @@ router.post('/webhook', whatsappWebhook.handleWebhookEvent);
 router.get('/admin/whatsapp/logs', authController.protect, authorizeAny('MANAGE_USERS', 'BOOK_CARRIERS', 'MANAGE_ORG_USERS'), adminWhatsAppLogs.getNotificationLogs);
 router.post('/admin/whatsapp/resend/:id', authController.protect, authorizeAny('MANAGE_USERS', 'BOOK_CARRIERS'), adminWhatsAppLogs.resendNotification);
 router.post('/admin/whatsapp/sync-telemetry', authController.protect, authorizeAny('MANAGE_USERS', 'BOOK_CARRIERS', 'MANAGE_ORG_USERS'), adminWhatsAppLogs.syncMicroserviceTelemetry);
+router.post('/admin/whatsapp/dispatch-queued', authController.protect, authorizeAny('MANAGE_USERS', 'BOOK_CARRIERS', 'MANAGE_ORG_USERS'), adminWhatsAppLogs.dispatchQueuedNotifications);
 
 // Manual WhatsApp Trigger from Shipment Details
 router.post('/shipments/:trackingNumber/whatsapp/send', authController.protect, adminWhatsAppLogs.sendShipmentWhatsApp);

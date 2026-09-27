@@ -257,7 +257,8 @@ async function resendNotification(req, res) {
             recipientName: existing.recipientName,
             eventType: existing.eventType,
             templateName: existing.templateName,
-            force
+            force,
+            existingLogId: existing.id
         });
 
         return res.json({ success: true, result });
@@ -432,10 +433,124 @@ async function syncMicroserviceTelemetry(req, res) {
     }
 }
 
+/**
+ * POST /api/admin/whatsapp/dispatch-queued
+ * Safely batch-dispatches all pending/queued notifications with strict deduplication guards.
+ */
+async function dispatchQueuedNotifications(req, res) {
+    try {
+        const limit = Math.min(300, Math.max(1, parseInt(req.body?.limit || '200', 10)));
+        const queuedLogs = await prisma.shipmentNotificationLog.findMany({
+            where: {
+                status: { in: ['QUEUED', 'queued', 'pending', 'PENDING'] }
+            },
+            include: {
+                shipment: true
+            },
+            take: limit,
+            orderBy: { createdAt: 'asc' }
+        });
+
+        if (queuedLogs.length === 0) {
+            return res.json({
+                success: true,
+                message: 'No queued notifications found.',
+                totalQueued: 0,
+                dispatched: 0,
+                skipped: 0,
+                failed: 0
+            });
+        }
+
+        let dispatched = 0;
+        let skipped = 0;
+        let failed = 0;
+
+        for (const log of queuedLogs) {
+            const isSender = (log.recipientRole || '').toLowerCase() === 'sender';
+            const roleGroup = isSender ? ['sender'] : ['receiver', 'customer', 'consignee'];
+
+            // 1. Strict Deduplication Check: Local DB
+            const anySent = await prisma.shipmentNotificationLog.findFirst({
+                where: {
+                    trackingNumber: log.trackingNumber,
+                    recipientRole: { in: roleGroup },
+                    status: { in: ['SENT', 'DELIVERED', 'READ'] },
+                    id: { not: log.id }
+                }
+            });
+
+            if (anySent) {
+                await prisma.shipmentNotificationLog.update({
+                    where: { id: log.id },
+                    data: {
+                        status: 'SKIPPED',
+                        errorMessage: `Notification already delivered for this recipient role (Log ${anySent.id})`
+                    }
+                });
+                skipped++;
+                continue;
+            }
+
+            // 2. Fetch associated shipment if not eager-loaded
+            const shipment = log.shipment || await prisma.shipment.findFirst({
+                where: { trackingNumber: log.trackingNumber }
+            });
+
+            if (!shipment) {
+                await prisma.shipmentNotificationLog.update({
+                    where: { id: log.id },
+                    data: { status: 'FAILED', errorMessage: 'Associated shipment record missing' }
+                });
+                failed++;
+                continue;
+            }
+
+            try {
+                const sendResult = await whatsappService.sendNotification({
+                    shipment,
+                    recipientRole: log.recipientRole,
+                    recipientPhone: log.recipientPhone,
+                    recipientName: log.recipientName,
+                    eventType: log.eventType,
+                    templateName: log.templateName,
+                    force: false,
+                    existingLogId: log.id
+                });
+
+                if (sendResult?.status === 'SENT') {
+                    dispatched++;
+                } else {
+                    skipped++;
+                }
+            } catch (dispatchErr) {
+                logger.warn(`[Batch Dispatch] Failed for ${log.trackingNumber} (${log.recipientRole}): ${dispatchErr.message}`);
+                failed++;
+            }
+
+            // Throttle 200ms between sends to protect Meta API rate limits
+            await new Promise(r => setTimeout(r, 200));
+        }
+
+        return res.json({
+            success: true,
+            totalQueued: queuedLogs.length,
+            dispatched,
+            skipped,
+            failed,
+            message: `Batch processed: ${dispatched} sent, ${skipped} skipped (duplicates), ${failed} failed.`
+        });
+    } catch (err) {
+        logger.error(`[Dispatch Queued Error] ${err.message}`);
+        return res.status(500).json({ error: err.message });
+    }
+}
+
 module.exports = {
     getNotificationLogs,
     resendNotification,
     sendShipmentWhatsApp,
     getMetaTemplates,
-    syncMicroserviceTelemetry
+    syncMicroserviceTelemetry,
+    dispatchQueuedNotifications
 };

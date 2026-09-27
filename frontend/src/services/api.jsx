@@ -1469,6 +1469,16 @@ export const whatsappService = {
       console.error('Error syncing WhatsApp telemetry:', error);
       throw error;
     }
+  },
+
+  dispatchQueued: async (limit = 200) => {
+    try {
+      const response = await api.post('admin/whatsapp/dispatch-queued', { limit });
+      return response.data;
+    } catch (error) {
+      console.error('Error dispatching queued WhatsApp notifications:', error);
+      throw error;
+    }
   }
 };
 
