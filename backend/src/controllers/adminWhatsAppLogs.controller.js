@@ -12,21 +12,85 @@ async function getNotificationLogs(req, res) {
         const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || '20', 10)));
         const skip = (page - 1) * limit;
 
-        const { search, status, templateName } = req.query;
+        const { search, status, templateName, provider, role, dateRange } = req.query;
 
         const where = {};
+
+        // Status Filter
         if (status && status !== 'ALL') {
-            where.status = status.toUpperCase();
+            const s = status.toUpperCase();
+            if (s === 'SENT') {
+                where.status = { in: ['SENT', 'sent', 'submitted'] };
+            } else if (s === 'DELIVERED') {
+                where.status = { in: ['DELIVERED', 'delivered'] };
+            } else if (s === 'READ') {
+                where.status = { in: ['READ', 'read'] };
+            } else if (s === 'FAILED') {
+                where.status = { in: ['FAILED', 'failed'] };
+            } else if (s === 'QUEUED' || s === 'PENDING') {
+                where.status = { in: ['PENDING', 'pending', 'queued', 'QUEUED', 'SKIPPED', 'skipped'] };
+            } else {
+                where.status = status;
+            }
         }
-        if (templateName) {
+
+        // Provider Filter
+        if (provider && provider !== 'ALL') {
+            const p = provider.toUpperCase();
+            if (p === 'SHIPMENT_WHATSAPP' || p === 'TARGET_MSG') {
+                where.provider = { in: ['SHIPMENT_WHATSAPP', 'TARGET_MSG'] };
+            } else if (p === 'META') {
+                where.provider = 'META';
+            } else if (p === 'CHATWOOT') {
+                where.provider = 'chatwoot';
+            } else {
+                where.provider = provider;
+            }
+        }
+
+        // Recipient Role Filter
+        if (role && role !== 'ALL') {
+            const isSender = role.toUpperCase() === 'SENDER';
+            where.recipientRole = isSender 
+                ? { in: ['sender', 'shipper', 'merchant'] }
+                : { in: ['receiver', 'customer', 'consignee'] };
+        }
+
+        // Date Range Filter
+        if (dateRange && dateRange !== 'ALL') {
+            const now = new Date();
+            if (dateRange === 'TODAY') {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                where.createdAt = { gte: today };
+            } else if (dateRange === '24H') {
+                const d24 = new Date(Date.now() - 24 * 60 * 60 * 1000);
+                where.createdAt = { gte: d24 };
+            } else if (dateRange === '7D') {
+                const d7 = new Date();
+                d7.setDate(d7.getDate() - 7);
+                where.createdAt = { gte: d7 };
+            } else if (dateRange === '30D') {
+                const d30 = new Date();
+                d30.setDate(d30.getDate() - 30);
+                where.createdAt = { gte: d30 };
+            }
+        }
+
+        // Template Filter
+        if (templateName && templateName !== 'ALL') {
             where.templateName = templateName;
         }
+
+        // Search Filter (Fixed: removed non-existent externalMessageId field)
         if (search) {
+            const cleanSearch = search.trim();
             where.OR = [
-                { trackingNumber: { contains: search } },
-                { recipientPhone: { contains: search } },
-                { recipientName: { contains: search } },
-                { externalMessageId: { contains: search } }
+                { trackingNumber: { contains: cleanSearch } },
+                { recipientPhone: { contains: cleanSearch } },
+                { recipientName: { contains: cleanSearch } },
+                { chatwootMessageId: { contains: cleanSearch } },
+                { templateName: { contains: cleanSearch } }
             ];
         }
 
@@ -34,7 +98,23 @@ async function getNotificationLogs(req, res) {
             prisma.shipmentNotificationLog.count({ where }),
             prisma.shipmentNotificationLog.findMany({
                 where,
-                orderBy: { sentAt: 'desc' },
+                include: {
+                    shipment: {
+                        select: {
+                            id: true,
+                            trackingNumber: true,
+                            carrierCode: true,
+                            carrierShipmentId: true,
+                            dhlTrackingNumber: true,
+                            status: true,
+                            origin: true,
+                            destination: true,
+                            documents: true,
+                            createdAt: true
+                        }
+                    }
+                },
+                orderBy: { createdAt: 'desc' },
                 skip,
                 take: limit
             })
@@ -43,13 +123,60 @@ async function getNotificationLogs(req, res) {
         // Aggregate statistics for header summary KPI cards
         const todayStart = new Date();
         todayStart.setHours(0, 0, 0, 0);
+        const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-        const [sentToday, totalDelivered, totalRead, totalFailed] = await Promise.all([
-            prisma.shipmentNotificationLog.count({ where: { sentAt: { gte: todayStart } } }),
-            prisma.shipmentNotificationLog.count({ where: { status: 'DELIVERED' } }),
-            prisma.shipmentNotificationLog.count({ where: { status: 'READ' } }),
-            prisma.shipmentNotificationLog.count({ where: { status: 'FAILED' } })
+        const [
+            totalLogs,
+            sentToday,
+            sentLast24h,
+            totalDispatched,
+            totalDelivered,
+            totalRead,
+            totalFailed,
+            totalQueued
+        ] = await Promise.all([
+            prisma.shipmentNotificationLog.count(),
+            prisma.shipmentNotificationLog.count({
+                where: {
+                    createdAt: { gte: todayStart },
+                    status: { in: ['SENT', 'sent', 'DELIVERED', 'delivered', 'READ', 'read', 'submitted'] }
+                }
+            }),
+            prisma.shipmentNotificationLog.count({
+                where: {
+                    createdAt: { gte: last24h },
+                    status: { in: ['SENT', 'sent', 'DELIVERED', 'delivered', 'READ', 'read', 'submitted'] }
+                }
+            }),
+            prisma.shipmentNotificationLog.count({
+                where: {
+                    status: { in: ['SENT', 'sent', 'DELIVERED', 'delivered', 'READ', 'read', 'submitted'] }
+                }
+            }),
+            prisma.shipmentNotificationLog.count({
+                where: {
+                    status: { in: ['DELIVERED', 'delivered', 'READ', 'read'] }
+                }
+            }),
+            prisma.shipmentNotificationLog.count({
+                where: {
+                    status: { in: ['READ', 'read'] }
+                }
+            }),
+            prisma.shipmentNotificationLog.count({
+                where: {
+                    status: { in: ['FAILED', 'failed'] }
+                }
+            }),
+            prisma.shipmentNotificationLog.count({
+                where: {
+                    status: { in: ['PENDING', 'pending', 'queued', 'QUEUED', 'SKIPPED', 'skipped'] }
+                }
+            })
         ]);
+
+        const totalAttempts = totalDispatched + totalFailed;
+        const deliveryRate = totalAttempts > 0 ? Math.round(((totalDelivered || totalDispatched) / totalAttempts) * 100) : 100;
 
         return res.json({
             success: true,
@@ -60,16 +187,21 @@ async function getNotificationLogs(req, res) {
                 pages: Math.ceil(total / limit)
             },
             stats: {
+                totalLogs,
+                totalDispatched,
                 sentToday,
+                sentLast24h,
                 totalDelivered,
                 totalRead,
-                totalFailed
+                totalFailed,
+                totalQueued,
+                deliveryRate
             },
             logs
         });
     } catch (err) {
         logger.error(`[Admin WhatsApp Logs Error] ${err.message}`);
-        return res.status(500).json({ error: 'Failed to retrieve notification logs' });
+        return res.status(500).json({ error: 'Failed to retrieve notification logs: ' + err.message });
     }
 }
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { useSnackbar } from 'notistack';
 import { whatsappService } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
@@ -7,14 +8,29 @@ export const AdminWhatsAppLogsPage = () => {
     const { lang, isRTL } = useLanguage();
     const { enqueueSnackbar } = useSnackbar();
     const [logs, setLogs] = useState([]);
-    const [stats, setStats] = useState({ sentToday: 0, totalDelivered: 0, totalRead: 0, totalFailed: 0 });
+    const [stats, setStats] = useState({
+        totalLogs: 0,
+        totalDispatched: 0,
+        sentToday: 0,
+        sentLast24h: 0,
+        totalDelivered: 0,
+        totalRead: 0,
+        totalFailed: 0,
+        totalQueued: 0,
+        deliveryRate: 100
+    });
     const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 1 });
     const [loading, setLoading] = useState(false);
     const [statusFilter, setStatusFilter] = useState('ALL');
+    const [providerFilter, setProviderFilter] = useState('ALL');
+    const [roleFilter, setRoleFilter] = useState('ALL');
+    const [dateRangeFilter, setDateRangeFilter] = useState('ALL');
     const [search, setSearch] = useState('');
     const [selectedLog, setSelectedLog] = useState(null);
     const [resendingId, setResendingId] = useState(null);
     const [copiedJson, setCopiedJson] = useState(false);
+    const [copiedPhone, setCopiedPhone] = useState(null);
+    const [copiedId, setCopiedId] = useState(null);
 
     const fetchLogs = useCallback(async (page = 1) => {
         try {
@@ -23,12 +39,25 @@ export const AdminWhatsAppLogsPage = () => {
                 page,
                 limit: pagination.limit,
                 status: statusFilter,
+                provider: providerFilter,
+                role: roleFilter,
+                dateRange: dateRangeFilter,
                 search
             });
             const data = res?.data || res;
             if (data?.success || data?.logs) {
                 setLogs(data.logs || []);
-                setStats(data.stats || { sentToday: 0, totalDelivered: 0, totalRead: 0, totalFailed: 0 });
+                setStats(data.stats || {
+                    totalLogs: 0,
+                    totalDispatched: 0,
+                    sentToday: 0,
+                    sentLast24h: 0,
+                    totalDelivered: 0,
+                    totalRead: 0,
+                    totalFailed: 0,
+                    totalQueued: 0,
+                    deliveryRate: 100
+                });
                 setPagination(data.pagination || { page: 1, limit: 20, total: 0, pages: 1 });
             }
         } catch (err) {
@@ -37,7 +66,7 @@ export const AdminWhatsAppLogsPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [pagination.limit, statusFilter, search, enqueueSnackbar, lang]);
+    }, [pagination.limit, statusFilter, providerFilter, roleFilter, dateRangeFilter, search, enqueueSnackbar, lang]);
 
     useEffect(() => {
         fetchLogs(1);
@@ -50,7 +79,8 @@ export const AdminWhatsAppLogsPage = () => {
             enqueueSnackbar(lang === 'ar' ? 'تم إعادة إرسال رسالة واتساب بنجاح!' : 'WhatsApp message resent successfully!', { variant: 'success' });
             fetchLogs(pagination.page);
         } catch (err) {
-            enqueueSnackbar(lang === 'ar' ? `فشل إعادة الإرسال: ${err.message}` : `Resend failed: ${err.message}`, { variant: 'error' });
+            const errorMsg = err.response?.data?.error || err.message;
+            enqueueSnackbar(lang === 'ar' ? `فشل إعادة الإرسال: ${errorMsg}` : `Resend failed: ${errorMsg}`, { variant: 'error' });
         } finally {
             setResendingId(null);
         }
@@ -64,13 +94,28 @@ export const AdminWhatsAppLogsPage = () => {
         setTimeout(() => setCopiedJson(false), 2000);
     };
 
+    const handleCopyText = (text, type = 'phone') => {
+        if (!text) return;
+        navigator.clipboard.writeText(text);
+        if (type === 'phone') {
+            setCopiedPhone(text);
+            setTimeout(() => setCopiedPhone(null), 2000);
+        } else {
+            setCopiedId(text);
+            setTimeout(() => setCopiedId(null), 2000);
+        }
+        enqueueSnackbar(lang === 'ar' ? 'تم النسخ بنجاح' : 'Copied to clipboard!', { variant: 'success' });
+    };
+
     const getStatusBadge = (status) => {
-        switch (status) {
+        const s = (status || '').toUpperCase();
+        switch (s) {
             case 'DELIVERED':
                 return { badgeClass: 'badge-success text-white', label: lang === 'ar' ? 'تم التوصيل' : 'Delivered', icon: 'done_all' };
             case 'READ':
                 return { badgeClass: 'badge-info text-white', label: lang === 'ar' ? 'تمت القراءة' : 'Read', icon: 'visibility' };
             case 'SENT':
+            case 'SUBMITTED':
                 return { badgeClass: 'badge-warning text-warning-content', label: lang === 'ar' ? 'تم الإرسال' : 'Sent', icon: 'done' };
             case 'FAILED':
                 return { badgeClass: 'badge-error text-white', label: lang === 'ar' ? 'فشل' : 'Failed', icon: 'error' };
@@ -79,14 +124,36 @@ export const AdminWhatsAppLogsPage = () => {
         }
     };
 
+    const getProviderBadge = (provider) => {
+        const p = (provider || '').toUpperCase();
+        if (p === 'SHIPMENT_WHATSAPP' || p === 'TARGET_MSG') {
+            return {
+                label: 'msg.target-kw.com',
+                sub: 'Target Microservice',
+                badgeClass: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20'
+            };
+        } else if (p === 'META') {
+            return {
+                label: 'Meta Cloud API',
+                sub: 'Official WABA',
+                badgeClass: 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20'
+            };
+        }
+        return {
+            label: 'Chatwoot',
+            sub: 'Legacy Provider',
+            badgeClass: 'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20'
+        };
+    };
+
     return (
-        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        <div className="max-w-[1520px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
             {/* Header Ribbon */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-base-200">
                 <div>
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                         <span className="badge badge-success text-white font-mono font-bold text-xs uppercase tracking-wider">
-                            META WHATSAPP CLOUD API • WEBHOOK PIPELINE
+                            WHATSAPP AUDIT COCKPIT • MSG.TARGET-KW.COM & META
                         </span>
                         <span className="badge badge-outline border-base-300 text-xs font-mono">
                             LIVE FEED
@@ -102,80 +169,102 @@ export const AdminWhatsAppLogsPage = () => {
                             </h1>
                             <p className="text-xs sm:text-sm text-base-content/60">
                                 {lang === 'ar'
-                                    ? 'مراقبة إيصالات استلام رسائل واتساب في الوقت الفعلي، وحالات الويب هوك، وتتبع المستلمين.'
-                                    : 'Monitor real-time WhatsApp message delivery receipts, status webhooks, and recipient tracking.'}
+                                    ? 'مراقبة إيصالات استلام رسائل واتساب، ومعدلات النجاح، وسجلات الإرسال للشاحن والمستلم.'
+                                    : 'Audit real-time outbound dispatches, carrier tracking triggers, handset deliveries, and failure recovery.'}
                             </p>
                         </div>
                     </div>
                 </div>
 
-                <button
-                    type="button"
-                    onClick={() => fetchLogs(pagination.page)}
-                    disabled={loading}
-                    className="btn btn-sm btn-ghost border border-base-200 gap-1.5 font-bold"
-                >
-                    <span className={`material-symbols-outlined text-[18px] ${loading ? 'animate-spin' : ''}`}>
-                        refresh
-                    </span>
-                    {lang === 'ar' ? 'تحديث السجلات' : 'Refresh Logs'}
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => fetchLogs(pagination.page)}
+                        disabled={loading}
+                        className="btn btn-sm btn-ghost border border-base-200 gap-1.5 font-bold"
+                    >
+                        <span className={`material-symbols-outlined text-[18px] ${loading ? 'animate-spin' : ''}`}>
+                            refresh
+                        </span>
+                        {lang === 'ar' ? 'تحديث السجلات' : 'Refresh Logs'}
+                    </button>
+                </div>
             </div>
 
-            {/* Metric Cards */}
+            {/* Metric Cards (Clickable Quick Filters) */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                <div className="stats bg-base-100 border border-base-200/80 shadow-xs rounded-2xl">
+                {/* Card 1: Total Dispatches */}
+                <div 
+                    onClick={() => { setStatusFilter('ALL'); fetchLogs(1); }}
+                    className="stats bg-base-100 border border-base-200/80 shadow-xs rounded-2xl hover:border-primary/50 transition-all cursor-pointer"
+                    title={lang === 'ar' ? 'انقر لعرض كافة الرسائل' : 'Click to show all dispatches'}
+                >
                     <div className="stat p-4">
                         <div className="stat-figure text-primary">
                             <span className="material-symbols-outlined text-3xl">send</span>
                         </div>
                         <div className="stat-title text-xs font-bold text-base-content/60 uppercase">
-                            {lang === 'ar' ? 'المرسلة اليوم' : 'Sent Today'}
+                            {lang === 'ar' ? 'إجمالي الرسائل الصادرة' : 'Total Dispatches'}
                         </div>
                         <div className="stat-value text-2xl font-black text-primary font-mono mt-0.5">
-                            {stats.sentToday}
+                            {stats.totalDispatched || stats.totalLogs || 0}
                         </div>
                         <div className="stat-desc text-[11px] text-base-content/50">
-                            {lang === 'ar' ? 'إجمالي الرسائل الصادرة' : 'Total outbound dispatches'}
+                            {stats.sentToday > 0 ? `${stats.sentToday} today` : `${stats.sentLast24h || 0} in last 24h`} • {stats.totalLogs || 0} total logged
                         </div>
                     </div>
                 </div>
 
-                <div className="stats bg-base-100 border border-base-200/80 shadow-xs rounded-2xl">
+                {/* Card 2: Delivery Success Rate */}
+                <div 
+                    onClick={() => { setStatusFilter('SENT'); fetchLogs(1); }}
+                    className="stats bg-base-100 border border-base-200/80 shadow-xs rounded-2xl hover:border-success/50 transition-all cursor-pointer"
+                    title={lang === 'ar' ? 'انقر لعرض الرسائل المقبولة والناجحة' : 'Click to filter successful deliveries'}
+                >
                     <div className="stat p-4">
                         <div className="stat-figure text-success">
                             <span className="material-symbols-outlined text-3xl">done_all</span>
                         </div>
                         <div className="stat-title text-xs font-bold text-base-content/60 uppercase">
-                            {lang === 'ar' ? 'إجمالي المستلمة' : 'Total Delivered'}
+                            {lang === 'ar' ? 'معدل نجاح الإرسال' : 'Delivery Success Rate'}
                         </div>
                         <div className="stat-value text-2xl font-black text-success font-mono mt-0.5">
-                            {stats.totalDelivered}
+                            {stats.deliveryRate ?? 100}%
                         </div>
                         <div className="stat-desc text-[11px] text-base-content/50">
-                            {lang === 'ar' ? 'تم استلامها بنجاح' : 'Delivered to handset'}
+                            {stats.totalDelivered > 0 ? `${stats.totalDelivered} handset confirmed` : `${stats.totalDispatched || 0} accepted by gateway`}
                         </div>
                     </div>
                 </div>
 
-                <div className="stats bg-base-100 border border-base-200/80 shadow-xs rounded-2xl">
+                {/* Card 3: Read Receipts */}
+                <div 
+                    onClick={() => { setStatusFilter('READ'); fetchLogs(1); }}
+                    className="stats bg-base-100 border border-base-200/80 shadow-xs rounded-2xl hover:border-info/50 transition-all cursor-pointer"
+                    title={lang === 'ar' ? 'انقر لعرض الرسائل المقروءة' : 'Click to filter read receipts'}
+                >
                     <div className="stat p-4">
                         <div className="stat-figure text-info">
                             <span className="material-symbols-outlined text-3xl">visibility</span>
                         </div>
                         <div className="stat-title text-xs font-bold text-base-content/60 uppercase">
-                            {lang === 'ar' ? 'إجمالي المقروءة' : 'Total Read'}
+                            {lang === 'ar' ? 'تمت قراءتها' : 'Read Receipts'}
                         </div>
                         <div className="stat-value text-2xl font-black text-info font-mono mt-0.5">
-                            {stats.totalRead}
+                            {stats.totalRead || 0}
                         </div>
                         <div className="stat-desc text-[11px] text-base-content/50">
-                            {lang === 'ar' ? 'تم فتحها وقراءتها' : 'Read by recipient'}
+                            {lang === 'ar' ? 'إيصالات القراءة المؤكدة' : 'Blue ticks confirmed by handset'}
                         </div>
                     </div>
                 </div>
 
-                <div className="stats bg-base-100 border border-base-200/80 shadow-xs rounded-2xl">
+                {/* Card 4: Delivery Failures */}
+                <div 
+                    onClick={() => { setStatusFilter('FAILED'); fetchLogs(1); }}
+                    className="stats bg-base-100 border border-base-200/80 shadow-xs rounded-2xl hover:border-error/50 transition-all cursor-pointer"
+                    title={lang === 'ar' ? 'انقر لعرض الرسائل التي فشلت ومعالجتها' : 'Click to filter and review failures'}
+                >
                     <div className="stat p-4">
                         <div className="stat-figure text-error">
                             <span className="material-symbols-outlined text-3xl">error</span>
@@ -184,59 +273,132 @@ export const AdminWhatsAppLogsPage = () => {
                             {lang === 'ar' ? 'فشل التوصيل' : 'Delivery Failures'}
                         </div>
                         <div className="stat-value text-2xl font-black text-error font-mono mt-0.5">
-                            {stats.totalFailed}
+                            {stats.totalFailed || 0}
                         </div>
                         <div className="stat-desc text-[11px] text-base-content/50">
-                            {lang === 'ar' ? 'رسائل تتطلب إعادة الإرسال' : 'Requires review / retry'}
+                            {stats.totalFailed > 0 ? (lang === 'ar' ? 'تتطلب المراجعة أو إعادة الإرسال' : 'Click to review & retry failed') : '0 failures recorded'}
                         </div>
                     </div>
                 </div>
             </div>
 
             {/* Filter and Search Bar */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-                <form
-                    onSubmit={(e) => { e.preventDefault(); fetchLogs(1); }}
-                    className="relative flex-1 max-w-md"
-                >
-                    <span className="material-symbols-outlined absolute inset-y-0 start-3 my-auto h-fit text-base-content/40 text-[19px]">
-                        search
-                    </span>
-                    <input
-                        type="text"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        placeholder={lang === 'ar' ? 'ابحث برقم التتبع أو الهاتف أو WAMID...' : 'Search tracking #, phone, or WAMID...'}
-                        className="input input-sm input-bordered w-full ps-10 text-xs bg-base-100 focus:input-primary"
-                    />
-                    {search && (
+            <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-3.5 space-y-3">
+                <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+                    {/* Search Field */}
+                    <form
+                        onSubmit={(e) => { e.preventDefault(); fetchLogs(1); }}
+                        className="relative flex-1 max-w-lg"
+                    >
+                        <span className="material-symbols-outlined absolute inset-y-0 start-3 my-auto h-fit text-base-content/40 text-[19px]">
+                            search
+                        </span>
+                        <input
+                            type="text"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder={lang === 'ar' ? 'ابحث برقم التتبع، الهاتف، اسم المستلم، أو معرف الرسالة...' : 'Search tracking #, phone, recipient name, or message ID...'}
+                            className="input input-sm input-bordered w-full ps-10 text-xs bg-base-100 focus:input-primary"
+                        />
+                        {search && (
+                            <button
+                                type="button"
+                                onClick={() => { setSearch(''); fetchLogs(1); }}
+                                className="absolute inset-y-0 end-2.5 my-auto h-fit text-xs text-base-content/40 hover:text-base-content"
+                            >
+                                ✕
+                            </button>
+                        )}
+                    </form>
+
+                    {/* Status Tabs */}
+                    <div className="flex flex-wrap items-center gap-1">
+                        {[
+                            { key: 'ALL', label: lang === 'ar' ? 'الكل' : 'All' },
+                            { key: 'SENT', label: lang === 'ar' ? 'تم الإرسال' : 'Sent' },
+                            { key: 'DELIVERED', label: lang === 'ar' ? 'تم التوصيل' : 'Delivered' },
+                            { key: 'READ', label: lang === 'ar' ? 'تمت القراءة' : 'Read' },
+                            { key: 'FAILED', label: lang === 'ar' ? 'فشل' : 'Failed' }
+                        ].map((st) => (
+                            <button
+                                key={st.key}
+                                type="button"
+                                onClick={() => setStatusFilter(st.key)}
+                                className={`btn btn-xs rounded-lg ${
+                                    statusFilter === st.key
+                                        ? 'btn-primary font-bold'
+                                        : 'btn-ghost border border-base-200 text-base-content/70'
+                                }`}
+                            >
+                                {st.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Secondary Filters Bar */}
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-base-200/60 text-xs">
+                    {/* Gateway/Provider Selector */}
+                    <div className="flex items-center gap-1.5">
+                        <span className="text-base-content/50 font-bold text-[11px]">{lang === 'ar' ? 'البوابة:' : 'Gateway:'}</span>
+                        <select
+                            value={providerFilter}
+                            onChange={(e) => setProviderFilter(e.target.value)}
+                            className="select select-bordered select-xs text-xs font-semibold rounded-lg"
+                        >
+                            <option value="ALL">{lang === 'ar' ? 'كافة البوابات' : 'All Gateways'}</option>
+                            <option value="SHIPMENT_WHATSAPP">Target Microservice (msg.target-kw.com)</option>
+                            <option value="META">Meta Cloud API (WABA)</option>
+                            <option value="CHATWOOT">Chatwoot (Legacy)</option>
+                        </select>
+                    </div>
+
+                    {/* Recipient Role Selector */}
+                    <div className="flex items-center gap-1.5">
+                        <span className="text-base-content/50 font-bold text-[11px]">{lang === 'ar' ? 'الطرف:' : 'Party:'}</span>
+                        <select
+                            value={roleFilter}
+                            onChange={(e) => setRoleFilter(e.target.value)}
+                            className="select select-bordered select-xs text-xs font-semibold rounded-lg"
+                        >
+                            <option value="ALL">{lang === 'ar' ? 'كافة الأطراف' : 'All Parties'}</option>
+                            <option value="RECEIVER">{lang === 'ar' ? 'المستلم (Consignee)' : 'Consignee (Receiver)'}</option>
+                            <option value="SENDER">{lang === 'ar' ? 'الراسل (Shipper)' : 'Shipper (Sender)'}</option>
+                        </select>
+                    </div>
+
+                    {/* Date Range Selector */}
+                    <div className="flex items-center gap-1.5">
+                        <span className="text-base-content/50 font-bold text-[11px]">{lang === 'ar' ? 'الفترة:' : 'Date:'}</span>
+                        <select
+                            value={dateRangeFilter}
+                            onChange={(e) => setDateRangeFilter(e.target.value)}
+                            className="select select-bordered select-xs text-xs font-semibold rounded-lg"
+                        >
+                            <option value="ALL">{lang === 'ar' ? 'كل الأوقات' : 'All Time'}</option>
+                            <option value="TODAY">{lang === 'ar' ? 'اليوم' : 'Today'}</option>
+                            <option value="24H">{lang === 'ar' ? 'آخر 24 ساعة' : 'Last 24 Hours'}</option>
+                            <option value="7D">{lang === 'ar' ? 'آخر 7 أيام' : 'Last 7 Days'}</option>
+                            <option value="30D">{lang === 'ar' ? 'آخر 30 يوم' : 'Last 30 Days'}</option>
+                        </select>
+                    </div>
+
+                    {(statusFilter !== 'ALL' || providerFilter !== 'ALL' || roleFilter !== 'ALL' || dateRangeFilter !== 'ALL' || search) && (
                         <button
                             type="button"
-                            onClick={() => { setSearch(''); fetchLogs(1); }}
-                            className="absolute inset-y-0 end-2.5 my-auto h-fit text-xs text-base-content/40 hover:text-base-content"
+                            onClick={() => {
+                                setStatusFilter('ALL');
+                                setProviderFilter('ALL');
+                                setRoleFilter('ALL');
+                                setDateRangeFilter('ALL');
+                                setSearch('');
+                            }}
+                            className="btn btn-ghost btn-xs text-error font-bold ms-auto"
                         >
-                            ✕
+                            <span className="material-symbols-outlined text-[13px]">filter_alt_off</span>
+                            {lang === 'ar' ? 'إعادة ضبط الفلاتر' : 'Reset Filters'}
                         </button>
                     )}
-                </form>
-
-                <div className="flex flex-wrap items-center gap-1.5">
-                    {['ALL', 'SENT', 'DELIVERED', 'READ', 'FAILED'].map((st) => (
-                        <button
-                            key={st}
-                            type="button"
-                            onClick={() => setStatusFilter(st)}
-                            className={`btn btn-xs ${
-                                statusFilter === st
-                                    ? 'btn-primary font-bold'
-                                    : 'btn-ghost border border-base-200 text-base-content/70'
-                            }`}
-                        >
-                            {lang === 'ar'
-                                ? (st === 'ALL' ? 'الكل' : st === 'SENT' ? 'تم الإرسال' : st === 'DELIVERED' ? 'تم التوصيل' : st === 'READ' ? 'تمت القراءة' : 'فشل')
-                                : st}
-                        </button>
-                    ))}
                 </div>
             </div>
 
@@ -246,12 +408,12 @@ export const AdminWhatsAppLogsPage = () => {
                     <table className="table table-zebra w-full text-xs">
                         <thead>
                             <tr className="bg-base-200/60 text-base-content/70 text-[11px] font-bold uppercase">
-                                <th>{lang === 'ar' ? 'رقم التتبع' : 'Tracking #'}</th>
-                                <th>{lang === 'ar' ? 'المستلم' : 'Recipient'}</th>
-                                <th>{lang === 'ar' ? 'الحدث / القالب' : 'Event / Template'}</th>
+                                <th>{lang === 'ar' ? 'رقم التتبع والشحنة' : 'Tracking & Shipment'}</th>
+                                <th>{lang === 'ar' ? 'المستلم والوجهة' : 'Recipient & Route'}</th>
+                                <th>{lang === 'ar' ? 'البوابة والقالب' : 'Gateway & Template'}</th>
                                 <th className="text-center">{lang === 'ar' ? 'الحالة' : 'Status'}</th>
-                                <th>{lang === 'ar' ? 'معرف WAMID الخارجي' : 'External WAMID'}</th>
-                                <th>{lang === 'ar' ? 'وقت الإرسال' : 'Sent Time'}</th>
+                                <th>{lang === 'ar' ? 'معرف الرسالة الخارجي' : 'External Message ID'}</th>
+                                <th>{lang === 'ar' ? 'تاريخ الإرسال' : 'Sent Timestamp'}</th>
                                 <th className="text-end">{lang === 'ar' ? 'الإجراءات' : 'Actions'}</th>
                             </tr>
                         </thead>
@@ -281,12 +443,43 @@ export const AdminWhatsAppLogsPage = () => {
                             ) : (
                                 logs.map((log) => {
                                     const badge = getStatusBadge(log.status);
+                                    const prov = getProviderBadge(log.provider);
                                     const isSender = (log.recipientRole || '').toLowerCase() === 'sender';
+                                    const cleanPhone = (log.recipientPhone || '').replace(/[^0-9]/g, '');
+                                    const waLink = cleanPhone ? `https://wa.me/${cleanPhone}` : null;
+                                    const destCity = log.shipment?.destination?.city || log.payloadJson?.auditMetadata?.consignee?.destination;
+                                    const destCountry = log.shipment?.destination?.country || log.shipment?.destination?.countryCode;
+                                    const carrierName = log.shipment?.carrierCode || 'ARAMEX';
+                                    const carrierAwb = log.shipment?.carrierShipmentId || log.shipment?.dhlTrackingNumber;
+                                    const phenixBillId = log.shipment?.documents?.phenixBillId;
+                                    const externalId = log.chatwootMessageId || log.payloadJson?.messageId || log.responseJson?.messages?.[0]?.id || log.responseJson?.messageId;
+
                                     return (
                                         <tr key={log.id} className="hover">
-                                            <td className="font-mono font-bold text-xs text-primary">
-                                                {log.trackingNumber}
+                                            {/* Tracking & Shipment Context */}
+                                            <td>
+                                                <div className="flex items-center gap-1.5">
+                                                    <Link 
+                                                        to={`/shipment/${log.trackingNumber}`}
+                                                        className="font-mono font-black text-xs text-primary hover:underline"
+                                                    >
+                                                        {log.trackingNumber}
+                                                    </Link>
+                                                    <span className="badge badge-xs font-bold uppercase tracking-wider bg-base-200 text-base-content/80">
+                                                        {carrierName}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-2 text-[10px] text-base-content/50 mt-0.5">
+                                                    {carrierAwb && (
+                                                        <span className="font-mono">AWB: {carrierAwb}</span>
+                                                    )}
+                                                    {phenixBillId && (
+                                                        <span className="badge badge-ghost badge-xs font-mono">Bill #{phenixBillId}</span>
+                                                    )}
+                                                </div>
                                             </td>
+
+                                            {/* Recipient & Route */}
                                             <td>
                                                 <div className="flex items-center gap-1.5 flex-wrap">
                                                     <span className={`badge badge-xs font-bold gap-1 ${
@@ -303,26 +496,100 @@ export const AdminWhatsAppLogsPage = () => {
                                                     </span>
                                                     <span className="font-bold text-base-content">{log.recipientName || log.recipientRole}</span>
                                                 </div>
-                                                <div className="text-[11px] text-base-content/50 font-mono mt-0.5" dir="ltr">{log.recipientPhone}</div>
+                                                <div className="flex items-center gap-1.5 text-[11px] text-base-content/60 font-mono mt-0.5">
+                                                    <span dir="ltr">{log.recipientPhone}</span>
+                                                    {cleanPhone && (
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={() => handleCopyText(log.recipientPhone, 'phone')}
+                                                            title="Copy phone"
+                                                            className="text-base-content/40 hover:text-primary"
+                                                        >
+                                                            <span className="material-symbols-outlined text-[13px]">
+                                                                {copiedPhone === log.recipientPhone ? 'check' : 'content_copy'}
+                                                            </span>
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                {(destCity || destCountry) && (
+                                                    <div className="text-[10px] text-base-content/50 truncate max-w-[180px]">
+                                                        📍 {destCity ? `${destCity}, ` : ''}{destCountry || ''}
+                                                    </div>
+                                                )}
                                             </td>
+
+                                            {/* Gateway & Template */}
                                             <td>
-                                                <div className="font-semibold text-xs text-base-content">{log.eventType}</div>
-                                                <div className="text-[11px] text-base-content/50">{log.templateName}</div>
+                                                <div>
+                                                    <span className={`badge badge-xs font-bold border ${prov.badgeClass}`}>
+                                                        {prov.label}
+                                                    </span>
+                                                </div>
+                                                <div className="font-semibold text-xs text-base-content mt-1">{log.templateName || log.eventType}</div>
+                                                <div className="text-[10px] text-base-content/50 font-mono">{log.eventType}</div>
                                             </td>
+
+                                            {/* Status & Error Diagnostics */}
                                             <td className="text-center">
                                                 <span className={`badge badge-sm font-bold text-[10px] gap-1 ${badge.badgeClass}`}>
                                                     <span className="material-symbols-outlined text-[13px]">{badge.icon}</span>
                                                     {badge.label}
                                                 </span>
+                                                {log.status === 'FAILED' && log.errorMessage && (
+                                                    <div className="text-[10px] text-error font-medium mt-1 max-w-[160px] truncate mx-auto" title={log.errorMessage}>
+                                                        ⚠️ {log.errorMessage}
+                                                    </div>
+                                                )}
                                             </td>
-                                            <td className="font-mono text-xs text-base-content/60 max-w-[160px] truncate" title={log.externalMessageId}>
-                                                {log.externalMessageId || '—'}
+
+                                            {/* External Message ID / WAMID */}
+                                            <td>
+                                                {externalId ? (
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="font-mono text-[11px] text-base-content/70 max-w-[130px] truncate" title={externalId}>
+                                                            {externalId}
+                                                        </span>
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={() => handleCopyText(externalId, 'id')}
+                                                            title="Copy WAMID"
+                                                            className="text-base-content/40 hover:text-primary"
+                                                        >
+                                                            <span className="material-symbols-outlined text-[13px]">
+                                                                {copiedId === externalId ? 'check' : 'content_copy'}
+                                                            </span>
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-base-content/40 font-mono text-xs">—</span>
+                                                )}
                                             </td>
+
+                                            {/* Sent Timestamp */}
                                             <td className="font-mono text-xs text-base-content/60">
-                                                {new Date(log.sentAt).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')}
+                                                <div>{log.sentAt || log.createdAt ? new Date(log.sentAt || log.createdAt).toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US') : '—'}</div>
+                                                <div className="text-[10px] text-base-content/40">
+                                                    {log.sentAt || log.createdAt ? new Date(log.sentAt || log.createdAt).toLocaleTimeString(lang === 'ar' ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit' }) : ''}
+                                                </div>
                                             </td>
+
+                                            {/* Actions */}
                                             <td className="text-end">
-                                                <div className="flex items-center justify-end gap-1.5">
+                                                <div className="flex items-center justify-end gap-1">
+                                                    {/* Direct WhatsApp Web Link */}
+                                                    {waLink && (
+                                                        <a
+                                                            href={waLink}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            title={lang === 'ar' ? 'فتح محادثة واتساب' : 'Open WhatsApp chat'}
+                                                            className="btn btn-xs btn-ghost btn-circle text-success"
+                                                        >
+                                                            <span className="material-symbols-outlined text-[16px]">chat</span>
+                                                        </a>
+                                                    )}
+
+                                                    {/* Inspect Modal Button */}
                                                     <button
                                                         type="button"
                                                         onClick={() => setSelectedLog(log)}
@@ -331,6 +598,8 @@ export const AdminWhatsAppLogsPage = () => {
                                                         <span className="material-symbols-outlined text-[14px]">data_object</span>
                                                         {lang === 'ar' ? 'فحص' : 'Inspect'}
                                                     </button>
+
+                                                    {/* Resend Action */}
                                                     {log.status === 'FAILED' && (
                                                         <button
                                                             type="button"
@@ -343,7 +612,7 @@ export const AdminWhatsAppLogsPage = () => {
                                                             ) : (
                                                                 <span className="material-symbols-outlined text-[14px]">replay</span>
                                                             )}
-                                                            {lang === 'ar' ? 'إعادة إرسال' : 'Resend'}
+                                                            {lang === 'ar' ? 'إعادة' : 'Retry'}
                                                         </button>
                                                     )}
                                                 </div>
@@ -355,9 +624,41 @@ export const AdminWhatsAppLogsPage = () => {
                         </tbody>
                     </table>
                 </div>
+
+                {/* Pagination Footer */}
+                {pagination.pages > 1 && (
+                    <div className="flex items-center justify-between px-4 py-3 border-t border-base-200/80 bg-base-100 text-xs">
+                        <span className="text-base-content/60 font-medium">
+                            {lang === 'ar'
+                                ? `عرض ${logs.length} من أصل ${pagination.total} سجل`
+                                : `Showing ${logs.length} of ${pagination.total} total records`}
+                        </span>
+                        <div className="join">
+                            <button
+                                type="button"
+                                disabled={pagination.page <= 1}
+                                onClick={() => fetchLogs(pagination.page - 1)}
+                                className="join-item btn btn-xs btn-outline"
+                            >
+                                «
+                            </button>
+                            <span className="join-item btn btn-xs btn-disabled font-mono">
+                                {pagination.page} / {pagination.pages}
+                            </span>
+                            <button
+                                type="button"
+                                disabled={pagination.page >= pagination.pages}
+                                onClick={() => fetchLogs(pagination.page + 1)}
+                                className="join-item btn btn-xs btn-outline"
+                            >
+                                »
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
 
-            {/* Modal for Raw Payload Inspection */}
+            {/* Modal for Raw Payload & Variable Audit */}
             <div className={`modal modal-bottom sm:modal-middle ${selectedLog ? 'modal-open' : ''} z-50`}>
                 <div className="modal-box max-w-3xl bg-base-100 border border-base-200 shadow-2xl p-6 text-base-content max-h-[92vh] overflow-y-auto">
                     <div className="flex items-center justify-between pb-3 border-b border-base-200">
@@ -381,8 +682,10 @@ export const AdminWhatsAppLogsPage = () => {
                         const payload = selectedLog.payloadJson || {};
                         const audit = payload.auditMetadata || {};
                         const firstRow = payload.rows?.[0] || {};
-                        const vars = firstRow.variables || [];
+                        const vars = firstRow.variables || payload.variables || [];
                         const headerVars = firstRow.headerVariables || payload.headerVariables || [];
+                        const prov = getProviderBadge(selectedLog.provider);
+                        const cleanPhone = (selectedLog.recipientPhone || '').replace(/[^0-9]/g, '');
 
                         return (
                             <div className="py-4 space-y-4 text-xs">
@@ -390,7 +693,12 @@ export const AdminWhatsAppLogsPage = () => {
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 bg-base-200/40 rounded-xl border border-base-200">
                                     <div>
                                         <span className="text-[11px] font-bold text-base-content/60 block">{lang === 'ar' ? 'رقم التتبع:' : 'Tracking Number:'}</span>
-                                        <span className="font-mono font-bold text-sm text-primary">{selectedLog.trackingNumber}</span>
+                                        <Link 
+                                            to={`/shipment/${selectedLog.trackingNumber}`}
+                                            className="font-mono font-bold text-sm text-primary hover:underline"
+                                        >
+                                            {selectedLog.trackingNumber}
+                                        </Link>
                                     </div>
                                     <div>
                                         <span className="text-[11px] font-bold text-base-content/60 block">{lang === 'ar' ? 'المستلم الفعلي:' : 'Target Recipient:'}</span>
@@ -407,18 +715,18 @@ export const AdminWhatsAppLogsPage = () => {
                                         <span className="font-mono text-[11px] text-base-content/60" dir="ltr">{selectedLog.recipientPhone}</span>
                                     </div>
                                     <div>
-                                        <span className="text-[11px] font-bold text-base-content/60 block">{lang === 'ar' ? 'القالب / الحدث:' : 'Template / Event:'}</span>
-                                        <span className="font-mono font-bold text-base-content">{selectedLog.templateName}</span>
-                                        <div className="text-[11px] text-base-content/50">{selectedLog.eventType}</div>
+                                        <span className="text-[11px] font-bold text-base-content/60 block">{lang === 'ar' ? 'القالب / البوابة:' : 'Template / Gateway:'}</span>
+                                        <span className="font-mono font-bold text-base-content">{selectedLog.templateName || 'Direct Message'}</span>
+                                        <div className="text-[11px] text-base-content/50 font-bold">{prov.label}</div>
                                     </div>
                                     <div className="sm:col-span-3 pt-2 border-t border-base-200/60 flex items-center justify-between gap-2 flex-wrap">
                                         <div>
                                             <span className="text-[10px] font-bold text-base-content/50 uppercase">{lang === 'ar' ? 'معرف الرسالة الخارجي (WAMID):' : 'External WAMID:'}</span>
-                                            <div className="font-mono text-xs text-base-content/80 break-all">{selectedLog.externalMessageId || (lang === 'ar' ? 'لا يوجد' : 'None')}</div>
+                                            <div className="font-mono text-xs text-base-content/80 break-all">{selectedLog.chatwootMessageId || selectedLog.externalMessageId || (lang === 'ar' ? 'لا يوجد' : 'None')}</div>
                                         </div>
                                         <div>
                                             <span className="text-[10px] font-bold text-base-content/50 uppercase">{lang === 'ar' ? 'تاريخ ووقت الإرسال:' : 'Dispatch Timestamp:'}</span>
-                                            <div className="font-mono text-xs text-base-content/80">{new Date(selectedLog.sentAt).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')}</div>
+                                            <div className="font-mono text-xs text-base-content/80">{new Date(selectedLog.sentAt || selectedLog.createdAt).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')}</div>
                                         </div>
                                     </div>
                                 </div>
@@ -456,10 +764,10 @@ export const AdminWhatsAppLogsPage = () => {
                                                 <span className="text-base-content/60">{lang === 'ar' ? 'الهاتف:' : 'Phone:'}</span>
                                                 <span className="font-mono text-base-content" dir="ltr">{audit.consignee?.phone || (!isSender ? selectedLog.recipientPhone : (vars[3] || '—'))}</span>
                                             </div>
-                                            {audit.consignee?.destination && (
+                                            {(audit.consignee?.destination || selectedLog.shipment?.destination?.city) && (
                                                 <div className="flex justify-between">
                                                     <span className="text-base-content/60">{lang === 'ar' ? 'الوجهة:' : 'Destination:'}</span>
-                                                    <span className="text-base-content">{audit.consignee.destination}</span>
+                                                    <span className="text-base-content">{audit.consignee?.destination || selectedLog.shipment?.destination?.city}</span>
                                                 </div>
                                             )}
                                         </div>
@@ -504,14 +812,14 @@ export const AdminWhatsAppLogsPage = () => {
                                 {selectedLog.errorMessage && (
                                     <div className="alert alert-error text-xs py-2.5 rounded-xl font-semibold">
                                         <span className="material-symbols-outlined text-base">error</span>
-                                        <span>{lang === 'ar' ? 'خطأ:' : 'Error:'} {selectedLog.errorMessage}</span>
+                                        <span>{lang === 'ar' ? 'سبب الفشل:' : 'Failure Reason:'} {selectedLog.errorMessage}</span>
                                     </div>
                                 )}
 
                                 <div>
                                     <div className="flex items-center justify-between mb-1.5">
                                         <span className="text-xs font-bold text-base-content">
-                                            {lang === 'ar' ? 'الحمولة الخام واستجابة Meta API:' : 'Raw Payload & Meta API Response:'}
+                                            {lang === 'ar' ? 'الحمولة الخام واستجابة البوابة:' : 'Raw Payload & Gateway Response:'}
                                         </span>
                                         <button
                                             type="button"
@@ -533,7 +841,18 @@ export const AdminWhatsAppLogsPage = () => {
                         );
                     })()}
 
-                    <div className="modal-action pt-3 border-t border-base-200">
+                    <div className="modal-action pt-3 border-t border-base-200 flex justify-between items-center">
+                        {selectedLog?.recipientPhone && (
+                            <a
+                                href={`https://wa.me/${(selectedLog.recipientPhone || '').replace(/[^0-9]/g, '')}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="btn btn-sm btn-outline btn-success gap-1.5 font-bold"
+                            >
+                                <span className="material-symbols-outlined text-base">chat</span>
+                                {lang === 'ar' ? 'محادثة في واتساب' : 'Chat in WhatsApp'}
+                            </a>
+                        )}
                         <button
                             type="button"
                             onClick={() => setSelectedLog(null)}
