@@ -224,6 +224,36 @@ const ShipmentDetailsPage = () => {
         enqueueSnackbar(isRTL ? 'تم نسخ رابط الدفع الإلكتروني' : 'Payment checkout link copied to clipboard!', { variant: 'success' });
     };
 
+    // Share Location Pin with Carrier / Courier Driver
+    const handleShareLocationWithCarrier = () => {
+        if (!shipment?.trackingNumber) return;
+        const url = `${window.location.origin}/track/${shipment.trackingNumber}/location`;
+        const text = encodeURIComponent(`Target Logistics - Pinned GPS Location for Consignment #${shipment.trackingNumber}: ${url}`);
+        window.open(`https://wa.me/?text=${text}`, '_blank');
+    };
+
+    const handleCopyLocationLink = () => {
+        if (!shipment?.trackingNumber) return;
+        const url = `${window.location.origin}/track/${shipment.trackingNumber}/location`;
+        navigator.clipboard.writeText(url);
+        enqueueSnackbar(isRTL ? 'تم نسخ رابط موقع التسليم (GPS) بنجاح' : 'Delivery GPS Location link copied!', { variant: 'success' });
+    };
+
+    // Share Returns & Paperwork with Carrier / Shipper
+    const handleShareReturnWithCarrier = () => {
+        if (!shipment?.trackingNumber) return;
+        const url = `${window.location.origin}/returns/${shipment.trackingNumber}`;
+        const text = encodeURIComponent(`Target Logistics - Reverse Return & Paperwork Portal for Consignment #${shipment.trackingNumber}: ${url}`);
+        window.open(`https://wa.me/?text=${text}`, '_blank');
+    };
+
+    const handleCopyReturnLink = () => {
+        if (!shipment?.trackingNumber) return;
+        const url = `${window.location.origin}/returns/${shipment.trackingNumber}`;
+        navigator.clipboard.writeText(url);
+        enqueueSnackbar(isRTL ? 'تم نسخ رابط بوابة المرتجعات بنجاح' : 'Customer returns portal link copied!', { variant: 'success' });
+    };
+
     // Send WhatsApp Event
     const handleSendWhatsAppRole = async (recipientRole, eventType = 'shipment_created') => {
         if (!shipment?.trackingNumber || !recipientRole) return;
@@ -526,10 +556,17 @@ const ShipmentDetailsPage = () => {
         let badgeColor = 'badge-primary';
         let friendlyTitle = getEventDisplayMessage(evt, 'In Transit');
 
+        let isExceptionEvent = false;
+
         if (s.includes('deliver') || desc.includes('delivered') || evt.pod || s === 'dlv') {
             targetStatus = 'delivered';
             badgeColor = 'badge-success text-white';
             friendlyTitle = isRTL ? 'تم التسليم للمستلم' : 'Delivered to Consignee';
+        } else if (s.includes('exception') || s.includes('hold') || desc.includes('held') || desc.includes('delay') || desc.includes('undelivered') || desc.includes('failed') || desc.includes('incomplete')) {
+            targetStatus = 'exception';
+            badgeColor = 'badge-error text-white';
+            friendlyTitle = isRTL ? 'طابور التدخل والاستثناءات الفورية' : 'Active Triage & Exception Flag';
+            isExceptionEvent = true;
         } else if (s.includes('out_for_delivery') || desc.includes('out for delivery') || s === 'od' || desc.includes('with courier')) {
             targetStatus = 'out_for_delivery';
             badgeColor = 'badge-secondary text-white';
@@ -554,10 +591,6 @@ const ShipmentDetailsPage = () => {
             targetStatus = 'booked';
             badgeColor = 'badge-ghost';
             friendlyTitle = isRTL ? 'تم إنشاء وحجز البوليصة' : 'Consignment Booked & Registered';
-        } else if (s.includes('exception') || s.includes('hold') || desc.includes('held') || desc.includes('delay')) {
-            targetStatus = 'exception';
-            badgeColor = 'badge-error text-white';
-            friendlyTitle = isRTL ? 'إجراء تشغيلي / مراجعة' : 'Operational Review / Exception';
         }
 
         const dateParts = formatTimestampKuwait(evt.timestamp);
@@ -568,6 +601,7 @@ const ShipmentDetailsPage = () => {
             targetStatus,
             badgeColor,
             friendlyTitle,
+            isExceptionEvent,
             dateParts,
             locationText: loc,
             rawDescription: evt.description || evt.status || 'Carrier update',
@@ -628,6 +662,15 @@ const ShipmentDetailsPage = () => {
         }
         return list.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     }, [sortedHistory, shipment]);
+
+    // Active Triage & Health Status: check for exceptions or delivery blockers
+    const isTriageException = ['exception', 'failed', 'cancelled', 'returned', 'rto_in_transit'].includes(normStatus)
+        || milestoneEvents.some(e => e.isExceptionEvent);
+
+    const triageDetail = isTriageException
+        ? (milestoneEvents.find(e => e.isExceptionEvent)?.rawDescription 
+            || (isRTL ? 'حالة استثنائية تعيق التسليم — تتطلب تدخلاً تشغيلياً' : 'Active exception blocking delivery — operator intervention required'))
+        : null;
 
     // Quick Add Note Handler
     const handleAddComment = async (e) => {
@@ -961,6 +1004,186 @@ const ShipmentDetailsPage = () => {
                     </div>
                 </div>
 
+            </div>
+
+            {/* Active Triage & Operations Health Banner */}
+            <div className={`card ${isTriageException ? 'bg-error/5 border-error/25' : 'bg-success/5 border-success/20'} border shadow-xs rounded-2xl p-4 sm:p-5 transition-all`}>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                    <div className="flex items-center gap-3">
+                        <span className="relative flex h-3 w-3 shrink-0">
+                            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${isTriageException ? 'bg-error' : 'bg-success'} opacity-75`}></span>
+                            <span className={`relative inline-flex rounded-full h-3 w-3 ${isTriageException ? 'bg-error' : 'bg-success'}`}></span>
+                        </span>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <h3 className={`text-xs sm:text-sm font-black ${isTriageException ? 'text-error' : 'text-success'} uppercase tracking-wider`}>
+                                    {isRTL ? 'طابور التدخل والاستثناءات الفورية' : 'Active Triage & Exceptions'}
+                                </h3>
+                                <span className={`badge ${isTriageException ? 'badge-error text-white' : 'badge-success text-white'} badge-xs font-black`}>
+                                    {isTriageException ? (isRTL ? 'تنبيه استثنائي' : '1 Critical Blocker') : (isRTL ? 'طبيعي' : '0 Issues')}
+                                </span>
+                            </div>
+                            <p className="text-xs text-base-content/70 font-semibold mt-0.5">
+                                {isTriageException
+                                    ? (isRTL ? `حالة استثنائية تعيق التسليم: ${triageDetail}` : `Critical issue blocking delivery: ${triageDetail}`)
+                                    : (isRTL ? '0 مشاكل حرجة — العمليات تسير بشكل طبيعي' : '0 critical issues — operations nominal')}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                        {isTriageException ? (
+                            <button
+                                onClick={() => handleOpenEdit('status')}
+                                className="btn btn-error btn-xs text-white font-bold rounded-lg gap-1 shadow-xs"
+                            >
+                                <span className="material-symbols-outlined text-xs">healing</span>
+                                <span>{isRTL ? 'معالجة الاستثناء' : 'Resolve Triage'}</span>
+                            </button>
+                        ) : (
+                            <div className="text-[11px] font-bold text-success flex items-center gap-1">
+                                <span className="material-symbols-outlined text-sm">verified</span>
+                                <span>{isRTL ? 'مسار النقل مصادق عليه' : 'Trade Corridor Nominal'}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* Receiver Action Callout Cards & Carrier Sharing */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 1. Pin GPS Delivery Location */}
+                <div className="card bg-gradient-to-br from-primary to-primary-focus text-primary-content p-5 rounded-2xl shadow-sm flex flex-col justify-between space-y-3">
+                    <div>
+                        <div className="flex items-center gap-3 mb-1">
+                            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-xl shrink-0 shadow-xs">
+                                📍
+                            </div>
+                            <div>
+                                <h3 className="font-black text-sm sm:text-base leading-tight">
+                                    {isRTL ? 'تثبيت الموقع الجغرافي (GPS)' : 'Pin Delivery GPS Location'}
+                                </h3>
+                                <p className="text-xs opacity-85 mt-0.5">
+                                    {isRTL ? 'مساعدة سائق التوصيل بالإحداثيات الدقيقة ورقم الآلي (PACI).' : 'Assist the courier driver with exact Kuwait address coordinates and PACI.'}
+                                </p>
+                            </div>
+                        </div>
+                        {receiver.city && (
+                            <div className="mt-2 text-[11px] bg-white/10 rounded-lg px-2.5 py-1.5 flex items-center justify-between">
+                                <span className="opacity-80">{isRTL ? 'الوجهة المسجلة:' : 'Target Destination:'}</span>
+                                <span className="font-extrabold">{receiver.city}, {receiver.countryCode || 'KW'}</span>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="pt-3 border-t border-white/20 flex flex-wrap items-center justify-between gap-2">
+                        <button
+                            type="button"
+                            onClick={() => window.open(`/track/${shipment.trackingNumber}/location`, '_blank')}
+                            className="btn btn-xs bg-white text-primary hover:bg-white/90 border-none font-bold shadow-xs gap-1"
+                        >
+                            <span className="material-symbols-outlined text-xs">map</span>
+                            <span>{isRTL ? 'فتح موقع GPS' : 'Open Location Pin'}</span>
+                        </button>
+
+                        <div className="flex items-center gap-1.5">
+                            <button
+                                type="button"
+                                onClick={handleShareLocationWithCarrier}
+                                className="btn btn-xs bg-[#25D366] text-white hover:bg-[#1ebc57] border-none font-bold gap-1 shadow-xs"
+                                title={isRTL ? 'مشاركة الموقع مع السائق عبر واتساب' : 'Share Location Link with Courier Driver'}
+                            >
+                                <span className="material-symbols-outlined text-xs">share</span>
+                                <span>{isRTL ? 'مشاركة مع السائق' : 'Share with Carrier'}</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleCopyLocationLink}
+                                className="btn btn-xs bg-white/20 hover:bg-white/30 text-white border-none font-bold gap-1"
+                                title={isRTL ? 'نسخ رابط الموقع' : 'Copy Location Link'}
+                            >
+                                <span className="material-symbols-outlined text-xs">content_copy</span>
+                                <span>{isRTL ? 'نسخ الرابط' : 'Copy Link'}</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. Customer Return & Paperwork */}
+                <div className="card bg-base-100 border border-base-200/90 p-5 rounded-2xl shadow-sm flex flex-col justify-between space-y-3">
+                    <div>
+                        <div className="flex items-center gap-3 mb-1">
+                            <div className="w-10 h-10 rounded-xl bg-secondary/10 text-secondary flex items-center justify-center text-xl shrink-0">
+                                🔄
+                            </div>
+                            <div>
+                                <h3 className="font-black text-sm sm:text-base text-base-content leading-tight">
+                                    {isRTL ? 'بوابة المرتجعات والمستندات' : 'Customer Return & Paperwork'}
+                                </h3>
+                                <p className="text-xs text-base-content/60 mt-0.5">
+                                    {isRTL ? 'إصدار بوليصة الإرجاع خلال 14 يوماً، طباعة مستندات الشحن والبيان الجمركي.' : 'Initiate 14-day reverse parcel returns, customs declarations, or print air waybills.'}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="mt-2 text-[11px] bg-base-200/50 rounded-lg px-2.5 py-1.5 flex items-center justify-between">
+                            <span className="text-base-content/60">{isRTL ? 'الناقل المعتمد:' : 'Consigned Carrier:'}</span>
+                            <span className="font-extrabold text-base-content font-mono">{shipment.carrierCode || shipment.carrier || 'Target Network'}</span>
+                        </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-base-200 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                            {resolvedCarrierAwb ? (
+                                <button
+                                    type="button"
+                                    onClick={() => handleOpenPdf(resolvedCarrierAwb)}
+                                    className="btn btn-xs btn-ghost border border-base-300 text-xs font-bold gap-1"
+                                >
+                                    <span className="material-symbols-outlined text-xs">print</span>
+                                    <span>{isRTL ? 'البوليصة الرسمية' : 'Air Waybill'}</span>
+                                </button>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={handleGenerateInvoiceQR}
+                                    className="btn btn-xs btn-ghost border border-base-300 text-xs font-bold gap-1"
+                                >
+                                    <span className="material-symbols-outlined text-xs">description</span>
+                                    <span>{isRTL ? 'فاتورة / QR' : 'Waybill QR'}</span>
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => window.open(`/returns/${shipment.trackingNumber}`, '_blank')}
+                                className="btn btn-xs btn-outline btn-secondary text-xs font-bold gap-1"
+                            >
+                                <span className="material-symbols-outlined text-xs">assignment_return</span>
+                                <span>{isRTL ? 'بوابة المرتجع' : 'Check Return'}</span>
+                            </button>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                            <button
+                                type="button"
+                                onClick={handleShareReturnWithCarrier}
+                                className="btn btn-xs bg-[#25D366] text-white hover:bg-[#1ebc57] border-none font-bold gap-1 shadow-xs"
+                                title={isRTL ? 'مشاركة رابط المرتجع والمستندات عبر واتساب' : 'Share Return Portal with Shipper/Carrier'}
+                            >
+                                <span className="material-symbols-outlined text-xs">share</span>
+                                <span>{isRTL ? 'مشاركة المرتجع' : 'Share Return'}</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleCopyReturnLink}
+                                className="btn btn-xs btn-ghost border border-base-300 text-xs font-bold gap-1"
+                                title={isRTL ? 'نسخ رابط بوابة المرتجعات' : 'Copy Returns Link'}
+                            >
+                                <span className="material-symbols-outlined text-xs">content_copy</span>
+                                <span>{isRTL ? 'نسخ' : 'Copy'}</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {/* 2. Main 2-Column Content Grid */}
