@@ -61,6 +61,31 @@ function addDays({ year, month, day }, daysOffset) {
     };
 }
 
+/**
+ * Checks if a Phenix date string represents today in the configured timezone.
+ * Outdated shipments from prior dates must NEVER trigger live outbound WhatsApp messages.
+ */
+function isDateToday(rawDate, timeZone = 'Asia/Kuwait') {
+    if (!rawDate) return true;
+    const s = String(rawDate).trim();
+    if (!s) return true;
+
+    const today = dateParts(new Date(), timeZone);
+    const todayStr = `${today.year}-${String(today.month).padStart(2, '0')}-${String(today.day).padStart(2, '0')}`;
+
+    let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (m) {
+        const dStr = `${m[1]}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`;
+        return dStr === todayStr;
+    }
+    m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m) {
+        const dStr = `${m[3]}-${String(m[2]).padStart(2, '0')}-${String(m[1]).padStart(2, '0')}`;
+        return dStr === todayStr;
+    }
+    return true;
+}
+
 function buildPhenixRequestBody(from, to) {
     return {
         _parameters: [
@@ -888,24 +913,29 @@ class PhenixSyncService {
                 }
 
                 if (sendWhatsApp) {
-                    if (v.receiverPhone) {
-                        notificationsToSend.push({
-                            shipment,
-                            v,
-                            recipientRole: 'receiver',
-                            recipientPhone: v.receiverPhone,
-                            recipientName: v.receiverName
-                        });
-                    }
-                    const senderPhone = v.senderPhone || shipment.origin?.phone;
-                    if (senderPhone) {
-                        notificationsToSend.push({
-                            shipment,
-                            v,
-                            recipientRole: 'sender',
-                            recipientPhone: senderPhone,
-                            recipientName: v.senderName || v.merchantName || shipment.origin?.contactPerson || 'Shipper'
-                        });
+                    const isToday = isDateToday(v.date);
+                    if (isToday) {
+                        if (v.receiverPhone) {
+                            notificationsToSend.push({
+                                shipment,
+                                v,
+                                recipientRole: 'receiver',
+                                recipientPhone: v.receiverPhone,
+                                recipientName: v.receiverName
+                            });
+                        }
+                        const senderPhone = v.senderPhone || shipment.origin?.phone;
+                        if (senderPhone) {
+                            notificationsToSend.push({
+                                shipment,
+                                v,
+                                recipientRole: 'sender',
+                                recipientPhone: senderPhone,
+                                recipientName: v.senderName || v.merchantName || shipment.origin?.contactPerson || 'Shipper'
+                            });
+                        }
+                    } else {
+                        logger.info(`[PhenixSync Safety Guard] Shipment #${shipment.trackingNumber} is from past date (${v.date}). Skipped live outbound WhatsApp to avoid sending outdated messages.`);
                     }
                 }
 
