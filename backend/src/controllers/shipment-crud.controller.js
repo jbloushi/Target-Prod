@@ -466,6 +466,18 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
                 data: { status: 'delivered' }
             });
             shipment.status = 'delivered';
+        } else if (shipment.status === 'exception' && rawHistory.length > 0) {
+            const sortedHistoryDesc = [...rawHistory].filter(e => e.timestamp).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            const latestScan = sortedHistoryDesc[0];
+            const latestStatus = normalizeStatus(latestScan?.status || latestScan?.description || latestScan?.statusCode);
+            if (latestStatus && latestStatus !== 'exception' && ['in_transit', 'received_at_hub', 'out_for_delivery', 'delivered'].includes(latestStatus)) {
+                logger.info(`Auto-clearing resolved exception for ${shipment.trackingNumber}: exception -> ${latestStatus}`);
+                await prisma.shipment.update({
+                    where: { id: shipment.id },
+                    data: { status: latestStatus }
+                });
+                shipment.status = latestStatus;
+            }
         }
 
         const originLocation = shipment.origin?.formattedAddress || shipment.origin?.city || '';

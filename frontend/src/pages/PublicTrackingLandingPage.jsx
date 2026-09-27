@@ -156,6 +156,9 @@ export const PublicTrackingLandingPage = () => {
     if (lastEvent) {
       const lastNorm = normalizeStatus(lastEvent.status || lastEvent.description);
       if (lastNorm === 'exception') return 'exception';
+      if (['picked_up', 'received_at_hub', 'in_transit', 'out_for_delivery'].includes(lastNorm)) {
+        return lastNorm;
+      }
       if (isStatusAhead(rawNorm, lastNorm)) return lastNorm;
     }
     return rawNorm;

@@ -110,12 +110,18 @@ function normalizeStatus(raw) {
     return 'in_transit'; // safe fallback for unknown carrier codes
 }
 
+const PIPELINE_STATUSES = [
+    'draft', 'pending', 'booked', 'ready_for_pickup', 'picked_up',
+    'received_at_hub', 'verified',
+    'in_transit', 'out_for_delivery', 'delivered'
+];
+
 /**
  * Returns the index of a status in the pipeline.
  * Used for "forward-only" promotion logic.
  */
 function getStatusIndex(status) {
-    const idx = SHIPMENT_STATUSES.indexOf(normalizeStatus(status));
+    const idx = PIPELINE_STATUSES.indexOf(normalizeStatus(status));
     return idx === -1 ? 0 : idx;
 }
 
@@ -128,8 +134,14 @@ function isStatusAhead(statusA, statusB) {
     if (normA === normB) return false;
     if (normB === 'delivered') return true;
     if (normA === 'delivered') return false;
-    // Exception is a lateral move, not "ahead"
-    if (normB === 'exception') return true;
+    
+    // If currently in exception, any subsequent active movement clears the exception
+    if (normA === 'exception') {
+        return ['picked_up', 'received_at_hub', 'verified', 'in_transit', 'out_for_delivery', 'delivered'].includes(normB);
+    }
+    // Exception is an operational flag, not a forward milestone ahead of movement
+    if (normB === 'exception') return false;
+
     return getStatusIndex(normB) > getStatusIndex(normA);
 }
 

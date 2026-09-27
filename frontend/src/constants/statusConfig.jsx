@@ -115,6 +115,13 @@ export function isStatusAhead(statusA, statusB) {
     if (normA === normB) return false;
     if (normB === 'delivered') return true;
     if (normA === 'delivered') return false;
-    if (normB === 'exception') return true;
+    
+    // If currently in exception, any subsequent active movement clears the exception
+    if (normA === 'exception') {
+        return ['picked_up', 'received_at_hub', 'verified', 'in_transit', 'out_for_delivery', 'delivered'].includes(normB);
+    }
+    // Exception is an operational flag, not a forward pipeline milestone ahead of movement
+    if (normB === 'exception') return false;
+
     return getStepIndex(normB) > getStepIndex(normA);
 }

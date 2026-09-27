@@ -139,6 +139,18 @@ exports.getPublicShipment = async (req, res) => {
                 data: { status: 'delivered' }
             }).catch(() => {});
             shipment.status = 'delivered';
+        } else if (shipment.status === 'exception' && (rawEvents.length > 0 || Array.isArray(shipment.history))) {
+            const allEvents = [...rawEvents, ...(Array.isArray(shipment.history) ? shipment.history : [])];
+            const sortedDesc = allEvents.filter(e => e.timestamp).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            const latestScan = sortedDesc[0];
+            const latestStatus = normalizeStatus(latestScan?.status || latestScan?.description || latestScan?.statusCode);
+            if (latestStatus && latestStatus !== 'exception' && ['in_transit', 'received_at_hub', 'out_for_delivery', 'delivered'].includes(latestStatus)) {
+                await prisma.shipment.update({
+                    where: { id: shipment.id },
+                    data: { status: latestStatus }
+                }).catch(() => {});
+                shipment.status = latestStatus;
+            }
         }
 
         res.status(200).json({

@@ -439,8 +439,10 @@ const syncCarrierTrackingHistory = async (shipment) => {
                 }
             }
 
-            if (!highestCarrierStatus || isStatusAhead(highestCarrierStatus, normalizedStatus)) {
-                highestCarrierStatus = normalizedStatus;
+            if (normalizedStatus !== 'exception') {
+                if (!highestCarrierStatus || isStatusAhead(highestCarrierStatus, normalizedStatus)) {
+                    highestCarrierStatus = normalizedStatus;
+                }
             }
         });
 
@@ -460,6 +462,16 @@ const syncCarrierTrackingHistory = async (shipment) => {
             }
         } else if (latestCarrierStatus && latestCarrierStatus !== 'delivered' && currentStatus === 'delivered') {
             logger.info(`Correcting premature delivered status for ${shipment.trackingNumber}: ${currentStatus} -> ${latestCarrierStatus}`);
+            currentStatus = latestCarrierStatus;
+            hasUpdates = true;
+        } else if (latestCarrierStatus === 'exception') {
+            if (currentStatus !== 'exception') {
+                logger.info(`Active exception flagged for ${shipment.trackingNumber}: ${currentStatus} -> exception`);
+                currentStatus = 'exception';
+                hasUpdates = true;
+            }
+        } else if (currentStatus === 'exception' && latestCarrierStatus && latestCarrierStatus !== 'exception') {
+            logger.info(`Prior exception cleared by subsequent movement for ${shipment.trackingNumber}: exception -> ${latestCarrierStatus}`);
             currentStatus = latestCarrierStatus;
             hasUpdates = true;
         } else if (highestCarrierStatus && isStatusAhead(currentStatus, highestCarrierStatus)) {

@@ -580,7 +580,17 @@ const ShipmentDetailsPage = () => {
         const rawNorm = normalizeStatus(shipment.status);
         if (rawNorm === 'cancelled') return 'cancelled';
         if (rawNorm === 'delivered' || hasDeliveredMilestone) return 'delivered';
-        if (latestMilestone?.isExceptionEvent || latestMilestone?.targetStatus === 'exception') return 'exception';
+        
+        // If the LATEST milestone is an active exception
+        if (latestMilestone?.isExceptionEvent || latestMilestone?.targetStatus === 'exception') {
+            return 'exception';
+        }
+
+        // If the LATEST milestone is active movement, any prior hold was resolved!
+        if (latestMilestone?.targetStatus && ['picked_up', 'received_at_hub', 'in_transit', 'out_for_delivery'].includes(latestMilestone.targetStatus)) {
+            return latestMilestone.targetStatus;
+        }
+
         if (latestMilestone?.targetStatus) {
             if (isStatusAhead(rawNorm, latestMilestone.targetStatus)) {
                 return latestMilestone.targetStatus;
@@ -689,11 +699,14 @@ const ShipmentDetailsPage = () => {
     })();
 
     // Active Triage & Health Status: check for exceptions or delivery blockers
-    const isTriageException = ['exception', 'failed', 'cancelled', 'returned', 'rto_in_transit'].includes(normStatus)
-        || milestoneEvents.some(e => e.isExceptionEvent);
+    // An active blocker ONLY exists if the shipment is currently in an exception or the LATEST milestone is an exception
+    const isTriageException = ['exception', 'failed', 'cancelled', 'returned', 'rto_in_transit'].includes(effectiveStatus)
+        || latestMilestone?.isExceptionEvent
+        || latestMilestone?.targetStatus === 'exception';
 
     const triageDetail = isTriageException
-        ? (milestoneEvents.find(e => e.isExceptionEvent)?.rawDescription 
+        ? ((latestMilestone?.isExceptionEvent ? latestMilestone?.rawDescription : null)
+            || (effectiveStatus === 'exception' ? milestoneEvents.find(e => e.isExceptionEvent)?.rawDescription : null)
             || (isRTL ? 'حالة استثنائية تعيق التسليم — تتطلب تدخلاً تشغيلياً' : 'Active exception blocking delivery — operator intervention required'))
         : null;
 
