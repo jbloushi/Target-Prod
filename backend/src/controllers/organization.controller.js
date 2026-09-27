@@ -190,3 +190,136 @@ exports.removeMember = async (req, res) => {
         res.status(500).json({ success: false, error: 'Server Error' });
     }
 };
+
+/**
+ * Delete Organization & Cascade Financials (Admin Only)
+ * @route DELETE /api/organizations/:id
+ * @access Private (Admin)
+ */
+exports.deleteOrganization = async (req, res) => {
+    try {
+        const orgId = req.params.id;
+
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({
+                success: false,
+                error: 'Only administrators can delete an organization and purge its financials'
+            });
+        }
+
+        const org = await prisma.organization.findUnique({
+            where: { id: orgId },
+            include: {
+                _count: {
+                    select: {
+                        members: true,
+                        invoices: true,
+                        payments: true,
+                        ledgerEntries: true,
+                        shipments: true
+                    }
+                }
+            }
+        });
+
+        if (!org) {
+            return res.status(404).json({ success: false, error: 'Organization not found' });
+        }
+
+        logger.info(`Admin ${req.user.id} initiated complete deletion of organization ${orgId} (${org.name}) with records:`, org._count);
+
+        await prisma.$transaction(async (tx) => {
+            // 1. Delete webhook logs and subscriptions
+            await tx.webhookDeliveryLog.deleteMany({
+                where: { subscription: { organizationId: orgId } }
+            });
+            await tx.webhookSubscription.deleteMany({
+                where: { organizationId: orgId }
+            });
+
+            // 2. Delete user access scopes tied to this organization
+            await tx.userAccessScope.deleteMany({
+                where: { organizationId: orgId }
+            });
+
+            // 3. Delete invoice delivery logs
+            await tx.invoiceDeliveryLog.deleteMany({
+                where: {
+                    OR: [
+                        { organizationId: orgId },
+                        { invoice: { organizationId: orgId } }
+                    ]
+                }
+            });
+
+            // 4. Delete payment allocations for this organization or its payments
+            await tx.paymentAllocation.deleteMany({
+                where: {
+                    OR: [
+                        { organizationId: orgId },
+                        { payment: { organizationId: orgId } }
+                    ]
+                }
+            });
+
+            // 5. Delete invoice lines belonging to this organization's invoices
+            await tx.invoiceLine.deleteMany({
+                where: { invoice: { organizationId: orgId } }
+            });
+
+            // 6. Delete invoices for this organization
+            await tx.invoice.deleteMany({
+                where: { organizationId: orgId }
+            });
+
+            // 7. Delete payments for this organization
+            await tx.payment.deleteMany({
+                where: { organizationId: orgId }
+            });
+
+            // 8. Delete organization ledger entries
+            await tx.organizationLedger.deleteMany({
+                where: { organizationId: orgId }
+            });
+
+            // 9. Unlink organization from General Ledger lines (preserves journal balance)
+            await tx.journalEntryLine.updateMany({
+                where: { organizationId: orgId },
+                data: { organizationId: null }
+            });
+
+            // 10. Unlink organization from pickup requests
+            await tx.pickupRequest.updateMany({
+                where: { organizationId: orgId },
+                data: { organizationId: null }
+            });
+
+            // 11. Unlink organization from shipments
+            await tx.shipment.updateMany({
+                where: { organizationId: orgId },
+                data: { organizationId: null }
+            });
+
+            // 12. Unlink members from this organization
+            await tx.user.updateMany({
+                where: { organizationId: orgId },
+                data: { organizationId: null }
+            });
+
+            // 13. Delete the organization
+            await tx.organization.delete({
+                where: { id: orgId }
+            });
+        });
+
+        logger.info(`Organization ${orgId} (${org.name}) and its financials deleted successfully by admin ${req.user.id}`);
+
+        res.status(200).json({
+            success: true,
+            message: `Organization ${org.name} and all its financials were successfully deleted`
+        });
+    } catch (error) {
+        logger.error('Error deleting organization:', error);
+        return handleControllerError(res, error, 'Organization deletion');
+    }
+};

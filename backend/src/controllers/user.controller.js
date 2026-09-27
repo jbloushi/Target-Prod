@@ -605,23 +605,161 @@ exports.updateUser = async (req, res) => {
  */
 exports.deleteUser = async (req, res) => {
     try {
-        if (req.user.id === req.params.id) {
+        const id = req.params.id;
+
+        if (req.user.id === id) {
             return res.status(400).json({ success: false, error: 'Cannot delete your own user' });
         }
+
+        const existingUser = await prisma.user.findUnique({
+            where: { id },
+            include: {
+                _count: {
+                    select: {
+                        shipments: true,
+                        pickupRequests: true,
+                        accessScopes: true
+                    }
+                }
+            }
+        });
+
+        if (!existingUser) {
+            return res.status(404).json({ success: false, error: 'User not found' });
+        }
+
         if (isOrgUserManager(req.user)) {
-            const existingUser = await prisma.user.findUnique({ where: { id: req.params.id } });
-            if (!existingUser) return res.status(404).json({ success: false, error: 'User not found' });
             if (!assertOrgUserManagementAllowed(req, res, { existingUser })) return;
         }
-        await prisma.user.delete({
-            where: { id: req.params.id }
+
+        logger.info(`User ${req.user.id} initiated deletion of user ${id} (${existingUser.email}) with records:`, existingUser._count);
+
+        await prisma.$transaction(async (tx) => {
+            // 1. Delete user access scopes (both where user is grantee or client user)
+            await tx.userAccessScope.deleteMany({
+                where: {
+                    OR: [
+                        { userId: id },
+                        { clientUserId: id }
+                    ]
+                }
+            });
+
+            // 2. Clear user references in system audit logs
+            await tx.systemAuditLog.updateMany({
+                where: { userId: id },
+                data: { userId: null }
+            });
+
+            // 3. Clear staff/driver assignments on shipments
+            await tx.shipment.updateMany({
+                where: { assignedStaffId: id },
+                data: { assignedStaffId: null }
+            });
+            await tx.shipment.updateMany({
+                where: { assignedDriverId: id },
+                data: { assignedDriverId: null }
+            });
+            await tx.shipment.updateMany({
+                where: { createdOnBehalfOfUserId: id },
+                data: { createdOnBehalfOfUserId: null }
+            });
+
+            // 4. Clear driver assignments on pickup requests
+            await tx.pickupRequest.updateMany({
+                where: { assignedDriverId: id },
+                data: { assignedDriverId: null }
+            });
+
+            // 5. Clear creator/sender references on financial logs
+            await tx.invoice.updateMany({
+                where: { createdById: id },
+                data: { createdById: null }
+            });
+            await tx.invoiceDeliveryLog.updateMany({
+                where: { sentById: id },
+                data: { sentById: null }
+            });
+            await tx.payment.updateMany({
+                where: { createdById: id },
+                data: { createdById: null }
+            });
+            await tx.paymentAllocation.updateMany({
+                where: { createdBy: id },
+                data: { createdBy: null }
+            });
+            await tx.journalEntry.updateMany({
+                where: { createdById: id },
+                data: { createdById: null }
+            });
+
+            // 6. Handle shipments OWNED by this user (Shipment.userId === id)
+            const userShipments = await tx.shipment.findMany({
+                where: { userId: id },
+                select: { id: true }
+            });
+            const shipmentIds = userShipments.map(s => s.id);
+
+            if (shipmentIds.length > 0) {
+                // Delete payment allocations on these shipments
+                await tx.paymentAllocation.deleteMany({
+                    where: { shipmentId: { in: shipmentIds } }
+                });
+
+                // Delete invoice lines on these shipments
+                await tx.invoiceLine.deleteMany({
+                    where: { shipmentId: { in: shipmentIds } }
+                });
+
+                // Unlink journal entry lines from these shipments
+                await tx.journalEntryLine.updateMany({
+                    where: { shipmentId: { in: shipmentIds } },
+                    data: { shipmentId: null }
+                });
+
+                // Unlink bill lines from these shipments
+                await tx.billLine.updateMany({
+                    where: { shipmentId: { in: shipmentIds } },
+                    data: { shipmentId: null }
+                });
+
+                // Delete notification logs on these shipments
+                await tx.shipmentNotificationLog.deleteMany({
+                    where: { shipmentId: { in: shipmentIds } }
+                });
+
+                // Delete pickup requests for these shipments
+                await tx.pickupRequest.deleteMany({
+                    where: { shipmentId: { in: shipmentIds } }
+                });
+
+                // Delete audit logs for these shipments
+                await tx.shipmentAuditLog.deleteMany({
+                    where: { shipmentId: { in: shipmentIds } }
+                });
+
+                // Delete the shipments themselves
+                await tx.shipment.deleteMany({
+                    where: { id: { in: shipmentIds } }
+                });
+            }
+
+            // 7. Delete pickup requests created by this user
+            await tx.pickupRequest.deleteMany({
+                where: { userId: id }
+            });
+
+            // 8. Finally delete the user
+            await tx.user.delete({
+                where: { id }
+            });
         });
-        res.status(204).json({ success: true, data: null });
+
+        logger.info(`User ${id} (${existingUser.email}) and related records deleted successfully by ${req.user.id}`);
+
+        res.status(200).json({ success: true, message: 'User and associated records deleted successfully' });
     } catch (error) {
         logger.error('Error deleting user:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Server Error'
-        });
+        return handleControllerError(res, error, 'User deletion');
     }
 };

@@ -72,6 +72,7 @@ const AdminUsersPage = () => {
     const [clientUsers, setClientUsers] = useState([]);
     const [availableCarriers, setAvailableCarriers] = useState([]);
     const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+    const [deleteLoading, setDeleteLoading] = useState(false);
 
     const fetchUsers = useCallback(async () => {
         setLoading(true);
@@ -285,12 +286,15 @@ const AdminUsersPage = () => {
 
     const handleDelete = async (id) => {
         try {
+            setDeleteLoading(true);
             await userService.deleteUser(id);
-            enqueueSnackbar(lang === 'ar' ? 'تم حذف المستخدم بنجاح' : 'User deleted', { variant: 'success' });
+            enqueueSnackbar(lang === 'ar' ? 'تم حذف المستخدم وبياناته بنجاح' : 'User and associated records deleted successfully', { variant: 'success' });
             setDeleteConfirmId(null);
             fetchUsers();
         } catch (error) {
-            enqueueSnackbar(lang === 'ar' ? 'فشل حذف المستخدم' : 'Failed to delete user', { variant: 'error' });
+            enqueueSnackbar(error.response?.data?.error || (lang === 'ar' ? 'فشل حذف المستخدم' : 'Failed to delete user'), { variant: 'error' });
+        } finally {
+            setDeleteLoading(false);
         }
     };
 
@@ -1111,21 +1115,41 @@ const AdminUsersPage = () => {
 
             {/* Delete User Confirmation Modal */}
             <div className={`modal modal-bottom sm:modal-middle ${deleteConfirmId ? 'modal-open' : ''} z-50`}>
-                <div className="modal-box max-w-sm bg-base-100 border border-base-200 shadow-2xl p-6 text-base-content">
-                    <div className="flex items-center gap-2 pb-3 border-b border-base-200 text-error">
-                        <span className="material-symbols-outlined text-xl">warning</span>
-                        <h3 className="font-black text-lg text-base-content">
-                            {lang === 'ar' ? 'حذف المستخدم نهائياً؟' : 'Delete User?'}
-                        </h3>
+                <div className="modal-box max-w-md bg-base-100 border border-error/30 shadow-2xl p-6 text-base-content">
+                    <div className="flex items-center gap-3 text-error mb-4">
+                        <div className="w-12 h-12 rounded-2xl bg-error/10 flex items-center justify-center shrink-0">
+                            <span className="material-symbols-outlined text-2xl">warning</span>
+                        </div>
+                        <div>
+                            <h3 className="font-black text-lg">
+                                {lang === 'ar' ? 'حذف المستخدم نهائياً؟' : 'Delete User?'}
+                            </h3>
+                            <p className="text-xs text-base-content/60">
+                                {lang === 'ar' ? 'تطهير الحساب والسجلات المرتبطة' : 'Purge user and associated records'}
+                            </p>
+                        </div>
                     </div>
-                    <p className="py-4 text-xs text-base-content/70">
-                        {lang === 'ar'
-                            ? 'هل أنت متأكد من رغبتك في حذف هذا المستخدم نهائياً؟ لا يمكن التراجع عن هذه الخطوة.'
-                            : 'Are you sure you want to permanently delete this user? This cannot be undone.'}
-                    </p>
-                    <div className="modal-action pt-3 border-t border-base-200">
+
+                    <div className="space-y-3 text-xs text-base-content/80 bg-base-200/50 p-3.5 rounded-xl border border-base-200">
+                        <p>
+                            {lang === 'ar'
+                                ? 'سيتم حذف المستخدم نهائياً مع معالجة وتطهير كافة السجلات المرتبطة به:'
+                                : 'Permanently deletes this user and cleanses all associated records:'}
+                        </p>
+                        <ul className="list-disc list-inside space-y-1 font-semibold text-error/90">
+                            <li>{lang === 'ar' ? 'بوالص الشحن والتسويات والطلبات الخاصة به' : 'Associated shipments, allocations, and requests'}</li>
+                            <li>{lang === 'ar' ? 'فصل وتجريد صلاحيات الوصول وعضوية المنظمة' : 'Revoke access scopes and organization membership'}</li>
+                            <li>{lang === 'ar' ? 'تجريد الإسنادات والتكليفات التشغيلية' : 'Unassign from staff/driver operational tasks'}</li>
+                        </ul>
+                        <p className="text-[11px] text-error font-bold">
+                            ⚠️ {lang === 'ar' ? 'هذا الإجراء لا يمكن التراجع عنه نهائياً.' : 'This action is irreversible.'}
+                        </p>
+                    </div>
+
+                    <div className="modal-action mt-6 gap-2">
                         <button
                             type="button"
+                            disabled={deleteLoading}
                             onClick={() => setDeleteConfirmId(null)}
                             className="btn btn-sm btn-ghost"
                         >
@@ -1133,14 +1157,18 @@ const AdminUsersPage = () => {
                         </button>
                         <button
                             type="button"
+                            disabled={deleteLoading}
                             onClick={() => handleDelete(deleteConfirmId)}
-                            className="btn btn-sm btn-error text-white font-bold"
+                            className="btn btn-sm btn-error text-white font-bold gap-1.5 shadow-sm"
                         >
+                            {deleteLoading ? <span className="loading loading-spinner loading-xs" /> : (
+                                <span className="material-symbols-outlined text-[16px]">delete_forever</span>
+                            )}
                             {lang === 'ar' ? 'تأكيد الحذف' : 'Delete'}
                         </button>
                     </div>
                 </div>
-                <div className="modal-backdrop bg-black/60 backdrop-blur-xs" onClick={() => setDeleteConfirmId(null)} />
+                <div className="modal-backdrop bg-black/60 backdrop-blur-xs" onClick={() => !deleteLoading && setDeleteConfirmId(null)} />
             </div>
         </div>
     );

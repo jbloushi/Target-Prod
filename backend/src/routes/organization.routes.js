@@ -15,7 +15,8 @@ router
 router
     .route('/:id')
     .get(organizationController.getOrganization)
-    .patch(authorize('MANAGE_ORGS'), organizationController.updateOrganization);
+    .patch(authorize('MANAGE_ORGS'), organizationController.updateOrganization)
+    .delete(authorize('MANAGE_ORGS'), organizationController.deleteOrganization);
 
 // Member Management (admin only)
 router.post('/:id/members', authorize('MANAGE_ORGS'), organizationController.addMember);

@@ -35,6 +35,8 @@ const AdminOrganizationsPage = () => {
     const [openMembersDialog, setOpenMembersDialog] = useState(false);
     const [editingOrg, setEditingOrg] = useState(null);
     const [saveLoading, setSaveLoading] = useState(false);
+    const [deleteConfirmOrg, setDeleteConfirmOrg] = useState(null);
+    const [deleteLoading, setDeleteLoading] = useState(false);
 
     const [formData, setFormData] = useState({
         name: '',
@@ -217,6 +219,30 @@ const AdminOrganizationsPage = () => {
             fetchOrgs();
         } catch (err) {
             enqueueSnackbar(err.response?.data?.error || (lang === 'ar' ? 'فشل إزالة العضو' : 'Failed to remove member'), { variant: 'error' });
+        }
+    };
+
+    const handleDeleteOrg = async () => {
+        if (!deleteConfirmOrg) return;
+        setDeleteLoading(true);
+        try {
+            await organizationService.deleteOrganization(deleteConfirmOrg.id);
+            enqueueSnackbar(
+                lang === 'ar'
+                    ? `تم حذف مؤسسة ${deleteConfirmOrg.name} وكافة حساباتها المالية بنجاح`
+                    : `Organization ${deleteConfirmOrg.name} and all financials deleted successfully`,
+                { variant: 'success' }
+            );
+            setDeleteConfirmOrg(null);
+            await fetchOrgs();
+        } catch (err) {
+            console.error('Failed to delete organization:', err);
+            enqueueSnackbar(
+                err.response?.data?.error || (lang === 'ar' ? 'فشل حذف المؤسسة' : 'Failed to delete organization'),
+                { variant: 'error' }
+            );
+        } finally {
+            setDeleteLoading(false);
         }
     };
 
@@ -571,6 +597,17 @@ const AdminOrganizationsPage = () => {
                                                     >
                                                         <span className="material-symbols-outlined text-[16px]">inventory_2</span>
                                                     </button>
+
+                                                    {user?.role === 'admin' && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setDeleteConfirmOrg(org)}
+                                                            className="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
+                                                            title={lang === 'ar' ? 'حذف المؤسسة وحساباتها المالية' : 'Delete organization & financials'}
+                                                        >
+                                                            <span className="material-symbols-outlined text-[16px]">delete</span>
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
@@ -950,6 +987,65 @@ const AdminOrganizationsPage = () => {
                     </div>
                 </div>
                 <div className="modal-backdrop bg-black/60 backdrop-blur-xs" onClick={() => setOpenMembersDialog(false)} />
+            </div>
+
+            {/* Delete Organization Confirmation Modal */}
+            <div className={`modal modal-bottom sm:modal-middle ${deleteConfirmOrg ? 'modal-open' : ''} z-50`}>
+                <div className="modal-box bg-base-100 border border-error/30 shadow-2xl p-6 text-base-content max-w-md">
+                    <div className="flex items-center gap-3 text-error mb-4">
+                        <div className="w-12 h-12 rounded-2xl bg-error/10 flex items-center justify-center shrink-0">
+                            <span className="material-symbols-outlined text-2xl">warning</span>
+                        </div>
+                        <div>
+                            <h3 className="font-black text-lg">
+                                {lang === 'ar' ? 'حذف المؤسسة وحساباتها المالية' : 'Delete Organization & Financials?'}
+                            </h3>
+                            <p className="text-xs text-base-content/60 font-mono">
+                                {deleteConfirmOrg?.name}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-3 text-xs text-base-content/80 bg-base-200/50 p-3.5 rounded-xl border border-base-200">
+                        <p>
+                            {lang === 'ar'
+                                ? 'سيتم حذف المؤسسة بشكل نهائي مع تطهير وحذف كافة السجلات المالية المرتبطة بها:'
+                                : 'Permanently deletes this organization and completely purges all associated financial records:'}
+                        </p>
+                        <ul className="list-disc list-inside space-y-1 font-semibold text-error/90">
+                            <li>{lang === 'ar' ? 'جميع الفواتير ومطالبات الشحن الصادرة لها' : 'All issued invoices & freight billing lines'}</li>
+                            <li>{lang === 'ar' ? 'سجلات المدفوعات والتحصيلات والتسويات' : 'All recorded payments & FIFO allocations'}</li>
+                            <li>{lang === 'ar' ? 'قيود دفتر الأستاذ العام للمؤسسة' : 'Organization general ledger transactions'}</li>
+                            <li>{lang === 'ar' ? 'فصل وتجريد الأعضاء ليصبحوا مستخدمين مستقلين' : 'Unlink members into independent users'}</li>
+                        </ul>
+                        <p className="text-[11px] text-error font-bold">
+                            ⚠️ {lang === 'ar' ? 'هذا الإجراء لا يمكن التراجع عنه نهائياً.' : 'This action is irreversible.'}
+                        </p>
+                    </div>
+
+                    <div className="modal-action mt-6 gap-2">
+                        <button
+                            type="button"
+                            disabled={deleteLoading}
+                            onClick={() => setDeleteConfirmOrg(null)}
+                            className="btn btn-sm btn-ghost"
+                        >
+                            {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                        </button>
+                        <button
+                            type="button"
+                            disabled={deleteLoading}
+                            onClick={handleDeleteOrg}
+                            className="btn btn-sm btn-error text-white font-bold gap-1.5 shadow-sm"
+                        >
+                            {deleteLoading ? <span className="loading loading-spinner loading-xs" /> : (
+                                <span className="material-symbols-outlined text-[16px]">delete_forever</span>
+                            )}
+                            {lang === 'ar' ? 'حذف وتطهير شامل' : 'Purge & Delete'}
+                        </button>
+                    </div>
+                </div>
+                <div className="modal-backdrop bg-black/60 backdrop-blur-xs" onClick={() => !deleteLoading && setDeleteConfirmOrg(null)} />
             </div>
         </div>
     );

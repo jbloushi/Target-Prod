@@ -1363,6 +1363,16 @@ export const organizationService = {
       console.error(`Error removing member from organization ${id}:`, error);
       throw error;
     }
+  },
+
+  deleteOrganization: async (id) => {
+    try {
+      const response = await api.delete(`organizations/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error(`Error deleting organization ${id}:`, error);
+      throw error;
+    }
   }
 };
 
