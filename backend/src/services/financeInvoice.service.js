@@ -195,9 +195,12 @@ async function createInvoiceFromPeriod({ organizationId, periodStart, periodEnd,
 }
 
 async function listInvoices({ organizationId, status, page = 1, limit = 20 }) {
-    const parsedLimit = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
+    const parsedLimit = Math.min(Math.max(parseInt(limit) || 20, 1), 1000);
     const parsedPage = Math.max(parseInt(page) || 1, 1);
-    const where = { organizationId: organizationId || null };
+    const where = {};
+    if (organizationId && organizationId !== 'all') {
+        where.organizationId = organizationId === 'none' ? null : organizationId;
+    }
     if (status) where.status = status;
 
     let data;

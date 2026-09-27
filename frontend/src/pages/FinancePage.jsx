@@ -56,7 +56,7 @@ const FinancePage = () => {
     // Ledger State
     const [ledger, setLedger] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [pagination, setPagination] = useState({ page: 1, total: 0 });
+    const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, pages: 1 });
 
     // Organization State
     const [organizations, setOrganizations] = useState([]);
@@ -81,7 +81,7 @@ const FinancePage = () => {
     const [allocationLoading, setAllocationLoading] = useState(false);
 
     // Pagination State
-    const [shipmentPagination, setShipmentPagination] = useState({ page: 1, limit: 20, total: 0, pages: 1 });
+    const [shipmentPagination, setShipmentPagination] = useState({ page: 1, limit: 50, total: 0, pages: 1 });
     const [shipmentsLoading, setShipmentsLoading] = useState(false);
     const [debouncedSearch, setDebouncedSearch] = useState('');
 
@@ -212,18 +212,34 @@ const FinancePage = () => {
     }, [debouncedSearch, statusFilter]);
 
     const fetchLedger = useCallback(async (orgId) => {
+        const targetOrg = orgId || selectedOrgId;
+        if (!targetOrg) return;
         try {
             setLoading(true);
-            const response = await financeService.getLedger({ page: pagination.page, orgId });
+            const response = await financeService.getLedger({
+                page: pagination.page,
+                limit: pagination.limit,
+                orgId: targetOrg
+            });
             setLedger(response.data || []);
-            setPagination(prev => ({ ...prev, total: response.pagination?.total || 0 }));
+            setPagination(prev => ({
+                ...prev,
+                total: response.pagination?.total || 0,
+                pages: response.pagination?.pages || Math.ceil((response.pagination?.total || 0) / (prev.limit || 50)) || 1
+            }));
             await refreshUser();
         } catch (error) {
             console.error('Failed to fetch ledger:', error);
         } finally {
             setLoading(false);
         }
-    }, [pagination.page, refreshUser]);
+    }, [pagination.page, pagination.limit, selectedOrgId, refreshUser]);
+
+    useEffect(() => {
+        if (selectedOrgId) {
+            fetchLedger(selectedOrgId);
+        }
+    }, [pagination.page, pagination.limit]);
 
     const fetchShipments = useCallback(async () => {
         if (!selectedOrgId) return;
@@ -280,9 +296,11 @@ const FinancePage = () => {
         setShipmentPagination(prev => ({ ...prev, page: 1 }));
     }, [selectedOrgId]);
 
-    const currentOrgName = selectedOrgId === 'none'
-        ? 'Solo Shippers (Unorganized)'
-        : organizations.find(o => o.id === selectedOrgId)?.name || 'Selected Organization';
+    const currentOrgName = selectedOrgId === 'all'
+        ? (lang === 'ar' ? 'جميع المنظمات والعملاء (عرض موحد شامل)' : 'All Organizations (Consolidated Global View)')
+        : selectedOrgId === 'none'
+            ? (lang === 'ar' ? 'شاحنون أفراد (بدون منظمة)' : 'Solo Shippers (Unorganized)')
+            : organizations.find(o => o.id === selectedOrgId)?.name || 'Selected Organization';
 
     const loadFinance = useCallback(async () => {
         try {
@@ -303,13 +321,12 @@ const FinancePage = () => {
                 if (user?.organizationId && user?.role !== 'admin' && user?.role !== 'accounting' && user?.role !== 'manager' && user?.role !== 'staff') {
                     setSelectedOrgId(user.organizationId);
                 } else {
-                    const businessOrg = orgList.find(o => o.type === 'BUSINESS') || orgList[0];
-                    setSelectedOrgId(businessOrg?.id || orgList[0].id);
+                    setSelectedOrgId('all');
                 }
                 return;
             }
 
-            if (selectedOrgId && selectedOrgId !== 'none') {
+            if (selectedOrgId) {
                 const [balanceRes, paymentsRes, invoicesRes] = await Promise.all([
                     financeService.getOrganizationBalance(selectedOrgId),
                     financeService.listPayments(selectedOrgId),
@@ -322,22 +339,6 @@ const FinancePage = () => {
                 const unappliedPayments = (paymentsRes.data || []).filter(p => p.status !== 'APPLIED');
                 setPayments(unappliedPayments);
                 setInvoices(invoicesRes.data || []);
-            } else {
-                setLedger([]);
-                if (can('VIEW_INVOICES')) {
-                    const invoicesRes = await financeService.listInvoices(selectedOrgId);
-                    setInvoices(invoicesRes.data || []);
-                }
-                const balanceResponse = await financeService.getBalance();
-                setOverview({
-                    balance: balanceResponse.data?.balance || 0,
-                    creditLimit: balanceResponse.data?.creditLimit || 0,
-                    availableCredit: balanceResponse.data?.availableCredit || 0,
-                    unappliedCash: balanceResponse.data?.unappliedCash || 0,
-                    totalUnpaid: 0,
-                    agingBuckets: { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 },
-                    currency: normalizeCurrencyCode(balanceResponse.data?.currency)
-                });
             }
         } catch (err) {
             console.error('Failed to load finance data:', err);
@@ -352,14 +353,19 @@ const FinancePage = () => {
 
     const handlePostPayment = async () => {
         if (!paymentForm.amount) return;
+        const targetOrg = selectedOrgId === 'all' ? (paymentForm.targetOrgId || organizations[0]?.id) : selectedOrgId;
+        if (!targetOrg || targetOrg === 'none') {
+            enqueueSnackbar(lang === 'ar' ? 'يرجى اختيار منظمة لتسجيل الدفعة' : 'Please select an organization to post payment', { variant: 'warning' });
+            return;
+        }
         try {
-            await financeService.postPayment(selectedOrgId, {
+            await financeService.postPayment(targetOrg, {
                 ...paymentForm,
                 amount: parseFloat(paymentForm.amount),
                 currency: currentCurrency
             });
             enqueueSnackbar('Payment posted successfully', { variant: 'success' });
-            setPaymentForm({ amount: '', method: 'manual', reference: '', notes: '' });
+            setPaymentForm(prev => ({ ...prev, amount: '', reference: '', notes: '' }));
             loadFinance();
         } catch (error) {
             enqueueSnackbar('Failed to post payment', { variant: 'error' });
@@ -372,9 +378,15 @@ const FinancePage = () => {
             return;
         }
 
+        const targetOrg = selectedOrgId === 'all' ? (invoiceForm.targetOrgId || organizations[0]?.id) : selectedOrgId;
+        if (!targetOrg || targetOrg === 'none') {
+            enqueueSnackbar(lang === 'ar' ? 'يرجى اختيار منظمة لإصدار الفاتورة' : 'Please select an organization to invoice', { variant: 'warning' });
+            return;
+        }
+
         setInvoiceLoading(true);
         try {
-            await financeService.createInvoice(selectedOrgId, {
+            await financeService.createInvoice(targetOrg, {
                 periodStart: invoiceForm.periodStart,
                 periodEnd: invoiceForm.periodEnd,
                 dueDate: invoiceForm.dueDate || null,
@@ -445,12 +457,16 @@ const FinancePage = () => {
 
     const handleFifoConfirmed = async () => {
         setFifoConfirmOpen(false);
+        if (selectedOrgId === 'all') {
+            enqueueSnackbar(lang === 'ar' ? 'يرجى اختيار منظمة محددة من القائمة بالأعلى لإجراء التسوية التلقائية FIFO' : 'Please select a specific organization from the top selector for FIFO allocation', { variant: 'warning' });
+            return;
+        }
         try {
             await financeService.allocatePaymentsFifo(selectedOrgId);
             enqueueSnackbar('FIFO Allocation completed', { variant: 'success' });
             await loadFinance();
         } catch (error) {
-            enqueueSnackbar('Failed to allocate FIFO', { variant: 'error' });
+            enqueueSnackbar(error.message || 'Failed to allocate FIFO', { variant: 'error' });
         }
     };
 
@@ -484,9 +500,11 @@ const FinancePage = () => {
             return;
         }
 
+        const targetOrg = payment.organizationId || (selectedOrgId === 'all' ? 'none' : selectedOrgId);
+
         setAllocationLoading(true);
         try {
-            await financeService.allocatePaymentManual(selectedOrgId, {
+            await financeService.allocatePaymentManual(targetOrg, {
                 paymentId: selectedPaymentId,
                 shipmentIds: selectedShipmentIds,
                 amount: unappliedAmount
@@ -623,8 +641,11 @@ const FinancePage = () => {
                             <select
                                 value={selectedOrgId}
                                 onChange={(e) => setSelectedOrgId(e.target.value)}
-                                className="select select-sm select-bordered font-bold text-xs bg-base-100 max-w-[220px]"
+                                className="select select-sm select-bordered font-bold text-xs bg-base-100 max-w-[260px]"
                             >
+                                <option value="all">
+                                    {lang === 'ar' ? '🌐 جميع المنظمات والعملاء (عرض شامل)' : '🌐 All Organizations (Consolidated)'}
+                                </option>
                                 <option value="none">
                                     {t('fin_solo_shippers', 'Solo Shippers (Unorganized)')}
                                 </option>
@@ -651,6 +672,21 @@ const FinancePage = () => {
 
             {/* Navigation Tabs Strip */}
             <div className="tabs tabs-boxed bg-base-200/60 p-1.5 rounded-2xl flex flex-wrap gap-1 border border-base-200">
+                <button
+                    type="button"
+                    onClick={() => {
+                        setActiveTab('all_sections');
+                        fetchCodData();
+                        fetchDrivers();
+                    }}
+                    className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                        activeTab === 'all_sections' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                    }`}
+                >
+                    <span className="material-symbols-outlined text-[17px]">grid_view</span>
+                    {lang === 'ar' ? 'عرض الكل معاً (لوحة شاملة)' : 'View All at Once (Master Hub)'}
+                </button>
+
                 <button
                     type="button"
                     onClick={() => setActiveTab('overview')}
@@ -800,9 +836,17 @@ const FinancePage = () => {
                 </div>
             </div>
 
-            {/* ── TAB 1: OVERVIEW & CASH FLOW ── */}
-            {activeTab === 'overview' && (
+            {/* ── SECTION 1: OVERVIEW & CASH FLOW ── */}
+            {(activeTab === 'overview' || activeTab === 'all_sections') && (
                 <div className="space-y-6">
+                    {activeTab === 'all_sections' && (
+                        <div className="flex items-center gap-2 pt-2 pb-1 border-b border-base-200">
+                            <span className="material-symbols-outlined text-primary text-xl">dashboard</span>
+                            <h2 className="text-base sm:text-lg font-black text-base-content">
+                                {lang === 'ar' ? '١. نظرة عامة والتدفق النقدي' : '1. Overview & Cash Flow'}
+                            </h2>
+                        </div>
+                    )}
                     {/* 4 Balance Metric Cards */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4">
@@ -897,10 +941,18 @@ const FinancePage = () => {
                 </div>
             )}
 
-            {/* ── TAB 2: TRANSACTIONS / LEDGER ── */}
-            {activeTab === 'transactions' && (
+            {/* ── SECTION 2: TRANSACTIONS / LEDGER ── */}
+            {(activeTab === 'transactions' || activeTab === 'all_sections') && (
                 <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl overflow-hidden">
                     <div className="card-body p-5 space-y-4">
+                        {activeTab === 'all_sections' && (
+                            <div className="flex items-center gap-2 pb-2 border-b border-base-200">
+                                <span className="material-symbols-outlined text-primary text-xl">receipt_long</span>
+                                <h2 className="text-base sm:text-lg font-black text-base-content">
+                                    {lang === 'ar' ? '٢. دفتر الأستاذ العام وقيود اليومية' : '2. Ledger Transactions & Journal Entries'}
+                                </h2>
+                            </div>
+                        )}
                         <div className="flex items-center justify-between flex-wrap gap-2">
                             <div>
                                 <h3 className="card-title text-base font-bold text-base-content">
@@ -910,7 +962,23 @@ const FinancePage = () => {
                                     {lang === 'ar' ? 'سجل قيود اليومية المحاسبية المعتمدة لهذا الحساب بنظام القيد المزدوج.' : 'Audited double-entry journal entries for this account.'}
                                 </p>
                             </div>
-                            <ExportButton data={ledger} filename={`Ledger_${currentOrgName}`} />
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <div className="flex items-center gap-1.5 text-xs text-base-content/70">
+                                    <span>{lang === 'ar' ? 'عرض:' : 'Show:'}</span>
+                                    <select
+                                        value={pagination.limit}
+                                        onChange={(e) => setPagination(prev => ({ ...prev, limit: Number(e.target.value), page: 1 }))}
+                                        className="select select-xs select-bordered font-bold text-xs"
+                                    >
+                                        <option value={20}>20</option>
+                                        <option value={50}>50</option>
+                                        <option value={100}>100</option>
+                                        <option value={200}>200</option>
+                                        <option value={1000}>{lang === 'ar' ? 'الكل (١٠٠٠)' : 'All (1,000)'}</option>
+                                    </select>
+                                </div>
+                                <ExportButton data={ledger} filename={`Ledger_${currentOrgName}`} />
+                            </div>
                         </div>
 
                         <div className="overflow-x-auto">
@@ -918,6 +986,7 @@ const FinancePage = () => {
                                 <thead>
                                     <tr className="bg-base-200/60 text-base-content/70 text-[11px] font-bold uppercase">
                                         <th>{t('fin_th_date', 'Date')}</th>
+                                        {selectedOrgId === 'all' && <th>{lang === 'ar' ? 'المنظمة / العميل' : 'Organization'}</th>}
                                         <th>{t('fin_th_type', 'Type')}</th>
                                         <th>{lang === 'ar' ? 'التصنيف' : 'Category'}</th>
                                         <th>{t('fin_th_reference', 'Reference')}</th>
@@ -929,7 +998,7 @@ const FinancePage = () => {
                                 <tbody>
                                     {loading ? (
                                         <tr>
-                                            <td colSpan={7} className="py-16 text-center text-base-content/50">
+                                            <td colSpan={selectedOrgId === 'all' ? 8 : 7} className="py-16 text-center text-base-content/50">
                                                 <span className="loading loading-spinner loading-md text-primary"></span>
                                             </td>
                                         </tr>
@@ -937,6 +1006,13 @@ const FinancePage = () => {
                                         ledger.map((entry) => (
                                             <tr key={entry.id} className="hover">
                                                 <td className="font-mono text-xs">{format(new Date(entry.createdAt), 'yyyy-MM-dd HH:mm')}</td>
+                                                {selectedOrgId === 'all' && (
+                                                    <td>
+                                                        <span className="badge badge-sm badge-outline font-semibold text-[11px]">
+                                                            {entry.organization?.name || (lang === 'ar' ? 'شاحن فردي' : 'Solo Shipper')}
+                                                        </span>
+                                                    </td>
+                                                )}
                                                 <td>
                                                     <span className={`badge badge-sm font-bold text-[10px] ${
                                                         entry.entryType === 'CREDIT' ? 'badge-success text-white' : 'badge-error text-white'
@@ -959,7 +1035,7 @@ const FinancePage = () => {
                                         ))
                                     ) : (
                                         <tr>
-                                            <td colSpan={7} className="py-12 text-center text-base-content/50">
+                                            <td colSpan={selectedOrgId === 'all' ? 8 : 7} className="py-12 text-center text-base-content/50">
                                                 {t('fin_no_transactions', 'No ledger transactions recorded')}
                                             </td>
                                         </tr>
@@ -967,19 +1043,73 @@ const FinancePage = () => {
                                 </tbody>
                             </table>
                         </div>
+
+                        {/* Ledger Pagination Controls */}
+                        <div className="flex items-center justify-between flex-wrap gap-2 pt-3 border-t border-base-200 text-xs text-base-content/70">
+                            <div>
+                                {lang === 'ar'
+                                    ? `عرض ${ledger.length} من إجمالي ${pagination.total} قيد`
+                                    : `Showing ${ledger.length} of ${pagination.total} entries`}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                <button
+                                    type="button"
+                                    disabled={pagination.page <= 1 || loading}
+                                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                                    className="btn btn-xs btn-ghost border border-base-200"
+                                >
+                                    {lang === 'ar' ? 'السابق' : 'Prev'}
+                                </button>
+                                <span className="font-mono px-2">
+                                    {pagination.page} / {Math.max(1, pagination.pages || Math.ceil((pagination.total || 0) / (pagination.limit || 50)))}
+                                </span>
+                                <button
+                                    type="button"
+                                    disabled={pagination.page >= (pagination.pages || Math.ceil((pagination.total || 0) / (pagination.limit || 50))) || loading}
+                                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                                    className="btn btn-xs btn-ghost border border-base-200"
+                                >
+                                    {lang === 'ar' ? 'التالي' : 'Next'}
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
 
-            {/* ── TAB 3: ALLOCATIONS & PAYMENTS ── */}
-            {activeTab === 'allocations' && (
+            {/* ── SECTION 3: ALLOCATIONS & PAYMENTS ── */}
+            {(activeTab === 'allocations' || activeTab === 'all_sections') && (
                 <div className="space-y-6">
+                    {activeTab === 'all_sections' && (
+                        <div className="flex items-center gap-2 pt-2 pb-1 border-b border-base-200">
+                            <span className="material-symbols-outlined text-primary text-xl">account_balance_wallet</span>
+                            <h2 className="text-base sm:text-lg font-black text-base-content">
+                                {lang === 'ar' ? '٣. تسوية الدفعات وتخصيص الشحنات' : '3. Payment Allocations & Shipments Settlement'}
+                            </h2>
+                        </div>
+                    )}
                     {can('MANAGE_PAYMENTS') && (
                         <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-5">
                             <h3 className="card-title text-base font-bold text-base-content mb-3">
                                 {lang === 'ar' ? 'تسجيل دفعة مستلمة' : 'Post Received Payment'}: {currentOrgName}
                             </h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
+                                {selectedOrgId === 'all' && (
+                                    <div>
+                                        <label className="text-[11px] font-bold text-base-content/60 block mb-1">
+                                            {lang === 'ar' ? 'المنظمة / العميل' : 'Organization'}
+                                        </label>
+                                        <select
+                                            value={paymentForm.targetOrgId || (organizations[0]?.id || '')}
+                                            onChange={(e) => setPaymentForm({ ...paymentForm, targetOrgId: e.target.value })}
+                                            className="select select-sm select-bordered w-full text-xs font-semibold"
+                                        >
+                                            {organizations.map(org => (
+                                                <option key={org.id} value={org.id}>{org.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
                                 <div>
                                     <label className="text-[11px] font-bold text-base-content/60 block mb-1">
                                         {lang === 'ar' ? 'المبلغ' : 'Amount'} ({currentCurrency})
@@ -1083,8 +1213,13 @@ const FinancePage = () => {
                                                 }`}
                                             >
                                                 <div>
-                                                    <div className="font-bold text-xs text-base-content">
-                                                        {p.reference || (lang === 'ar' ? `دفعة #${p.id.slice(-6)}` : `Payment #${p.id.slice(-6)}`)}
+                                                    <div className="font-bold text-xs text-base-content flex items-center gap-1.5 flex-wrap">
+                                                        <span>{p.reference || (lang === 'ar' ? `دفعة #${p.id.slice(-6)}` : `Payment #${p.id.slice(-6)}`)}</span>
+                                                        {selectedOrgId === 'all' && (
+                                                            <span className="badge badge-xs badge-outline font-sans text-[10px]">
+                                                                {p.organization?.name || (lang === 'ar' ? 'شاحن فردي' : 'Solo Shipper')}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                     <div className="text-[11px] text-base-content/50">
                                                         {format(new Date(p.postedAt || p.createdAt), 'MMM dd, yyyy')} • {p.method}
@@ -1126,23 +1261,39 @@ const FinancePage = () => {
                                 </button>
                             </div>
 
-                            <div className="p-3 bg-base-200/30 border-b border-base-200 flex items-center gap-2">
-                                <input
-                                    type="text"
-                                    placeholder={lang === 'ar' ? 'بحث برقم الشحنة، المستلم...' : 'Search tracking, recipient...'}
-                                    value={shipmentSearch}
-                                    onChange={(e) => setShipmentSearch(e.target.value)}
-                                    className="input input-xs input-bordered flex-1 bg-base-100 text-xs"
-                                />
-                                <select
-                                    value={statusFilter}
-                                    onChange={(e) => setStatusFilter(e.target.value)}
-                                    className="select select-xs select-bordered text-xs"
-                                >
-                                    <option value="all">{lang === 'ar' ? 'الكل' : 'All'}</option>
-                                    <option value="unpaid">{lang === 'ar' ? 'غير مدفوعة فقط' : 'Unpaid Only'}</option>
-                                    <option value="partial">{lang === 'ar' ? 'مدفوعة جزئياً' : 'Partial Only'}</option>
-                                </select>
+                            <div className="p-3 bg-base-200/30 border-b border-base-200 flex items-center justify-between gap-2 flex-wrap">
+                                <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+                                    <input
+                                        type="text"
+                                        placeholder={lang === 'ar' ? 'بحث برقم الشحنة، المستلم...' : 'Search tracking, recipient...'}
+                                        value={shipmentSearch}
+                                        onChange={(e) => setShipmentSearch(e.target.value)}
+                                        className="input input-xs input-bordered flex-1 bg-base-100 text-xs"
+                                    />
+                                    <select
+                                        value={statusFilter}
+                                        onChange={(e) => setStatusFilter(e.target.value)}
+                                        className="select select-xs select-bordered text-xs"
+                                    >
+                                        <option value="all">{lang === 'ar' ? 'الكل' : 'All'}</option>
+                                        <option value="unpaid">{lang === 'ar' ? 'غير مدفوعة فقط' : 'Unpaid Only'}</option>
+                                        <option value="partial">{lang === 'ar' ? 'مدفوعة جزئياً' : 'Partial Only'}</option>
+                                    </select>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-xs text-base-content/70">
+                                    <span>{lang === 'ar' ? 'عرض:' : 'Show:'}</span>
+                                    <select
+                                        value={shipmentPagination.limit}
+                                        onChange={(e) => setShipmentPagination(prev => ({ ...prev, limit: Number(e.target.value), page: 1 }))}
+                                        className="select select-xs select-bordered font-bold text-xs"
+                                    >
+                                        <option value={20}>20</option>
+                                        <option value={50}>50</option>
+                                        <option value={100}>100</option>
+                                        <option value={200}>200</option>
+                                        <option value={1000}>{lang === 'ar' ? 'الكل (١٠٠٠)' : 'All (1,000)'}</option>
+                                    </select>
+                                </div>
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-3 space-y-2">
@@ -1165,7 +1316,7 @@ const FinancePage = () => {
                                                         if (next[s.id]) delete next[s.id];
                                                         else next[s.id] = s;
                                                         return next;
-                                                    });
+                                                      });
                                                 }}
                                                 className={`p-3.5 rounded-xl border transition-all flex items-center justify-between gap-3 ${
                                                     s.paid
@@ -1184,8 +1335,13 @@ const FinancePage = () => {
                                                         className="checkbox checkbox-xs checkbox-primary"
                                                     />
                                                     <div>
-                                                        <div className="font-mono font-bold text-xs text-base-content">
-                                                            {s.trackingNumber}
+                                                        <div className="font-mono font-bold text-xs text-base-content flex items-center gap-1.5 flex-wrap">
+                                                            <span>{s.trackingNumber}</span>
+                                                            {selectedOrgId === 'all' && s.organization?.name && (
+                                                                <span className="badge badge-xs badge-outline font-sans text-[10px]">
+                                                                    {s.organization.name}
+                                                                </span>
+                                                            )}
                                                         </div>
                                                         <div className="text-[11px] text-base-content/50">
                                                             {s.receiver?.contactPerson || (lang === 'ar' ? 'المستلم' : 'Consignee')} • {formatRoute(s.origin, s.destination)}
@@ -1209,20 +1365,74 @@ const FinancePage = () => {
                                     </div>
                                 )}
                             </div>
+
+                            {/* Shipments Pagination Footer */}
+                            <div className="p-2.5 bg-base-200/50 border-t border-base-200 flex items-center justify-between text-xs text-base-content/70">
+                                <div>
+                                    {lang === 'ar'
+                                        ? `عرض ${shipments.length} من إجمالي ${shipmentPagination.total}`
+                                        : `Showing ${shipments.length} of ${shipmentPagination.total}`}
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        disabled={shipmentPagination.page <= 1 || shipmentsLoading}
+                                        onClick={() => setShipmentPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                                        className="btn btn-xs btn-ghost border border-base-200"
+                                    >
+                                        ‹
+                                    </button>
+                                    <span className="font-mono text-[11px] px-1">
+                                        {shipmentPagination.page} / {Math.max(1, shipmentPagination.pages || Math.ceil((shipmentPagination.total || 0) / (shipmentPagination.limit || 50)))}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        disabled={shipmentPagination.page >= Math.max(1, shipmentPagination.pages || Math.ceil((shipmentPagination.total || 0) / (shipmentPagination.limit || 50))) || shipmentsLoading}
+                                        onClick={() => setShipmentPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                                        className="btn btn-xs btn-ghost border border-base-200"
+                                    >
+                                        ›
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* ── TAB 4: INVOICES & BILLING ── */}
-            {activeTab === 'invoices' && (
+            {/* ── SECTION 4: INVOICES & BILLING ── */}
+            {(activeTab === 'invoices' || activeTab === 'all_sections') && can('VIEW_INVOICES') && (
                 <div className="space-y-6">
+                    {activeTab === 'all_sections' && (
+                        <div className="flex items-center gap-2 pt-2 pb-1 border-b border-base-200">
+                            <span className="material-symbols-outlined text-primary text-xl">description</span>
+                            <h2 className="text-base sm:text-lg font-black text-base-content">
+                                {lang === 'ar' ? '٤. الفواتير والمطالبات المالية' : '4. Invoices & Billing Statements'}
+                            </h2>
+                        </div>
+                    )}
                     {can('MANAGE_PAYMENTS') && (
                         <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-5">
                             <h3 className="card-title text-base font-bold text-base-content mb-3">
                                 {lang === 'ar' ? 'إصدار فاتورة / مطالبة مالية' : 'Generate Statement / Invoice'}: {currentOrgName}
                             </h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
+                                {selectedOrgId === 'all' && (
+                                    <div>
+                                        <label className="text-[11px] font-bold text-base-content/60 block mb-1">
+                                            {lang === 'ar' ? 'المنظمة / العميل' : 'Organization'}
+                                        </label>
+                                        <select
+                                            value={invoiceForm.targetOrgId || (organizations[0]?.id || '')}
+                                            onChange={(e) => setInvoiceForm({ ...invoiceForm, targetOrgId: e.target.value })}
+                                            className="select select-sm select-bordered w-full text-xs font-semibold"
+                                        >
+                                            {organizations.map(org => (
+                                                <option key={org.id} value={org.id}>{org.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
                                 <div>
                                     <label className="text-[11px] font-bold text-base-content/60 block mb-1">
                                         {lang === 'ar' ? 'بداية الفترة' : 'Period Start'}
@@ -1292,6 +1502,7 @@ const FinancePage = () => {
                                     <thead>
                                         <tr className="bg-base-200/60 text-base-content/70 text-[11px] font-bold uppercase">
                                             <th>{t('fin_th_invoice_num', 'Invoice #')}</th>
+                                            {selectedOrgId === 'all' && <th>{lang === 'ar' ? 'المنظمة / العميل' : 'Organization'}</th>}
                                             <th>{lang === 'ar' ? 'الفترة' : 'Period'}</th>
                                             <th className="text-center">{lang === 'ar' ? 'عدد الشحنات' : 'Items'}</th>
                                             <th className="text-center">{t('fin_th_status', 'Status')}</th>
@@ -1305,6 +1516,13 @@ const FinancePage = () => {
                                             invoices.map((inv) => (
                                                 <tr key={inv.id} className="hover">
                                                     <td className="font-mono font-bold text-xs">{inv.invoiceNumber}</td>
+                                                    {selectedOrgId === 'all' && (
+                                                        <td>
+                                                            <span className="badge badge-sm badge-outline font-semibold text-[11px]">
+                                                                {inv.organization?.name || (lang === 'ar' ? 'شاحن فردي' : 'Solo Shipper')}
+                                                            </span>
+                                                        </td>
+                                                    )}
                                                     <td className="text-xs">
                                                         {format(new Date(inv.periodStart), 'MMM dd')} - {format(new Date(inv.periodEnd), 'MMM dd, yyyy')}
                                                     </td>
@@ -1358,7 +1576,7 @@ const FinancePage = () => {
                                             ))
                                         ) : (
                                             <tr>
-                                                <td colSpan={7} className="py-12 text-center text-base-content/50">
+                                                <td colSpan={selectedOrgId === 'all' ? 8 : 7} className="py-12 text-center text-base-content/50">
                                                     {t('fin_no_invoices', 'No invoices found')}
                                                 </td>
                                             </tr>
@@ -1376,9 +1594,17 @@ const FinancePage = () => {
                 <FinanceReports ledger={ledger} shipments={shipments} organizations={organizations} />
             )}
 
-            {/* ── TAB 6: DRIVER COD & VAULT CLEARING ── */}
-            {activeTab === 'cod' && can('VIEW_FINANCE') && (
+            {/* ── SECTION 5: DRIVER COD & VAULT CLEARING ── */}
+            {(activeTab === 'cod' || activeTab === 'all_sections') && can('VIEW_FINANCE') && (
                 <div className="space-y-6">
+                    {activeTab === 'all_sections' && (
+                        <div className="flex items-center gap-2 pt-2 pb-1 border-b border-base-200">
+                            <span className="material-symbols-outlined text-primary text-xl">payments</span>
+                            <h2 className="text-base sm:text-lg font-black text-base-content">
+                                {lang === 'ar' ? '٥. نقدية السائقين وخزينة التحصيل (COD)' : '5. Driver Cash & COD Vault Clearing'}
+                            </h2>
+                        </div>
+                    )}
                     {/* Alerts Banner */}
                     {codSummary.alerts && codSummary.alerts.length > 0 && (
                         <div className="alert alert-warning shadow-xs border border-warning/40 rounded-2xl">

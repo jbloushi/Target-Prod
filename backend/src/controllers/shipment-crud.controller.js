@@ -545,7 +545,7 @@ exports.getAllShipments = async (req, res) => {
         scopeShipmentWhere(req, where);
 
         // 5. Pagination & Sorting
-        const parsedLimit = Math.min(Math.max(parseInt(limit) || 50, 1), 100);
+        const parsedLimit = Math.min(Math.max(parseInt(limit) || 50, 1), 1000);
         const parsedPage = Math.max(parseInt(page) || 1, 1);
         const skip = (parsedPage - 1) * parsedLimit;
         
