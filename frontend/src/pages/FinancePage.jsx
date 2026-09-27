@@ -878,7 +878,7 @@ const FinancePage = () => {
                                 </div>
                             </div>
                             <div className="text-2xl font-black font-mono text-base-content">
-                                {fmtAmount(summary.availableCredit || summary.balance)} <span className="text-xs font-semibold text-base-content/60">{currentCurrency}</span>
+                                {fmtAmount(selectedOrgId === 'all' ? summary.balance : (Number(summary.creditLimit || 0) > 0 ? summary.availableCredit : summary.balance))} <span className="text-xs font-semibold text-base-content/60">{currentCurrency}</span>
                             </div>
                             <div className="flex items-center justify-between text-[11px] text-base-content/50 mt-2">
                                 <span>
@@ -926,7 +926,7 @@ const FinancePage = () => {
                             </div>
                             <div className="flex items-center justify-between text-[11px] text-base-content/50 mt-2">
                                 <span>
-                                    {summary.unpaidShipmentsCount ?? shipments.filter(s => !s.paid).length} {lang === 'ar' ? 'شحنات غير مسددة' : 'Outstanding invoices'}
+                                    {summary.unpaidShipmentsCount ?? shipments.filter(s => !s.paid).length} {lang === 'ar' ? 'شحنات غير مسددة' : 'Outstanding shipments'}
                                 </span>
                                 <span className="badge badge-ghost badge-xs font-mono">{summary.agingBuckets?.['0-30'] ? '0-30D' : 'CURRENT'}</span>
                             </div>
@@ -947,7 +947,9 @@ const FinancePage = () => {
                             </div>
                             <div className="flex items-center justify-between text-[11px] text-base-content/50 mt-2">
                                 <span>
-                                    {summary.totalInvoicesCount ?? invoices.length} {lang === 'ar' ? 'فواتير ومطالبات' : 'Statements'}
+                                    {Number(summary.totalInvoicesAmount || 0) > 0
+                                        ? `${fmtAmount(summary.totalInvoicesAmount)} ${currentCurrency}`
+                                        : `${summary.totalInvoicesCount ?? invoices.length} ${lang === 'ar' ? 'فواتير ومطالبات' : 'Statements'}`}
                                 </span>
                                 <span className="badge badge-outline badge-xs font-bold">{lang === 'ar' ? 'متوازن' : 'Balanced'}</span>
                             </div>

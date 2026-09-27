@@ -1,6 +1,7 @@
 const { prisma } = require('../config/database');
 const { Decimal } = require('decimal.js');
 const logger = require('../utils/logger');
+const currencyRateService = require('./currencyRate.service');
 
 Decimal.set({ precision: 20, rounding: Decimal.ROUND_HALF_UP });
 
@@ -64,11 +65,20 @@ const getShipmentCurrency = (shipment) => normalizeCurrencyCode(
 
 const getShipmentChargeAmount = (shipment) => {
     if (!shipment) return new Decimal(0);
-    if (shipment.pricingSnapshot?.totalPrice !== undefined && shipment.pricingSnapshot?.totalPrice !== null) {
-        return normalizeAmount(shipment.pricingSnapshot.totalPrice);
+    const snap = typeof shipment.pricingSnapshot === 'string'
+        ? (() => { try { return JSON.parse(shipment.pricingSnapshot); } catch { return null; } })()
+        : shipment.pricingSnapshot;
+    if (snap?.totalPrice !== undefined && snap?.totalPrice !== null && !isNaN(Number(snap.totalPrice)) && Number(snap.totalPrice) > 0) {
+        return normalizeAmount(snap.totalPrice);
     }
-    if (shipment.price !== undefined && shipment.price !== null) {
+    if (shipment.remainingBalance !== undefined && shipment.remainingBalance !== null && Number(shipment.remainingBalance) > 0) {
+        return normalizeAmount(shipment.remainingBalance);
+    }
+    if (shipment.price !== undefined && shipment.price !== null && !isNaN(Number(shipment.price)) && Number(shipment.price) > 0) {
         return normalizeAmount(shipment.price);
+    }
+    if (shipment.codAmount !== undefined && shipment.codAmount !== null && Number(shipment.codAmount) > 0) {
+        return normalizeAmount(shipment.codAmount);
     }
     return new Decimal(0);
 };
@@ -96,7 +106,17 @@ const getOrganizationBalance = async (organizationId, currency = null) => {
         });
         const debitTotal = totals.find(row => row.entryType === 'DEBIT')?._sum.amount || 0;
         const creditTotal = totals.find(row => row.entryType === 'CREDIT')?._sum.amount || 0;
-        return toApiAmount(normalizeAmount(debitTotal).minus(creditTotal));
+        const ledgerBalance = normalizeAmount(debitTotal).minus(creditTotal);
+
+        if (totals.length === 0 || ledgerBalance.isZero()) {
+            const orgsSum = await prisma.organization.aggregate({
+                _sum: { balance: true }
+            });
+            if (orgsSum._sum?.balance && !normalizeAmount(orgsSum._sum.balance).isZero()) {
+                return toApiAmount(orgsSum._sum.balance);
+            }
+        }
+        return toApiAmount(ledgerBalance);
     }
     if (!organizationId && organizationId !== null) return 0;
     const balanceCurrency = normalizeCurrencyCode(currency || await getOrganizationCurrency(organizationId));
@@ -132,13 +152,27 @@ const getOrganizationBalancesByCurrency = async (organizationId) => {
         _sum: { amount: true }
     });
 
-    return totals.reduce((acc, row) => {
+    const result = totals.reduce((acc, row) => {
         const currency = normalizeCurrencyCode(row.currency);
         const current = normalizeAmount(acc[currency] || 0);
         const delta = signedAmount(row.entryType, row._sum.amount || 0);
         acc[currency] = toApiAmount(current.plus(delta));
         return acc;
     }, {});
+
+    if (Object.keys(result).length === 0 || Object.values(result).every(v => v === 0)) {
+        if (organizationId === 'all') {
+            const orgs = await prisma.organization.groupBy({
+                by: ['currency'],
+                _sum: { balance: true }
+            });
+            orgs.forEach(o => {
+                const curr = normalizeCurrencyCode(o.currency);
+                result[curr] = toApiAmount(o._sum.balance || 0);
+            });
+        }
+    }
+    return result;
 };
 
 const createLedgerEntry = async (organizationId, entry, externalTx = null) => {
@@ -300,10 +334,7 @@ const getAgingReport = async (organizationId, currency = null) => {
     const baseWhere = organizationId === 'all' ? {} : { organizationId: organizationId || null };
     const unpaidWhere = {
         ...baseWhere,
-        OR: [
-            { paid: false },
-            { paid: null }
-        ]
+        paid: false
     };
 
     const [unpaidShipments, totalShipmentsCount] = await Promise.all([
@@ -312,6 +343,8 @@ const getAgingReport = async (organizationId, currency = null) => {
             select: {
                 id: true,
                 price: true,
+                remainingBalance: true,
+                codAmount: true,
                 pricingSnapshot: true,
                 currency: true,
                 createdAt: true,
@@ -327,7 +360,7 @@ const getAgingReport = async (organizationId, currency = null) => {
     const now = new Date();
     for (const shipment of unpaidShipments) {
         const shipmentCurrency = getShipmentCurrency(shipment);
-        if (requestedCurrency && shipmentCurrency !== requestedCurrency) continue;
+        if (requestedCurrency && organizationId !== 'all' && shipmentCurrency !== requestedCurrency) continue;
 
         const totalCharge = getShipmentChargeAmount(shipment);
         const totalAllocated = shipment.allocations
@@ -348,8 +381,21 @@ const getAgingReport = async (organizationId, currency = null) => {
     }
 
     const defaultCurrency = requestedCurrency || (organizationId === 'all' ? BASE_CURRENCY : normalizeCurrencyCode(await getOrganizationCurrency(organizationId)));
+    
+    // In 'all' mode, calculate total consolidated unpaid across currencies
+    let consolidatedUnpaid = normalizeAmount(totalsByCurrency[defaultCurrency] || 0);
+    if (organizationId === 'all') {
+        const rates = await currencyRateService.getRates().then(r => r.rates).catch(() => ({}));
+        for (const [curr, amt] of Object.entries(totalsByCurrency)) {
+            if (curr !== defaultCurrency && Number(amt) > 0) {
+                const rateToKwd = rates[curr] || 1;
+                consolidatedUnpaid = consolidatedUnpaid.plus(normalizeAmount(amt).times(rateToKwd));
+            }
+        }
+    }
+
     return {
-        totalUnpaid: toApiAmount(totalsByCurrency[defaultCurrency] || 0),
+        totalUnpaid: toApiAmount(consolidatedUnpaid),
         unpaidShipmentsCount,
         totalShipmentsCount,
         buckets: bucketsByCurrency[defaultCurrency] || emptyBuckets(),
