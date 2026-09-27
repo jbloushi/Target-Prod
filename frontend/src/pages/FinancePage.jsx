@@ -604,6 +604,16 @@ const FinancePage = () => {
     const summary = overview || {};
     const selectedCount = Object.keys(selectedShipmentsMap).length;
 
+    // Workspace Suites & Scope Categorization
+    const arTabs = ['overview', 'transactions', 'allocations', 'invoices', 'all_sections'];
+    const codTabs = ['cod'];
+    const erpTabs = ['gl', 'statements', 'ap', 'treasury', 'reports', 'periods'];
+
+    const isOrgScopedTab = arTabs.includes(activeTab);
+    const currentSuite = arTabs.includes(activeTab)
+        ? 'ar'
+        : (codTabs.includes(activeTab) ? 'cod' : 'erp');
+
     return (
         <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
             {/* Header Ribbon */}
@@ -636,29 +646,67 @@ const FinancePage = () => {
 
                 {/* Scope & Refresh Actions */}
                 <div className="flex items-center gap-2 flex-wrap">
-                    {can('VIEW_FINANCE') && organizations.length > 0 && (
+                    {can('VIEW_FINANCE') && (
                         <div className="flex items-center gap-2">
-                            <select
-                                value={selectedOrgId}
-                                onChange={(e) => setSelectedOrgId(e.target.value)}
-                                className="select select-sm select-bordered font-bold text-xs bg-base-100 max-w-[260px]"
-                            >
-                                <option value="all">
-                                    {lang === 'ar' ? '🌐 جميع المنظمات والعملاء (عرض شامل)' : '🌐 All Organizations (Consolidated)'}
-                                </option>
-                                <option value="none">
-                                    {t('fin_solo_shippers', 'Solo Shippers (Unorganized)')}
-                                </option>
-                                {organizations.map((org) => (
-                                    <option key={org.id} value={org.id}>{org.name}</option>
-                                ))}
-                            </select>
+                            {isOrgScopedTab ? (
+                                organizations.length > 0 && (
+                                    <div className="relative">
+                                        <select
+                                            value={selectedOrgId}
+                                            onChange={(e) => setSelectedOrgId(e.target.value)}
+                                            className="select select-sm select-bordered font-bold text-xs bg-base-100 max-w-[270px] pl-8 rtl:pr-8 rtl:pl-3"
+                                        >
+                                            <option value="all">
+                                                {lang === 'ar' ? '🌐 جميع المنظمات والعملاء (عرض شامل)' : '🌐 All Organizations (Consolidated)'}
+                                            </option>
+                                            <option value="none">
+                                                {t('fin_solo_shippers', 'Solo Shippers (Unorganized)')}
+                                            </option>
+                                            {organizations.map((org) => (
+                                                <option key={org.id} value={org.id}>{org.name}</option>
+                                            ))}
+                                        </select>
+                                        <span className="material-symbols-outlined text-[16px] text-base-content/50 absolute left-2.5 rtl:left-auto rtl:right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                                            corporate_fare
+                                        </span>
+                                    </div>
+                                )
+                            ) : (
+                                <div
+                                    className="relative tooltip tooltip-bottom"
+                                    data-tip={
+                                        activeTab === 'cod'
+                                            ? (lang === 'ar' ? 'نقدية وعُهد السائقين تتبع أسطول المنصة بالكامل ولا تقتصر على عميل محدد' : 'Driver COD Remittance operates across the fleet vault, not filtered by customer org')
+                                            : (lang === 'ar' ? 'دفاتر الأستاذ العام والقوائم المالية تخص حسابات الشركة الشاملة' : 'Corporate General Ledger & Statements reflect company-wide accounts')
+                                    }
+                                >
+                                    <select
+                                        disabled
+                                        className="select select-sm select-bordered font-bold text-xs bg-base-200/70 border-base-300 text-base-content/60 opacity-80 cursor-not-allowed max-w-[270px] pl-8 rtl:pr-8 rtl:pl-3"
+                                    >
+                                        <option>
+                                            {activeTab === 'cod'
+                                                ? (lang === 'ar' ? '🔒 خزينة تحصيل السائقين (شامل الأسطول)' : '🔒 Driver Fleet Vault (Platform-wide)')
+                                                : (lang === 'ar' ? '🔒 الأستاذ العام للمؤسسة (شامل الشركة)' : '🔒 Corporate Ledger (Platform-wide)')}
+                                        </option>
+                                    </select>
+                                    <span className="material-symbols-outlined text-[16px] text-base-content/40 absolute left-2.5 rtl:left-auto rtl:right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                                        lock
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     )}
 
                     <button
                         type="button"
-                        onClick={loadFinance}
+                        onClick={() => {
+                            loadFinance();
+                            if (activeTab === 'cod' || activeTab === 'all_sections') {
+                                fetchCodData();
+                                fetchDrivers();
+                            }
+                        }}
                         disabled={loading}
                         className="btn btn-sm btn-ghost border border-base-200 gap-1.5 font-bold"
                     >
@@ -670,55 +718,208 @@ const FinancePage = () => {
                 </div>
             </div>
 
-            {/* Navigation Tabs Strip */}
-            <div className="tabs tabs-boxed bg-base-200/60 p-1.5 rounded-2xl flex flex-wrap gap-1 border border-base-200">
+            {/* ── WORKSPACE SUITE SWITCHER (TIER 1) ── */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* Suite 1: Customer AR & Billing */}
                 <button
                     type="button"
-                    onClick={() => setActiveTab('overview')}
-                    className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
-                        activeTab === 'overview' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                    onClick={() => {
+                        if (!arTabs.includes(activeTab)) {
+                            setActiveTab('overview');
+                        }
+                    }}
+                    className={`relative p-3.5 rounded-2xl border transition-all text-left rtl:text-right flex items-center gap-3.5 ${
+                        currentSuite === 'ar'
+                            ? 'bg-base-100 border-primary shadow-sm ring-1 ring-primary/20'
+                            : 'bg-base-100/60 border-base-200 hover:bg-base-100 hover:border-base-300'
                     }`}
                 >
-                    <span className="material-symbols-outlined text-[17px]">dashboard</span>
-                    {t('fin_tab_overview', 'Overview & Cash Flow')}
+                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                        currentSuite === 'ar'
+                            ? 'bg-primary text-primary-content shadow-xs'
+                            : 'bg-base-200 text-base-content/60'
+                    }`}>
+                        <span className="material-symbols-outlined text-2xl">account_balance_wallet</span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-1 mb-0.5">
+                            <span className="text-xs font-black uppercase tracking-wider text-base-content">
+                                {lang === 'ar' ? 'العملاء والذمم المدينة (AR)' : 'Customer AR & Billing'}
+                            </span>
+                            {currentSuite === 'ar' ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                                    {lang === 'ar' ? 'نشط' : 'Active'}
+                                </span>
+                            ) : (
+                                <span className="text-[10px] text-base-content/40 font-mono">5 {lang === 'ar' ? 'أقسام' : 'views'}</span>
+                            )}
+                        </div>
+                        <p className="text-[11px] text-base-content/60 truncate">
+                            {lang === 'ar' ? 'الأرصدة، الفواتير، التحصيلات، وتسويات FIFO' : 'Invoices, aging, balances, FIFO payments'}
+                        </p>
+                    </div>
                 </button>
 
-                <button
-                    type="button"
-                    onClick={() => setActiveTab('transactions')}
-                    className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
-                        activeTab === 'transactions' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
-                    }`}
-                >
-                    <span className="material-symbols-outlined text-[17px]">receipt_long</span>
-                    {t('fin_tab_transactions', 'Ledger Transactions')}
-                </button>
-
-                <button
-                    type="button"
-                    onClick={() => setActiveTab('allocations')}
-                    className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
-                        activeTab === 'allocations' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
-                    }`}
-                >
-                    <span className="material-symbols-outlined text-[17px]">account_balance_wallet</span>
-                    {t('fin_tab_allocations', 'Allocations & Payments')}
-                </button>
-
-                {can('VIEW_INVOICES') && (
+                {/* Suite 2: Driver COD Vault */}
+                {can('VIEW_FINANCE') && (
                     <button
                         type="button"
-                        onClick={() => setActiveTab('invoices')}
-                        className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
-                            activeTab === 'invoices' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                        onClick={() => {
+                            setActiveTab('cod');
+                            fetchCodData();
+                            fetchDrivers();
+                        }}
+                        className={`relative p-3.5 rounded-2xl border transition-all text-left rtl:text-right flex items-center gap-3.5 ${
+                            currentSuite === 'cod'
+                                ? 'bg-base-100 border-primary shadow-sm ring-1 ring-primary/20'
+                                : 'bg-base-100/60 border-base-200 hover:bg-base-100 hover:border-base-300'
                         }`}
                     >
-                        <span className="material-symbols-outlined text-[17px]">description</span>
-                        {t('fin_tab_invoices', 'Invoices & Billing')}
+                        <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                            currentSuite === 'cod'
+                                ? 'bg-primary text-primary-content shadow-xs'
+                                : 'bg-base-200 text-base-content/60'
+                        }`}>
+                            <span className="material-symbols-outlined text-2xl">payments</span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-1 mb-0.5">
+                                <span className="text-xs font-black uppercase tracking-wider text-base-content">
+                                    {lang === 'ar' ? 'نقدية وعُهد السائقين (COD)' : 'Driver Cash & COD Vault'}
+                                </span>
+                                {currentSuite === 'cod' ? (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                                        {lang === 'ar' ? 'نشط' : 'Active'}
+                                    </span>
+                                ) : (
+                                    <span className="text-[10px] text-base-content/40 font-mono">{lang === 'ar' ? 'خزينة' : 'Vault'}</span>
+                                )}
+                            </div>
+                            <p className="text-[11px] text-base-content/60 truncate">
+                                {lang === 'ar' ? 'توريد الكاش، مطابقة الأكياس، وفروقات العُهد' : 'Cash remittance, bag audits, vault clearing'}
+                            </p>
+                        </div>
                     </button>
                 )}
 
+                {/* Suite 3: Corporate ERP & Accounting */}
                 {can('VIEW_FINANCE') && (
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (!erpTabs.includes(activeTab)) {
+                                setActiveTab('gl');
+                            }
+                        }}
+                        className={`relative p-3.5 rounded-2xl border transition-all text-left rtl:text-right flex items-center gap-3.5 ${
+                            currentSuite === 'erp'
+                                ? 'bg-base-100 border-primary shadow-sm ring-1 ring-primary/20'
+                                : 'bg-base-100/60 border-base-200 hover:bg-base-100 hover:border-base-300'
+                        }`}
+                    >
+                        <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                            currentSuite === 'erp'
+                                ? 'bg-primary text-primary-content shadow-xs'
+                                : 'bg-base-200 text-base-content/60'
+                        }`}>
+                            <span className="material-symbols-outlined text-2xl">domain</span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-1 mb-0.5">
+                                <span className="text-xs font-black uppercase tracking-wider text-base-content">
+                                    {lang === 'ar' ? 'الإدارة المالية والمحاسبة (ERP)' : 'Corporate ERP & Ledgers'}
+                                </span>
+                                {currentSuite === 'erp' ? (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                                        {lang === 'ar' ? 'نشط' : 'Active'}
+                                    </span>
+                                ) : (
+                                    <span className="text-[10px] text-base-content/40 font-mono">6 {lang === 'ar' ? 'دفاتر' : 'ledgers'}</span>
+                                )}
+                            </div>
+                            <p className="text-[11px] text-base-content/60 truncate">
+                                {lang === 'ar' ? 'الأستاذ العام، AP، القوائم، البنوك والإقفال' : 'General ledger, AP, statements, banking, closing'}
+                            </p>
+                        </div>
+                    </button>
+                )}
+            </div>
+
+            {/* ── CONTEXTUAL SUBTABS STRIP (TIER 2) ── */}
+            <div className="tabs tabs-boxed bg-base-200/60 p-1.5 rounded-2xl flex flex-wrap items-center gap-1.5 border border-base-200">
+                {currentSuite === 'ar' && (
+                    <>
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('overview')}
+                            className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                                activeTab === 'overview' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                            }`}
+                        >
+                            <span className="material-symbols-outlined text-[17px]">dashboard</span>
+                            {t('fin_tab_overview', 'Overview & Cash Flow')}
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('transactions')}
+                            className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                                activeTab === 'transactions' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                            }`}
+                        >
+                            <span className="material-symbols-outlined text-[17px]">receipt_long</span>
+                            {t('fin_tab_transactions', 'Ledger Transactions')}
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('allocations')}
+                            className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                                activeTab === 'allocations' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                            }`}
+                        >
+                            <span className="material-symbols-outlined text-[17px]">account_balance_wallet</span>
+                            {t('fin_tab_allocations', 'Allocations & Payments')}
+                        </button>
+
+                        {can('VIEW_INVOICES') && (
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('invoices')}
+                                className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                                    activeTab === 'invoices' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                                }`}
+                            >
+                                <span className="material-symbols-outlined text-[17px]">description</span>
+                                {t('fin_tab_invoices', 'Invoices & Billing')}
+                            </button>
+                        )}
+
+                        <div className="h-4 w-px bg-base-300 mx-1 hidden sm:block" />
+
+                        {can('VIEW_FINANCE') && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setActiveTab('all_sections');
+                                    fetchCodData();
+                                    fetchDrivers();
+                                }}
+                                className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                                    activeTab === 'all_sections' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                                }`}
+                            >
+                                <span className="material-symbols-outlined text-[17px]">grid_view</span>
+                                {lang === 'ar' ? 'عرض الكل معاً (لوحة شاملة)' : 'View All at Once (Master Hub)'}
+                            </button>
+                        )}
+                    </>
+                )}
+
+                {currentSuite === 'cod' && (
                     <button
                         type="button"
                         onClick={() => { setActiveTab('cod'); fetchCodData(); fetchDrivers(); }}
@@ -727,103 +928,78 @@ const FinancePage = () => {
                         }`}
                     >
                         <span className="material-symbols-outlined text-[17px]">payments</span>
-                        {lang === 'ar' ? 'نقدية السائقين (COD)' : 'Driver Cash & COD Vault'}
+                        {lang === 'ar' ? 'خزينة عُهد وتحصيل السائقين (Driver COD Vault)' : 'Driver Cash & COD Vault Clearing'}
                     </button>
                 )}
 
-                {can('VIEW_FINANCE') && (
-                    <button
-                        type="button"
-                        onClick={() => setActiveTab('reports')}
-                        className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
-                            activeTab === 'reports' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
-                        }`}
-                    >
-                        <span className="material-symbols-outlined text-[17px]">analytics</span>
-                        {t('fin_tab_reports', 'Profitability Reports')}
-                    </button>
-                )}
+                {currentSuite === 'erp' && (
+                    <>
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('gl')}
+                            className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                                activeTab === 'gl' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                            }`}
+                        >
+                            <span className="material-symbols-outlined text-[17px]">menu_book</span>
+                            {lang === 'ar' ? 'الأستاذ العام' : 'General Ledger'}
+                        </button>
 
-                {can('VIEW_FINANCE') && (
-                    <button
-                        type="button"
-                        onClick={() => setActiveTab('statements')}
-                        className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
-                            activeTab === 'statements' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
-                        }`}
-                    >
-                        <span className="material-symbols-outlined text-[17px]">account_balance</span>
-                        {lang === 'ar' ? 'القوائم المالية' : 'Statements'}
-                    </button>
-                )}
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('statements')}
+                            className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                                activeTab === 'statements' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                            }`}
+                        >
+                            <span className="material-symbols-outlined text-[17px]">account_balance</span>
+                            {lang === 'ar' ? 'القوائم المالية' : 'Statements'}
+                        </button>
 
-                {can('VIEW_FINANCE') && (
-                    <button
-                        type="button"
-                        onClick={() => setActiveTab('gl')}
-                        className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
-                            activeTab === 'gl' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
-                        }`}
-                    >
-                        <span className="material-symbols-outlined text-[17px]">menu_book</span>
-                        {lang === 'ar' ? 'الأستاذ العام' : 'General Ledger'}
-                    </button>
-                )}
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('ap')}
+                            className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                                activeTab === 'ap' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                            }`}
+                        >
+                            <span className="material-symbols-outlined text-[17px]">assignment_returned</span>
+                            {lang === 'ar' ? 'مستحقات الموردين (AP)' : 'Accounts Payable'}
+                        </button>
 
-                {can('VIEW_FINANCE') && (
-                    <button
-                        type="button"
-                        onClick={() => setActiveTab('ap')}
-                        className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
-                            activeTab === 'ap' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
-                        }`}
-                    >
-                        <span className="material-symbols-outlined text-[17px]">assignment_returned</span>
-                        {lang === 'ar' ? 'مستحقات الموردين' : 'Accounts Payable'}
-                    </button>
-                )}
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('treasury')}
+                            className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                                activeTab === 'treasury' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                            }`}
+                        >
+                            <span className="material-symbols-outlined text-[17px]">savings</span>
+                            {lang === 'ar' ? 'الخزينة والبنوك' : 'Treasury'}
+                        </button>
 
-                {can('VIEW_FINANCE') && (
-                    <button
-                        type="button"
-                        onClick={() => setActiveTab('treasury')}
-                        className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
-                            activeTab === 'treasury' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
-                        }`}
-                    >
-                        <span className="material-symbols-outlined text-[17px]">savings</span>
-                        {lang === 'ar' ? 'الخزينة والبنوك' : 'Treasury'}
-                    </button>
-                )}
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('reports')}
+                            className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                                activeTab === 'reports' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                            }`}
+                        >
+                            <span className="material-symbols-outlined text-[17px]">analytics</span>
+                            {t('fin_tab_reports', 'Profitability Reports')}
+                        </button>
 
-                {can('VIEW_FINANCE') && (
-                    <button
-                        type="button"
-                        onClick={() => setActiveTab('periods')}
-                        className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
-                            activeTab === 'periods' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
-                        }`}
-                    >
-                        <span className="material-symbols-outlined text-[17px]">calendar_month</span>
-                        {lang === 'ar' ? 'الإقفال المالي' : 'Period Closing'}
-                    </button>
-                )}
-
-                {can('VIEW_FINANCE') && (
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setActiveTab('all_sections');
-                            fetchCodData();
-                            fetchDrivers();
-                        }}
-                        className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
-                            activeTab === 'all_sections' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
-                        }`}
-                    >
-                        <span className="material-symbols-outlined text-[17px]">grid_view</span>
-                        {lang === 'ar' ? 'عرض الكل معاً (لوحة شاملة)' : 'View All at Once (Master Hub)'}
-                    </button>
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('periods')}
+                            className={`tab tab-sm font-bold gap-1.5 rounded-xl transition-all ${
+                                activeTab === 'periods' ? 'tab-active !bg-primary !text-primary-content shadow-xs' : 'text-base-content/70 hover:text-base-content'
+                            }`}
+                        >
+                            <span className="material-symbols-outlined text-[17px]">calendar_month</span>
+                            {lang === 'ar' ? 'الإقفال المالي' : 'Period Closing'}
+                        </button>
+                    </>
                 )}
             </div>
 
@@ -831,15 +1007,41 @@ const FinancePage = () => {
             <div className="bg-base-200/40 border border-base-200 rounded-2xl px-4 py-2.5 flex items-center justify-between flex-wrap gap-2 text-xs">
                 <div className="flex items-center gap-2">
                     <span className="text-base-content/60 font-semibold">{t('fin_active_scope', 'Active Ledger Scope')}:</span>
-                    <strong className="text-base-content font-bold">{currentOrgName}</strong>
-                    {selectedOrgId === 'all' && (
-                        <span className="badge badge-xs badge-primary font-mono font-bold">
-                            {summary.totalOrganizationsCount || organizations.length} {lang === 'ar' ? 'منظمات' : 'Orgs'}
-                        </span>
+                    {isOrgScopedTab ? (
+                        <>
+                            <strong className="text-base-content font-bold">{currentOrgName}</strong>
+                            {selectedOrgId === 'all' && (
+                                <span className="badge badge-xs badge-primary font-mono font-bold">
+                                    {summary.totalOrganizationsCount || organizations.length} {lang === 'ar' ? 'منظمات' : 'Orgs'}
+                                </span>
+                            )}
+                        </>
+                    ) : activeTab === 'cod' ? (
+                        <div className="flex items-center gap-1.5">
+                            <strong className="text-base-content font-bold">
+                                {lang === 'ar' ? 'خزينة تحصيل الكاش وعُهد السائقين' : 'Driver COD Central Vault & Fleet Clearing'}
+                            </strong>
+                            <span className="badge badge-xs badge-warning font-bold">
+                                {lang === 'ar' ? 'أسطول العمليات' : 'Fleet Operations'}
+                            </span>
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-1.5">
+                            <strong className="text-base-content font-bold">
+                                {lang === 'ar' ? 'الأستاذ العام والقوائم المالية الموحدة' : 'Corporate General Ledger & Financial Statements'}
+                            </strong>
+                            <span className="badge badge-xs badge-secondary font-bold">
+                                {lang === 'ar' ? 'حسابات الشركة الشاملة' : 'Internal Corporate Books'}
+                            </span>
+                        </div>
                     )}
                 </div>
                 <div className="text-base-content/50 font-mono text-xs">
-                    {t('fin_realtime_double_entry', 'Real-time audited double-entry balances')}
+                    {isOrgScopedTab
+                        ? t('fin_realtime_double_entry', 'Real-time audited double-entry balances')
+                        : activeTab === 'cod'
+                            ? (lang === 'ar' ? 'تسوية عُهد السائقين وتوريدات الكاش' : 'Driver remittance & cash vault audits')
+                            : (lang === 'ar' ? 'دفتر اليومية العامة والقيد المزدوج' : 'Double-entry journal & GAAP compliance')}
                 </div>
             </div>
 
