@@ -887,8 +887,26 @@ class PhenixSyncService {
                     shipmentsToSyncCarrier.push(shipment);
                 }
 
-                if (sendWhatsApp && v.receiverPhone) {
-                    notificationsToSend.push({ shipment, v });
+                if (sendWhatsApp) {
+                    if (v.receiverPhone) {
+                        notificationsToSend.push({
+                            shipment,
+                            v,
+                            recipientRole: 'receiver',
+                            recipientPhone: v.receiverPhone,
+                            recipientName: v.receiverName
+                        });
+                    }
+                    const senderPhone = v.senderPhone || shipment.origin?.phone;
+                    if (senderPhone) {
+                        notificationsToSend.push({
+                            shipment,
+                            v,
+                            recipientRole: 'sender',
+                            recipientPhone: senderPhone,
+                            recipientName: v.senderName || v.merchantName || shipment.origin?.contactPerson || 'Shipper'
+                        });
+                    }
                 }
 
                 summary.results.push({
@@ -945,10 +963,14 @@ class PhenixSyncService {
                 logger.info(`[PhenixSync Background] Starting WhatsApp notification queue for ${notificationsToSend.length} recipients...`);
                 for (const item of notificationsToSend) {
                     try {
+                        const isSender = item.recipientRole === 'sender';
+                        const roleGroup = isSender ? ['sender', 'shipper', 'merchant'] : ['receiver', 'customer', 'consignee'];
+
                         const alreadyNotified = await prisma.shipmentNotificationLog.findFirst({
                             where: {
                                 shipmentId: item.shipment.id,
-                                status: 'SENT'
+                                recipientRole: { in: roleGroup },
+                                status: { in: ['SENT', 'DELIVERED', 'READ'] }
                             }
                         });
 
@@ -958,23 +980,24 @@ class PhenixSyncService {
 
                         // Check if microservice (msg.target-kw.com) already sent it via its autosend cron
                         const billId = item.v.billId;
+                        const microRole = isSender ? 'sender' : 'receiver';
                         if (billId) {
-                            const microSent = await whatsappService.checkMicroserviceSent(billId, 'receiver');
+                            const microSent = await whatsappService.checkMicroserviceSent(billId, microRole);
                             if (microSent?.sent) {
-                                logger.info(`[PhenixSync Background] Bill #${billId} already messaged via msg.target-kw.com autosend (at ${microSent.sentAt}). Skipping dispatch and logging state.`);
+                                logger.info(`[PhenixSync Background] Bill #${billId} (${microRole}) already messaged via msg.target-kw.com autosend (at ${microSent.sentAt}). Skipping dispatch and logging state.`);
                                 await prisma.shipmentNotificationLog.create({
                                     data: {
                                         shipmentId: item.shipment.id,
                                         trackingNumber: item.shipment.trackingNumber,
                                         eventType: 'shipment_created',
-                                        recipientRole: 'customer',
-                                        recipientName: item.v.receiverName || null,
-                                        recipientPhone: item.v.receiverPhone,
+                                        recipientRole: item.recipientRole,
+                                        recipientName: item.recipientName || null,
+                                        recipientPhone: item.recipientPhone,
                                         provider: 'SHIPMENT_WHATSAPP',
                                         templateName: 'shipment_confirmation_2',
                                         status: 'SENT',
                                         chatwootMessageId: `msg-autosend-${microSent.sentAt || Date.now()}`,
-                                        payloadJson: { source: 'MICROSERVICE_AUTOSEND', billId },
+                                        payloadJson: { source: 'MICROSERVICE_AUTOSEND', billId, role: microRole },
                                         responseJson: { autoSent: true, sentAt: microSent.sentAt },
                                         sentAt: microSent.sentAt ? new Date(microSent.sentAt) : new Date()
                                     }
@@ -985,14 +1008,14 @@ class PhenixSyncService {
 
                         await whatsappService.sendNotification({
                             shipment: item.shipment,
-                            recipientRole: 'customer',
-                            recipientPhone: item.v.receiverPhone,
-                            recipientName: item.v.receiverName,
+                            recipientRole: item.recipientRole,
+                            recipientPhone: item.recipientPhone,
+                            recipientName: item.recipientName,
                             templateName: 'shipment_confirmation_2',
                             eventType: 'shipment_created'
                         });
                     } catch (err) {
-                        logger.warn(`[PhenixSync Background] WhatsApp dispatch failed for ${item.shipment.trackingNumber}: ${err.message}`);
+                        logger.warn(`[PhenixSync Background] WhatsApp dispatch failed for ${item.shipment.trackingNumber} to ${item.recipientRole}: ${err.message}`);
                     }
                 }
             });

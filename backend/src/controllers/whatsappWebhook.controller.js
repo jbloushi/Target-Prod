@@ -35,56 +35,115 @@ async function verifyWebhook(req, res) {
  */
 async function handleWebhookEvent(req, res) {
     try {
-        const body = req.body;
+        const body = req.body || {};
 
-        // Immediately respond 200 OK to Meta to avoid retries
+        // Immediately respond 200 OK to gateway to avoid retries
         res.status(200).json({ status: 'EVENT_RECEIVED' });
 
-        if (body.object !== 'whatsapp_business_account' && body.object !== 'whatsapp_account') {
-            return;
-        }
+        const statusUpdates = [];
 
-        const entries = body.entry || [];
-        for (const entry of entries) {
-            const changes = entry.changes || [];
-            for (const change of changes) {
-                const value = change.value || {};
-                
-                // Process delivery status updates (sent, delivered, read, failed)
-                const statuses = value.statuses || [];
-                for (const statusObj of statuses) {
-                    const wamid = statusObj.id;
-                    const status = (statusObj.status || '').toUpperCase(); // DELIVERED, READ, FAILED
-                    const recipientId = statusObj.recipient_id;
-                    const timestamp = statusObj.timestamp ? new Date(statusObj.timestamp * 1000) : new Date();
-
-                    logger.info(`[WhatsApp Status Webhook] wamid=${wamid} status=${status} recipient=${recipientId}`);
-
-                    const existingLog = await prisma.shipmentNotificationLog.findFirst({
-                        where: { externalMessageId: wamid }
-                    });
-
-                    if (existingLog) {
-                        const errorDetails = statusObj.errors?.[0] ? statusObj.errors[0].title || statusObj.errors[0].message : null;
-                        
-                        await prisma.shipmentNotificationLog.update({
-                            where: { id: existingLog.id },
-                            data: {
-                                status,
-                                errorMessage: errorDetails || existingLog.errorMessage,
-                                responseJson: {
-                                    ...(existingLog.responseJson || {}),
-                                    webhookStatus: statusObj,
-                                    updatedAt: timestamp.toISOString()
-                                }
-                            }
+        // 1. Official Meta WhatsApp Cloud API format
+        if (body.object === 'whatsapp_business_account' || body.object === 'whatsapp_account') {
+            const entries = body.entry || [];
+            for (const entry of entries) {
+                const changes = entry.changes || [];
+                for (const change of changes) {
+                    const value = change.value || {};
+                    const statuses = value.statuses || [];
+                    for (const statusObj of statuses) {
+                        statusUpdates.push({
+                            id: statusObj.id,
+                            rawStatus: statusObj.status,
+                            timestamp: statusObj.timestamp ? new Date(statusObj.timestamp * 1000) : new Date(),
+                            error: statusObj.errors?.[0] ? (statusObj.errors[0].title || statusObj.errors[0].message) : null,
+                            raw: statusObj
                         });
                     }
                 }
             }
+        } 
+        // 2. Evolution API / Baileys microservice format (messages.update, message.ack)
+        else if (body.event === 'messages.update' || body.event === 'message.ack' || body.event === 'messages.ack') {
+            const items = Array.isArray(body.data) ? body.data : [body.data || body];
+            for (const item of items) {
+                const messageId = item.key?.id || item.id || item.messageId;
+                let rawStatus = item.status || item.ack || '';
+                // Map Evolution numeric or text status: 1 = PENDING, 2 = SERVER_ACK, 3 = DELIVERY_ACK, 4 = READ, 5 = PLAYED
+                if (rawStatus === 3 || rawStatus === 'DELIVERY_ACK') rawStatus = 'delivered';
+                else if (rawStatus === 4 || rawStatus === 5 || rawStatus === 'READ') rawStatus = 'read';
+                else if (rawStatus === 2 || rawStatus === 'SERVER_ACK') rawStatus = 'sent';
+                else if (rawStatus === 'ERROR' || rawStatus === 'FAILED') rawStatus = 'failed';
+
+                if (messageId && rawStatus) {
+                    statusUpdates.push({
+                        id: messageId,
+                        rawStatus,
+                        timestamp: new Date(),
+                        error: item.error || null,
+                        raw: item
+                    });
+                }
+            }
+        }
+        // 3. Direct JSON microservice receipt callback format ({ messageId, status })
+        else if (body.messageId || body.wamid || body.id) {
+            const messageId = body.messageId || body.wamid || body.id;
+            const rawStatus = body.status || body.event;
+            if (messageId && rawStatus) {
+                statusUpdates.push({
+                    id: messageId,
+                    rawStatus,
+                    timestamp: new Date(),
+                    error: body.error || body.errorMessage || null,
+                    raw: body
+                });
+            }
+        }
+
+        // Apply extracted status updates to Prisma database
+        for (const update of statusUpdates) {
+            const raw = String(update.rawStatus || '').toUpperCase();
+            let normalizedStatus = 'SENT';
+            if (raw.includes('READ')) normalizedStatus = 'READ';
+            else if (raw.includes('DELIVER') || raw === 'DELIVERY_ACK') normalizedStatus = 'DELIVERED';
+            else if (raw.includes('FAIL') || raw.includes('ERROR')) normalizedStatus = 'FAILED';
+            else if (raw.includes('SENT') || raw.includes('SERVER_ACK') || raw.includes('SUBMIT')) normalizedStatus = 'SENT';
+
+            logger.info(`[WhatsApp Status Webhook] Processing receipt: id=${update.id} status=${normalizedStatus}`);
+
+            const existingLog = await prisma.shipmentNotificationLog.findFirst({
+                where: {
+                    OR: [
+                        { chatwootMessageId: update.id },
+                        { id: update.id }
+                    ]
+                }
+            });
+
+            if (existingLog) {
+                // Do not downgrade READ back to DELIVERED or SENT
+                if (existingLog.status === 'READ' && normalizedStatus !== 'READ') {
+                    continue;
+                }
+
+                await prisma.shipmentNotificationLog.update({
+                    where: { id: existingLog.id },
+                    data: {
+                        status: normalizedStatus,
+                        errorMessage: update.error || existingLog.errorMessage,
+                        responseJson: {
+                            ...(existingLog.responseJson && typeof existingLog.responseJson === 'object' ? existingLog.responseJson : {}),
+                            webhookReceipt: update.raw,
+                            receiptReceivedAt: new Date().toISOString()
+                        }
+                    }
+                });
+
+                logger.info(`[WhatsApp Status Webhook] Successfully updated log ${existingLog.id} (#${existingLog.trackingNumber}) -> ${normalizedStatus}`);
+            }
         }
     } catch (err) {
-        logger.error(`[Meta Webhook POST Error] ${err.message}`);
+        logger.error(`[WhatsApp Webhook Error] ${err.message}`);
     }
 }
 
