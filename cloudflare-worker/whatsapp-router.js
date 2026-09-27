@@ -86,14 +86,16 @@ export default {
       // Resolve destination endpoints
       // 1. Target Main Platform (Audit Cockpit & Telemetry DB)
       const targetPlatformUrl =
-        env[`SHIPMENT_WEBHOOK_URL_${cleanPhone}`] ||
-        env.SHIPMENT_WEBHOOK_URL ||
+        env[`TARGET_WEBHOOK_URL_${cleanPhone}`] ||
+        env.TARGET_WEBHOOK_URL ||
         'https://target-kw.com/api/whatsapp/webhook';
 
-      // 2. WhatsApp Microservice (msg.target-kw.com)
+      // 2. WhatsApp Microservice (msg.target-kw.com) - checks existing SHIPMENT_WEBHOOK_URL as well
       const microserviceUrl =
         env[`MICROSERVICE_WEBHOOK_URL_${cleanPhone}`] ||
         env.MICROSERVICE_WEBHOOK_URL ||
+        env[`SHIPMENT_WEBHOOK_URL_${cleanPhone}`] ||
+        env.SHIPMENT_WEBHOOK_URL ||
         'https://msg.target-kw.com/api/webhook';
 
       // 3. Chatwoot Support Inbox
