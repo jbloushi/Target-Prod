@@ -251,6 +251,10 @@ const startServer = async () => {
     const phenixSyncCronService = require('./services/phenixSyncCron.service');
     phenixSyncCronService.start();
 
+    // Start background Salla stock & tracking sync cron monitor
+    const sallaSyncCronService = require('./services/sallaSyncCron.service');
+    sallaSyncCronService.start();
+
     // Start Express server
     const serverInstance = app.listen(port, () => {
       logger.info(`Server running in ${process.env.NODE_ENV} mode on port ${port}`);
@@ -281,6 +285,7 @@ const startServer = async () => {
           carrierSyncCronService.stop();
           eomStatementCronService.stop();
           phenixSyncCronService.stop();
+          sallaSyncCronService.stop();
           const { jobQueue } = require('./services/queue');
           jobQueue.stop();
           const { closeDB } = require('./config/database');
