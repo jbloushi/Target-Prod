@@ -77,7 +77,7 @@ class PhenixSyncCronService {
             const summary = await phenixSyncService.syncPhenixShipments({
                 carrier: settings.carrier || 'ALL',
                 daysBack: settings.daysBack || 3,
-                sendWhatsApp: Boolean(settings.sendWhatsApp),
+                sendWhatsApp: settings.sendWhatsApp !== false,
                 onlyComplete: settings.onlyComplete !== false
             });
 

@@ -732,7 +732,7 @@ class PhenixSyncService {
     async syncPhenixShipments(opts = {}) {
         const { rows, from, to } = await this.fetchPhenixReportData(opts);
         const targetCarrier = String(opts.carrier || 'ALL').toUpperCase();
-        const sendWhatsApp = Boolean(opts.sendWhatsApp);
+        const sendWhatsApp = opts.sendWhatsApp !== false; // default true: upcoming imports are automatically notified
         const onlyComplete = opts.onlyComplete !== false; // default true
 
         // Resolve default admin / user for assigning shipment ownership

@@ -717,12 +717,15 @@ class ChatwootNotificationService {
      */
     async processQueuedNotification(payload) {
         const { eventType, shipmentId, trackingNumber, shipment: directShipment, options = {} } = payload;
-        let shipment = directShipment;
-        if (!shipment && (shipmentId || trackingNumber)) {
+        let shipment = null;
+        if (shipmentId || trackingNumber) {
             shipment = await prisma.shipment.findUnique({
                 where: shipmentId ? { id: shipmentId } : { trackingNumber },
                 include: { user: true, organization: true }
             });
+        }
+        if (!shipment) {
+            shipment = directShipment;
         }
         if (!shipment) {
             logger.warn(`[chatwoot] Shipment not found for queued notification (${shipmentId || trackingNumber})`);
@@ -732,42 +735,29 @@ class ChatwootNotificationService {
     }
 
     /**
-     * Enqueues an operational WhatsApp notification into the durable queue
+     * Enqueues and triggers an operational WhatsApp notification immediately
      */
     triggerShipmentNotification(eventType, shipment, options = {}) {
-        try {
-            const jobQueue = require('./queue/jobQueue');
-            jobQueue.enqueue('chatwoot_notify', {
-                eventType,
-                shipmentId: shipment?.id,
-                trackingNumber: shipment?.trackingNumber,
-                shipment: {
-                    id: shipment?.id,
-                    trackingNumber: shipment?.trackingNumber,
-                    status: shipment?.status,
-                    currentLocation: shipment?.currentLocation,
-                    destination: shipment?.destination,
-                    origin: shipment?.origin,
-                    user: shipment?.user,
-                    organization: shipment?.organization
-                },
-                options
-            }, {
-                maxRetries: 5,
-                backoffMs: 10000
-            }).catch(error => {
-                logger.error(`[chatwoot] Failed to enqueue notification: ${error.message}`);
-                // Fallback to direct async invocation
-                this.sendShipmentNotification(eventType, shipment, options).catch(e => {
-                    logger.error(`[chatwoot] Direct fallback notification failed: ${e.message}`);
-                });
-            });
-        } catch (error) {
-            logger.error(`[chatwoot] Queue dispatch error: ${error.message}`);
-            this.sendShipmentNotification(eventType, shipment, options).catch(e => {
-                logger.error(`[chatwoot] Direct fallback notification failed: ${e.message}`);
-            });
-        }
+        // Immediate dispatch in next tick for real-time customer messaging
+        setImmediate(async () => {
+            try {
+                await this.sendShipmentNotification(eventType, shipment, options);
+            } catch (err) {
+                logger.error(`[chatwoot] Immediate notification failed for ${shipment?.trackingNumber}: ${err.message}`);
+                // Fallback to durable queue on failure
+                try {
+                    const jobQueue = require('./queue/jobQueue');
+                    await jobQueue.enqueue('chatwoot_notify', {
+                        eventType,
+                        shipmentId: shipment?.id,
+                        trackingNumber: shipment?.trackingNumber,
+                        options
+                    }, { maxRetries: 3, backoffMs: 10000 });
+                } catch (qErr) {
+                    logger.error(`[chatwoot] Failed to enqueue fallback: ${qErr.message}`);
+                }
+            }
+        });
     }
 }
 
