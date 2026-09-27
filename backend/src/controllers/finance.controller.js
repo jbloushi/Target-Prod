@@ -10,7 +10,7 @@ const eomStatementCronService = require('../services/eomStatementCron.service');
 const generalLedgerService = require('../services/generalLedger.service');
 const accountsPayableService = require('../services/accountsPayable.service');
 const treasuryService = require('../services/treasury.service');
-const { isOrgRole } = require('../middleware/rbac.policy');
+const { isOrgRole, isPlatformRole } = require('../middleware/rbac.policy');
 const { canAccessOrganization } = require('../middleware/authorize.middleware');
 const { handleControllerError } = require('../utils/controllerError');
 
