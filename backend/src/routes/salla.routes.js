@@ -10,7 +10,7 @@ router.use(express.json({
     }
 }));
 
-router.post('/webhook', async (req, res) => {
+const handleWebhook = async (req, res) => {
     const signature = req.headers['x-salla-signature'];
     const event = req.headers['x-salla-event']; // 'app.store.authorize', 'order.created'
     
@@ -20,11 +20,12 @@ router.post('/webhook', async (req, res) => {
         return res.status(401).json({ error: 'Unauthorized: Invalid signature' });
     }
 
-    const payload = req.body;
-    logger.info(`Received Salla Webhook: ${payload.event || event}`);
+    const payload = req.body || {};
+    const eventName = payload.event || event;
+    logger.info(`Received Salla Webhook: ${eventName}`);
 
     try {
-        switch (payload.event) {
+        switch (eventName) {
             case 'app.store.authorize':
                 // Salla Easy Mode sends tokens directly via this webhook when the app is installed
                 if (payload.data && payload.data.access_token) {
@@ -44,7 +45,7 @@ router.post('/webhook', async (req, res) => {
                 break;
 
             default:
-                logger.info(`Unhandled Salla event: ${payload.event}`);
+                logger.info(`Unhandled Salla event: ${eventName}`);
         }
 
         res.status(200).json({ status: 'success' });
@@ -53,6 +54,14 @@ router.post('/webhook', async (req, res) => {
         // Salla expects 200 OK so it doesn't retry unnecessarily, unless it's a critical failure
         res.status(500).json({ error: 'Internal Server Error' });
     }
-});
+};
+
+// Health checks / browser verification (GET)
+router.get('/', (req, res) => res.status(200).json({ status: 'ok', message: 'Salla webhook endpoint is active' }));
+router.get('/webhook', (req, res) => res.status(200).json({ status: 'ok', message: 'Salla webhook endpoint is active' }));
+
+// Salla Webhook endpoints (POST)
+router.post('/', handleWebhook);
+router.post('/webhook', handleWebhook);
 
 module.exports = router;
