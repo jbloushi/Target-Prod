@@ -1,6 +1,6 @@
 const logger = require('../utils/logger');
 const { prisma } = require('../config/database');
-const { syncCarrierTrackingHistory, resolveCarrierTrackingNumber } = require('../controllers/shipment.helpers');
+const { syncCarrierTrackingHistory, resolveCarrierTrackingNumber, autoHealAllResolvedExceptions } = require('../controllers/shipment.helpers');
 const { markTrackingSynced } = require('./queue/trackingCache');
 const chatwootNotificationService = require('./chatwootNotificationService');
 
@@ -22,6 +22,13 @@ class CarrierSyncCronService {
         if (this.isRunning) return;
         this.isRunning = true;
         logger.info(`[CarrierSyncCron] Started periodic carrier sync (interval: ${this.intervalMs / 1000}s)`);
+
+        // Trigger initial run in background to heal stale records and sync active shipments on startup
+        setImmediate(() => {
+            this.runSyncBatch().catch(err => {
+                logger.error(`[CarrierSyncCron] Error in initial startup batch: ${err.message}`);
+            });
+        });
 
         this.cronTimer = setInterval(() => {
             this.runSyncBatch().catch(err => {
@@ -77,7 +84,18 @@ class CarrierSyncCronService {
                 return summary;
             }
 
-            const activeStatuses = ['created', 'pending', 'booked', 'picked_up', 'in_transit', 'out_for_delivery', 'received_at_hub', 'verified'];
+            // 1. Auto-heal any stale exception consignments whose carrier movement has resumed
+            try {
+                const healedCount = await autoHealAllResolvedExceptions(prisma);
+                if (healedCount > 0) {
+                    summary.healed = healedCount;
+                    logger.info(`[CarrierSyncCron] Auto-healed ${healedCount} shipments with resolved exceptions`);
+                }
+            } catch (healErr) {
+                logger.warn(`[CarrierSyncCron] Error during auto-heal pass: ${healErr.message}`);
+            }
+
+            const activeStatuses = ['created', 'pending', 'booked', 'picked_up', 'in_transit', 'out_for_delivery', 'received_at_hub', 'verified', 'exception'];
             
             const whereClause = {
                 status: { in: activeStatuses }
@@ -117,6 +135,11 @@ class CarrierSyncCronService {
                     const carrierCode = String(shipment.carrierCode || shipment.carrier || '').toUpperCase();
 
                     if (!carrierTracking || carrierCode === 'MANUAL' || carrierCode === 'INTERNAL') {
+                        // Touch updatedAt so internal/manual shipments rotate to back of queue
+                        await prisma.shipment.update({
+                            where: { id: shipment.id },
+                            data: { updatedAt: new Date() }
+                        }).catch(() => {});
                         return {
                             trackingNumber: shipment.trackingNumber,
                             status: shipment.status,
@@ -164,6 +187,12 @@ class CarrierSyncCronService {
                                 updated: true
                             };
                         }
+
+                        // Touch updatedAt so unchanged shipments rotate to back of queue
+                        await prisma.shipment.update({
+                            where: { id: shipment.id },
+                            data: { updatedAt: new Date() }
+                        }).catch(() => {});
 
                         markTrackingSynced(shipment.trackingNumber);
                         return {

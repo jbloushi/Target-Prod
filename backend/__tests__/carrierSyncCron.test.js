@@ -12,7 +12,8 @@ jest.mock('../src/config/database', () => ({
 
 jest.mock('../src/controllers/shipment.helpers', () => ({
     syncCarrierTrackingHistory: jest.fn(),
-    resolveCarrierTrackingNumber: jest.fn((s) => s.carrierTrackingNumber || s.trackingNumber || 'TRK-100')
+    resolveCarrierTrackingNumber: jest.fn((s) => s.carrierTrackingNumber || s.trackingNumber || 'TRK-100'),
+    autoHealAllResolvedExceptions: jest.fn().mockResolvedValue(0)
 }));
 
 jest.mock('../src/services/chatwootNotificationService', () => ({

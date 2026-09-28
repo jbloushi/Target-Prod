@@ -10,7 +10,7 @@ const { hasCapability, isPlatformRole } = require('../middleware/rbac.policy');
 const { canAccessShipment, scopeShipmentWhere } = require('../middleware/authorize.middleware');
 const { INTERNAL_SHIPMENT_STATUSES, SHIPMENT_STATUSES, normalizeStatus } = require('../constants/statusConstants');
 const { DELETABLE_SHIPMENT_STATUSES, buildShipmentDeleteBlockedMessage, hasCarrierBooking, canDeleteShipment } = require('../utils/shipmentDeletionPolicy');
-const { syncCarrierTrackingHistory, hasCriticalChanges, canUpdateShipmentStatus, isInternalShipment, buildDisplayHistory } = require('./shipment.helpers');
+const { syncCarrierTrackingHistory, hasCriticalChanges, canUpdateShipmentStatus, isInternalShipment, buildDisplayHistory, autoHealAllResolvedExceptions, autoHealResolvedShipment, getResolvedExceptionStatus } = require('./shipment.helpers');
 const chatwootNotificationService = require('../services/chatwootNotificationService');
 const WebhookDispatcher = require('../services/WebhookDispatcher');
 const { isTrackingSyncDue, markTrackingSynced, triggerBackgroundTrackingSync } = require('../services/queue/trackingCache');
@@ -31,6 +31,11 @@ exports.getShipmentStats = async (req, res) => {
         } else {
             scopeShipmentWhere(req, where);
         }
+
+        // Auto-heal any stale exceptions before aggregating stats to ensure exact counts
+        try {
+            await autoHealAllResolvedExceptions(prisma);
+        } catch (_) {}
 
         // 1. Group by Status
         const statusGroups = await prisma.shipment.groupBy({
@@ -229,8 +234,19 @@ exports.getTriageShipments = async (req, res) => {
             }
         });
 
+        // Filter and auto-heal any shipments whose exception has resolved
+        const activeTriageShipments = [];
+        for (const s of triageShipments) {
+            const resolved = getResolvedExceptionStatus(s);
+            if (resolved) {
+                autoHealResolvedShipment(s, prisma).catch(() => {});
+                continue;
+            }
+            activeTriageShipments.push(s);
+        }
+
         const now = Date.now();
-        const items = triageShipments.map(s => {
+        const items = activeTriageShipments.map(s => {
             const rawHist = Array.isArray(s.history) ? s.history : [];
             const lastEvent = rawHist[rawHist.length - 1] || {};
             const destObj = typeof s.destination === 'object' && s.destination ? s.destination : {};

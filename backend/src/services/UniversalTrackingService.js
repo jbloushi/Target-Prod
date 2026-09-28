@@ -152,7 +152,12 @@ class UniversalTrackingService {
 
         const latestEvent = events[events.length - 1];
         const overallStage = trackInfo.latest_status?.status || trackInfo.e;
-        const finalStatus = this._map17TrackStatus(overallStage, latestEvent?.description) || latestEvent?.statusCode || 'in_transit';
+        let finalStatus = this._map17TrackStatus(overallStage, latestEvent?.description) || latestEvent?.statusCode || 'in_transit';
+
+        // If overallStage was mapped to exception, but the latest chronological event is active movement or delivery, active movement takes precedence!
+        if (finalStatus === 'exception' && latestEvent?.statusCode && ['delivered', 'out_for_delivery', 'in_transit', 'received_at_hub', 'picked_up'].includes(latestEvent.statusCode)) {
+            finalStatus = latestEvent.statusCode;
+        }
 
         const misc = trackInfo.misc_info || {};
         return {

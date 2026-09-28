@@ -452,7 +452,14 @@ const syncCarrierTrackingHistory = async (shipment) => {
         // Most recent chronological event
         const latestEvent = sortedEvents[sortedEvents.length - 1];
         const latestRaw = latestEvent ? (latestEvent.statusCode || latestEvent.status || latestEvent.description) : null;
-        const latestCarrierStatus = normalizeStatus(tracking?.status || latestRaw || highestCarrierStatus);
+        const latestRawNorm = latestRaw ? normalizeStatus(latestRaw) : null;
+        let latestCarrierStatus = normalizeStatus(tracking?.status || latestRaw || highestCarrierStatus);
+
+        // If carrier tracking top-level reported exception, but the latest chronological scan is active movement or delivery, active movement takes precedence!
+        if (latestCarrierStatus === 'exception' && latestRawNorm && ['picked_up', 'received_at_hub', 'verified', 'in_transit', 'out_for_delivery', 'delivered'].includes(latestRawNorm)) {
+            logger.info(`Overriding carrier-level exception flag with active chronological movement (${latestRawNorm}) for ${shipment.trackingNumber}`);
+            latestCarrierStatus = latestRawNorm;
+        }
 
         if (anyDelivered || latestCarrierStatus === 'delivered' || highestCarrierStatus === 'delivered') {
             if (currentStatus !== 'delivered') {
@@ -465,7 +472,11 @@ const syncCarrierTrackingHistory = async (shipment) => {
             currentStatus = latestCarrierStatus;
             hasUpdates = true;
         } else if (latestCarrierStatus === 'exception') {
-            if (currentStatus !== 'exception') {
+            if (latestRawNorm && latestRawNorm !== 'exception' && ['picked_up', 'received_at_hub', 'verified', 'in_transit', 'out_for_delivery', 'delivered'].includes(latestRawNorm)) {
+                logger.info(`Ignoring stale exception for ${shipment.trackingNumber} due to subsequent movement (${latestRawNorm})`);
+                currentStatus = latestRawNorm;
+                hasUpdates = true;
+            } else if (currentStatus !== 'exception') {
                 logger.info(`Active exception flagged for ${shipment.trackingNumber}: ${currentStatus} -> exception`);
                 currentStatus = 'exception';
                 hasUpdates = true;
@@ -607,6 +618,127 @@ const canUpdateShipmentStatus = (user, shipment, nextStatus) => {
     return getAllowedStatusUpdates(user, shipment).includes(nextStatus);
 };
 
+/**
+ * Evaluates whether a shipment currently marked with status 'exception' has already
+ * resolved the exception via subsequent active movement scans or a delivery scan.
+ * @param {Object} shipment - The shipment model object with .status and .history
+ * @returns {string|null} - The resolved status (e.g. 'in_transit', 'delivered') or null if still in active exception
+ */
+function getResolvedExceptionStatus(shipment) {
+    if (!shipment) return null;
+    const currentStatus = normalizeStatus(shipment.status);
+    if (currentStatus !== 'exception') return null;
+
+    const rawHistory = Array.isArray(shipment.history) ? shipment.history : [];
+    if (rawHistory.length === 0) return null;
+
+    // 1. Any delivered milestone conclusively resolves any past exception
+    const hasDelivered = rawHistory.some((e) => {
+        const s = normalizeStatus(e.status || e.description || e.statusCode);
+        return s === 'delivered';
+    });
+    if (hasDelivered) return 'delivered';
+
+    // 2. Chronologically sort events (most recent first)
+    const sortedDesc = [...rawHistory]
+        .filter(e => e.timestamp)
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    
+    if (sortedDesc.length === 0) return null;
+
+    const latestScan = sortedDesc[0];
+    const latestStatus = normalizeStatus(latestScan?.status || latestScan?.description || latestScan?.statusCode);
+
+    // If the latest chronological scan is active pipeline movement, the hold/exception is resolved
+    if (latestStatus && latestStatus !== 'exception' && ['picked_up', 'received_at_hub', 'verified', 'in_transit', 'out_for_delivery', 'delivered'].includes(latestStatus)) {
+        return latestStatus;
+    }
+
+    return null;
+}
+
+/**
+ * Automatically heals a single shipment in the database if its exception is resolved
+ * @param {Object} shipment
+ * @param {Object} [prismaClient]
+ * @returns {Promise<string|null>}
+ */
+async function autoHealResolvedShipment(shipment, prismaClient) {
+    const resolvedStatus = getResolvedExceptionStatus(shipment);
+    if (!resolvedStatus) return null;
+
+    try {
+        let client = prismaClient;
+        if (!client) {
+            try {
+                const db = require('../config/database');
+                client = db.prisma;
+            } catch (_) {}
+        }
+
+        if (client && typeof client.shipment?.update === 'function') {
+            await client.shipment.update({
+                where: { id: shipment.id },
+                data: { status: resolvedStatus }
+            });
+            logger.info(`[autoHeal] Auto-cleared resolved exception for ${shipment.trackingNumber}: exception -> ${resolvedStatus}`);
+        }
+        shipment.status = resolvedStatus;
+        return resolvedStatus;
+    } catch (err) {
+        logger.warn(`[autoHeal] Error auto-healing shipment ${shipment.trackingNumber}: ${err.message}`);
+        return null;
+    }
+}
+
+/**
+ * Bulk auto-heals all shipments in the database that are currently flagged as 'exception'
+ * but have subsequent movement or delivery in their history.
+ * @param {Object} [prismaClient]
+ * @returns {Promise<number>} Number of shipments healed
+ */
+async function autoHealAllResolvedExceptions(prismaClient) {
+    let client = prismaClient;
+    if (!client) {
+        try {
+            const db = require('../config/database');
+            client = db.prisma;
+        } catch (_) {}
+    }
+
+    if (!client || typeof client.shipment?.findMany !== 'function') return 0;
+
+    try {
+        const candidates = await client.shipment.findMany({
+            where: { status: 'exception' },
+            select: { id: true, trackingNumber: true, status: true, history: true }
+        });
+
+        if (candidates.length === 0) return 0;
+
+        let healedCount = 0;
+        for (const s of candidates) {
+            const resolved = getResolvedExceptionStatus(s);
+            if (resolved) {
+                await client.shipment.update({
+                    where: { id: s.id },
+                    data: { status: resolved }
+                });
+                healedCount++;
+                logger.info(`[autoHeal] Resolved exception for ${s.trackingNumber}: exception -> ${resolved}`);
+            }
+        }
+
+        if (healedCount > 0) {
+            logger.info(`[autoHeal] Successfully auto-healed ${healedCount} resolved exceptions in database`);
+        }
+        return healedCount;
+    } catch (err) {
+        logger.warn(`[autoHeal] Bulk auto-heal encountered error: ${err.message}`);
+        return 0;
+    }
+}
+
 module.exports = {
     DEFAULT_MARKUP,
     hasMarkupShape,
@@ -622,5 +754,8 @@ module.exports = {
     hasCriticalChanges,
     isInternalShipment,
     getAllowedStatusUpdates,
-    canUpdateShipmentStatus
+    canUpdateShipmentStatus,
+    getResolvedExceptionStatus,
+    autoHealResolvedShipment,
+    autoHealAllResolvedExceptions
 };
