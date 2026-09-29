@@ -1,102 +1,92 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
-const config = require('../config/config');
+const freeScraper = require('./FreeWebScraperService');
 
 /**
- * Universal Carrier Tracking & Web Scraping Service
+ * Universal Carrier Tracking Service
  * 
- * Provides live multi-carrier tracking via:
- * 1. 17TRACK Global Multi-Carrier API (2,000+ carriers) with automatic auto-registration.
- * 2. Direct Public Web Scraper fallbacks for Aramex, FedEx, UPS, and other carriers.
- * 3. Seamless auto-upgrade when official carrier credentials are configured.
+ * Routing Policy:
+ * 1. FEDEX: TrackingMore API V4 (with public web scraper fallback).
+ * 2. ARAMEX / OTE: Direct public web scraping via FreeWebScraperService.
+ * 3. DHL / DGR: Direct official DHL Express API via DgrAdapter.
  */
-
-// Mapping of internal carrier codes to 17TRACK carrier numbers
-const CARRIER_CODE_TO_17TRACK = {
-    'DGR': 100001,      // DHL Express
-    'DHL': 100001,
-    'FEDEX': 100003,    // FedEx
-    'ARAMEX': 100006,   // Aramex (17TRACK official carrier code 100006)
-    'UPS': 100002,      // UPS
-    'OTE': 100006       // GCC / Aramex fallback
-};
-
-// Mapping of internal carrier codes to TrackingMore courier codes
-const CARRIER_CODE_TO_TRACKINGMORE = {
-    'DGR': 'dhl',
-    'DHL': 'dhl',
-    'FEDEX': 'fedex',
-    'FDX': 'fedex',
-    'ARAMEX': 'aramex',
-    'ARM': 'aramex',
-    'UPS': 'ups',
-    'OTE': 'aramex'
-};
 
 class UniversalTrackingService {
     constructor() {
-        this.apiKey = process.env.UNIVERSAL_TRACKING_API_KEY || process.env.SEVENTEEN_TRACK_KEY || '43D9F3053FED94A45A61894DE003F640';
         this.trackingMoreKey = process.env.TRACKINGMORE_API_KEY || '2namvtfh-0o0m-0bb6-ob8a-7xk6wc5ggay6';
     }
 
     /**
-     * Query tracking information for any carrier
-     * @param {string} carrierCode - Carrier identifier (e.g., 'ARAMEX', 'FEDEX', 'UPS')
+     * Query tracking information for a carrier
+     * @param {string} carrierCode - Carrier identifier ('FEDEX', 'ARAMEX', 'DHL', etc.)
      * @param {string} trackingNumber - Consignment AWB / tracking number
      * @returns {Promise<{ status: string, events: Array<{ timestamp: string, location: string, description: string, statusCode: string }> }>}
      */
     async getTracking(carrierCode, trackingNumber) {
         const normalizedCarrier = String(carrierCode || '').toUpperCase();
-        const cleanTracking = String(trackingNumber || '').replace(/^TRK-/i, '').trim();
+        const cleanTracking = String(trackingNumber || '')
+            .replace(/^TRK-/i, '')
+            .replace(/^ARM-/i, '')
+            .replace(/^FED-/i, '')
+            .trim();
 
         if (!cleanTracking) {
             return { status: 'pending', events: [] };
         }
 
-        // 1. Try TrackingMore API V4 (Primary Multi-Carrier API: 1,600+ carriers)
-        const tmKey = process.env.TRACKINGMORE_API_KEY || this.trackingMoreKey;
-        if (tmKey) {
+        // 1. DHL / DGR: Official DHL Express API
+        if (normalizedCarrier === 'DGR' || normalizedCarrier === 'DHL') {
             try {
-                const tmResult = await this._fetchTrackingMore(normalizedCarrier, cleanTracking, tmKey);
-                if (tmResult && tmResult.events && tmResult.events.length > 0) {
-                    logger.info(`[UniversalTracking] TrackingMore returned ${tmResult.events.length} checkpoints for ${cleanTracking} (${normalizedCarrier})`);
-                    return tmResult;
-                }
-            } catch (tmErr) {
-                logger.warn(`[UniversalTracking] TrackingMore query for ${cleanTracking}: ${tmErr.message}`);
+                const DgrAdapter = require('../adapters/DgrAdapter');
+                const dhlAdapter = new DgrAdapter();
+                return await dhlAdapter.getTracking(cleanTracking);
+            } catch (dhlErr) {
+                logger.warn(`[UniversalTracking] DHL API tracking error for ${cleanTracking}: ${dhlErr.message}`);
+                return { status: 'in_transit', events: [] };
             }
         }
 
-        // 2. Try 17TRACK Universal API (Secondary Multi-Carrier API)
-        const key = process.env.UNIVERSAL_TRACKING_API_KEY || this.apiKey;
-        if (key) {
+        // 2. ARAMEX / OTE: Direct Public Web Scraper
+        if (normalizedCarrier === 'ARAMEX' || normalizedCarrier === 'ARM' || normalizedCarrier === 'OTE') {
             try {
-                const result = await this._fetch17Track(normalizedCarrier, cleanTracking, key);
-                if (result && result.events && result.events.length > 0) {
-                    logger.info(`[UniversalTracking] 17TRACK returned ${result.events.length} checkpoints for ${cleanTracking} (${normalizedCarrier})`);
-                    return result;
+                const scraped = await freeScraper.scrapeAramex(cleanTracking);
+                if (scraped && scraped.events && scraped.events.length > 0) {
+                    return scraped;
                 }
-            } catch (err) {
-                logger.warn(`[UniversalTracking] 17TRACK query for ${cleanTracking}: ${err.message}`);
+                return await this._scrapeAramexPublic(cleanTracking);
+            } catch (aramexErr) {
+                logger.warn(`[UniversalTracking] Aramex scraper error for ${cleanTracking}: ${aramexErr.message}`);
+                return { status: 'in_transit', events: [] };
             }
         }
 
-        // 3. Carrier-specific Public Web Scraper Fallbacks (Free & No API Credentials Needed)
-        const freeScraper = require('./FreeWebScraperService');
-        if (normalizedCarrier === 'ARAMEX') {
-            const scraped = await freeScraper.scrapeAramex(cleanTracking);
-            if (scraped && scraped.events && scraped.events.length > 0) {
-                return scraped;
+        // 3. FEDEX: TrackingMore API V4 (Primary) -> Web Scraper Fallback
+        if (normalizedCarrier === 'FEDEX' || normalizedCarrier === 'FDX') {
+            const tmKey = process.env.TRACKINGMORE_API_KEY || this.trackingMoreKey;
+            if (tmKey) {
+                try {
+                    const tmResult = await this._fetchTrackingMore('fedex', cleanTracking, tmKey);
+                    if (tmResult && tmResult.events && tmResult.events.length > 0) {
+                        logger.info(`[UniversalTracking] TrackingMore returned ${tmResult.events.length} checkpoints for FedEx AWB #${cleanTracking}`);
+                        return tmResult;
+                    }
+                } catch (tmErr) {
+                    logger.warn(`[UniversalTracking] TrackingMore FedEx query for ${cleanTracking}: ${tmErr.message}`);
+                }
             }
-            return this._scrapeAramexPublic(cleanTracking);
-        }
 
-        if (normalizedCarrier === 'FEDEX') {
-            const scraped = await freeScraper.scrapeFedex(cleanTracking);
-            if (scraped && scraped.events && scraped.events.length > 0) {
-                return scraped;
+            // Fallback to FedEx web scraper
+            try {
+                const scraped = await freeScraper.scrapeFedex(cleanTracking);
+                if (scraped && scraped.events && scraped.events.length > 0) {
+                    return scraped;
+                }
+                return await this._scrapeFedexPublic(cleanTracking);
+            } catch (fedexErr) {
+                logger.warn(`[UniversalTracking] FedEx scraper fallback error for ${cleanTracking}: ${fedexErr.message}`);
             }
-            return this._scrapeFedexPublic(cleanTracking);
+
+            return { status: 'in_transit', events: [] };
         }
 
         // 4. Generic Carrier Fallback
@@ -104,11 +94,10 @@ class UniversalTrackingService {
     }
 
     /**
-     * TrackingMore API V4 integration with auto-registration
+     * TrackingMore API V4 integration for FedEx with auto-registration
      * @private
      */
-    async _fetchTrackingMore(carrierCode, trackingNumber, apiKey) {
-        const courierCode = CARRIER_CODE_TO_TRACKINGMORE[carrierCode] || String(carrierCode).toLowerCase();
+    async _fetchTrackingMore(courierCode, trackingNumber, apiKey) {
         const headers = {
             'Tracking-Api-Key': apiKey,
             'Content-Type': 'application/json'
@@ -117,10 +106,10 @@ class UniversalTrackingService {
         // Step 1: Query existing tracking
         let item = null;
         try {
-            const getRes = await axios.get(`https://api.trackingmore.com/v4/trackings/get?tracking_numbers=${encodeURIComponent(trackingNumber)}&courier_code=${encodeURIComponent(courierCode)}`, {
-                headers,
-                timeout: 8000
-            });
+            const getRes = await axios.get(
+                `https://api.trackingmore.com/v4/trackings/get?tracking_numbers=${encodeURIComponent(trackingNumber)}&courier_code=${encodeURIComponent(courierCode)}`,
+                { headers, timeout: 8000 }
+            );
             item = getRes.data?.data?.[0];
         } catch (getErr) {
             logger.debug(`[UniversalTracking] TrackingMore get note: ${getErr.response?.data?.meta?.message || getErr.message}`);
@@ -129,13 +118,14 @@ class UniversalTrackingService {
         // Step 2: Auto-create tracking in TrackingMore if not registered yet
         if (!item || item.delivery_status === 'notfound') {
             try {
-                const createRes = await axios.post('https://api.trackingmore.com/v4/trackings/create', {
-                    tracking_number: trackingNumber,
-                    courier_code: courierCode
-                }, {
-                    headers,
-                    timeout: 8000
-                });
+                const createRes = await axios.post(
+                    'https://api.trackingmore.com/v4/trackings/create',
+                    {
+                        tracking_number: trackingNumber,
+                        courier_code: courierCode
+                    },
+                    { headers, timeout: 8000 }
+                );
                 item = createRes.data?.data || item;
             } catch (createErr) {
                 logger.debug(`[UniversalTracking] TrackingMore create note: ${createErr.response?.data?.meta?.message || createErr.message}`);
@@ -152,15 +142,39 @@ class UniversalTrackingService {
         const rawEvents = [...originEvents, ...destEvents];
 
         if (rawEvents.length === 0) {
+            if (item.delivery_status && item.delivery_status !== 'notfound') {
+                return {
+                    status: this._mapTrackingMoreStatus(item.delivery_status, item.substatus),
+                    events: [],
+                    carrierWeight: parseFloat(item.weight_kg || item.weight || 0),
+                    carrierPieces: parseInt(item.pieces || 0, 10)
+                };
+            }
             return null;
         }
 
-        const events = rawEvents.map(evt => {
-            const desc = evt.details || evt.checkpoint_status || evt.StatusDescription || 'Carrier update';
-            const location = [evt.city, evt.state, evt.country_iso].filter(Boolean).join(', ') || evt.location || 'Carrier Facility';
-            const statusCode = this._mapTrackingMoreStatus(evt.checkpoint_status || evt.status, desc);
+        const events = rawEvents.map((evt) => {
+            const desc =
+                evt.tracking_detail ||
+                evt.details ||
+                evt.checkpoint_delivery_substatus ||
+                evt.checkpoint_delivery_status ||
+                evt.checkpoint_status ||
+                evt.StatusDescription ||
+                'Carrier update';
+            const location =
+                evt.location ||
+                [evt.city, evt.state, evt.country_iso2 || evt.country_iso].filter(Boolean).join(', ') ||
+                'Carrier Facility';
+            const statusCode = this._mapTrackingMoreStatus(
+                evt.checkpoint_delivery_status || evt.checkpoint_status || evt.status,
+                desc
+            );
             return {
-                timestamp: evt.Date || evt.checkpoint_date ? new Date(evt.Date || evt.checkpoint_date).toISOString() : new Date().toISOString(),
+                timestamp:
+                    evt.checkpoint_date || evt.Date
+                        ? new Date(evt.checkpoint_date || evt.Date).toISOString()
+                        : new Date().toISOString(),
                 location,
                 description: desc,
                 statusCode
@@ -196,183 +210,27 @@ class UniversalTrackingService {
     }
 
     /**
-     * 17TRACK API V2.4 / V2.2 integration with automatic auto-registration
-     * @private
-     */
-    async _fetch17Track(carrierCode, trackingNumber, apiKey) {
-        const carrier17Id = CARRIER_CODE_TO_17TRACK[carrierCode];
-        const headers = {
-            '17token': apiKey,
-            'Content-Type': 'application/json'
-        };
-
-        const item = {
-            number: trackingNumber,
-            carrier: carrier17Id || undefined
-        };
-
-        // Step 1: Auto-register tracking number with 17TRACK (V2.4 preferred, fallback to V2.2)
-        try {
-            await axios.post('https://api.17track.net/track/v2.4/register', [item], {
-                headers,
-                timeout: 8000
-            });
-        } catch (regErr) {
-            try {
-                await axios.post('https://api.17track.net/track/v2.2/register', [item], {
-                    headers,
-                    timeout: 8000
-                });
-            } catch (fallbackRegErr) {
-                logger.debug(`[UniversalTracking] 17TRACK registration note: ${fallbackRegErr.response?.data?.message || fallbackRegErr.message}`);
-            }
-        }
-
-        // Step 2: Fetch tracking info (V2.4 preferred, fallback to V2.2)
-        let response;
-        try {
-            response = await axios.post('https://api.17track.net/track/v2.4/gettrackinfo', [item], {
-                headers,
-                timeout: 10000
-            });
-        } catch (v24Err) {
-            response = await axios.post('https://api.17track.net/track/v2.2/gettrackinfo', [item], {
-                headers,
-                timeout: 10000
-            });
-        }
-
-        const accepted = response.data?.data?.accepted?.[0];
-        if (!accepted) {
-            return null;
-        }
-
-        const trackInfo = accepted.track_info || accepted.track || accepted;
-        const rawEvents = trackInfo.tracking?.providers?.[0]?.events || trackInfo.events || trackInfo.z0?.z || trackInfo.z1?.z || [];
-
-        if (rawEvents.length === 0) {
-            return null;
-        }
-
-        const events = rawEvents.map(evt => {
-            const desc = evt.description || evt.z || evt.stage || 'Status update';
-            const evtStage = evt.stage || evt.z || evt.description;
-            const statusCode = this._map17TrackStatus(evtStage, desc);
-            return {
-                timestamp: (evt.time_iso || evt.time_utc || evt.a) ? new Date(evt.time_iso || evt.time_utc || evt.a).toISOString() : new Date().toISOString(),
-                location: evt.location || evt.c || evt.d || 'Carrier Facility',
-                description: desc,
-                statusCode
-            };
-        });
-
-        // Sort events chronologically (oldest to newest)
-        events.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-        const latestEvent = events[events.length - 1];
-        const overallStage = trackInfo.latest_status?.status || trackInfo.e;
-        let finalStatus = this._map17TrackStatus(overallStage, latestEvent?.description) || latestEvent?.statusCode || 'in_transit';
-
-        // If overallStage was mapped to exception, but the latest chronological event is active movement or delivery, active movement takes precedence!
-        if (finalStatus === 'exception' && latestEvent?.statusCode && ['delivered', 'out_for_delivery', 'in_transit', 'received_at_hub', 'picked_up'].includes(latestEvent.statusCode)) {
-            finalStatus = latestEvent.statusCode;
-        }
-
-        const misc = trackInfo.misc_info || {};
-        return {
-            status: finalStatus,
-            events,
-            carrierWeight: parseFloat(misc.weight_kg || misc.weight_raw || 0),
-            carrierPieces: parseInt(misc.item_count || misc.pieces || 0, 10)
-        };
-    }
-
-    _map17TrackStatus(stage, desc = '') {
-        const str = String(stage || '').toLowerCase();
-        const text = String(desc || '').toLowerCase();
-
-        // 1. Check Out for delivery FIRST before delivered!
-        if (
-            str === '35' ||
-            str.includes('out_for_delivery') ||
-            str.includes('outfordelivery') ||
-            text.includes('out for delivery') ||
-            text.includes('delivery champion') ||
-            text.includes('doorstep')
-        ) {
-            return 'out_for_delivery';
-        }
-
-        // 2. Check Delivered
-        if (
-            str === '40' ||
-            str === 'delivered' ||
-            text.includes('delivered to') ||
-            text.includes('shipment delivered') ||
-            (text.includes('delivered') && !text.includes('out for delivery') && !text.includes('delivery champion'))
-        ) {
-            return 'delivered';
-        }
-
-        // 3. Picked up / Collected
-        if (
-            str === '20' ||
-            str.includes('pickup') ||
-            str.includes('collected') ||
-            text.includes('collected from') ||
-            text.includes('shipment collected') ||
-            text.includes('picked up')
-        ) {
-            return 'picked_up';
-        }
-
-        // 4. Exception / Held / Alert
-        if (
-            str === '50' ||
-            str.includes('exception') ||
-            str.includes('alert') ||
-            str.includes('undelivered') ||
-            text.includes('delayed') ||
-            text.includes('exception')
-        ) {
-            return 'exception';
-        }
-
-        // 5. Booked / Info received / Manifested
-        if (
-            str === '10' ||
-            str.includes('inforeceived') ||
-            str.includes('notfound') ||
-            text.includes('manifested')
-        ) {
-            return 'booked';
-        }
-
-        return 'in_transit';
-    }
-
-    /**
      * Public Aramex tracking scraper fallback
      * @private
      */
     async _scrapeAramexPublic(trackingNumber) {
         logger.info(`[UniversalTracking] Scraping Aramex public tracking for AWB #${trackingNumber}`);
-        
+
         try {
             const url = `https://www.aramex.com/api/v2/shipment/track?shipmentNumber=${encodeURIComponent(trackingNumber)}`;
             const res = await axios.get(url, {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                    'Accept': 'application/json, text/plain, */*',
-                    'Referer': 'https://www.aramex.com/us/en/track/results'
+                    Accept: 'application/json, text/plain, */*',
+                    Referer: 'https://www.aramex.com/us/en/track/results'
                 },
                 timeout: 8000
             });
 
             if (res.data && Array.isArray(res.data.events) && res.data.events.length > 0) {
-                const events = res.data.events.map(e => {
+                const events = res.data.events.map((e) => {
                     const desc = e.updateDescription || e.status || 'Carrier update';
-                    const statusCode = this._map17TrackStatus(e.status, desc);
+                    const statusCode = this._mapTrackingMoreStatus(e.status, desc);
                     return {
                         timestamp: e.dateTime || new Date().toISOString(),
                         location: e.location || 'Aramex Facility',
@@ -407,23 +265,30 @@ class UniversalTrackingService {
         logger.info(`[UniversalTracking] Scraping FedEx public tracking for AWB #${trackingNumber}`);
 
         try {
-            const payload = 'data=' + encodeURIComponent(JSON.stringify({
-                TrackPackagesRequest: {
-                    appType: 'WTRK',
-                    appDeviceType: 'DESKTOP',
-                    supportHTML: true,
-                    supportCurrentLocation: true,
-                    uniqueKey: '',
-                    processingParameters: {},
-                    trackingInfoList: [{
-                        trackNumberInfo: {
-                            trackingNumber: String(trackingNumber),
-                            trackingQualifier: '',
-                            trackingCarrier: ''
+            const payload =
+                'data=' +
+                encodeURIComponent(
+                    JSON.stringify({
+                        TrackPackagesRequest: {
+                            appType: 'WTRK',
+                            appDeviceType: 'DESKTOP',
+                            supportHTML: true,
+                            supportCurrentLocation: true,
+                            uniqueKey: '',
+                            processingParameters: {},
+                            trackingInfoList: [
+                                {
+                                    trackNumberInfo: {
+                                        trackingNumber: String(trackingNumber),
+                                        trackingQualifier: '',
+                                        trackingCarrier: ''
+                                    }
+                                }
+                            ]
                         }
-                    }]
-                }
-            })) + '&action=trackpackages&locale=en_US&version=1&format=json';
+                    })
+                ) +
+                '&action=trackpackages&locale=en_US&version=1&format=json';
 
             const res = await axios.post('https://www.fedex.com/trackingCal/track', payload, {
                 headers: {
@@ -435,9 +300,9 @@ class UniversalTrackingService {
 
             const packageList = res.data?.TrackPackagesResponse?.packageList;
             if (Array.isArray(packageList) && packageList.length > 0 && Array.isArray(packageList[0]?.scanEventList)) {
-                const events = packageList[0].scanEventList.map(evt => {
+                const events = packageList[0].scanEventList.map((evt) => {
                     const desc = evt.status || 'FedEx update';
-                    const statusCode = this._map17TrackStatus(evt.status, desc);
+                    const statusCode = this._mapTrackingMoreStatus(evt.status, desc);
                     return {
                         timestamp: evt.date && evt.time ? `${evt.date}T${evt.time}` : new Date().toISOString(),
                         location: evt.scanLocation || 'FedEx Sort Facility',

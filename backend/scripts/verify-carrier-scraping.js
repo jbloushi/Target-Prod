@@ -1,21 +1,27 @@
 /**
  * Carrier Tracking & Scraping Verification Tool
  * 
+ * Routing Policy:
+ * 1. FEDEX: TrackingMore API V4 (with public web scraper fallback).
+ * 2. ARAMEX: Direct public web scraping via FreeWebScraperService (or official SOAP/REST API).
+ * 3. DHL: Direct official DHL Express API (DgrAdapter).
+ * 
  * Usage:
  *   node backend/scripts/verify-carrier-scraping.js [CARRIER] [TRACKING_NUMBER]
  * Example:
+ *   node backend/scripts/verify-carrier-scraping.js FEDEX 401092102883
  *   node backend/scripts/verify-carrier-scraping.js ARAMEX 33722238474
+ *   node backend/scripts/verify-carrier-scraping.js DGR 100368200545
  */
 
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
-const axios = require('axios');
-const universalTracking = require('../src/services/UniversalTrackingService');
 const CarrierFactory = require('../src/services/CarrierFactory');
+const freeScraper = require('../src/services/FreeWebScraperService');
 
 async function verifyCarrierTracking() {
-    const carrierCode = (process.argv[2] || 'ARAMEX').toUpperCase();
-    const trackingNumber = process.argv[3] || '33722238474';
+    const carrierCode = (process.argv[2] || 'FEDEX').toUpperCase();
+    const trackingNumber = process.argv[3] || '401092102883';
 
     console.log('====================================================');
     console.log(`🔍 DIAGNOSTIC: Tracking & Scraping Verification`);
@@ -25,85 +31,29 @@ async function verifyCarrierTracking() {
     console.log('====================================================\n');
 
     // ─────────────────────────────────────────────────────────────
-    // Check 1: 17TRACK Universal API
+    // Check 1: Tracking Engine Routing
     // ─────────────────────────────────────────────────────────────
-    console.log('[Check 1] Testing 17TRACK Universal API...');
-    const seventeenTrackKey = process.env.UNIVERSAL_TRACKING_API_KEY || process.env.SEVENTEEN_TRACK_KEY || '43D9F3053FED94A45A61894DE003F640';
-    console.log(`Using Key: ${seventeenTrackKey ? `${seventeenTrackKey.slice(0, 6)}...${seventeenTrackKey.slice(-4)}` : 'NONE'}`);
-
-    try {
-        const res = await axios.post('https://api.17track.net/track/v2.2/gettrackinfo', [{
-            number: trackingNumber,
-            carrier: carrierCode === 'ARAMEX' ? 100006 : undefined
-        }], {
-            headers: {
-                '17token': seventeenTrackKey,
-                'Content-Type': 'application/json'
-            },
-            timeout: 10000
-        });
-
-        console.log(`✅ 17TRACK Status: HTTP ${res.status}`);
-        const data = res.data;
-        const accepted = data?.data?.accepted?.[0];
-        const rawEvents = accepted?.track_info?.tracking?.providers?.[0]?.events || accepted?.track?.events || [];
-        console.log(`   Checkpoints found: ${rawEvents.length}`);
-        if (rawEvents.length > 0) {
-            console.log(`   Latest Checkpoint: [${rawEvents[0].time_utc || rawEvents[0].time_iso}] ${rawEvents[0].description || rawEvents[0].z}`);
+    if (carrierCode === 'FEDEX' || carrierCode === 'FDX') {
+        console.log('[FedEx] Testing TrackingMore API V4...');
+        const trackingMoreKey = process.env.TRACKINGMORE_API_KEY || '2namvtfh-0o0m-0bb6-ob8a-7xk6wc5ggay6';
+        console.log(`Using Key: ${trackingMoreKey ? `${trackingMoreKey.slice(0, 6)}...${trackingMoreKey.slice(-4)}` : 'NONE'}`);
+    } else if (carrierCode === 'ARAMEX' || carrierCode === 'ARM' || carrierCode === 'OTE') {
+        console.log('[Aramex] Testing FreeWebScraperService Scraper...');
+        try {
+            const scraped = await freeScraper.scrapeAramex(trackingNumber);
+            console.log(`Direct Scraper result: status=${scraped?.status}, checkpoints=${scraped?.events?.length || 0}`);
+        } catch (err) {
+            console.log(`❌ Aramex Scraper Error: ${err.message}`);
         }
-    } catch (err) {
-        console.log(`❌ 17TRACK Failed: HTTP ${err.response?.status || 'Network Error'}`);
-        if (err.response?.data) {
-            console.log('   Response Body:', JSON.stringify(err.response.data, null, 2));
-        } else {
-            console.log('   Error Message:', err.message);
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Check 2: Direct Carrier Public Web Scraper (FreeWebScraperService)
-    // ─────────────────────────────────────────────────────────────
-    console.log('\n[Check 2] Testing Direct Public Web Scraper (FreeWebScraperService)...');
-    const freeScraper = require('../src/services/FreeWebScraperService');
-    try {
-        let scraped;
-        if (carrierCode === 'ARAMEX') {
-            scraped = await freeScraper.scrapeAramex(trackingNumber);
-        } else if (carrierCode === 'FEDEX') {
-            scraped = await freeScraper.scrapeFedex(trackingNumber);
-        }
-
-        if (scraped && scraped.events && scraped.events.length > 0) {
-            console.log(`✅ Direct Scraper Succeeded! Status: ${scraped.status}, Checkpoints: ${scraped.events.length}`);
-            scraped.events.forEach((ev, i) => {
-                console.log(`   ${i + 1}. [${ev.timestamp}] (${ev.statusCode}) ${ev.description} - ${ev.location}`);
-            });
-        } else {
-            console.log(`ℹ️ Direct Scraper returned 0 events (status: ${scraped?.status || 'unknown'})`);
-        }
-    } catch (err) {
-        console.log(`❌ Direct Scraper error: ${err.message}`);
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Check 3: Official Carrier API Credentials
-    // ─────────────────────────────────────────────────────────────
-    console.log('\n[Check 3] Testing Official Carrier API Credentials...');
-    if (carrierCode === 'ARAMEX') {
-        const username = process.env.ARAMEX_USERNAME;
-        const password = process.env.ARAMEX_PASSWORD;
-        const accountNumber = process.env.ARAMEX_ACCOUNT_NUMBER;
-        console.log(`ARAMEX_USERNAME:       ${username ? 'Configured (' + username + ')' : 'MISSING'}`);
-        console.log(`ARAMEX_PASSWORD:       ${password ? 'Configured (hidden)' : 'MISSING'}`);
-        console.log(`ARAMEX_ACCOUNT_NUMBER: ${accountNumber ? 'Configured (' + accountNumber + ')' : 'MISSING'}`);
-    } else if (carrierCode === 'DGR') {
+    } else if (carrierCode === 'DGR' || carrierCode === 'DHL') {
+        console.log('[DHL] Official DHL Express API Config:');
         console.log(`DHL_API_KEY: ${process.env.DHL_API_KEY ? 'Configured' : 'MISSING'}`);
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Check 4: Full Adapter Invocation (What the platform executes)
+    // Check 2: Full Adapter Invocation (What the platform executes)
     // ─────────────────────────────────────────────────────────────
-    console.log('\n[Check 4] Executing Adapter via CarrierFactory...');
+    console.log('\n[Execution] Calling CarrierFactory.getAdapter().getTracking()...');
     try {
         const adapter = CarrierFactory.getAdapter(carrierCode);
         const result = await adapter.getTracking(trackingNumber);
@@ -116,7 +66,7 @@ async function verifyCarrierTracking() {
                 console.log(`     ${idx + 1}. [${e.timestamp}] (${e.statusCode}) ${e.description} - ${e.location}`);
             });
         } else {
-            console.log('   ⚠️ No events returned. Tracking timeline will show empty / pending.');
+            console.log('   ℹ️ No events returned or pending carrier registration.');
         }
     } catch (err) {
         console.log(`❌ Adapter threw error: ${err.message}`);
@@ -125,4 +75,4 @@ async function verifyCarrierTracking() {
     console.log('\n====================================================\n');
 }
 
-verifyCarrierTracking().catch(e => console.error(e));
+verifyCarrierTracking().catch((e) => console.error(e));

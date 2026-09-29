@@ -8,7 +8,7 @@ const router = express.Router();
 // Webhook receivers — no auth, called by external providers
 router.post('/chatwoot/webhook', integrationController.handleChatwootWebhook);
 router.post('/logestechs/webhook', integrationController.handleLogesTechsWebhook);
-router.post('/17track/webhook', integrationController.handle17TrackWebhook);
+router.post('/trackingmore/webhook', integrationController.handleTrackingMoreWebhook);
 
 router.use(authController.protect);
 
