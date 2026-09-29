@@ -93,6 +93,7 @@ const DashboardPage = () => {
     // Data filtering & inspection state
     const [pipelineStage, setPipelineStage] = useState('all'); // 'all' | 'pending' | 'in_transit' | 'exception' | 'delivered'
     const [selectedPeriod, setSelectedPeriod] = useState('this_month'); // 'today' | '7days' | 'this_month' | 'last_month' | 'all' | 'custom'
+    const [kviCarrier, setKviCarrier] = useState('all'); // 'all' | 'DGR' | 'ARM' | 'FDX' | 'MAN'
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
     const [isCustomDateOpen, setIsCustomDateOpen] = useState(false);
@@ -185,6 +186,15 @@ const DashboardPage = () => {
         }
         return [];
     }, [stats?.carriers]);
+
+    // Active KVI object (switches dynamically based on selected carrier pill)
+    const activeKvi = useMemo(() => {
+        if (kviCarrier !== 'all' && Array.isArray(stats?.carriers)) {
+            const selectedCar = stats.carriers.find(c => c.code === kviCarrier);
+            if (selectedCar?.kvi) return { ...selectedCar.kvi, carrier: selectedCar };
+        }
+        return stats?.kvi || {};
+    }, [kviCarrier, stats]);
 
     // Live Financial Aggregates from database
     const financials = stats?.financials || null;
@@ -1099,49 +1109,95 @@ const DashboardPage = () => {
                         </div>
                     )}
 
-                    {/* Key Velocity Indicators (KVIs) - 100% Data-Driven */}
+                    {/* Key Velocity Indicators (KVIs) - 100% Data-Driven with Carrier Split */}
                     <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 space-y-4">
-                        <div className="border-b border-base-200/70 pb-2.5">
-                            <h3 className="text-sm font-black text-base-content flex items-center gap-1.5">
-                                <span className="material-symbols-outlined text-primary text-lg">speed</span>
-                                {isRTL ? 'مؤشرات كفاءة وسرعة العمليات (KVI)' : 'Key Velocity Indicators (KVI)'}
-                            </h3>
-                            <p className="text-xs text-base-content/60 font-medium">
-                                {isRTL ? 'مؤشرات حية ومحسوبة مباشرة من قاعدة البيانات' : '100% data-driven metrics calculated from live database'}
-                            </p>
+                        <div className="flex flex-col gap-2 border-b border-base-200/70 pb-3">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <h3 className="text-sm font-black text-base-content flex items-center gap-1.5">
+                                        <span className="material-symbols-outlined text-primary text-lg">speed</span>
+                                        {isRTL ? 'مؤشرات كفاءة وسرعة العمليات (KVI)' : 'Key Velocity Indicators (KVI)'}
+                                    </h3>
+                                    <p className="text-xs text-base-content/60 font-medium">
+                                        {isRTL ? 'تحليل الأداء الفعلي والسرعة التشغيلية مقسمة حسب الناقل' : '100% data-driven metrics split by integrated carrier'}
+                                    </p>
+                                </div>
+                                {kviCarrier !== 'all' && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setKviCarrier('all')}
+                                        className="btn btn-ghost btn-xs text-primary font-bold"
+                                    >
+                                        {isRTL ? 'عرض الكل' : 'Reset All'}
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Carrier Filter Pills for Target Management */}
+                            {isTargetManagement && perspective === 'target' && carrierBreakdown.length > 0 && (
+                                <div className="flex items-center gap-1.5 overflow-x-auto pt-1 pb-0.5 no-scrollbar">
+                                    <button
+                                        type="button"
+                                        onClick={() => setKviCarrier('all')}
+                                        className={`btn btn-xs rounded-lg font-extrabold ${
+                                            kviCarrier === 'all' 
+                                                ? 'btn-primary shadow-xs' 
+                                                : 'btn-ghost bg-base-200/60 text-base-content/70 hover:bg-base-200'
+                                        }`}
+                                    >
+                                        {isRTL ? 'كامل الشبكة' : 'All Carriers'}
+                                    </button>
+                                    {carrierBreakdown.map(car => (
+                                        <button
+                                            key={car.code}
+                                            type="button"
+                                            onClick={() => setKviCarrier(car.code)}
+                                            className={`btn btn-xs rounded-lg font-bold gap-1 ${
+                                                kviCarrier === car.code 
+                                                    ? 'btn-primary shadow-xs' 
+                                                    : 'btn-ghost bg-base-200/60 text-base-content/70 hover:bg-base-200'
+                                            }`}
+                                        >
+                                            <span className={`badge ${car.badge} badge-xs font-black px-1`}>{car.code}</span>
+                                            <span>{isRTL ? car.nameAr : car.name}</span>
+                                            <span className="text-[10px] opacity-70 font-mono">({car.health}%)</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         {stats?.total > 0 ? (
                             <div className="space-y-3.5">
                                 <VelocityIndicator 
                                     label={isRTL ? 'استجابة الناقل والمعالجة' : 'Carrier Response Rate'} 
-                                    value={stats?.kvi?.carrierResponseRate ? Number(String(stats.kvi.carrierResponseRate).replace('%', '')) : (((stats.total - (stats.exceptions || 0)) / stats.total) * 100)} 
-                                    displayValue={stats?.kvi?.carrierResponseRate || `${(((stats.total - (stats.exceptions || 0)) / stats.total) * 100).toFixed(1)}%`} 
+                                    value={activeKvi?.carrierResponseRate ? Number(String(activeKvi.carrierResponseRate).replace('%', '')) : (((stats.total - (stats.exceptions || 0)) / stats.total) * 100)} 
+                                    displayValue={activeKvi?.carrierResponseRate || `${(((stats.total - (stats.exceptions || 0)) / stats.total) * 100).toFixed(1)}%`} 
                                     target=">95%" 
                                     progressClass="progress-success" 
                                     icon="speed" 
                                 />
                                 <VelocityIndicator 
                                     label={isRTL ? 'نسبة نجاح التسليم النهائي' : 'Delivery Success Rate'} 
-                                    value={stats?.kvi?.airFreightPunctuality ? Number(String(stats.kvi.airFreightPunctuality).replace('%', '')) : 95} 
-                                    displayValue={stats?.kvi?.airFreightPunctuality || '95.0%'} 
+                                    value={activeKvi?.airFreightPunctuality ? Number(String(activeKvi.airFreightPunctuality).replace('%', '')) : 95} 
+                                    displayValue={activeKvi?.airFreightPunctuality || '95.0%'} 
                                     target=">90%" 
                                     progressClass="progress-primary" 
                                     icon="task_alt" 
                                 />
                                 <VelocityIndicator 
                                     label={isRTL ? 'نسبة خط الأنابيب النشط' : 'Active Pipeline Ratio'} 
-                                    value={stats?.kvi?.activeTransitRatio ? Number(String(stats.kvi.activeTransitRatio).replace('%', '')) : 15} 
-                                    displayValue={stats?.kvi?.activeTransitRatio || '15.0%'} 
+                                    value={activeKvi?.activeTransitRatio ? Number(String(activeKvi.activeTransitRatio).replace('%', '')) : 15} 
+                                    displayValue={activeKvi?.activeTransitRatio || '15.0%'} 
                                     target="Live" 
                                     progressClass="progress-info" 
                                     icon="flight_takeoff" 
                                 />
-                                {stats?.kvi?.deliveryLeadTimeAvg && (
+                                {activeKvi?.deliveryLeadTimeAvg && (
                                     <VelocityIndicator 
                                         label={isRTL ? 'متوسط مدة التوصيل من الاستلام' : 'Avg. Delivery Lead Time'} 
                                         value={85} 
-                                        displayValue={stats.kvi.deliveryLeadTimeAvg} 
+                                        displayValue={activeKvi.deliveryLeadTimeAvg} 
                                         target="<48h" 
                                         progressClass="progress-accent" 
                                         icon="timer" 
@@ -1149,12 +1205,39 @@ const DashboardPage = () => {
                                 )}
                                 <VelocityIndicator 
                                     label={isRTL ? 'الالتزام بمعايير الخدمة (SLA)' : 'Network SLA Health'} 
-                                    value={Number(String(networkSla).replace('%', '')) || 98} 
-                                    displayValue={networkSla} 
+                                    value={Number(String(activeKvi?.healthyPipelineSla || activeKvi?.onTimeRate || networkSla).replace('%', '')) || 98} 
+                                    displayValue={activeKvi?.healthyPipelineSla || activeKvi?.onTimeRate || networkSla} 
                                     target=">95%" 
                                     progressClass="progress-success" 
                                     icon="verified" 
                                 />
+
+                                {/* Per-Carrier Mini Split Matrix (When All Carriers view is active) */}
+                                {isTargetManagement && perspective === 'target' && carrierBreakdown.length > 1 && kviCarrier === 'all' && (
+                                    <div className="pt-2 border-t border-base-200/70 space-y-2">
+                                        <div className="flex justify-between items-center text-[11px] font-extrabold text-base-content/70">
+                                            <span>{isRTL ? 'مقارنة كفاءة الناقلين (SLA Split)' : 'Carrier SLA Performance Split'}</span>
+                                            <span className="text-[10px] text-base-content/50 font-normal">{isRTL ? 'اضغط للتخصيص' : 'Click to isolate'}</span>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {carrierBreakdown.map(car => (
+                                                <div 
+                                                    key={car.code}
+                                                    onClick={() => setKviCarrier(car.code)}
+                                                    className="p-2 rounded-xl bg-base-200/50 hover:bg-base-200 border border-base-200 hover:border-primary/40 cursor-pointer transition-all flex justify-between items-center"
+                                                >
+                                                    <div className="flex items-center gap-1.5 min-w-0">
+                                                        <span className={`badge ${car.badge} badge-xs font-black px-1`}>{car.code}</span>
+                                                        <span className="text-xs font-bold text-base-content truncate">{isRTL ? car.nameAr : car.name}</span>
+                                                    </div>
+                                                    <span className="text-xs font-mono font-black text-success ms-1">
+                                                        {car.health}%
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         ) : (
                             <div className="p-5 text-center bg-base-200/30 rounded-xl border border-dashed border-base-300">

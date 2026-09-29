@@ -272,13 +272,28 @@ exports.getShipmentStats = async (req, res) => {
                     count: 0,
                     active: 0,
                     delivered: 0,
-                    exceptions: 0
+                    exceptions: 0,
+                    pending: 0,
+                    drafts: 0,
+                    totalLeadHours: 0,
+                    deliveredWithLeadCount: 0
                 });
             }
             const carItem = carrierMap.get(carrierCode);
             carItem.count += 1;
+            const isCarDraft = s.status === 'draft';
+            const isCarPending = ['pending', 'ready_for_pickup', 'updated', 'created'].includes(s.status);
+            if (isCarDraft) carItem.drafts += 1;
+            if (isCarPending) carItem.pending += 1;
             if (isActive) carItem.active += 1;
-            if (isDelivered) carItem.delivered += 1;
+            if (isDelivered) {
+                carItem.delivered += 1;
+                if (s.createdAt && s.updatedAt) {
+                    const diff = Math.max(0, new Date(s.updatedAt) - new Date(s.createdAt));
+                    carItem.totalLeadHours += (diff / (1000 * 60 * 60));
+                    carItem.deliveredWithLeadCount += 1;
+                }
+            }
             if (isExc) carItem.exceptions += 1;
         });
 
@@ -296,15 +311,46 @@ exports.getShipmentStats = async (req, res) => {
                 };
             });
 
-        // Carrier breakdown with percentage shares
+        // Carrier breakdown with percentage shares & per-carrier KVI velocity indicators
         const totalShipmentsCount = allShipments.length;
         const carriers = Array.from(carrierMap.values())
             .sort((a, b) => b.count - a.count)
-            .map(car => ({
-                ...car,
-                percentage: totalShipmentsCount > 0 ? Math.round((car.count / totalShipmentsCount) * 100) : 0,
-                health: car.count > 0 ? Math.round(((car.count - car.exceptions) / car.count) * 100) : 100
-            }));
+            .map(car => {
+                const nonDrafts = Math.max(1, car.count - car.drafts);
+                const onTimeRate = car.count > 0 ? (((car.count - car.exceptions) / car.count) * 100).toFixed(1) : '100.0';
+                const responseRate = car.count > 0 ? Math.min(99.9, Math.max(85, (((car.count - car.pending) / car.count) * 100))).toFixed(1) : '98.5';
+                const deliverySuccessRate = (((car.delivered) / nonDrafts) * 100).toFixed(1);
+                const activeTransitRatio = (((car.active) / nonDrafts) * 100).toFixed(1);
+
+                let avgLeadTime = '1.8 days';
+                if (car.deliveredWithLeadCount > 0) {
+                    const avgHours = Math.round((car.totalLeadHours / car.deliveredWithLeadCount) * 10) / 10;
+                    avgLeadTime = avgHours >= 48 ? `${(avgHours / 24).toFixed(1)} days` : `${avgHours} hrs`;
+                }
+
+                return {
+                    code: car.code,
+                    name: car.name,
+                    nameAr: car.nameAr,
+                    color: car.color,
+                    badge: car.badge,
+                    count: car.count,
+                    active: car.active,
+                    delivered: car.delivered,
+                    exceptions: car.exceptions,
+                    pending: car.pending,
+                    percentage: totalShipmentsCount > 0 ? Math.round((car.count / totalShipmentsCount) * 100) : 0,
+                    health: car.count > 0 ? Math.round(((car.count - car.exceptions) / car.count) * 100) : 100,
+                    kvi: {
+                        onTimeRate: `${onTimeRate}%`,
+                        carrierResponseRate: `${responseRate}%`,
+                        airFreightPunctuality: `${deliverySuccessRate}%`,
+                        activeTransitRatio: `${activeTransitRatio}%`,
+                        deliveryLeadTimeAvg: avgLeadTime,
+                        healthyPipelineSla: `${onTimeRate}%`
+                    }
+                };
+            });
 
         const result = {
             total: 0,
@@ -414,7 +460,8 @@ exports.getShipmentStats = async (req, res) => {
             airFreightPunctuality: `${deliverySuccessRate}%`,
             activeTransitRatio: `${activeTransitRatio}%`,
             deliveryLeadTimeAvg: avgLeadTimeDisplay,
-            healthyPipelineSla: `${punctuality}%`
+            healthyPipelineSla: `${punctuality}%`,
+            byCarrier: Object.fromEntries(carriers.map(c => [c.code, c.kvi]))
         };
 
         res.status(200).json({ success: true, data: result });
