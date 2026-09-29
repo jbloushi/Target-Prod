@@ -12,7 +12,8 @@ import {
 import {
     buildShipmentDeleteBlockedMessage,
     canDeleteShipmentStatus,
-    getShipmentDeleteErrorMessage
+    getShipmentDeleteErrorMessage,
+    hasCarrierBooking
 } from '../utils/shipmentDeletionPolicy';
 import { getCarrierDisplayName, getEventDisplayMessage } from '../utils/shipmentDisplay';
 import { generateWaybillPDF } from '../utils/pdfGenerator';
@@ -438,8 +439,8 @@ const ShipmentDetailsPage = () => {
 
     // Delete Consignment
     const handleDelete = async () => {
-        if (user?.role !== 'admin' && !canDeleteShipmentStatus(shipment.status, shipment, user?.role)) {
-            enqueueSnackbar(buildShipmentDeleteBlockedMessage(shipment.status).short, { variant: 'warning' });
+        if (!canDeleteShipmentStatus(shipment?.status, shipment, user?.role)) {
+            enqueueSnackbar(buildShipmentDeleteBlockedMessage(shipment?.status, hasCarrierBooking(shipment)).short, { variant: 'warning' });
             return;
         }
         const confirmMsg = isRTL

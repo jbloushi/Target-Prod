@@ -56,11 +56,14 @@ const Header = () => {
 
     // Fetch finance balance for accounts
     useEffect(() => {
-        if (!isAuthenticated) return;
+        if (!isAuthenticated || !user?.organizationId) {
+            setFinanceSummary(null);
+            return;
+        }
         financeService.getBalance()
             .then(res => setFinanceSummary(res.data))
             .catch(() => {});
-    }, [isAuthenticated, user]);
+    }, [isAuthenticated, user?.organizationId]);
 
     // Role-based capabilities
     const userRole = user?.role || 'client';
