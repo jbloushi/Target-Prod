@@ -192,6 +192,21 @@ app.use('/api/v1', apiRoutes);
 app.use('/api/geocode', geocodeRoutes);
 app.use('/api/shipments', shipmentRoutes);
 
+// Direct root aliases for proxy resilience (handles reverse proxies stripping /api)
+app.use('/public/shipments', shipmentPublicRoutes);
+app.use('/auth', authRoutes);
+app.use('/settings', settingsRoutes);
+app.use('/finance', financeRoutes);
+app.use('/users', userRoutes);
+app.use('/organizations', organizationRoutes);
+app.use('/integrations', integrationRoutes);
+app.use('/salla', sallaRoutes);
+app.use('/pickups', pickupRoutes);
+app.use('/client', externalRoutes);
+app.use('/v1', apiRoutes);
+app.use('/geocode', geocodeRoutes);
+app.use('/shipments', shipmentRoutes);
+
 // Health check endpoint
 app.get('/health', async (req, res) => {
   const isInternal = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1';

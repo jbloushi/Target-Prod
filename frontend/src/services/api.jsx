@@ -8,11 +8,13 @@ const normalizeApiUrl = (raw) => {
   if (!trimmed || trimmed === '/' || trimmed === './') return '/api';
 
   if (/^https?:\/\//i.test(trimmed)) {
-    return trimmed.replace(/\/+$/, '');
+    const clean = trimmed.replace(/\/+$/, '');
+    return clean.endsWith('/api') ? clean : `${clean}/api`;
   }
 
   const normalized = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
-  return normalized.replace(/\/+$/, '');
+  const clean = normalized.replace(/\/+$/, '');
+  return clean.endsWith('/api') ? clean : `${clean}/api`;
 };
 
 const API_URL = normalizeApiUrl(getApiBaseUrl());
