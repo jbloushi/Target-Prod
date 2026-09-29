@@ -1273,6 +1273,16 @@ export const userService = {
     }
   },
 
+  resetPassword: async (id, password) => {
+    try {
+      const response = await api.patch(`users/${id}/password`, { password });
+      return response.data;
+    } catch (error) {
+      console.error('Error resetting user password:', error);
+      throw error;
+    }
+  },
+
   resetUserPassword: async (id, newPassword) => {
     try {
       const response = await api.post(`users/${id}/reset-password`, { password: newPassword });

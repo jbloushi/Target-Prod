@@ -2,6 +2,28 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import QRCode from 'qrcode';
 
+let cachedLogoBase64 = null;
+
+export const getLogoBase64 = async () => {
+    if (cachedLogoBase64) return cachedLogoBase64;
+    try {
+        const response = await fetch('/images/target-logo.png');
+        if (!response.ok) return null;
+        const blob = await response.blob();
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                cachedLogoBase64 = reader.result;
+                resolve(cachedLogoBase64);
+            };
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+        });
+    } catch {
+        return null;
+    }
+};
+
 /**
  * Generates the official "Shipment Label" PDF
  * Optimized for A4 printing with clear information hierarchy.
@@ -83,10 +105,26 @@ export const generateWaybillPDF = async (request) => {
     };
 
     // --- 1. Top Branding & Header ---
-    doc.setFontSize(22);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.text('TARGET LOGISTICS', 15, 20);
+    const logoData = await getLogoBase64();
+    if (logoData) {
+        try {
+            doc.addImage(logoData, 'PNG', 15, 12, 36, 11);
+            doc.setFontSize(16);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+            doc.text('TARGET LOGISTICS', 55, 20);
+        } catch {
+            doc.setFontSize(22);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+            doc.text('TARGET LOGISTICS', 15, 20);
+        }
+    } else {
+        doc.setFontSize(22);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.text('TARGET LOGISTICS', 15, 20);
+    }
 
     doc.setFontSize(18);
     doc.setTextColor(0, 0, 0);
@@ -94,7 +132,7 @@ export const generateWaybillPDF = async (request) => {
 
     doc.setDrawColor(primaryColor[0], primaryColor[1], primaryColor[2]);
     doc.setLineWidth(1);
-    doc.line(15, 25, pageWidth - 15, 25);
+    doc.line(15, 26, pageWidth - 15, 26);
 
     // --- 2. Main Metadata Row ---
     const qrSize = 35;
@@ -263,10 +301,26 @@ export const generateAccountStatementPDF = async (statement) => {
     const ledgerEntries = statement.ledgerEntries || [];
 
     // Header
-    doc.setFontSize(20);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.text('TARGET LOGISTICS', 15, 20);
+    const logoData = await getLogoBase64();
+    if (logoData) {
+        try {
+            doc.addImage(logoData, 'PNG', 15, 12, 36, 11);
+            doc.setFontSize(16);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+            doc.text('TARGET LOGISTICS', 55, 20);
+        } catch {
+            doc.setFontSize(20);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+            doc.text('TARGET LOGISTICS', 15, 20);
+        }
+    } else {
+        doc.setFontSize(20);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.text('TARGET LOGISTICS', 15, 20);
+    }
 
     doc.setFontSize(16);
     doc.setTextColor(0, 0, 0);
@@ -425,10 +479,26 @@ export const generateInvoicePDF = async (invoice) => {
     const dueDate = invoice.dueDate ? formatDate(invoice.dueDate) : 'Upon Receipt';
 
     // Header
-    doc.setFontSize(22);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.text('TARGET LOGISTICS', 15, 20);
+    const logoData = await getLogoBase64();
+    if (logoData) {
+        try {
+            doc.addImage(logoData, 'PNG', 15, 12, 36, 11);
+            doc.setFontSize(16);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+            doc.text('TARGET LOGISTICS', 55, 20);
+        } catch {
+            doc.setFontSize(22);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+            doc.text('TARGET LOGISTICS', 15, 20);
+        }
+    } else {
+        doc.setFontSize(22);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.text('TARGET LOGISTICS', 15, 20);
+    }
 
     doc.setFontSize(14);
     doc.setTextColor(60, 60, 60);
@@ -569,10 +639,26 @@ export const generateCarrierManifestPDF = async (manifest) => {
     const items = manifest.items || [];
 
     // Header Branding
-    doc.setFontSize(18);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.text('TARGET LOGISTICS HUB', 14, 18);
+    const logoData = await getLogoBase64();
+    if (logoData) {
+        try {
+            doc.addImage(logoData, 'PNG', 14, 10, 36, 11);
+            doc.setFontSize(16);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+            doc.text('TARGET LOGISTICS HUB', 54, 18);
+        } catch {
+            doc.setFontSize(18);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+            doc.text('TARGET LOGISTICS HUB', 14, 18);
+        }
+    } else {
+        doc.setFontSize(18);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.text('TARGET LOGISTICS HUB', 14, 18);
+    }
 
     doc.setFontSize(15);
     doc.setTextColor(0, 0, 0);
@@ -702,10 +788,26 @@ export const generateCommercialInvoicePDF = async (request) => {
     const exportReason = request.exportReason || request.reason || 'Commercial / Merchandise';
 
     // Header Branding
-    doc.setFontSize(20);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.text('TARGET LOGISTICS', 15, 20);
+    const logoData = await getLogoBase64();
+    if (logoData) {
+        try {
+            doc.addImage(logoData, 'PNG', 15, 12, 36, 11);
+            doc.setFontSize(16);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+            doc.text('TARGET LOGISTICS', 55, 20);
+        } catch {
+            doc.setFontSize(20);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+            doc.text('TARGET LOGISTICS', 15, 20);
+        }
+    } else {
+        doc.setFontSize(20);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.text('TARGET LOGISTICS', 15, 20);
+    }
 
     doc.setFontSize(16);
     doc.setTextColor(0, 0, 0);

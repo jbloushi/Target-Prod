@@ -9,7 +9,7 @@ import Footer from './Footer';
  */
 const Layout = () => {
     return (
-        <div className="min-h-screen flex flex-col bg-base-200/50 dark:bg-slate-900 transition-colors duration-300 overflow-x-clip">
+        <div className="min-h-screen flex flex-col bg-base-200/50 dark:bg-slate-900 bg-target-pattern transition-colors duration-300 overflow-x-clip">
             {/* Master Top Navigation Bar */}
             <Header />
 

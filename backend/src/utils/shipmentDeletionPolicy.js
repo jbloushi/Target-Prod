@@ -55,16 +55,18 @@ const hasCarrierBooking = (shipment) => {
     );
 };
 
+const CAN_DELETE_ROLES = ['admin', 'manager', 'accounting'];
+
 /**
  * Validates if a shipment can be deleted.
- * Superadmin / Admin only, and only if not created with carrier.
+ * Admin, Owner (Manager), and Accounting can delete as long as no carrier is connected.
  */
 const canDeleteShipment = (shipment, userRole = null) => {
     if (!shipment) return false;
-    if (userRole === 'admin') return true; // Superadmin can delete any shipment
-    if (userRole && userRole !== 'admin') return false;
+    const normalizedRole = String(userRole || '').toLowerCase();
+    if (!CAN_DELETE_ROLES.includes(normalizedRole)) return false;
     if (hasCarrierBooking(shipment)) return false;
-    return DELETABLE_SHIPMENT_STATUSES.includes(shipment.status);
+    return true;
 };
 
 const buildShipmentDeleteBlockedMessage = (status, hasCarrier = false) => {

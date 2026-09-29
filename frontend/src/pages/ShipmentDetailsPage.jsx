@@ -943,8 +943,8 @@ const ShipmentDetailsPage = () => {
                             </button>
                         )}
 
-                        {/* Delete Consignment (Superadmin only) */}
-                        {user?.role === 'admin' && (
+                        {/* Delete Consignment (Admin, Owner, Accounting - only before carrier is connected) */}
+                        {['admin', 'manager', 'accounting'].includes(user?.role) && !hasCarrierBooking(shipment) && (
                             <button
                                 type="button"
                                 onClick={handleDelete}

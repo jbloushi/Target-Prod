@@ -51,6 +51,44 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    const requestOtp = async (phone) => {
+        try {
+            setError(null);
+            const res = await api.post('/auth/request-otp', { phone });
+            return res.data;
+        } catch (err) {
+            const message = err.response?.data?.details || 
+                            err.response?.data?.message || 
+                            err.response?.data?.error || 
+                            err.message;
+            setError(typeof message === 'string' ? message : 'Failed to send OTP');
+            throw err;
+        }
+    };
+
+    const loginWithOtp = async (phone, otp) => {
+        try {
+            setLoading(true);
+            setError(null);
+            const res = await api.post('/auth/verify-otp', { phone, otp });
+
+            const { token, data } = res.data;
+            localStorage.setItem('token', token);
+            localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
+            setUser(data.user);
+            return data.user;
+        } catch (err) {
+            const message = err.response?.data?.details || 
+                            err.response?.data?.message || 
+                            err.response?.data?.error || 
+                            err.message;
+            setError(typeof message === 'string' ? message : 'OTP verification failed');
+            throw err;
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const signup = async (userData) => {
         try {
             setLoading(true);
@@ -145,6 +183,8 @@ export const AuthProvider = ({ children }) => {
             loading,
             error,
             login,
+            loginWithOtp,
+            requestOtp,
             signup,
             logout,
             refreshUser: loadUser,

@@ -140,11 +140,125 @@ exports.login = async (req, res) => {
     }
 };
 
+// In-memory store for authentication OTPs: cleanPhone -> { otp, expiresAt, userId }
+const authOtpStore = new Map();
+
 /**
- * Placeholder for WABA/OTP login
+ * Request Mobile OTP for registered users
+ * POST /api/auth/request-otp
  */
 exports.requestOtp = async (req, res) => {
-    res.status(200).json({ success: true, message: 'OTP sent via WABA (Mocked)' });
+    try {
+        const rawPhone = req.body.phone || req.body.mobile;
+        if (!rawPhone) {
+            return res.status(400).json({ success: false, error: 'Phone number is required' });
+        }
+
+        const cleanDigits = String(rawPhone).replace(/\D/g, '');
+        if (cleanDigits.length < 7) {
+            return res.status(400).json({ success: false, error: 'Please enter a valid phone number' });
+        }
+
+        // Look up registered user matching phone number
+        const users = await prisma.user.findMany({
+            where: {
+                phone: { not: null }
+            }
+        });
+
+        const user = users.find(u => {
+            if (!u.phone) return false;
+            const uDigits = String(u.phone).replace(/\D/g, '');
+            return uDigits === cleanDigits || cleanDigits.endsWith(uDigits) || uDigits.endsWith(cleanDigits);
+        });
+
+        if (!user) {
+            logger.warn(`OTP request rejected: No registered account found for mobile digits ${cleanDigits}`);
+            return res.status(404).json({
+                success: false,
+                error: 'No registered user account found with this phone number. Please contact your administrator or sign up.'
+            });
+        }
+
+        // Generate 6-digit OTP code
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
+
+        authOtpStore.set(cleanDigits, {
+            otp,
+            expiresAt,
+            userId: user.id
+        });
+
+        // Proactively send OTP via WhatsApp notification if configured
+        try {
+            const chatwootNotificationService = require('../services/chatwootNotificationService');
+            await chatwootNotificationService.sendDirectMessage(user.phone, `Your Target Logistics Login Verification Code is: ${otp}. Valid for 5 minutes.`);
+        } catch (msgErr) {
+            logger.debug(`[Auth OTP Dispatch note] ${msgErr.message}`);
+        }
+
+        logger.info(`[Auth OTP Generated] Mobile: ${cleanDigits} (User: ${user.email}) -> OTP: ${process.env.NODE_ENV !== 'production' ? otp : '******'}`);
+
+        return res.status(200).json({
+            success: true,
+            message: `Verification code sent to registered mobile number ending in ${cleanDigits.slice(-4)}`,
+            devOtp: process.env.NODE_ENV !== 'production' ? otp : undefined
+        });
+    } catch (error) {
+        logger.error('Request OTP error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to send verification code' });
+    }
+};
+
+/**
+ * Verify Mobile OTP and Login User
+ * POST /api/auth/verify-otp
+ */
+exports.verifyOtp = async (req, res) => {
+    try {
+        const rawPhone = req.body.phone || req.body.mobile;
+        const otp = req.body.otp || req.body.code;
+
+        if (!rawPhone || !otp) {
+            return res.status(400).json({ success: false, error: 'Phone number and verification code are required' });
+        }
+
+        const cleanDigits = String(rawPhone).replace(/\D/g, '');
+        const record = authOtpStore.get(cleanDigits);
+
+        if (!record || Date.now() > record.expiresAt) {
+            return res.status(400).json({
+                success: false,
+                error: 'Verification code has expired or was not requested. Please request a new code.'
+            });
+        }
+
+        if (record.otp !== String(otp).trim()) {
+            return res.status(401).json({
+                success: false,
+                error: 'Incorrect verification code. Please check and try again.'
+            });
+        }
+
+        // Find verified user
+        const user = await prisma.user.findUnique({
+            where: { id: record.userId }
+        });
+
+        if (!user) {
+            return res.status(404).json({ success: false, error: 'User account not found' });
+        }
+
+        // Clean up OTP record
+        authOtpStore.delete(cleanDigits);
+
+        logger.info(`User ${user.email} (${user.id}) successfully logged in via mobile OTP`);
+        return createSendToken(user, 200, res);
+    } catch (error) {
+        logger.error('Verify OTP error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to verify code' });
+    }
 };
 
 /**

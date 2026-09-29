@@ -268,26 +268,6 @@ const DashboardPage = () => {
 
     return (
         <div className="w-full max-w-[1600px] mx-auto px-2 sm:px-4 py-3 space-y-6">
-            
-            {/* Top Switcher & Notification Deck */}
-            <div className="alert bg-base-100 border border-primary/20 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 rounded-2xl py-2.5 px-4">
-                <div className="flex items-center gap-2.5 flex-wrap">
-                    <span className="badge badge-primary font-black text-[11px] uppercase tracking-wider">
-                        DaisyUI Hybrid Cockpit
-                    </span>
-                    <span className="text-xs sm:text-sm font-semibold text-base-content">
-                        {isRTL 
-                            ? 'نظام القيادة الهجين: إدارة تارغت (الشبكة) + إدارة حسابات العملاء' 
-                            : 'Dual-Perspective Engine: Target Network Operations + Client Account Management'}
-                    </span>
-                </div>
-                <div className="flex items-center gap-2">
-                    <Link to="/dashboard-v1" className="btn btn-ghost btn-xs text-primary font-bold">
-                        {isRTL ? 'الرجوع إلى v1 القديم' : 'Switch to v1 Dashboard'}
-                    </Link>
-                </div>
-            </div>
-
             {/* Command Header: Role Clearance & Dynamic Context Switcher */}
             <div className="bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                 

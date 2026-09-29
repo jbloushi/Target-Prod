@@ -971,9 +971,21 @@ exports.deleteShipment = async (req, res) => {
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
-        // Deletion is restricted to Superadmin / Admin only
-        if (user.role !== 'admin') {
-            return res.status(403).json({ success: false, error: 'Only administrators can delete shipments' });
+        // Deletion is restricted to Admin, Owner (manager), and Accounting
+        const allowedRoles = ['admin', 'manager', 'accounting'];
+        if (!allowedRoles.includes(user.role)) {
+            return res.status(403).json({ success: false, error: 'Only administrators, owners, and accounting can delete shipments' });
+        }
+
+        // Deletion is blocked if shipment is already connected/booked with an external carrier
+        if (hasCarrierBooking(shipment)) {
+            return res.status(400).json({
+                success: false,
+                code: 'SHIPMENT_DELETE_NOT_ALLOWED',
+                hasCarrierBooking: true,
+                message: buildShipmentDeleteBlockedMessage(shipment.status, true),
+                error: 'Shipment is already booked with a carrier and cannot be deleted directly'
+            });
         }
 
         // Clean up all related finance, logs, and dependencies

@@ -74,6 +74,31 @@ const AdminUsersPage = () => {
     const [deleteConfirmId, setDeleteConfirmId] = useState(null);
     const [deleteLoading, setDeleteLoading] = useState(false);
 
+    // Reset Password State
+    const [resetUser, setResetUser] = useState(null);
+    const [resetPasswordValue, setResetPasswordValue] = useState('');
+    const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
+
+    const handleResetPasswordSubmit = async (e) => {
+        if (e) e.preventDefault();
+        if (!resetUser || !resetPasswordValue || resetPasswordValue.length < 8) {
+            enqueueSnackbar(lang === 'ar' ? 'كلمة المرور يجب أن تكون 8 أحرف على الأقل' : 'Password must be at least 8 characters', { variant: 'warning' });
+            return;
+        }
+        setResetPasswordLoading(true);
+        try {
+            await userService.resetPassword(resetUser.id, resetPasswordValue);
+            enqueueSnackbar(lang === 'ar' ? `تم إعادة تعيين كلمة المرور بنجاح للمستخدم ${resetUser.name}` : `Password reset successfully for ${resetUser.name}`, { variant: 'success' });
+            setResetUser(null);
+            setResetPasswordValue('');
+        } catch (err) {
+            console.error('Password reset failed:', err);
+            enqueueSnackbar(err.response?.data?.error || (lang === 'ar' ? 'فشل إعادة تعيين كلمة المرور' : 'Failed to reset password'), { variant: 'error' });
+        } finally {
+            setResetPasswordLoading(false);
+        }
+    };
+
     const fetchUsers = useCallback(async () => {
         setLoading(true);
         try {
@@ -688,6 +713,16 @@ const AdminUsersPage = () => {
                                                     >
                                                         <span className="material-symbols-outlined text-[17px]">edit</span>
                                                     </button>
+                                                    {canFullAdmin && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => { setResetUser(u); setResetPasswordValue(''); }}
+                                                            className="btn btn-ghost btn-xs btn-square text-base-content/60 hover:text-warning"
+                                                            title={lang === 'ar' ? 'إعادة تعيين كلمة المرور' : 'Reset Password'}
+                                                        >
+                                                            <span className="material-symbols-outlined text-[17px]">lock_reset</span>
+                                                        </button>
+                                                    )}
                                                     {canFullAdmin && u.id !== currentUser?.id && (
                                                         <button
                                                             type="button"
@@ -1169,6 +1204,72 @@ const AdminUsersPage = () => {
                     </div>
                 </div>
                 <div className="modal-backdrop bg-black/60 backdrop-blur-xs" onClick={() => !deleteLoading && setDeleteConfirmId(null)} />
+            </div>
+
+            {/* Reset Password Modal */}
+            <div className={`modal modal-bottom sm:modal-middle ${resetUser ? 'modal-open' : ''} z-50`}>
+                <div className="modal-box max-w-md bg-base-100 border border-base-200/80 shadow-2xl p-6 text-base-content">
+                    <div className="flex items-center gap-3 pb-3 border-b border-base-200">
+                        <div className="w-12 h-12 rounded-2xl bg-warning/10 text-warning flex items-center justify-center shrink-0">
+                            <span className="material-symbols-outlined text-2xl">lock_reset</span>
+                        </div>
+                        <div>
+                            <h3 className="font-black text-lg">
+                                {lang === 'ar' ? 'تعيين كلمة مرور جديدة' : 'Reset User Password'}
+                            </h3>
+                            <p className="text-xs text-base-content/60 font-medium">
+                                {resetUser?.name} ({resetUser?.email})
+                            </p>
+                        </div>
+                    </div>
+
+                    <form onSubmit={handleResetPasswordSubmit} className="space-y-4 mt-4">
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-base-content/70 uppercase tracking-wider">
+                                {lang === 'ar' ? 'كلمة المرور الجديدة *' : 'New Password *'}
+                            </label>
+                            <input
+                                type="password"
+                                required
+                                minLength={8}
+                                autoFocus
+                                value={resetPasswordValue}
+                                onChange={(e) => setResetPasswordValue(e.target.value)}
+                                placeholder={lang === 'ar' ? 'أدخل 8 أحرف على الأقل' : 'Enter at least 8 characters'}
+                                className="input input-bordered w-full text-sm font-medium focus:input-primary rounded-xl"
+                            />
+                            <p className="text-[11px] text-base-content/50">
+                                {lang === 'ar' 
+                                    ? 'يمكن للمستخدم تسجيل الدخول فوراً باستخدام كلمة المرور الجديدة هذه.' 
+                                    : 'The user will be able to log in immediately using this new password.'}
+                            </p>
+                        </div>
+
+                        <div className="modal-action mt-6 gap-2">
+                            <button
+                                type="button"
+                                disabled={resetPasswordLoading}
+                                onClick={() => { setResetUser(null); setResetPasswordValue(''); }}
+                                className="btn btn-sm btn-ghost"
+                            >
+                                {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={resetPasswordLoading || resetPasswordValue.length < 8}
+                                className="btn btn-sm btn-warning text-neutral-900 font-bold gap-1.5 shadow-sm"
+                            >
+                                {resetPasswordLoading ? (
+                                    <span className="loading loading-spinner loading-xs" />
+                                ) : (
+                                    <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                                )}
+                                {lang === 'ar' ? 'تحديث كلمة المرور' : 'Update Password'}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+                <div className="modal-backdrop bg-black/60 backdrop-blur-xs" onClick={() => !resetPasswordLoading && setResetUser(null)} />
             </div>
         </div>
     );
