@@ -46,6 +46,7 @@ function resolveRecipientPhone(phone, phoneCountryCode = '965') {
 }
 
 function getTemplateLanguage(templateName) {
+    if (templateName === 'otptargetlogin') return 'en_US';
     if (templateName === 'shipment_tracking_quick') return 'en_GB';
     if (templateName === 'shipment_confirmation_2' || templateName === 'hello_world') return 'en_US';
     return 'en';
@@ -858,32 +859,105 @@ www.target-kw.com | +965 6965 6563`;
     }
 
     /**
-     * Send Authentication OTP Code via WhatsApp and Chatwoot
+     * Send Authentication OTP Code via WhatsApp using approved template 'otptargetlogin'
      */
     async sendAuthOtp({ phone, name, otp }) {
         if (!phone || !otp) return null;
-        const messageText = `🔐 *Target Logistics Verification Code*\n\nYour login verification code is: *${otp}*\n\nValid for 5 minutes. Please do not share this code.`;
-        
-        let metaResult = null;
-        try {
-            metaResult = await this.sendDirectTextMessage({
-                toPhone: phone,
-                messageText,
-                recipientName: name || 'Valued User',
-                metadata: { type: 'AUTH_OTP', otp }
-            });
-        } catch (err) {
-            logger.warn(`[WhatsApp OTP Error] ${err.message}`);
+        const resolvedPhone = resolveRecipientPhone(phone, '965');
+        if (!resolvedPhone) {
+            logger.warn(`[WhatsApp OTP] Invalid phone number: ${phone}`);
+            return null;
         }
 
-        // Secondary fallback to Chatwoot
+        const cleanPhone = String(resolvedPhone).replace(/\D/g, '');
+        const settings = getSystemSettings()?.whatsapp || {};
+        const provider = settings.provider || 'SHIPMENT_WHATSAPP';
+        const templateName = 'otptargetlogin';
+        const langCode = 'en_US';
+        const bodyText = `Please share code ${otp} with delivery agent after verifying the package.`;
+
+        logger.info(`[WhatsApp OTP Dispatch] Template: ${templateName} [${langCode}] Target: ${cleanPhone} (OTP: ${otp}) Provider: ${provider}`);
+
+        // 1. Shipment-WhatsApp Microservice Dispatch (https://msg.target-kw.com)
+        if (provider === 'SHIPMENT_WHATSAPP' || provider === 'TARGET_MSG') {
+            const serviceUrl = settings.serviceUrl || 'https://msg.target-kw.com';
+            try {
+                const res = await sendViaShipmentWhatsappMicroservice({
+                    serviceUrl,
+                    templateName,
+                    language: langCode,
+                    toPhone: cleanPhone,
+                    variables: [String(otp)],
+                    apiKey: settings.apiKey || null
+                });
+                logger.info(`[WhatsApp OTP Sent via Microservice] Message ID: ${res.messageId}`);
+                return res;
+            } catch (microErr) {
+                logger.warn(`[WhatsApp OTP Microservice Error] ${microErr.message}. Attempting Meta/Chatwoot fallback...`);
+            }
+        }
+
+        // 2. Direct Meta WhatsApp Business API Cloud Endpoint
+        if (settings.accessToken && settings.phoneNumberId) {
+            try {
+                const url = `https://graph.facebook.com/v19.0/${settings.phoneNumberId}/messages`;
+                const payload = {
+                    messaging_product: 'whatsapp',
+                    recipient_type: 'individual',
+                    to: cleanPhone,
+                    type: 'template',
+                    template: {
+                        name: templateName,
+                        language: { code: langCode },
+                        components: [
+                            {
+                                type: 'body',
+                                parameters: [
+                                    {
+                                        type: 'text',
+                                        text: String(otp)
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                };
+
+                const res = await axios.post(url, payload, {
+                    headers: {
+                        Authorization: `Bearer ${settings.accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: 12000
+                });
+
+                const wamid = res.data?.messages?.[0]?.id || null;
+                logger.info(`[WhatsApp Meta API OTP Sent] Message ID: ${wamid}`);
+                return { status: 'SENT', externalMessageId: wamid, provider: 'META' };
+            } catch (metaErr) {
+                logger.warn(`[WhatsApp Meta API OTP Error] ${metaErr.message}`);
+            }
+        }
+
+        // 3. Fallback to Chatwoot
         try {
-            await chatwootService.sendDirectOtp({ phone, name, otp });
+            await chatwootService.sendDirectOtp({ phone: resolvedPhone, name, otp });
         } catch (cwErr) {
             logger.debug(`[Chatwoot OTP note] ${cwErr.message}`);
         }
 
-        return metaResult;
+        // 4. Fallback to direct text message
+        try {
+            return await this.sendDirectTextMessage({
+                toPhone: resolvedPhone,
+                messageText: bodyText,
+                recipientName: name || 'User',
+                metadata: { templateName, variables: [String(otp)] }
+            });
+        } catch (directErr) {
+            logger.warn(`[WhatsApp Direct OTP Text Error] ${directErr.message}`);
+            return null;
+        }
     }
 }
 
