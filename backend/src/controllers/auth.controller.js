@@ -426,23 +426,68 @@ exports.updateUserSurcharge = async (req, res) => {
 };
 
 /**
- * Admin: Reset a user's password
+ * Authenticated User: Change Own Password
+ */
+exports.changeMyPassword = async (req, res) => {
+    try {
+        const { currentPassword, newPassword, password } = req.body;
+        const targetPassword = newPassword || password;
+
+        if (!targetPassword || targetPassword.length < 8) {
+            return res.status(400).json({ success: false, error: 'New password must be at least 8 characters' });
+        }
+
+        const user = await prisma.user.findUnique({
+            where: { id: req.user.id }
+        });
+
+        if (!user) {
+            return res.status(404).json({ success: false, error: 'User not found' });
+        }
+
+        // If user currently has a password, verify current password
+        if (user.password && currentPassword) {
+            const isMatch = await comparePassword(currentPassword, user.password);
+            if (!isMatch) {
+                return res.status(400).json({ success: false, error: 'Current password is incorrect' });
+            }
+        } else if (user.password && !currentPassword) {
+            return res.status(400).json({ success: false, error: 'Current password is required' });
+        }
+
+        const hashedPassword = await hashPassword(targetPassword);
+        await prisma.user.update({
+            where: { id: user.id },
+            data: { password: hashedPassword }
+        });
+
+        logger.info(`User ${user.email} successfully changed their password`);
+        res.status(200).json({ success: true, message: 'Password updated successfully' });
+    } catch (error) {
+        logger.error('Change password error:', error);
+        res.status(500).json({ success: false, error: 'Failed to update password' });
+    }
+};
+
+/**
+ * Admin / Owner / Accounting: Reset a user's password
  */
 exports.resetUserPassword = async (req, res) => {
     try {
-        const { password } = req.body;
-        if (!password || password.length < 8) {
+        const { password, newPassword } = req.body;
+        const targetPassword = password || newPassword;
+        if (!targetPassword || targetPassword.length < 8) {
             return res.status(400).json({ success: false, error: 'Password must be at least 8 characters' });
         }
 
-        const hashedPassword = await hashPassword(password);
+        const hashedPassword = await hashPassword(targetPassword);
         
         await prisma.user.update({
             where: { id: req.params.id },
             data: { password: hashedPassword }
         });
 
-        logger.info(`Password reset for user ${req.params.id} by admin ${req.user.email}`);
+        logger.info(`Password reset for user ${req.params.id} by ${req.user.role} ${req.user.email}`);
         res.status(200).json({ success: true, message: 'Password updated successfully' });
     } catch (error) {
         logger.error('Reset password error:', error);

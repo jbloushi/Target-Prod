@@ -286,11 +286,18 @@ const AdminUsersPage = () => {
             };
 
             if (editingUser?.id) {
-                await userService.updateUser(editingUser.id, payload);
+                const userUpdatePayload = { ...payload };
+                const newPasswordToSet = userUpdatePayload.password;
+                delete userUpdatePayload.password;
+
+                await userService.updateUser(editingUser.id, userUpdatePayload);
+                if (newPasswordToSet && newPasswordToSet.length >= 8) {
+                    await userService.resetPassword(editingUser.id, newPasswordToSet);
+                }
                 if (!isOrgManager && ['staff', 'driver'].includes(payload.role)) {
                     await userService.replaceAccessScopes(editingUser.id, accessScopes);
                 }
-                enqueueSnackbar(lang === 'ar' ? 'تم تحديث بيانات المستخدم' : 'User updated successfully', { variant: 'success' });
+                enqueueSnackbar(lang === 'ar' ? 'تم تحديث بيانات المستخدم بنجاح' : 'User updated successfully', { variant: 'success' });
             } else {
                 const created = await userService.createUser(payload);
                 if (!isOrgManager && ['staff', 'driver'].includes(payload.role) && created.data?.id) {
@@ -871,7 +878,7 @@ const AdminUsersPage = () => {
                                     </select>
                                 </div>
 
-                                {!editingUser && (
+                                {!editingUser ? (
                                     <div>
                                         <label className="text-xs font-bold text-base-content/70 block mb-1">
                                             {lang === 'ar' ? 'كلمة المرور *' : 'Password *'}
@@ -885,6 +892,29 @@ const AdminUsersPage = () => {
                                             className="input input-sm input-bordered w-full font-mono focus:input-primary"
                                         />
                                     </div>
+                                ) : (
+                                    canFullAdmin && (
+                                        <div className="pt-2 border-t border-base-200">
+                                            <div className="flex items-center justify-between mb-1">
+                                                <label className="text-xs font-bold text-base-content/70">
+                                                    {lang === 'ar' ? 'تعيين كلمة مرور جديدة (اختياري)' : 'Set New Password (Optional)'}
+                                                </label>
+                                                <span className="badge badge-warning badge-outline text-[10px] font-bold">
+                                                    {lang === 'ar' ? 'صلاحيات الإدارة' : 'Admin/Owner/Acct'}
+                                                </span>
+                                            </div>
+                                            <input
+                                                type="password"
+                                                value={formData.password || ''}
+                                                onChange={(e) => updateField('password', e.target.value)}
+                                                placeholder={lang === 'ar' ? 'اتركه فارغاً للحفاظ على كلمة المرور الحالية' : 'Leave blank to retain current password'}
+                                                className="input input-sm input-bordered w-full font-mono focus:input-primary"
+                                            />
+                                            <span className="text-[10.5px] text-base-content/50 mt-1 block">
+                                                {lang === 'ar' ? 'أدخل 8 أحرف على الأقل لتحديث كلمة مرور المستخدم مباشرة عند الحفظ.' : 'Enter at least 8 characters to reset password upon saving.'}
+                                            </span>
+                                        </div>
+                                    )
                                 )}
                             </div>
                         )}

@@ -13,6 +13,7 @@ router.get('/', authorizeAny('VIEW_ALL_SHIPMENTS', 'MANAGE_ORG_USERS'), userCont
 // Get current user profile
 router.get('/me', userController.getMe);
 router.patch('/profile', userController.updateProfile);
+router.patch('/password', authController.changeMyPassword);
 router.get('/assignable-clients', authorize('CREATE_SHIPMENTS'), userController.getAssignableClients);
 
 // Admin Only Routes

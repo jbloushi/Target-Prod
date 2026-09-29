@@ -401,6 +401,15 @@ const Header = () => {
                                     </Link>
 
                                     <Link
+                                        to="/settings?tab=security"
+                                        onClick={() => setUserMenuOpen(false)}
+                                        className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-base-200 rounded-xl transition-colors"
+                                    >
+                                        <span className="material-symbols-outlined text-base text-warning">lock_reset</span>
+                                        <span>{isRTL ? 'تغيير كلمة المرور' : 'Change Password'}</span>
+                                    </Link>
+
+                                    <Link
                                         to="/track"
                                         onClick={() => setUserMenuOpen(false)}
                                         className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-base-200 rounded-xl transition-colors"

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useSnackbar } from 'notistack';
@@ -24,14 +25,28 @@ const getTabs = (lang) => [
   { id: 'whatsapp', label: lang === 'ar' ? 'إشعارات واتساب وميتا' : 'Meta WhatsApp Alerts', icon: 'chat' },
   { id: 'notifications', label: lang === 'ar' ? 'قنوات الإشعار' : 'Event Triggers', icon: 'notifications' },
   { id: 'routing', label: lang === 'ar' ? 'مسارات وبوابات النقل' : 'Carrier Gateways', icon: 'hub' },
-  { id: 'security', label: lang === 'ar' ? 'الأمان والحساب' : 'Security & Access', icon: 'lock' },
+  { id: 'security', label: lang === 'ar' ? 'الأمان وكلمة المرور' : 'Security & Password', icon: 'lock' },
 ];
 
 export const SettingsPage = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { t, lang, isRTL } = useLanguage();
   const { user, refreshUser, isStaff, isAdmin } = useAuth();
   const { enqueueSnackbar } = useSnackbar();
-  const [activeTab, setActiveTab] = useState('profile');
+  const initialTab = searchParams.get('tab') || 'profile';
+  const [activeTab, setActiveTab] = useState(initialTab);
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && tab !== activeTab) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+
+  const handleTabChange = (tabId) => {
+    setActiveTab(tabId);
+    setSearchParams({ tab: tabId }, { replace: true });
+  };
 
   // API Key State
   const [apiKey, setApiKey] = useState(user?.apiKey || '');
@@ -321,8 +336,12 @@ export const SettingsPage = () => {
 
   const handlePasswordChange = async (e) => {
     if (e) e.preventDefault();
-    if (!passwords.newPass || passwords.newPass !== passwords.confirm) {
-      enqueueSnackbar('New passwords do not match', { variant: 'warning' });
+    if (!passwords.newPass || passwords.newPass.length < 8) {
+      enqueueSnackbar(lang === 'ar' ? 'كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل' : 'New password must be at least 8 characters', { variant: 'warning' });
+      return;
+    }
+    if (passwords.newPass !== passwords.confirm) {
+      enqueueSnackbar(lang === 'ar' ? 'كلمتا المرور غير متطابقتين' : 'New passwords do not match', { variant: 'warning' });
       return;
     }
     setSavingPassword(true);
@@ -331,10 +350,11 @@ export const SettingsPage = () => {
         currentPassword: passwords.current,
         newPassword: passwords.newPass,
       });
-      enqueueSnackbar('Password updated successfully', { variant: 'success' });
+      enqueueSnackbar(lang === 'ar' ? 'تم تحديث كلمة المرور بنجاح' : 'Password updated successfully', { variant: 'success' });
       setPasswords({ current: '', newPass: '', confirm: '' });
     } catch (err) {
-      enqueueSnackbar(err.response?.data?.error || 'Failed to update password', { variant: 'error' });
+      const errMsg = err.response?.data?.error || (lang === 'ar' ? 'فشل تحديث كلمة المرور' : 'Failed to update password');
+      enqueueSnackbar(errMsg, { variant: 'error' });
     } finally {
       setSavingPassword(false);
     }
@@ -365,7 +385,7 @@ export const SettingsPage = () => {
                 <li key={tab.id}>
                   <button
                     type="button"
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => handleTabChange(tab.id)}
                     className={`flex items-center gap-3 py-3 px-3 rounded-lg font-bold text-xs transition-all ${
                       isActive ? 'active bg-primary text-white font-extrabold shadow-sm' : 'text-base-content/70 hover:bg-base-200'
                     }`}
@@ -1185,44 +1205,50 @@ export const SettingsPage = () => {
               <div className="card-body p-6 sm:p-8 space-y-6">
                 <div>
                   <h2 className="text-lg font-black text-base-content tracking-tight">
-                    Security Credentials & Password
+                    {lang === 'ar' ? 'أمان الحساب وكلمة المرور' : 'Security Credentials & Password'}
                   </h2>
                   <p className="text-xs text-base-content/60 mt-0.5">
-                    Update your account credentials and maintain secure platform access.
+                    {lang === 'ar' ? 'تحديث بيانات تسجيل الدخول وتأمين الوصول إلى المنصة.' : 'Update your account credentials and maintain secure platform access.'}
                   </p>
                 </div>
 
                 <form onSubmit={handlePasswordChange} className="max-w-md space-y-4">
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-base-content/70 uppercase">Current Password *</label>
+                    <label className="text-xs font-bold text-base-content/70 uppercase">
+                      {lang === 'ar' ? 'كلمة المرور الحالية *' : 'Current Password *'}
+                    </label>
                     <input
                       type="password"
                       value={passwords.current}
                       onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
                       placeholder="••••••••"
-                      className="input input-bordered w-full text-sm focus:input-primary"
+                      className="input input-bordered w-full text-sm font-mono focus:input-primary"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-base-content/70 uppercase">New Password *</label>
+                    <label className="text-xs font-bold text-base-content/70 uppercase">
+                      {lang === 'ar' ? 'كلمة المرور الجديدة *' : 'New Password *'}
+                    </label>
                     <input
                       type="password"
                       value={passwords.newPass}
                       onChange={(e) => setPasswords({ ...passwords, newPass: e.target.value })}
-                      placeholder="Minimum 8 characters"
-                      className="input input-bordered w-full text-sm focus:input-primary"
+                      placeholder={lang === 'ar' ? '8 أحرف على الأقل' : 'Minimum 8 characters'}
+                      className="input input-bordered w-full text-sm font-mono focus:input-primary"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-base-content/70 uppercase">Confirm New Password *</label>
+                    <label className="text-xs font-bold text-base-content/70 uppercase">
+                      {lang === 'ar' ? 'تأكيد كلمة المرور الجديدة *' : 'Confirm New Password *'}
+                    </label>
                     <input
                       type="password"
                       value={passwords.confirm}
                       onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
                       placeholder="••••••••"
-                      className="input input-bordered w-full text-sm focus:input-primary"
+                      className="input input-bordered w-full text-sm font-mono focus:input-primary"
                     />
                   </div>
 
@@ -1232,7 +1258,7 @@ export const SettingsPage = () => {
                     className="btn btn-primary font-bold text-xs shadow-md shadow-primary/20 gap-2"
                   >
                     {savingPassword ? <span className="loading loading-spinner loading-xs" /> : <span className="material-symbols-outlined text-base">lock_reset</span>}
-                    <span>Update Password</span>
+                    <span>{lang === 'ar' ? 'تحديث كلمة المرور' : 'Update Password'}</span>
                   </button>
                 </form>
               </div>
