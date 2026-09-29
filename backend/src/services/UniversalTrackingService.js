@@ -21,9 +21,22 @@ const CARRIER_CODE_TO_17TRACK = {
     'OTE': 100006       // GCC / Aramex fallback
 };
 
+// Mapping of internal carrier codes to TrackingMore courier codes
+const CARRIER_CODE_TO_TRACKINGMORE = {
+    'DGR': 'dhl',
+    'DHL': 'dhl',
+    'FEDEX': 'fedex',
+    'FDX': 'fedex',
+    'ARAMEX': 'aramex',
+    'ARM': 'aramex',
+    'UPS': 'ups',
+    'OTE': 'aramex'
+};
+
 class UniversalTrackingService {
     constructor() {
         this.apiKey = process.env.UNIVERSAL_TRACKING_API_KEY || process.env.SEVENTEEN_TRACK_KEY || '43D9F3053FED94A45A61894DE003F640';
+        this.trackingMoreKey = process.env.TRACKINGMORE_API_KEY || '2namvtfh-0o0m-0bb6-ob8a-7xk6wc5ggay6';
     }
 
     /**
@@ -40,7 +53,21 @@ class UniversalTrackingService {
             return { status: 'pending', events: [] };
         }
 
-        // 1. Try 17TRACK Universal API (Carrier-grade real-time tracking for 1,500+ carriers)
+        // 1. Try TrackingMore API V4 (Primary Multi-Carrier API: 1,600+ carriers)
+        const tmKey = process.env.TRACKINGMORE_API_KEY || this.trackingMoreKey;
+        if (tmKey) {
+            try {
+                const tmResult = await this._fetchTrackingMore(normalizedCarrier, cleanTracking, tmKey);
+                if (tmResult && tmResult.events && tmResult.events.length > 0) {
+                    logger.info(`[UniversalTracking] TrackingMore returned ${tmResult.events.length} checkpoints for ${cleanTracking} (${normalizedCarrier})`);
+                    return tmResult;
+                }
+            } catch (tmErr) {
+                logger.warn(`[UniversalTracking] TrackingMore query for ${cleanTracking}: ${tmErr.message}`);
+            }
+        }
+
+        // 2. Try 17TRACK Universal API (Secondary Multi-Carrier API)
         const key = process.env.UNIVERSAL_TRACKING_API_KEY || this.apiKey;
         if (key) {
             try {
@@ -54,7 +81,7 @@ class UniversalTrackingService {
             }
         }
 
-        // 2. Carrier-specific Public Web Scraper Fallbacks (Free & No API Credentials Needed)
+        // 3. Carrier-specific Public Web Scraper Fallbacks (Free & No API Credentials Needed)
         const freeScraper = require('./FreeWebScraperService');
         if (normalizedCarrier === 'ARAMEX') {
             const scraped = await freeScraper.scrapeAramex(cleanTracking);
@@ -72,8 +99,100 @@ class UniversalTrackingService {
             return this._scrapeFedexPublic(cleanTracking);
         }
 
-        // 3. Generic Carrier Fallback
+        // 4. Generic Carrier Fallback
         return this._genericCarrierFallback(normalizedCarrier, cleanTracking);
+    }
+
+    /**
+     * TrackingMore API V4 integration with auto-registration
+     * @private
+     */
+    async _fetchTrackingMore(carrierCode, trackingNumber, apiKey) {
+        const courierCode = CARRIER_CODE_TO_TRACKINGMORE[carrierCode] || String(carrierCode).toLowerCase();
+        const headers = {
+            'Tracking-Api-Key': apiKey,
+            'Content-Type': 'application/json'
+        };
+
+        // Step 1: Query existing tracking
+        let item = null;
+        try {
+            const getRes = await axios.get(`https://api.trackingmore.com/v4/trackings/get?tracking_numbers=${encodeURIComponent(trackingNumber)}&courier_code=${encodeURIComponent(courierCode)}`, {
+                headers,
+                timeout: 8000
+            });
+            item = getRes.data?.data?.[0];
+        } catch (getErr) {
+            logger.debug(`[UniversalTracking] TrackingMore get note: ${getErr.response?.data?.meta?.message || getErr.message}`);
+        }
+
+        // Step 2: Auto-create tracking in TrackingMore if not registered yet
+        if (!item || item.delivery_status === 'notfound') {
+            try {
+                const createRes = await axios.post('https://api.trackingmore.com/v4/trackings/create', {
+                    tracking_number: trackingNumber,
+                    courier_code: courierCode
+                }, {
+                    headers,
+                    timeout: 8000
+                });
+                item = createRes.data?.data || item;
+            } catch (createErr) {
+                logger.debug(`[UniversalTracking] TrackingMore create note: ${createErr.response?.data?.meta?.message || createErr.message}`);
+            }
+        }
+
+        if (!item) {
+            return null;
+        }
+
+        // Extract scan events from origin_info and destination_info
+        const originEvents = Array.isArray(item.origin_info?.trackinfo) ? item.origin_info.trackinfo : [];
+        const destEvents = Array.isArray(item.destination_info?.trackinfo) ? item.destination_info.trackinfo : [];
+        const rawEvents = [...originEvents, ...destEvents];
+
+        if (rawEvents.length === 0) {
+            return null;
+        }
+
+        const events = rawEvents.map(evt => {
+            const desc = evt.details || evt.checkpoint_status || evt.StatusDescription || 'Carrier update';
+            const location = [evt.city, evt.state, evt.country_iso].filter(Boolean).join(', ') || evt.location || 'Carrier Facility';
+            const statusCode = this._mapTrackingMoreStatus(evt.checkpoint_status || evt.status, desc);
+            return {
+                timestamp: evt.Date || evt.checkpoint_date ? new Date(evt.Date || evt.checkpoint_date).toISOString() : new Date().toISOString(),
+                location,
+                description: desc,
+                statusCode
+            };
+        });
+
+        // Deduplicate and sort chronologically
+        events.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+        const latestEvent = events[events.length - 1];
+        const overallStatus = this._mapTrackingMoreStatus(item.delivery_status, latestEvent?.description) || latestEvent?.statusCode || 'in_transit';
+
+        return {
+            status: overallStatus,
+            events,
+            carrierWeight: parseFloat(item.weight_kg || item.weight || 0),
+            carrierPieces: parseInt(item.pieces || 0, 10)
+        };
+    }
+
+    _mapTrackingMoreStatus(status, desc = '') {
+        const s = String(status || '').toLowerCase();
+        const text = String(desc || '').toLowerCase();
+
+        if (s === 'delivered' || text.includes('delivered') || text.includes('signed')) return 'delivered';
+        if (s === 'outfordelivery' || s === 'out_for_delivery' || text.includes('out for delivery') || text.includes('with courier')) return 'out_for_delivery';
+        if (s === 'pickup' || s === 'picked_up' || text.includes('picked up') || text.includes('collected')) return 'picked_up';
+        if (s === 'exception' || s === 'undelivered' || s === 'expired' || text.includes('exception') || text.includes('delayed') || text.includes('held')) return 'exception';
+        if (s === 'transit' || s === 'in_transit' || text.includes('in transit') || text.includes('departed') || text.includes('arrived')) return 'in_transit';
+        if (s === 'inforeceived' || s === 'pending') return 'booked';
+
+        return 'in_transit';
     }
 
     /**
