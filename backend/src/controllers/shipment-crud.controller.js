@@ -442,9 +442,10 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
             shipment.awbUrl = null; 
         }
 
-        // Sync tracking from carrier if requested explicitly, has only baseline event, or trigger non-blocking background refresh if due
+        // Sync tracking from carrier synchronously when: explicitly requested, has only baseline, or TTL has expired
+        // Always synchronous on detail view so the response contains the latest tracking data
         const hasOnlyBaseline = !shipment.history || (Array.isArray(shipment.history) && shipment.history.length <= 1);
-        if (req.query.refresh === 'true' || req.query.sync === 'true' || hasOnlyBaseline) {
+        if (req.query.refresh === 'true' || req.query.sync === 'true' || hasOnlyBaseline || isTrackingSyncDue(shipment)) {
             const updates = await syncCarrierTrackingHistory(shipment);
             if (updates) {
                 const dataToUpdate = {
@@ -466,8 +467,6 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
                 shipment.status = updates.status;
             }
             markTrackingSynced(shipment.trackingNumber);
-        } else if (isTrackingSyncDue(shipment)) {
-            triggerBackgroundTrackingSync(shipment, syncCarrierTrackingHistory);
         }
 
         const rawHistory = Array.isArray(shipment.history) ? shipment.history : [];

@@ -67,6 +67,7 @@ const ShipmentDetailsPage = () => {
     const { t, lang } = useLanguage();
     const isRTL = lang === 'ar';
     const fetchedRef = useRef(false);
+    const shipmentRef = useRef(null);
 
     const { user, can } = useAuth();
     const { enqueueSnackbar } = useSnackbar();
@@ -103,7 +104,10 @@ const ShipmentDetailsPage = () => {
     const [sendingWhatsAppRole, setSendingWhatsAppRole] = useState(null);
     const [sendingPaymentLink, setSendingPaymentLink] = useState(false);
 
-    // Load shipment details
+    // Keep ref in sync so polling interval can read latest status without stale closures
+    shipmentRef.current = shipment;
+
+    // Load shipment details — initial fetch + auto-refresh every 2 min for active shipments
     useEffect(() => {
         if (!trackingNumber) return;
         fetchedRef.current = false;
@@ -119,6 +123,32 @@ const ShipmentDetailsPage = () => {
         };
 
         fetchShipmentData();
+
+        // Silent background refresh (no loading spinner) every 2 minutes for non-terminal shipments
+        const POLL_INTERVAL = 2 * 60 * 1000; // 2 minutes
+        const TERMINAL = ['delivered', 'cancelled', 'returned', 'rejected'];
+        const pollId = setInterval(async () => {
+            const currentStatus = shipmentRef.current?.status?.toLowerCase();
+            if (currentStatus && TERMINAL.includes(currentStatus)) return;
+            try {
+                await getShipment(trackingNumber);
+            } catch { /* silent */ }
+        }, POLL_INTERVAL);
+
+        // Refresh immediately when the browser tab regains focus after being hidden
+        const handleVisibility = async () => {
+            if (document.visibilityState === 'visible') {
+                try {
+                    await getShipment(trackingNumber);
+                } catch { /* silent */ }
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibility);
+
+        return () => {
+            clearInterval(pollId);
+            document.removeEventListener('visibilitychange', handleVisibility);
+        };
     }, [trackingNumber, getShipment]);
 
     const shipmentId = shipment?._id || shipment?.id;
