@@ -878,7 +878,96 @@ www.target-kw.com | +965 6965 6563`;
 
         logger.info(`[WhatsApp OTP Dispatch] Template: ${templateName} [${langCode}] Target: ${cleanPhone} (OTP: ${otp}) Provider: ${provider}`);
 
-        // 1. Shipment-WhatsApp Microservice Dispatch (https://msg.target-kw.com)
+        // 1. Direct Meta WhatsApp Business API Cloud Endpoint (Most accurate for Authentication / Custom templates)
+        if (settings.accessToken && settings.phoneNumberId) {
+            const url = `https://graph.facebook.com/v19.0/${settings.phoneNumberId}/messages`;
+            
+            const candidateComponentSets = [
+                // Set 1: Standard Body Parameter (Positional)
+                [
+                    {
+                        type: 'body',
+                        parameters: [{ type: 'text', text: String(otp) }]
+                    }
+                ],
+                // Set 2: Body Parameter (Named 'code')
+                [
+                    {
+                        type: 'body',
+                        parameters: [{ type: 'text', parameter_name: 'code', text: String(otp) }]
+                    }
+                ],
+                // Set 3: Body + Copy Code Button (Meta Authentication standard)
+                [
+                    {
+                        type: 'body',
+                        parameters: [{ type: 'text', text: String(otp) }]
+                    },
+                    {
+                        type: 'button',
+                        sub_type: 'copy_code',
+                        index: '0',
+                        parameters: [{ type: 'coupon_code', coupon_code: String(otp) }]
+                    }
+                ],
+                // Set 4: Body + URL Button
+                [
+                    {
+                        type: 'body',
+                        parameters: [{ type: 'text', text: String(otp) }]
+                    },
+                    {
+                        type: 'button',
+                        sub_type: 'url',
+                        index: '0',
+                        parameters: [{ type: 'text', text: String(otp) }]
+                    }
+                ],
+                // Set 5: Pure Copy Code Button without body param
+                [
+                    {
+                        type: 'button',
+                        sub_type: 'copy_code',
+                        index: '0',
+                        parameters: [{ type: 'coupon_code', coupon_code: String(otp) }]
+                    }
+                ]
+            ];
+
+            for (let i = 0; i < candidateComponentSets.length; i++) {
+                const components = candidateComponentSets[i];
+                const payload = {
+                    messaging_product: 'whatsapp',
+                    recipient_type: 'individual',
+                    to: cleanPhone,
+                    type: 'template',
+                    template: {
+                        name: templateName,
+                        language: { code: langCode },
+                        components
+                    }
+                };
+
+                try {
+                    const res = await axios.post(url, payload, {
+                        headers: {
+                            Authorization: `Bearer ${settings.accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        timeout: 12000
+                    });
+
+                    const wamid = res.data?.messages?.[0]?.id || null;
+                    logger.info(`[WhatsApp Meta API OTP Sent] Successfully sent template '${templateName}' to ${cleanPhone} (Payload Set ${i + 1}). WAMID: ${wamid}`);
+                    return { status: 'SENT', externalMessageId: wamid, provider: 'META' };
+                } catch (metaErr) {
+                    const errorDetail = metaErr.response?.data?.error?.message || metaErr.message;
+                    logger.debug(`[WhatsApp Meta API OTP Candidate ${i + 1} Failed] ${errorDetail}`);
+                }
+            }
+        }
+
+        // 2. Shipment-WhatsApp Microservice Dispatch (https://msg.target-kw.com)
         if (provider === 'SHIPMENT_WHATSAPP' || provider === 'TARGET_MSG') {
             const serviceUrl = settings.serviceUrl || 'https://msg.target-kw.com';
             try {
@@ -893,49 +982,7 @@ www.target-kw.com | +965 6965 6563`;
                 logger.info(`[WhatsApp OTP Sent via Microservice] Message ID: ${res.messageId}`);
                 return res;
             } catch (microErr) {
-                logger.warn(`[WhatsApp OTP Microservice Error] ${microErr.message}. Attempting Meta/Chatwoot fallback...`);
-            }
-        }
-
-        // 2. Direct Meta WhatsApp Business API Cloud Endpoint
-        if (settings.accessToken && settings.phoneNumberId) {
-            try {
-                const url = `https://graph.facebook.com/v19.0/${settings.phoneNumberId}/messages`;
-                const payload = {
-                    messaging_product: 'whatsapp',
-                    recipient_type: 'individual',
-                    to: cleanPhone,
-                    type: 'template',
-                    template: {
-                        name: templateName,
-                        language: { code: langCode },
-                        components: [
-                            {
-                                type: 'body',
-                                parameters: [
-                                    {
-                                        type: 'text',
-                                        text: String(otp)
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                };
-
-                const res = await axios.post(url, payload, {
-                    headers: {
-                        Authorization: `Bearer ${settings.accessToken}`,
-                        'Content-Type': 'application/json'
-                    },
-                    timeout: 12000
-                });
-
-                const wamid = res.data?.messages?.[0]?.id || null;
-                logger.info(`[WhatsApp Meta API OTP Sent] Message ID: ${wamid}`);
-                return { status: 'SENT', externalMessageId: wamid, provider: 'META' };
-            } catch (metaErr) {
-                logger.warn(`[WhatsApp Meta API OTP Error] ${metaErr.message}`);
+                logger.warn(`[WhatsApp OTP Microservice Error] ${microErr.message}`);
             }
         }
 
