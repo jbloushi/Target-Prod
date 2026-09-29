@@ -128,12 +128,26 @@ const DashboardPage = () => {
         return organizations.find(o => o.id === selectedOrgId) || organizations[0];
     }, [organizations, selectedOrgId]);
 
+    const PIPELINE_STATUS_MAP = {
+        all: undefined,
+        pending: 'pending,ready_for_pickup,created,draft,updated',
+        in_transit: 'in_transit,picked_up,received_at_hub,verified,booked',
+        out_for_delivery: 'out_for_delivery',
+        exception: 'exception,failed,returned,cancelled',
+        delivered: 'delivered,completed'
+    };
+
     const { stats, loading: statsLoading } = useShipmentStats(selectedOrgId);
     const { triageItems, count: triageCount, loading: triageLoading } = useShipmentTriage(selectedOrgId);
     const { shipments: rawShipments, loading: recentLoading } = useShipments({ 
-        limit: 20, 
+        limit: 25, 
+        statusIn: PIPELINE_STATUS_MAP[pipelineStage],
         organizationId: selectedOrgId !== 'all' ? selectedOrgId : undefined 
     });
+
+    const filteredShipments = useMemo(() => {
+        return rawShipments || [];
+    }, [rawShipments]);
 
     // Dynamic Trade Lanes / Corridors Telemetry from live database
     const tradeCorridors = useMemo(() => {
@@ -178,24 +192,8 @@ const DashboardPage = () => {
 
     // Client Perspective stats
     const clientActiveCount = useMemo(() => {
-        if (selectedOrgId === 'all') return (stats?.inTransit || 0) + (stats?.pickedUp || 0);
-        return (rawShipments || []).filter(s => s.organizationId === selectedOrgId || s.organization?.id === selectedOrgId).length;
-    }, [rawShipments, selectedOrgId, stats]);
-
-    // Filter shipments by pipeline stage
-    const filteredShipments = useMemo(() => {
-        let list = rawShipments || [];
-        if (pipelineStage === 'all') return list;
-        return list.filter(s => {
-            const st = (s.status || '').toLowerCase();
-            if (pipelineStage === 'pending') return ['pending', 'ready_for_pickup', 'created', 'draft'].includes(st);
-            if (pipelineStage === 'in_transit') return ['in_transit', 'picked_up'].includes(st);
-            if (pipelineStage === 'exception') return ['exception', 'failed', 'returned', 'cancelled'].includes(st);
-            if (pipelineStage === 'out_for_delivery') return ['out_for_delivery'].includes(st);
-            if (pipelineStage === 'delivered') return ['delivered', 'completed'].includes(st);
-            return true;
-        });
-    }, [rawShipments, pipelineStage]);
+        return (stats?.inTransit || 0) + (stats?.pickedUp || 0);
+    }, [stats]);
 
     // Live Volume Chart Data from backend stats
     const weeklyChartData = useMemo(() => {
@@ -675,8 +673,8 @@ const DashboardPage = () => {
                                     </h3>
                                     <p className="text-xs text-base-content/60 font-medium">
                                         {isRTL 
-                                            ? `عرض شحنات: ${activeOrg.name} (${filteredShipments.length} شحنة)` 
-                                            : `Displaying consignments for ${activeOrg.name} (${filteredShipments.length} total)`}
+                                            ? `عرض شحنات: ${activeOrg.name} (${filteredShipments.length} شحنة معروضة)` 
+                                            : `Displaying consignments for ${activeOrg.name} (${filteredShipments.length} shown)`}
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -689,24 +687,35 @@ const DashboardPage = () => {
                                 </div>
                             </div>
 
-                            {/* Lifecycle Stage Filter Buttons */}
+                            {/* Lifecycle Stage Filter Buttons with Live Badges */}
                             <div className="flex gap-1.5 overflow-x-auto pb-1 text-xs">
                                 {[
-                                    { id: 'all', label: isRTL ? 'الكل' : 'All' },
-                                    { id: 'pending', label: isRTL ? 'استلام وبوابة' : 'Pending Gate' },
-                                    { id: 'in_transit', label: isRTL ? 'نقل جوي' : 'In Flight' },
-                                    { id: 'out_for_delivery', label: isRTL ? 'مع المندوب' : 'Out for Delivery' },
-                                    { id: 'exception', label: isRTL ? 'استثناء / جمارك' : 'Customs Hold' },
-                                    { id: 'delivered', label: isRTL ? 'تم التسليم' : 'Delivered' },
+                                    { id: 'all', label: isRTL ? 'الكل' : 'All', count: stats?.total || 0 },
+                                    { id: 'pending', label: isRTL ? 'استلام وبوابة' : 'Pending Gate', count: stats?.pending || 0 },
+                                    { id: 'in_transit', label: isRTL ? 'نقل جوي' : 'In Flight', count: (stats?.inTransit || 0) + (stats?.pickedUp || 0) },
+                                    { id: 'out_for_delivery', label: isRTL ? 'مع المندوب' : 'Out for Delivery', count: stats?.outForDelivery || 0 },
+                                    { id: 'exception', label: isRTL ? 'استثناء / جمارك' : 'Customs Hold', count: stats?.exceptions || 0, isError: true },
+                                    { id: 'delivered', label: isRTL ? 'تم التسليم' : 'Delivered', count: stats?.delivered || 0, isSuccess: true },
                                 ].map((tab) => (
                                     <button
                                         key={tab.id}
                                         onClick={() => setPipelineStage(tab.id)}
-                                        className={`btn btn-xs rounded-lg font-bold shrink-0 ${
+                                        className={`btn btn-xs rounded-lg font-bold shrink-0 gap-1.5 ${
                                             pipelineStage === tab.id ? 'btn-primary' : 'btn-ghost border-base-200 text-base-content/70'
                                         }`}
                                     >
-                                        {tab.label}
+                                        <span>{tab.label}</span>
+                                        <span className={`badge badge-xs font-mono font-bold ${
+                                            pipelineStage === tab.id 
+                                                ? 'badge-ghost bg-primary-content/20 text-primary-content' 
+                                                : tab.isError && tab.count > 0 
+                                                    ? 'badge-error text-white' 
+                                                    : tab.isSuccess && tab.count > 0
+                                                        ? 'badge-success text-white'
+                                                        : 'badge-ghost text-base-content/60'
+                                        }`}>
+                                            {tab.count}
+                                        </span>
                                     </button>
                                 ))}
                             </div>
