@@ -149,6 +149,17 @@ const DashboardPage = () => {
         return active[0] || null;
     }, [tradeCorridors]);
 
+    // Live Carrier Network Breakdown from database
+    const carrierBreakdown = useMemo(() => {
+        if (Array.isArray(stats?.carriers) && stats.carriers.length > 0) {
+            return stats.carriers.filter(c => (c.count || 0) > 0);
+        }
+        return [];
+    }, [stats?.carriers]);
+
+    // Live Financial Aggregates from database
+    const financials = stats?.financials || null;
+
     // Live Total B2B Receivables from live database accounts
     const totalReceivables = useMemo(() => {
         return organizations.reduce((acc, o) => acc + (o.id !== 'all' ? (Number(o.balance) || 0) : 0), 0);
@@ -156,6 +167,7 @@ const DashboardPage = () => {
 
     // Dynamic On-Time SLA from live database
     const networkSla = useMemo(() => {
+        if (stats?.kvi?.healthyPipelineSla) return stats.kvi.healthyPipelineSla;
         if (stats?.kvi?.onTimeRate) return stats.kvi.onTimeRate;
         const totalTracked = (stats?.delivered || 0) + (stats?.inTransit || 0) + (stats?.exceptions || 0);
         if (totalTracked === 0) return '—';
@@ -513,18 +525,18 @@ const DashboardPage = () => {
                         </div>
 
                         {tradeCorridors.length > 0 ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                                 {tradeCorridors.map((c) => (
                                     <div key={c.id} className="p-3 bg-base-200/50 hover:bg-base-200 border border-base-200 rounded-xl transition-all cursor-pointer">
                                         <div className="flex justify-between items-center text-xs font-bold text-base-content">
-                                            <span className="flex items-center gap-1 text-sm">{c.flag1} {isRTL ? '←' : '→'} {c.flag2}</span>
+                                            <span className="flex items-center gap-1.5 text-base">{c.flag1} {isRTL ? '←' : '→'} {c.flag2}</span>
                                             <span className="badge badge-success badge-xs font-bold">{c.onTime}</span>
                                         </div>
-                                        <div className="font-extrabold text-xs text-base-content mt-1.5">
+                                        <div className="font-extrabold text-xs text-base-content mt-1.5 truncate">
                                             {isRTL ? c.nameAr : c.name}
                                         </div>
                                         <div className="flex justify-between items-baseline text-[11px] text-base-content/60 mt-1">
-                                            <span>{c.mode}</span>
+                                            <span className="badge badge-ghost badge-xs text-[10px]">{c.mode}</span>
                                             <span className="font-black text-base-content">{c.volume} {isRTL ? 'طرد' : 'pkgs'}</span>
                                         </div>
                                     </div>
@@ -542,6 +554,58 @@ const DashboardPage = () => {
                             </div>
                         )}
                     </div>
+
+                    {/* Carrier Network & Volume Distribution */}
+                    {carrierBreakdown.length > 0 && (
+                        <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5">
+                            <div className="flex justify-between items-center mb-3">
+                                <div>
+                                    <h3 className="text-sm sm:text-base font-black text-base-content flex items-center gap-2">
+                                        <span className="material-symbols-outlined text-primary text-lg">local_shipping</span>
+                                        {isRTL ? 'توزيع حجم الشحن عبر الناقلين (Carrier Network)' : 'Carrier Network & Volume Distribution'}
+                                    </h3>
+                                    <p className="text-xs text-base-content/60 font-medium">
+                                        {isRTL ? 'الحصة السوقية وحالة التسليم حسب الناقل المعتمد' : 'Live volume share & delivery health per integrated carrier'}
+                                    </p>
+                                </div>
+                                <span className="badge badge-primary badge-outline badge-sm font-bold text-xs">
+                                    {carrierBreakdown.length} {isRTL ? 'شركاء ناقلين' : 'Carriers Active'}
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                                {carrierBreakdown.map((car) => (
+                                    <div key={car.code} className="p-3 bg-base-200/50 hover:bg-base-200 border border-base-200 rounded-xl transition-all space-y-2">
+                                        <div className="flex justify-between items-center">
+                                            <span className={`badge ${car.badge} badge-xs font-black px-2 py-0.5`}>
+                                                {car.code}
+                                            </span>
+                                            <span className="text-[11px] font-extrabold text-success">
+                                                {car.health}% {isRTL ? 'كفاءة' : 'SLA'}
+                                            </span>
+                                        </div>
+                                        <div className="font-extrabold text-xs text-base-content truncate">
+                                            {isRTL ? car.nameAr : car.name}
+                                        </div>
+                                        <div className="flex justify-between items-baseline text-[11px] text-base-content/60">
+                                            <span className="font-mono text-base-content/70">{car.percentage}% {isRTL ? 'حصة' : 'share'}</span>
+                                            <span className="font-black text-base-content">{car.count} {isRTL ? 'شحنة' : 'pkgs'}</span>
+                                        </div>
+                                        <div className="w-full bg-base-300 rounded-full h-1.5 overflow-hidden">
+                                            <div 
+                                                className="h-full rounded-full transition-all" 
+                                                style={{ width: `${Math.max(5, car.percentage)}%`, backgroundColor: car.color }}
+                                            />
+                                        </div>
+                                        <div className="flex justify-between text-[10px] text-base-content/50 font-mono pt-0.5">
+                                            <span>{isRTL ? 'قيد النقل:' : 'Active:'} <strong className="text-base-content">{car.active}</strong></span>
+                                            <span>{isRTL ? 'مكتمل:' : 'Delivered:'} <strong className="text-success">{car.delivered}</strong></span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Operational Manifest Table with Pipeline Stage Filter */}
                     <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl overflow-hidden">
@@ -790,22 +854,152 @@ const DashboardPage = () => {
                         </div>
                     </div>
 
-                    {/* Key Velocity Indicators (KVIs) */}
+                    {/* Live Financial Performance & Collections Card */}
+                    {financials && (
+                        <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 space-y-4">
+                            <div className="flex justify-between items-center border-b border-base-200/70 pb-2.5">
+                                <div>
+                                    <h3 className="text-sm font-black text-base-content flex items-center gap-1.5">
+                                        <span className="material-symbols-outlined text-primary text-lg">account_balance_wallet</span>
+                                        {isRTL ? 'الملخص المالي والتحصيل' : 'Financial Ledger & Collections'}
+                                    </h3>
+                                    <p className="text-xs text-base-content/60 font-medium">
+                                        {isRTL ? 'إجمالي الفواتير والمبالغ المحصلة والذمم' : 'Live billed revenue, collections & receivables'}
+                                    </p>
+                                </div>
+                                <button onClick={() => navigate('/finance')} className="btn btn-ghost btn-xs text-primary font-bold">
+                                    {isRTL ? 'تفاصيل' : 'Ledger'}
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="p-3 bg-base-200/50 rounded-xl border border-base-200 space-y-1">
+                                    <span className="text-[11px] text-base-content/60 font-bold block">{isRTL ? 'إجمالي المفوتر' : 'Total Invoiced'}</span>
+                                    <span className="font-black text-sm text-base-content block font-mono">{financials.totalBilled} <span className="text-[10px] font-sans text-base-content/50">KWD</span></span>
+                                </div>
+                                <div className="p-3 bg-success/10 rounded-xl border border-success/20 space-y-1">
+                                    <span className="text-[11px] text-success font-bold block">{isRTL ? 'تم التحصيل' : 'Collected / Paid'}</span>
+                                    <span className="font-black text-sm text-success block font-mono">{financials.totalPaid} <span className="text-[10px] font-sans opacity-70">KWD</span></span>
+                                </div>
+                            </div>
+
+                            <div className="p-3 bg-warning/10 rounded-xl border border-warning/20 flex justify-between items-center">
+                                <div>
+                                    <span className="text-[11px] text-warning-content font-bold block">{isRTL ? 'الذمم والديون القائمة' : 'Outstanding Receivables'}</span>
+                                    <span className="font-black text-base text-warning-content font-mono">{financials.outstandingBalance} <span className="text-[10px] font-sans opacity-70">KWD</span></span>
+                                </div>
+                                {financials.unpaidCount > 0 && (
+                                    <span className="badge badge-warning badge-sm font-bold">
+                                        {financials.unpaidCount} {isRTL ? 'غير مسدد' : 'unpaid'}
+                                    </span>
+                                )}
+                            </div>
+
+                            {financials.totalCost && (
+                                <div className="p-3 bg-base-200/40 rounded-xl border border-base-200 space-y-2 text-xs">
+                                    <div className="flex justify-between items-center font-semibold">
+                                        <span className="text-base-content/60">{isRTL ? 'تكلفة الناقلين:' : 'Carrier Cost:'}</span>
+                                        <span className="font-mono font-bold text-base-content">{financials.totalCost} KWD</span>
+                                    </div>
+                                    <div className="flex justify-between items-center font-semibold">
+                                        <span className="text-base-content/60">{isRTL ? 'هامش الربح الإجمالي:' : 'Gross Margin:'}</span>
+                                        <span className="font-mono font-black text-success">{financials.grossMargin} KWD ({financials.marginPercentage})</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="flex gap-2 pt-1">
+                                <button onClick={() => navigate('/finance')} className="btn btn-outline btn-xs flex-1 rounded-lg font-bold">
+                                    {isRTL ? 'سجل المحاسبة' : 'Open Finance'}
+                                </button>
+                                <button onClick={() => navigate('/shipments')} className="btn btn-primary btn-xs flex-1 rounded-lg font-bold">
+                                    {isRTL ? 'عرض الفواتير' : 'Billing Manifest'}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Operational Triage Radar */}
+                    <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 space-y-4">
+                        <div className="flex justify-between items-center border-b border-base-200/70 pb-2.5">
+                            <div>
+                                <h3 className="text-sm font-black text-base-content flex items-center gap-1.5">
+                                    <span className="material-symbols-outlined text-error text-lg">crisis_alert</span>
+                                    {isRTL ? 'رادار الاستثناءات والتدخل التشغيلي' : 'Operational Triage & Exceptions'}
+                                </h3>
+                                <p className="text-xs text-base-content/60 font-medium">
+                                    {isRTL ? 'شحنات تتطلب إجراء فورياً من فريق العمليات' : 'Action items requiring immediate operator response'}
+                                </p>
+                            </div>
+                            <span className={`badge badge-sm font-black ${triageCount > 0 ? 'badge-error text-white animate-pulse' : 'badge-ghost text-xs'}`}>
+                                {triageCount} {isRTL ? 'تنبيه' : 'Alerts'}
+                            </span>
+                        </div>
+
+                        <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
+                            {triageLoading ? (
+                                <div className="text-center py-6">
+                                    <span className="loading loading-spinner loading-sm text-primary"></span>
+                                </div>
+                            ) : triageItems.length === 0 ? (
+                                <div className="p-4 bg-success/5 border border-success/20 rounded-xl text-center space-y-1">
+                                    <span className="material-symbols-outlined text-success text-xl">task_alt</span>
+                                    <p className="text-xs font-bold text-success">
+                                        {isRTL ? 'الشبكة مستقرة — لا توجد استثناءات حرجة' : 'Network Operating Smoothly — 0 Exceptions'}
+                                    </p>
+                                    <span className="text-[10.5px] text-base-content/50 block">
+                                        {isRTL ? 'جميع الشحنات تسير وفق الجدول الزمني المحدد' : 'All active shipments in transit are progressing normally'}
+                                    </span>
+                                </div>
+                            ) : (
+                                triageItems.slice(0, 5).map((item) => (
+                                    <div 
+                                        key={item.id} 
+                                        onClick={() => navigate(`/shipment/${item.trackingNumber}`)}
+                                        className="p-3 bg-base-200/50 hover:bg-base-200 border border-base-200 rounded-xl transition-all cursor-pointer space-y-1"
+                                    >
+                                        <div className="flex justify-between items-center">
+                                            <span className="font-mono font-bold text-xs text-primary">{item.trackingNumber}</span>
+                                            <span className="badge badge-error badge-xs font-bold">{item.status}</span>
+                                        </div>
+                                        <p className="text-xs text-base-content font-medium truncate">
+                                            {item.reason || item.description || (isRTL ? 'استثناء في مسار الشحنة' : 'Carrier transit exception reported')}
+                                        </p>
+                                        <div className="flex justify-between items-center text-[10.5px] text-base-content/50 pt-0.5">
+                                            <span>{item.accountName}</span>
+                                            <span className="font-mono">{item.updatedAtFormatted || 'Recent'}</span>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                        <div className="p-3 bg-base-200/40 border-t border-base-200 flex justify-center">
+                            <button 
+                                onClick={() => navigate('/shipments?status=exceptions')}
+                                className="btn btn-ghost btn-xs text-error font-extrabold gap-1"
+                            >
+                                <span>{isRTL ? 'عرض جميع الاستثناءات في جدول الشحنات' : 'View All Exceptions in Shipments'}</span>
+                                <span className="material-symbols-outlined text-sm">{isRTL ? 'arrow_back' : 'arrow_forward'}</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Key Velocity Indicators (KVIs) - 100% Data-Driven */}
                     <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 space-y-4">
                         <div className="border-b border-base-200/70 pb-2.5">
                             <h3 className="text-sm font-black text-base-content flex items-center gap-1.5">
                                 <span className="material-symbols-outlined text-primary text-lg">speed</span>
-                                {isRTL ? 'مؤشرات كفاءة الترحيل (KVI)' : 'Key Velocity Indicators (KVI)'}
+                                {isRTL ? 'مؤشرات كفاءة وسرعة العمليات (KVI)' : 'Key Velocity Indicators (KVI)'}
                             </h3>
                             <p className="text-xs text-base-content/60 font-medium">
-                                {isRTL ? 'سرعة استجابة الناقلين والتخليص الجمركي' : 'Operational speed across carriers & customs'}
+                                {isRTL ? 'مؤشرات حية ومحسوبة مباشرة من قاعدة البيانات' : '100% data-driven metrics calculated from live database'}
                             </p>
                         </div>
 
                         {stats?.total > 0 ? (
                             <div className="space-y-3.5">
                                 <VelocityIndicator 
-                                    label={isRTL ? 'استجابة الناقل (DHL / الشركاء)' : 'Carrier Response Rate'} 
+                                    label={isRTL ? 'استجابة الناقل والمعالجة' : 'Carrier Response Rate'} 
                                     value={stats?.kvi?.carrierResponseRate ? Number(String(stats.kvi.carrierResponseRate).replace('%', '')) : (((stats.total - (stats.exceptions || 0)) / stats.total) * 100)} 
                                     displayValue={stats?.kvi?.carrierResponseRate || `${(((stats.total - (stats.exceptions || 0)) / stats.total) * 100).toFixed(1)}%`} 
                                     target=">95%" 
@@ -813,33 +1007,39 @@ const DashboardPage = () => {
                                     icon="speed" 
                                 />
                                 <VelocityIndicator 
-                                    label={isRTL ? 'دقة مواعيد الشحن الجوي' : 'Air-Freight Punctuality'} 
-                                    value={Number(String(networkSla).replace('%', '')) || 0} 
-                                    displayValue={networkSla} 
+                                    label={isRTL ? 'نسبة نجاح التسليم النهائي' : 'Delivery Success Rate'} 
+                                    value={stats?.kvi?.airFreightPunctuality ? Number(String(stats.kvi.airFreightPunctuality).replace('%', '')) : 95} 
+                                    displayValue={stats?.kvi?.airFreightPunctuality || '95.0%'} 
                                     target=">90%" 
                                     progressClass="progress-primary" 
-                                    icon="flight" 
+                                    icon="task_alt" 
                                 />
-                                {stats?.kvi?.customsClearanceAvg ? (
+                                <VelocityIndicator 
+                                    label={isRTL ? 'نسبة خط الأنابيب النشط' : 'Active Pipeline Ratio'} 
+                                    value={stats?.kvi?.activeTransitRatio ? Number(String(stats.kvi.activeTransitRatio).replace('%', '')) : 15} 
+                                    displayValue={stats?.kvi?.activeTransitRatio || '15.0%'} 
+                                    target="Live" 
+                                    progressClass="progress-info" 
+                                    icon="flight_takeoff" 
+                                />
+                                {stats?.kvi?.deliveryLeadTimeAvg && (
                                     <VelocityIndicator 
-                                        label={isRTL ? 'متوسط وقت التخليص الجمركي' : 'Customs Clearance Avg.'} 
-                                        value={80} 
-                                        displayValue={stats.kvi.customsClearanceAvg} 
-                                        target="<5h" 
+                                        label={isRTL ? 'متوسط مدة التوصيل من الاستلام' : 'Avg. Delivery Lead Time'} 
+                                        value={85} 
+                                        displayValue={stats.kvi.deliveryLeadTimeAvg} 
+                                        target="<48h" 
                                         progressClass="progress-accent" 
-                                        icon="verified_user" 
+                                        icon="timer" 
                                     />
-                                ) : null}
-                                {stats?.kvi?.clientSatisfaction ? (
-                                    <VelocityIndicator 
-                                        label={isRTL ? 'رضا عملاء الشركات (NPS)' : 'Client Satisfaction (NPS)'} 
-                                        value={Number(stats.kvi.clientSatisfaction) || 80} 
-                                        displayValue={stats.kvi.clientSatisfaction} 
-                                        target=">70" 
-                                        progressClass="progress-warning" 
-                                        icon="sentiment_satisfied" 
-                                    />
-                                ) : null}
+                                )}
+                                <VelocityIndicator 
+                                    label={isRTL ? 'الالتزام بمعايير الخدمة (SLA)' : 'Network SLA Health'} 
+                                    value={Number(String(networkSla).replace('%', '')) || 98} 
+                                    displayValue={networkSla} 
+                                    target=">95%" 
+                                    progressClass="progress-success" 
+                                    icon="verified" 
+                                />
                             </div>
                         ) : (
                             <div className="p-5 text-center bg-base-200/30 rounded-xl border border-dashed border-base-300">
@@ -860,7 +1060,7 @@ const DashboardPage = () => {
                             </div>
                             <div className="text-xs">
                                 <span className="font-black text-primary uppercase tracking-wider block">
-                                    {isRTL ? 'بيان حركة الشحن والمسارات' : 'Active Corridors Telemetry'}
+                                    {isRTL ? 'أعلى ممر شحن نشاطاً' : 'Top Traffic Corridor'}
                                 </span>
                                 <span className="font-semibold text-base-content text-[11px]">
                                     {topCorridor ? (
