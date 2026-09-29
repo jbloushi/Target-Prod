@@ -184,21 +184,33 @@ exports.requestOtp = async (req, res) => {
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
         const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
 
-        authOtpStore.set(cleanDigits, {
+        const userPhoneDigits = String(user.phone || '').replace(/\D/g, '');
+        const otpRecord = {
             otp,
             expiresAt,
-            userId: user.id
-        });
+            userId: user.id,
+            cleanDigits,
+            userPhoneDigits
+        };
 
-        // Proactively send OTP via WhatsApp notification if configured
-        try {
-            const chatwootNotificationService = require('../services/chatwootNotificationService');
-            await chatwootNotificationService.sendDirectMessage(user.phone, `Your Target Logistics Login Verification Code is: ${otp}. Valid for 5 minutes.`);
-        } catch (msgErr) {
-            logger.debug(`[Auth OTP Dispatch note] ${msgErr.message}`);
+        authOtpStore.set(cleanDigits, otpRecord);
+        if (userPhoneDigits && userPhoneDigits !== cleanDigits) {
+            authOtpStore.set(userPhoneDigits, otpRecord);
         }
 
-        logger.info(`[Auth OTP Generated] Mobile: ${cleanDigits} (User: ${user.email}) -> OTP: ${process.env.NODE_ENV !== 'production' ? otp : '******'}`);
+        // Dispatch OTP via WhatsApp / Chatwoot notification
+        try {
+            const whatsappService = require('../services/whatsappIntegration.service');
+            await whatsappService.sendAuthOtp({
+                phone: user.phone,
+                name: user.name,
+                otp
+            });
+        } catch (msgErr) {
+            logger.warn(`[Auth OTP Dispatch note] ${msgErr.message}`);
+        }
+
+        logger.info(`[Auth OTP Generated] Mobile: ${cleanDigits} (User: ${user.email}) -> Code: ${otp}`);
 
         return res.status(200).json({
             success: true,
@@ -225,7 +237,17 @@ exports.verifyOtp = async (req, res) => {
         }
 
         const cleanDigits = String(rawPhone).replace(/\D/g, '');
-        const record = authOtpStore.get(cleanDigits);
+        let record = authOtpStore.get(cleanDigits);
+
+        // Fallback search across stored keys in case of country code difference
+        if (!record) {
+            for (const [key, val] of authOtpStore.entries()) {
+                if (key === cleanDigits || key.endsWith(cleanDigits) || cleanDigits.endsWith(key)) {
+                    record = val;
+                    break;
+                }
+            }
+        }
 
         if (!record || Date.now() > record.expiresAt) {
             return res.status(400).json({
@@ -240,6 +262,10 @@ exports.verifyOtp = async (req, res) => {
                 error: 'Incorrect verification code. Please check and try again.'
             });
         }
+
+        // Clean up used OTP
+        authOtpStore.delete(cleanDigits);
+        if (record.userPhoneDigits) authOtpStore.delete(record.userPhoneDigits);
 
         // Find verified user
         const user = await prisma.user.findUnique({

@@ -856,6 +856,35 @@ www.target-kw.com | +965 6965 6563`;
             metadata: { invoiceId: invoice.id, organizationId: organization?.id, type: 'INVOICE' }
         });
     }
+
+    /**
+     * Send Authentication OTP Code via WhatsApp and Chatwoot
+     */
+    async sendAuthOtp({ phone, name, otp }) {
+        if (!phone || !otp) return null;
+        const messageText = `🔐 *Target Logistics Verification Code*\n\nYour login verification code is: *${otp}*\n\nValid for 5 minutes. Please do not share this code.`;
+        
+        let metaResult = null;
+        try {
+            metaResult = await this.sendDirectTextMessage({
+                toPhone: phone,
+                messageText,
+                recipientName: name || 'Valued User',
+                metadata: { type: 'AUTH_OTP', otp }
+            });
+        } catch (err) {
+            logger.warn(`[WhatsApp OTP Error] ${err.message}`);
+        }
+
+        // Secondary fallback to Chatwoot
+        try {
+            await chatwootService.sendDirectOtp({ phone, name, otp });
+        } catch (cwErr) {
+            logger.debug(`[Chatwoot OTP note] ${cwErr.message}`);
+        }
+
+        return metaResult;
+    }
 }
 
 module.exports = new WhatsAppIntegrationService();

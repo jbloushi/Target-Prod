@@ -567,6 +567,25 @@ class ChatwootNotificationService {
         return response;
     }
 
+    async sendDirectOtp({ phone, name, otp }) {
+        if (!this.isConfigured() || !phone) return null;
+        try {
+            const normalizedTargetPhone = normalizePhone(phone);
+            const target = { role: 'auth', name: name || 'User', phone: normalizedTargetPhone };
+            const contact = await this.findOrCreateContact(target, { trackingNumber: 'AUTH-OTP' });
+            const conversation = await this.findOrCreateConversation(contact, target, { trackingNumber: 'AUTH-OTP' });
+            const messagePayload = {
+                message_type: 'outgoing',
+                private: false,
+                content: `Your Target Logistics login verification code is: ${otp}\nValid for 5 minutes.`
+            };
+            return await this.sendMessage(conversation.id, messagePayload);
+        } catch (err) {
+            logger.warn(`[chatwoot] OTP dispatch failed: ${err.message}`);
+            return null;
+        }
+    }
+
     buildShipmentNotificationPreview(eventType, shipment, recipientRole = null) {
         const context = buildShipmentNotificationContext(shipment);
         let targets = getNotificationTargets(eventType, shipment);
