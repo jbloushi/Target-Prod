@@ -16,12 +16,71 @@ const WebhookDispatcher = require('../services/WebhookDispatcher');
 const { isTrackingSyncDue, markTrackingSynced, triggerBackgroundTrackingSync } = require('../services/queue/trackingCache');
 
 /**
+ * Resolve date range filter from query params
+ */
+function resolveDateRange({ startDate, endDate, from, to, period }) {
+    const startInput = startDate || from;
+    const endInput = endDate || to;
+
+    if (startInput || endInput) {
+        const dateFilter = {};
+        if (startInput) {
+            const d = new Date(startInput);
+            if (!isNaN(d.getTime())) {
+                d.setHours(0, 0, 0, 0);
+                dateFilter.gte = d;
+            }
+        }
+        if (endInput) {
+            const d = new Date(endInput);
+            if (!isNaN(d.getTime())) {
+                d.setHours(23, 59, 59, 999);
+                dateFilter.lte = d;
+            }
+        }
+        return Object.keys(dateFilter).length > 0 ? dateFilter : null;
+    }
+
+    if (!period || period === 'all') return null;
+
+    const now = new Date();
+
+    if (period === 'today') {
+        const start = new Date(now);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(now);
+        end.setHours(23, 59, 59, 999);
+        return { gte: start, lte: end };
+    }
+
+    if (period === '7days' || period === '7_days' || period === 'past_7_days') {
+        const start = new Date(now);
+        start.setDate(start.getDate() - 6);
+        start.setHours(0, 0, 0, 0);
+        return { gte: start };
+    }
+
+    if (period === 'this_month' || period === 'month') {
+        const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        return { gte: start };
+    }
+
+    if (period === 'last_month') {
+        const start = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
+        const end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+        return { gte: start, lte: end };
+    }
+
+    return null;
+}
+
+/**
  * Get shipment statistics (Status counts and Monthly volume)
  * @route GET /api/shipments/stats
  */
 exports.getShipmentStats = async (req, res) => {
     try {
-        const { organizationId } = req.query;
+        const { organizationId, startDate, endDate, from, to, period } = req.query;
         const where = {};
 
         if (isPlatformRole(req.user.role)) {
@@ -30,6 +89,12 @@ exports.getShipmentStats = async (req, res) => {
             }
         } else {
             scopeShipmentWhere(req, where);
+        }
+
+        // Apply Date Range Filter if provided
+        const dateRange = resolveDateRange({ startDate, endDate, from, to, period });
+        if (dateRange) {
+            where.createdAt = dateRange;
         }
 
         // Auto-heal any stale exceptions before aggregating stats to ensure exact counts
@@ -684,7 +749,7 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
  */
 exports.getAllShipments = async (req, res) => {
     try {
-        const { status, statusIn, q, sortBy, sortOrder, limit = 50, page = 1, organizationId, orgId, paid, paymentStatus, payment_status, summary } = req.query;
+        const { status, statusIn, q, sortBy, sortOrder, limit = 50, page = 1, organizationId, orgId, paid, paymentStatus, payment_status, summary, startDate, endDate, from, to, period } = req.query;
         const where = {};
 
         // 1. Status Filters
@@ -703,7 +768,13 @@ exports.getAllShipments = async (req, res) => {
             }
         }
 
-        // 3. Payment Filter
+        // 3. Date Range Filter
+        const dateRange = resolveDateRange({ startDate, endDate, from, to, period });
+        if (dateRange) {
+            where.createdAt = dateRange;
+        }
+
+        // 4. Payment Filter
         const pStatus = paymentStatus || payment_status;
         if (pStatus) {
             if (pStatus === 'paid') {
@@ -719,7 +790,7 @@ exports.getAllShipments = async (req, res) => {
             where.paid = isPaid;
         }
 
-        // 4. Search Query (Tracking, Customer, City)
+        // 5. Search Query (Tracking, Customer, City)
         if (q) {
             where.OR = [
                 { trackingNumber: { contains: q } },

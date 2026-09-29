@@ -92,6 +92,10 @@ const DashboardPage = () => {
 
     // Data filtering & inspection state
     const [pipelineStage, setPipelineStage] = useState('all'); // 'all' | 'pending' | 'in_transit' | 'exception' | 'delivered'
+    const [selectedPeriod, setSelectedPeriod] = useState('this_month'); // 'today' | '7days' | 'this_month' | 'last_month' | 'all' | 'custom'
+    const [customStartDate, setCustomStartDate] = useState('');
+    const [customEndDate, setCustomEndDate] = useState('');
+    const [isCustomDateOpen, setIsCustomDateOpen] = useState(false);
     const [timeframe, setTimeframe] = useState('weekly');
     const [selectedShipment, setSelectedShipment] = useState(null); // Inspector drawer state
     const [copiedWaybill, setCopiedWaybill] = useState(false);
@@ -137,12 +141,22 @@ const DashboardPage = () => {
         delivered: 'delivered,completed'
     };
 
-    const { stats, loading: statsLoading } = useShipmentStats(selectedOrgId);
+    const statsParams = useMemo(() => ({
+        organizationId: selectedOrgId !== 'all' ? selectedOrgId : undefined,
+        period: selectedPeriod === 'custom' ? undefined : selectedPeriod,
+        startDate: selectedPeriod === 'custom' ? customStartDate : undefined,
+        endDate: selectedPeriod === 'custom' ? customEndDate : undefined
+    }), [selectedOrgId, selectedPeriod, customStartDate, customEndDate]);
+
+    const { stats, loading: statsLoading } = useShipmentStats(statsParams);
     const { triageItems, count: triageCount, loading: triageLoading } = useShipmentTriage(selectedOrgId);
     const { shipments: rawShipments, loading: recentLoading } = useShipments({ 
         limit: 25, 
         statusIn: PIPELINE_STATUS_MAP[pipelineStage],
-        organizationId: selectedOrgId !== 'all' ? selectedOrgId : undefined 
+        organizationId: selectedOrgId !== 'all' ? selectedOrgId : undefined,
+        period: selectedPeriod === 'custom' ? undefined : selectedPeriod,
+        startDate: selectedPeriod === 'custom' ? customStartDate : undefined,
+        endDate: selectedPeriod === 'custom' ? customEndDate : undefined
     });
 
     const filteredShipments = useMemo(() => {
@@ -370,6 +384,108 @@ const DashboardPage = () => {
                             {isRTL ? 'شحنة جديدة' : 'New Waybill'}
                         </button>
                     </div>
+                </div>
+            </div>
+
+            {/* Timeframe & Period Control Deck */}
+            <div className="bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-3 sm:p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                        <span className="material-symbols-outlined text-lg">calendar_month</span>
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-black uppercase tracking-wider text-base-content">
+                                {isRTL ? 'نطاق الفترة الزمنية' : 'Dashboard Period'}
+                            </span>
+                            <span className="badge badge-primary badge-outline badge-xs font-bold">
+                                {selectedPeriod === 'today' && (isRTL ? 'اليوم' : 'Today')}
+                                {selectedPeriod === '7days' && (isRTL ? 'آخر 7 أيام' : 'Past 7 Days')}
+                                {selectedPeriod === 'this_month' && (isRTL ? 'هذا الشهر' : 'This Month')}
+                                {selectedPeriod === 'last_month' && (isRTL ? 'الشهر الماضي' : 'Last Month')}
+                                {selectedPeriod === 'all' && (isRTL ? 'جميع البيانات التاريخية' : 'All-Time')}
+                                {selectedPeriod === 'custom' && (isRTL ? 'نطاق مخصص' : 'Custom Range')}
+                            </span>
+                        </div>
+                        <p className="text-[11px] text-base-content/60 font-medium mt-0.5">
+                            {selectedPeriod === 'today' && (isRTL ? 'عرض إحصائيات وشحنات اليوم فقط' : 'Displaying metrics and shipments recorded today')}
+                            {selectedPeriod === '7days' && (isRTL ? 'عرض إحصائيات آخر 7 أيام تشغيلية' : 'Displaying metrics for the past 7 operational days')}
+                            {selectedPeriod === 'this_month' && (isRTL ? 'عرض إحصائيات دورة الشهر الحالي' : 'Displaying metrics for current monthly billing & shipping cycle')}
+                            {selectedPeriod === 'last_month' && (isRTL ? 'عرض إحصائيات الشهر الماضي كاملاً' : 'Displaying metrics for full previous calendar month')}
+                            {selectedPeriod === 'all' && (isRTL ? 'نظرة شاملة لكافة البيانات المسجلة' : 'Complete historical ledger and operational overview')}
+                            {selectedPeriod === 'custom' && (isRTL ? `الفترة المحددة: ${customStartDate || 'من البداية'} إلى ${customEndDate || 'اليوم'}` : `Selected range: ${customStartDate || 'Start'} to ${customEndDate || 'End'}`)}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                    {/* Preset Period Buttons */}
+                    <div className="join w-full sm:w-auto overflow-x-auto">
+                        {[
+                            { id: 'today', label: isRTL ? 'اليوم' : 'Today', icon: 'today' },
+                            { id: '7days', label: isRTL ? '7 أيام' : '7 Days', icon: 'date_range' },
+                            { id: 'this_month', label: isRTL ? 'هذا الشهر' : 'This Month', icon: 'calendar_today' },
+                            { id: 'last_month', label: isRTL ? 'الشهر الماضي' : 'Last Month', icon: 'history' },
+                            { id: 'all', label: isRTL ? 'الكل' : 'All Time', icon: 'all_inclusive' },
+                            { id: 'custom', label: isRTL ? 'مخصص' : 'Custom', icon: 'tune' },
+                        ].map((p) => (
+                            <button
+                                key={p.id}
+                                onClick={() => {
+                                    setSelectedPeriod(p.id);
+                                    if (p.id === 'custom') setIsCustomDateOpen(true);
+                                    else setIsCustomDateOpen(false);
+                                }}
+                                className={`btn btn-xs sm:btn-sm join-item font-bold text-xs gap-1 ${
+                                    selectedPeriod === p.id ? 'btn-primary shadow-sm' : 'btn-ghost border-base-200 text-base-content/70'
+                                }`}
+                            >
+                                <span className="material-symbols-outlined text-sm">{p.icon}</span>
+                                <span>{p.label}</span>
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Custom Date Pickers Popover / Controls */}
+                    {(selectedPeriod === 'custom' || isCustomDateOpen) && (
+                        <div className="flex items-center gap-1.5 bg-base-200/70 p-1.5 rounded-xl border border-base-300 w-full sm:w-auto animate-in fade-in duration-200">
+                            <input
+                                type="date"
+                                value={customStartDate}
+                                onChange={(e) => {
+                                    setCustomStartDate(e.target.value);
+                                    setSelectedPeriod('custom');
+                                }}
+                                className="input input-bordered input-xs rounded-lg font-mono text-xs bg-base-100"
+                                title={isRTL ? 'تاريخ البدء' : 'Start Date'}
+                            />
+                            <span className="text-xs font-bold text-base-content/50">{isRTL ? '←' : '→'}</span>
+                            <input
+                                type="date"
+                                value={customEndDate}
+                                onChange={(e) => {
+                                    setCustomEndDate(e.target.value);
+                                    setSelectedPeriod('custom');
+                                }}
+                                className="input input-bordered input-xs rounded-lg font-mono text-xs bg-base-100"
+                                title={isRTL ? 'تاريخ الانتهاء' : 'End Date'}
+                            />
+                            {(customStartDate || customEndDate) && (
+                                <button
+                                    onClick={() => {
+                                        setCustomStartDate('');
+                                        setCustomEndDate('');
+                                        setSelectedPeriod('this_month');
+                                        setIsCustomDateOpen(false);
+                                    }}
+                                    className="btn btn-ghost btn-xs btn-square text-base-content/60 hover:text-error"
+                                    title={isRTL ? 'إعادة ضبط' : 'Reset Range'}
+                                >
+                                    <span className="material-symbols-outlined text-sm">close</span>
+                                </button>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
 
