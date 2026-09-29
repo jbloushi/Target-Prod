@@ -198,6 +198,7 @@ const AppRoutes = () => {
             </ProtectedRoute>
           } />
           <Route path="billing" element={<Navigate to="/finance" replace />} />
+          <Route path="financials" element={<Navigate to="/finance" replace />} />
 
           {/* Messages & Notifications */}
           <Route path="messages" element={<InConstructionPage title="Messages" description="Communication center." />} />

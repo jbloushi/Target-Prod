@@ -270,39 +270,45 @@ exports.getShipmentStats = async (req, res) => {
             else if (['exception', 'failed', 'cancelled', 'returned'].includes(s.status)) result.exceptions += count;
         });
 
-        // Live Financial Summary (Role & capability scoped)
+        // Live Financial Summary (Role & capability scoped: only for Admin, Manager/Target Owner, and Accounting)
+        const canViewFinance = hasCapability(req.user.role, 'VIEW_FINANCE');
         const canViewCosts = hasCapability(req.user.role, 'VIEW_COST_DATA');
-        let totalBilled = 0;
-        let totalPaid = 0;
-        let totalCost = 0;
-        let unpaidCount = 0;
 
-        allShipments.forEach(s => {
-            const price = Number(s.price || 0);
-            const paid = Number(s.totalPaid || 0);
-            const cost = Number(s.costPrice || 0);
-            totalBilled += price;
-            totalPaid += paid;
-            if (canViewCosts) totalCost += cost;
-            if ((price - paid) > 0.001) unpaidCount += 1;
-        });
+        if (canViewFinance) {
+            let totalBilled = 0;
+            let totalPaid = 0;
+            let totalCost = 0;
+            let unpaidCount = 0;
 
-        const outstandingBalance = Math.max(0, totalBilled - totalPaid);
-        const grossMargin = canViewCosts ? (totalBilled - totalCost) : null;
-        const marginPct = (canViewCosts && totalBilled > 0) ? ((grossMargin / totalBilled) * 100).toFixed(1) : null;
+            allShipments.forEach(s => {
+                const price = Number(s.price || 0);
+                const paid = Number(s.totalPaid || 0);
+                const cost = Number(s.costPrice || 0);
+                totalBilled += price;
+                totalPaid += paid;
+                if (canViewCosts) totalCost += cost;
+                if ((price - paid) > 0.001) unpaidCount += 1;
+            });
 
-        result.financials = {
-            totalBilled: totalBilled.toFixed(3),
-            totalPaid: totalPaid.toFixed(3),
-            outstandingBalance: outstandingBalance.toFixed(3),
-            unpaidCount,
-            currency: 'KWD',
-            ...(canViewCosts && {
-                totalCost: totalCost.toFixed(3),
-                grossMargin: grossMargin.toFixed(3),
-                marginPercentage: `${marginPct}%`
-            })
-        };
+            const outstandingBalance = Math.max(0, totalBilled - totalPaid);
+            const grossMargin = canViewCosts ? (totalBilled - totalCost) : null;
+            const marginPct = (canViewCosts && totalBilled > 0) ? ((grossMargin / totalBilled) * 100).toFixed(1) : null;
+
+            result.financials = {
+                totalBilled: totalBilled.toFixed(3),
+                totalPaid: totalPaid.toFixed(3),
+                outstandingBalance: outstandingBalance.toFixed(3),
+                unpaidCount,
+                currency: 'KWD',
+                ...(canViewCosts && {
+                    totalCost: totalCost.toFixed(3),
+                    grossMargin: grossMargin.toFixed(3),
+                    marginPercentage: `${marginPct}%`
+                })
+            };
+        } else {
+            result.financials = null;
+        }
 
         // Average Delivery Lead Time from real delivered consignments
         const deliveredShipments = allShipments.filter(s => s.status === 'delivered' && s.createdAt && s.updatedAt);
