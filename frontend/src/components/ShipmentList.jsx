@@ -25,8 +25,17 @@ const CARRIER_INFO_MAP = {
   'FDX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'badge-secondary' },
   'FEDEX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'badge-secondary' },
   'MAN': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'badge-primary' },
+  'MANUAL': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'badge-primary' },
   'INTERNAL': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'badge-primary' },
 };
+
+const CARRIER_OPTIONS = [
+  { value: 'ALL', label: 'All Carriers', labelAr: 'جميع النواقل' },
+  { value: 'DHL', label: 'DHL Express', labelAr: 'دي إتش إل إكسبريس' },
+  { value: 'FEDEX', label: 'FedEx Express', labelAr: 'فيديكس إكسبريس' },
+  { value: 'ARAMEX', label: 'Aramex', labelAr: 'أرامكس' },
+  { value: 'INTERNAL', label: 'Internal Fleet', labelAr: 'الأسطول الداخلي' },
+];
 
 // Adapter: backend shipment shape → table row shape
 const toRowShape = (s) => {
@@ -68,11 +77,20 @@ const toRowShape = (s) => {
     return '—';
   };
 
+  const resolveCarrierCode = () => {
+    if (s.carrierCode) return s.carrierCode.toUpperCase();
+    if (s.dhlTrackingNumber || s.serviceType?.toLowerCase().includes('dhl') || s.service?.toLowerCase().includes('dhl')) return 'DHL';
+    if (s.serviceType?.toLowerCase().includes('aramex') || s.service?.toLowerCase().includes('aramex')) return 'ARM';
+    if (s.serviceType?.toLowerCase().includes('fedex') || s.service?.toLowerCase().includes('fedex')) return 'FDX';
+    return null;
+  };
+
   return {
     raw: s,
     id: s.id || s._id || s.trackingNumber,
     trackingNumber: s.trackingNumber || '—',
     isTest,
+    carrierCode: resolveCarrierCode(),
     org: s.organization?.name || s.organizationName || s.org || 'Standard Org',
     createdBy: s.creator?.name || s.createdByName || s.createdBy || 'Staff User',
     originCity,
@@ -140,7 +158,7 @@ export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) 
     setSelectedIds([]);
   }, [organizationId, carrierParam, destCountryParam]);
 
-  const { stats } = useShipmentStats(organizationId);
+  const { stats } = useShipmentStats({ organizationId, carrier: carrierParam || undefined });
 
   const filterTabs = useMemo(() => {
     return [
@@ -279,8 +297,8 @@ export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) 
       <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl overflow-hidden">
         
         {/* Search & Actions Toolbar */}
-        <div className="p-4 border-b border-base-200 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
-          <div className="flex items-center gap-2 flex-1 max-w-xl flex-wrap">
+        <div className="p-4 border-b border-base-200 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3">
+          <div className="flex items-center gap-2 flex-1 max-w-2xl flex-wrap">
             <div className="relative flex-1 min-w-[200px]">
               <span className="material-symbols-outlined absolute inset-y-0 start-3 flex items-center text-base-content/40 text-lg pointer-events-none">
                 search
@@ -303,9 +321,41 @@ export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) 
               )}
             </div>
 
+            {/* Carrier Filter Dropdown */}
+            <div className="relative min-w-[140px] sm:w-44">
+              <select
+                value={
+                  ['DHL', 'DGR'].includes(carrierParam.toUpperCase()) ? 'DHL' :
+                  ['FEDEX', 'FDX'].includes(carrierParam.toUpperCase()) ? 'FEDEX' :
+                  ['ARAMEX', 'ARM'].includes(carrierParam.toUpperCase()) ? 'ARAMEX' :
+                  ['INTERNAL', 'MAN', 'MANUAL'].includes(carrierParam.toUpperCase()) ? 'INTERNAL' :
+                  carrierParam.toUpperCase() || 'ALL'
+                }
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const nextParams = new URLSearchParams(searchParams);
+                  if (val === 'ALL') {
+                    nextParams.delete('carrier');
+                    nextParams.delete('carrierCode');
+                  } else {
+                    nextParams.set('carrier', val);
+                    nextParams.delete('carrierCode');
+                  }
+                  setSearchParams(nextParams);
+                }}
+                className="select select-bordered select-sm rounded-xl font-bold text-xs bg-base-100 text-base-content w-full"
+              >
+                {CARRIER_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>
+                    {isRTL ? opt.labelAr : opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Active Carrier Filter Badge */}
             {carrierParam && (
-              <div className="flex items-center gap-1.5 bg-base-200/80 border border-base-300 rounded-xl px-2.5 py-1 text-xs">
+              <div className="flex items-center gap-1.5 bg-primary/10 border border-primary/20 rounded-xl px-2.5 py-1 text-xs">
                 <span className="material-symbols-outlined text-sm text-primary">local_shipping</span>
                 <span className="font-bold text-base-content">
                   {isRTL ? 'الناقل:' : 'Carrier:'}
@@ -436,6 +486,13 @@ export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) 
                         <td className="py-3 px-3 font-bold text-base-content">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-mono hover:text-primary transition-colors">{s.trackingNumber}</span>
+                            {s.carrierCode && (
+                              <span className={`badge ${CARRIER_INFO_MAP[s.carrierCode]?.badge || 'badge-neutral'} badge-xs font-black uppercase py-0.5 px-1.5`}>
+                                {isRTL 
+                                  ? (CARRIER_INFO_MAP[s.carrierCode]?.nameAr || s.carrierCode) 
+                                  : (CARRIER_INFO_MAP[s.carrierCode]?.name || s.carrierCode)}
+                              </span>
+                            )}
                             {s.isTest && (
                               <span className="badge badge-warning badge-xs font-black py-0.5 px-1.5">
                                 TEST

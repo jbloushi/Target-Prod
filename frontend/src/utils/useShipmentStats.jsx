@@ -27,6 +27,12 @@ export const useShipmentStats = (organizationIdOrParams = null, options = {}) =>
     }
     if (params.startDate) searchParams.set('startDate', params.startDate);
     if (params.endDate) searchParams.set('endDate', params.endDate);
+    if (params.carrier && params.carrier !== 'all' && params.carrier !== 'ALL') {
+        searchParams.set('carrier', params.carrier);
+    }
+    if (params.carrierCode && params.carrierCode !== 'all' && params.carrierCode !== 'ALL') {
+        searchParams.set('carrierCode', params.carrierCode);
+    }
 
     const queryString = searchParams.toString();
     const url = queryString ? `/api/shipments/stats?${queryString}` : '/api/shipments/stats';

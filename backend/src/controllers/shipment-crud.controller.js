@@ -80,7 +80,7 @@ function resolveDateRange({ startDate, endDate, from, to, period }) {
  */
 exports.getShipmentStats = async (req, res) => {
     try {
-        const { organizationId, startDate, endDate, from, to, period } = req.query;
+        const { organizationId, startDate, endDate, from, to, period, carrier, carrierCode } = req.query;
         const where = {};
 
         if (isPlatformRole(req.user.role)) {
@@ -95,6 +95,22 @@ exports.getShipmentStats = async (req, res) => {
         const dateRange = resolveDateRange({ startDate, endDate, from, to, period });
         if (dateRange) {
             where.createdAt = dateRange;
+        }
+
+        // Apply Carrier Code Filter if provided
+        const rawCarrier = String(carrier || carrierCode || '').trim().toUpperCase();
+        if (rawCarrier && rawCarrier !== 'ALL') {
+            if (['DHL', 'DGR'].includes(rawCarrier)) {
+                where.carrierCode = { in: ['DHL', 'DGR'] };
+            } else if (['ARAMEX', 'ARM'].includes(rawCarrier)) {
+                where.carrierCode = { in: ['ARAMEX', 'ARM'] };
+            } else if (['FEDEX', 'FDX'].includes(rawCarrier)) {
+                where.carrierCode = { in: ['FEDEX', 'FDX'] };
+            } else if (['INTERNAL', 'MAN', 'MANUAL'].includes(rawCarrier)) {
+                where.carrierCode = { in: ['INTERNAL', 'MAN', 'MANUAL'] };
+            } else {
+                where.carrierCode = rawCarrier;
+            }
         }
 
         // Auto-heal any stale exceptions before aggregating stats to ensure exact counts

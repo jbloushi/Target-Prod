@@ -29,9 +29,9 @@ const ShipmentsPage = () => {
     const [isPhenixModalOpen, setIsPhenixModalOpen] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
 
-    // Organization Scope State (synchronized with URL params)
     const initialOrgId = searchParams.get('org') || 'all';
     const initialStatus = searchParams.get('status') || 'all';
+    const initialCarrier = searchParams.get('carrier') || searchParams.get('carrierCode') || 'all';
     const [selectedOrgId, setSelectedOrgId] = useState(initialOrgId);
 
     const [organizations, setOrganizations] = useState([
@@ -200,7 +200,7 @@ const ShipmentsPage = () => {
 
             {/* Revamped Shipment List Component with Canonical Continuity */}
             <ShipmentList 
-                key={`${refreshKey}-${selectedOrgId}-${initialStatus}`} 
+                key={`${refreshKey}-${selectedOrgId}-${initialStatus}-${initialCarrier}`} 
                 organizationId={selectedOrgId}
                 initialFilter={initialStatus}
             />
