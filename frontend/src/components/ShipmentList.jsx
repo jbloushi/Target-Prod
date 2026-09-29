@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSnackbar } from 'notistack';
 import { shipmentService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -15,6 +15,18 @@ import {
   hasCarrierBooking,
   getShipmentDeleteErrorMessage
 } from '../utils/shipmentDeletionPolicy';
+
+// Carrier display helper metadata
+const CARRIER_INFO_MAP = {
+  'DGR': { name: 'DHL Express', nameAr: 'دي إتش إل إكسبريس', badge: 'badge-error' },
+  'DHL': { name: 'DHL Express', nameAr: 'دي إتش إل إكسبريس', badge: 'badge-error' },
+  'ARM': { name: 'Aramex', nameAr: 'أرامكس', badge: 'badge-warning' },
+  'ARAMEX': { name: 'Aramex', nameAr: 'أرامكس', badge: 'badge-warning' },
+  'FDX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'badge-secondary' },
+  'FEDEX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'badge-secondary' },
+  'MAN': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'badge-primary' },
+  'INTERNAL': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'badge-primary' },
+};
 
 // Adapter: backend shipment shape → table row shape
 const toRowShape = (s) => {
@@ -88,14 +100,19 @@ const FILTER_STATUSES = {
 
 export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { lang, t } = useLanguage();
   const isRTL = lang === 'ar';
   const { enqueueSnackbar } = useSnackbar();
 
+  const carrierParam = searchParams.get('carrier') || searchParams.get('carrierCode') || '';
+  const qParam = searchParams.get('q') || '';
+  const destCountryParam = searchParams.get('destinationCountry') || searchParams.get('destCountry') || '';
+
   // State
   const [activeFilter, setActiveFilter] = useState(initialFilter || 'all');
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(qParam);
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState([]);
   const [inspectingShipment, setInspectingShipment] = useState(null);
@@ -109,11 +126,19 @@ export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) 
     }
   }, [initialFilter]);
 
-  // Reset page when organization changes
+  // Sync search when URL q changes
+  useEffect(() => {
+    if (qParam !== search) {
+      setSearch(qParam);
+      setPage(1);
+    }
+  }, [qParam]);
+
+  // Reset page when organization or carrier changes
   useEffect(() => {
     setPage(1);
     setSelectedIds([]);
-  }, [organizationId]);
+  }, [organizationId, carrierParam, destCountryParam]);
 
   const { stats } = useShipmentStats(organizationId);
 
@@ -135,6 +160,8 @@ export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) 
     q: search || undefined,
     statusIn: FILTER_STATUSES[activeFilter],
     organizationId,
+    carrier: carrierParam || undefined,
+    destinationCountry: destCountryParam || undefined,
   });
 
   const total = pagination?.total || 0;
@@ -253,25 +280,78 @@ export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) 
         
         {/* Search & Actions Toolbar */}
         <div className="p-4 border-b border-base-200 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
-          <div className="relative w-full sm:max-w-md">
-            <span className="material-symbols-outlined absolute inset-y-0 start-3 flex items-center text-base-content/40 text-lg pointer-events-none">
-              search
-            </span>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-              placeholder={t('search_shipments_placeholder', 'Search waybill, recipient, phone, destination...')}
-              className="input input-bordered input-sm rounded-xl w-full ps-9 pe-8 font-medium text-xs text-base-content bg-base-100"
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch('')}
-                className="absolute inset-y-0 end-2.5 flex items-center text-base-content/40 hover:text-base-content"
-              >
-                ✕
-              </button>
+          <div className="flex items-center gap-2 flex-1 max-w-xl flex-wrap">
+            <div className="relative flex-1 min-w-[200px]">
+              <span className="material-symbols-outlined absolute inset-y-0 start-3 flex items-center text-base-content/40 text-lg pointer-events-none">
+                search
+              </span>
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                placeholder={t('search_shipments_placeholder', 'Search waybill, recipient, phone, destination...')}
+                className="input input-bordered input-sm rounded-xl w-full ps-9 pe-8 font-medium text-xs text-base-content bg-base-100"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="absolute inset-y-0 end-2.5 flex items-center text-base-content/40 hover:text-base-content"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Active Carrier Filter Badge */}
+            {carrierParam && (
+              <div className="flex items-center gap-1.5 bg-base-200/80 border border-base-300 rounded-xl px-2.5 py-1 text-xs">
+                <span className="material-symbols-outlined text-sm text-primary">local_shipping</span>
+                <span className="font-bold text-base-content">
+                  {isRTL ? 'الناقل:' : 'Carrier:'}
+                </span>
+                <span className={`badge ${CARRIER_INFO_MAP[carrierParam.toUpperCase()]?.badge || 'badge-primary'} badge-xs font-black uppercase`}>
+                  {isRTL 
+                    ? (CARRIER_INFO_MAP[carrierParam.toUpperCase()]?.nameAr || carrierParam)
+                    : (CARRIER_INFO_MAP[carrierParam.toUpperCase()]?.name || carrierParam)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextParams = new URLSearchParams(searchParams);
+                    nextParams.delete('carrier');
+                    nextParams.delete('carrierCode');
+                    setSearchParams(nextParams);
+                  }}
+                  className="btn btn-ghost btn-circle btn-xs text-base-content/60 hover:text-error hover:bg-transparent h-4 w-4 min-h-0 ms-0.5"
+                  title={isRTL ? 'إلغاء تصفية الناقل' : 'Clear carrier filter'}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
+            {/* Active Destination Country Filter Badge */}
+            {destCountryParam && (
+              <div className="flex items-center gap-1.5 bg-base-200/80 border border-base-300 rounded-xl px-2.5 py-1 text-xs">
+                <span className="material-symbols-outlined text-sm text-primary">flight_land</span>
+                <span className="font-bold text-base-content">
+                  {isRTL ? 'الوجهة:' : 'Dest:'} {destCountryParam.toUpperCase()}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextParams = new URLSearchParams(searchParams);
+                    nextParams.delete('destinationCountry');
+                    nextParams.delete('destCountry');
+                    setSearchParams(nextParams);
+                  }}
+                  className="btn btn-ghost btn-circle btn-xs text-base-content/60 hover:text-error hover:bg-transparent h-4 w-4 min-h-0 ms-0.5"
+                  title={isRTL ? 'إلغاء تصفية الوجهة' : 'Clear destination filter'}
+                >
+                  ✕
+                </button>
+              </div>
             )}
           </div>
 

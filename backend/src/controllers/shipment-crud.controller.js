@@ -749,7 +749,7 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
  */
 exports.getAllShipments = async (req, res) => {
     try {
-        const { status, statusIn, q, sortBy, sortOrder, limit = 50, page = 1, organizationId, orgId, paid, paymentStatus, payment_status, summary, startDate, endDate, from, to, period } = req.query;
+        const { status, statusIn, q, sortBy, sortOrder, limit = 50, page = 1, organizationId, orgId, paid, paymentStatus, payment_status, summary, startDate, endDate, from, to, period, carrier, carrierCode, destinationCountry, destCountry } = req.query;
         const where = {};
 
         // 1. Status Filters
@@ -774,7 +774,29 @@ exports.getAllShipments = async (req, res) => {
             where.createdAt = dateRange;
         }
 
-        // 4. Payment Filter
+        // 4. Carrier Code Filter
+        const rawCarrier = String(carrier || carrierCode || '').trim().toUpperCase();
+        if (rawCarrier && rawCarrier !== 'ALL') {
+            if (['DHL', 'DGR'].includes(rawCarrier)) {
+                where.carrierCode = { in: ['DHL', 'DGR'] };
+            } else if (['ARAMEX', 'ARM'].includes(rawCarrier)) {
+                where.carrierCode = { in: ['ARAMEX', 'ARM'] };
+            } else if (['FEDEX', 'FDX'].includes(rawCarrier)) {
+                where.carrierCode = { in: ['FEDEX', 'FDX'] };
+            } else if (['INTERNAL', 'MAN', 'MANUAL'].includes(rawCarrier)) {
+                where.carrierCode = { in: ['INTERNAL', 'MAN', 'MANUAL'] };
+            } else {
+                where.carrierCode = rawCarrier;
+            }
+        }
+
+        // 5. Destination Country Filter
+        const targetDestCountry = destinationCountry || destCountry;
+        if (targetDestCountry) {
+            where.destination = { path: '$.countryCode', equals: String(targetDestCountry).toUpperCase() };
+        }
+
+        // 6. Payment Filter
         const pStatus = paymentStatus || payment_status;
         if (pStatus) {
             if (pStatus === 'paid') {
@@ -790,12 +812,15 @@ exports.getAllShipments = async (req, res) => {
             where.paid = isPaid;
         }
 
-        // 5. Search Query (Tracking, Customer, City)
+        // 7. Search Query (Tracking, Customer, City, Country)
         if (q) {
             where.OR = [
                 { trackingNumber: { contains: q } },
                 { customer: { path: '$.name', string_contains: q } },
-                { destination: { path: '$.city', string_contains: q } }
+                { destination: { path: '$.city', string_contains: q } },
+                { destination: { path: '$.countryCode', string_contains: q } },
+                { origin: { path: '$.city', string_contains: q } },
+                { origin: { path: '$.countryCode', string_contains: q } }
             ];
         }
 

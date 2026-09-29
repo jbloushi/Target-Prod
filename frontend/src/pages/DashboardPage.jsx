@@ -721,7 +721,7 @@ const DashboardPage = () => {
                     </div>
 
                     {/* Carrier Network & Volume Distribution */}
-                    {carrierBreakdown.length > 0 && (
+                    {isTargetManagement && perspective === 'target' && carrierBreakdown.length > 0 && (
                         <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5">
                             <div className="flex justify-between items-center mb-3">
                                 <div>
@@ -742,7 +742,7 @@ const DashboardPage = () => {
                                 {carrierBreakdown.map((car) => (
                                     <div 
                                         key={car.code} 
-                                        onClick={() => navigate(`/shipments?q=${car.code}`)}
+                                        onClick={() => navigate(`/shipments?carrier=${car.code}`)}
                                         className="p-3 bg-base-200/50 hover:bg-base-200 border border-base-200 hover:border-primary/40 rounded-xl transition-all cursor-pointer space-y-2 group"
                                     >
                                         <div className="flex justify-between items-center">

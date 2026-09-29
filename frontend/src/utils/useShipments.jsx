@@ -7,7 +7,7 @@ const fetcher = async ([url, params]) => {
     return response; // { data: [...], pagination: {...} }
 };
 
-export const useShipments = ({ page = 1, limit = 10, statusIn = null, q = '', organizationId = null, period = null, startDate = null, endDate = null }) => {
+export const useShipments = ({ page = 1, limit = 10, statusIn = null, q = '', organizationId = null, period = null, startDate = null, endDate = null, carrier = null, carrierCode = null, destinationCountry = null }) => {
     // Determine key: if q exists, statusIn might be ignored or combined
     const params = { page, limit, summary: true };
     if (statusIn) params.statusIn = Array.isArray(statusIn) ? statusIn.join(',') : statusIn;
@@ -16,6 +16,9 @@ export const useShipments = ({ page = 1, limit = 10, statusIn = null, q = '', or
     if (period && period !== 'all') params.period = period;
     if (startDate) params.startDate = startDate;
     if (endDate) params.endDate = endDate;
+    if (carrier) params.carrier = carrier;
+    if (carrierCode) params.carrierCode = carrierCode;
+    if (destinationCountry) params.destinationCountry = destinationCountry;
 
     // SWR Key: unique identifier for the request
     const key = ['/api/shipments', params];
