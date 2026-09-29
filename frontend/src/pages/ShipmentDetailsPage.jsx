@@ -44,15 +44,17 @@ const EDIT_TABS = [
 ];
 
 const formatTimestampKuwait = (timestamp) => {
-    if (!timestamp) return { date: '—', time: '—' };
+    if (!timestamp) return { date: '—', time: '—', dayHeader: '—', dayKey: '' };
     try {
         const d = new Date(timestamp);
         return {
             date: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kuwait' }),
-            time: d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kuwait' }) + ' AST'
+            time: d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kuwait' }) + ' AST',
+            dayHeader: d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Kuwait' }),
+            dayKey: d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kuwait' }) // YYYY-MM-DD
         };
     } catch {
-        return { date: String(timestamp), time: '' };
+        return { date: String(timestamp), time: '', dayHeader: String(timestamp), dayKey: '' };
     }
 };
 
@@ -1689,64 +1691,84 @@ const ShipmentDetailsPage = () => {
                                         {isRTL ? 'لا توجد محطات تتبع مسجلة حتى الآن.' : 'No checkpoint milestones recorded yet.'}
                                     </div>
                                 ) : (
-                                    <ul className="timeline timeline-vertical timeline-compact text-xs">
+                                    <div className="space-y-4">
                                         {milestoneEvents.map((event, idx) => {
                                             const isLatest = idx === 0;
+                                            const prevEvent = idx > 0 ? milestoneEvents[idx - 1] : null;
+                                            const isNewDay = !prevEvent || prevEvent.dateParts?.dayKey !== event.dateParts?.dayKey;
+
                                             return (
-                                                <li key={idx}>
-                                                    {idx > 0 && <hr className={isLatest ? 'bg-primary' : 'bg-base-300'} />}
-                                                    <div className={`timeline-middle ${isLatest ? 'text-primary' : 'text-base-content/50'}`}>
-                                                        <span className="material-symbols-outlined text-base">
-                                                            {isLatest ? 'check_circle' : 'circle'}
-                                                        </span>
-                                                    </div>
-                                                    <div className="timeline-end timeline-box py-3 px-4 border-base-200 bg-base-100 shadow-xs rounded-xl space-y-1.5 w-full max-w-3xl mb-2">
-                                                        <div className="flex flex-wrap justify-between items-baseline gap-2">
-                                                            <div className="flex items-center gap-2">
-                                                                <span className={`badge badge-xs font-black ${event.badgeColor}`}>
-                                                                    {event.friendlyTitle}
-                                                                </span>
-                                                                <span className="font-extrabold text-xs text-base-content">
-                                                                    {event.rawDescription}
+                                                <React.Fragment key={idx}>
+                                                    {/* Date Group Header */}
+                                                    {isNewDay && (
+                                                        <div className="flex items-center gap-2 pt-2 pb-1">
+                                                            <div className="flex items-center gap-1.5 px-3 py-1 bg-base-200/80 border border-base-300/60 rounded-lg text-xs font-bold text-base-content">
+                                                                <span className="material-symbols-outlined text-xs text-primary">calendar_month</span>
+                                                                <span>{event.dateParts.dayHeader}</span>
+                                                            </div>
+                                                            <div className="flex-1 h-px bg-base-300/60" />
+                                                        </div>
+                                                    )}
+
+                                                    <ul className="timeline timeline-vertical timeline-compact text-xs !m-0 !p-0">
+                                                        <li>
+                                                            {idx > 0 && !isNewDay && <hr className={isLatest ? 'bg-primary' : 'bg-base-300'} />}
+                                                            <div className={`timeline-middle ${isLatest ? 'text-primary' : 'text-base-content/50'}`}>
+                                                                <span className="material-symbols-outlined text-base">
+                                                                    {isLatest ? 'check_circle' : 'circle'}
                                                                 </span>
                                                             </div>
-                                                            <span className="font-mono text-[10.5px] text-base-content/50">
-                                                                {event.dateParts.date} • {event.dateParts.time}
-                                                            </span>
-                                                        </div>
-
-                                                        <div className="flex flex-wrap items-center gap-3 text-[11px] text-base-content/70">
-                                                            {event.locationText && (
-                                                                <div className="flex items-center gap-1 font-medium">
-                                                                    <span className="material-symbols-outlined text-xs text-primary">pin_drop</span>
-                                                                    <span>{event.locationText}</span>
+                                                            <div className="timeline-end timeline-box py-3 px-4 border-base-200 bg-base-100 shadow-xs rounded-xl space-y-1.5 w-full max-w-3xl mb-1">
+                                                                <div className="flex flex-wrap justify-between items-baseline gap-2">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className={`badge badge-xs font-black ${event.badgeColor}`}>
+                                                                            {event.friendlyTitle}
+                                                                        </span>
+                                                                        <span className="font-extrabold text-xs text-base-content">
+                                                                            {event.rawDescription}
+                                                                        </span>
+                                                                    </div>
+                                                                    <span className="font-mono text-[10.5px] text-base-content/50">
+                                                                        {event.dateParts.time}
+                                                                    </span>
                                                                 </div>
-                                                            )}
-                                                            <div className="flex items-center gap-1 font-mono text-[10px] text-base-content/50">
-                                                                <span className="badge badge-ghost badge-xs text-[10px]">
-                                                                    {event.carrierSource}
-                                                                </span>
-                                                            </div>
-                                                        </div>
 
-                                                        {event.pod && (
-                                                            <div className="p-2.5 bg-success/10 border border-success/30 rounded-lg text-success-content text-[11px] space-y-1 mt-1">
-                                                                <div className="font-black text-success flex items-center gap-1">
-                                                                    <span className="material-symbols-outlined text-sm">verified</span>
-                                                                    <span>{isRTL ? 'تم تسجيل إثبات التسليم (POD)' : 'Proof of Delivery Recorded'}</span>
+                                                                <div className="flex flex-wrap items-center gap-3 text-[11px] text-base-content/70">
+                                                                    {event.locationText && (
+                                                                        <div className="flex items-center gap-1 font-medium">
+                                                                            <span className="material-symbols-outlined text-xs text-primary">pin_drop</span>
+                                                                            <span>{event.locationText}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="flex items-center gap-1 font-mono text-[10px] text-base-content/50">
+                                                                        <span className="badge badge-ghost badge-xs text-[10px]">
+                                                                            {event.carrierSource}
+                                                                        </span>
+                                                                    </div>
                                                                 </div>
-                                                                <div>{isRTL ? 'المستلم:' : 'Received by:'} <strong>{event.pod.recipientName}</strong> ({event.pod.recipientRelationship || 'Consignee'})</div>
-                                                                {event.pod.signatureDataUrl && (
-                                                                    <img src={event.pod.signatureDataUrl} alt="Signature" className="h-8 max-w-[120px] object-contain bg-white rounded border border-success/20 p-0.5 mt-1" />
+
+                                                                {event.pod && (
+                                                                    <div className="p-2.5 bg-success/10 border border-success/30 rounded-lg text-success-content text-[11px] space-y-1 mt-1">
+                                                                        <div className="font-black text-success flex items-center gap-1">
+                                                                            <span className="material-symbols-outlined text-sm">verified</span>
+                                                                            <span>{isRTL ? 'تم تسجيل إثبات التسليم (POD)' : 'Proof of Delivery Recorded'}</span>
+                                                                        </div>
+                                                                        <div>{isRTL ? 'المستلم:' : 'Received by:'} <strong>{event.pod.recipientName}</strong> ({event.pod.recipientRelationship || 'Consignee'})</div>
+                                                                        {event.pod.signatureDataUrl && (
+                                                                            <img src={event.pod.signatureDataUrl} alt="Signature" className="h-8 max-w-[120px] object-contain bg-white rounded border border-success/20 p-0.5 mt-1" />
+                                                                        )}
+                                                                    </div>
                                                                 )}
                                                             </div>
-                                                        )}
-                                                    </div>
-                                                    {idx < milestoneEvents.length - 1 && <hr className="bg-base-300" />}
-                                                </li>
+                                                            {idx < milestoneEvents.length - 1 && milestoneEvents[idx + 1]?.dateParts?.dayKey === event.dateParts?.dayKey && (
+                                                                <hr className="bg-base-300" />
+                                                            )}
+                                                        </li>
+                                                    </ul>
+                                                </React.Fragment>
                                             );
                                         })}
-                                    </ul>
+                                    </div>
                                 )}
                             </div>
                         )}
@@ -1777,20 +1799,37 @@ const ShipmentDetailsPage = () => {
                                                 </tr>
                                             </thead>
                                             <tbody className="font-mono text-xs">
-                                                {telemetryEvents.map((tEvt) => (
-                                                    <tr key={tEvt.idx} className="hover">
-                                                        <td className="text-base-content/40">{tEvt.idx}</td>
-                                                        <td className="whitespace-nowrap font-bold text-base-content">{tEvt.dateParts.date} {tEvt.dateParts.time}</td>
-                                                        <td>
-                                                            <span className="badge badge-xs badge-neutral font-bold">{tEvt.statusCode}</span>
-                                                        </td>
-                                                        <td className="font-sans font-medium text-base-content">{tEvt.description}</td>
-                                                        <td className="whitespace-nowrap">{tEvt.location}</td>
-                                                        <td>
-                                                            <span className="badge badge-xs badge-ghost text-[10px] uppercase">{tEvt.source}</span>
-                                                        </td>
-                                                    </tr>
-                                                ))}
+                                                {telemetryEvents.map((tEvt, tIdx) => {
+                                                    const prevEvt = tIdx > 0 ? telemetryEvents[tIdx - 1] : null;
+                                                    const isNewDay = !prevEvt || prevEvt.dateParts?.dayKey !== tEvt.dateParts?.dayKey;
+
+                                                    return (
+                                                        <React.Fragment key={tEvt.idx}>
+                                                            {isNewDay && (
+                                                                <tr className="bg-base-200/90 font-sans font-bold text-[11px] text-base-content border-t-2 border-base-300">
+                                                                    <td colSpan={6} className="py-1.5 px-3">
+                                                                        <div className="flex items-center gap-1.5 text-primary">
+                                                                            <span className="material-symbols-outlined text-xs">calendar_month</span>
+                                                                            <span>{tEvt.dateParts.dayHeader}</span>
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            )}
+                                                            <tr className="hover">
+                                                                <td className="text-base-content/40">{tEvt.idx}</td>
+                                                                <td className="whitespace-nowrap font-bold text-base-content">{tEvt.dateParts.time}</td>
+                                                                <td>
+                                                                    <span className="badge badge-xs badge-neutral font-bold">{tEvt.statusCode}</span>
+                                                                </td>
+                                                                <td className="font-sans font-medium text-base-content">{tEvt.description}</td>
+                                                                <td className="whitespace-nowrap">{tEvt.location}</td>
+                                                                <td>
+                                                                    <span className="badge badge-xs badge-ghost text-[10px] uppercase">{tEvt.source}</span>
+                                                                </td>
+                                                            </tr>
+                                                        </React.Fragment>
+                                                    );
+                                                })}
                                             </tbody>
                                         </table>
                                     </div>

@@ -190,17 +190,48 @@ const buildDisplayHistory = (events = [], options = {}) => {
             };
         }).filter(Boolean).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
+    // Detect batch replay artifacts: when carrier dumps an entire sequence with identical timestamps
+    // across different locations, mark those timestamps as synthetic batch dumps.
+    const timestampLocationCount = new Map();
+    prepared.forEach((e) => {
+        if (!e.timestamp) return;
+        const set = timestampLocationCount.get(e.timestamp) || new Set();
+        set.add(e.normalizedLocation);
+        timestampLocationCount.set(e.timestamp, set);
+    });
+    const isSyntheticBatchTimestamp = (ts) => {
+        const locations = timestampLocationCount.get(ts);
+        return locations && locations.size > 1;
+    };
+
     const replayStableStatuses = new Set(['pickup', 'arrived_facility', 'processed', 'departed_facility']);
     const byKey = new Map();
     prepared.forEach((event) => {
-        const key = replayStableStatuses.has(event.canonicalStatus)
-            ? `${event.canonicalStatus}|${event.normalizedLocation}`
+        const isBatch = isSyntheticBatchTimestamp(event.timestamp);
+        let key = replayStableStatuses.has(event.canonicalStatus)
+            ? `${event.canonicalStatus}|${event.normalizedLocation}|${event.dayBucket}`
             : `${event.canonicalStatus}|${event.normalizedLocation}|${event.dayBucket}|${normalizeText(event.description || '')}`;
-        const prior = byKey.get(key);
+
+        // If this event comes from a synthetic batch replay, find any prior entry with the same status and location
+        let priorKey = null;
+        if (isBatch && replayStableStatuses.has(event.canonicalStatus)) {
+            for (const [k, v] of byKey.entries()) {
+                if (v.canonicalStatus === event.canonicalStatus && v.normalizedLocation === event.normalizedLocation) {
+                    priorKey = k;
+                    break;
+                }
+            }
+        }
+
+        const prior = priorKey ? byKey.get(priorKey) : byKey.get(key);
         if (!prior) {
             byKey.set(key, { ...event, collapsedCount: 1 });
         } else {
             prior.collapsedCount += 1;
+            // Prefer the earliest scan timestamp for collapsed checkpoints
+            if (new Date(event.timestamp) < new Date(prior.timestamp)) {
+                prior.timestamp = event.timestamp;
+            }
         }
     });
 
@@ -258,8 +289,9 @@ const buildDisplayHistory = (events = [], options = {}) => {
         }
 
         if (lowSignalStatuses.has(event.canonicalStatus)) {
-            if (seenLowSignalLocations.has(event.normalizedLocation)) return false;
-            seenLowSignalLocations.add(event.normalizedLocation);
+            const lowSignalKey = `${event.normalizedLocation}|${event.timestamp?.slice(0, 10) || ''}`;
+            if (seenLowSignalLocations.has(lowSignalKey)) return false;
+            seenLowSignalLocations.add(lowSignalKey);
         }
 
         return true;
@@ -300,13 +332,9 @@ const compactHistory = (history = []) => {
                 description: String(event?.description || '').trim(),
                 source: String(event?.source || 'platform').trim().toLowerCase(),
                 __timestamp: (timestamp && !Number.isNaN(timestamp.getTime())) ? timestamp : new Date(0),
+                // Use minute bucket for deduplicating instant replay noise without dropping distinct events
                 __minuteBucket: (timestamp && !Number.isNaN(timestamp.getTime()))
                     ? Math.floor(timestamp.getTime() / 60000)
-                    : '',
-                // Carrier feeds can replay same checkpoint many times over short windows.
-                // Use a wider bucket to collapse noisy repeats while preserving movement transitions.
-                __carrierWindowBucket: (timestamp && !Number.isNaN(timestamp.getTime()))
-                    ? Math.floor(timestamp.getTime() / (6 * 60 * 60 * 1000))
                     : '',
                 __location: String(locationRaw).trim().toLowerCase()
             };
@@ -315,7 +343,7 @@ const compactHistory = (history = []) => {
 
     const byKey = new Map();
     for (const event of prepared) {
-        const timeBucket = event.source === 'carrier' ? event.__carrierWindowBucket : event.__minuteBucket;
+        const timeBucket = event.__minuteBucket;
         const dedupeKey = [
             event.source,
             event.status,
@@ -332,7 +360,7 @@ const compactHistory = (history = []) => {
 
     return Array.from(byKey.values())
         .sort((a, b) => a.__timestamp.getTime() - b.__timestamp.getTime())
-        .map(({ __timestamp, __minuteBucket, __carrierWindowBucket, __location, ...event }) => event);
+        .map(({ __timestamp, __minuteBucket, __location, ...event }) => event);
 };
 
 /**
