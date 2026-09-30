@@ -68,79 +68,90 @@ export const TK = {
 export const STATUS_CONFIG = {
   draft: {
     label: 'Draft',
-    color: '#6b7280',
-    bg: '#f3f4f6',
-    border: '#e5e7eb',
+    color: '#0f172a',
+    dotColor: '#64748b',
+    bg: '#f1f5f9',
+    border: '#cbd5e1',
     icon: 'edit_note'
   },
   pending: {
     label: 'Pending Gate',
-    color: '#b45309',
+    color: '#78350f',
+    dotColor: '#d97706',
     bg: '#fef3c7',
     border: '#fde68a',
     icon: 'pending'
   },
   ready_for_pickup: {
     label: 'Ready for Pickup',
-    color: '#0284c7',
+    color: '#082f49',
+    dotColor: '#0284c7',
     bg: '#e0f2fe',
-    border: '#bae6fd',
+    border: '#7dd3fc',
     icon: 'schedule'
   },
   picked_up: {
     label: 'Picked Up',
-    color: '#0284c7',
-    bg: '#e0f2fe',
-    border: '#bae6fd',
+    color: '#1e1b4b',
+    dotColor: '#6366f1',
+    bg: '#e0e7ff',
+    border: '#a5b4fc',
     icon: 'inventory'
   },
   created: {
     label: 'Manifest Created',
-    color: '#0050d4',
-    bg: '#ebf0fc',
-    border: '#c7d7fe',
+    color: '#172554',
+    dotColor: '#2563eb',
+    bg: '#eff6ff',
+    border: '#bfdbfe',
     icon: 'add_circle'
   },
   in_transit: {
     label: 'In Transit',
-    color: '#0050d4',
-    bg: '#ebf0fc',
-    border: '#c7d7fe',
+    color: '#1e3a8a',
+    dotColor: '#2563eb',
+    bg: '#dbeafe',
+    border: '#93c5fd',
     icon: 'flight'
   },
   out_for_delivery: {
     label: 'Out for Delivery',
-    color: '#059669',
-    bg: '#d1fae5',
+    color: '#064e3b',
+    dotColor: '#059669',
+    bg: '#ecfdf5',
     border: '#a7f3d0',
     icon: 'local_shipping'
   },
   delivered: {
     label: 'Delivered',
-    color: '#059669',
-    bg: '#d1fae5',
-    border: '#a7f3d0',
+    color: '#064e3b',
+    dotColor: '#10b981',
+    bg: '#dcfce7',
+    border: '#86efac',
     icon: 'check_circle'
   },
   completed: {
     label: 'Completed',
-    color: '#059669',
-    bg: '#d1fae5',
-    border: '#a7f3d0',
+    color: '#064e3b',
+    dotColor: '#10b981',
+    bg: '#dcfce7',
+    border: '#86efac',
     icon: 'task_alt'
   },
   exception: {
     label: 'Exception / Hold',
-    color: '#dc2626',
+    color: '#881337',
+    dotColor: '#e11d48',
     bg: '#fee2e2',
-    border: '#fecaca',
+    border: '#fca5a5',
     icon: 'warning'
   },
   cancelled: {
     label: 'Cancelled',
-    color: '#6b7280',
+    color: '#111827',
+    dotColor: '#6b7280',
     bg: '#f3f4f6',
-    border: '#e5e7eb',
+    border: '#d1d5db',
     icon: 'cancel'
   }
 };

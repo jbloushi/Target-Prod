@@ -830,19 +830,21 @@ const DashboardPage = () => {
                                     <button
                                         key={tab.id}
                                         onClick={() => setPipelineStage(tab.id)}
-                                        className={`btn btn-xs rounded-lg font-bold shrink-0 gap-1.5 ${
-                                            pipelineStage === tab.id ? 'btn-primary' : 'btn-ghost border-base-200 text-base-content/70'
+                                        className={`btn btn-sm rounded-xl font-bold shrink-0 gap-2 h-8 min-h-8 text-xs ${
+                                            pipelineStage === tab.id 
+                                                ? 'btn-primary shadow-xs' 
+                                                : 'btn-ghost bg-base-200/50 border-base-200 text-base-content/80 hover:bg-base-200'
                                         }`}
                                     >
                                         <span>{tab.label}</span>
-                                        <span className={`badge badge-xs font-mono font-bold ${
+                                        <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-mono font-black ${
                                             pipelineStage === tab.id 
-                                                ? 'badge-ghost bg-primary-content/20 text-primary-content' 
+                                                ? 'bg-white/20 text-white' 
                                                 : tab.isError && tab.count > 0 
-                                                    ? 'badge-error text-white' 
+                                                    ? 'bg-rose-100 text-rose-950 border border-rose-300' 
                                                     : tab.isSuccess && tab.count > 0
-                                                        ? 'badge-success text-white'
-                                                        : 'badge-ghost text-base-content/60'
+                                                        ? 'bg-emerald-100 text-emerald-950 border border-emerald-300'
+                                                        : 'bg-base-300/80 text-base-content/80'
                                         }`}>
                                             {tab.count}
                                         </span>

@@ -18,14 +18,16 @@ export const StatusBadge = ({ status = 'draft', size = 'sm', className = '' }) =
     const isException = ['exception', 'failed', 'cancelled'].includes(status);
 
     const sizeClasses = {
-        xs: 'text-[9.5px] px-2 py-0.5',
-        sm: 'text-[10.5px] px-2.5 py-0.5',
-        md: 'text-xs px-3 py-1',
-    }[size] || 'text-[10.5px] px-2.5 py-0.5';
+        xs: 'text-[10.5px] px-2.5 py-0.5 font-bold',
+        sm: 'text-xs px-3 py-1 font-extrabold',
+        md: 'text-xs sm:text-sm px-3.5 py-1.5 font-black',
+    }[size] || 'text-xs px-3 py-1 font-extrabold';
+
+    const dotBg = cfg.dotColor || cfg.color;
 
     return (
         <span
-            className={`inline-flex items-center gap-1.5 rounded-full font-bold select-none border transition-all ${sizeClasses} ${className}`}
+            className={`inline-flex items-center gap-1.5 rounded-full select-none border transition-all ${sizeClasses} ${className}`}
             style={{
                 backgroundColor: cfg.bg,
                 color: cfg.color,
@@ -33,23 +35,23 @@ export const StatusBadge = ({ status = 'draft', size = 'sm', className = '' }) =
             }}
         >
             {isActiveMovement ? (
-                <span className="relative flex h-2 w-2">
+                <span className="relative flex h-2 w-2 shrink-0">
                     <span 
                         className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
-                        style={{ backgroundColor: cfg.color }}
+                        style={{ backgroundColor: dotBg }}
                     />
                     <span 
                         className="relative inline-flex rounded-full h-2 w-2"
-                        style={{ backgroundColor: cfg.color }}
+                        style={{ backgroundColor: dotBg }}
                     />
                 </span>
             ) : (
                 <span 
                     className="w-1.5 h-1.5 rounded-full shrink-0"
-                    style={{ backgroundColor: cfg.color }}
+                    style={{ backgroundColor: dotBg }}
                 />
             )}
-            <span className="capitalize">{t(`status_${status}`, cfg.label)}</span>
+            <span className="capitalize whitespace-nowrap">{t(`status_${status}`, cfg.label)}</span>
         </span>
     );
 };
