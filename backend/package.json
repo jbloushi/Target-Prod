@@ -22,6 +22,7 @@
     "dispatch:whatsapp": "node scripts/dispatch-pending-whatsapp.js",
     "phenix:inspect": "node scripts/inspect-phenix.js",
     "phenix:sync": "node scripts/sync-phenix-cli.js",
+    "phenix:sync-all": "node scripts/sync-phenix-cli.js 45 ALL",
     "phenix:reconcile": "node scripts/reconcile-phenix-records.js",
     "phenix:audit-ote": "node scripts/audit-phenix-ote.js",
     "phenix:carriers": "node scripts/lookup-all-phenix-carriers.js",
