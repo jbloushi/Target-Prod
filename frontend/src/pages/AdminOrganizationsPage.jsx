@@ -7,7 +7,7 @@ import { organizationService, userService } from '../services/api';
 
 const CARRIERS_CONFIG = [
     { code: 'DGR', name: 'DHL Express (DGR)' },
-    { code: 'OTE', name: 'LogesTechs (OTE Ground)' },
+    { code: 'FEDEX', name: 'FedEx Express (FDX)' },
     { code: 'ARAMEX', name: 'Aramex Express' },
     { code: 'INTERNAL', name: 'Target Local Fleet' }
 ];
@@ -44,7 +44,7 @@ const AdminOrganizationsPage = () => {
         creditLimit: 0,
         active: true,
         markup: { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 },
-        allowedCarriers: { allowed: ['DGR', 'OTE', 'ARAMEX'], defaultCarrier: 'DGR' }
+        allowedCarriers: { allowed: ['DGR', 'FEDEX', 'ARAMEX', 'INTERNAL'], defaultCarrier: 'DGR' }
     });
 
     const [selectedMemberToAdd, setSelectedMemberToAdd] = useState('');
@@ -122,7 +122,7 @@ const AdminOrganizationsPage = () => {
                 creditLimit: org.creditLimit || 0,
                 active: org.active ?? true,
                 markup: org.markup || { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 },
-                allowedCarriers: org.allowedCarriers || { allowed: ['DGR', 'OTE', 'ARAMEX'], defaultCarrier: 'DGR' }
+                allowedCarriers: org.allowedCarriers || { allowed: ['DGR', 'FEDEX', 'ARAMEX', 'INTERNAL'], defaultCarrier: 'DGR' }
             });
         } else {
             setEditingOrg(null);
@@ -133,7 +133,7 @@ const AdminOrganizationsPage = () => {
                 creditLimit: 0,
                 active: true,
                 markup: { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 },
-                allowedCarriers: { allowed: ['DGR', 'OTE', 'ARAMEX'], defaultCarrier: 'DGR' }
+                allowedCarriers: { allowed: ['DGR', 'FEDEX', 'ARAMEX', 'INTERNAL'], defaultCarrier: 'DGR' }
             });
         }
         setOpenDialog(true);
@@ -682,7 +682,7 @@ const AdminOrganizationsPage = () => {
                             </div>
                             <div className="grid grid-cols-2 gap-2 text-xs">
                                 {CARRIERS_CONFIG.map((c) => {
-                                    const currentAllowed = formData.allowedCarriers?.allowed || ['DGR', 'OTE', 'ARAMEX'];
+                                    const currentAllowed = formData.allowedCarriers?.allowed || ['DGR', 'FEDEX', 'ARAMEX', 'INTERNAL'];
                                     const isChecked = currentAllowed.includes(c.code);
                                     return (
                                         <label key={c.code} className="flex items-center gap-2 cursor-pointer p-1.5 rounded-lg hover:bg-base-200/80">

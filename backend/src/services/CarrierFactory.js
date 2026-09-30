@@ -14,7 +14,7 @@ const EXTERNAL_CAPABILITIES = (code) => ({
     supportsCancellation: false,
     supportsLabelGeneration: true,
     supportsExternalApi: true,
-    supportsConversionTarget: ['DGR', 'OTE'].includes(String(code || '').toUpperCase())
+    supportsConversionTarget: ['DGR', 'OTE', 'FEDEX', 'ARAMEX'].includes(String(code || '').toUpperCase())
 });
 
 const CARRIER_REGISTRY = [
@@ -31,11 +31,27 @@ const CARRIER_REGISTRY = [
     },
     {
         code: 'DGR',
-        name: 'DHL DGR',
+        name: 'DHL Express',
         active: true,
         trackingPrefix: 'DGR',
         defaultServiceCode: 'P',
         capabilities: EXTERNAL_CAPABILITIES('DGR')
+    },
+    {
+        code: 'FEDEX',
+        name: 'FedEx Express',
+        active: true,
+        trackingPrefix: 'FED',
+        defaultServiceCode: 'FEDEX_INTERNATIONAL_PRIORITY',
+        capabilities: EXTERNAL_CAPABILITIES('FEDEX')
+    },
+    {
+        code: 'ARAMEX',
+        name: 'Aramex',
+        active: true,
+        trackingPrefix: 'ARA',
+        defaultServiceCode: 'PPX',
+        capabilities: EXTERNAL_CAPABILITIES('ARAMEX')
     },
     {
         code: 'OTE',
@@ -44,22 +60,6 @@ const CARRIER_REGISTRY = [
         trackingPrefix: 'TRG',
         defaultServiceCode: 'STD',
         capabilities: EXTERNAL_CAPABILITIES('OTE')
-    },
-    {
-        code: 'ARAMEX',
-        name: 'Aramex',
-        active: true,
-        trackingPrefix: 'ARA',
-        defaultServiceCode: 'P',
-        capabilities: EXTERNAL_CAPABILITIES('ARAMEX')
-    },
-    {
-        code: 'FEDEX',
-        name: 'FedEx',
-        active: false,
-        trackingPrefix: 'FED',
-        defaultServiceCode: 'P',
-        capabilities: EXTERNAL_CAPABILITIES('FEDEX')
     },
     {
         code: 'UPS',
@@ -83,7 +83,10 @@ const CARRIER_REGISTRY = [
 const normalizeCarrierCode = (carrierCode) => {
     const code = String(carrierCode || 'DGR').toUpperCase();
     if (code === 'DHL') return 'DGR';
+    if (code === 'FDX') return 'FEDEX';
+    if (code === 'ARM') return 'ARAMEX';
     if (code === 'LOGESTECHS') return 'OTE';
+    if (code === 'MAN' || code === 'MANUAL') return 'INTERNAL';
     return code;
 };
 

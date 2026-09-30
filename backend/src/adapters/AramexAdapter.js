@@ -22,53 +22,58 @@ class AramexAdapter {
      * Rate a shipment (Mock / Live)
      * @param {Object} payload 
      */
+    async getRates(payload) {
+        const weight = (Array.isArray(payload?.packages) && payload.packages.length > 0)
+            ? payload.packages.reduce((sum, p) => sum + (Number(p.weight?.value || p.weight || 0) || 0), 0)
+            : Number(payload?.weight || 1.5);
+        const baseRate = Number((11.000 + weight * 2.2).toFixed(3));
+
+        return [
+            {
+                serviceName: 'Aramex Priority Parcel Express (PPX)',
+                serviceCode: 'PPX',
+                carrierCode: 'ARAMEX',
+                totalPrice: baseRate,
+                currency: payload?.currency || 'KWD',
+                deliveryDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+                optionalServices: []
+            },
+            {
+                serviceName: 'Aramex Value Express (EPX)',
+                serviceCode: 'EPX',
+                carrierCode: 'ARAMEX',
+                totalPrice: Number((baseRate * 0.70).toFixed(3)),
+                currency: payload?.currency || 'KWD',
+                deliveryDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+                optionalServices: []
+            }
+        ];
+    }
+
     async rate(payload) {
-        // Simulate network delay
-        await new Promise(resolve => setTimeout(resolve, 800));
-
-        // Simulate validation
-        if (!payload.destination?.country) {
-            throw new Error('Aramex: Destination country is required for rating');
-        }
-
-        return {
-            carrier: 'ARAMEX',
-            services: [
-                {
-                    code: 'EPX',
-                    name: 'Aramex Economy Parcel Express',
-                    rate: 12.500,
-                    currency: 'KWD',
-                    estimatedDays: '3-5'
-                },
-                {
-                    code: 'PPX',
-                    name: 'Aramex Priority Parcel Express',
-                    rate: 18.750,
-                    currency: 'KWD',
-                    estimatedDays: '1-2'
-                }
-            ],
-            timestamp: new Date().toISOString()
-        };
+        return this.getRates(payload);
     }
 
     /**
      * Book/Create a shipment (Mock / Live)
      * @param {Object} payload 
      */
-    async book(payload) {
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        const trackingId = `ARM${Math.floor(Math.random() * 1000000000)}`;
-        
+    async createShipment(payload, serviceCode) {
+        const trackingNumber = `ARM${Math.floor(1000000000 + Math.random() * 9000000000)}`;
         return {
             success: true,
-            trackingId,
+            trackingNumber,
+            trackingId: trackingNumber,
+            carrierShipmentId: trackingNumber,
             carrier: 'ARAMEX',
-            labelUrl: 'https://example.com/mock-aramex-label.pdf',
+            labelUrl: `https://api.target-kw.com/labels/${trackingNumber}.pdf`,
             bookingReference: `REF-${Date.now()}`,
             timestamp: new Date().toISOString()
         };
+    }
+
+    async book(payload) {
+        return this.createShipment(payload);
     }
 
     /**

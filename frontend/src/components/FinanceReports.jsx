@@ -808,8 +808,8 @@ const FinanceReports = ({ ledger = [], shipments = [], organizations = [] }) => 
                                 className="select select-bordered select-sm font-bold"
                             >
                                 <option value="DHL">DHL Express (شحن جوي دولي)</option>
-                                <option value="LOGESTECHS">LogesTechs (توصيل ميل أخير)</option>
-                                <option value="OTE">OTE Delivery</option>
+                                <option value="FEDEX">FedEx Express (فيديكس إكسبريس)</option>
+                                <option value="ARAMEX">Aramex (أرامكس)</option>
                                 <option value="DGR">DGR Logistics (شحن بضائع خطرة)</option>
                                 <option value="GENERIC">{lang === 'ar' ? 'ناقل آخر' : 'Generic / Other Carrier'}</option>
                             </select>

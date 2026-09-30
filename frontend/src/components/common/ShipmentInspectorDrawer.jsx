@@ -4,6 +4,17 @@ import { useLanguage } from '../../context/LanguageContext';
 import StatusBadge from './StatusBadge';
 import TradeRouteDisplay from './TradeRouteDisplay';
 
+const CARRIER_INFO_MAP = {
+    'DGR': { name: 'DHL Express', nameAr: 'دي إتش إل إكسبريس', badge: 'badge-error' },
+    'DHL': { name: 'DHL Express', nameAr: 'دي إتش إل إكسبريس', badge: 'badge-error' },
+    'ARM': { name: 'Aramex', nameAr: 'أرامكس', badge: 'badge-warning' },
+    'ARAMEX': { name: 'Aramex', nameAr: 'أرامكس', badge: 'badge-warning' },
+    'FDX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'badge-secondary' },
+    'FEDEX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'badge-secondary' },
+    'MAN': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'badge-primary' },
+    'INTERNAL': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'badge-primary' },
+};
+
 /**
  * Standardized Slide-Over Shipment Inspector Drawer
  * Used identically across Dashboard, Shipments, and Operations views for 100% design continuity.
@@ -31,6 +42,7 @@ export const ShipmentInspectorDrawer = ({
 
     const trackingNumber = shipment.trackingNumber || '—';
     const status = shipment.status || 'draft';
+    const carrierCode = shipment.carrierCode || (shipment.serviceType?.toLowerCase().includes('dhl') ? 'DHL' : shipment.serviceType?.toLowerCase().includes('fedex') ? 'FEDEX' : shipment.serviceType?.toLowerCase().includes('aramex') ? 'ARAMEX' : null);
     const origin = shipment.origin || { city: shipment.originCity || 'Kuwait City', country: shipment.originCountry || 'KW' };
     const destination = shipment.destination || { city: shipment.destCity || 'Riyadh', country: shipment.destCountry || 'SA' };
     const consigneeName = shipment.receiver?.contactPerson || shipment.receiver?.name || (typeof shipment.destination === 'object' ? (shipment.destination?.contactPerson || shipment.destination?.name) : null) || (typeof shipment.customer === 'object' ? (shipment.customer?.name || shipment.customer?.contactPerson) : (typeof shipment.customer === 'string' ? shipment.customer : null)) || (isRTL ? 'المستلم' : 'Consignee');
@@ -67,10 +79,15 @@ export const ShipmentInspectorDrawer = ({
                 {/* Header: Tracking # & Close */}
                 <div className="flex justify-between items-start border-b border-base-200 pb-4">
                     <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-mono text-base font-black text-primary">
                                 {trackingNumber}
                             </span>
+                            {carrierCode && (
+                                <span className={`badge ${CARRIER_INFO_MAP[carrierCode.toUpperCase()]?.badge || 'badge-neutral'} badge-xs font-black uppercase`}>
+                                    {isRTL ? CARRIER_INFO_MAP[carrierCode.toUpperCase()]?.nameAr || carrierCode : CARRIER_INFO_MAP[carrierCode.toUpperCase()]?.name || carrierCode}
+                                </span>
+                            )}
                             <button 
                                 onClick={copyTracking} 
                                 className="btn btn-ghost btn-xs btn-square text-base-content/60 hover:text-primary"

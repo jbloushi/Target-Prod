@@ -187,6 +187,24 @@ const KNOWN_CARRIERS = {
     icon: 'flight_takeoff',
     desc: 'Worldwide priority express with customs clearance and door-to-door courier.'
   },
+  FEDEX: {
+    code: 'FEDEX',
+    name: 'FedEx Express Global',
+    badge: 'Global Priority Air',
+    color: '#4D148C',
+    bg: '#F5F3FF',
+    icon: 'flight',
+    desc: 'Worldwide express priority air linehauls with automated customs and milestone tracking.'
+  },
+  ARAMEX: {
+    code: 'ARAMEX',
+    name: 'Aramex Priority Express',
+    badge: 'MENA & GCC Priority',
+    color: '#E31837',
+    bg: '#FFF1F2',
+    icon: 'local_shipping',
+    desc: 'Comprehensive regional and international courier network across Middle East, GCC, and global lanes.'
+  },
   OTE: {
     code: 'OTE',
     name: 'LogesTechs GCC Ground',
@@ -195,15 +213,6 @@ const KNOWN_CARRIERS = {
     bg: '#F0F9FF',
     icon: 'local_shipping',
     desc: 'Specialized overland trucking across Kuwait, UAE, KSA, Qatar, Bahrain, and Oman with COD support.'
-  },
-  FEDEX: {
-    code: 'FEDEX',
-    name: 'FedEx International',
-    badge: 'Global Priority',
-    color: '#4F46E5',
-    bg: '#EEF2FF',
-    icon: 'flight',
-    desc: 'Global express freight network with scheduled transit commitments.'
   },
   INTERNAL: {
     code: 'INTERNAL',
@@ -1436,17 +1445,30 @@ const ServiceStep = ({
       eta: '1–2 Business Days'
     },
     {
-      carrierCode: 'OTE',
-      carrierName: 'LogesTechs GCC Ground',
-      serviceCode: 'EXP',
-      serviceName: 'GCC Overland Standard',
-      badge: 'GCC Road Freight & COD',
-      color: '#0284C7',
-      bg: '#F0F9FF',
+      carrierCode: 'FEDEX',
+      carrierName: 'FedEx Express Global',
+      serviceCode: 'FEDEX_INTERNATIONAL_PRIORITY',
+      serviceName: 'International Priority Air',
+      badge: 'Global Priority Air',
+      color: '#4D148C',
+      bg: '#F5F3FF',
+      icon: 'flight',
+      desc: 'Worldwide express priority air linehauls with automated customs and milestone tracking.',
+      totalPrice: 18.500,
+      eta: '1–3 Business Days'
+    },
+    {
+      carrierCode: 'ARAMEX',
+      carrierName: 'Aramex Priority Express',
+      serviceCode: 'PPX',
+      serviceName: 'Priority Parcel Express (PPX)',
+      badge: 'MENA & GCC Priority',
+      color: '#E31837',
+      bg: '#FFF1F2',
       icon: 'local_shipping',
-      desc: 'Specialized overland trucking across Kuwait, UAE, KSA, Qatar, Bahrain, and Oman with COD support.',
-      totalPrice: 6.300,
-      eta: '3–5 Business Days'
+      desc: 'Comprehensive regional and international courier network across Middle East, GCC, and global lanes.',
+      totalPrice: 14.250,
+      eta: '2–4 Business Days'
     },
     {
       carrierCode: 'INTERNAL',

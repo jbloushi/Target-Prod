@@ -376,8 +376,9 @@ export default function BulkShipmentImportModal({ isOpen, onClose, onImportSucce
                 }}
               >
                 <option value="DGR">DHL Express (DGR)</option>
-                <option value="OTE">LogesTechs (OTE Ground)</option>
+                <option value="FEDEX">FedEx Express (FDX)</option>
                 <option value="ARAMEX">Aramex Express</option>
+                <option value="INTERNAL">Target Local Fleet</option>
               </select>
             </div>
 
