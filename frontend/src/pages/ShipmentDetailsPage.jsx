@@ -1160,177 +1160,32 @@ const ShipmentDetailsPage = () => {
 
             </div>
 
-            {/* Active Triage & Operations Health Banner */}
-            <div className={`card ${isTriageException ? 'bg-error/5 border-error/25' : 'bg-success/5 border-success/20'} border shadow-xs rounded-2xl p-4 sm:p-5 transition-all`}>
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                    <div className="flex items-center gap-3">
-                        <span className="relative flex h-3 w-3 shrink-0">
-                            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${isTriageException ? 'bg-error' : 'bg-success'} opacity-75`}></span>
-                            <span className={`relative inline-flex rounded-full h-3 w-3 ${isTriageException ? 'bg-error' : 'bg-success'}`}></span>
-                        </span>
-                        <div>
-                            <div className="flex items-center gap-2">
-                                <h3 className={`text-xs sm:text-sm font-black ${isTriageException ? 'text-error' : 'text-success'} uppercase tracking-wider`}>
-                                    {isRTL ? 'طابور التدخل والاستثناءات الفورية' : 'Active Triage & Exceptions'}
-                                </h3>
-                                <span className={`badge ${isTriageException ? 'badge-error text-white' : 'badge-success text-white'} badge-xs font-black`}>
-                                    {isTriageException ? (isRTL ? 'تنبيه استثنائي' : '1 Critical Blocker') : (isRTL ? 'طبيعي' : '0 Issues')}
-                                </span>
-                            </div>
-                            <p className="text-xs text-base-content/70 font-semibold mt-0.5">
-                                {isTriageException
-                                    ? (isRTL ? `حالة استثنائية تعيق التسليم: ${triageDetail}` : `Critical issue blocking delivery: ${triageDetail}`)
-                                    : (isRTL ? '0 مشاكل حرجة — العمليات تسير بشكل طبيعي' : '0 critical issues — operations nominal')}
-                            </p>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                        {!isTriageException && (
-                            <div className="text-[11px] font-bold text-success flex items-center gap-1">
-                                <span className="material-symbols-outlined text-sm">verified</span>
-                                <span>{isRTL ? 'مسار النقل مصادق عليه' : 'Trade Corridor Nominal'}</span>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            {/* Receiver Action Callout Cards & Carrier Sharing */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* 1. Pin GPS Delivery Location */}
-                <div className="card bg-gradient-to-br from-primary to-primary-focus text-primary-content p-5 rounded-2xl shadow-sm flex flex-col justify-between space-y-3">
-                    <div>
-                        <div className="flex items-center gap-3 mb-1">
-                            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-xl shrink-0 shadow-xs">
-                                📍
-                            </div>
+            {/* Active Triage & Operations Health Banner - Only rendered if active triage/exception exists */}
+            {isTriageException && (
+                <div className="card bg-error/5 border border-error/25 shadow-xs rounded-2xl p-4 sm:p-5 transition-all">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                        <div className="flex items-center gap-3">
+                            <span className="relative flex h-3 w-3 shrink-0">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-error opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-3 w-3 bg-error"></span>
+                            </span>
                             <div>
-                                <h3 className="font-black text-sm sm:text-base leading-tight">
-                                    {isRTL ? 'تثبيت الموقع الجغرافي (GPS)' : 'Pin Delivery GPS Location'}
-                                </h3>
-                                <p className="text-xs opacity-85 mt-0.5">
-                                    {isRTL ? 'مساعدة سائق التوصيل بالإحداثيات الدقيقة ورقم الآلي (PACI).' : 'Assist the courier driver with exact Kuwait address coordinates and PACI.'}
+                                <div className="flex items-center gap-2">
+                                    <h3 className="text-xs sm:text-sm font-black text-error uppercase tracking-wider">
+                                        {isRTL ? 'طابور التدخل والاستثناءات الفورية' : 'Active Triage & Exceptions'}
+                                    </h3>
+                                    <span className="badge badge-error text-white badge-xs font-black">
+                                        {isRTL ? 'تنبيه استثنائي' : '1 Critical Blocker'}
+                                    </span>
+                                </div>
+                                <p className="text-xs text-base-content/70 font-semibold mt-0.5">
+                                    {isRTL ? `حالة استثنائية تعيق التسليم: ${triageDetail}` : `Critical issue blocking delivery: ${triageDetail}`}
                                 </p>
                             </div>
                         </div>
-                        {receiver.city && (
-                            <div className="mt-2 text-[11px] bg-white/10 rounded-lg px-2.5 py-1.5 flex items-center justify-between">
-                                <span className="opacity-80">{isRTL ? 'الوجهة المسجلة:' : 'Target Destination:'}</span>
-                                <span className="font-extrabold">{receiver.city}, {receiver.countryCode || 'KW'}</span>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="pt-3 border-t border-white/20 flex flex-wrap items-center justify-between gap-2">
-                        <button
-                            type="button"
-                            onClick={() => window.open(`/track/${shipment.trackingNumber}/location`, '_blank')}
-                            className="btn btn-xs bg-white text-primary hover:bg-white/90 border-none font-bold shadow-xs gap-1"
-                        >
-                            <span className="material-symbols-outlined text-xs">map</span>
-                            <span>{isRTL ? 'فتح موقع GPS' : 'Open Location Pin'}</span>
-                        </button>
-
-                        <div className="flex items-center gap-1.5">
-                            <button
-                                type="button"
-                                onClick={handleShareLocationWithCarrier}
-                                className="btn btn-xs bg-[#25D366] text-white hover:bg-[#1ebc57] border-none font-bold gap-1 shadow-xs"
-                                title={isRTL ? 'مشاركة الموقع مع السائق عبر واتساب' : 'Share Location Link with Courier Driver'}
-                            >
-                                <span className="material-symbols-outlined text-xs">share</span>
-                                <span>{isRTL ? 'مشاركة مع السائق' : 'Share with Carrier'}</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleCopyLocationLink}
-                                className="btn btn-xs bg-white/20 hover:bg-white/30 text-white border-none font-bold gap-1"
-                                title={isRTL ? 'نسخ رابط الموقع' : 'Copy Location Link'}
-                            >
-                                <span className="material-symbols-outlined text-xs">content_copy</span>
-                                <span>{isRTL ? 'نسخ الرابط' : 'Copy Link'}</span>
-                            </button>
-                        </div>
                     </div>
                 </div>
-
-                {/* 2. Customer Return & Paperwork */}
-                <div className="card bg-base-100 border border-base-200/90 p-5 rounded-2xl shadow-sm flex flex-col justify-between space-y-3">
-                    <div>
-                        <div className="flex items-center gap-3 mb-1">
-                            <div className="w-10 h-10 rounded-xl bg-secondary/10 text-secondary flex items-center justify-center text-xl shrink-0">
-                                🔄
-                            </div>
-                            <div>
-                                <h3 className="font-black text-sm sm:text-base text-base-content leading-tight">
-                                    {isRTL ? 'بوابة المرتجعات والمستندات' : 'Customer Return & Paperwork'}
-                                </h3>
-                                <p className="text-xs text-base-content/60 mt-0.5">
-                                    {isRTL ? 'إصدار بوليصة الإرجاع خلال 14 يوماً، طباعة مستندات الشحن والبيان الجمركي.' : 'Initiate 14-day reverse parcel returns, customs declarations, or print air waybills.'}
-                                </p>
-                            </div>
-                        </div>
-                        <div className="mt-2 text-[11px] bg-base-200/50 rounded-lg px-2.5 py-1.5 flex items-center justify-between">
-                            <span className="text-base-content/60">{isRTL ? 'الناقل المعتمد:' : 'Consigned Carrier:'}</span>
-                            <span className="font-extrabold text-base-content font-mono">{shipment.carrierCode || shipment.carrier || 'Target Network'}</span>
-                        </div>
-                    </div>
-
-                    <div className="pt-3 border-t border-base-200 flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5">
-                            {resolvedCarrierAwb ? (
-                                <button
-                                    type="button"
-                                    onClick={() => handleOpenPdf(resolvedCarrierAwb)}
-                                    className="btn btn-xs btn-ghost border border-base-300 text-xs font-bold gap-1"
-                                >
-                                    <span className="material-symbols-outlined text-xs">print</span>
-                                    <span>{isRTL ? 'البوليصة الرسمية' : 'Air Waybill'}</span>
-                                </button>
-                            ) : (
-                                <button
-                                    type="button"
-                                    onClick={handleGenerateInvoiceQR}
-                                    className="btn btn-xs btn-ghost border border-base-300 text-xs font-bold gap-1"
-                                >
-                                    <span className="material-symbols-outlined text-xs">description</span>
-                                    <span>{isRTL ? 'فاتورة / QR' : 'Waybill QR'}</span>
-                                </button>
-                            )}
-                            <button
-                                type="button"
-                                onClick={() => window.open(`/returns/${shipment.trackingNumber}`, '_blank')}
-                                className="btn btn-xs btn-outline btn-secondary text-xs font-bold gap-1"
-                            >
-                                <span className="material-symbols-outlined text-xs">assignment_return</span>
-                                <span>{isRTL ? 'بوابة المرتجع' : 'Check Return'}</span>
-                            </button>
-                        </div>
-
-                        <div className="flex items-center gap-1.5">
-                            <button
-                                type="button"
-                                onClick={handleShareReturnWithCarrier}
-                                className="btn btn-xs bg-[#25D366] text-white hover:bg-[#1ebc57] border-none font-bold gap-1 shadow-xs"
-                                title={isRTL ? 'مشاركة رابط المرتجع والمستندات عبر واتساب' : 'Share Return Portal with Shipper/Carrier'}
-                            >
-                                <span className="material-symbols-outlined text-xs">share</span>
-                                <span>{isRTL ? 'مشاركة المرتجع' : 'Share Return'}</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleCopyReturnLink}
-                                className="btn btn-xs btn-ghost border border-base-300 text-xs font-bold gap-1"
-                                title={isRTL ? 'نسخ رابط بوابة المرتجعات' : 'Copy Returns Link'}
-                            >
-                                <span className="material-symbols-outlined text-xs">content_copy</span>
-                                <span>{isRTL ? 'نسخ' : 'Copy'}</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            )}
 
             {/* 2. Main 2-Column Content Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
@@ -1730,6 +1585,144 @@ const ShipmentDetailsPage = () => {
                         )}
                     </div>
 
+                    {/* Compact Location Pin & Customer Return Actions */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {/* 1. Pin GPS Delivery Location */}
+                        <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-xl p-3.5 flex flex-col justify-between space-y-2.5">
+                            <div>
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                                            <span className="material-symbols-outlined text-base">pin_drop</span>
+                                        </div>
+                                        <div>
+                                            <h4 className="font-extrabold text-xs text-base-content leading-tight">
+                                                {isRTL ? 'تثبيت الموقع الجغرافي (GPS)' : 'Pin Delivery GPS Location'}
+                                            </h4>
+                                            <p className="text-[11px] text-base-content/60 mt-0.5 line-clamp-1">
+                                                {isRTL ? 'مساعدة المندوب بالإحداثيات ورقم الآلي' : 'Courier delivery address & PACI pin'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    {receiver.city && (
+                                        <span className="badge badge-ghost badge-xs text-[10px] font-bold">
+                                            {receiver.city}, {receiver.countryCode || 'KW'}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="pt-2 border-t border-base-200 flex items-center justify-between gap-1.5 flex-wrap">
+                                <button
+                                    type="button"
+                                    onClick={() => window.open(`/track/${shipment.trackingNumber}/location`, '_blank')}
+                                    className="btn btn-xs btn-outline btn-primary font-bold gap-1"
+                                >
+                                    <span className="material-symbols-outlined text-xs">map</span>
+                                    <span>{isRTL ? 'فتح موقع GPS' : 'Open Location Pin'}</span>
+                                </button>
+
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={handleShareLocationWithCarrier}
+                                        className="btn btn-xs bg-[#25D366] text-white hover:bg-[#1ebc57] border-none font-bold gap-1 shadow-xs"
+                                        title={isRTL ? 'مشاركة الموقع مع السائق عبر واتساب' : 'Share Location Link with Courier Driver'}
+                                    >
+                                        <span className="material-symbols-outlined text-xs">share</span>
+                                        <span>{isRTL ? 'مشاركة' : 'Share'}</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleCopyLocationLink}
+                                        className="btn btn-xs btn-ghost border border-base-300 font-bold gap-1"
+                                        title={isRTL ? 'نسخ رابط الموقع' : 'Copy Location Link'}
+                                    >
+                                        <span className="material-symbols-outlined text-xs">content_copy</span>
+                                        <span>{isRTL ? 'نسخ' : 'Copy'}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 2. Customer Return & Paperwork */}
+                        <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-xl p-3.5 flex flex-col justify-between space-y-2.5">
+                            <div>
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-7 h-7 rounded-lg bg-secondary/10 text-secondary flex items-center justify-center shrink-0">
+                                            <span className="material-symbols-outlined text-base">assignment_return</span>
+                                        </div>
+                                        <div>
+                                            <h4 className="font-extrabold text-xs text-base-content leading-tight">
+                                                {isRTL ? 'بوابة المرتجعات والمستندات' : 'Customer Return & Paperwork'}
+                                            </h4>
+                                            <p className="text-[11px] text-base-content/60 mt-0.5 line-clamp-1">
+                                                {isRTL ? 'إصدار بوليصة الإرجاع خلال 14 يوماً' : 'Initiate 14-day reverse parcel returns'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <span className="badge badge-ghost badge-xs text-[10px] font-mono">
+                                        {shipment.carrierCode || shipment.carrier || 'Target'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="pt-2 border-t border-base-200 flex items-center justify-between gap-1.5 flex-wrap">
+                                <div className="flex items-center gap-1">
+                                    {resolvedCarrierAwb ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleOpenPdf(resolvedCarrierAwb)}
+                                            className="btn btn-xs btn-ghost border border-base-300 text-xs font-bold gap-1"
+                                        >
+                                            <span className="material-symbols-outlined text-xs">print</span>
+                                            <span>{isRTL ? 'البوليصة' : 'AWB'}</span>
+                                        </button>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={handleGenerateInvoiceQR}
+                                            className="btn btn-xs btn-ghost border border-base-300 text-xs font-bold gap-1"
+                                        >
+                                            <span className="material-symbols-outlined text-xs">description</span>
+                                            <span>{isRTL ? 'فاتورة' : 'QR'}</span>
+                                        </button>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => window.open(`/returns/${shipment.trackingNumber}`, '_blank')}
+                                        className="btn btn-xs btn-outline btn-secondary text-xs font-bold gap-1"
+                                    >
+                                        <span className="material-symbols-outlined text-xs">assignment_return</span>
+                                        <span>{isRTL ? 'المرتجع' : 'Check Return'}</span>
+                                    </button>
+                                </div>
+
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={handleShareReturnWithCarrier}
+                                        className="btn btn-xs bg-[#25D366] text-white hover:bg-[#1ebc57] border-none font-bold gap-1 shadow-xs"
+                                        title={isRTL ? 'مشاركة رابط المرتجع والمستندات عبر واتساب' : 'Share Return Portal with Shipper/Carrier'}
+                                    >
+                                        <span className="material-symbols-outlined text-xs">share</span>
+                                        <span>{isRTL ? 'مشاركة' : 'Share'}</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleCopyReturnLink}
+                                        className="btn btn-xs btn-ghost border border-base-300 text-xs font-bold gap-1"
+                                        title={isRTL ? 'نسخ رابط بوابة المرتجعات' : 'Copy Returns Link'}
+                                    >
+                                        <span className="material-symbols-outlined text-xs">content_copy</span>
+                                        <span>{isRTL ? 'نسخ' : 'Copy'}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Milestone History, Telemetry & Operational Comments Tabs */}
                     <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl overflow-hidden space-y-0">
                         {/* Tabs Header */}
@@ -2067,20 +2060,20 @@ const ShipmentDetailsPage = () => {
 
                     {/* WhatsApp Dispatch Tracker Card */}
                     {isStaff && (
-                        <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 space-y-4">
-                            <div className="flex justify-between items-center border-b border-base-200 pb-2.5">
+                        <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-xl p-3 sm:p-3.5 space-y-2.5">
+                            <div className="flex justify-between items-center border-b border-base-200 pb-2">
                                 <div className="flex items-center gap-1.5">
-                                    <span className="material-symbols-outlined text-success text-lg">chat</span>
-                                    <h3 className="text-sm font-black text-base-content">
+                                    <span className="material-symbols-outlined text-success text-base">chat</span>
+                                    <h3 className="text-xs font-black text-base-content">
                                         {isRTL ? 'سجل إشعارات واتساب' : 'WhatsApp Dispatch Tracker'}
                                     </h3>
                                 </div>
-                                <span className="badge badge-outline badge-xs font-bold">
+                                <span className="badge badge-outline badge-xs text-[10px] font-bold">
                                     {(shipment.notificationLogs || []).length} logs
                                 </span>
                             </div>
 
-                            <div className="space-y-3">
+                            <div className="space-y-2">
                                 {[
                                     { key: 'sender', label: isRTL ? 'إشعار الراسل' : 'Sender Notification' },
                                     { key: 'receiver', label: isRTL ? 'إشعار المستلم' : 'Receiver Notification' }
@@ -2094,55 +2087,60 @@ const ShipmentDetailsPage = () => {
                                     const logStatus = (latestLog?.status || '').toUpperCase();
                                     const isSent = ['SENT', 'DELIVERED', 'READ'].includes(logStatus);
                                     const isFailed = logStatus === 'FAILED';
+                                    const phone = latestLog?.recipientPhone || (isSenderRole ? sender.phone : receiver.phone) || '';
 
                                     return (
-                                        <div key={role.key} className="p-3 bg-base-200/40 border border-base-200 rounded-xl space-y-2 text-xs">
-                                            <div className="flex justify-between items-center">
-                                                <span className="font-extrabold text-base-content">{role.label}</span>
-                                                <span className={`badge badge-xs font-bold py-1 px-2 ${
+                                        <div key={role.key} className="p-2 sm:p-2.5 bg-base-200/40 border border-base-200 rounded-xl space-y-1.5 text-xs">
+                                            <div className="flex justify-between items-center gap-1">
+                                                <span className="font-extrabold text-xs text-base-content">{role.label}</span>
+                                                <span className={`badge badge-xs text-[9px] font-bold py-0.5 px-1.5 ${
                                                     isSent ? 'badge-success text-white' : isFailed ? 'badge-error text-white' : latestLog ? 'badge-warning' : 'badge-ghost text-base-content/60'
                                                 }`}>
                                                     {latestLog ? logStatus : (isRTL ? 'لم يُرسل' : 'NOT SENT')}
                                                 </span>
                                             </div>
 
-                                            {latestLog && (
-                                                <div className="space-y-1">
-                                                    <div className="text-[11px] text-base-content/60 font-mono flex justify-between items-center">
-                                                        <span>To: {latestLog.recipientPhone || 'Customer'}</span>
-                                                        <span>{latestLog.sentAt ? new Date(latestLog.sentAt).toLocaleDateString() : ''}</span>
-                                                    </div>
-                                                    {isFailed && latestLog.errorMessage && (
-                                                        <div className="text-[10px] text-error bg-error/10 p-1.5 rounded flex items-center gap-1">
-                                                            <span className="material-symbols-outlined text-xs">error</span>
-                                                            <span>{latestLog.errorMessage}</span>
-                                                        </div>
+                                            <div className="flex items-center justify-between gap-1.5">
+                                                <div className="text-[10.5px] text-base-content/60 font-mono truncate">
+                                                    <span>{phone || 'No phone'}</span>
+                                                    {latestLog?.sentAt && (
+                                                        <span className="ms-1 opacity-70">• {new Date(latestLog.sentAt).toLocaleDateString()}</span>
                                                     )}
                                                 </div>
-                                            )}
 
-                                            <button
-                                                onClick={() => handleSendWhatsAppRole(role.key)}
-                                                disabled={sendingWhatsAppRole === role.key || isSent}
-                                                className={`btn btn-xs rounded-lg font-bold w-full gap-1 ${
-                                                    isSent 
-                                                        ? 'btn-disabled bg-base-300 text-base-content/40 cursor-not-allowed border-base-300' 
-                                                        : isFailed 
-                                                            ? 'btn-outline btn-error' 
-                                                            : 'btn-outline btn-success'
-                                                }`}
-                                            >
-                                                <span className="material-symbols-outlined text-sm">
-                                                    {isSent ? 'check_circle' : isFailed ? 'replay' : 'send'}
-                                                </span>
-                                                {sendingWhatsAppRole === role.key 
-                                                    ? (isRTL ? 'جاري الإرسال...' : 'Dispatching...') 
-                                                    : (isSent 
-                                                        ? (isRTL ? 'تم الإرسال بنجاح' : 'Delivered (Already Sent)') 
-                                                        : isFailed 
-                                                            ? (isRTL ? 'إعادة المحاولة' : 'Retry WhatsApp') 
-                                                            : (isRTL ? 'إرسال الآن' : 'Send WhatsApp Now'))}
-                                            </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSendWhatsAppRole(role.key)}
+                                                    disabled={sendingWhatsAppRole === role.key || isSent}
+                                                    className={`btn btn-xs h-6 min-h-6 text-[10.5px] px-2 rounded-lg font-bold gap-1 shrink-0 ${
+                                                        isSent 
+                                                            ? 'btn-disabled bg-base-200 text-base-content/40 cursor-not-allowed border-base-200' 
+                                                            : isFailed 
+                                                                ? 'btn-outline btn-error' 
+                                                                : 'btn-outline btn-success'
+                                                    }`}
+                                                >
+                                                    <span className="material-symbols-outlined text-xs">
+                                                        {isSent ? 'check_circle' : isFailed ? 'replay' : 'send'}
+                                                    </span>
+                                                    <span>
+                                                        {sendingWhatsAppRole === role.key 
+                                                            ? (isRTL ? 'إرسال...' : 'Sending...') 
+                                                            : (isSent 
+                                                                ? (isRTL ? 'تم الإرسال' : 'Sent') 
+                                                                : isFailed 
+                                                                    ? (isRTL ? 'إعادة' : 'Retry') 
+                                                                    : (isRTL ? 'إرسال' : 'Send'))}
+                                                    </span>
+                                                </button>
+                                            </div>
+
+                                            {isFailed && latestLog?.errorMessage && (
+                                                <div className="text-[9.5px] text-error bg-error/10 p-1 rounded flex items-center gap-1">
+                                                    <span className="material-symbols-outlined text-xs shrink-0">error</span>
+                                                    <span className="truncate">{latestLog.errorMessage}</span>
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })}
@@ -2150,14 +2148,14 @@ const ShipmentDetailsPage = () => {
 
                             {/* Detailed Dispatch Attempts & History Audit List */}
                             {Array.isArray(shipment.notificationLogs) && shipment.notificationLogs.length > 0 ? (
-                                <div className="pt-2 border-t border-base-200/80 space-y-2">
-                                    <div className="flex justify-between items-center text-[11px] font-black text-base-content/70 uppercase">
+                                <div className="pt-2 border-t border-base-200/80 space-y-1.5">
+                                    <div className="flex justify-between items-center text-[10px] font-black text-base-content/70 uppercase">
                                         <span>{isRTL ? 'سجل المحاولات' : 'Dispatch History'}</span>
                                         <Link to={`/admin/whatsapp-logs?search=${shipment.trackingNumber}`} className="text-primary hover:underline font-bold text-[10px]">
                                             {isRTL ? 'سجلات النظام ↗' : 'System Logs ↗'}
                                         </Link>
                                     </div>
-                                    <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                                    <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
                                         {shipment.notificationLogs.map((log) => {
                                             const s = (log.status || '').toUpperCase();
                                             const badgeStyle = s === 'DELIVERED' || s === 'READ' ? 'badge-success text-white'
@@ -2169,36 +2167,27 @@ const ShipmentDetailsPage = () => {
                                                 : (isRTL ? 'الراسل' : 'Sender');
 
                                             return (
-                                                <div key={log.id} className="p-2 bg-base-200/40 rounded-lg text-[11px] space-y-1 border border-base-200/70">
-                                                    <div className="flex justify-between items-center gap-1">
-                                                        <span className="font-bold text-base-content flex items-center gap-1">
-                                                            <span className="material-symbols-outlined text-[13px] text-base-content/60">
-                                                                {roleName === 'Receiver' || roleName === 'المستلم' ? 'person' : 'storefront'}
-                                                            </span>
-                                                            {roleName}: {log.recipientPhone || 'N/A'}
+                                                <div key={log.id} className="p-1.5 bg-base-200/40 rounded-lg text-[10px] border border-base-200/70 flex justify-between items-center gap-1">
+                                                    <div className="flex items-center gap-1.5 truncate">
+                                                        <span className="font-bold text-base-content shrink-0">{roleName}:</span>
+                                                        <span className="font-mono text-base-content/60 truncate">{log.recipientPhone || 'N/A'}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5 shrink-0">
+                                                        <span className="font-mono text-base-content/40 text-[9px]">
+                                                            {log.sentAt || log.createdAt ? new Date(log.sentAt || log.createdAt).toLocaleDateString() : ''}
                                                         </span>
-                                                        <span className={`badge badge-xs font-bold py-0.5 px-1.5 ${badgeStyle}`}>
+                                                        <span className={`badge badge-xs text-[9px] font-bold py-0 px-1 ${badgeStyle}`}>
                                                             {s || 'QUEUED'}
                                                         </span>
                                                     </div>
-                                                    <div className="flex justify-between items-center text-[10px] text-base-content/60 font-mono">
-                                                        <span>{log.templateName || log.eventType || 'Notification'}</span>
-                                                        <span>{log.sentAt || log.createdAt ? new Date(log.sentAt || log.createdAt).toLocaleDateString() : ''}</span>
-                                                    </div>
-                                                    {s === 'FAILED' && log.errorMessage && (
-                                                        <div className="text-[10px] text-error font-medium flex items-start gap-1 bg-error/10 p-1.5 rounded">
-                                                            <span className="material-symbols-outlined text-xs flex-shrink-0">error</span>
-                                                            <span>{log.errorMessage}</span>
-                                                        </div>
-                                                    )}
                                                 </div>
                                             );
                                         })}
                                     </div>
                                 </div>
                             ) : (
-                                <div className="text-center py-2 text-[11px] text-base-content/50 italic border-t border-base-200/60">
-                                    {isRTL ? 'لا توجد محاولات إرسال مسجلة حتى الآن' : 'No previous dispatch attempts recorded'}
+                                <div className="text-center py-1.5 text-[10px] text-base-content/50 italic border-t border-base-200/60">
+                                    {isRTL ? 'لا توجد محاولات إرسال مسجلة' : 'No previous dispatch attempts recorded'}
                                 </div>
                             )}
                         </div>
