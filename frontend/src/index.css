@@ -305,3 +305,79 @@ body {
     -webkit-tap-highlight-color: transparent;
   }
 }
+
+/* High-Contrast Badges & Pills with Comfortable Border Spacing and White Typography */
+.badge:not(.badge-outline):not(.badge-ghost) {
+  color: #ffffff !important;
+  font-weight: 800;
+  padding-left: 0.65rem !important;
+  padding-right: 0.65rem !important;
+  letter-spacing: -0.01em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.badge-warning:not(.badge-outline) {
+  background-color: #d97706 !important;
+  color: #ffffff !important;
+  border-color: #d97706 !important;
+}
+
+.badge-error:not(.badge-outline) {
+  background-color: #e11d48 !important;
+  color: #ffffff !important;
+  border-color: #e11d48 !important;
+}
+
+.badge-success:not(.badge-outline) {
+  background-color: #059669 !important;
+  color: #ffffff !important;
+  border-color: #059669 !important;
+}
+
+.badge-info:not(.badge-outline) {
+  background-color: #0284c7 !important;
+  color: #ffffff !important;
+  border-color: #0284c7 !important;
+}
+
+.badge-primary:not(.badge-outline) {
+  background-color: #0050d4 !important;
+  color: #ffffff !important;
+  border-color: #0050d4 !important;
+}
+
+.badge-secondary:not(.badge-outline) {
+  background-color: #4f46e5 !important;
+  color: #ffffff !important;
+  border-color: #4f46e5 !important;
+}
+
+.badge-accent:not(.badge-outline) {
+  background-color: #0d9488 !important;
+  color: #ffffff !important;
+  border-color: #0d9488 !important;
+}
+
+.badge-sm {
+  padding-left: 0.75rem !important;
+  padding-right: 0.75rem !important;
+  padding-top: 0.2rem !important;
+  padding-bottom: 0.2rem !important;
+  min-height: 1.45rem !important;
+  height: auto !important;
+  font-size: 0.75rem !important;
+  line-height: 1rem !important;
+}
+
+.badge-xs {
+  padding-left: 0.5rem !important;
+  padding-right: 0.5rem !important;
+  padding-top: 0.15rem !important;
+  padding-bottom: 0.15rem !important;
+  min-height: 1.25rem !important;
+  height: auto !important;
+  font-size: 0.6875rem !important;
+  line-height: 0.95rem !important;
+}

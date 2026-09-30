@@ -303,11 +303,19 @@ const DashboardPage = () => {
                             <h1 className="text-xl sm:text-2xl font-black tracking-tight text-base-content">
                                 {t('dash_hello', 'Hello,')} {user?.name?.split(' ')[0] || (isRTL ? 'المشغل' : 'Operator')}
                             </h1>
-                            <span className="badge badge-primary text-[11px] font-black uppercase tracking-wider py-2">
+                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-primary text-white shadow-xs">
                                 {getRoleLabel(userRole)}
                             </span>
-                            {isTargetOwner && <span className="badge badge-warning text-[10px] font-bold">Executive Authority</span>}
-                            {isTargetAccounting && <span className="badge badge-accent text-[10px] font-bold">Finance Controller</span>}
+                            {isTargetOwner && (
+                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-black bg-amber-600 text-white shadow-xs">
+                                    Executive Authority
+                                </span>
+                            )}
+                            {isTargetAccounting && (
+                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-black bg-teal-600 text-white shadow-xs">
+                                    Finance Controller
+                                </span>
+                            )}
                         </div>
                         <p className="text-xs text-base-content/60 font-semibold mt-0.5">
                             {isTargetManagement 
@@ -408,7 +416,7 @@ const DashboardPage = () => {
                             <span className="text-xs font-black uppercase tracking-wider text-base-content">
                                 {isRTL ? 'نطاق الفترة الزمنية' : 'Dashboard Period'}
                             </span>
-                            <span className="badge badge-primary badge-outline badge-xs font-bold">
+                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-black bg-primary text-white shadow-xs">
                                 {selectedPeriod === 'today' && (isRTL ? 'اليوم' : 'Today')}
                                 {selectedPeriod === '7days' && (isRTL ? 'آخر 7 أيام' : 'Past 7 Days')}
                                 {selectedPeriod === 'this_month' && (isRTL ? 'هذا الشهر' : 'This Month')}
@@ -523,11 +531,11 @@ const DashboardPage = () => {
                                             <AnimatedNumber value={(stats?.inTransit || 0) + (stats?.pickedUp || 0)} />
                                         </span>
                                         {stats?.total > 0 ? (
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-black bg-emerald-600 text-white shadow-2xs">
+                                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-black bg-emerald-600 text-white shadow-xs">
                                                 {Math.round((((stats?.inTransit || 0) + (stats?.pickedUp || 0)) / stats.total) * 100)}% {isRTL ? 'نشط' : 'active'}
                                             </span>
                                         ) : (
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-black bg-emerald-600 text-white shadow-2xs">
+                                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-black bg-emerald-600 text-white shadow-xs">
                                                 Nominal
                                             </span>
                                         )}
@@ -550,7 +558,7 @@ const DashboardPage = () => {
                                         <span className="text-2xl sm:text-3xl font-black font-mono text-error">
                                             <AnimatedNumber value={triageCount || triageItems.length} />
                                         </span>
-                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-black shadow-2xs text-white ${triageItems.length > 0 ? 'bg-rose-600' : 'bg-emerald-600'}`}>
+                                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-black shadow-xs text-white ${triageItems.length > 0 ? 'bg-rose-600' : 'bg-emerald-600'}`}>
                                             {triageItems.length > 0 ? (isRTL ? 'يتطلب إجراء فوري' : 'Action Required') : (isRTL ? 'طبيعي' : 'Nominal')}
                                         </span>
                                     </div>
@@ -572,7 +580,7 @@ const DashboardPage = () => {
                                     </div>
                                     <div className="flex items-baseline gap-2 mt-1">
                                         <span className="text-2xl sm:text-3xl font-black font-mono text-base-content">{networkSla}</span>
-                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-black bg-emerald-600 text-white shadow-2xs">
+                                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-black bg-emerald-600 text-white shadow-xs">
                                             Nominal
                                         </span>
                                     </div>
@@ -629,7 +637,7 @@ const DashboardPage = () => {
                                             <span className="text-2xl sm:text-3xl font-black font-mono text-base-content">
                                                 <AnimatedNumber value={stats?.delivered || 0} />
                                             </span>
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-black bg-emerald-600 text-white shadow-2xs">
+                                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-black bg-emerald-600 text-white shadow-xs">
                                                 {isRTL ? 'مكتمل' : 'Fulfilled'}
                                             </span>
                                         </div>
@@ -652,7 +660,7 @@ const DashboardPage = () => {
                                     </div>
                                     <div className="flex items-baseline gap-2 mt-1">
                                         <span className="text-2xl sm:text-3xl font-black font-mono text-base-content"><AnimatedNumber value={clientActiveCount} /></span>
-                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-black bg-blue-100 text-blue-950 border border-blue-300">{activeOrg.name.slice(0, 15)}...</span>
+                                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-black bg-blue-600 text-white shadow-xs">{activeOrg.name.slice(0, 15)}...</span>
                                     </div>
                                     <span className="text-[11px] text-base-content/60 mt-1 truncate">{isRTL ? 'شحنات قيد التوصيل والجمارك' : 'Consignments moving globally'}</span>
                                 </div>
@@ -690,7 +698,7 @@ const DashboardPage = () => {
                                         <span className="text-2xl sm:text-3xl font-black font-mono text-base-content">
                                             <AnimatedNumber value={stats?.pending || 0} />
                                         </span>
-                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-black bg-sky-100 text-sky-950 border border-sky-300">{isRTL ? 'مجدول' : 'Scheduled'}</span>
+                                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-black bg-sky-600 text-white shadow-xs">{isRTL ? 'مجدول' : 'Scheduled'}</span>
                                     </div>
                                     <span className="text-[11px] text-base-content/60 mt-1 truncate">{isRTL ? 'موعد الاستلام القادم: خلال يوم العمل' : 'Standard courier pickup dispatch'}</span>
                                 </div>
@@ -707,7 +715,7 @@ const DashboardPage = () => {
                                     </div>
                                     <div className="flex items-baseline gap-2 mt-1">
                                         <span className="text-2xl sm:text-3xl font-black font-mono text-base-content">{networkSla}</span>
-                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-black bg-emerald-600 text-white shadow-2xs">{isRTL ? 'معتمد' : 'Verified'}</span>
+                                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-black bg-emerald-600 text-white shadow-xs">{isRTL ? 'معتمد' : 'Verified'}</span>
                                     </div>
                                     <span className="text-[11px] text-base-content/60 mt-1 truncate">{isRTL ? 'جميع البيانات الجمركية مصادقة' : 'Customs declarations in good standing'}</span>
                                 </div>
@@ -733,7 +741,7 @@ const DashboardPage = () => {
                                     </p>
                                 </div>
                             </div>
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-black bg-blue-50 text-blue-950 border border-blue-200">
+                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-black bg-blue-600 text-white shadow-xs">
                                 {tradeCorridors.reduce((acc, c) => acc + (c.volume || 0), 0).toLocaleString()} {isRTL ? 'طرد' : 'pkgs'}
                             </span>
                         </div>
@@ -814,14 +822,14 @@ const DashboardPage = () => {
                                         }`}
                                     >
                                         <span>{tab.label}</span>
-                                        <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-mono font-black ${
+                                        <span className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-mono font-black ${
                                             pipelineStage === tab.id 
-                                                ? 'bg-white/20 text-white' 
+                                                ? 'bg-white/25 text-white' 
                                                 : tab.isError && tab.count > 0 
-                                                    ? 'bg-rose-100 text-rose-950 border border-rose-300' 
+                                                    ? 'bg-rose-600 text-white shadow-xs' 
                                                     : tab.isSuccess && tab.count > 0
-                                                        ? 'bg-emerald-100 text-emerald-950 border border-emerald-300'
-                                                        : 'bg-base-300/80 text-base-content/80'
+                                                        ? 'bg-emerald-600 text-white shadow-xs'
+                                                        : 'bg-base-300 text-base-content font-bold'
                                         }`}>
                                             {tab.count}
                                         </span>
@@ -968,7 +976,7 @@ const DashboardPage = () => {
                                     <span className="font-black text-base text-warning-content font-mono">{financials.outstandingBalance} <span className="text-[10px] font-sans opacity-70">KWD</span></span>
                                 </div>
                                 {financials.unpaidCount > 0 && (
-                                    <span className="badge badge-warning badge-sm font-bold">
+                                    <span className="inline-flex items-center px-3.5 py-1 rounded-full text-xs font-black bg-amber-600 text-white shadow-xs">
                                         {financials.unpaidCount} {isRTL ? 'غير مسدد' : 'unpaid'}
                                     </span>
                                 )}
@@ -1047,7 +1055,7 @@ const DashboardPage = () => {
                                                     : 'btn-ghost bg-base-200/60 text-base-content/70 hover:bg-base-200'
                                             }`}
                                         >
-                                            <span className={`badge ${car.badge} badge-xs font-black px-1`}>{car.code}</span>
+                                            <span className={`badge ${car.badge} badge-xs font-black text-white px-2 py-0.5 shadow-2xs`}>{car.code}</span>
                                             <span>{isRTL ? car.nameAr : car.name}</span>
                                             <span className="text-[10px] opacity-70 font-mono">({car.health}%)</span>
                                         </button>
@@ -1116,7 +1124,7 @@ const DashboardPage = () => {
                                                     className="p-2 rounded-xl bg-base-200/50 hover:bg-base-200 border border-base-200 hover:border-primary/40 cursor-pointer transition-all flex justify-between items-center"
                                                 >
                                                     <div className="flex items-center gap-1.5 min-w-0">
-                                                        <span className={`badge ${car.badge} badge-xs font-black px-1`}>{car.code}</span>
+                                                        <span className={`badge ${car.badge} badge-xs font-black text-white px-2 py-0.5 shadow-2xs`}>{car.code}</span>
                                                         <span className="text-xs font-bold text-base-content truncate">{isRTL ? car.nameAr : car.name}</span>
                                                     </div>
                                                     <span className="text-xs font-mono font-black text-success ms-1">
