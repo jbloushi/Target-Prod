@@ -102,6 +102,7 @@ export const PublicTrackingLandingPage = () => {
   const navigate = useNavigate();
   const fetchedRef = useRef(null);
 
+  const [showNotificationBanner, setShowNotificationBanner] = useState(true);
   const [searchInput, setSearchInput] = useState(paramTrackingNumber || '');
   const [trackingNumber, setTrackingNumber] = useState(paramTrackingNumber || '');
   const [shipment, setShipment] = useState(null);
@@ -204,12 +205,35 @@ export const PublicTrackingLandingPage = () => {
 
   return (
     <div className="min-h-screen bg-base-200/50 bg-target-pattern flex flex-col font-sans selection:bg-primary selection:text-white">
-      {/*
-       * Removed the sticky "Live Consignment Radar" banner from the primary
-       * public-tracking view (Visibility Redesign 2b). It was marketing chrome
-       * aimed at internal staff; customers came here to see one thing —
-       * where their shipment is — and the banner competed with that.
-       */}
+      {/* Semi-transparent Green Notification Banner with Close Button */}
+      {showNotificationBanner && (
+        <aside
+          aria-label="Tracking Status Notification"
+          className="bg-emerald-500/15 border-b border-emerald-500/25 px-4 sm:px-8 py-2.5 sticky top-0 z-40 backdrop-blur-md text-emerald-950 dark:text-emerald-100 shadow-xs transition-all duration-300"
+        >
+          <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 text-xs sm:text-sm font-semibold">
+              <span className="flex h-2.5 w-2.5 relative shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+              </span>
+              <span>
+                {lang === 'ar' 
+                  ? 'رادار التتبع المباشر نشط • تحديثات لحظية ومزامنة فورية لمسارات الشحن والتخليص الجمركي في الكويت ودول الخليج.'
+                  : 'Live Consignment Radar Active • Real-time telemetry & customs clearance updates synchronized across Kuwait & GCC corridors.'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowNotificationBanner(false)}
+              className="btn btn-ghost btn-xs btn-circle text-emerald-800 dark:text-emerald-200 hover:bg-emerald-500/25 shrink-0"
+              aria-label="Close notification"
+            >
+              <span className="material-symbols-outlined text-base">close</span>
+            </button>
+          </div>
+        </aside>
+      )}
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
@@ -217,15 +241,15 @@ export const PublicTrackingLandingPage = () => {
         <section className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
           <div className="card-body p-6 sm:p-8">
             <div className="max-w-2xl">
-              {/* Plain, customer-facing framing (2b): drop the marketing pill;
-                the H1 states the task, one line of subcopy explains the input. */}
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold mb-3 border border-primary/20">
+                <span className="material-symbols-outlined text-sm">radar</span>
+                <span>Live Consignment Radar</span>
+              </div>
               <h1 className="text-2xl sm:text-3xl font-black text-base-content tracking-tight">
-                {lang === 'ar' ? 'تتبع شحنتك' : 'Track your shipment'}
+                Track Your Shipment in Real-Time
               </h1>
               <p className="text-sm text-base-content/60 mt-1">
-                {lang === 'ar'
-                  ? 'أدخل رقم البوليصة أو المرجع لعرض الحالة والوجهة والوقت المتوقع للتسليم.'
-                  : 'Enter your tracking number or reference to see the current status, route, and estimated delivery.'}
+                Enter your waybill or parcel reference number to view customs clearances, flight checkpoints, and delivery ETA.
               </p>
             </div>
 
@@ -353,45 +377,18 @@ export const PublicTrackingLandingPage = () => {
                   </div>
                 </div>
 
-                {/*
-                 * Status headline answers the actual question customers came here
-                 * with (Visibility Redesign 2b): "where is my shipment?".
-                 * Destination-first phrasing beats "Consignment in motion".
-                 */}
+                {/* Status Headline & Relative Updated Time */}
                 <div>
                   <h2 className="text-2xl sm:text-3xl font-black text-base-content tracking-tight">
-                    {(() => {
-                      const destCity = shipment.destination?.city || shipment.destination?.countryCode;
-                      const base = STATUS_HEADLINE[normalizedStatus] || (lang === 'ar' ? 'شحنتك قيد المعالجة' : 'Your shipment is being processed');
-                      if (!destCity) return base;
-                      switch (normalizedStatus) {
-                        case 'delivered':        return lang === 'ar' ? `تم التسليم إلى ${destCity}` : `Delivered to ${destCity}`;
-                        case 'out_for_delivery': return lang === 'ar' ? `قيد التوصيل إلى ${destCity}` : `Out for delivery to ${destCity}`;
-                        case 'in_transit':       return lang === 'ar' ? `في الطريق إلى ${destCity}` : `On its way to ${destCity}`;
-                        case 'picked_up':        return lang === 'ar' ? `تم الاستلام — متجه إلى ${destCity}` : `Picked up — bound for ${destCity}`;
-                        default:                 return base;
-                      }
-                    })()}
+                    {STATUS_HEADLINE[normalizedStatus] || 'Consignment in motion'}
                   </h2>
                   <p className="text-sm text-base-content/60 mt-1 flex items-center gap-2">
-                    {shipment.estimatedDelivery && (
-                      <>
-                        <span className="material-symbols-outlined text-base text-primary">schedule</span>
-                        <span>
-                          {lang === 'ar' ? 'الوصول المتوقع' : 'Arriving'}{' '}
-                          <strong className="text-base-content">{fmt.date(shipment.estimatedDelivery)}</strong>
-                          {'. '}
-                        </span>
-                      </>
-                    )}
-                    {lastEvent && (
-                      <span>
-                        {lang === 'ar' ? 'آخر تحديث' : 'Last scanned'}: {fmt.dateTime(lastEvent.timestamp)}{lastEvent.location ? ` · ${lastEvent.location}` : ''}
-                      </span>
-                    )}
-                    {!lastEvent && !shipment.estimatedDelivery && (
-                      <span>{lang === 'ar' ? 'الشحنة محجوزة، في انتظار أول مسح استلام.' : 'Shipment booked. Awaiting initial collection scan.'}</span>
-                    )}
+                    <span className="material-symbols-outlined text-base text-primary">schedule</span>
+                    <span>
+                      {lastEvent
+                        ? `Last activity: ${fmt.dateTime(lastEvent.timestamp)}${lastEvent.location ? ` • ${lastEvent.location}` : ''}`
+                        : 'Consignment booked. Awaiting initial collection scan.'}
+                    </span>
                   </p>
                 </div>
 
@@ -699,17 +696,40 @@ export const PublicTrackingLandingPage = () => {
           </div>
         )}
 
-        {/*
-         * Removed the four "Air Cargo Radar / GCC Customs / WhatsApp Alerts /
-         * POD" cards from the landing state (Visibility Redesign 2b) — those
-         * were internal-facing marketing panels shown to customers who came
-         * here to look up a tracking number. A quiet helper line replaces them.
-         */}
+        {/* Empty Search Landing Explainer */}
         {!loading && !shipment && !error && (
-          <div className="mt-4 text-center text-xs text-base-content/50">
-            {lang === 'ar'
-              ? 'يبدأ رقم التتبع عادةً بحرف مميز — مثل TRK أو DGR — ثم أرقام.'
-              : 'A tracking number usually starts with a prefix like TRK or DGR followed by digits.'}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+            <div className="card bg-base-100 border border-base-200 p-5 shadow-sm">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-3">
+                <span className="material-symbols-outlined">flight</span>
+              </div>
+              <h3 className="font-black text-sm text-base-content">Air Cargo Radar</h3>
+              <p className="text-xs text-base-content/60 mt-1">Direct API integration with DHL, FedEx, and Middle East air cargo networks.</p>
+            </div>
+
+            <div className="card bg-base-100 border border-base-200 p-5 shadow-sm">
+              <div className="w-10 h-10 rounded-xl bg-success/10 text-success flex items-center justify-center mb-3">
+                <span className="material-symbols-outlined">verified</span>
+              </div>
+              <h3 className="font-black text-sm text-base-content">GCC Customs Gateways</h3>
+              <p className="text-xs text-base-content/60 mt-1">Live tracking of import permits, duty payments, and customs clearance releases.</p>
+            </div>
+
+            <div className="card bg-base-100 border border-base-200 p-5 shadow-sm">
+              <div className="w-10 h-10 rounded-xl bg-info/10 text-info flex items-center justify-center mb-3">
+                <span className="material-symbols-outlined">chat</span>
+              </div>
+              <h3 className="font-black text-sm text-base-content">Meta WhatsApp Alerts</h3>
+              <p className="text-xs text-base-content/60 mt-1">Subscribed recipients receive automated out-for-delivery and delivery alerts.</p>
+            </div>
+
+            <div className="card bg-base-100 border border-base-200 p-5 shadow-sm">
+              <div className="w-10 h-10 rounded-xl bg-secondary/10 text-secondary flex items-center justify-center mb-3">
+                <span className="material-symbols-outlined">draw</span>
+              </div>
+              <h3 className="font-black text-sm text-base-content">Digital POD Signatures</h3>
+              <p className="text-xs text-base-content/60 mt-1">Instant touch-screen driver signature verification and photographic proof of delivery.</p>
+            </div>
           </div>
         )}
       </main>
