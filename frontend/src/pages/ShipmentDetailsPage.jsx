@@ -1186,15 +1186,7 @@ const ShipmentDetailsPage = () => {
                     </div>
 
                     <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                        {isTriageException ? (
-                            <button
-                                onClick={() => handleOpenEdit('status')}
-                                className="btn btn-error btn-xs text-white font-bold rounded-lg gap-1 shadow-xs"
-                            >
-                                <span className="material-symbols-outlined text-xs">healing</span>
-                                <span>{isRTL ? 'معالجة الاستثناء' : 'Resolve Triage'}</span>
-                            </button>
-                        ) : (
+                        {!isTriageException && (
                             <div className="text-[11px] font-bold text-success flex items-center gap-1">
                                 <span className="material-symbols-outlined text-sm">verified</span>
                                 <span>{isRTL ? 'مسار النقل مصادق عليه' : 'Trade Corridor Nominal'}</span>
