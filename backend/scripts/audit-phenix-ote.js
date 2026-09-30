@@ -9,7 +9,8 @@ async function auditPhenixOte() {
 
     // 1. Fetch raw operational bills from Phenix API
     console.log('\n1. Fetching operational bills from Phenix ERP API (past 45 days)...');
-    const rawBills = await phenixSync.fetchOperationalReport(45);
+    const report = await phenixSync.fetchPhenixReportData({ daysBack: 45 });
+    const rawBills = report.rows || [];
     console.log(`✅ Received ${rawBills.length} total raw bills from Phenix ERP.`);
 
     // 2. Aggregate Cost Centers
