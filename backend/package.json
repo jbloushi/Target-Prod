@@ -25,6 +25,7 @@
     "phenix:sync-20": "node scripts/sync-phenix-cli.js 20 ALL",
     "phenix:sync-30": "node scripts/sync-phenix-cli.js 30 ALL",
     "phenix:sync-all": "node scripts/sync-phenix-cli.js 45 ALL",
+    "phenix:deliver-old": "node scripts/shift-older-shipments-delivered.js 7",
     "phenix:deliver-30": "node scripts/shift-older-shipments-delivered.js 30",
     "phenix:backfill-eta": "node scripts/backfill-estimated-delivery.js",
     "phenix:reconcile": "node scripts/reconcile-phenix-records.js",
