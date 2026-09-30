@@ -32,7 +32,7 @@ const ShipmentsPage = () => {
     const initialOrgId = searchParams.get('org') || 'all';
     const initialStatus = searchParams.get('status') || 'all';
     const initialCarrier = searchParams.get('carrier') || searchParams.get('carrierCode') || 'all';
-    const initialPeriod = searchParams.get('period') || 'all';
+    const initialPeriod = searchParams.get('period') || 'this_month';
     
     const [selectedOrgId, setSelectedOrgId] = useState(initialOrgId);
     const [selectedPeriod, setSelectedPeriod] = useState(initialPeriod);

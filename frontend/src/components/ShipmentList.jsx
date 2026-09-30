@@ -187,7 +187,7 @@ export const ShipmentList = ({
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState([]);
   const [inspectingShipment, setInspectingShipment] = useState(null);
-  const [perPage, setPerPage] = useState(100);
+  const [perPage, setPerPage] = useState(25);
 
   // Sync initialFilter prop if changed by parent
   useEffect(() => {
