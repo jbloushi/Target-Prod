@@ -9,6 +9,7 @@ import { STATUS_CONFIG } from '../tokens/kineticHorizon';
 import { getRoleLabel } from '../utils/roleLabels';
 import { organizationService } from '../services/api';
 import VolumeBarChart from '../components/charts/VolumeBarChart';
+import TradeLaneBarChart from '../components/charts/TradeLaneBarChart';
 import StatusBadge from '../components/common/StatusBadge';
 import TradeRouteDisplay from '../components/common/TradeRouteDisplay';
 import ShipmentInspectorDrawer from '../components/common/ShipmentInspectorDrawer';
@@ -712,73 +713,37 @@ const DashboardPage = () => {
                     </div>
                 </div>
 
-                {/* RIGHT (5 or 4 cols): Active Trade Lane Corridors Chart Widget (Top Right Corner) */}
+                {/* RIGHT (5 or 4 cols): Active Trade Lane Corridors Bar Chart Widget (Top Right Corner) */}
                 <div className="lg:col-span-5 xl:col-span-4">
                     <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 flex flex-col justify-between h-full hover:shadow-md transition-all">
-                        <div className="flex justify-between items-center mb-3">
+                        <div className="flex justify-between items-center mb-2">
                             <div className="flex items-center gap-2">
                                 <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                                    <span className="material-symbols-outlined text-lg">explore</span>
+                                    <span className="material-symbols-outlined text-lg">bar_chart</span>
                                 </div>
                                 <div>
-                                    <h3 className="text-xs sm:text-sm font-black text-base-content">
-                                        {isRTL ? 'مسارات الشحن والربط الدولي' : 'Active Trade Lanes'}
+                                    <h3 className="text-xs sm:text-sm font-black text-base-content flex items-center gap-1.5">
+                                        <span>{isRTL ? 'مسارات الشحن والربط الدولي' : 'Active Trade Lanes'}</span>
                                     </h3>
-                                    <span className="text-[10.5px] text-base-content/60 font-medium">
-                                        {tradeCorridors.reduce((acc, c) => acc + (c.volume || 0), 0).toLocaleString()} {isRTL ? 'طرد عبر المسارات' : 'pkgs routed'}
-                                    </span>
+                                    <p className="text-[10.5px] text-base-content/60 font-medium">
+                                        {isRTL ? 'مقارنة حجم التدفق عبر المسارات' : 'Throughput comparison across corridors'}
+                                    </p>
                                 </div>
                             </div>
                             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-black bg-blue-50 text-blue-950 border border-blue-200">
-                                {isRTL ? 'تحديث فوري' : 'Live Gateway'}
+                                {tradeCorridors.reduce((acc, c) => acc + (c.volume || 0), 0).toLocaleString()} {isRTL ? 'طرد' : 'pkgs'}
                             </span>
                         </div>
 
-                        {tradeCorridors.length > 0 ? (
-                            <div className="space-y-2.5 overflow-y-auto max-h-[220px] pe-1">
-                                {tradeCorridors.slice(0, 5).map((c) => {
-                                    const pct = Math.max(8, Math.round(((c.volume || 0) / maxCorridorVol) * 100));
-                                    const destCode = c.id.split('-')[1]?.toUpperCase() || '';
-                                    return (
-                                        <div 
-                                            key={c.id} 
-                                            onClick={() => navigate(`/shipments?q=${destCode}`)}
-                                            className="p-2 rounded-xl bg-base-200/40 hover:bg-base-200 border border-base-200/60 hover:border-primary/40 cursor-pointer transition-all space-y-1.5 group"
-                                            title={isRTL ? `تصفية شحنات ${c.nameAr}` : `Filter ${c.name} shipments`}
-                                        >
-                                            <div className="flex justify-between items-center text-xs">
-                                                <div className="flex items-center gap-1.5 truncate">
-                                                    <span className="text-sm shrink-0">{c.flag1} {isRTL ? '←' : '→'} {c.flag2}</span>
-                                                    <span className="font-extrabold text-base-content group-hover:text-primary transition-colors">{c.id.replace('-', ' → ')}</span>
-                                                    <span className="text-[10px] text-base-content/50 truncate hidden sm:inline">
-                                                        ({isRTL ? (c.nameAr?.split('⇄')[1]?.trim() || c.nameAr) : (c.name?.split('⇄')[1]?.trim() || c.name)})
-                                                    </span>
-                                                </div>
-                                                <div className="flex items-center gap-1.5 shrink-0 ms-1">
-                                                    <span className="font-mono font-bold text-xs text-base-content">{c.volume} {isRTL ? 'طرد' : 'pkgs'}</span>
-                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-600 text-white shadow-2xs">
-                                                        {c.onTime}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <div className="w-full bg-base-300/80 rounded-full h-1.5 overflow-hidden">
-                                                <div 
-                                                    className="h-full rounded-full bg-gradient-to-r from-primary to-blue-400 transition-all duration-500" 
-                                                    style={{ width: `${pct}%` }} 
-                                                />
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        ) : (
-                            <div className="p-4 text-center bg-base-200/30 rounded-xl border border-dashed border-base-300">
-                                <span className="material-symbols-outlined text-xl text-base-content/40 block mb-1">explore</span>
-                                <p className="text-xs font-bold text-base-content/60">
-                                    {isRTL ? 'لا توجد مسارات شحن نشطة' : 'No active trade lanes'}
-                                </p>
-                            </div>
-                        )}
+                        <div className="flex-1 flex flex-col justify-end pt-1">
+                            <TradeLaneBarChart 
+                                data={tradeCorridors}
+                                height={155}
+                                unit={isRTL ? 'طرد' : 'pkgs'}
+                                onSelect={(destCode) => navigate(`/shipments?q=${destCode}`)}
+                                isRTL={isRTL}
+                            />
+                        </div>
                     </div>
                 </div>
 
