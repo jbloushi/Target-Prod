@@ -399,6 +399,17 @@ export const shipmentService = {
     }
   },
 
+  // Upload custom/external PDF document (AWB, invoice, POD, customs)
+  uploadDocument: async (trackingNumber, data) => {
+    try {
+      const response = await api.post(`shipments/${trackingNumber}/documents/upload`, data);
+      return response.data;
+    } catch (error) {
+      console.error(`Error uploading document for ${trackingNumber}:`, error);
+      throw error;
+    }
+  },
+
   convertInternalShipment: async (trackingNumber, payload) => {
     try {
       const response = await api.post(`shipments/${trackingNumber}/convert-carrier`, payload);

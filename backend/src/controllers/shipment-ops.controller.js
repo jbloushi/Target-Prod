@@ -320,6 +320,72 @@ exports.serveDocument = async (req, res) => {
     }
 };
 
+exports.uploadShipmentDocument = async (req, res) => {
+    try {
+        const { trackingNumber } = req.params;
+        const { docType = 'other', base64Data, filename: customName } = req.body || {};
+
+        if (!base64Data) {
+            return res.status(400).json({ success: false, error: 'Base64 document content is required' });
+        }
+
+        const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
+        if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
+        if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
+
+        const documentStorage = require('../utils/documentStorage');
+        const savedUrl = await documentStorage.saveDocument(trackingNumber, docType, base64Data);
+
+        if (!savedUrl) {
+            return res.status(500).json({ success: false, error: 'Failed to write document to storage' });
+        }
+
+        const existingDocs = Array.isArray(shipment.documents) ? shipment.documents : [];
+        const newDoc = {
+            id: `doc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            type: docType,
+            format: 'pdf',
+            url: savedUrl,
+            storageKey: savedUrl,
+            filename: customName || `${docType}.pdf`,
+            uploadedBy: req.user?.id,
+            createdAt: new Date().toISOString()
+        };
+
+        const updateData = {
+            documents: [...existingDocs, newDoc]
+        };
+
+        const normalizedType = String(docType).toLowerCase();
+        if (['label', 'awb', 'waybill', 'waybilldoc'].includes(normalizedType)) {
+            updateData.labelUrl = savedUrl;
+            updateData.awbUrl = savedUrl;
+        } else if (['invoice', 'customs_invoice', 'commercial_invoice'].includes(normalizedType)) {
+            updateData.invoiceUrl = savedUrl;
+        }
+
+        const updated = await prisma.shipment.update({
+            where: { id: shipment.id },
+            data: updateData
+        });
+
+        return res.status(201).json({
+            success: true,
+            data: {
+                document: newDoc,
+                labelUrl: updated.labelUrl,
+                awbUrl: updated.awbUrl,
+                invoiceUrl: updated.invoiceUrl,
+                documents: updated.documents
+            },
+            message: 'Document uploaded and attached successfully'
+        });
+    } catch (error) {
+        logger.error('Error in uploadShipmentDocument:', error);
+        return res.status(500).json({ success: false, error: error.message || 'Failed to upload document' });
+    }
+};
+
 exports.sendPaymentLink = async (req, res) => {
     try {
         const { trackingNumber } = req.params;

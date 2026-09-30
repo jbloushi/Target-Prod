@@ -103,6 +103,10 @@ const ShipmentDetailsPage = () => {
     const [copiedTracking, setCopiedTracking] = useState(false);
     const [isCarrierDocsCollapsed, setIsCarrierDocsCollapsed] = useState(false);
     const [isPodModalOpen, setIsPodModalOpen] = useState(false);
+    const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+    const [uploadDocType, setUploadDocType] = useState('awb');
+    const [uploadFile, setUploadFile] = useState(null);
+    const [isUploadingDoc, setIsUploadingDoc] = useState(false);
     const [historyTab, setHistoryTab] = useState('milestones'); // 'milestones' | 'telemetry' | 'comments'
     const [newCommentText, setNewCommentText] = useState('');
     const [isSubmittingComment, setIsSubmittingComment] = useState(false);
@@ -451,6 +455,43 @@ const ShipmentDetailsPage = () => {
         }
     };
 
+    // Upload Carrier or Customs Document
+    const handleUploadDocument = async (e) => {
+        if (e) e.preventDefault();
+        if (!uploadFile) {
+            enqueueSnackbar(isRTL ? 'يرجى اختيار ملف PDF للرفع' : 'Please select a PDF document to upload', { variant: 'warning' });
+            return;
+        }
+        setIsUploadingDoc(true);
+        try {
+            const reader = new FileReader();
+            reader.onload = async () => {
+                try {
+                    const base64Data = reader.result;
+                    await shipmentService.uploadDocument(shipment.trackingNumber, {
+                        docType: uploadDocType,
+                        base64Data,
+                        filename: uploadFile.name
+                    });
+                    enqueueSnackbar(isRTL ? 'تم رفع المستند وإرفاقه بالشحنة بنجاح' : 'Document uploaded and attached successfully', { variant: 'success' });
+                    setIsUploadModalOpen(false);
+                    setUploadFile(null);
+                    await getShipment(shipment.trackingNumber);
+                } catch (uploadErr) {
+                    console.error('Failed to upload document payload:', uploadErr);
+                    enqueueSnackbar(uploadErr.response?.data?.error || uploadErr.message || 'Failed to upload document', { variant: 'error' });
+                } finally {
+                    setIsUploadingDoc(false);
+                }
+            };
+            reader.readAsDataURL(uploadFile);
+        } catch (err) {
+            console.error('Failed to read document file:', err);
+            enqueueSnackbar(err.message || 'Failed to read file', { variant: 'error' });
+            setIsUploadingDoc(false);
+        }
+    };
+
     // Delete Consignment
     const handleDelete = async () => {
         if (!canDeleteShipmentStatus(shipment?.status, shipment, user?.role)) {
@@ -538,7 +579,7 @@ const ShipmentDetailsPage = () => {
 
     const resolvedCarrierAwb = shipment.labelUrl || shipment.awbUrl || extractDocUrl(carrierAwbDoc);
     const resolvedCarrierInvoice = shipment.invoiceUrl || extractDocUrl(carrierInvoiceDoc);
-    const canGenerateCarrierDocs = !isImported && isStaff && (!resolvedCarrierAwb || !resolvedCarrierInvoice);
+    const canGenerateCarrierDocs = isStaff && (!resolvedCarrierAwb || !resolvedCarrierInvoice);
 
     const statusEditOptions = getAllowedStatusOptions(user, shipment);
 
@@ -1544,126 +1585,158 @@ const ShipmentDetailsPage = () => {
                         )}
                     </div>
 
-                    {/* Official Carrier Documents & Customs Hub (Hidden when imported from ERP) */}
-                    {!isImported && (
-                        <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 space-y-4">
-                            <div className="flex justify-between items-center border-b border-base-200 pb-3">
-                                <div className="flex items-center gap-2">
-                                    <span className="material-symbols-outlined text-primary text-lg">description</span>
-                                    <h3 className="text-sm font-black text-base-content">
-                                        {isRTL ? 'وثائق الناقل والبيانات الجمركية الرسمية' : 'Official Carrier Paperwork & Customs Hub'}
-                                    </h3>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    {isStaff && (
+                    {/* Official Carrier Documents & Customs Hub (Available for All Consignments) */}
+                    <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 space-y-4">
+                        <div className="flex justify-between items-center border-b border-base-200 pb-3">
+                            <div className="flex items-center gap-2">
+                                <span className="material-symbols-outlined text-primary text-lg">description</span>
+                                <h3 className="text-sm font-black text-base-content">
+                                    {isRTL ? 'وثائق الناقل والبيانات الجمركية الرسمية' : 'Official Carrier Paperwork & Customs Hub'}
+                                </h3>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                {isStaff && (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsUploadModalOpen(true)}
+                                            className="btn btn-outline btn-xs font-bold rounded-lg gap-1"
+                                        >
+                                            <span className="material-symbols-outlined text-sm">upload_file</span>
+                                            {isRTL ? 'رفع ملف' : 'Upload PDF'}
+                                        </button>
                                         <button
                                             type="button"
                                             disabled={isGeneratingCarrierDocs || isProcessing}
                                             onClick={() => handleGenerateCarrierDocs('awb')}
-                                            className="btn btn-outline btn-xs font-bold rounded-lg"
+                                            className="btn btn-primary btn-xs font-bold rounded-lg gap-1"
                                         >
                                             <span className="material-symbols-outlined text-sm">
                                                 {isGeneratingCarrierDocs ? 'hourglass_top' : (!resolvedCarrierAwb ? 'bolt' : 'sync')}
                                             </span>
                                             {isGeneratingCarrierDocs 
-                                                ? 'Generating...' 
-                                                : (!resolvedCarrierAwb ? 'Generate Docs' : 'Sync Docs')}
+                                                ? (isRTL ? 'جاري التوليد...' : 'Generating...') 
+                                                : (!resolvedCarrierAwb ? (isRTL ? 'توليد الوثائق' : 'Generate Docs') : (isRTL ? 'تحديث الوثائق' : 'Sync Docs'))}
                                         </button>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                
-                                {/* Document 1: Official Carrier AWB */}
-                                <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">
-                                    <div className="space-y-1">
-                                        <div className="flex items-center justify-between">
-                                            <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-                                                <span className="material-symbols-outlined text-base">local_shipping</span>
-                                            </div>
-                                            <span className={`badge badge-xs font-bold py-1 px-2 ${resolvedCarrierAwb ? 'badge-success' : 'badge-warning'}`}>
-                                                {resolvedCarrierAwb ? 'READY' : 'PENDING'}
-                                            </span>
-                                        </div>
-                                        <h4 className="font-extrabold text-xs text-base-content">
-                                            {carrierDisplayName} Air Waybill (AWB)
-                                        </h4>
-                                        <p className="text-[11px] text-base-content/60">
-                                            Official barcoded consignment label
-                                        </p>
-                                    </div>
-                                    {resolvedCarrierAwb ? (
-                                        <button onClick={() => handleOpenPdf(resolvedCarrierAwb)} className="btn btn-primary btn-xs font-bold rounded-lg w-full">
-                                            <span className="material-symbols-outlined text-sm">print</span>
-                                            Print AWB
-                                        </button>
-                                    ) : isStaff ? (
-                                        <button onClick={() => handleGenerateCarrierDocs('awb')} disabled={isGeneratingCarrierDocs} className="btn btn-primary btn-xs font-bold rounded-lg w-full">
-                                            <span className="material-symbols-outlined text-sm">bolt</span>
-                                            Generate
-                                        </button>
-                                    ) : null}
-                                </div>
-
-                                {/* Document 2: Carrier Customs Invoice */}
-                                <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">
-                                    <div className="space-y-1">
-                                        <div className="flex items-center justify-between">
-                                            <div className="w-8 h-8 rounded-lg bg-warning/10 text-warning flex items-center justify-center">
-                                                <span className="material-symbols-outlined text-base">receipt_long</span>
-                                            </div>
-                                            <span className={`badge badge-xs font-bold py-1 px-2 ${resolvedCarrierInvoice ? 'badge-success' : 'badge-warning'}`}>
-                                                {resolvedCarrierInvoice ? 'READY' : 'PENDING'}
-                                            </span>
-                                        </div>
-                                        <h4 className="font-extrabold text-xs text-base-content">
-                                            Carrier Customs Invoice
-                                        </h4>
-                                        <p className="text-[11px] text-base-content/60">
-                                            Itemized customs export declaration
-                                        </p>
-                                    </div>
-                                    {resolvedCarrierInvoice ? (
-                                        <button onClick={() => handleOpenPdf(resolvedCarrierInvoice)} className="btn btn-outline btn-xs font-bold rounded-lg w-full">
-                                            <span className="material-symbols-outlined text-sm">print</span>
-                                            Print Invoice
-                                        </button>
-                                    ) : isStaff ? (
-                                        <button onClick={() => handleGenerateCarrierDocs('invoice')} disabled={isGeneratingCarrierDocs} className="btn btn-outline btn-xs font-bold rounded-lg w-full">
-                                            <span className="material-symbols-outlined text-sm">bolt</span>
-                                            Generate
-                                        </button>
-                                    ) : null}
-                                </div>
-
-                                {/* Document 3: Target Hub Handover / Invoice QR */}
-                                <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">
-                                    <div className="space-y-1">
-                                        <div className="flex items-center justify-between">
-                                            <div className="w-8 h-8 rounded-lg bg-base-300 text-base-content flex items-center justify-center">
-                                                <span className="material-symbols-outlined text-base">qr_code_2</span>
-                                            </div>
-                                            <span className="badge badge-neutral badge-xs font-bold py-1 px-2">
-                                                SYSTEM
-                                            </span>
-                                        </div>
-                                        <h4 className="font-extrabold text-xs text-base-content">
-                                            Target Hub Invoice & QR
-                                        </h4>
-                                        <p className="text-[11px] text-base-content/60">
-                                            Hub handover & warehouse scan sheet
-                                        </p>
-                                    </div>
-                                    <button onClick={handleGenerateInvoiceQR} className="btn btn-outline btn-xs font-bold rounded-lg w-full">
-                                        <span className="material-symbols-outlined text-sm">print</span>
-                                        Print Document
-                                    </button>
-                                </div>
-
+                                    </>
+                                )}
                             </div>
                         </div>
-                    )}
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            
+                            {/* Document 1: Official Carrier AWB */}
+                            <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">
+                                <div className="space-y-1">
+                                    <div className="flex items-center justify-between">
+                                        <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                                            <span className="material-symbols-outlined text-base">local_shipping</span>
+                                        </div>
+                                        <span className={`badge badge-xs font-bold py-1 px-2 ${resolvedCarrierAwb ? 'badge-success text-white' : 'badge-warning text-white'}`}>
+                                            {resolvedCarrierAwb ? 'READY' : 'PENDING'}
+                                        </span>
+                                    </div>
+                                    <h4 className="font-extrabold text-xs text-base-content">
+                                        {carrierDisplayName} Air Waybill (AWB)
+                                    </h4>
+                                    <p className="text-[11px] text-base-content/60">
+                                        {isRTL ? 'بوليصة الشحن الجوي الرسمية' : 'Official barcoded consignment label'}
+                                    </p>
+                                </div>
+                                {resolvedCarrierAwb ? (
+                                    <button onClick={() => handleOpenPdf(resolvedCarrierAwb)} className="btn btn-primary btn-xs font-bold rounded-lg w-full">
+                                        <span className="material-symbols-outlined text-sm">print</span>
+                                        {isRTL ? 'طباعة البوليصة' : 'Print AWB'}
+                                    </button>
+                                ) : isStaff ? (
+                                    <button onClick={() => handleGenerateCarrierDocs('awb')} disabled={isGeneratingCarrierDocs} className="btn btn-primary btn-xs font-bold rounded-lg w-full">
+                                        <span className="material-symbols-outlined text-sm">bolt</span>
+                                        {isRTL ? 'توليد البوليصة' : 'Generate AWB'}
+                                    </button>
+                                ) : null}
+                            </div>
+
+                            {/* Document 2: Carrier Customs Invoice */}
+                            <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">
+                                <div className="space-y-1">
+                                    <div className="flex items-center justify-between">
+                                        <div className="w-8 h-8 rounded-lg bg-warning/10 text-warning flex items-center justify-center">
+                                            <span className="material-symbols-outlined text-base">receipt_long</span>
+                                        </div>
+                                        <span className={`badge badge-xs font-bold py-1 px-2 ${resolvedCarrierInvoice ? 'badge-success text-white' : 'badge-warning text-white'}`}>
+                                            {resolvedCarrierInvoice ? 'READY' : 'PENDING'}
+                                        </span>
+                                    </div>
+                                    <h4 className="font-extrabold text-xs text-base-content">
+                                        {carrierDisplayName} Customs Invoice
+                                    </h4>
+                                    <p className="text-[11px] text-base-content/60">
+                                        {isRTL ? 'الفاتورة والبيان الجمركي المعتمد' : 'Itemized customs export declaration'}
+                                    </p>
+                                </div>
+                                {resolvedCarrierInvoice ? (
+                                    <button onClick={() => handleOpenPdf(resolvedCarrierInvoice)} className="btn btn-outline btn-xs font-bold rounded-lg w-full">
+                                        <span className="material-symbols-outlined text-sm">print</span>
+                                        {isRTL ? 'طباعة الفاتورة' : 'Print Invoice'}
+                                    </button>
+                                ) : isStaff ? (
+                                    <button onClick={() => handleGenerateCarrierDocs('invoice')} disabled={isGeneratingCarrierDocs} className="btn btn-outline btn-xs font-bold rounded-lg w-full">
+                                        <span className="material-symbols-outlined text-sm">bolt</span>
+                                        {isRTL ? 'توليد الفاتورة' : 'Generate Invoice'}
+                                    </button>
+                                ) : null}
+                            </div>
+
+                            {/* Document 3: Target Hub Handover / Invoice QR */}
+                            <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">
+                                <div className="space-y-1">
+                                    <div className="flex items-center justify-between">
+                                        <div className="w-8 h-8 rounded-lg bg-base-300 text-base-content flex items-center justify-center">
+                                            <span className="material-symbols-outlined text-base">qr_code_2</span>
+                                        </div>
+                                        <span className="badge badge-neutral badge-xs font-bold py-1 px-2">
+                                            SYSTEM
+                                        </span>
+                                    </div>
+                                    <h4 className="font-extrabold text-xs text-base-content">
+                                        {isRTL ? 'منافست الفرز وباركود المخزن' : 'Target Hub Invoice & QR'}
+                                    </h4>
+                                    <p className="text-[11px] text-base-content/60">
+                                        {isRTL ? 'تسليم مركز العمليات ومسح المخازن' : 'Hub handover & warehouse scan sheet'}
+                                    </p>
+                                </div>
+                                <button onClick={handleGenerateInvoiceQR} className="btn btn-outline btn-xs font-bold rounded-lg w-full">
+                                    <span className="material-symbols-outlined text-sm">print</span>
+                                    {isRTL ? 'طباعة المنافست' : 'Print Document'}
+                                </button>
+                            </div>
+
+                        </div>
+
+                        {/* Extra Uploaded Documents List */}
+                        {rawDocuments.filter(d => typeof d === 'object' && d?.url && d.type !== 'label' && d.type !== 'invoice' && d.type !== 'awb').length > 0 && (
+                            <div className="pt-2 border-t border-base-200/60">
+                                <h5 className="text-[11px] font-bold text-base-content/60 uppercase tracking-wider mb-2">
+                                    {isRTL ? 'المستندات والملفات الإضافية المرفقة' : 'Additional Attached Documents'}
+                                </h5>
+                                <div className="flex flex-wrap gap-2">
+                                    {rawDocuments.filter(d => typeof d === 'object' && d?.url && d.type !== 'label' && d.type !== 'invoice' && d.type !== 'awb').map((doc, idx) => (
+                                        <div key={idx} className="flex items-center gap-2 bg-base-200/50 border border-base-200 rounded-lg px-2.5 py-1 text-xs">
+                                            <span className="material-symbols-outlined text-sm text-primary">attach_file</span>
+                                            <span className="font-bold">{doc.filename || doc.type || `Document #${idx + 1}`}</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleOpenPdf(doc.url)}
+                                                className="btn btn-ghost btn-xs text-primary font-bold p-0.5"
+                                            >
+                                                <span className="material-symbols-outlined text-xs">visibility</span>
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
 
                     {/* Milestone History, Telemetry & Operational Comments Tabs */}
                     <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl overflow-hidden space-y-0">
@@ -2163,6 +2236,86 @@ const ShipmentDetailsPage = () => {
                 </div>
 
             </div>
+
+            {/* Upload Document Modal */}
+            {isUploadModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
+                    <div className="bg-base-100 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-base-200 space-y-4">
+                        <div className="flex justify-between items-center border-b border-base-200 pb-3">
+                            <div className="flex items-center gap-2">
+                                <span className="material-symbols-outlined text-primary text-xl">upload_file</span>
+                                <h3 className="font-extrabold text-base text-base-content">
+                                    {isRTL ? 'إرفاق ورفع مستند للشحنة' : 'Upload Consignment Document'}
+                                </h3>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => { setIsUploadModalOpen(false); setUploadFile(null); }}
+                                className="btn btn-ghost btn-xs btn-square rounded-full"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleUploadDocument} className="space-y-4">
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold text-base-content/70">
+                                    {isRTL ? 'نوع المستند' : 'Document Classification'}
+                                </label>
+                                <select
+                                    value={uploadDocType}
+                                    onChange={(e) => setUploadDocType(e.target.value)}
+                                    className="select select-bordered select-sm w-full rounded-xl text-xs"
+                                >
+                                    <option value="awb">{isRTL ? 'بوليصة شحن جوي (AWB / Shipping Label)' : 'Air Waybill (AWB / Shipping Label)'}</option>
+                                    <option value="invoice">{isRTL ? 'فاتورة جمركية (Customs / Commercial Invoice)' : 'Customs / Commercial Invoice'}</option>
+                                    <option value="pod">{isRTL ? 'إثبات تسليم (Proof of Delivery - POD)' : 'Proof of Delivery (POD)'}</option>
+                                    <option value="customs_declaration">{isRTL ? 'بيان جمركي وتخليص' : 'Customs Declaration / Clearance'}</option>
+                                    <option value="other">{isRTL ? 'مستند إضافي / شهادة' : 'Other Document / Certificate'}</option>
+                                </select>
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold text-base-content/70">
+                                    {isRTL ? 'ملف المستند (PDF)' : 'Document File (PDF)'}
+                                </label>
+                                <input
+                                    type="file"
+                                    accept="application/pdf"
+                                    onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                                    className="file-input file-input-bordered file-input-primary file-input-sm w-full rounded-xl text-xs"
+                                    required
+                                />
+                                {uploadFile && (
+                                    <p className="text-[11px] font-mono text-base-content/60 pt-1">
+                                        {uploadFile.name} ({(uploadFile.size / 1024).toFixed(1)} KB)
+                                    </p>
+                                )}
+                            </div>
+
+                            <div className="flex justify-end gap-2 pt-2 border-t border-base-200">
+                                <button
+                                    type="button"
+                                    onClick={() => { setIsUploadModalOpen(false); setUploadFile(null); }}
+                                    className="btn btn-ghost btn-sm rounded-xl font-bold"
+                                    disabled={isUploadingDoc}
+                                >
+                                    {isRTL ? 'إلغاء' : 'Cancel'}
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isUploadingDoc || !uploadFile}
+                                    className="btn btn-primary btn-sm rounded-xl font-bold gap-1"
+                                >
+                                    {isUploadingDoc && <span className="loading loading-spinner loading-xs"></span>}
+                                    <span className="material-symbols-outlined text-sm">cloud_upload</span>
+                                    {isRTL ? 'رفع وحفظ' : 'Upload & Attach'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             {/* Proof of Delivery Modal */}
             <ProofOfDeliveryModal

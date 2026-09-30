@@ -66,6 +66,7 @@ module.exports = {
   pickupShipment: ops.pickupShipment,
   processWarehouseScan: ops.processWarehouseScan,
   serveDocument: ops.serveDocument,
+  uploadShipmentDocument: ops.uploadShipmentDocument,
   sendPaymentLink: ops.sendPaymentLink,
   generateCarrierManifest: ops.generateCarrierManifest,
   confirmDeliveryWithPod: ops.confirmDeliveryWithPod,

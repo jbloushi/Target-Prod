@@ -212,6 +212,18 @@ router.get(
   shipmentController.serveDocument
 );
 
+// Upload Custom or External Shipment Document (PDF)
+router.post(
+  '/:trackingNumber/documents/upload',
+  authorize('BOOK_CARRIERS'),
+  [
+    param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
+    body('base64Data').isString().notEmpty().withMessage('Valid base64 document content is required'),
+    validate
+  ],
+  shipmentController.uploadShipmentDocument
+);
+
 // Update shipment location manually
 router.patch(
   '/:trackingNumber/location/manual',
