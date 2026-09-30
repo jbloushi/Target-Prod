@@ -344,39 +344,97 @@ const ShipmentDetailsPage = () => {
         }
     };
 
-    // Save Edited Consignment
+    /**
+     * Build only the payload slice for a given edit section — powers
+     * section-scoped save (Visibility Redesign 3b). Nothing outside the
+     * section leaves the client, so a stray field elsewhere can't
+     * accidentally overwrite server state during a small edit.
+     */
+    const buildEditPayload = (section, draft) => {
+        if (!draft) return {};
+        const payload = {};
+        switch (section) {
+            case 'sender':
+                payload.origin = draft.sender || draft.origin;
+                break;
+            case 'receiver':
+                payload.destination = draft.receiver || draft.destination;
+                break;
+            case 'content':
+                payload.parcels = draft.parcels;
+                payload.items = draft.items;
+                payload.dangerousGoods = draft.dangerousGoods;
+                payload.packagingType = draft.packagingType;
+                payload.shipmentType = draft.shipmentType;
+                break;
+            case 'billing':
+                payload.incoterm = draft.incoterm;
+                payload.reference = draft.reference;
+                payload.currency = draft.currency;
+                if (isInternalShipment) {
+                    if (draft.price !== undefined && draft.price !== '') payload.price = Number(draft.price);
+                    if (draft.costPrice !== undefined && draft.costPrice !== '') payload.costPrice = Number(draft.costPrice);
+                    if (draft.estimatedDelivery) payload.estimatedDelivery = draft.estimatedDelivery;
+                }
+                break;
+            case 'status':
+                if (draft.status && draft.status !== shipment.status) {
+                    payload.status = draft.status;
+                    payload.description = draft.statusDescription
+                        || `Status changed to ${STATUS_LABELS[draft.status] || draft.status}`;
+                }
+                break;
+            default:
+                break;
+        }
+        return payload;
+    };
+
+    /**
+     * True if this section has draft edits that differ from the loaded shipment.
+     * Powers the amber dot on unsaved tabs and the "N changes to save" summary.
+     * Uses JSON stringify — good enough for the primitive-heavy shapes here and
+     * cheap to compute on each render at drawer scale.
+     */
+    const sectionIsDirty = (section) => {
+        if (!editDraft || !shipment) return false;
+        switch (section) {
+            case 'sender':   return JSON.stringify(editDraft.sender || editDraft.origin) !== JSON.stringify(shipment.sender || shipment.origin);
+            case 'receiver': return JSON.stringify(editDraft.receiver || editDraft.destination) !== JSON.stringify(shipment.receiver || shipment.destination);
+            case 'content':  return JSON.stringify({
+                parcels: editDraft.parcels, items: editDraft.items,
+                dg: editDraft.dangerousGoods, pt: editDraft.packagingType, st: editDraft.shipmentType,
+            }) !== JSON.stringify({
+                parcels: shipment.parcels, items: shipment.items,
+                dg: shipment.dangerousGoods, pt: shipment.packagingType, st: shipment.shipmentType,
+            });
+            case 'billing':  return (editDraft.incoterm || null) !== (shipment.incoterm || null)
+                || (editDraft.reference || null) !== (shipment.reference || null)
+                || (editDraft.currency || null) !== (shipment.currency || null)
+                || Number(editDraft.price ?? -1) !== Number(shipment.price ?? -1)
+                || Number(editDraft.costPrice ?? -1) !== Number(shipment.costPrice ?? -1)
+                || (editDraft.estimatedDelivery || null) !== (shipment.estimatedDelivery || null);
+            case 'status':   return editDraft.status && editDraft.status !== shipment.status;
+            default:         return false;
+        }
+    };
+
+    // Save Edited Consignment — sends only the fields owned by editSection.
     const handleSaveEdit = async () => {
         if (!editDraft || !shipment) return;
         setIsProcessing(true);
         try {
-            const payload = {
-                origin: editDraft.sender || editDraft.origin,
-                destination: editDraft.receiver || editDraft.destination,
-                parcels: editDraft.parcels,
-                items: editDraft.items,
-                dangerousGoods: editDraft.dangerousGoods,
-                packagingType: editDraft.packagingType,
-                shipmentType: editDraft.shipmentType,
-                incoterm: editDraft.incoterm,
-                reference: editDraft.reference,
-                currency: editDraft.currency
-            };
-
-            if (editDraft.status && editDraft.status !== shipment.status) {
-                payload.status = editDraft.status;
-                payload.description = editDraft.statusDescription || `Status changed to ${STATUS_LABELS[editDraft.status] || editDraft.status}`;
+            const payload = buildEditPayload(editSection, editDraft);
+            if (Object.keys(payload).length === 0) {
+                enqueueSnackbar(isRTL ? 'لا توجد تغييرات لحفظها في هذا القسم' : 'No changes to save in this section', { variant: 'info' });
+                setIsProcessing(false);
+                return;
             }
-
-            if (isInternalShipment) {
-                if (editDraft.price !== undefined && editDraft.price !== '') payload.price = Number(editDraft.price);
-                if (editDraft.costPrice !== undefined && editDraft.costPrice !== '') payload.costPrice = Number(editDraft.costPrice);
-                if (editDraft.estimatedDelivery) payload.estimatedDelivery = editDraft.estimatedDelivery;
-            }
-
             await shipmentService.updateShipmentDetails(shipment.trackingNumber, payload);
-            enqueueSnackbar(isRTL ? 'تم حفظ التعديلات بنجاح' : 'Consignment details saved successfully!', { variant: 'success' });
-            setEditDrawerOpen(false);
+            enqueueSnackbar(isRTL ? 'تم حفظ التعديلات بنجاح' : 'Section saved.', { variant: 'success' });
             await getShipment(shipment.trackingNumber);
+            // Leave the drawer open so the user can move to the next dirty section
+            // — the save cleared this one, so the amber dot disappears on refetch.
         } catch (err) {
             enqueueSnackbar(err.message || 'Failed to update shipment', { variant: 'error' });
         } finally {
@@ -864,55 +922,91 @@ const ShipmentDetailsPage = () => {
             <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-6 space-y-5">
                 
                 <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
-                    {/* Left: Tracking # & Identity */}
-                    <div className="space-y-1.5">
-                        <div className="flex items-center gap-2.5 flex-wrap">
-                            <h1 className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-base-content">
-                                {shipment.trackingNumber}
-                            </h1>
-                            <button
-                                type="button"
-                                onClick={handleCopyTracking}
-                                className="btn btn-ghost btn-xs btn-square text-base-content/60 hover:text-primary"
-                                title={isRTL ? 'نسخ رقم التتبع' : 'Copy Tracking Number'}
-                            >
-                                <span className="material-symbols-outlined text-base">
-                                    {copiedTracking ? 'done' : 'content_copy'}
-                                </span>
-                            </button>
+                    {/*
+                     * Answer-first hero (Visibility Redesign 2a):
+                     *   Row 1  — status pill + "updated N min ago · via CARRIER" meta
+                     *   Row 2  — H1 that names what the shipment is doing right now
+                     *   Row 3  — tracking # (mono), copy button, ETA
+                     * The tracking number drops from H1 to a secondary line so the
+                     * status headline reads first.
+                     */}
+                    <div className="space-y-1.5 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
                             <StatusBadge status={effectiveStatus} size="md" />
+                            <span className="text-xs text-base-content/60 font-semibold">
+                                {isRTL ? 'آخر تحديث:' : 'Updated'}{' '}
+                                {new Date(shipment.updatedAt || shipment.createdAt).toLocaleString(isRTL ? 'ar' : 'en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                {carrierDisplayName && (
+                                    <> · {isRTL ? 'عبر' : 'via'} <span className="text-base-content font-bold">{carrierDisplayName}</span></>
+                                )}
+                            </span>
                             {shipment.isTest && (
                                 <span className="badge badge-warning font-black text-xs">TEST</span>
                             )}
-                            <div className="badge badge-outline badge-sm font-bold gap-1 text-primary">
-                                <span className="material-symbols-outlined text-xs">local_shipping</span>
-                                <span>{carrierDisplayName}</span>
-                            </div>
                         </div>
-                        <p className="text-xs text-base-content/60 font-semibold flex items-center gap-1.5 flex-wrap mt-0.5">
-                            <span>{getShipmentTypeLabel(shipment.shipmentType)} • {shipment.organization?.name || 'Standard Organization'}</span>
-                            <span className="opacity-40">•</span>
-                            <span>{isRTL ? 'تاريخ الحجز:' : 'Booked:'} {formatTimestampKuwait((() => {
-                                let earliest = parseDateRobust(shipment.createdAt);
-                                const rawHistory = Array.isArray(shipment.history) ? shipment.history : [];
-                                for (const h of rawHistory) {
-                                    if (h.timestamp) {
-                                        const ht = new Date(h.timestamp);
-                                        if (!Number.isNaN(ht.getTime())) {
-                                            if (!earliest || ht.getTime() < earliest.getTime()) {
-                                                earliest = ht;
+
+                        <h1 className="text-xl sm:text-2xl xl:text-3xl font-black tracking-tight text-base-content leading-tight">
+                            {(() => {
+                                const dest = receiver.city || receiver.countryCode || (isRTL ? 'الوجهة' : 'destination');
+                                switch (effectiveStatus) {
+                                    case 'delivered':        return isRTL ? `تم التسليم إلى ${dest}` : `Delivered to ${dest}`;
+                                    case 'out_for_delivery': return isRTL ? `قيد التوصيل إلى ${dest}` : `Out for delivery to ${dest}`;
+                                    case 'in_transit':       return isRTL ? `في الطريق إلى ${dest}` : `On its way to ${dest}`;
+                                    case 'picked_up':        return isRTL ? `تم الاستلام — متجه إلى ${dest}` : `Picked up — bound for ${dest}`;
+                                    case 'ready_for_pickup': return isRTL ? 'جاهز للاستلام' : 'Ready for pickup';
+                                    case 'booked':           return isRTL ? `تم الحجز — متجه إلى ${dest}` : `Booked — heading to ${dest}`;
+                                    case 'pending_review':   return isRTL ? 'في انتظار مراجعة العمليات' : 'Pending operations review';
+                                    case 'on_hold':          return isRTL ? 'موقوف — يتطلب انتباه' : 'On hold — needs attention';
+                                    case 'exception':        return isRTL ? 'استثناء يعيق التسليم' : 'Exception blocking delivery';
+                                    case 'cancelled':        return isRTL ? 'شحنة ملغاة' : 'Shipment cancelled';
+                                    case 'draft':
+                                    default:                 return isRTL ? 'مسودة — لم يتم الحجز بعد' : 'Draft — not yet booked';
+                                }
+                            })()}
+                        </h1>
+
+                        <div className="flex items-center gap-3 flex-wrap text-xs text-base-content/70 font-semibold">
+                            <span className="font-mono font-black text-base-content text-sm">{shipment.trackingNumber}</span>
+                            <button
+                                type="button"
+                                onClick={handleCopyTracking}
+                                className="inline-flex items-center gap-1 text-base-content/60 hover:text-primary"
+                                title={isRTL ? 'نسخ رقم التتبع' : 'Copy tracking number'}
+                            >
+                                <span className="material-symbols-outlined text-sm">
+                                    {copiedTracking ? 'done' : 'content_copy'}
+                                </span>
+                                <span>{copiedTracking ? (isRTL ? 'تم النسخ' : 'Copied') : (isRTL ? 'نسخ' : 'Copy')}</span>
+                            </button>
+                            <span className="w-[3px] h-[3px] rounded-full bg-base-300" />
+                            <span>{getShipmentTypeLabel(shipment.shipmentType)} · {shipment.organization?.name || (isRTL ? 'المؤسسة' : 'Organization')}</span>
+                            <span className="w-[3px] h-[3px] rounded-full bg-base-300" />
+                            <span>
+                                {isRTL ? 'تاريخ الحجز:' : 'Booked'}{' '}
+                                <span className="text-base-content font-bold">
+                                    {formatTimestampKuwait((() => {
+                                        let earliest = parseDateRobust(shipment.createdAt);
+                                        const rawHistory = Array.isArray(shipment.history) ? shipment.history : [];
+                                        for (const h of rawHistory) {
+                                            if (h.timestamp) {
+                                                const ht = new Date(h.timestamp);
+                                                if (!Number.isNaN(ht.getTime())) {
+                                                    if (!earliest || ht.getTime() < earliest.getTime()) {
+                                                        earliest = ht;
+                                                    }
+                                                }
                                             }
                                         }
-                                    }
-                                }
-                                const rawPhenixDate = shipment.documents?.rawDate || shipment.documents?.date;
-                                const phenixParsed = parseDateRobust(rawPhenixDate);
-                                return (phenixParsed && (!earliest || phenixParsed < earliest)) ? phenixParsed : (earliest || phenixParsed);
-                            })()).date}</span>
+                                        const rawPhenixDate = shipment.documents?.rawDate || shipment.documents?.date;
+                                        const phenixParsed = parseDateRobust(rawPhenixDate);
+                                        return (phenixParsed && (!earliest || phenixParsed < earliest)) ? phenixParsed : (earliest || phenixParsed);
+                                    })()).date}
+                                </span>
+                            </span>
                             {isImported && (
                                 <span className="badge badge-ghost badge-xs text-[9px] font-mono text-primary/80">PHENIX ERP</span>
                             )}
-                        </p>
+                        </div>
                     </div>
 
                     {/* Right: Quick Action Buttons Toolbar */}
@@ -931,12 +1025,14 @@ const ShipmentDetailsPage = () => {
                             {isRTL ? 'مشاركة الرابط' : 'Share'}
                         </button>
 
-                        {/* Official Carrier AWB */}
+                        {/* Primary CTA — Print Carrier AWB is the day-to-day action
+                          * once the carrier has issued docs, so it stays filled. Everything
+                          * else in this toolbar is outlined/ghost per Visibility Redesign 2a. */}
                         {resolvedCarrierAwb && (
                             <button
                                 type="button"
                                 onClick={() => handleOpenPdf(resolvedCarrierAwb)}
-                                className="btn btn-primary btn-sm rounded-xl font-extrabold gap-1 text-xs shadow-sm"
+                                className={`btn btn-sm rounded-xl font-extrabold gap-1 text-xs shadow-sm ${canGenerateCarrierDocs ? 'btn-outline' : 'btn-primary'}`}
                             >
                                 <span className="material-symbols-outlined text-base">print</span>
                                 {isRTL ? 'طباعة بوليصة الناقل' : 'Print Carrier AWB'}
@@ -2330,34 +2426,59 @@ const ShipmentDetailsPage = () => {
                     />
 
                     <div className="relative w-full max-w-xl bg-base-100 h-full shadow-2xl z-10 flex flex-col overflow-y-auto border-s border-base-200 p-5 space-y-4 animate-in slide-in-from-right duration-200">
-                        {/* Drawer Header */}
+                        {/*
+                         * Edit drawer (Visibility Redesign 3b):
+                         *  - Section tabs carry an amber dot when they have unsaved edits,
+                         *    so the user can hop between sections without losing track of
+                         *    what's still pending.
+                         *  - Save is scoped to the current section ("Save consignee",
+                         *    not one blanket Save) via buildEditPayload().
+                         *  - The footer above the save button lists the sections that
+                         *    are dirty right now, so nothing gets sent invisibly.
+                         */}
                         <div className="flex justify-between items-center border-b border-base-200 pb-3">
                             <div>
-                                <h3 className="font-black text-base text-base-content">
-                                    {isRTL ? 'تعديل بيانات الشحنة' : 'Edit Consignment Dossier'}
+                                <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-base-content/60">
+                                    {isRTL ? 'تعديل' : 'Editing'}
+                                </div>
+                                <h3 className="font-black text-base text-base-content font-mono">
+                                    {shipment.trackingNumber}
                                 </h3>
-                                <p className="text-xs text-base-content/50 font-mono mt-0.5">{shipment.trackingNumber}</p>
                             </div>
-                            <button onClick={() => setEditDrawerOpen(false)} className="btn btn-ghost btn-sm btn-square rounded-full">
-                                ✕
+                            <button
+                                onClick={() => setEditDrawerOpen(false)}
+                                className="btn btn-ghost btn-sm btn-square rounded-full"
+                                aria-label={isRTL ? 'إغلاق' : 'Close'}
+                            >
+                                <span className="material-symbols-outlined text-lg">close</span>
                             </button>
                         </div>
 
-                        {/* Top 5 Section Tabs */}
+                        {/* Section tabs — amber dot on any section with unsaved edits. */}
                         <div className="flex gap-1.5 overflow-x-auto pb-1">
-                            {EDIT_TABS.map((tab) => (
-                                <button
-                                    key={tab.key}
-                                    type="button"
-                                    onClick={() => setEditSection(tab.key)}
-                                    className={`btn btn-xs rounded-xl font-bold shrink-0 gap-1 ${
-                                        editSection === tab.key ? 'btn-primary' : 'btn-ghost border-base-200 text-base-content/70'
-                                    }`}
-                                >
-                                    <span className="material-symbols-outlined text-sm">{tab.icon}</span>
-                                    <span>{isRTL ? tab.labelAr : tab.label}</span>
-                                </button>
-                            ))}
+                            {EDIT_TABS.map((tab) => {
+                                const active = editSection === tab.key;
+                                const dirty = sectionIsDirty(tab.key);
+                                return (
+                                    <button
+                                        key={tab.key}
+                                        type="button"
+                                        onClick={() => setEditSection(tab.key)}
+                                        className={`btn btn-xs rounded-xl font-bold shrink-0 gap-1 relative ${
+                                            active ? 'btn-primary' : 'btn-ghost border-base-200 text-base-content/70'
+                                        }`}
+                                    >
+                                        <span className="material-symbols-outlined text-sm">{tab.icon}</span>
+                                        <span>{isRTL ? tab.labelAr : tab.label}</span>
+                                        {dirty && (
+                                            <span
+                                                className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-warning-content' : 'bg-warning'}`}
+                                                title={isRTL ? 'تغييرات لم تحفظ' : 'Unsaved changes'}
+                                            />
+                                        )}
+                                    </button>
+                                );
+                            })}
                         </div>
 
                         {/* Tab Content Body */}
@@ -2627,24 +2748,62 @@ const ShipmentDetailsPage = () => {
                             )}
                         </div>
 
-                        {/* Drawer Actions */}
-                        <div className="flex gap-2 pt-3 border-t border-base-200">
-                            <button
-                                type="button"
-                                onClick={() => setEditDrawerOpen(false)}
-                                className="btn btn-ghost btn-sm rounded-xl font-bold flex-1"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleSaveEdit}
-                                disabled={isProcessing}
-                                className="btn btn-primary btn-sm rounded-xl font-extrabold flex-1"
-                            >
-                                {isProcessing ? 'Saving...' : 'Save Changes'}
-                            </button>
-                        </div>
+                        {/*
+                         * Section-scoped save footer. The button label names the
+                         * exact section being saved so the operator sees what's
+                         * about to leave the client. A small "Changes to save"
+                         * strip appears above when the current section is dirty.
+                         */}
+                        {(() => {
+                            const currentTab = EDIT_TABS.find((t) => t.key === editSection);
+                            const dirtyNow = sectionIsDirty(editSection);
+                            const dirtyOthers = EDIT_TABS
+                                .filter((t) => t.key !== editSection && sectionIsDirty(t.key))
+                                .map((t) => isRTL ? t.labelAr : t.label);
+                            const sectionLabel = currentTab ? (isRTL ? currentTab.labelAr : currentTab.label).toLowerCase() : '';
+                            return (
+                                <>
+                                    {dirtyNow && (
+                                        <div className="rounded-xl border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning-content">
+                                            <div className="font-black uppercase tracking-[0.05em] text-[10.5px] text-warning">
+                                                {isRTL ? 'تغييرات للحفظ' : 'Changes to save'}
+                                            </div>
+                                            <div className="mt-0.5 text-base-content/80">
+                                                {isRTL
+                                                    ? `تعديلات معلقة في قسم ${isRTL ? currentTab?.labelAr : currentTab?.label}. اضغط الحفظ لتطبيقها.`
+                                                    : `Edits pending in ${currentTab?.label}. Save to apply them.`}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {dirtyOthers.length > 0 && (
+                                        <div className="text-[11px] text-base-content/60 font-semibold">
+                                            {isRTL
+                                                ? `تغييرات معلقة أيضاً في: ${dirtyOthers.join('، ')}`
+                                                : `Also pending in: ${dirtyOthers.join(', ')}`}
+                                        </div>
+                                    )}
+                                    <div className="flex items-center justify-between gap-2 pt-3 border-t border-base-200">
+                                        <button
+                                            type="button"
+                                            onClick={() => setEditDrawerOpen(false)}
+                                            className="btn btn-ghost btn-xs text-base-content/60 font-bold"
+                                        >
+                                            {isRTL ? 'تجاهل' : 'Discard'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleSaveEdit}
+                                            disabled={isProcessing || !dirtyNow}
+                                            className="btn btn-primary btn-sm rounded-xl font-extrabold gap-1"
+                                        >
+                                            {isProcessing
+                                                ? (isRTL ? 'جارٍ الحفظ...' : 'Saving...')
+                                                : (isRTL ? `حفظ ${currentTab?.labelAr}` : `Save ${sectionLabel}`)}
+                                        </button>
+                                    </div>
+                                </>
+                            );
+                        })()}
                     </div>
                 </div>
             )}
