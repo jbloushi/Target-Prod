@@ -62,26 +62,33 @@ function addDays({ year, month, day }, daysOffset) {
 }
 
 /**
+ * Parse Phenix raw date string (e.g. "26/9/2026", "2026-09-26", "26/09/2026") into valid Date object
+ */
+function parsePhenixDate(rawDate) {
+    if (!rawDate) return new Date();
+    const s = String(rawDate).trim();
+    if (!s) return new Date();
+
+    let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (m) {
+        return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+    }
+    m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m) {
+        return new Date(Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1])));
+    }
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? new Date() : d;
+}
+
+/**
  * Checks if a Phenix date string represents a recent consignment eligible for customer notification.
  * ONLY consignments from today or yesterday (under 36 hours old) are notified.
  * Historical consignments from earlier dates are strictly skipped to avoid notifying outdated orders.
  */
 function isDateEligibleForNotification(rawDate, maxDaysBack = 1, timeZone = 'Asia/Kuwait') {
     if (!rawDate) return false;
-    const s = String(rawDate).trim();
-    if (!s) return false;
-
-    let parsedDate = null;
-    let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-    if (m) {
-        parsedDate = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
-    } else {
-        m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-        if (m) {
-            parsedDate = new Date(Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1])));
-        }
-    }
-
+    const parsedDate = parsePhenixDate(rawDate);
     if (!parsedDate || Number.isNaN(parsedDate.getTime())) return false;
 
     const now = new Date();
@@ -338,7 +345,7 @@ async function syncPhenixFinancialRecord({ shipment, v, orgId, defaultUserId }) 
                         reference: paymentRef,
                         notes: `Automated payment receipt from Phenix ERP Bill #${v.billId} (${v.paymentMethod || 'Cash'})`,
                         createdById: defaultUserId,
-                        postedAt: v.date ? new Date(v.date) : new Date(),
+                        postedAt: parsePhenixDate(v.date),
                         metadata: {
                             phenixBillId: v.billId,
                             phenixReceiptNo: v.receiptNo,
@@ -407,7 +414,7 @@ async function syncPhenixFinancialRecord({ shipment, v, orgId, defaultUserId }) 
         });
 
         if (!invoice && chargeEntry) {
-            const billDate = v.date ? new Date(v.date) : new Date();
+            const billDate = parsePhenixDate(v.date);
             invoice = await prisma.invoice.create({
                 data: {
                     invoiceNumber,
