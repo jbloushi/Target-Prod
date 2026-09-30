@@ -341,7 +341,7 @@ export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) 
       </div>
 
       {/* 2. Main Consignment Grid Container */}
-      <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl overflow-hidden">
+      <div className="bg-base-100 border border-base-200/90 shadow-sm rounded-2xl overflow-hidden">
         
         {/* Search & Actions Toolbar */}
         <div className="p-4 border-b border-base-200 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3">
