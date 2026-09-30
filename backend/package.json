@@ -23,6 +23,7 @@
     "phenix:inspect": "node scripts/inspect-phenix.js",
     "phenix:sync": "node scripts/sync-phenix-cli.js",
     "phenix:reconcile": "node scripts/reconcile-phenix-records.js",
+    "phenix:audit-ote": "node scripts/audit-phenix-ote.js",
     "finance:audit": "node scripts/verify-finance-and-whatsapp.js"
   },
   "keywords": [],
