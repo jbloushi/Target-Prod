@@ -26,6 +26,10 @@ const CARRIER_INFO_MAP = {
   'FEDEX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'badge-secondary' },
   'OTE': { name: 'Target GCC (OTE)', nameAr: 'تارجت الخليج (OTE)', badge: 'badge-accent' },
   'LOGESTECHS': { name: 'Target GCC (OTE)', nameAr: 'تارجت الخليج (OTE)', badge: 'badge-accent' },
+  'POSTA_PLUS': { name: 'Posta Plus', nameAr: 'بوستا بلس', badge: 'badge-info' },
+  'POSTAPLUS': { name: 'Posta Plus', nameAr: 'بوستا بلس', badge: 'badge-info' },
+  'SEA_FREIGHT': { name: 'Sea Freight', nameAr: 'شحن بحري', badge: 'badge-neutral' },
+  'LAND_FREIGHT': { name: 'Land Freight', nameAr: 'شحن بري', badge: 'badge-neutral' },
   'MAN': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'badge-primary' },
   'MANUAL': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'badge-primary' },
   'INTERNAL': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'badge-primary' },
@@ -34,10 +38,13 @@ const CARRIER_INFO_MAP = {
 const CARRIER_OPTIONS = [
   { value: 'ALL', label: 'All Carriers', labelAr: 'جميع النواقل' },
   { value: 'DHL', label: 'DHL Express', labelAr: 'دي إتش إل إكسبريس' },
-  { value: 'FEDEX', label: 'FedEx Express', labelAr: 'فيديكس إكسبريس' },
   { value: 'ARAMEX', label: 'Aramex', labelAr: 'أرامكس' },
+  { value: 'FEDEX', label: 'FedEx Express', labelAr: 'فيديكس إكسبريس' },
   { value: 'OTE', label: 'Target GCC (OTE)', labelAr: 'تارجت الخليج (OTE)' },
-  { value: 'INTERNAL', label: 'Internal Fleet', labelAr: 'الأسطول الداخلي' },
+  { value: 'POSTA_PLUS', label: 'Posta Plus', labelAr: 'بوستا بلس' },
+  { value: 'INTERNAL', label: 'Internal Fleet (TKW)', labelAr: 'الأسطول الداخلي (TKW)' },
+  { value: 'SEA_FREIGHT', label: 'Sea Freight', labelAr: 'شحن بحري' },
+  { value: 'LAND_FREIGHT', label: 'Land Freight', labelAr: 'شحن بري' },
 ];
 
 // Adapter: backend shipment shape → table row shape
@@ -366,6 +373,9 @@ export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) 
                   ['FEDEX', 'FDX'].includes(carrierParam.toUpperCase()) ? 'FEDEX' :
                   ['ARAMEX', 'ARM'].includes(carrierParam.toUpperCase()) ? 'ARAMEX' :
                   ['OTE', 'LOGESTECHS'].includes(carrierParam.toUpperCase()) ? 'OTE' :
+                  ['POSTA_PLUS', 'POSTAPLUS'].includes(carrierParam.toUpperCase()) ? 'POSTA_PLUS' :
+                  ['SEA_FREIGHT', 'SEA'].includes(carrierParam.toUpperCase()) ? 'SEA_FREIGHT' :
+                  ['LAND_FREIGHT', 'LAND'].includes(carrierParam.toUpperCase()) ? 'LAND_FREIGHT' :
                   ['INTERNAL', 'MAN', 'MANUAL'].includes(carrierParam.toUpperCase()) ? 'INTERNAL' :
                   carrierParam.toUpperCase() || 'ALL'
                 }

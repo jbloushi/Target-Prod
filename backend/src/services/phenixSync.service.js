@@ -497,13 +497,25 @@ function deriveCarrier(costCenter, carrierTracking = '') {
     const cc = String(costCenter || '').toUpperCase().trim();
     const trk = String(carrierTracking || '').trim().toUpperCase();
 
+    if (cc.includes('POSTA PLUS') || cc.includes('POSTAPLUS') || trk.startsWith('PP')) {
+        return 'POSTA_PLUS';
+    }
+    if (cc.includes('TKW') || trk.startsWith('TKW')) {
+        return 'INTERNAL';
+    }
+    if (cc.includes('بحري') || cc.includes('SEA')) {
+        return 'SEA_FREIGHT';
+    }
+    if (cc.includes('بري') || cc.includes('LAND')) {
+        return 'LAND_FREIGHT';
+    }
     if (cc.includes('FEDEX') || cc.includes('FEEDEX') || cc.startsWith('FED') || trk.startsWith('FED') || (/^\d{12}$/.test(trk) && !cc.includes('ARAMEX') && !cc.includes('DHL'))) {
         return 'FEDEX';
     }
     if (cc.includes('ARAMEX') || cc.includes('ARM') || (trk.startsWith('38') && (trk.length === 10 || trk.length === 11))) {
         return 'ARAMEX';
     }
-    if (cc.includes('DHL') || cc === 'D' || cc.includes('DGR') || (/^\d{10}$/.test(trk) && !cc.includes('ARAMEX'))) {
+    if (cc.includes('DHL') || cc === 'D' || cc.includes('DGR') || cc.includes('جوي') || (/^\d{10}$/.test(trk) && !cc.includes('ARAMEX'))) {
         return 'DGR';
     }
     if (cc.includes('OTE') || cc.includes('LOGESTECHS')) {
