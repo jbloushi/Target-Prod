@@ -44,10 +44,24 @@ const EDIT_TABS = [
     { key: 'status', label: 'Status & Checkpoints', labelAr: 'الحالة والملاحظات', icon: 'history' }
 ];
 
+const parseDateRobust = (raw) => {
+    if (!raw) return null;
+    const str = String(raw).trim();
+    const m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m) {
+        return new Date(Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1])));
+    }
+    const d = new Date(str);
+    return Number.isNaN(d.getTime()) ? null : d;
+};
+
 const formatTimestampKuwait = (timestamp) => {
     if (!timestamp) return { date: '—', time: '—', dayHeader: '—', dayKey: '' };
     try {
-        const d = new Date(timestamp);
+        const d = parseDateRobust(timestamp) || new Date(timestamp);
+        if (Number.isNaN(d.getTime())) {
+            return { date: String(timestamp), time: '', dayHeader: String(timestamp), dayKey: '' };
+        }
         return {
             date: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kuwait' }),
             time: d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kuwait' }) + ' AST',
@@ -834,8 +848,13 @@ const ShipmentDetailsPage = () => {
                                 <span>{carrierDisplayName}</span>
                             </div>
                         </div>
-                        <p className="text-xs text-base-content/60 font-semibold">
-                            {getShipmentTypeLabel(shipment.shipmentType)} • {shipment.organization?.name || 'Standard Organization'}
+                        <p className="text-xs text-base-content/60 font-semibold flex items-center gap-1.5 flex-wrap mt-0.5">
+                            <span>{getShipmentTypeLabel(shipment.shipmentType)} • {shipment.organization?.name || 'Standard Organization'}</span>
+                            <span className="opacity-40">•</span>
+                            <span>{isRTL ? 'تاريخ الحجز:' : 'Booked:'} {formatTimestampKuwait(shipment.documents?.rawDate || shipment.documents?.date || shipment.createdAt).date}</span>
+                            {isImported && (
+                                <span className="badge badge-ghost badge-xs text-[9px] font-mono text-primary/80">PHENIX ERP</span>
+                            )}
                         </p>
                     </div>
 

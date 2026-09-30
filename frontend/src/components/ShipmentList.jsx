@@ -86,6 +86,24 @@ const toRowShape = (s) => {
     return null;
   };
 
+  const parseDateRobust = (raw) => {
+    if (!raw) return null;
+    const str = String(raw).trim();
+    const m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m) {
+      return new Date(Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1])));
+    }
+    const d = new Date(str);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+
+  const resolveDisplayDate = () => {
+    const rawPhenixDate = s.documents?.rawDate || s.documents?.date;
+    const parsed = parseDateRobust(rawPhenixDate) || parseDateRobust(s.createdAt);
+    if (!parsed) return '—';
+    return parsed.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kuwait' });
+  };
+
   return {
     raw: s,
     id: s.id || s._id || s.trackingNumber,
@@ -101,7 +119,8 @@ const toRowShape = (s) => {
     status: s.status || 'draft',
     customer: resolveCustomerName(),
     phone: resolveCustomerPhone(),
-    created: s.createdAt ? new Date(s.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—',
+    created: resolveDisplayDate(),
+    isImported: Boolean(s.documents?.phenixBillId || s.documents?.source === 'PHENIX_ERP'),
     eta: s.status === 'delivered' ? 'Delivered' : (s.estimatedDelivery ? new Date(s.estimatedDelivery).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '~2 Days'),
     service: s.serviceType || s.service || 'Express Air',
     weight: s.weight || s.package?.weight || 3.5,
@@ -529,8 +548,15 @@ export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) 
                         <td>
                           <StatusBadge status={s.status} size="sm" />
                         </td>
-                        <td className="text-base-content/70 font-medium">
-                          {s.created}
+                        <td className="text-base-content/70 font-medium whitespace-nowrap">
+                          <div className="flex items-center gap-1">
+                            <span>{s.created}</span>
+                            {s.isImported && (
+                              <span className="badge badge-ghost badge-xs text-[9px] font-mono text-primary/80" title="Phenix ERP Booking Date">
+                                ERP
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td>
                           <span className={`font-bold ${

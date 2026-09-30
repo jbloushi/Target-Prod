@@ -52,6 +52,24 @@ export const ShipmentInspectorDrawer = ({
     const weight = shipment.weight || shipment.package?.weight || 3.5;
     const pieces = shipment.pieces || shipment.package?.pieces || 1;
 
+    const parseDateRobust = (raw) => {
+        if (!raw) return null;
+        const str = String(raw).trim();
+        const m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (m) {
+            return new Date(Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1])));
+        }
+        const d = new Date(str);
+        return Number.isNaN(d.getTime()) ? null : d;
+    };
+
+    const rawPhenixDate = shipment.documents?.rawDate || shipment.documents?.date;
+    const parsedDate = parseDateRobust(rawPhenixDate) || parseDateRobust(shipment.createdAt);
+    const formattedDate = parsedDate 
+        ? parsedDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kuwait' }) 
+        : '—';
+    const isImported = Boolean(shipment.documents?.phenixBillId || shipment.documents?.source === 'PHENIX_ERP');
+
     const copyTracking = () => {
         navigator.clipboard.writeText(trackingNumber);
         setCopied(true);
@@ -99,8 +117,13 @@ export const ShipmentInspectorDrawer = ({
                                 <span className="badge badge-warning badge-xs font-black">TEST</span>
                             )}
                         </div>
-                        <p className="text-xs text-base-content/60 font-semibold mt-0.5">
-                            {serviceType} • {orgName}
+                        <p className="text-xs text-base-content/60 font-semibold mt-0.5 flex items-center gap-1.5 flex-wrap">
+                            <span>{serviceType} • {orgName}</span>
+                            <span className="opacity-40">•</span>
+                            <span>{formattedDate}</span>
+                            {isImported && (
+                                <span className="badge badge-ghost badge-xs text-[9px] font-mono text-primary/80">ERP</span>
+                            )}
                         </p>
                     </div>
                     <button 
