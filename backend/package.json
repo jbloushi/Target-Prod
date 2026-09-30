@@ -25,6 +25,7 @@
     "phenix:sync-20": "node scripts/sync-phenix-cli.js 20 ALL",
     "phenix:sync-30": "node scripts/sync-phenix-cli.js 30 ALL",
     "phenix:sync-all": "node scripts/sync-phenix-cli.js 45 ALL",
+    "phenix:deliver-30": "node scripts/shift-older-shipments-delivered.js 30",
     "phenix:reconcile": "node scripts/reconcile-phenix-records.js",
     "phenix:audit-ote": "node scripts/audit-phenix-ote.js",
     "phenix:carriers": "node scripts/lookup-all-phenix-carriers.js",

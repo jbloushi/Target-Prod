@@ -178,7 +178,7 @@ export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) 
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState([]);
   const [inspectingShipment, setInspectingShipment] = useState(null);
-  const PER_PAGE = 10;
+  const [perPage, setPerPage] = useState(100);
 
   // Sync initialFilter prop if changed by parent
   useEffect(() => {
@@ -218,7 +218,7 @@ export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) 
   // SWR Hook for live shipments
   const { shipments: rawShipments, pagination, loading, mutate } = useShipments({
     page,
-    limit: PER_PAGE,
+    limit: perPage,
     q: search || undefined,
     statusIn: FILTER_STATUSES[activeFilter],
     organizationId,
@@ -660,40 +660,86 @@ export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) 
             </div>
 
             {/* Pagination Controls */}
-            {totalPages > 1 && (
+            {(totalPages > 1 || total > 0) && (
               <div className="p-3.5 border-t border-base-200 flex flex-col sm:flex-row justify-between items-center gap-3 bg-base-200/30">
-                <span className="text-xs text-base-content/70">
-                  {t('page_of', 'Page')} <strong className="text-base-content">{page}</strong> {t('of', 'of')} <strong className="text-base-content">{totalPages}</strong>
-                </span>
-
-                <div className="join">
-                  <button
-                    disabled={page === 1}
-                    onClick={() => setPage(p => Math.max(1, p - 1))}
-                    className="btn btn-xs join-item font-bold"
-                  >
-                    {isRTL ? '»' : '«'}
-                  </button>
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    const pNum = i + 1;
-                    return (
-                      <button
-                        key={pNum}
-                        onClick={() => setPage(pNum)}
-                        className={`btn btn-xs join-item font-bold ${page === pNum ? 'btn-primary' : 'btn-ghost'}`}
-                      >
-                        {pNum}
-                      </button>
-                    );
-                  })}
-                  <button
-                    disabled={page === totalPages}
-                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                    className="btn btn-xs join-item font-bold"
-                  >
-                    {isRTL ? '«' : '»'}
-                  </button>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-base-content/70">
+                    {t('page_of', 'Page')} <strong className="text-base-content">{page}</strong> {t('of', 'of')} <strong className="text-base-content">{totalPages}</strong>
+                    {total > 0 && <span className="ml-1 opacity-70">({total} {t('total', 'total')})</span>}
+                  </span>
+                  <div className="flex items-center gap-1.5 text-xs text-base-content/70">
+                    <span>{t('per_page', 'Show:')}</span>
+                    <select
+                      value={perPage}
+                      onChange={(e) => {
+                        setPerPage(Number(e.target.value));
+                        setPage(1);
+                      }}
+                      className="select select-bordered select-xs text-xs font-semibold bg-base-100"
+                    >
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                      <option value={200}>200</option>
+                    </select>
+                  </div>
                 </div>
+
+                {totalPages > 1 && (() => {
+                  const windowSize = 5;
+                  const startPage = Math.floor((page - 1) / windowSize) * windowSize + 1;
+                  const endPage = Math.min(startPage + windowSize - 1, totalPages);
+                  const pageNumbers = [];
+                  for (let i = startPage; i <= endPage; i++) {
+                    pageNumbers.push(i);
+                  }
+
+                  return (
+                    <div className="join">
+                      <button
+                        disabled={page === 1}
+                        onClick={() => setPage(1)}
+                        title={t('first_page', 'First Page')}
+                        className="btn btn-xs join-item font-bold"
+                      >
+                        {isRTL ? '»»' : '««'}
+                      </button>
+                      <button
+                        disabled={page === 1}
+                        onClick={() => setPage(p => Math.max(1, p - 1))}
+                        title={t('prev_page', 'Previous Page')}
+                        className="btn btn-xs join-item font-bold"
+                      >
+                        {isRTL ? '»' : '«'}
+                      </button>
+                      {pageNumbers.map((pNum) => (
+                        <button
+                          key={pNum}
+                          onClick={() => setPage(pNum)}
+                          className={`btn btn-xs join-item font-bold ${page === pNum ? 'btn-primary' : 'btn-ghost'}`}
+                        >
+                          {pNum}
+                        </button>
+                      ))}
+                      <button
+                        disabled={page === totalPages}
+                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                        title={t('next_page', 'Next Page')}
+                        className="btn btn-xs join-item font-bold"
+                      >
+                        {isRTL ? '«' : '»'}
+                      </button>
+                      <button
+                        disabled={page === totalPages}
+                        onClick={() => setPage(totalPages)}
+                        title={t('last_page', 'Last Page')}
+                        className="btn btn-xs join-item font-bold"
+                      >
+                        {isRTL ? '««' : '»»'}
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </>
