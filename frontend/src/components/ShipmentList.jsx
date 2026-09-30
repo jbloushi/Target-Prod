@@ -154,10 +154,10 @@ const toRowShape = (s) => {
 const FILTER_STATUSES = {
   all: undefined,
   exceptions: 'exception,failed,cancelled,returned',
-  active: 'booked,created,picked_up,received_at_hub,verified,in_transit,out_for_delivery',
-  pending: 'pending,ready_for_pickup,updated',
+  active: 'picked_up,received_at_hub,verified,in_transit',
+  outForDelivery: 'out_for_delivery',
   delivered: 'delivered,completed',
-  drafts: 'draft',
+  readyForPickup: 'booked,created,ready_for_pickup,pending,draft,updated',
 };
 
 export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) => {
@@ -205,13 +205,16 @@ export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) 
   const { stats } = useShipmentStats({ organizationId, carrier: carrierParam || undefined });
 
   const filterTabs = useMemo(() => {
+    const readyPickupCount = (stats.readyForPickup != null ? stats.readyForPickup : (stats.pending || 0) + (stats.drafts || 0));
+    const activeTransitCount = (stats.inTransit || 0) + (stats.pickedUp || 0);
+
     return [
-      { key: 'all', label: t('filter_all', 'All'), count: stats.total || 0, badge: 'badge-primary', border: 'border-primary' },
-      { key: 'exceptions', label: t('filter_exceptions', 'Triage / Holds'), count: stats.exceptions || 0, badge: 'badge-error', border: 'border-error', isTriage: true },
-      { key: 'active', label: t('filter_in_transit', 'In Transit'), count: (stats.inTransit || 0) + (stats.pickedUp || 0), badge: 'badge-info', border: 'border-info' },
-      { key: 'pending', label: t('filter_pending', 'Pending Gate'), count: stats.pending || 0, badge: 'badge-warning', border: 'border-warning' },
-      { key: 'delivered', label: t('filter_delivered', 'Delivered'), count: stats.delivered || 0, badge: 'badge-success', border: 'border-success' },
-      { key: 'drafts', label: t('filter_drafts', 'Drafts'), count: stats.drafts || 0, badge: 'badge-ghost', border: 'border-base-300' },
+      { key: 'all', label: t('filter_all', 'All'), count: stats.total || 0, badge: 'badge-primary', badgeLabel: 'ALL', border: 'border-primary' },
+      { key: 'exceptions', label: t('filter_exceptions', 'Triage / Holds'), count: stats.exceptions || 0, badge: 'badge-error', badgeLabel: 'EXCEPTIONS', border: 'border-error', isTriage: true },
+      { key: 'active', label: t('filter_in_transit', 'In Transit'), count: activeTransitCount, badge: 'badge-info', badgeLabel: 'ACTIVE', border: 'border-info' },
+      { key: 'outForDelivery', label: t('filter_out_for_delivery', 'Out for Delivery'), count: stats.outForDelivery || 0, badge: 'badge-warning', badgeLabel: 'OUT FOR DELIVERY', border: 'border-warning' },
+      { key: 'delivered', label: t('filter_delivered', 'Delivered'), count: stats.delivered || 0, badge: 'badge-success', badgeLabel: 'DELIVERED', border: 'border-success' },
+      { key: 'readyForPickup', label: t('filter_ready_for_pickup', 'Ready for Pickup'), count: readyPickupCount, badge: 'badge-neutral', badgeLabel: 'READY PICKUP', border: 'border-base-300' },
     ];
   }, [stats, t]);
 
@@ -325,7 +328,7 @@ export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) 
                     </span>
                   )}
                   <span className={`badge ${tab.badge} badge-xs py-1.5 px-2 font-bold`}>
-                    {tab.key.toUpperCase()}
+                    {tab.badgeLabel || tab.key.toUpperCase()}
                   </span>
                 </div>
               </div>

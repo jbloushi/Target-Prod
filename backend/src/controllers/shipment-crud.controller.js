@@ -372,6 +372,7 @@ exports.getShipmentStats = async (req, res) => {
             total: 0,
             drafts: 0,
             pending: 0,
+            readyForPickup: 0,
             pickedUp: 0,
             inTransit: 0,
             outForDelivery: 0,
@@ -390,16 +391,23 @@ exports.getShipmentStats = async (req, res) => {
         statusGroups.forEach(s => {
             const count = s._count._all;
             result.total += count;
-            if (s.status === 'draft') result.drafts += count;
-            else if (['pending', 'ready_for_pickup', 'updated'].includes(s.status)) result.pending += count;
-            else if (s.status === 'picked_up') result.pickedUp += count;
-            else if (s.status === 'in_transit') result.inTransit += count;
-            else if (s.status === 'out_for_delivery') {
+            if (s.status === 'draft') {
+                result.drafts += count;
+                result.readyForPickup += count;
+            } else if (['booked', 'ready_for_pickup', 'pending', 'created', 'updated'].includes(s.status)) {
+                result.readyForPickup += count;
+                result.pending += count;
+            } else if (s.status === 'picked_up') {
+                result.pickedUp += count;
+            } else if (s.status === 'in_transit') {
+                result.inTransit += count;
+            } else if (s.status === 'out_for_delivery') {
                 result.outForDelivery += count;
-                result.inTransit += count; // Also counts towards in-transit
+            } else if (['delivered', 'completed'].includes(s.status)) {
+                result.delivered += count;
+            } else if (['exception', 'failed', 'cancelled', 'returned'].includes(s.status)) {
+                result.exceptions += count;
             }
-            else if (['delivered', 'completed'].includes(s.status)) result.delivered += count;
-            else if (['exception', 'failed', 'cancelled', 'returned'].includes(s.status)) result.exceptions += count;
         });
 
         // Live Financial Summary (Role & capability scoped: only for Admin, Manager/Target Owner, and Accounting)
