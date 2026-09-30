@@ -63,13 +63,13 @@ function addDays({ year, month, day }, daysOffset) {
 
 /**
  * Checks if a Phenix date string represents a recent consignment eligible for customer notification.
- * Consignments from today, yesterday, or within the rolling sync window (default 2 days) are notified.
- * Historical consignments older than maxDaysBack (e.g. from weeks ago) are safely skipped to avoid notifying outdated orders.
+ * ONLY consignments from today or yesterday (under 36 hours old) are notified.
+ * Historical consignments from earlier dates are strictly skipped to avoid notifying outdated orders.
  */
-function isDateEligibleForNotification(rawDate, maxDaysBack = 2, timeZone = 'Asia/Kuwait') {
-    if (!rawDate) return true;
+function isDateEligibleForNotification(rawDate, maxDaysBack = 1, timeZone = 'Asia/Kuwait') {
+    if (!rawDate) return false;
     const s = String(rawDate).trim();
-    if (!s) return true;
+    if (!s) return false;
 
     let parsedDate = null;
     let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
@@ -82,14 +82,14 @@ function isDateEligibleForNotification(rawDate, maxDaysBack = 2, timeZone = 'Asi
         }
     }
 
-    if (!parsedDate || Number.isNaN(parsedDate.getTime())) return true;
+    if (!parsedDate || Number.isNaN(parsedDate.getTime())) return false;
 
     const now = new Date();
     const diffMs = now.getTime() - parsedDate.getTime();
     const diffDays = diffMs / (24 * 60 * 60 * 1000);
 
-    // Allow today, yesterday, or up to maxDaysBack days old (and handle future timezone tolerance)
-    return diffDays >= -1 && diffDays <= Math.max(1, maxDaysBack);
+    // Hard limit: only allow today or yesterday (<= 1.5 days old)
+    return diffDays >= -0.5 && diffDays <= 1.5;
 }
 
 function buildPhenixRequestBody(from, to) {
@@ -475,22 +475,23 @@ function normalizePhenixPhone(raw) {
 }
 
 /**
- * Derive carrier code from Phenix Cost_Center
+ * Derive carrier code from Phenix Cost_Center and Tracking Number pattern
  * @param {string} costCenter
+ * @param {string} [carrierTracking]
  * @returns {'DGR'|'ARAMEX'|'FEDEX'|'OTE'|'IW_EXPRESS'|'MANUAL'}
  */
-function deriveCarrier(costCenter) {
+function deriveCarrier(costCenter, carrierTracking = '') {
     const cc = String(costCenter || '').toUpperCase().trim();
-    if (!cc) return 'DGR';
+    const trk = String(carrierTracking || '').trim().toUpperCase();
 
-    if (cc.includes('DHL') || cc === 'D' || cc.includes('DGR')) {
-        return 'DGR';
+    if (cc.includes('FEDEX') || cc.includes('FEEDEX') || cc.startsWith('FED') || trk.startsWith('FED') || (/^\d{12}$/.test(trk) && !cc.includes('ARAMEX') && !cc.includes('DHL'))) {
+        return 'FEDEX';
     }
-    if (cc.includes('ARAMEX')) {
+    if (cc.includes('ARAMEX') || cc.includes('ARM') || (trk.startsWith('38') && (trk.length === 10 || trk.length === 11))) {
         return 'ARAMEX';
     }
-    if (cc.includes('FEDEX') || cc.includes('FEEDEX')) {
-        return 'FEDEX';
+    if (cc.includes('DHL') || cc === 'D' || cc.includes('DGR') || (/^\d{10}$/.test(trk) && !cc.includes('ARAMEX'))) {
+        return 'DGR';
     }
     if (cc.includes('OTE') || cc.includes('LOGESTECHS')) {
         return 'OTE';
@@ -509,7 +510,7 @@ function validatePhenixRow(row) {
     const receiptNo = String(row.Receipt_no || '').trim();
     const carrierTracking = String(row.bill_detailCustomField_1 || '').trim();
     const costCenter = String(row.Cost_Center || '').trim();
-    const derivedCarrier = deriveCarrier(costCenter);
+    const derivedCarrier = deriveCarrier(costCenter, carrierTracking);
 
     // Merchant Store Organization & Client ID
     const merchantName = String(row.Client || '').trim() || 'Target Logistics';
@@ -942,7 +943,8 @@ class PhenixSyncService {
                 }
 
                 if (sendWhatsApp) {
-                    const isEligible = isDateEligibleForNotification(v.date, opts.daysBack || 2);
+                    const isTerminal = ['delivered', 'completed', 'cancelled', 'returned'].includes(String(shipment.status || '').toLowerCase());
+                    const isEligible = !isTerminal && isDateEligibleForNotification(v.date, opts.daysBack || 2);
                     if (isEligible) {
                         if (v.receiverPhone) {
                             notificationsToSend.push({
@@ -964,7 +966,7 @@ class PhenixSyncService {
                             });
                         }
                     } else {
-                        logger.info(`[PhenixSync Safety Guard] Shipment #${shipment.trackingNumber} is from past date (${v.date}). Skipped live outbound WhatsApp to avoid sending outdated messages.`);
+                        logger.info(`[PhenixSync Safety Guard] Shipment #${shipment.trackingNumber} (status: ${shipment.status}, date: ${v.date}) is not eligible for automated WhatsApp. Skipped live outbound WhatsApp.`);
                     }
                 }
 

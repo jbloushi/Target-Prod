@@ -282,7 +282,7 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                                         Auto WhatsApp
                                     </span>
                                     <span className="text-[10px] text-base-content/50">
-                                        target-kw.com URL
+                                        Today's Orders (≤24h)
                                     </span>
                                 </div>
                                 <input

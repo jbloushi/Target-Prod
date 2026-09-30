@@ -643,7 +643,9 @@ exports.createShipment = async (req, res) => {
     try {
         const shipment = await ShipmentDraftService.createDraft(req.body, req.user);
         logger.info(`Shipment ${shipment.trackingNumber} created (Draft).`);
-        chatwootNotificationService.triggerShipmentNotification('shipment_created', shipment);
+        if (req.body.notifyCustomer !== false && !req.body.isHistorical) {
+            chatwootNotificationService.triggerShipmentNotification('shipment_created', shipment);
+        }
         WebhookDispatcher.dispatch('shipment.created', shipment.organizationId, {
             trackingNumber: shipment.trackingNumber,
             status: shipment.status,
@@ -1334,7 +1336,7 @@ exports.getShipmentAuditLogs = async (req, res) => {
  */
 exports.bulkImportShipments = async (req, res) => {
     try {
-        const { rows, defaultCarrierCode = 'DGR', autoDispatch = false } = req.body;
+        const { rows, defaultCarrierCode = 'DGR', autoDispatch = false, notifyCustomers = false } = req.body;
         const { user } = req;
 
         if (!Array.isArray(rows) || rows.length === 0) {
@@ -1370,6 +1372,7 @@ exports.bulkImportShipments = async (req, res) => {
                     carrierCode: carrier,
                     shipmentType: 'package',
                     currency: 'KWD',
+                    notifyCustomer: notifyCustomers === true,
                     origin: {
                         company: user.organization?.name || user.name || 'Target Logistics Hub',
                         contactPerson: user.name || 'Operations Staff',

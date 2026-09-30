@@ -259,8 +259,29 @@ class WhatsAppIntegrationService {
         const chosenTemplate = templateName || 'shipment_confirmation_2';
         const provider = settings.provider || 'SHIPMENT_WHATSAPP';
 
-        // STRICT DEDUPLICATION GUARD: Prevent duplicate WhatsApp sends to the same recipient role
+        // STRICT AGE & DEDUPLICATION GUARDS: Prevent sending to old shipments (>36h) or duplicate sends
         if (!force) {
+            // Check shipment age: do not notify for historical shipments older than 36 hours
+            const shipmentDateRaw = shipment?.documents?.rawDate || shipment?.createdAt;
+            if (shipmentDateRaw) {
+                let sDate = new Date(shipmentDateRaw);
+                if (typeof shipmentDateRaw === 'string' && /^\d{1,2}\/\d{1,2}\/\d{4}/.test(shipmentDateRaw)) {
+                    const m = shipmentDateRaw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+                    if (m) sDate = new Date(Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1])));
+                }
+                if (!Number.isNaN(sDate.getTime())) {
+                    const ageHours = (Date.now() - sDate.getTime()) / (1000 * 60 * 60);
+                    if (ageHours > 36) {
+                        logger.info(`[WhatsApp Age Guard] Skipped outbound notification for historical shipment ${shipment.trackingNumber} (Age: ${Math.round(ageHours)}h > 36h ceiling)`);
+                        return {
+                            status: 'SKIPPED',
+                            reason: 'HISTORICAL_SHIPMENT',
+                            message: `Outbound notification skipped because shipment was created >36 hours ago (${formatLegibleDate(sDate)}).`
+                        };
+                    }
+                }
+            }
+
             // 1. Check local database for successful sends to this specific recipient role
             const existingLog = await prisma.shipmentNotificationLog.findFirst({
                 where: {
