@@ -177,9 +177,65 @@ exports.getBalance = async (req, res) => {
 /**
  * Get transaction history (Ledger)
  */
+function resolveDateRange({ startDate, endDate, from, to, period, fromDate, toDate }) {
+    const startInput = startDate || from || fromDate;
+    const endInput = endDate || to || toDate;
+
+    if (startInput || endInput) {
+        const dateFilter = {};
+        if (startInput) {
+            const d = new Date(startInput);
+            if (!isNaN(d.getTime())) {
+                d.setHours(0, 0, 0, 0);
+                dateFilter.gte = d;
+            }
+        }
+        if (endInput) {
+            const d = new Date(endInput);
+            if (!isNaN(d.getTime())) {
+                d.setHours(23, 59, 59, 999);
+                dateFilter.lte = d;
+            }
+        }
+        return Object.keys(dateFilter).length > 0 ? dateFilter : null;
+    }
+
+    if (!period || period === 'all') return null;
+
+    const now = new Date();
+
+    if (period === 'today') {
+        const start = new Date(now);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(now);
+        end.setHours(23, 59, 59, 999);
+        return { gte: start, lte: end };
+    }
+
+    if (period === '7days' || period === '7_days' || period === 'past_7_days') {
+        const start = new Date(now);
+        start.setDate(start.getDate() - 6);
+        start.setHours(0, 0, 0, 0);
+        return { gte: start };
+    }
+
+    if (period === 'this_month' || period === 'month') {
+        const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        return { gte: start };
+    }
+
+    if (period === 'last_month') {
+        const start = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
+        const end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+        return { gte: start, lte: end };
+    }
+
+    return null;
+}
+
 exports.getLedger = async (req, res) => {
     try {
-        const { page = 1, limit = 20, orgId } = req.query;
+        const { page = 1, limit = 20, orgId, period, startDate, endDate, fromDate, toDate, from, to } = req.query;
         let organizationId = undefined;
 
         if (isOrgRole(req.user.role)) {
@@ -199,6 +255,11 @@ exports.getLedger = async (req, res) => {
         const skip = (parsedPage - 1) * parsedLimit;
 
         const where = organizationId !== undefined ? { organizationId } : {};
+
+        const dateRange = resolveDateRange({ startDate, endDate, from, to, period, fromDate, toDate });
+        if (dateRange) {
+            where.createdAt = dateRange;
+        }
 
         const organization = (organizationId && organizationId !== null)
             ? await prisma.organization.findUnique({ where: { id: organizationId }, select: { currency: true } })

@@ -160,7 +160,13 @@ const FILTER_STATUSES = {
   readyForPickup: 'booked,created,ready_for_pickup,pending,draft,updated',
 };
 
-export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) => {
+export const ShipmentList = ({ 
+  organizationId = 'all', 
+  initialFilter = 'all',
+  period = null,
+  startDate = null,
+  endDate = null 
+}) => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
@@ -171,6 +177,9 @@ export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) 
   const carrierParam = searchParams.get('carrier') || searchParams.get('carrierCode') || '';
   const qParam = searchParams.get('q') || '';
   const destCountryParam = searchParams.get('destinationCountry') || searchParams.get('destCountry') || '';
+  const periodParam = period || searchParams.get('period') || undefined;
+  const startDateParam = startDate || searchParams.get('startDate') || undefined;
+  const endDateParam = endDate || searchParams.get('endDate') || undefined;
 
   // State
   const [activeFilter, setActiveFilter] = useState(initialFilter || 'all');
@@ -196,13 +205,19 @@ export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) 
     }
   }, [qParam]);
 
-  // Reset page when organization or carrier changes
+  // Reset page when organization, carrier, or period changes
   useEffect(() => {
     setPage(1);
     setSelectedIds([]);
-  }, [organizationId, carrierParam, destCountryParam]);
+  }, [organizationId, carrierParam, destCountryParam, periodParam, startDateParam, endDateParam]);
 
-  const { stats } = useShipmentStats({ organizationId, carrier: carrierParam || undefined });
+  const { stats } = useShipmentStats({ 
+    organizationId, 
+    carrier: carrierParam || undefined,
+    period: periodParam !== 'all' ? periodParam : undefined,
+    startDate: startDateParam,
+    endDate: endDateParam
+  });
 
   const filterTabs = useMemo(() => {
     const readyPickupCount = (stats.readyForPickup != null ? stats.readyForPickup : (stats.pending || 0) + (stats.drafts || 0));
@@ -227,6 +242,9 @@ export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) 
     organizationId,
     carrier: carrierParam || undefined,
     destinationCountry: destCountryParam || undefined,
+    period: periodParam !== 'all' ? periodParam : undefined,
+    startDate: startDateParam,
+    endDate: endDateParam
   });
 
   const total = pagination?.total || 0;

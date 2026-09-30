@@ -88,6 +88,12 @@ const FinancePage = () => {
     // Active Tab
     const [activeTab, setActiveTab] = useState('overview');
 
+    // Period & Timeframe State
+    const [selectedPeriod, setSelectedPeriod] = useState('this_month'); // 'today' | '7days' | 'this_month' | 'last_month' | 'all' | 'custom'
+    const [customStartDate, setCustomStartDate] = useState('');
+    const [customEndDate, setCustomEndDate] = useState('');
+    const [isCustomDateOpen, setIsCustomDateOpen] = useState(false);
+
     // COD & Driver Vault Clearing State
     const [codSummary, setCodSummary] = useState({
         unremittedTotalsByCurrency: {},
@@ -216,11 +222,15 @@ const FinancePage = () => {
         if (!targetOrg) return;
         try {
             setLoading(true);
-            const response = await financeService.getLedger({
+            const params = {
                 page: pagination.page,
                 limit: pagination.limit,
-                orgId: targetOrg
-            });
+                orgId: targetOrg,
+                period: selectedPeriod === 'custom' ? undefined : selectedPeriod,
+                startDate: selectedPeriod === 'custom' ? customStartDate : undefined,
+                endDate: selectedPeriod === 'custom' ? customEndDate : undefined
+            };
+            const response = await financeService.getLedger(params);
             setLedger(response.data || []);
             setPagination(prev => ({
                 ...prev,
@@ -233,7 +243,7 @@ const FinancePage = () => {
         } finally {
             setLoading(false);
         }
-    }, [pagination.page, pagination.limit, selectedOrgId, refreshUser]);
+    }, [pagination.page, pagination.limit, selectedOrgId, selectedPeriod, customStartDate, customEndDate, refreshUser]);
 
     useEffect(() => {
         if (selectedOrgId) {
@@ -252,7 +262,10 @@ const FinancePage = () => {
                 limit: shipmentPagination.limit,
                 q: debouncedSearch,
                 sortBy: 'createdAt',
-                sortOrder: 'desc'
+                sortOrder: 'desc',
+                period: selectedPeriod === 'custom' ? undefined : selectedPeriod,
+                startDate: selectedPeriod === 'custom' ? customStartDate : undefined,
+                endDate: selectedPeriod === 'custom' ? customEndDate : undefined
             };
 
             if (statusFilter === 'paid') {
@@ -278,7 +291,7 @@ const FinancePage = () => {
         } finally {
             setShipmentsLoading(false);
         }
-    }, [selectedOrgId, shipmentPagination.page, shipmentPagination.limit, debouncedSearch, statusFilter]);
+    }, [selectedOrgId, shipmentPagination.page, shipmentPagination.limit, debouncedSearch, statusFilter, selectedPeriod, customStartDate, customEndDate]);
 
     useEffect(() => {
         fetchShipments();
@@ -327,10 +340,15 @@ const FinancePage = () => {
             }
 
             if (selectedOrgId) {
+                const filterParams = {
+                    period: selectedPeriod === 'custom' ? undefined : selectedPeriod,
+                    startDate: selectedPeriod === 'custom' ? customStartDate : undefined,
+                    endDate: selectedPeriod === 'custom' ? customEndDate : undefined
+                };
                 const [balanceRes, paymentsRes, invoicesRes] = await Promise.all([
-                    financeService.getOrganizationBalance(selectedOrgId),
-                    financeService.listPayments(selectedOrgId),
-                    financeService.listInvoices(selectedOrgId)
+                    financeService.getOrganizationBalance(selectedOrgId, filterParams),
+                    financeService.listPayments(selectedOrgId, filterParams),
+                    financeService.listInvoices(selectedOrgId, filterParams)
                 ]);
 
                 setOverview(balanceRes.data);
@@ -345,11 +363,11 @@ const FinancePage = () => {
         } finally {
             setLoading(false);
         }
-    }, [selectedOrgId, fetchLedger, can, user?.organizationId, user?.role]);
+    }, [selectedOrgId, selectedPeriod, customStartDate, customEndDate, fetchLedger, can, user?.organizationId, user?.role]);
 
     useEffect(() => {
         loadFinance();
-    }, [loadFinance]);
+    }, [loadFinance, selectedPeriod, customStartDate, customEndDate]);
 
     const handlePostPayment = async () => {
         if (!paymentForm.amount) return;
@@ -715,6 +733,109 @@ const FinancePage = () => {
                         </span>
                         {lang === 'ar' ? 'تحديث' : 'Refresh'}
                     </button>
+                </div>
+            </div>
+
+            {/* Timeframe & Period Control Deck */}
+            <div className="bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-3 sm:p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                        <span className="material-symbols-outlined text-lg">calendar_month</span>
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-black uppercase tracking-wider text-base-content">
+                                {lang === 'ar' ? 'نطاق الفترة الزمنية المحاسبية' : 'Financial Accounting Period'}
+                            </span>
+                            <span className="badge badge-primary badge-outline badge-xs font-bold">
+                                {selectedPeriod === 'today' && (lang === 'ar' ? 'اليوم' : 'Today')}
+                                {selectedPeriod === '7days' && (lang === 'ar' ? 'آخر 7 أيام' : 'Past 7 Days')}
+                                {selectedPeriod === 'this_month' && (lang === 'ar' ? 'هذا الشهر' : 'This Month')}
+                                {selectedPeriod === 'last_month' && (lang === 'ar' ? 'الشهر الماضي' : 'Last Month')}
+                                {selectedPeriod === 'all' && (lang === 'ar' ? 'جميع البيانات التاريخية' : 'All-Time')}
+                                {selectedPeriod === 'custom' && (lang === 'ar' ? 'نطاق مخصص' : 'Custom Range')}
+                            </span>
+                        </div>
+                        <p className="text-[11px] text-base-content/60 font-medium mt-0.5">
+                            {selectedPeriod === 'today' && (lang === 'ar' ? 'عرض حركات وسجلات اليوم المالية فقط' : 'Displaying ledger entries and invoices recorded today')}
+                            {selectedPeriod === '7days' && (lang === 'ar' ? 'عرض العمليات المالية لآخر 7 أيام تشغيلية' : 'Displaying transactions for the past 7 operational days')}
+                            {selectedPeriod === 'this_month' && (lang === 'ar' ? 'عرض حركات دورة الشهر الحالي المحاسبية' : 'Displaying transactions for current monthly financial cycle')}
+                            {selectedPeriod === 'last_month' && (lang === 'ar' ? 'عرض حركات الشهر الماضي كاملاً' : 'Displaying transactions for full previous calendar month')}
+                            {selectedPeriod === 'all' && (lang === 'ar' ? 'نظرة شاملة لكافة القيود التاريخية المسجلة' : 'Complete historical ledger and financial overview')}
+                            {selectedPeriod === 'custom' && (lang === 'ar' ? `الفترة المحددة: ${customStartDate || 'من البداية'} إلى ${customEndDate || 'اليوم'}` : `Selected range: ${customStartDate || 'Start'} to ${customEndDate || 'End'}`)}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                    {/* Preset Period Buttons */}
+                    <div className="join w-full sm:w-auto overflow-x-auto">
+                        {[
+                            { id: 'today', label: lang === 'ar' ? 'اليوم' : 'Today', icon: 'today' },
+                            { id: '7days', label: lang === 'ar' ? '7 أيام' : '7 Days', icon: 'date_range' },
+                            { id: 'this_month', label: lang === 'ar' ? 'هذا الشهر' : 'This Month', icon: 'calendar_today' },
+                            { id: 'last_month', label: lang === 'ar' ? 'الشهر الماضي' : 'Last Month', icon: 'history' },
+                            { id: 'all', label: lang === 'ar' ? 'الكل' : 'All Time', icon: 'all_inclusive' },
+                            { id: 'custom', label: lang === 'ar' ? 'مخصص' : 'Custom', icon: 'tune' },
+                        ].map((p) => (
+                            <button
+                                key={p.id}
+                                onClick={() => {
+                                    setSelectedPeriod(p.id);
+                                    if (p.id === 'custom') setIsCustomDateOpen(true);
+                                    else setIsCustomDateOpen(false);
+                                }}
+                                className={`btn btn-xs sm:btn-sm join-item font-bold text-xs gap-1 ${
+                                    selectedPeriod === p.id ? 'btn-primary shadow-sm' : 'btn-ghost border-base-200 text-base-content/70'
+                                }`}
+                            >
+                                <span className="material-symbols-outlined text-sm">{p.icon}</span>
+                                <span>{p.label}</span>
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Custom Date Pickers Popover / Controls */}
+                    {(selectedPeriod === 'custom' || isCustomDateOpen) && (
+                        <div className="flex items-center gap-1.5 bg-base-200/70 p-1.5 rounded-xl border border-base-300 w-full sm:w-auto animate-in fade-in duration-200">
+                            <input
+                                type="date"
+                                value={customStartDate}
+                                onChange={(e) => {
+                                    setCustomStartDate(e.target.value);
+                                    setSelectedPeriod('custom');
+                                }}
+                                className="input input-bordered input-xs rounded-lg font-mono text-xs bg-base-100"
+                                title={lang === 'ar' ? 'تاريخ البدء' : 'Start Date'}
+                            />
+                            <span className="text-xs font-bold text-base-content/50">{isRTL ? '←' : '→'}</span>
+                            <input
+                                type="date"
+                                value={customEndDate}
+                                onChange={(e) => {
+                                    setCustomEndDate(e.target.value);
+                                    setSelectedPeriod('custom');
+                                }}
+                                className="input input-bordered input-xs rounded-lg font-mono text-xs bg-base-100"
+                                title={lang === 'ar' ? 'تاريخ الانتهاء' : 'End Date'}
+                            />
+                            {(customStartDate || customEndDate) && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setCustomStartDate('');
+                                        setCustomEndDate('');
+                                        setSelectedPeriod('this_month');
+                                        setIsCustomDateOpen(false);
+                                    }}
+                                    className="btn btn-ghost btn-xs text-base-content/60 hover:text-error"
+                                    title={lang === 'ar' ? 'مسح' : 'Clear'}
+                                >
+                                    ✕
+                                </button>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
 
