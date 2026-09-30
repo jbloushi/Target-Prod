@@ -3023,12 +3023,29 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
         </div>
       </div>
 
-      {/* Step Indicator Ribbon (DaisyUI Steps) */}
+      {/*
+       * Step ribbon (Visibility Redesign 2c):
+       * completed steps now surface a one-line summary of what was captured
+       * (sender company, receiver city, package count, carrier, etc.) so the
+       * operator can see the whole shipment taking shape without scrolling
+       * up. The horizontal daisyUI steps stay so the layout doesn't reflow.
+       */}
       <div className="card bg-base-100 shadow-sm border border-base-200/80 p-4 overflow-x-auto">
         <ul className="steps steps-horizontal w-full min-w-[600px]">
           {WIZARD_STEPS.map((s) => {
             const isCompleted = step > s.id;
             const isCurrent = step === s.id;
+            let summary = null;
+            if (isCompleted) {
+              switch (s.id) {
+                case 1: summary = sender.company || sender.contactPerson || sender.city; break;
+                case 2: summary = receiver.company || receiver.contactPerson || receiver.city; break;
+                case 3: summary = `${packagesList.length || 1} pkg · ${totalWeight} kg`; break;
+                case 4: summary = KNOWN_CARRIERS[service.carrierCode]?.name || service.carrierCode || (lang === 'ar' ? 'الناقل' : 'Carrier'); break;
+                case 5: summary = customs?.incoterm || (lang === 'ar' ? 'الجمارك' : 'Customs'); break;
+                default: summary = null;
+              }
+            }
             return (
               <li
                 key={s.id}
@@ -3040,10 +3057,17 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
                 }`}
                 data-content={isCompleted ? '✓' : s.id}
               >
-                <span className="flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-sm hidden sm:inline">{s.icon}</span>
-                  <span>{lang === 'ar' ? (s.labelAr || s.label) : s.label}</span>
-                </span>
+                <div className="flex flex-col items-center gap-0.5 leading-tight">
+                  <span className="flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-sm hidden sm:inline">{s.icon}</span>
+                    <span>{lang === 'ar' ? (s.labelAr || s.label) : s.label}</span>
+                  </span>
+                  {summary && (
+                    <span className="text-[10px] font-semibold text-base-content/60 truncate max-w-[140px]">
+                      {summary}
+                    </span>
+                  )}
+                </div>
               </li>
             );
           })}
@@ -3199,17 +3223,30 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
               </div>
             )}
 
-            {/* Stepper Navigation Buttons */}
+            {/* Stepper Navigation Buttons (Visibility Redesign 2c):
+              * the primary CTA names the next step ("Continue to Carrier &
+              * Rates") instead of a generic "Next Step", so the operator
+              * always sees what comes next before committing. */}
             <div className="space-y-2 pt-2 border-t border-base-200">
               {step < 6 ? (
-                <button
-                  type="button"
-                  onClick={handleNext}
-                  className="btn btn-primary w-full btn-sm font-bold shadow-md shadow-primary/20 gap-2"
-                >
-                  <span>{lang === 'ar' ? 'الخطوة التالية (Next Step)' : 'Next Step'}</span>
-                  <span className="material-symbols-outlined text-sm">{isRTL ? 'arrow_back' : 'arrow_forward'}</span>
-                </button>
+                (() => {
+                  const nextStep = WIZARD_STEPS.find((s) => s.id === step + 1);
+                  const nextLabel = nextStep ? (lang === 'ar' ? nextStep.labelAr : nextStep.label) : '';
+                  return (
+                    <button
+                      type="button"
+                      onClick={handleNext}
+                      className="btn btn-primary w-full btn-sm font-bold shadow-md shadow-primary/20 gap-2"
+                    >
+                      <span>
+                        {lang === 'ar'
+                          ? `المتابعة إلى ${nextLabel}`
+                          : `Continue to ${nextLabel}`}
+                      </span>
+                      <span className="material-symbols-outlined text-sm">{isRTL ? 'arrow_back' : 'arrow_forward'}</span>
+                    </button>
+                  );
+                })()
               ) : (
                 <button
                   type="button"
