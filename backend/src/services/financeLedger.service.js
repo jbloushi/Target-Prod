@@ -223,6 +223,7 @@ const createLedgerEntry = async (organizationId, entry, externalTx = null) => {
                 parentEntryId: entry.parentEntryId,
                 balanceAfter: toApiAmount(balanceAfter),
                 createdBy: entry.createdBy,
+                createdAt: entry.createdAt ? new Date(entry.createdAt) : undefined,
                 metadata: {
                     ...(entry.metadata || {}),
                     currency: ledgerCurrency

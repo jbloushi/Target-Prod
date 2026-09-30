@@ -21,7 +21,8 @@
     "sync:carriers": "node scripts/sync-all-carriers.js",
     "dispatch:whatsapp": "node scripts/dispatch-pending-whatsapp.js",
     "phenix:inspect": "node scripts/inspect-phenix.js",
-    "phenix:sync": "node scripts/sync-phenix-cli.js"
+    "phenix:sync": "node scripts/sync-phenix-cli.js",
+    "phenix:reconcile": "node scripts/reconcile-phenix-records.js"
   },
   "keywords": [],
   "author": "",

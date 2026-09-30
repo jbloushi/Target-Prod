@@ -283,6 +283,7 @@ async function syncPhenixFinancialRecord({ shipment, v, orgId, defaultUserId }) 
     }
 
     try {
+        const billDate = parsePhenixDate(v.date);
         const isPaid = Boolean(
             (v.paymentMethod && (
                 v.paymentMethod.includes('نقداً') || 
@@ -314,6 +315,7 @@ async function syncPhenixFinancialRecord({ shipment, v, orgId, defaultUserId }) 
                 sourceRepo: 'Shipment',
                 sourceId: shipment.id,
                 createdBy: defaultUserId,
+                createdAt: billDate,
                 metadata: {
                     phenixBillId: v.billId,
                     phenixReceiptNo: v.receiptNo,
@@ -345,7 +347,8 @@ async function syncPhenixFinancialRecord({ shipment, v, orgId, defaultUserId }) 
                         reference: paymentRef,
                         notes: `Automated payment receipt from Phenix ERP Bill #${v.billId} (${v.paymentMethod || 'Cash'})`,
                         createdById: defaultUserId,
-                        postedAt: parsePhenixDate(v.date),
+                        postedAt: billDate,
+                        createdAt: billDate,
                         metadata: {
                             phenixBillId: v.billId,
                             phenixReceiptNo: v.receiptNo,
@@ -363,7 +366,8 @@ async function syncPhenixFinancialRecord({ shipment, v, orgId, defaultUserId }) 
                         amount: v.totalAmount,
                         currency: 'KWD',
                         status: 'ACTIVE',
-                        createdBy: defaultUserId
+                        createdBy: defaultUserId,
+                        createdAt: billDate
                     }
                 });
 
@@ -378,6 +382,7 @@ async function syncPhenixFinancialRecord({ shipment, v, orgId, defaultUserId }) 
                     sourceRepo: 'Payment',
                     sourceId: payment.id,
                     createdBy: defaultUserId,
+                    createdAt: billDate,
                     metadata: {
                         phenixBillId: v.billId,
                         paymentId: payment.id,
@@ -414,7 +419,6 @@ async function syncPhenixFinancialRecord({ shipment, v, orgId, defaultUserId }) 
         });
 
         if (!invoice && chargeEntry) {
-            const billDate = parsePhenixDate(v.date);
             invoice = await prisma.invoice.create({
                 data: {
                     invoiceNumber,
@@ -429,6 +433,7 @@ async function syncPhenixFinancialRecord({ shipment, v, orgId, defaultUserId }) 
                     paidAt: isPaid ? billDate : null,
                     notes: `Phenix ERP Official Tax Invoice (Bill #${v.billId}, Receipt #${v.receiptNo}) - Method: ${v.paymentMethod || 'Standard'}`,
                     createdById: defaultUserId,
+                    createdAt: billDate,
                     lines: {
                         create: {
                             shipmentId: shipment.id,
@@ -439,12 +444,13 @@ async function syncPhenixFinancialRecord({ shipment, v, orgId, defaultUserId }) 
                             currency: 'KWD',
                             paid: isPaid,
                             totalPaid: isPaid ? v.totalAmount : 0,
-                            remainingBalance: isPaid ? 0 : v.totalAmount
+                            remainingBalance: isPaid ? 0 : v.totalAmount,
+                            createdAt: billDate
                         }
                     }
                 }
             });
-            logger.info(`[PhenixSync] Generated official Invoice ${invoiceNumber} (${isPaid ? 'PAID' : 'ISSUED'}) for Merchant "${v.merchantName}"`);
+            logger.info(`[PhenixSync] Generated official Invoice ${invoiceNumber} (${isPaid ? 'PAID' : 'ISSUED'}) for Merchant "${v.merchantName}" [Date: ${billDate.toISOString()}]`);
         }
     } catch (finErr) {
         logger.warn(`[PhenixSync] Financial sync error for shipment ${shipment.trackingNumber}: ${finErr.message}`);
@@ -829,6 +835,8 @@ class PhenixSyncService {
                 let shipment = null;
                 let wasCreated = false;
 
+                const consignmentDate = parsePhenixDate(v.date);
+
                 if (!existing) {
                     // Create new shipment with proper Merchant (Origin) & Consignee (Destination)
                     shipment = await prisma.shipment.create({
@@ -843,6 +851,7 @@ class PhenixSyncService {
                             organizationId: assignedOrgId,
                             price: v.totalAmount > 0 ? v.totalAmount : null,
                             currency: 'KWD',
+                            createdAt: consignmentDate,
                             origin: {
                                 city: 'Kuwait City',
                                 countryCode: 'KW',
@@ -883,7 +892,7 @@ class PhenixSyncService {
 
                     wasCreated = true;
                     summary.createdCount++;
-                    logger.info(`[PhenixSync] Created new shipment ${trackingNumber} for Merchant "${v.merchantName}" (ID: ${v.merchantId}) -> Dest: ${v.destCountryName} (AWB: ${v.carrierTracking})`);
+                    logger.info(`[PhenixSync] Created new shipment ${trackingNumber} for Merchant "${v.merchantName}" (ID: ${v.merchantId}) -> Dest: ${v.destCountryName} (AWB: ${v.carrierTracking}) [Date: ${consignmentDate.toISOString()}]`);
                 } else {
                     // Update existing record with any missing Phenix metadata & link org if unassigned
                     const currentDocs = (existing.documents && typeof existing.documents === 'object') ? existing.documents : {};
@@ -898,12 +907,14 @@ class PhenixSyncService {
                         destCountry: v.destCountryName,
                         destCountryCode: v.destCountryCode,
                         costCenter: v.costCenter,
+                        rawDate: v.date || currentDocs.rawDate,
                         lastSyncedAt: new Date().toISOString()
                     };
 
                     shipment = await prisma.shipment.update({
                         where: { id: existing.id },
                         data: {
+                            createdAt: consignmentDate,
                             dhlTrackingNumber: v.carrierTracking || existing.dhlTrackingNumber,
                             organizationId: existing.organizationId || assignedOrgId,
                             price: existing.price || (v.totalAmount > 0 ? v.totalAmount : undefined),
@@ -934,7 +945,7 @@ class PhenixSyncService {
                     });
 
                     summary.updatedCount++;
-                    logger.info(`[PhenixSync] Updated existing shipment ${shipment.trackingNumber} with Phenix metadata`);
+                    logger.info(`[PhenixSync] Updated existing shipment ${shipment.trackingNumber} with Phenix metadata [Date: ${consignmentDate.toISOString()}]`);
                 }
 
                 // 2. Post financial transactions (Double-Entry Ledger, Invoice, Payment Receipt)
