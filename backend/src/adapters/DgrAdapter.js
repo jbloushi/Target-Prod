@@ -980,11 +980,26 @@ class DgrAdapter extends CarrierAdapter {
                 );
             }
 
+            const rawEstDelivery = shipment.estimatedTimeOfDelivery || shipment.estimatedDeliveryDateAndTime || null;
+            let estimatedDelivery = null;
+            if (rawEstDelivery) {
+                const parsedEst = new Date(rawEstDelivery);
+                if (!Number.isNaN(parsedEst.getTime())) {
+                    estimatedDelivery = parsedEst;
+                }
+            }
+
+            const carrierWeight = parseFloat(shipment.details?.weight || shipment.weight || 0);
+            const carrierPieces = parseInt(shipment.details?.pieces || shipment.numberOfPieces || 0, 10);
+
             return {
                 status: shipment.status?.statusCode || 'UNKNOWN',
                 description: shipment.status?.description || 'No status description',
                 carrierCode: 'DGR',
                 trackingNumber,
+                estimatedDelivery,
+                carrierWeight: carrierWeight > 0 ? carrierWeight : undefined,
+                carrierPieces: carrierPieces > 0 ? carrierPieces : undefined,
                 events: dedupedEvents
             };
         } catch (error) {

@@ -187,9 +187,19 @@ class UniversalTrackingService {
         const latestEvent = events[events.length - 1];
         const overallStatus = this._mapTrackingMoreStatus(item.delivery_status, latestEvent?.description) || latestEvent?.statusCode || 'in_transit';
 
+        const rawEst = item.expected_delivery || item.destination_info?.delivery_date || item.origin_info?.delivery_date || null;
+        let estimatedDelivery = null;
+        if (rawEst) {
+            const parsedEst = new Date(rawEst);
+            if (!Number.isNaN(parsedEst.getTime())) {
+                estimatedDelivery = parsedEst;
+            }
+        }
+
         return {
             status: overallStatus,
             events,
+            estimatedDelivery,
             carrierWeight: parseFloat(item.weight_kg || item.weight || 0),
             carrierPieces: parseInt(item.pieces || 0, 10)
         };

@@ -4,6 +4,7 @@
  * Utility functions shared across all shipment sub-controllers.
  */
 const CarrierFactory = require('../services/CarrierFactory');
+const SlaTrackerService = require('../services/slaTracker.service');
 const logger = require('../utils/logger');
 const { normalizeStatus, isStatusAhead } = require('../constants/statusConstants');
 
@@ -524,11 +525,15 @@ const syncCarrierTrackingHistory = async (shipment) => {
         }
 
         const compactedHistory = compactHistory(newHistory);
-        if (hasUpdates || compactedHistory.length !== currentHistory.length) {
+        const resolvedEstDelivery = tracking?.estimatedDelivery || (!shipment.estimatedDelivery ? calculateEstimatedDelivery(shipment) : undefined);
+        const hasEstDeliveryUpdate = Boolean(resolvedEstDelivery && (!shipment.estimatedDelivery || (tracking?.estimatedDelivery && new Date(shipment.estimatedDelivery).getTime() !== new Date(resolvedEstDelivery).getTime())));
+
+        if (hasUpdates || compactedHistory.length !== currentHistory.length || hasEstDeliveryUpdate) {
             compactedHistory.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
             return {
                 history: compactedHistory,
                 status: currentStatus,
+                estimatedDelivery: resolvedEstDelivery || undefined,
                 actualWeight: tracking?.carrierWeight > 0 ? tracking.carrierWeight : undefined,
                 totalPieces: tracking?.carrierPieces > 0 ? tracking.carrierPieces : undefined
             };
@@ -545,7 +550,11 @@ const syncCarrierTrackingHistory = async (shipment) => {
     }
 };
 
-const calculateEstimatedDelivery = () => {
+const calculateEstimatedDelivery = (shipment = null) => {
+    if (shipment) {
+        const slaEst = SlaTrackerService.calculateEstimatedDelivery(shipment);
+        if (slaEst) return slaEst;
+    }
     const deliveryDate = new Date();
     deliveryDate.setDate(deliveryDate.getDate() + 3);
     return deliveryDate;

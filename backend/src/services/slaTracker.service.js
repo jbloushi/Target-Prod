@@ -44,6 +44,20 @@ class SlaTrackerService {
     }
 
     /**
+     * Calculates an estimated delivery Date based on creation date and SLA target hours
+     * @param {Object} shipment 
+     * @param {number} [customSlaHours] 
+     * @returns {Date|null}
+     */
+    static calculateEstimatedDelivery(shipment, customSlaHours = null) {
+        if (!shipment) return null;
+        const targetHours = this.getTargetHours(shipment, customSlaHours);
+        const startTime = shipment.createdAt ? new Date(shipment.createdAt) : new Date();
+        if (Number.isNaN(startTime.getTime())) return null;
+        return new Date(startTime.getTime() + targetHours * 60 * 60 * 1000);
+    }
+
+    /**
      * Evaluates the SLA performance of an individual shipment
      * @param {Object} shipment 
      * @param {Object} [options]

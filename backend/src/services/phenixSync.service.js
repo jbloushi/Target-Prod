@@ -5,6 +5,7 @@ const { prisma } = require('../config/database');
 const { syncCarrierTrackingHistory } = require('../controllers/shipment.helpers');
 const whatsappService = require('./whatsappIntegration.service');
 const financeLedgerService = require('./financeLedger.service');
+const SlaTrackerService = require('./slaTracker.service');
 
 /**
  * Phenix ERP Synchronization Service
@@ -848,6 +849,13 @@ class PhenixSyncService {
                 let wasCreated = false;
 
                 const consignmentDate = parsePhenixDate(v.date);
+                const estimatedDelivery = SlaTrackerService.calculateEstimatedDelivery({
+                    createdAt: consignmentDate,
+                    origin: { countryCode: 'KW' },
+                    destination: { countryCode: v.destCountryCode },
+                    carrierCode: v.derivedCarrier,
+                    serviceCode: v.derivedCarrier === 'DGR' ? 'P' : 'STD'
+                });
 
                 if (!existing) {
                     // Create new shipment with proper Merchant (Origin) & Consignee (Destination)
@@ -864,6 +872,7 @@ class PhenixSyncService {
                             price: v.totalAmount > 0 ? v.totalAmount : null,
                             currency: 'KWD',
                             createdAt: consignmentDate,
+                            estimatedDelivery,
                             origin: {
                                 city: 'Kuwait City',
                                 countryCode: 'KW',
@@ -927,6 +936,7 @@ class PhenixSyncService {
                         where: { id: existing.id },
                         data: {
                             createdAt: consignmentDate,
+                            estimatedDelivery: existing.estimatedDelivery || estimatedDelivery,
                             dhlTrackingNumber: v.carrierTracking || existing.dhlTrackingNumber,
                             organizationId: existing.organizationId || assignedOrgId,
                             price: existing.price || (v.totalAmount > 0 ? v.totalAmount : undefined),

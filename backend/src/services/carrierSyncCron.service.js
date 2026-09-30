@@ -159,11 +159,18 @@ class CarrierSyncCronService {
                         const updates = await syncCarrierTrackingHistory(shipment);
                         summary.synced++;
 
-                        if (updates && (updates.status !== shipment.status || updates.history?.length !== shipment.history?.length)) {
+                        if (updates && (
+                            updates.status !== shipment.status || 
+                            updates.history?.length !== shipment.history?.length ||
+                            (updates.estimatedDelivery && (!shipment.estimatedDelivery || new Date(shipment.estimatedDelivery).getTime() !== new Date(updates.estimatedDelivery).getTime()))
+                        )) {
                             const dataToUpdate = {
                                 history: updates.history,
                                 status: updates.status
                             };
+                            if (updates.estimatedDelivery) {
+                                dataToUpdate.estimatedDelivery = updates.estimatedDelivery;
+                            }
                             if (updates.actualWeight || updates.totalPieces) {
                                 dataToUpdate.pricingSnapshot = {
                                     ...(shipment.pricingSnapshot || {}),
