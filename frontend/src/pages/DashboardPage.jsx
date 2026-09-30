@@ -270,123 +270,158 @@ const DashboardPage = () => {
     };
 
     if (statsLoading && !stats.total) {
+        // Layout-matching skeleton — mirrors header, KPI row, and content block
+        // so the shape of the page registers before the numbers land.
+        // See Visibility Redesign 1a (loading).
+        const skel = 'animate-pulse bg-base-200 rounded-lg';
         return (
-            <div className="flex justify-center items-center min-h-[70vh]">
-                <span className="loading loading-spinner loading-lg text-primary"></span>
+            <div className="w-full max-w-[1600px] mx-auto px-2 sm:px-4 py-3 space-y-6" aria-busy="true" aria-live="polite">
+                <div className="bg-base-100 border border-base-200/90 rounded-2xl p-4 sm:p-5 flex justify-between items-center gap-4">
+                    <div className="space-y-2">
+                        <div className={`${skel} h-2.5 w-24`} />
+                        <div className={`${skel} h-5 w-48`} />
+                        <div className={`${skel} h-2.5 w-32`} />
+                    </div>
+                    <div className="flex gap-2">
+                        <div className={`${skel} h-9 w-20`} />
+                        <div className="h-9 w-32 rounded-lg animate-pulse bg-primary/20" />
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    {[0, 1, 2, 3].map((i) => (
+                        <div key={i} className="bg-base-100 border border-base-200/90 rounded-2xl p-4 space-y-2">
+                            <div className={`${skel} h-2.5 w-2/3`} />
+                            <div className={`${skel} h-6 w-1/2`} />
+                            <div className={`${skel} h-2 w-4/5`} />
+                        </div>
+                    ))}
+                </div>
+                <div className="bg-base-100 border border-base-200/90 rounded-2xl p-5 space-y-3">
+                    <div className={`${skel} h-3 w-40`} />
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div className={`${skel} h-11`} />
+                        <div className={`${skel} h-11`} />
+                        <div className={`${skel} h-11`} />
+                    </div>
+                </div>
+                <div className="flex justify-center">
+                    <span className="text-xs text-base-content/50 font-semibold inline-flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                        {isRTL ? 'جارٍ تحميل لوحة التحكم' : `Loading dashboard for ${
+                            { today: 'today', '7days': 'the last 7 days', this_month: 'this month',
+                              last_month: 'last month', all: 'all time', custom: 'the selected range' }[selectedPeriod] || 'this month'}`}
+                    </span>
+                </div>
             </div>
         );
     }
 
     return (
         <div className="w-full max-w-[1600px] mx-auto px-2 sm:px-4 py-3 space-y-6">
-            {/* Command Header: Role Clearance & Dynamic Context Switcher */}
-            <div className="bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-                
-                {/* Operator Profile & Role Indicator */}
-                <div className="flex items-center gap-3.5">
-                    <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
-                        <span className="material-symbols-outlined text-2xl">
-                            {isSuperadmin ? 'admin_panel_settings' : isTargetOwner ? 'crown' : isTargetAccounting ? 'account_balance' : 'hub'}
-                        </span>
+            {/*
+             * Command header (redesigned per Visibility Redesign 1a):
+             * one primary CTA, one secondary; role and organization demoted to
+             * a status dot + text button so they no longer compete with the CTA.
+             * Perspective/period toggles move down to a subordinate control bar.
+             */}
+            <div className="bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+
+                {/* Greeting + demoted role/org line */}
+                <div className="min-w-0">
+                    <div className="text-xs font-semibold text-base-content/60">
+                        {isTargetManagement
+                            ? (isRTL ? 'مركز عمليات الكويت' : 'Kuwait Hub · Operations')
+                            : (isRTL ? 'بوابة الحساب' : 'Account portal')}
                     </div>
-                    <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-base-content">
-                                {t('dash_hello', 'Hello,')} {user?.name?.split(' ')[0] || (isRTL ? 'المشغل' : 'Operator')}
-                            </h1>
-                            <span className="badge badge-primary text-[11px] font-black uppercase tracking-wider py-2">
-                                {getRoleLabel(userRole)}
-                            </span>
-                            {isTargetOwner && <span className="badge badge-warning text-[10px] font-bold">Executive Authority</span>}
-                            {isTargetAccounting && <span className="badge badge-accent text-[10px] font-bold">Finance Controller</span>}
-                        </div>
-                        <p className="text-xs text-base-content/60 font-semibold mt-0.5">
-                            {isTargetManagement 
-                                ? (isRTL ? 'مركز العمليات الدولية والربط الجمركي • مطار الكويت الدولي (KWI)' : 'Global Air Cargo Telemetry & Customs Gate • Kuwait Hub (KWI)')
-                                : (isRTL ? 'بوابة إدارة حساب الشركة والشحنات الصادرة والواردة' : 'B2B Enterprise Portal & Consignment Dispatcher')}
-                        </p>
+                    <h1 className="text-xl sm:text-2xl font-black tracking-tight text-base-content mt-0.5">
+                        {t('dash_hello', 'Hello,')} {user?.name?.split(' ')[0] || (isRTL ? 'المشغل' : 'Operator')}
+                    </h1>
+                    <div className="flex items-center gap-2.5 mt-1.5 flex-wrap">
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-base-content/70">
+                            <span className={`w-1.5 h-1.5 rounded-full ${
+                                isSuperadmin || isTargetOwner ? 'bg-success'
+                                : isTargetAccounting ? 'bg-primary'
+                                : 'bg-base-content/50'}`} />
+                            {getRoleLabel(userRole)}
+                        </span>
+                        {isTargetManagement && organizations.length > 0 && (
+                            <>
+                                <span className="w-[3px] h-[3px] rounded-full bg-base-300" />
+                                <div className="dropdown">
+                                    <label
+                                        tabIndex={0}
+                                        className="inline-flex items-center gap-1 text-[11px] font-bold text-base-content/70 hover:text-primary cursor-pointer"
+                                    >
+                                        {organizations.find((o) => o.id === selectedOrgId)?.name
+                                            || (isRTL ? 'جميع الحسابات' : 'All organizations')}
+                                        <span className="material-symbols-outlined text-sm">expand_more</span>
+                                    </label>
+                                    <ul tabIndex={0} className="dropdown-content menu p-1 shadow bg-base-100 border border-base-200 rounded-xl w-64 max-h-72 overflow-y-auto z-20 text-xs font-semibold">
+                                        {organizations.map((org) => (
+                                            <li key={org.id}>
+                                                <button onClick={() => setSelectedOrgId(org.id)}>
+                                                    {org.name}
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
 
-                {/* Perspective & Organization Context Selector */}
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
-                    
-                    {/* Organization Dropdown */}
-                    {isTargetManagement && (
-                        <div className="form-control">
-                            <label className="label py-0.5 px-1">
-                                <span className="label-text text-[10.5px] font-black uppercase tracking-wider text-base-content/60">
-                                    {isRTL ? 'نطاق الحساب المحدد' : 'Selected Account Scope'}
-                                </span>
-                            </label>
-                            <select 
-                                value={selectedOrgId} 
-                                onChange={(e) => setSelectedOrgId(e.target.value)}
-                                className="select select-bordered select-sm rounded-xl font-bold text-xs bg-base-100 text-base-content w-full sm:w-64"
-                            >
-                                {organizations.map((org) => (
-                                    <option key={org.id} value={org.id}>
-                                        {org.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
-
-                    {/* Dual Mode Switcher (Target Management vs Client View) */}
-                    {isTargetManagement && (
-                        <div className="form-control">
-                            <label className="label py-0.5 px-1">
-                                <span className="label-text text-[10.5px] font-black uppercase tracking-wider text-base-content/60">
-                                    {isRTL ? 'منظور الواجهة' : 'Cockpit Perspective'}
-                                </span>
-                            </label>
-                            <div className="join w-full">
-                                <button
-                                    onClick={() => setPerspective('target')}
-                                    className={`btn btn-sm join-item font-bold text-xs flex-1 ${
-                                        perspective === 'target' ? 'btn-primary' : 'btn-ghost border-base-300'
-                                    }`}
-                                >
-                                    <span className="material-symbols-outlined text-sm">hub</span>
-                                    {isRTL ? 'إدارة تارغت' : 'Target Ops'}
-                                </button>
-                                <button
-                                    onClick={() => setPerspective('client')}
-                                    className={`btn btn-sm join-item font-bold text-xs flex-1 ${
-                                        perspective === 'client' ? 'btn-primary' : 'btn-ghost border-base-300'
-                                    }`}
-                                >
-                                    <span className="material-symbols-outlined text-sm">apartment</span>
-                                    {isRTL ? 'حساب العميل' : 'Client View'}
-                                </button>
-                                {isTargetAccounting && (
-                                    <button
-                                        onClick={() => setPerspective('accounting')}
-                                        className={`btn btn-sm join-item font-bold text-xs flex-1 ${
-                                            perspective === 'accounting' ? 'btn-primary' : 'btn-ghost border-base-300'
-                                        }`}
-                                    >
-                                        <span className="material-symbols-outlined text-sm">account_balance</span>
-                                        {isRTL ? 'المحاسبة' : 'Finance'}
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Quick Action Button */}
-                    <div className="sm:self-end">
-                        <button 
-                            onClick={() => navigate('/shipment/new')}
-                            className="btn btn-primary btn-sm rounded-xl font-extrabold shadow-sm w-full gap-1.5 px-4"
-                        >
-                            <span className="material-symbols-outlined text-base">add_circle</span>
-                            {isRTL ? 'شحنة جديدة' : 'New Waybill'}
-                        </button>
-                    </div>
+                {/* Primary + secondary actions: track and new-shipment */}
+                <div className="flex items-center gap-2 shrink-0">
+                    <button
+                        type="button"
+                        onClick={() => navigate('/track')}
+                        className="btn btn-sm rounded-xl bg-base-100 text-base-content border border-base-300 hover:border-primary hover:text-primary gap-1.5"
+                    >
+                        <span className="material-symbols-outlined text-base">search</span>
+                        <span className="font-bold">{isRTL ? 'تتبع' : 'Track'}</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => navigate('/shipment/new')}
+                        className="btn btn-primary btn-sm rounded-xl gap-1.5 shadow-sm"
+                    >
+                        <span className="material-symbols-outlined text-base">add</span>
+                        <span className="font-bold">{isRTL ? 'شحنة جديدة' : 'New shipment'}</span>
+                    </button>
                 </div>
             </div>
+
+            {/* Subordinate control bar: perspective toggle sits here now,
+              * out of the primary action's way. Period selector stays in its own
+              * timeframe deck below. */}
+            {isTargetManagement && (
+                <div className="bg-base-100 border border-base-200/90 rounded-2xl px-4 py-2.5 flex items-center gap-3 flex-wrap">
+                    <span className="text-[10.5px] font-bold uppercase tracking-[0.06em] text-base-content/60">
+                        {isRTL ? 'المنظور' : 'View'}
+                    </span>
+                    <div className="flex bg-base-200/60 rounded-lg p-0.5">
+                        {[
+                            { key: 'target',     icon: 'hub',             label: isRTL ? 'العمليات' : 'Operations' },
+                            { key: 'client',     icon: 'apartment',       label: isRTL ? 'العميل'   : 'Client' },
+                            ...(isTargetAccounting ? [{ key: 'accounting', icon: 'account_balance', label: isRTL ? 'المحاسبة' : 'Finance' }] : []),
+                        ].map((opt) => (
+                            <button
+                                key={opt.key}
+                                onClick={() => setPerspective(opt.key)}
+                                className={`px-2.5 py-1 rounded-md text-xs font-bold inline-flex items-center gap-1.5 transition-colors ${
+                                    perspective === opt.key
+                                        ? 'bg-base-100 text-base-content shadow-sm'
+                                        : 'text-base-content/60 hover:text-base-content'
+                                }`}
+                            >
+                                <span className="material-symbols-outlined text-sm">{opt.icon}</span>
+                                {opt.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Timeframe & Period Control Deck */}
             <div className="bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-3 sm:p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
