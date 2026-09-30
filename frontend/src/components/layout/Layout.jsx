@@ -15,7 +15,7 @@ const Layout = () => {
 
             {/* Main Content Area */}
             <main className="flex-grow pt-20 px-4 sm:px-6 lg:px-8 max-w-[1800px] w-full mx-auto">
-                <div className="pb-12 h-full">
+                <div className="pb-12">
                     <Outlet />
                 </div>
             </main>

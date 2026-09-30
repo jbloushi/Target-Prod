@@ -664,10 +664,12 @@ export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) 
 
             {/* Pagination Controls */}
             {(totalPages > 1 || total > 0) && (
-              <div className={`p-3.5 border-t border-base-200 flex flex-col sm:flex-row items-center gap-3 bg-base-200/30 ${
-                totalPages > 1 ? 'justify-between' : (isRTL ? 'justify-start' : 'justify-end')
+              <div className={`p-3.5 border-t border-base-200 flex flex-col sm:flex-row items-center gap-3 sm:gap-4 bg-base-200/30 ${
+                isRTL 
+                  ? (totalPages > 1 ? 'justify-between' : 'justify-start') 
+                  : (totalPages > 1 ? 'justify-between sm:justify-end' : 'justify-end')
               }`}>
-                <div className="flex items-center gap-3">
+                <div className={`flex items-center gap-3 ${isRTL ? '' : 'sm:order-1'}`}>
                   <span className="text-xs text-base-content/70">
                     {t('page_of', 'Page')} <strong className="text-base-content">{page}</strong> {t('of', 'of')} <strong className="text-base-content">{totalPages}</strong>
                     {total > 0 && <span className="ml-1 opacity-70">({total} {t('total', 'total')})</span>}
@@ -700,7 +702,7 @@ export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) 
                   }
 
                   return (
-                    <div className="join">
+                    <div className={`join ${isRTL ? '' : 'sm:order-2'}`}>
                       <button
                         disabled={page === 1}
                         onClick={() => setPage(1)}
