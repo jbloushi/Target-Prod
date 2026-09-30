@@ -664,7 +664,9 @@ export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) 
 
             {/* Pagination Controls */}
             {(totalPages > 1 || total > 0) && (
-              <div className="p-3.5 border-t border-base-200 flex flex-col sm:flex-row justify-between items-center gap-3 bg-base-200/30">
+              <div className={`p-3.5 border-t border-base-200 flex flex-col sm:flex-row items-center gap-3 bg-base-200/30 ${
+                totalPages > 1 ? 'justify-between' : (isRTL ? 'justify-start' : 'justify-end')
+              }`}>
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-base-content/70">
                     {t('page_of', 'Page')} <strong className="text-base-content">{page}</strong> {t('of', 'of')} <strong className="text-base-content">{totalPages}</strong>
