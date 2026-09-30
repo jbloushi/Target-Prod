@@ -10,6 +10,7 @@ import { getRoleLabel } from '../utils/roleLabels';
 import { organizationService } from '../services/api';
 import VolumeBarChart from '../components/charts/VolumeBarChart';
 import TradeLaneBarChart from '../components/charts/TradeLaneBarChart';
+import CarrierNetworkHealth from '../components/CarrierNetworkHealth';
 import StatusBadge from '../components/common/StatusBadge';
 import TradeRouteDisplay from '../components/common/TradeRouteDisplay';
 import ShipmentInspectorDrawer from '../components/common/ShipmentInspectorDrawer';
@@ -185,10 +186,12 @@ const DashboardPage = () => {
         return Math.max(...tradeCorridors.map(c => c.volume || 0), 1);
     }, [tradeCorridors]);
 
-    // Live Carrier Network Breakdown from database
+    // Live Carrier Network Breakdown from database (Ranked by volume)
     const carrierBreakdown = useMemo(() => {
         if (Array.isArray(stats?.carriers) && stats.carriers.length > 0) {
-            return stats.carriers.filter(c => (c.count || 0) > 0);
+            return stats.carriers
+                .filter(c => (c.count || 0) > 0)
+                .sort((a, b) => (b.count || 0) - (a.count || 0));
         }
         return [];
     }, [stats?.carriers]);
@@ -755,60 +758,13 @@ const DashboardPage = () => {
                 {/* LEFT WING (65%): Carrier Network, Pipeline Lifecycle, & Manifest Grid */}
                 <div className="lg:col-span-8 space-y-5">
 
-                    {/* Carrier Network & Volume Distribution */}
+                    {/* Carrier Network Health */}
                     {isTargetManagement && perspective === 'target' && carrierBreakdown.length > 0 && (
-                        <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5">
-                            <div className="flex justify-between items-center mb-3">
-                                <div>
-                                    <h3 className="text-sm sm:text-base font-black text-base-content flex items-center gap-2">
-                                        <span className="material-symbols-outlined text-primary text-lg">local_shipping</span>
-                                        {isRTL ? 'توزيع حجم الشحن عبر الناقلين (Carrier Network)' : 'Carrier Network & Volume Distribution'}
-                                    </h3>
-                                    <p className="text-xs text-base-content/60 font-medium">
-                                        {isRTL ? 'الحصة السوقية وحالة التسليم حسب الناقل المعتمد (اضغط للتصفية)' : 'Live volume share & delivery health per integrated carrier (Click to filter)'}
-                                    </p>
-                                </div>
-                                <span className="badge badge-primary badge-outline badge-sm font-bold text-xs">
-                                    {carrierBreakdown.length} {isRTL ? 'شركاء ناقلين' : 'Carriers Active'}
-                                </span>
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-                                {carrierBreakdown.map((car) => (
-                                    <div 
-                                        key={car.code} 
-                                        onClick={() => navigate(`/shipments?carrier=${car.code}`)}
-                                        className="p-3 bg-base-200/50 hover:bg-base-200 border border-base-200 hover:border-primary/40 rounded-xl transition-all cursor-pointer space-y-2 group"
-                                    >
-                                        <div className="flex justify-between items-center">
-                                            <span className={`badge ${car.badge} badge-xs font-black px-2 py-0.5`}>
-                                                {car.code}
-                                            </span>
-                                            <span className="text-[11px] font-extrabold text-success">
-                                                {car.health}% {isRTL ? 'كفاءة' : 'SLA'}
-                                            </span>
-                                        </div>
-                                        <div className="font-extrabold text-xs text-base-content truncate group-hover:text-primary transition-colors">
-                                            {isRTL ? car.nameAr : car.name}
-                                        </div>
-                                        <div className="flex justify-between items-baseline text-[11px] text-base-content/60">
-                                            <span className="font-mono text-base-content/70">{car.percentage}% {isRTL ? 'حصة' : 'share'}</span>
-                                            <span className="font-black text-base-content">{car.count} {isRTL ? 'شحنة' : 'pkgs'}</span>
-                                        </div>
-                                        <div className="w-full bg-base-300 rounded-full h-1.5 overflow-hidden">
-                                            <div 
-                                                className="h-full rounded-full transition-all" 
-                                                style={{ width: `${Math.max(5, car.percentage)}%`, backgroundColor: car.color }}
-                                            />
-                                        </div>
-                                        <div className="flex justify-between text-[10px] text-base-content/50 font-mono pt-0.5">
-                                            <span>{isRTL ? 'قيد النقل:' : 'Active:'} <strong className="text-base-content">{car.active}</strong></span>
-                                            <span>{isRTL ? 'مكتمل:' : 'Delivered:'} <strong className="text-success">{car.delivered}</strong></span>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
+                        <CarrierNetworkHealth 
+                            carriers={carrierBreakdown} 
+                            isRTL={isRTL} 
+                            onCarrierClick={(code) => navigate(`/shipments?carrier=${code}`)} 
+                        />
                     )}
 
                     {/* Operational Manifest Table with Pipeline Stage Filter */}
@@ -974,102 +930,8 @@ const DashboardPage = () => {
 
                 </div>
 
-                {/* RIGHT WING (35%): Actionable Triage Queue & Account Intelligence */}
+                {/* RIGHT WING (35%): Financial Intelligence & Velocity Telemetry */}
                 <div className="lg:col-span-4 space-y-5">
-                    
-                    {/* Actionable Triage & Exception Queue (PRIORITY FIRST) */}
-                    <div className="card bg-base-100 border border-error/20 shadow-sm rounded-2xl overflow-hidden">
-                        <div className="p-4 bg-error/5 border-b border-error/15 flex justify-between items-center">
-                            <div>
-                                <div className="flex items-center gap-2">
-                                    <span className="relative flex h-2.5 w-2.5">
-                                        <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${triageItems.length > 0 ? 'bg-error' : 'bg-success'} opacity-75`}></span>
-                                        <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${triageItems.length > 0 ? 'bg-error' : 'bg-success'}`}></span>
-                                    </span>
-                                    <h3 className={`text-sm font-black ${triageItems.length > 0 ? 'text-error' : 'text-success'} uppercase tracking-wider`}>
-                                        {isRTL ? 'طابور التدخل والاستثناءات الفورية' : 'Active Triage & Exceptions'}
-                                    </h3>
-                                </div>
-                                <p className="text-[11px] text-base-content/70 font-semibold mt-0.5">
-                                    {triageItems.length === 0 
-                                        ? (isRTL ? 'جميع الشحنات تسير بدون أي استثناءات' : '0 critical issues — operations nominal') 
-                                        : (isRTL ? `${triageItems.length} حالات استثنائية تعيق التسليم` : `${triageItems.length} critical issues blocking delivery`)}
-                                </p>
-                            </div>
-                            <span className={`badge ${triageItems.length > 0 ? 'badge-error' : 'badge-success'} badge-sm font-black`}>
-                                {triageItems.length}
-                            </span>
-                        </div>
-
-                        <div className="p-3.5 space-y-3">
-                            {triageLoading ? (
-                                <div className="py-8 text-center">
-                                    <span className="loading loading-spinner text-primary loading-sm"></span>
-                                </div>
-                            ) : triageItems.length === 0 ? (
-                                <div className="p-5 text-center space-y-2 bg-success/5 border border-success/20 rounded-xl">
-                                    <div className="w-10 h-10 rounded-full bg-success/20 text-success flex items-center justify-center mx-auto">
-                                        <span className="material-symbols-outlined text-xl">check_circle</span>
-                                    </div>
-                                    <div className="font-extrabold text-xs text-base-content">
-                                        {isRTL ? 'لا توجد شحنات معطلة' : 'No Critical Delivery Blockers'}
-                                    </div>
-                                    <p className="text-[11px] text-base-content/60 max-w-xs mx-auto">
-                                        {isRTL ? 'جميع البوالص والبيانات الجمركية مصادق عليها وتتحرك بسلاسة عبر مسارات النقل.' : 'All active waybills and customs declarations are verified and moving nominal.'}
-                                    </p>
-                                </div>
-                            ) : (
-                                triageItems.map((item) => (
-                                    <div key={item.id} className="p-3 rounded-xl border border-base-200 bg-base-100 hover:border-error/40 transition-all space-y-2">
-                                        <div className="flex justify-between items-start gap-2">
-                                            <span 
-                                                onClick={() => navigate(`/shipment/${item.trackingNumber}`)}
-                                                className="font-mono text-xs font-bold text-primary hover:underline cursor-pointer"
-                                            >
-                                                {item.trackingNumber}
-                                            </span>
-                                            <span className="text-[10px] text-base-content/50 font-semibold">{item.timeAgo}</span>
-                                        </div>
-                                        <p className="text-xs font-bold text-base-content leading-snug">
-                                            {isRTL ? (item.titleAr || item.title) : item.title}
-                                        </p>
-                                        <div className="flex justify-between items-center text-[10.5px] text-base-content/60">
-                                            <span>{item.hub}</span>
-                                            <span className="truncate max-w-[120px]">{item.consignee}</span>
-                                        </div>
-                                        <div className="pt-1 flex gap-2">
-                                            <button 
-                                                onClick={() => navigate(`/shipment/${item.trackingNumber}`)}
-                                                className="btn btn-error btn-outline btn-xs flex-1 rounded-lg font-bold"
-                                            >
-                                                {isRTL ? (item.actionTextAr || item.actionText) : item.actionText}
-                                            </button>
-                                            <button 
-                                                onClick={() => {
-                                                    const cleanPhone = (item.phone || '96597691271').replace(/[^0-9]/g, '');
-                                                    const text = encodeURIComponent(`Urgent update regarding shipment ${item.trackingNumber}`);
-                                                    window.open(`https://wa.me/${cleanPhone}?text=${text}`, '_blank');
-                                                }}
-                                                className="btn btn-ghost btn-xs btn-square text-success"
-                                                title="WhatsApp Alert"
-                                            >
-                                                <span className="material-symbols-outlined text-base">chat</span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                        <div className="p-3 bg-base-200/40 border-t border-base-200 flex justify-center">
-                            <button 
-                                onClick={() => navigate('/shipments?status=exceptions')}
-                                className="btn btn-ghost btn-xs text-error font-extrabold gap-1"
-                            >
-                                <span>{isRTL ? 'عرض جميع الاستثناءات في جدول الشحنات' : 'View All Exceptions in Shipments'}</span>
-                                <span className="material-symbols-outlined text-sm">{isRTL ? 'arrow_back' : 'arrow_forward'}</span>
-                            </button>
-                        </div>
-                    </div>
 
                     {/* Live Financial Performance & Collections Card (Strictly Gated: Accounting, Target Owner, Admin) */}
                     {canViewFinancials && financials && (
