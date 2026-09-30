@@ -26,6 +26,7 @@ const ShipmentsPage = lazy(() => import('../pages/ShipmentsPage'));
 const DriverPickupPage = lazy(() => import('../pages/DriverPickupPage'));
 const WarehouseScanPage = lazy(() => import('../pages/WarehouseScanPage'));
 const InConstructionPage = lazy(() => import('../pages/InConstructionPage'));
+const EnterprisePaywallPage = lazy(() => import('../pages/EnterprisePaywallPage'));
 const FinancePage = lazy(() => import('../pages/FinancePage'));
 const ShipmentDetailsPage = lazy(() => import('../pages/ShipmentDetailsPage'));
 const TrackingLandingPage = lazy(() => import('../pages/TrackingLandingPage'));
@@ -186,12 +187,12 @@ const AppRoutes = () => {
           <Route path="track/:trackingNumber/location" element={<PublicLocationPage />} />
           <Route path="shipments/:trackingNumber" element={<RedirectToShipment />} />
 
-          {/* Placeholder Routes for Premium UI Demo */}
-          <Route path="analytics" element={<InConstructionPage title="Analytics" description="Advanced reporting and fleet insights coming soon." />} />
-          <Route path="calendar" element={<InConstructionPage title="Calendar" description="Schedule pickups and view delivery timelines." />} />
-          <Route path="warehouse" element={<InConstructionPage title="Warehouse Management" description="Inventory and storage controls." />} />
-          <Route path="fleets" element={<InConstructionPage title="Fleet Management" description="Vehicle tracking and maintenance logs." />} />
-          <Route path="drivers" element={<InConstructionPage title="Driver Management" description="Manage driver profiles and assignments." />} />
+          {/* Enterprise & Premium Feature Gateways (Admin-Toggled) */}
+          <Route path="analytics" element={<EnterprisePaywallPage moduleKey="analytics" />} />
+          <Route path="calendar" element={<EnterprisePaywallPage moduleKey="calendar" />} />
+          <Route path="warehouse" element={<EnterprisePaywallPage moduleKey="warehouse" />} />
+          <Route path="fleets" element={<EnterprisePaywallPage moduleKey="fleets" />} />
+          <Route path="drivers" element={<EnterprisePaywallPage moduleKey="drivers" />} />
           <Route path="finance" element={
             <ProtectedRoute allowedRoles={['admin', 'staff', 'client', 'manager', 'accounting', 'org_manager', 'org_agent']}>
               <FinancePage />
@@ -201,8 +202,8 @@ const AppRoutes = () => {
           <Route path="financials" element={<Navigate to="/finance" replace />} />
 
           {/* Messages & Notifications */}
-          <Route path="messages" element={<InConstructionPage title="Messages" description="Communication center." />} />
-          <Route path="notifications" element={<InConstructionPage title="Notifications" description="System alerts and updates." />} />
+          <Route path="messages" element={<EnterprisePaywallPage moduleKey="messages" />} />
+          <Route path="notifications" element={<EnterprisePaywallPage moduleKey="messages" />} />
 
           <Route path="settings" element={
             <ProtectedRoute allowedRoles={['admin', 'staff', 'client', 'driver', 'manager', 'accounting', 'org_manager', 'org_agent']}>

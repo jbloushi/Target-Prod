@@ -108,6 +108,7 @@ const ShipmentDetailsPage = () => {
     const [uploadFile, setUploadFile] = useState(null);
     const [isUploadingDoc, setIsUploadingDoc] = useState(false);
     const [historyTab, setHistoryTab] = useState('milestones'); // 'milestones' | 'telemetry' | 'comments'
+    const [activeCockpitTab, setActiveCockpitTab] = useState('packages'); // 'packages' | 'customs' | 'finance' | 'notifications' | 'audit'
     const [newCommentText, setNewCommentText] = useState('');
     const [isSubmittingComment, setIsSubmittingComment] = useState(false);
 
@@ -833,6 +834,46 @@ const ShipmentDetailsPage = () => {
             setIsSubmittingComment(false);
         }
     };
+    const getFlagEmoji = (code) => {
+        switch (String(code || '').toUpperCase()) {
+            case 'KW': return '🇰🇼';
+            case 'AE': return '🇦🇪';
+            case 'SA': return '🇸🇦';
+            case 'QA': return '🇶🇦';
+            case 'BH': return '🇧🇭';
+            case 'OM': return '🇴🇲';
+            case 'GB': return '🇬🇧';
+            case 'US': return '🇺🇸';
+            case 'DE': return '🇩🇪';
+            case 'FR': return '🇫🇷';
+            case 'TR': return '🇹🇷';
+            case 'EG': return '🇪🇬';
+            case 'CN': return '🇨🇳';
+            default: return '📍';
+        }
+    };
+    const senderFlag = getFlagEmoji(sender.countryCode || 'KW');
+    const receiverFlag = getFlagEmoji(receiver.countryCode || 'GB');
+
+    const cockpitHeadline = (() => {
+        const targetCity = receiver.city || receiver.country || (isRTL ? 'الوجهة' : 'Destination');
+        switch (effectiveStatus) {
+            case 'delivered':
+                return isRTL ? `تم التسليم في ${targetCity}` : `Delivered to ${targetCity}`;
+            case 'out_for_delivery':
+                return isRTL ? `مع مندوب التوصيل في ${targetCity}` : `Out for delivery in ${targetCity}`;
+            case 'exception':
+                return isRTL ? `عائق في مسار الشحن إلى ${targetCity}` : `Delivery exception on route to ${targetCity}`;
+            case 'picked_up':
+            case 'received_at_hub':
+            case 'in_transit':
+                return isRTL ? `في طريقها إلى ${targetCity}` : `On its way to ${targetCity}`;
+            case 'cancelled':
+                return isRTL ? `تم إلغاء الشحنة إلى ${targetCity}` : `Consignment cancelled for ${targetCity}`;
+            default:
+                return isRTL ? `تم إنشاء الشحنة إلى ${targetCity}` : `Consignment booked for ${targetCity}`;
+        }
+    })();
 
     return (
         <div className="w-full max-w-[1600px] mx-auto px-2 sm:px-4 py-3 space-y-6">
@@ -849,9 +890,9 @@ const ShipmentDetailsPage = () => {
                         {isRTL ? 'قائمة الشحنات' : 'Shipments'}
                     </button>
                     <span>/</span>
-                    <span className="font-mono text-primary font-black">{shipment.trackingNumber}</span>
+                    <span className="badge badge-sm badge-ghost font-bold">{STATUS_LABELS[effectiveStatus] || effectiveStatus}</span>
                     <span>/</span>
-                    <span className="text-base-content/50">{isRTL ? 'ملف التتبع والعمليات' : 'Operations Dossier'}</span>
+                    <span className="font-mono text-primary font-black">{shipment.trackingNumber}</span>
                 </div>
 
                 <div className="text-[11px] font-semibold text-base-content/60 flex items-center gap-1.5">
@@ -860,65 +901,81 @@ const ShipmentDetailsPage = () => {
                 </div>
             </div>
 
-            {/* 1. Command Hero Card: Tracking Number, Status, and Actions */}
-            <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-6 space-y-5">
-                
-                <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
-                    {/* Left: Tracking # & Identity */}
-                    <div className="space-y-1.5">
+            {/* Turn 2a Primary Command Header */}
+            <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-5 sm:p-6 space-y-4">
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                    
+                    {/* Left: Status Pill, Dynamic H1 Headline & Metadata */}
+                    <div className="min-w-0 flex-1 space-y-1.5">
                         <div className="flex items-center gap-2.5 flex-wrap">
-                            <h1 className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-base-content">
-                                {shipment.trackingNumber}
-                            </h1>
+                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
+                                effectiveStatus === 'delivered' ? 'bg-success/10 text-success border border-success/20' :
+                                effectiveStatus === 'exception' ? 'bg-error/10 text-error border border-error/20' :
+                                'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                            }`}>
+                                <span className={`w-2 h-2 rounded-full ${effectiveStatus === 'exception' ? 'bg-error' : 'bg-emerald-500'} animate-pulse`}></span>
+                                <span>{STATUS_LABELS[effectiveStatus] || effectiveStatus.toUpperCase()}</span>
+                            </span>
+                            <span className="text-xs text-base-content/60 font-medium">
+                                {latestMilestone
+                                    ? `${isRTL ? 'آخر مسح:' : 'Updated'} ${latestMilestone.dateParts.time || ''} · ${latestMilestone.locationText || 'Kuwait Hub'} · ${carrierDisplayName}`
+                                    : `${isRTL ? 'تم الحجز بواسطة' : 'Booked via'} ${carrierDisplayName}`}
+                            </span>
+                        </div>
+
+                        {/* Turn 2a Dynamic H1 Action Title */}
+                        <h1 className="text-2xl sm:text-3xl font-black text-base-content tracking-tight">
+                            {cockpitHeadline}
+                        </h1>
+
+                        {/* Metadata Row */}
+                        <div className="flex items-center gap-3 text-xs sm:text-sm text-base-content/70 font-semibold flex-wrap">
+                            <span className="font-mono font-black text-base-content">{shipment.trackingNumber}</span>
                             <button
                                 type="button"
                                 onClick={handleCopyTracking}
-                                className="btn btn-ghost btn-xs btn-square text-base-content/60 hover:text-primary"
-                                title={isRTL ? 'نسخ رقم التتبع' : 'Copy Tracking Number'}
+                                className="btn btn-ghost btn-xs rounded-lg gap-1 border border-base-200"
+                                title="Copy Tracking #"
                             >
-                                <span className="material-symbols-outlined text-base">
-                                    {copiedTracking ? 'done' : 'content_copy'}
-                                </span>
+                                <span className="material-symbols-outlined text-xs">{copiedTracking ? 'done' : 'content_copy'}</span>
+                                <span>{copiedTracking ? (isRTL ? 'تم النسخ' : 'Copied') : (isRTL ? 'نسخ' : 'Copy')}</span>
                             </button>
-                            <StatusBadge status={effectiveStatus} size="md" />
-                            {shipment.isTest && (
-                                <span className="badge badge-warning font-black text-xs">TEST</span>
-                            )}
-                            <div className="badge badge-outline badge-sm font-bold gap-1 text-primary">
-                                <span className="material-symbols-outlined text-xs">local_shipping</span>
-                                <span>{carrierDisplayName}</span>
-                            </div>
+                            <span className="opacity-30">•</span>
+                            <span>
+                                {isRTL ? 'الموعد المتوقع (ETA):' : 'ETA:'}{' '}
+                                <strong className="text-base-content font-bold">
+                                    {shipment.estimatedDelivery ? formatTimestampKuwait(shipment.estimatedDelivery).date : (isRTL ? 'قريباً' : 'Pending')}
+                                </strong>
+                            </span>
+                            {shipment.isTest && <span className="badge badge-warning font-black text-[10px]">TEST</span>}
+                            {isImported && <span className="badge badge-ghost badge-xs text-[9px] font-mono text-primary/80">PHENIX ERP</span>}
                         </div>
-                        <p className="text-xs text-base-content/60 font-semibold flex items-center gap-1.5 flex-wrap mt-0.5">
-                            <span>{getShipmentTypeLabel(shipment.shipmentType)} • {shipment.organization?.name || 'Standard Organization'}</span>
-                            <span className="opacity-40">•</span>
-                            <span>{isRTL ? 'تاريخ الحجز:' : 'Booked:'} {formatTimestampKuwait((() => {
-                                let earliest = parseDateRobust(shipment.createdAt);
-                                const rawHistory = Array.isArray(shipment.history) ? shipment.history : [];
-                                for (const h of rawHistory) {
-                                    if (h.timestamp) {
-                                        const ht = new Date(h.timestamp);
-                                        if (!Number.isNaN(ht.getTime())) {
-                                            if (!earliest || ht.getTime() < earliest.getTime()) {
-                                                earliest = ht;
-                                            }
-                                        }
-                                    }
-                                }
-                                const rawPhenixDate = shipment.documents?.rawDate || shipment.documents?.date;
-                                const phenixParsed = parseDateRobust(rawPhenixDate);
-                                return (phenixParsed && (!earliest || phenixParsed < earliest)) ? phenixParsed : (earliest || phenixParsed);
-                            })()).date}</span>
-                            {isImported && (
-                                <span className="badge badge-ghost badge-xs text-[9px] font-mono text-primary/80">PHENIX ERP</span>
-                            )}
-                        </p>
                     </div>
 
-                    {/* Right: Quick Action Buttons Toolbar */}
-                    <div className="flex items-center gap-2 flex-wrap w-full xl:w-auto">
-                        
-                        {/* Copy Public Link */}
+                    {/* Right: Turn 2a Action Rail (Outlined Secondary + 1 Solid Primary + More) */}
+                    <div className="flex items-center gap-2 flex-wrap self-stretch lg:self-auto justify-end">
+                        {/* Label / Print */}
+                        {resolvedCarrierAwb ? (
+                            <button
+                                type="button"
+                                onClick={() => handleOpenPdf(resolvedCarrierAwb)}
+                                className="btn btn-outline btn-sm rounded-xl font-bold gap-1 text-xs"
+                            >
+                                <span className="material-symbols-outlined text-base">print</span>
+                                <span>{isRTL ? 'البوليصة' : 'Label'}</span>
+                            </button>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={handleGenerateInvoiceQR}
+                                className="btn btn-outline btn-sm rounded-xl font-bold gap-1 text-xs"
+                            >
+                                <span className="material-symbols-outlined text-base">print</span>
+                                <span>{isRTL ? 'المنافست' : 'Label'}</span>
+                            </button>
+                        )}
+
+                        {/* Share Public Link */}
                         <button
                             type="button"
                             onClick={() => {
@@ -928,35 +985,11 @@ const ShipmentDetailsPage = () => {
                             className="btn btn-outline btn-sm rounded-xl font-bold gap-1 text-xs"
                         >
                             <span className="material-symbols-outlined text-base">share</span>
-                            {isRTL ? 'مشاركة الرابط' : 'Share'}
+                            <span>{isRTL ? 'مشاركة' : 'Share'}</span>
                         </button>
 
-                        {/* Official Carrier AWB */}
-                        {resolvedCarrierAwb && (
-                            <button
-                                type="button"
-                                onClick={() => handleOpenPdf(resolvedCarrierAwb)}
-                                className="btn btn-primary btn-sm rounded-xl font-extrabold gap-1 text-xs shadow-sm"
-                            >
-                                <span className="material-symbols-outlined text-base">print</span>
-                                {isRTL ? 'طباعة بوليصة الناقل' : 'Print Carrier AWB'}
-                            </button>
-                        )}
-
-                        {/* Official Carrier Invoice */}
-                        {resolvedCarrierInvoice && (
-                            <button
-                                type="button"
-                                onClick={() => handleOpenPdf(resolvedCarrierInvoice)}
-                                className="btn btn-outline btn-sm rounded-xl font-bold gap-1 text-xs"
-                            >
-                                <span className="material-symbols-outlined text-base">receipt_long</span>
-                                {isRTL ? 'فاتورة الجمارك' : 'Customs Invoice'}
-                            </button>
-                        )}
-
-                        {/* Generate Carrier AWB & Invoice Button (Prominent when pending) */}
-                        {canGenerateCarrierDocs && (
+                        {/* One Solid Primary Action CTA */}
+                        {canGenerateCarrierDocs ? (
                             <button
                                 type="button"
                                 disabled={isGeneratingCarrierDocs || isProcessing}
@@ -966,971 +999,382 @@ const ShipmentDetailsPage = () => {
                                 <span className="material-symbols-outlined text-base">
                                     {isGeneratingCarrierDocs ? 'hourglass_top' : 'bolt'}
                                 </span>
-                                {isGeneratingCarrierDocs
-                                    ? (isRTL ? 'جاري الإصدار...' : 'Generating...')
-                                    : (isInternalShipment 
-                                        ? (isRTL ? 'تحويل وإصدار بوليصة الناقل' : 'Convert & Generate AWB')
-                                        : (isRTL ? 'إصدار بوليصة الناقل الدولية' : 'Generate Carrier AWB'))}
+                                <span>
+                                    {isGeneratingCarrierDocs
+                                        ? (isRTL ? 'جاري الإصدار...' : 'Generating...')
+                                        : (isInternalShipment
+                                            ? (isRTL ? 'تحويل وإصدار البوليصة' : 'Convert & Book')
+                                            : (isRTL ? 'إصدار بوليصة الناقل' : 'Generate Carrier AWB'))}
+                                </span>
                             </button>
-                        )}
-
-                        {/* Target Hub Standard Document: Invoice / QR */}
-                        <button
-                            type="button"
-                            onClick={handleGenerateInvoiceQR}
-                            className="btn btn-outline btn-sm rounded-xl font-bold gap-1 text-xs"
-                        >
-                            <span className="material-symbols-outlined text-base">qr_code_2</span>
-                            {isRTL ? 'فاتورة / QR تارغت' : 'Invoice/QR'}
-                        </button>
-
-                        {/* Capture POD (For In Transit or Out for Delivery) */}
-                        {['out_for_delivery', 'in_transit'].includes(effectiveStatus) && (
+                        ) : ['out_for_delivery', 'in_transit'].includes(effectiveStatus) ? (
                             <button
                                 type="button"
                                 onClick={() => setIsPodModalOpen(true)}
                                 className="btn btn-accent btn-sm rounded-xl font-extrabold gap-1 text-xs shadow-sm"
                             >
                                 <span className="material-symbols-outlined text-base">draw</span>
-                                {isRTL ? 'إثبات التسليم (POD)' : 'Capture POD'}
+                                <span>{isRTL ? 'إثبات التسليم (POD)' : 'Capture POD'}</span>
+                            </button>
+                        ) : (
+                            <button
+                                type="button"
+                                disabled={isProcessing}
+                                onClick={() => getShipment(shipment.trackingNumber)}
+                                className="btn btn-primary btn-sm rounded-xl font-extrabold gap-1 text-xs shadow-sm"
+                            >
+                                <span className="material-symbols-outlined text-base">sync</span>
+                                <span>{isRTL ? 'تحديث الآن' : 'Sync now'}</span>
                             </button>
                         )}
 
-                        {/* Customer Return (If Delivered) */}
-                        {effectiveStatus === 'delivered' && (
-                            <button
-                                type="button"
-                                onClick={() => window.open(`/returns/${shipment.trackingNumber}`, '_blank')}
-                                className="btn btn-outline btn-sm rounded-xl font-bold gap-1 text-xs"
-                            >
-                                <span className="material-symbols-outlined text-base">assignment_return</span>
-                                {isRTL ? 'طلب إرجاع' : 'Customer Return'}
+                        {/* More Options Dropdown */}
+                        <div className="dropdown dropdown-end">
+                            <button tabIndex={0} className="btn btn-outline btn-sm btn-square rounded-xl" title="More Options">
+                                <span className="material-symbols-outlined text-lg">more_horiz</span>
                             </button>
-                        )}
-
-                        {/* Edit Consignment */}
-                        {canEdit && (
-                            <button
-                                type="button"
-                                onClick={() => handleOpenEdit('sender')}
-                                className="btn btn-ghost btn-sm rounded-xl font-bold gap-1 text-xs border border-base-200"
-                            >
-                                <span className="material-symbols-outlined text-base">edit</span>
-                                {isRTL ? 'تعديل البيانات' : 'Edit'}
-                            </button>
-                        )}
-
-                        {/* Delete Consignment (Admin, Owner, Accounting - only before carrier is connected) */}
-                        {['admin', 'manager', 'accounting'].includes(user?.role) && !hasCarrierBooking(shipment) && (
-                            <button
-                                type="button"
-                                onClick={handleDelete}
-                                className="btn btn-error btn-outline btn-sm rounded-xl font-bold gap-1 text-xs"
-                                title={isRTL ? 'حذف الشحنة وسجلاتها المالية' : 'Delete shipment and related financial records'}
-                            >
-                                <span className="material-symbols-outlined text-base">delete</span>
-                                {isRTL ? 'حذف' : 'Delete'}
-                            </button>
-                        )}
+                            <ul tabIndex={0} className="dropdown-content z-20 menu p-2 shadow-lg bg-base-100 rounded-box w-52 text-xs border border-base-200">
+                                {canEdit && (
+                                    <li>
+                                        <button onClick={() => handleOpenEdit('sender')} className="gap-2 font-bold">
+                                            <span className="material-symbols-outlined text-sm">edit</span>
+                                            {isRTL ? 'تعديل البيانات' : 'Edit Consignment'}
+                                        </button>
+                                    </li>
+                                )}
+                                <li>
+                                    <button onClick={handleGenerateInvoiceQR} className="gap-2">
+                                        <span className="material-symbols-outlined text-sm">qr_code_2</span>
+                                        {isRTL ? 'فاتورة / QR تارغت' : 'Target Invoice / QR'}
+                                    </button>
+                                </li>
+                                {resolvedCarrierInvoice && (
+                                    <li>
+                                        <button onClick={() => handleOpenPdf(resolvedCarrierInvoice)} className="gap-2">
+                                            <span className="material-symbols-outlined text-sm">receipt_long</span>
+                                            {isRTL ? 'فاتورة الجمارك' : 'Customs Invoice'}
+                                        </button>
+                                    </li>
+                                )}
+                                {effectiveStatus === 'delivered' && (
+                                    <li>
+                                        <button onClick={() => window.open(`/returns/${shipment.trackingNumber}`, '_blank')} className="gap-2">
+                                            <span className="material-symbols-outlined text-sm">assignment_return</span>
+                                            {isRTL ? 'طلب إرجاع' : 'Customer Return'}
+                                        </button>
+                                    </li>
+                                )}
+                                {isInternalShipment && (
+                                    <li>
+                                        <button onClick={handleOpenConversion} className="gap-2 text-primary font-bold">
+                                            <span className="material-symbols-outlined text-sm">flight_takeoff</span>
+                                            {isRTL ? 'تحويل لناقل دولي' : 'Convert to Carrier'}
+                                        </button>
+                                    </li>
+                                )}
+                                {['admin', 'manager', 'accounting'].includes(user?.role) && !hasCarrierBooking(shipment) && (
+                                    <li>
+                                        <button onClick={handleDelete} className="gap-2 text-error font-bold">
+                                            <span className="material-symbols-outlined text-sm">delete</span>
+                                            {isRTL ? 'حذف الشحنة' : 'Delete Consignment'}
+                                        </button>
+                                    </li>
+                                )}
+                            </ul>
+                        </div>
                     </div>
+
                 </div>
+            </div>
 
-                {/* Route Visual Connector & Progress Line */}
-                <div className="p-4 bg-base-200/50 rounded-2xl border border-base-200 space-y-3">
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                        <div className="flex items-center gap-4 flex-1">
-                            <div>
-                                <span className="text-[10px] font-black uppercase tracking-wider text-base-content/60 block">
-                                    {isRTL ? 'المنشأ' : 'Origin'}
-                                </span>
-                                <span className="font-extrabold text-sm sm:text-base text-base-content">
-                                    {sender.city || 'Kuwait City'}, {sender.countryCode || 'KW'}
-                                </span>
+            {/* Turn 2a Route Strip */}
+            <div className="card bg-base-100 border border-base-200 shadow-sm rounded-2xl p-4 sm:p-5">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    {/* Origin */}
+                    <div className="flex items-center gap-3">
+                        <div className="text-2xl">{senderFlag}</div>
+                        <div>
+                            <span className="text-[10px] font-black uppercase tracking-wider text-base-content/50 block">
+                                {isRTL ? 'من' : 'From'}
+                            </span>
+                            <div className="font-extrabold text-sm sm:text-base text-base-content">
+                                {sender.city || 'Kuwait City'}, {sender.countryCode || 'KW'}
                             </div>
+                            <div className="text-[11px] text-base-content/60 font-mono">
+                                {isRTL ? 'تاريخ الحجز:' : 'Booked:'} {formatTimestampKuwait(shipment.createdAt).date}
+                            </div>
+                        </div>
+                    </div>
 
-                            <div className="flex-1 mx-2 sm:mx-4 flex flex-col items-center gap-1.5 min-w-[220px]">
-                                <div className="flex items-center justify-between w-full px-1 text-xs font-black">
-                                    <div className="flex items-center gap-1.5 text-primary">
-                                        <span className="material-symbols-outlined text-base">flight_takeoff</span>
-                                        <span>{getShipmentTypeLabel(shipment.shipmentType)}</span>
-                                    </div>
-                                    <span className={`badge badge-sm font-black tracking-wide ${
-                                        normStatus === 'delivered'
-                                            ? 'badge-success text-white shadow-sm'
-                                            : (normStatus === 'cancelled' || normStatus === 'exception')
-                                            ? 'badge-error text-white animate-pulse shadow-sm'
-                                            : 'badge-primary text-white shadow-sm'
-                                    }`}>
-                                        {normStatus === 'exception'
-                                            ? (isRTL ? 'تنبيه استثناء وعائق' : 'Action Required / Exception')
-                                            : `${progressPct}% ${normStatus === 'delivered' ? (isRTL ? 'مكتمل' : 'Delivered') : (isRTL ? 'قيد المعالجة' : 'In Progress')}`}
+                    {/* Route Visual Connector */}
+                    <div className="flex-1 mx-2 sm:mx-6 w-full md:w-auto flex flex-col items-center gap-1.5 min-w-[200px]">
+                        <div className="relative w-full py-2">
+                            <div className="w-full h-2 bg-base-200 rounded-full overflow-hidden shadow-inner">
+                                <div
+                                    className={`h-full transition-all duration-700 rounded-full ${
+                                        effectiveStatus === 'delivered'
+                                            ? 'bg-gradient-to-r from-emerald-500 to-green-500'
+                                            : effectiveStatus === 'exception'
+                                            ? 'bg-gradient-to-r from-amber-500 to-red-500'
+                                            : 'bg-gradient-to-r from-primary to-indigo-500'
+                                    }`}
+                                    style={{ width: `${progressPct}%`, float: isRTL ? 'right' : 'left' }}
+                                />
+                            </div>
+                            <div
+                                className="absolute top-1/2 -translate-y-1/2 transition-all duration-700 pointer-events-none"
+                                style={{
+                                    [isRTL ? 'right' : 'left']: `${Math.min(96, Math.max(4, progressPct))}%`,
+                                    transform: isRTL ? 'translate(50%, -50%)' : 'translate(-50%, -50%)'
+                                }}
+                            >
+                                <div className="w-6 h-6 rounded-full bg-primary text-primary-content flex items-center justify-center shadow-md">
+                                    <span className="material-symbols-outlined text-xs">
+                                        {effectiveStatus === 'delivered' ? 'check' : 'flight'}
                                     </span>
                                 </div>
-                                
-                                {/* Custom Progress Track with High-Visibility Loading Bar & Live Moving Position Pin */}
-                                <div className="relative w-full py-2.5">
-                                    {/* High-Visibility Track Bar Background */}
-                                    <div className="w-full h-4 bg-base-300 rounded-full overflow-hidden shadow-inner relative border border-base-content/10">
-                                        {/* Dynamic Filled Loading Bar with Shimmer Animation */}
-                                        <div 
-                                            className={`h-full transition-all duration-700 ease-out rounded-full relative overflow-hidden ${
-                                                normStatus === 'delivered'
-                                                    ? 'bg-gradient-to-r from-emerald-500 via-green-500 to-emerald-400 shadow-[0_0_15px_rgba(34,197,94,0.7)]'
-                                                    : normStatus === 'cancelled'
-                                                    ? 'bg-gradient-to-r from-red-600 via-rose-500 to-red-500'
-                                                    : normStatus === 'exception'
-                                                    ? 'bg-gradient-to-r from-amber-600 via-rose-600 to-red-600 shadow-[0_0_15px_rgba(239,68,68,0.7)]'
-                                                    : 'bg-gradient-to-r from-primary via-blue-500 to-indigo-500 shadow-[0_0_15px_rgba(59,130,246,0.6)]'
-                                            }`}
-                                            style={{
-                                                width: `${progressPct}%`,
-                                                float: isRTL ? 'right' : 'left'
-                                            }}
-                                        >
-                                            {/* Animated Loading Shimmer Stripes across the bar */}
-                                            {normStatus !== 'delivered' && normStatus !== 'cancelled' && (
-                                                <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.25)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.25)_50%,rgba(255,255,255,0.25)_75%,transparent_75%,transparent)] bg-[length:24px_24px] animate-[pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite]" />
-                                            )}
-                                            {/* Glossy top reflection */}
-                                            <div className="absolute inset-x-0 top-0 h-1/2 bg-white/20 rounded-t-full" />
-                                        </div>
-                                    </div>
-
-                                    {/* Moving Position Indicator Icon Badge */}
-                                    <div 
-                                        className="absolute top-1/2 transition-all duration-700 ease-out pointer-events-none z-20"
-                                        style={{
-                                            [isRTL ? 'right' : 'left']: `${Math.min(97, Math.max(3, progressPct))}%`,
-                                            transform: isRTL ? 'translate(50%, -50%)' : 'translate(-50%, -50%)'
-                                        }}
-                                    >
-                                        <div 
-                                            className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center shadow-xl border-2 border-base-100 ${
-                                                normStatus === 'delivered'
-                                                    ? 'bg-success text-white ring-4 ring-success/30 shadow-success/40'
-                                                    : (normStatus === 'cancelled' || normStatus === 'exception')
-                                                    ? 'bg-error text-white ring-4 ring-error/30 shadow-error/40'
-                                                    : 'bg-primary text-white ring-4 ring-primary/30 shadow-primary/40'
-                                            }`}
-                                            title={`${progressPct}% - ${normStatus}`}
-                                        >
-                                            <span className="material-symbols-outlined text-sm sm:text-base font-black">
-                                                {indicatorIcon}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
                             </div>
-
-                            <div className="text-end">
-                                <span className="text-[10px] font-black uppercase tracking-wider text-base-content/60 block">
-                                    {isRTL ? 'الوجهة والتسليم' : 'Destination'}
-                                </span>
-                                <span className="font-extrabold text-sm sm:text-base text-base-content">
-                                    {receiver.city || 'Riyadh'}, {receiver.countryCode || 'SA'}
-                                </span>
-                            </div>
+                        </div>
+                        <div className="flex justify-between items-center w-full text-[10px] font-bold text-base-content/50 px-1">
+                            <span>{isRTL ? 'تم الاستلام' : 'Picked up'}</span>
+                            <span className="text-primary font-black">{progressPct}%</span>
+                            <span>{isRTL ? 'التسليم' : 'Delivered'}</span>
                         </div>
                     </div>
 
-                    {/* Step Nodes Ribbon */}
-                    <div className="flex justify-between items-center text-[10px] sm:text-xs font-extrabold text-base-content/60 px-1 pt-1">
-                        <span className={`flex items-center gap-1 ${visualStep >= 0 ? 'text-primary font-black' : ''}`}>
-                            {visualStep >= 0 && <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block"></span>}
-                            {isRTL ? 'تم الإنشاء' : 'Created'}
-                        </span>
-                        <span className={`flex items-center gap-1 ${visualStep >= 1 ? 'text-primary font-black' : ''}`}>
-                            {visualStep >= 1 && <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block"></span>}
-                            {isRTL ? 'تم الاستلام' : 'Picked Up'}
-                        </span>
-                        <span className={`flex items-center gap-1 ${visualStep >= 2 ? 'text-primary font-black' : ''}`}>
-                            {visualStep >= 2 && <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block"></span>}
-                            {isRTL ? 'نقل جوي دولي' : 'In Transit'}
-                        </span>
-                        <span className={`flex items-center gap-1 ${visualStep >= 3 ? 'text-primary font-black' : ''}`}>
-                            {visualStep >= 3 && <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block"></span>}
-                            {isRTL ? 'مع المندوب' : 'Out for Delivery'}
-                        </span>
-                        <span className={`flex items-center gap-1 ${visualStep >= 4 ? 'text-success font-black' : ''}`}>
-                            {visualStep >= 4 && <span className="w-1.5 h-1.5 rounded-full bg-success inline-block"></span>}
-                            {isRTL ? 'تم التسليم' : 'Delivered'}
-                        </span>
-                    </div>
-                </div>
-
-            </div>
-
-            {/* Active Triage & Operations Health Banner */}
-            <div className={`card ${isTriageException ? 'bg-error/5 border-error/25' : 'bg-success/5 border-success/20'} border shadow-xs rounded-2xl p-4 sm:p-5 transition-all`}>
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                    <div className="flex items-center gap-3">
-                        <span className="relative flex h-3 w-3 shrink-0">
-                            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${isTriageException ? 'bg-error' : 'bg-success'} opacity-75`}></span>
-                            <span className={`relative inline-flex rounded-full h-3 w-3 ${isTriageException ? 'bg-error' : 'bg-success'}`}></span>
-                        </span>
+                    {/* Destination */}
+                    <div className="flex items-center gap-3 text-end justify-end">
                         <div>
-                            <div className="flex items-center gap-2">
-                                <h3 className={`text-xs sm:text-sm font-black ${isTriageException ? 'text-error' : 'text-success'} uppercase tracking-wider`}>
-                                    {isRTL ? 'طابور التدخل والاستثناءات الفورية' : 'Active Triage & Exceptions'}
-                                </h3>
-                                <span className={`badge ${isTriageException ? 'badge-error text-white' : 'badge-success text-white'} badge-xs font-black`}>
-                                    {isTriageException ? (isRTL ? 'تنبيه استثنائي' : '1 Critical Blocker') : (isRTL ? 'طبيعي' : '0 Issues')}
-                                </span>
+                            <span className="text-[10px] font-black uppercase tracking-wider text-base-content/50 block">
+                                {isRTL ? 'إلى' : 'To'}
+                            </span>
+                            <div className="font-extrabold text-sm sm:text-base text-base-content">
+                                {receiver.city || 'London'}, {receiver.countryCode || 'GB'}
                             </div>
-                            <p className="text-xs text-base-content/70 font-semibold mt-0.5">
-                                {isTriageException
-                                    ? (isRTL ? `حالة استثنائية تعيق التسليم: ${triageDetail}` : `Critical issue blocking delivery: ${triageDetail}`)
-                                    : (isRTL ? '0 مشاكل حرجة — العمليات تسير بشكل طبيعي' : '0 critical issues — operations nominal')}
-                            </p>
+                            <div className="text-[11px] text-base-content/60 font-mono">
+                                {isRTL ? 'الوصول المتوقع:' : 'ETA:'} {shipment.estimatedDelivery ? formatTimestampKuwait(shipment.estimatedDelivery).date : (isRTL ? 'قريباً' : 'Pending')}
+                            </div>
                         </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                        {!isTriageException && (
-                            <div className="text-[11px] font-bold text-success flex items-center gap-1">
-                                <span className="material-symbols-outlined text-sm">verified</span>
-                                <span>{isRTL ? 'مسار النقل مصادق عليه' : 'Trade Corridor Nominal'}</span>
-                            </div>
-                        )}
+                        <div className="text-2xl">{receiverFlag}</div>
                     </div>
                 </div>
             </div>
 
-            {/* Receiver Action Callout Cards & Carrier Sharing */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* 1. Pin GPS Delivery Location */}
-                <div className="card bg-gradient-to-br from-primary to-primary-focus text-primary-content p-5 rounded-2xl shadow-sm flex flex-col justify-between space-y-3">
-                    <div>
-                        <div className="flex items-center gap-3 mb-1">
-                            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-xl shrink-0 shadow-xs">
-                                📍
-                            </div>
-                            <div>
-                                <h3 className="font-black text-sm sm:text-base leading-tight">
-                                    {isRTL ? 'تثبيت الموقع الجغرافي (GPS)' : 'Pin Delivery GPS Location'}
-                                </h3>
-                                <p className="text-xs opacity-85 mt-0.5">
-                                    {isRTL ? 'مساعدة سائق التوصيل بالإحداثيات الدقيقة ورقم الآلي (PACI).' : 'Assist the courier driver with exact Kuwait address coordinates and PACI.'}
-                                </p>
-                            </div>
-                        </div>
-                        {receiver.city && (
-                            <div className="mt-2 text-[11px] bg-white/10 rounded-lg px-2.5 py-1.5 flex items-center justify-between">
-                                <span className="opacity-80">{isRTL ? 'الوجهة المسجلة:' : 'Target Destination:'}</span>
-                                <span className="font-extrabold">{receiver.city}, {receiver.countryCode || 'KW'}</span>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="pt-3 border-t border-white/20 flex flex-wrap items-center justify-between gap-2">
-                        <button
-                            type="button"
-                            onClick={() => window.open(`/track/${shipment.trackingNumber}/location`, '_blank')}
-                            className="btn btn-xs bg-white text-primary hover:bg-white/90 border-none font-bold shadow-xs gap-1"
-                        >
-                            <span className="material-symbols-outlined text-xs">map</span>
-                            <span>{isRTL ? 'فتح موقع GPS' : 'Open Location Pin'}</span>
-                        </button>
-
-                        <div className="flex items-center gap-1.5">
-                            <button
-                                type="button"
-                                onClick={handleShareLocationWithCarrier}
-                                className="btn btn-xs bg-[#25D366] text-white hover:bg-[#1ebc57] border-none font-bold gap-1 shadow-xs"
-                                title={isRTL ? 'مشاركة الموقع مع السائق عبر واتساب' : 'Share Location Link with Courier Driver'}
-                            >
-                                <span className="material-symbols-outlined text-xs">share</span>
-                                <span>{isRTL ? 'مشاركة مع السائق' : 'Share with Carrier'}</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleCopyLocationLink}
-                                className="btn btn-xs bg-white/20 hover:bg-white/30 text-white border-none font-bold gap-1"
-                                title={isRTL ? 'نسخ رابط الموقع' : 'Copy Location Link'}
-                            >
-                                <span className="material-symbols-outlined text-xs">content_copy</span>
-                                <span>{isRTL ? 'نسخ الرابط' : 'Copy Link'}</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                {/* 2. Customer Return & Paperwork */}
-                <div className="card bg-base-100 border border-base-200/90 p-5 rounded-2xl shadow-sm flex flex-col justify-between space-y-3">
-                    <div>
-                        <div className="flex items-center gap-3 mb-1">
-                            <div className="w-10 h-10 rounded-xl bg-secondary/10 text-secondary flex items-center justify-center text-xl shrink-0">
-                                🔄
-                            </div>
-                            <div>
-                                <h3 className="font-black text-sm sm:text-base text-base-content leading-tight">
-                                    {isRTL ? 'بوابة المرتجعات والمستندات' : 'Customer Return & Paperwork'}
-                                </h3>
-                                <p className="text-xs text-base-content/60 mt-0.5">
-                                    {isRTL ? 'إصدار بوليصة الإرجاع خلال 14 يوماً، طباعة مستندات الشحن والبيان الجمركي.' : 'Initiate 14-day reverse parcel returns, customs declarations, or print air waybills.'}
-                                </p>
-                            </div>
-                        </div>
-                        <div className="mt-2 text-[11px] bg-base-200/50 rounded-lg px-2.5 py-1.5 flex items-center justify-between">
-                            <span className="text-base-content/60">{isRTL ? 'الناقل المعتمد:' : 'Consigned Carrier:'}</span>
-                            <span className="font-extrabold text-base-content font-mono">{shipment.carrierCode || shipment.carrier || 'Target Network'}</span>
-                        </div>
-                    </div>
-
-                    <div className="pt-3 border-t border-base-200 flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5">
-                            {resolvedCarrierAwb ? (
-                                <button
-                                    type="button"
-                                    onClick={() => handleOpenPdf(resolvedCarrierAwb)}
-                                    className="btn btn-xs btn-ghost border border-base-300 text-xs font-bold gap-1"
-                                >
-                                    <span className="material-symbols-outlined text-xs">print</span>
-                                    <span>{isRTL ? 'البوليصة الرسمية' : 'Air Waybill'}</span>
-                                </button>
-                            ) : (
-                                <button
-                                    type="button"
-                                    onClick={handleGenerateInvoiceQR}
-                                    className="btn btn-xs btn-ghost border border-base-300 text-xs font-bold gap-1"
-                                >
-                                    <span className="material-symbols-outlined text-xs">description</span>
-                                    <span>{isRTL ? 'فاتورة / QR' : 'Waybill QR'}</span>
-                                </button>
-                            )}
-                            <button
-                                type="button"
-                                onClick={() => window.open(`/returns/${shipment.trackingNumber}`, '_blank')}
-                                className="btn btn-xs btn-outline btn-secondary text-xs font-bold gap-1"
-                            >
-                                <span className="material-symbols-outlined text-xs">assignment_return</span>
-                                <span>{isRTL ? 'بوابة المرتجع' : 'Check Return'}</span>
-                            </button>
-                        </div>
-
-                        <div className="flex items-center gap-1.5">
-                            <button
-                                type="button"
-                                onClick={handleShareReturnWithCarrier}
-                                className="btn btn-xs bg-[#25D366] text-white hover:bg-[#1ebc57] border-none font-bold gap-1 shadow-xs"
-                                title={isRTL ? 'مشاركة رابط المرتجع والمستندات عبر واتساب' : 'Share Return Portal with Shipper/Carrier'}
-                            >
-                                <span className="material-symbols-outlined text-xs">share</span>
-                                <span>{isRTL ? 'مشاركة المرتجع' : 'Share Return'}</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleCopyReturnLink}
-                                className="btn btn-xs btn-ghost border border-base-300 text-xs font-bold gap-1"
-                                title={isRTL ? 'نسخ رابط بوابة المرتجعات' : 'Copy Returns Link'}
-                            >
-                                <span className="material-symbols-outlined text-xs">content_copy</span>
-                                <span>{isRTL ? 'نسخ' : 'Copy'}</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* 2. Main 2-Column Content Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+            {/* Turn 2a Main Two-Column Layout (2fr Left Wing / 1fr Right Sidebar) */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 
-                {/* LEFT WING (65% / 2 Columns) */}
-                <div className="lg:col-span-2 space-y-6">
+                {/* LEFT WING (8 cols = 2fr) */}
+                <div className="lg:col-span-8 space-y-6">
                     
-                    {/* Origin & Destination Party Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        
-                        {/* Shipper Party Card */}
-                        <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 space-y-3">
-                            <div className="flex justify-between items-center border-b border-base-200 pb-2.5">
-                                <div className="flex items-center gap-2">
-                                    <span className="material-symbols-outlined text-primary text-lg">flight_takeoff</span>
-                                    <h3 className="text-xs font-black uppercase tracking-wider text-primary">
-                                        {isRTL ? 'بيانات الراسل (المنشأ)' : 'Shipper (Origin)'}
-                                    </h3>
-                                </div>
-                                {canEdit && (
-                                    <button 
-                                        onClick={() => handleOpenEdit('sender')} 
-                                        className="btn btn-ghost btn-xs text-primary font-bold"
-                                    >
-                                        {isRTL ? 'تعديل' : 'Edit'}
-                                    </button>
-                                )}
-                            </div>
-
-                            <div className="space-y-1 text-xs">
-                                <h4 className="font-black text-sm text-base-content">
-                                    {sender.company || sender.contactPerson || (isRTL ? 'الراسل' : 'Shipper Contact')}
-                                </h4>
-                                {sender.contactPerson && sender.company && (
-                                    <p className="text-base-content/70 font-semibold">{sender.contactPerson}</p>
-                                )}
-                                <div className="flex items-center gap-1.5 font-mono text-base-content/80 pt-1">
-                                    <span className="material-symbols-outlined text-sm text-base-content/50">call</span>
-                                    <span>{sender.phone || '+965 ********'}</span>
-                                </div>
-                                {sender.email && (
-                                    <div className="flex items-center gap-1.5 text-base-content/80">
-                                        <span className="material-symbols-outlined text-sm text-base-content/50">mail</span>
-                                        <span>{sender.email}</span>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="p-2.5 bg-base-200/40 rounded-xl border border-base-200 text-xs text-base-content/80 space-y-0.5">
-                                <p>{[sender.line1, sender.line2, sender.address].filter(Boolean).join(', ') || 'Address on file'}</p>
-                                <p className="font-extrabold text-base-content">{sender.city}, {sender.countryCode || 'KW'}</p>
-                            </div>
-                        </div>
-
-                        {/* Consignee Party Card */}
-                        <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 space-y-3">
-                            <div className="flex justify-between items-center border-b border-base-200 pb-2.5">
-                                <div className="flex items-center gap-2">
-                                    <span className="material-symbols-outlined text-accent text-lg">flight_land</span>
-                                    <h3 className="text-xs font-black uppercase tracking-wider text-accent">
-                                        {isRTL ? 'بيانات المستلم (الوجهة)' : 'Consignee (Destination)'}
-                                    </h3>
-                                </div>
-                                {canEdit && (
-                                    <button 
-                                        onClick={() => handleOpenEdit('receiver')} 
-                                        className="btn btn-ghost btn-xs text-primary font-bold"
-                                    >
-                                        {isRTL ? 'تعديل' : 'Edit'}
-                                    </button>
-                                )}
-                            </div>
-
-                            <div className="space-y-1 text-xs">
-                                <h4 className="font-black text-sm text-base-content">
-                                    {receiver.company || receiver.contactPerson || (isRTL ? 'المستلم' : 'Consignee Contact')}
-                                </h4>
-                                {receiver.contactPerson && receiver.company && (
-                                    <p className="text-base-content/70 font-semibold">{receiver.contactPerson}</p>
-                                )}
-                                <div className="flex items-center justify-between pt-1">
-                                    <div className="flex items-center gap-1.5 font-mono text-base-content/80">
-                                        <span className="material-symbols-outlined text-sm text-base-content/50">call</span>
-                                        <span>{receiver.phone || 'No phone'}</span>
-                                    </div>
-                                    {receiver.phone && (
-                                        <a
-                                            href={`https://wa.me/${receiver.phone.replace(/\D/g, '')}?text=Hello%20${receiver.contactPerson || receiver.name},%20regarding%20Target%20Logistics%20Shipment%20${shipment.trackingNumber}`}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="btn btn-outline btn-success btn-xs font-bold rounded-lg gap-1"
-                                        >
-                                            <span className="material-symbols-outlined text-xs">chat</span>
-                                            WhatsApp
-                                        </a>
-                                    )}
-                                </div>
-                                {receiver.email && (
-                                    <div className="flex items-center gap-1.5 text-base-content/80">
-                                        <span className="material-symbols-outlined text-sm text-base-content/50">mail</span>
-                                        <span>{receiver.email}</span>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="p-2.5 bg-base-200/40 rounded-xl border border-base-200 text-xs text-base-content/80 space-y-0.5">
-                                <p>{[receiver.line1, receiver.line2, receiver.address].filter(Boolean).join(', ') || 'Address on file'}</p>
-                                <p className="font-extrabold text-base-content">{receiver.city}, {receiver.countryCode || 'GCC'}</p>
-                            </div>
-                        </div>
-
-                    </div>
-
-                    {/* Consignment Packages & Content Structure */}
-                    <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 space-y-4">
-                        <div className="flex justify-between items-center border-b border-base-200 pb-3">
-                            <div className="flex items-center gap-2">
-                                <span className="material-symbols-outlined text-primary text-lg">inventory_2</span>
-                                <h3 className="text-sm font-black text-base-content">
-                                    {isRTL ? 'مواصفات الطرود والبضائع المشحونة' : 'Cargo & Consignment Specifications'}
-                                </h3>
-                            </div>
-                            {canEdit && (
-                                <button
-                                    onClick={() => handleOpenEdit('content')}
-                                    className="btn btn-ghost btn-xs text-primary font-bold"
-                                >
-                                    {isRTL ? 'تعديل الطرود' : 'Edit Parcels'}
-                                </button>
-                            )}
-                        </div>
-
-                        {/* Metric Tiles Ribbon */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            <div className="p-3 bg-base-200/40 border border-base-200 rounded-xl text-center">
-                                <span className="text-[10px] font-black uppercase tracking-wider text-base-content/60 block">
-                                    {isRTL ? 'عدد القطع' : 'Total Pieces'}
-                                </span>
-                                <span className="text-base sm:text-lg font-black text-base-content mt-0.5 block">
-                                    {totalPieces} {isRTL ? 'طرد' : 'Pcs'}
-                                </span>
-                            </div>
-
-                            <div className="p-3 bg-base-200/40 border border-base-200 rounded-xl text-center">
-                                <span className="text-[10px] font-black uppercase tracking-wider text-base-content/60 block">
-                                    {isRTL ? 'الوزن الفعلي' : 'Actual Weight'}
-                                </span>
-                                <span className="text-base sm:text-lg font-black text-base-content mt-0.5 block">
-                                    {Number(totalWeight).toFixed(2)} KG
-                                </span>
-                            </div>
-
-                            <div className="p-3 bg-base-200/40 border border-base-200 rounded-xl text-center">
-                                <span className="text-[10px] font-black uppercase tracking-wider text-base-content/60 block">
-                                    {isRTL ? 'نوع التغليف' : 'Packaging'}
-                                </span>
-                                <span className="text-base sm:text-lg font-black text-base-content mt-0.5 block truncate">
-                                    {shipment.packagingType || 'Standard'}
-                                </span>
-                            </div>
-
-                            <div className="p-3 bg-base-200/40 border border-base-200 rounded-xl text-center">
-                                <span className="text-[10px] font-black uppercase tracking-wider text-base-content/60 block">
-                                    {isRTL ? 'شرط الشحن (Incoterm)' : 'Incoterm'}
-                                </span>
-                                <span className="text-base sm:text-lg font-black text-primary mt-0.5 block">
-                                    {shipment.incoterm || 'DAP'}
-                                </span>
-                            </div>
-                        </div>
-
-                        {/* Dangerous Goods (DGR) Banner if present */}
-                        {shipment.dangerousGoods?.contains && (
-                            <div className="alert bg-warning/10 border border-warning/30 text-warning-content rounded-xl p-3 flex items-center gap-3">
-                                <span className="material-symbols-outlined text-warning text-xl">warning</span>
-                                <div className="text-xs">
-                                    <strong className="block font-black text-warning">DGR Dangerous Goods Declared</strong>
-                                    <span>UN {shipment.dangerousGoods.unCode || '1266'} • {shipment.dangerousGoods.properShippingName || 'Perfumery Products'} • Class {shipment.dangerousGoods.hazardClass || '3'}</span>
+                    {/* Action rail (surfaces when active exception / blocker exists) */}
+                    {isTriageException && (
+                        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-start justify-between gap-3 text-amber-900 dark:text-amber-200 shadow-xs">
+                            <div className="flex items-start gap-3">
+                                <span className="material-symbols-outlined text-amber-600 dark:text-amber-400 text-xl shrink-0 mt-0.5">warning</span>
+                                <div>
+                                    <h4 className="font-black text-xs sm:text-sm">{isRTL ? 'تنبيه استثنائي يعيق حركة الشحنة' : 'Operational Exception Flagged'}</h4>
+                                    <p className="text-xs opacity-90 mt-0.5">{triageDetail}</p>
                                 </div>
                             </div>
-                        )}
-
-                        {/* Parcels Table */}
-                        {parcels.length > 0 && (
-                            <div className="overflow-x-auto border border-base-200 rounded-xl">
-                                <table className="table table-zebra table-hover w-full text-xs">
-                                    <thead>
-                                        <tr className="text-xs uppercase text-base-content/60 bg-base-200/50 font-extrabold">
-                                            <th>{isRTL ? 'رقم الطرد' : 'Parcel #'}</th>
-                                            <th>{isRTL ? 'الوصف' : 'Description'}</th>
-                                            <th>{isRTL ? 'الوزن' : 'Weight'}</th>
-                                            <th>{isRTL ? 'الأبعاد (ط×ع×ا)' : 'Dimensions (L×W×H)'}</th>
-                                            <th>{isRTL ? 'المرجع' : 'Reference'}</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {parcels.map((p, idx) => (
-                                            <tr key={idx}>
-                                                <td className="font-bold text-base-content">Package {idx + 1}</td>
-                                                <td>{p.description || 'General Cargo'}</td>
-                                                <td className="font-extrabold">{Number(p.weight || 0).toFixed(2)} KG</td>
-                                                <td>
-                                                    {p.dimensions ? `${p.dimensions.length || p.length || 0}×${p.dimensions.width || p.width || 0}×${p.dimensions.height || p.height || 0} cm` : '—'}
-                                                </td>
-                                                <td className="font-mono text-base-content/60">{p.trackingReference || shipment.reference || '—'}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
-
-                        {/* Declared Commercial Items Table */}
-                        {items.length > 0 && (
-                            <div className="space-y-2">
-                                <div className="text-xs font-black uppercase tracking-wider text-base-content/70">
-                                    {isRTL ? `البضائع المصرح عنها جمركياً (${items.length})` : `Declared Commercial Goods (${items.length})`}
-                                </div>
-                                <div className="overflow-x-auto border border-base-200 rounded-xl">
-                                    <table className="table table-zebra table-hover w-full text-xs">
-                                        <thead>
-                                            <tr className="text-xs uppercase text-base-content/60 bg-base-200/50 font-extrabold">
-                                                <th>{isRTL ? 'وصف البضاعة' : 'Item Description'}</th>
-                                                <th>{isRTL ? 'الكمية' : 'Qty'}</th>
-                                                <th>{isRTL ? 'القيمة المصرحة' : 'Declared Value'}</th>
-                                                <th>{isRTL ? 'رمز النظام المنسق (HS)' : 'HS Code'}</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {items.map((it, idx) => (
-                                                <tr key={idx}>
-                                                    <td className="font-bold text-base-content">{it.description}</td>
-                                                    <td className="font-extrabold">{it.quantity || 1}</td>
-                                                    <td className="font-extrabold text-primary">
-                                                        {it.declaredValue != null ? `${it.declaredValue} ${shipment.currency || 'KWD'}` : '—'}
-                                                    </td>
-                                                    <td className="font-mono text-base-content/60">{it.hsCode || '—'}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Official Carrier Documents & Customs Hub (Available for All Consignments) */}
-                    <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 space-y-4">
-                        <div className="flex justify-between items-center border-b border-base-200 pb-3">
-                            <div className="flex items-center gap-2">
-                                <span className="material-symbols-outlined text-primary text-lg">description</span>
-                                <h3 className="text-sm font-black text-base-content">
-                                    {isRTL ? 'وثائق الناقل والبيانات الجمركية الرسمية' : 'Official Carrier Paperwork & Customs Hub'}
-                                </h3>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                {isStaff && (
-                                    <>
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsUploadModalOpen(true)}
-                                            className="btn btn-outline btn-xs font-bold rounded-lg gap-1"
-                                        >
-                                            <span className="material-symbols-outlined text-sm">upload_file</span>
-                                            {isRTL ? 'رفع ملف' : 'Upload PDF'}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            disabled={isGeneratingCarrierDocs || isProcessing}
-                                            onClick={() => handleGenerateCarrierDocs('awb')}
-                                            className="btn btn-primary btn-xs font-bold rounded-lg gap-1"
-                                        >
-                                            <span className="material-symbols-outlined text-sm">
-                                                {isGeneratingCarrierDocs ? 'hourglass_top' : (!resolvedCarrierAwb ? 'bolt' : 'sync')}
-                                            </span>
-                                            {isGeneratingCarrierDocs 
-                                                ? (isRTL ? 'جاري التوليد...' : 'Generating...') 
-                                                : (!resolvedCarrierAwb ? (isRTL ? 'توليد الوثائق' : 'Generate Docs') : (isRTL ? 'تحديث الوثائق' : 'Sync Docs'))}
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            
-                            {/* Document 1: Official Carrier AWB */}
-                            <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">
-                                <div className="space-y-1">
-                                    <div className="flex items-center justify-between">
-                                        <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-                                            <span className="material-symbols-outlined text-base">local_shipping</span>
-                                        </div>
-                                        <span className={`badge badge-xs font-bold py-1 px-2 ${resolvedCarrierAwb ? 'badge-success text-white' : 'badge-warning text-white'}`}>
-                                            {resolvedCarrierAwb ? 'READY' : 'PENDING'}
-                                        </span>
-                                    </div>
-                                    <h4 className="font-extrabold text-xs text-base-content">
-                                        {carrierDisplayName} Air Waybill (AWB)
-                                    </h4>
-                                    <p className="text-[11px] text-base-content/60">
-                                        {isRTL ? 'بوليصة الشحن الجوي الرسمية' : 'Official barcoded consignment label'}
-                                    </p>
-                                </div>
-                                {resolvedCarrierAwb ? (
-                                    <button onClick={() => handleOpenPdf(resolvedCarrierAwb)} className="btn btn-primary btn-xs font-bold rounded-lg w-full">
-                                        <span className="material-symbols-outlined text-sm">print</span>
-                                        {isRTL ? 'طباعة البوليصة' : 'Print AWB'}
-                                    </button>
-                                ) : isStaff ? (
-                                    <button onClick={() => handleGenerateCarrierDocs('awb')} disabled={isGeneratingCarrierDocs} className="btn btn-primary btn-xs font-bold rounded-lg w-full">
-                                        <span className="material-symbols-outlined text-sm">bolt</span>
-                                        {isRTL ? 'توليد البوليصة' : 'Generate AWB'}
-                                    </button>
-                                ) : null}
-                            </div>
-
-                            {/* Document 2: Carrier Customs Invoice */}
-                            <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">
-                                <div className="space-y-1">
-                                    <div className="flex items-center justify-between">
-                                        <div className="w-8 h-8 rounded-lg bg-warning/10 text-warning flex items-center justify-center">
-                                            <span className="material-symbols-outlined text-base">receipt_long</span>
-                                        </div>
-                                        <span className={`badge badge-xs font-bold py-1 px-2 ${resolvedCarrierInvoice ? 'badge-success text-white' : 'badge-warning text-white'}`}>
-                                            {resolvedCarrierInvoice ? 'READY' : 'PENDING'}
-                                        </span>
-                                    </div>
-                                    <h4 className="font-extrabold text-xs text-base-content">
-                                        {carrierDisplayName} Customs Invoice
-                                    </h4>
-                                    <p className="text-[11px] text-base-content/60">
-                                        {isRTL ? 'الفاتورة والبيان الجمركي المعتمد' : 'Itemized customs export declaration'}
-                                    </p>
-                                </div>
-                                {resolvedCarrierInvoice ? (
-                                    <button onClick={() => handleOpenPdf(resolvedCarrierInvoice)} className="btn btn-outline btn-xs font-bold rounded-lg w-full">
-                                        <span className="material-symbols-outlined text-sm">print</span>
-                                        {isRTL ? 'طباعة الفاتورة' : 'Print Invoice'}
-                                    </button>
-                                ) : isStaff ? (
-                                    <button onClick={() => handleGenerateCarrierDocs('invoice')} disabled={isGeneratingCarrierDocs} className="btn btn-outline btn-xs font-bold rounded-lg w-full">
-                                        <span className="material-symbols-outlined text-sm">bolt</span>
-                                        {isRTL ? 'توليد الفاتورة' : 'Generate Invoice'}
-                                    </button>
-                                ) : null}
-                            </div>
-
-                            {/* Document 3: Target Hub Handover / Invoice QR */}
-                            <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">
-                                <div className="space-y-1">
-                                    <div className="flex items-center justify-between">
-                                        <div className="w-8 h-8 rounded-lg bg-base-300 text-base-content flex items-center justify-center">
-                                            <span className="material-symbols-outlined text-base">qr_code_2</span>
-                                        </div>
-                                        <span className="badge badge-neutral badge-xs font-bold py-1 px-2">
-                                            SYSTEM
-                                        </span>
-                                    </div>
-                                    <h4 className="font-extrabold text-xs text-base-content">
-                                        {isRTL ? 'منافست الفرز وباركود المخزن' : 'Target Hub Invoice & QR'}
-                                    </h4>
-                                    <p className="text-[11px] text-base-content/60">
-                                        {isRTL ? 'تسليم مركز العمليات ومسح المخازن' : 'Hub handover & warehouse scan sheet'}
-                                    </p>
-                                </div>
-                                <button onClick={handleGenerateInvoiceQR} className="btn btn-outline btn-xs font-bold rounded-lg w-full">
-                                    <span className="material-symbols-outlined text-sm">print</span>
-                                    {isRTL ? 'طباعة المنافست' : 'Print Document'}
-                                </button>
-                            </div>
-
-                        </div>
-
-                        {/* Extra Uploaded Documents List */}
-                        {rawDocuments.filter(d => typeof d === 'object' && d?.url && d.type !== 'label' && d.type !== 'invoice' && d.type !== 'awb').length > 0 && (
-                            <div className="pt-2 border-t border-base-200/60">
-                                <h5 className="text-[11px] font-bold text-base-content/60 uppercase tracking-wider mb-2">
-                                    {isRTL ? 'المستندات والملفات الإضافية المرفقة' : 'Additional Attached Documents'}
-                                </h5>
-                                <div className="flex flex-wrap gap-2">
-                                    {rawDocuments.filter(d => typeof d === 'object' && d?.url && d.type !== 'label' && d.type !== 'invoice' && d.type !== 'awb').map((doc, idx) => (
-                                        <div key={idx} className="flex items-center gap-2 bg-base-200/50 border border-base-200 rounded-lg px-2.5 py-1 text-xs">
-                                            <span className="material-symbols-outlined text-sm text-primary">attach_file</span>
-                                            <span className="font-bold">{doc.filename || doc.type || `Document #${idx + 1}`}</span>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleOpenPdf(doc.url)}
-                                                className="btn btn-ghost btn-xs text-primary font-bold p-0.5"
-                                            >
-                                                <span className="material-symbols-outlined text-xs">visibility</span>
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Milestone History, Telemetry & Operational Comments Tabs */}
-                    <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl overflow-hidden space-y-0">
-                        {/* Tabs Header */}
-                        <div className="border-b border-base-200 px-4 sm:px-6 pt-4 bg-base-200/30 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                            <div role="tablist" className="tabs tabs-bordered">
-                                <button
-                                    role="tab"
-                                    type="button"
-                                    onClick={() => setHistoryTab('milestones')}
-                                    className={`tab tab-bordered font-black text-xs sm:text-sm gap-1.5 pb-3 ${
-                                        historyTab === 'milestones' ? 'tab-active text-primary border-primary' : 'text-base-content/60'
-                                    }`}
-                                >
-                                    <span className="material-symbols-outlined text-base">timeline</span>
-                                    <span>{isRTL ? 'المحطات والأحداث' : 'Milestones Timeline'}</span>
-                                    <span className="badge badge-xs badge-primary font-mono">{milestoneEvents.length}</span>
-                                </button>
-                                <button
-                                    role="tab"
-                                    type="button"
-                                    onClick={() => setHistoryTab('telemetry')}
-                                    className={`tab tab-bordered font-black text-xs sm:text-sm gap-1.5 pb-3 ${
-                                        historyTab === 'telemetry' ? 'tab-active text-primary border-primary' : 'text-base-content/60'
-                                    }`}
-                                >
-                                    <span className="material-symbols-outlined text-base">receipt_long</span>
-                                    <span>{isRTL ? 'سجل مسح الناقل' : 'Carrier Telemetry'}</span>
-                                    <span className="badge badge-xs badge-neutral font-mono">{telemetryEvents.length}</span>
-                                </button>
-                                <button
-                                    role="tab"
-                                    type="button"
-                                    onClick={() => setHistoryTab('comments')}
-                                    className={`tab tab-bordered font-black text-xs sm:text-sm gap-1.5 pb-3 ${
-                                        historyTab === 'comments' ? 'tab-active text-primary border-primary' : 'text-base-content/60'
-                                    }`}
-                                >
-                                    <span className="material-symbols-outlined text-base">chat</span>
-                                    <span>{isRTL ? 'الملاحظات والتعليقات' : 'Comments & Notes'}</span>
-                                    <span className="badge badge-xs badge-secondary font-mono">{commentEvents.length}</span>
-                                </button>
-                            </div>
-
                             {canEdit && (
                                 <button
                                     onClick={() => handleOpenEdit('status')}
-                                    className="btn btn-primary btn-outline btn-xs font-bold rounded-lg gap-1 mb-2 sm:mb-0"
+                                    className="btn btn-warning btn-xs rounded-lg font-bold shrink-0 shadow-xs"
                                 >
-                                    <span className="material-symbols-outlined text-xs">add_task</span>
-                                    {isRTL ? 'إضافة محطة / تحديث الحالة' : 'Advance Milestone'}
+                                    {isRTL ? 'معالجة العائق' : 'Resolve'}
                                 </button>
                             )}
                         </div>
+                    )}
 
-                        {/* Tab 1 Content: Milestones Timeline */}
-                        {historyTab === 'milestones' && (
-                            <div className="p-4 sm:p-6 space-y-4">
-                                {milestoneEvents.length === 0 ? (
-                                    <div className="text-center py-8 text-base-content/60 font-semibold text-xs">
-                                        {isRTL ? 'لا توجد محطات تتبع مسجلة حتى الآن.' : 'No checkpoint milestones recorded yet.'}
-                                    </div>
-                                ) : (
-                                    <div className="space-y-4">
-                                        {milestoneEvents.map((event, idx) => {
-                                            const isLatest = idx === 0;
-                                            const prevEvent = idx > 0 ? milestoneEvents[idx - 1] : null;
-                                            const isNewDay = !prevEvent || prevEvent.dateParts?.dayKey !== event.dateParts?.dayKey;
-
-                                            return (
-                                                <React.Fragment key={idx}>
-                                                    {/* Date Group Header */}
-                                                    {isNewDay && (
-                                                        <div className="flex items-center gap-2 pt-2 pb-1">
-                                                            <div className="flex items-center gap-1.5 px-3 py-1 bg-base-200/80 border border-base-300/60 rounded-lg text-xs font-bold text-base-content">
-                                                                <span className="material-symbols-outlined text-xs text-primary">calendar_month</span>
-                                                                <span>{event.dateParts.dayHeader}</span>
-                                                            </div>
-                                                            <div className="flex-1 h-px bg-base-300/60" />
-                                                        </div>
-                                                    )}
-
-                                                    <ul className="timeline timeline-vertical timeline-compact text-xs !m-0 !p-0">
-                                                        <li>
-                                                            {idx > 0 && !isNewDay && <hr className={isLatest ? 'bg-primary' : 'bg-base-300'} />}
-                                                            <div className={`timeline-middle ${isLatest ? 'text-primary' : 'text-base-content/50'}`}>
-                                                                <span className="material-symbols-outlined text-base">
-                                                                    {isLatest ? 'check_circle' : 'circle'}
-                                                                </span>
-                                                            </div>
-                                                            <div className="timeline-end timeline-box py-3 px-4 border-base-200 bg-base-100 shadow-xs rounded-xl space-y-1.5 w-full max-w-3xl mb-1">
-                                                                <div className="flex flex-wrap justify-between items-baseline gap-2">
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className={`badge badge-xs font-black ${event.badgeColor}`}>
-                                                                            {event.friendlyTitle}
-                                                                        </span>
-                                                                        <span className="font-extrabold text-xs text-base-content">
-                                                                            {event.rawDescription}
-                                                                        </span>
-                                                                    </div>
-                                                                    <span className="font-mono text-[10.5px] text-base-content/50">
-                                                                        {event.dateParts.time}
-                                                                    </span>
-                                                                </div>
-
-                                                                <div className="flex flex-wrap items-center gap-3 text-[11px] text-base-content/70">
-                                                                    {event.locationText && (
-                                                                        <div className="flex items-center gap-1 font-medium">
-                                                                            <span className="material-symbols-outlined text-xs text-primary">pin_drop</span>
-                                                                            <span>{event.locationText}</span>
-                                                                        </div>
-                                                                    )}
-                                                                    <div className="flex items-center gap-1 font-mono text-[10px] text-base-content/50">
-                                                                        <span className="badge badge-ghost badge-xs text-[10px]">
-                                                                            {event.carrierSource}
-                                                                        </span>
-                                                                    </div>
-                                                                </div>
-
-                                                                {event.pod && (
-                                                                    <div className="p-2.5 bg-success/10 border border-success/30 rounded-lg text-success-content text-[11px] space-y-1 mt-1">
-                                                                        <div className="font-black text-success flex items-center gap-1">
-                                                                            <span className="material-symbols-outlined text-sm">verified</span>
-                                                                            <span>{isRTL ? 'تم تسجيل إثبات التسليم (POD)' : 'Proof of Delivery Recorded'}</span>
-                                                                        </div>
-                                                                        <div>{isRTL ? 'المستلم:' : 'Received by:'} <strong>{event.pod.recipientName}</strong> ({event.pod.recipientRelationship || 'Consignee'})</div>
-                                                                        {event.pod.signatureDataUrl && (
-                                                                            <img src={event.pod.signatureDataUrl} alt="Signature" className="h-8 max-w-[120px] object-contain bg-white rounded border border-success/20 p-0.5 mt-1" />
-                                                                        )}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                            {idx < milestoneEvents.length - 1 && milestoneEvents[idx + 1]?.dateParts?.dayKey === event.dateParts?.dayKey && (
-                                                                <hr className="bg-base-300" />
-                                                            )}
-                                                        </li>
-                                                    </ul>
-                                                </React.Fragment>
-                                            );
-                                        })}
-                                    </div>
+                    {/* Turn 2a Milestone Timeline Card */}
+                    <div className="card bg-base-100 border border-base-200 shadow-sm rounded-2xl p-5 sm:p-6 space-y-4">
+                        <div className="flex justify-between items-center pb-3 border-b border-base-200">
+                            <div className="flex items-center gap-2">
+                                <span className="material-symbols-outlined text-primary text-base">timeline</span>
+                                <h3 className="font-black text-sm text-base-content">{isRTL ? 'المحطات الرئيسية' : 'Milestones'}</h3>
+                                <span className="badge badge-sm badge-ghost font-mono">{milestoneEvents.length}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveCockpitTab('audit')}
+                                    className="text-xs text-primary hover:underline font-bold"
+                                >
+                                    {isRTL ? 'عرض سجل التيليميتري الكامل ←' : 'View full carrier log →'}
+                                </button>
+                                {canEdit && (
+                                    <button
+                                        onClick={() => handleOpenEdit('status')}
+                                        className="btn btn-primary btn-outline btn-xs font-bold gap-1 rounded-lg"
+                                    >
+                                        <span className="material-symbols-outlined text-xs">add_task</span>
+                                        <span>{isRTL ? 'تحديث الحالة' : 'Advance'}</span>
+                                    </button>
                                 )}
                             </div>
-                        )}
+                        </div>
 
-                        {/* Tab 2 Content: Carrier Telemetry (Raw Scan Stream) */}
-                        {historyTab === 'telemetry' && (
-                            <div className="p-4 sm:p-6 space-y-4">
-                                <div className="flex justify-between items-center text-xs text-base-content/60">
-                                    <span className="font-semibold">{isRTL ? 'بيانات المسح الخام الواردة مباشرة من شبكة الناقل' : 'Live scan telemetry recorded directly from carrier network'}</span>
-                                    <span className="font-mono text-[11px]">AWB: <strong>{shipment.dhlTrackingNumber || shipment.carrierShipmentId || shipment.trackingNumber}</strong></span>
+                        {/* Milestone Events List */}
+                        {milestoneEvents.length === 0 ? (
+                            <div className="text-center py-6 text-xs text-base-content/50">
+                                {isRTL ? 'بانتظار تسجيل المحطة الأولى في مركز العمليات.' : 'Awaiting first checkpoint scan at operations hub.'}
+                            </div>
+                        ) : (
+                            <div className="relative pl-6 space-y-5 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-base-200">
+                                {milestoneEvents.slice(0, 6).map((evt, idx) => {
+                                    const isLatest = idx === 0;
+                                    return (
+                                        <div key={idx} className="relative">
+                                            <span
+                                                className={`absolute -left-6 top-1 w-3.5 h-3.5 rounded-full border-2 transition-all ${
+                                                    isLatest
+                                                        ? 'bg-primary border-primary ring-4 ring-primary/20'
+                                                        : 'bg-base-100 border-base-300'
+                                                }`}
+                                            />
+                                            <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
+                                                <div className="text-xs sm:text-sm font-bold text-base-content">
+                                                    {evt.rawDescription || evt.friendlyTitle}
+                                                </div>
+                                                <div className="text-[11px] text-base-content/50 font-mono">
+                                                    {evt.dateParts.date} · {evt.dateParts.time}
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2 mt-0.5 text-xs text-base-content/60">
+                                                {evt.locationText && <span>{evt.locationText}</span>}
+                                                {evt.carrierSource && (
+                                                    <span className="badge badge-xs badge-ghost text-[9px]">{evt.carrierSource}</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Turn 2a Secondary Section Tabs Strip */}
+                    <div className="space-y-4">
+                        <div className="bg-base-100 border border-base-200 rounded-2xl p-1.5 flex gap-1 overflow-x-auto shadow-xs">
+                            <button
+                                type="button"
+                                onClick={() => setActiveCockpitTab('packages')}
+                                className={`btn btn-sm rounded-xl font-bold text-xs gap-1.5 transition-all ${
+                                    activeCockpitTab === 'packages' ? 'btn-primary text-primary-content shadow-xs' : 'btn-ghost text-base-content/70 hover:text-base-content'
+                                }`}
+                            >
+                                <span className="material-symbols-outlined text-sm">inventory_2</span>
+                                <span>{isRTL ? `الطرود (${parcels.length || 1})` : `Packages · ${parcels.length || 1}`}</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setActiveCockpitTab('customs')}
+                                className={`btn btn-sm rounded-xl font-bold text-xs gap-1.5 transition-all ${
+                                    activeCockpitTab === 'customs' ? 'btn-primary text-primary-content shadow-xs' : 'btn-ghost text-base-content/70 hover:text-base-content'
+                                }`}
+                            >
+                                <span className="material-symbols-outlined text-sm">description</span>
+                                <span>{isRTL ? 'الجمارك والوثائق' : 'Customs'}</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setActiveCockpitTab('finance')}
+                                className={`btn btn-sm rounded-xl font-bold text-xs gap-1.5 transition-all ${
+                                    activeCockpitTab === 'finance' ? 'btn-primary text-primary-content shadow-xs' : 'btn-ghost text-base-content/70 hover:text-base-content'
+                                }`}
+                            >
+                                <span className="material-symbols-outlined text-sm">receipt_long</span>
+                                <span>{isRTL ? 'المالية' : 'Finance'}</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setActiveCockpitTab('notifications')}
+                                className={`btn btn-sm rounded-xl font-bold text-xs gap-1.5 transition-all ${
+                                    activeCockpitTab === 'notifications' ? 'btn-primary text-primary-content shadow-xs' : 'btn-ghost text-base-content/70 hover:text-base-content'
+                                }`}
+                            >
+                                <span className="material-symbols-outlined text-sm">chat</span>
+                                <span>{isRTL ? 'إشعارات واتساب' : 'Notifications'}</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setActiveCockpitTab('audit')}
+                                className={`btn btn-sm rounded-xl font-bold text-xs gap-1.5 transition-all ${
+                                    activeCockpitTab === 'audit' ? 'btn-primary text-primary-content shadow-xs' : 'btn-ghost text-base-content/70 hover:text-base-content'
+                                }`}
+                            >
+                                <span className="material-symbols-outlined text-sm">history</span>
+                                <span>{isRTL ? 'سجل التدقيق' : 'Audit log'}</span>
+                            </button>
+                        </div>
+
+                        {/* Tab Content 1: Packages */}
+                        {activeCockpitTab === 'packages' && (
+                            <div className="card bg-base-100 border border-base-200 shadow-sm rounded-2xl p-5 space-y-4">
+                                <div className="flex justify-between items-center border-b border-base-200 pb-3">
+                                    <h4 className="text-xs font-black uppercase tracking-wider text-base-content/70">
+                                        {isRTL ? 'مواصفات الطرود والأبعاد' : 'Package Dimensions & Cargo Metrics'}
+                                    </h4>
+                                    {canEdit && (
+                                        <button onClick={() => handleOpenEdit('content')} className="btn btn-ghost btn-xs text-primary font-bold">
+                                            {isRTL ? 'تعديل الطرود' : 'Edit Parcels'}
+                                        </button>
+                                    )}
                                 </div>
 
-                                {telemetryEvents.length === 0 ? (
-                                    <div className="text-center py-8 text-base-content/60 font-semibold text-xs">
-                                        {isRTL ? 'لا توجد بيانات مسح خام واردة من الناقل حتى الآن.' : 'No raw telemetry events recorded yet.'}
+                                {/* Metric Tiles */}
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                    <div className="p-3 bg-base-200/40 border border-base-200 rounded-xl text-center">
+                                        <span className="text-[10px] font-black uppercase text-base-content/60 block">{isRTL ? 'القطع' : 'Pieces'}</span>
+                                        <span className="text-base font-black text-base-content mt-0.5 block">{totalPieces}</span>
                                     </div>
-                                ) : (
+                                    <div className="p-3 bg-base-200/40 border border-base-200 rounded-xl text-center">
+                                        <span className="text-[10px] font-black uppercase text-base-content/60 block">{isRTL ? 'الوزن الفعلي' : 'Actual Weight'}</span>
+                                        <span className="text-base font-black text-base-content mt-0.5 block">{Number(totalWeight).toFixed(2)} KG</span>
+                                    </div>
+                                    <div className="p-3 bg-base-200/40 border border-base-200 rounded-xl text-center">
+                                        <span className="text-[10px] font-black uppercase text-base-content/60 block">{isRTL ? 'التغليف' : 'Packaging'}</span>
+                                        <span className="text-base font-black text-base-content mt-0.5 block truncate">{shipment.packagingType || 'Standard'}</span>
+                                    </div>
+                                    <div className="p-3 bg-base-200/40 border border-base-200 rounded-xl text-center">
+                                        <span className="text-[10px] font-black uppercase text-base-content/60 block">{isRTL ? 'شرط الشحن' : 'Incoterm'}</span>
+                                        <span className="text-base font-black text-primary mt-0.5 block">{shipment.incoterm || 'DAP'}</span>
+                                    </div>
+                                </div>
+
+                                {shipment.dangerousGoods?.contains && (
+                                    <div className="alert bg-warning/10 border border-warning/30 text-warning-content rounded-xl p-3 flex items-center gap-3">
+                                        <span className="material-symbols-outlined text-warning text-xl">warning</span>
+                                        <div className="text-xs">
+                                            <strong className="block font-black text-warning">DGR Dangerous Goods Declared</strong>
+                                            <span>UN {shipment.dangerousGoods.unCode || '1266'} • {shipment.dangerousGoods.properShippingName || 'Perfumery Products'} • Class {shipment.dangerousGoods.hazardClass || '3'}</span>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {parcels.length > 0 && (
                                     <div className="overflow-x-auto border border-base-200 rounded-xl">
-                                        <table className="table table-zebra table-xs w-full">
-                                            <thead className="bg-base-200/60 text-base-content/70">
-                                                <tr>
-                                                    <th className="w-12">#</th>
-                                                    <th>{isRTL ? 'الوقت والتاريخ' : 'Timestamp (Kuwait)'}</th>
-                                                    <th>{isRTL ? 'كود الحالة' : 'Code'}</th>
-                                                    <th>{isRTL ? 'وصف المسح الأصلي' : 'Raw Event Description'}</th>
-                                                    <th>{isRTL ? 'الموقع / المحطة' : 'Facility Location'}</th>
-                                                    <th>{isRTL ? 'المصدر' : 'Source'}</th>
+                                        <table className="table table-zebra table-hover w-full text-xs">
+                                            <thead>
+                                                <tr className="text-xs uppercase text-base-content/60 bg-base-200/50 font-extrabold">
+                                                    <th>{isRTL ? 'رقم الطرد' : 'Parcel #'}</th>
+                                                    <th>{isRTL ? 'الوصف' : 'Description'}</th>
+                                                    <th>{isRTL ? 'الوزن' : 'Weight'}</th>
+                                                    <th>{isRTL ? 'الأبعاد (ط×ع×ا)' : 'Dimensions (L×W×H)'}</th>
+                                                    <th>{isRTL ? 'المرجع' : 'Reference'}</th>
                                                 </tr>
                                             </thead>
-                                            <tbody className="font-mono text-xs">
-                                                {telemetryEvents.map((tEvt, tIdx) => {
-                                                    const prevEvt = tIdx > 0 ? telemetryEvents[tIdx - 1] : null;
-                                                    const isNewDay = !prevEvt || prevEvt.dateParts?.dayKey !== tEvt.dateParts?.dayKey;
-
-                                                    return (
-                                                        <React.Fragment key={tEvt.idx}>
-                                                            {isNewDay && (
-                                                                <tr className="bg-base-200/90 font-sans font-bold text-[11px] text-base-content border-t-2 border-base-300">
-                                                                    <td colSpan={6} className="py-1.5 px-3">
-                                                                        <div className="flex items-center gap-1.5 text-primary">
-                                                                            <span className="material-symbols-outlined text-xs">calendar_month</span>
-                                                                            <span>{tEvt.dateParts.dayHeader}</span>
-                                                                        </div>
-                                                                    </td>
-                                                                </tr>
-                                                            )}
-                                                            <tr className="hover">
-                                                                <td className="text-base-content/40">{tEvt.idx}</td>
-                                                                <td className="whitespace-nowrap font-bold text-base-content">{tEvt.dateParts.time}</td>
-                                                                <td>
-                                                                    <span className="badge badge-xs badge-neutral font-bold">{tEvt.statusCode}</span>
-                                                                </td>
-                                                                <td className="font-sans font-medium text-base-content">{tEvt.description}</td>
-                                                                <td className="whitespace-nowrap">{tEvt.location}</td>
-                                                                <td>
-                                                                    <span className="badge badge-xs badge-ghost text-[10px] uppercase">{tEvt.source}</span>
-                                                                </td>
-                                                            </tr>
-                                                        </React.Fragment>
-                                                    );
-                                                })}
+                                            <tbody>
+                                                {parcels.map((p, idx) => (
+                                                    <tr key={idx}>
+                                                        <td className="font-bold text-base-content">Package {idx + 1}</td>
+                                                        <td>{p.description || 'General Cargo'}</td>
+                                                        <td className="font-extrabold">{Number(p.weight || 0).toFixed(2)} KG</td>
+                                                        <td>{p.dimensions ? `${p.dimensions.length || p.length || 0}×${p.dimensions.width || p.width || 0}×${p.dimensions.height || p.height || 0} cm` : '—'}</td>
+                                                        <td className="font-mono text-base-content/60">{p.trackingReference || shipment.reference || '—'}</td>
+                                                    </tr>
+                                                ))}
                                             </tbody>
                                         </table>
                                     </div>
@@ -1938,22 +1382,270 @@ const ShipmentDetailsPage = () => {
                             </div>
                         )}
 
-                        {/* Tab 3 Content: Comments & Operational Notes */}
-                        {historyTab === 'comments' && (
-                            <div className="p-4 sm:p-6 space-y-5">
-                                {/* Quick Add Note Form */}
-                                {canEdit && (
-                                    <form onSubmit={handleAddComment} className="p-3.5 bg-base-200/40 rounded-xl border border-base-200 space-y-2">
-                                        <div className="flex items-center gap-1.5 text-xs font-bold text-base-content">
-                                            <span className="material-symbols-outlined text-sm text-primary">edit_note</span>
-                                            <span>{isRTL ? 'إضافة ملاحظة أو تعليق تشغيلي' : 'Add Consignment Comment / Operational Note'}</span>
+                        {/* Tab Content 2: Customs & Paperwork */}
+                        {activeCockpitTab === 'customs' && (
+                            <div className="card bg-base-100 border border-base-200 shadow-sm rounded-2xl p-5 space-y-4">
+                                <div className="flex justify-between items-center border-b border-base-200 pb-3">
+                                    <h4 className="text-xs font-black uppercase tracking-wider text-base-content/70">
+                                        {isRTL ? 'وثائق الناقل والبيانات الجمركية الرسمية' : 'Official Carrier Paperwork & Customs Hub'}
+                                    </h4>
+                                    <div className="flex items-center gap-2">
+                                        {isStaff && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsUploadModalOpen(true)}
+                                                className="btn btn-outline btn-xs font-bold rounded-lg gap-1"
+                                            >
+                                                <span className="material-symbols-outlined text-sm">upload_file</span>
+                                                <span>{isRTL ? 'رفع ملف' : 'Upload PDF'}</span>
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Official Carrier Document Cards */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    {/* AWB */}
+                                    <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">
+                                        <div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="material-symbols-outlined text-primary text-xl">local_shipping</span>
+                                                <span className={`badge badge-xs font-bold ${resolvedCarrierAwb ? 'badge-success text-white' : 'badge-warning text-white'}`}>
+                                                    {resolvedCarrierAwb ? 'READY' : 'PENDING'}
+                                                </span>
+                                            </div>
+                                            <h5 className="font-extrabold text-xs text-base-content mt-1">{carrierDisplayName} Air Waybill</h5>
+                                            <p className="text-[11px] text-base-content/60">{isRTL ? 'بوليصة الشحن الجوي الرسمية' : 'Official consignment label'}</p>
                                         </div>
+                                        {resolvedCarrierAwb ? (
+                                            <button onClick={() => handleOpenPdf(resolvedCarrierAwb)} className="btn btn-primary btn-xs font-bold rounded-lg w-full">
+                                                <span className="material-symbols-outlined text-sm">print</span>
+                                                <span>{isRTL ? 'طباعة البوليصة' : 'Print AWB'}</span>
+                                            </button>
+                                        ) : isStaff ? (
+                                            <button onClick={() => handleGenerateCarrierDocs('awb')} disabled={isGeneratingCarrierDocs} className="btn btn-primary btn-xs font-bold rounded-lg w-full">
+                                                <span className="material-symbols-outlined text-sm">bolt</span>
+                                                <span>{isRTL ? 'توليد البوليصة' : 'Generate AWB'}</span>
+                                            </button>
+                                        ) : null}
+                                    </div>
+
+                                    {/* Customs Invoice */}
+                                    <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">
+                                        <div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="material-symbols-outlined text-warning text-xl">receipt_long</span>
+                                                <span className={`badge badge-xs font-bold ${resolvedCarrierInvoice ? 'badge-success text-white' : 'badge-warning text-white'}`}>
+                                                    {resolvedCarrierInvoice ? 'READY' : 'PENDING'}
+                                                </span>
+                                            </div>
+                                            <h5 className="font-extrabold text-xs text-base-content mt-1">{carrierDisplayName} Customs Invoice</h5>
+                                            <p className="text-[11px] text-base-content/60">{isRTL ? 'الفاتورة والبيان الجمركي' : 'Itemized export declaration'}</p>
+                                        </div>
+                                        {resolvedCarrierInvoice ? (
+                                            <button onClick={() => handleOpenPdf(resolvedCarrierInvoice)} className="btn btn-outline btn-xs font-bold rounded-lg w-full">
+                                                <span className="material-symbols-outlined text-sm">print</span>
+                                                <span>{isRTL ? 'طباعة الفاتورة' : 'Print Invoice'}</span>
+                                            </button>
+                                        ) : isStaff ? (
+                                            <button onClick={() => handleGenerateCarrierDocs('invoice')} disabled={isGeneratingCarrierDocs} className="btn btn-outline btn-xs font-bold rounded-lg w-full">
+                                                <span className="material-symbols-outlined text-sm">bolt</span>
+                                                <span>{isRTL ? 'توليد الفاتورة' : 'Generate Invoice'}</span>
+                                            </button>
+                                        ) : null}
+                                    </div>
+
+                                    {/* Target Handover QR */}
+                                    <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">
+                                        <div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="material-symbols-outlined text-base-content text-xl">qr_code_2</span>
+                                                <span className="badge badge-neutral badge-xs font-bold">SYSTEM</span>
+                                            </div>
+                                            <h5 className="font-extrabold text-xs text-base-content mt-1">{isRTL ? 'منافست الفرز وباركود المخزن' : 'Target Hub Invoice & QR'}</h5>
+                                            <p className="text-[11px] text-base-content/60">{isRTL ? 'تسليم مركز العمليات ومسح المخازن' : 'Hub handover & warehouse scan sheet'}</p>
+                                        </div>
+                                        <button onClick={handleGenerateInvoiceQR} className="btn btn-outline btn-xs font-bold rounded-lg w-full">
+                                            <span className="material-symbols-outlined text-sm">print</span>
+                                            <span>{isRTL ? 'طباعة المنافست' : 'Print Document'}</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Declared Commercial Items */}
+                                {items.length > 0 && (
+                                    <div className="space-y-2 pt-2">
+                                        <div className="text-xs font-black uppercase tracking-wider text-base-content/70">
+                                            {isRTL ? `البضائع المصرح عنها جمركياً (${items.length})` : `Declared Commercial Goods (${items.length})`}
+                                        </div>
+                                        <div className="overflow-x-auto border border-base-200 rounded-xl">
+                                            <table className="table table-zebra table-hover w-full text-xs">
+                                                <thead>
+                                                    <tr className="text-xs uppercase text-base-content/60 bg-base-200/50 font-extrabold">
+                                                        <th>{isRTL ? 'وصف البضاعة' : 'Item Description'}</th>
+                                                        <th>{isRTL ? 'الكمية' : 'Qty'}</th>
+                                                        <th>{isRTL ? 'القيمة المصرحة' : 'Declared Value'}</th>
+                                                        <th>{isRTL ? 'رمز النظام المنسق (HS)' : 'HS Code'}</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {items.map((it, idx) => (
+                                                        <tr key={idx}>
+                                                            <td className="font-bold text-base-content">{it.description}</td>
+                                                            <td className="font-extrabold">{it.quantity || 1}</td>
+                                                            <td className="font-extrabold text-primary">
+                                                                {it.declaredValue != null ? `${it.declaredValue} ${shipment.currency || 'KWD'}` : '—'}
+                                                            </td>
+                                                            <td className="font-mono text-base-content/60">{it.hsCode || '—'}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Tab Content 3: Finance */}
+                        {activeCockpitTab === 'finance' && (
+                            <div className="card bg-base-100 border border-base-200 shadow-sm rounded-2xl p-5 space-y-4">
+                                <div className="flex justify-between items-center border-b border-base-200 pb-3">
+                                    <h4 className="text-xs font-black uppercase tracking-wider text-base-content/70">
+                                        {isRTL ? 'البيان المالي والرسوم' : 'Financial Ledger & Payment Gateway'}
+                                    </h4>
+                                    <span className={`badge badge-sm font-black ${isPaid ? 'badge-success text-white' : 'badge-error text-white'}`}>
+                                        {isPaid ? 'PAID' : 'DUE'}
+                                    </span>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <div className="p-3 bg-base-200/40 border border-base-200 rounded-xl text-center">
+                                        <span className="text-[10px] font-black uppercase text-base-content/60 block">{isRTL ? 'إجمالي الرسوم' : 'Total Charge'}</span>
+                                        <span className="text-base font-black text-base-content mt-1 block">
+                                            {Number(accountingSummary.totalCharge || 0).toFixed(3)} {shipment.currency || 'KWD'}
+                                        </span>
+                                    </div>
+                                    <div className="p-3 bg-base-200/40 border border-base-200 rounded-xl text-center">
+                                        <span className="text-[10px] font-black uppercase text-base-content/60 block">{isRTL ? 'المدفوع' : 'Total Paid'}</span>
+                                        <span className="text-base font-black text-success mt-1 block">
+                                            {Number(accountingSummary.totalPaid || 0).toFixed(3)} {shipment.currency || 'KWD'}
+                                        </span>
+                                    </div>
+                                    <div className="p-3 bg-base-200/40 border border-base-200 rounded-xl text-center">
+                                        <span className="text-[10px] font-black uppercase text-base-content/60 block">{isRTL ? 'الرصيد المتبقي' : 'Balance Due'}</span>
+                                        <span className={`text-base font-black mt-1 block ${accountingSummary.remainingBalance > 0 ? 'text-error' : 'text-success'}`}>
+                                            {Number(accountingSummary.remainingBalance || 0).toFixed(3)} {shipment.currency || 'KWD'}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {accountingSummary.remainingBalance > 0 && (
+                                    <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-base-200">
+                                        <button
+                                            onClick={() => handleSendPaymentLink('sender')}
+                                            disabled={sendingPaymentLink}
+                                            className="btn btn-primary btn-sm rounded-xl font-extrabold gap-1.5 shadow-sm text-xs"
+                                        >
+                                            <span className="material-symbols-outlined text-base">chat</span>
+                                            {sendingPaymentLink ? 'Dispatching...' : (isRTL ? 'إرسال رابط الدفع واتساب' : 'Send WhatsApp Payment Link')}
+                                        </button>
+                                        <button
+                                            onClick={handleCopyPaymentLink}
+                                            className="btn btn-outline btn-sm rounded-xl font-bold text-xs"
+                                        >
+                                            {isRTL ? 'نسخ الرابط' : 'Copy Payment Link'}
+                                        </button>
+                                        <button
+                                            onClick={() => window.open(`/pay/${shipment.trackingNumber}`, '_blank')}
+                                            className="btn btn-ghost btn-sm text-primary font-bold text-xs"
+                                        >
+                                            {isRTL ? 'فتح بوابة الدفع ↗' : 'Pay Online Portal ↗'}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Tab Content 4: Notifications */}
+                        {activeCockpitTab === 'notifications' && (
+                            <div className="card bg-base-100 border border-base-200 shadow-sm rounded-2xl p-5 space-y-4">
+                                <div className="flex justify-between items-center border-b border-base-200 pb-3">
+                                    <h4 className="text-xs font-black uppercase tracking-wider text-base-content/70">
+                                        {isRTL ? 'سجل إشعارات وتنبيهات واتساب' : 'WhatsApp Notification Telemetry'}
+                                    </h4>
+                                    <Link to={`/admin/whatsapp-logs?search=${shipment.trackingNumber}`} className="text-primary hover:underline font-bold text-xs">
+                                        {isRTL ? 'سجلات النظام ↗' : 'System WhatsApp Logs ↗'}
+                                    </Link>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {[
+                                        { key: 'sender', label: isRTL ? 'إشعار الراسل' : 'Sender Notification' },
+                                        { key: 'receiver', label: isRTL ? 'إشعار المستلم' : 'Receiver Notification' }
+                                    ].map((role) => {
+                                        const isSenderRole = role.key === 'sender';
+                                        const roleAliases = isSenderRole ? ['sender', 'shipper', 'merchant'] : ['receiver', 'consignee', 'customer'];
+                                        const roleLogs = (shipment.notificationLogs || []).filter(l => 
+                                            roleAliases.includes((l.recipientRole || '').toLowerCase())
+                                        );
+                                        const latestLog = roleLogs[0] || null;
+                                        const logStatus = (latestLog?.status || '').toUpperCase();
+                                        const isSent = ['SENT', 'DELIVERED', 'READ'].includes(logStatus);
+                                        const isFailed = logStatus === 'FAILED';
+
+                                        return (
+                                            <div key={role.key} className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl space-y-2 text-xs">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="font-extrabold text-base-content">{role.label}</span>
+                                                    <span className={`badge badge-xs font-bold ${
+                                                        isSent ? 'badge-success text-white' : isFailed ? 'badge-error text-white' : latestLog ? 'badge-warning' : 'badge-ghost text-base-content/60'
+                                                    }`}>
+                                                        {latestLog ? logStatus : (isRTL ? 'لم يُرسل' : 'NOT SENT')}
+                                                    </span>
+                                                </div>
+
+                                                {latestLog && (
+                                                    <div className="text-[11px] text-base-content/60 font-mono">
+                                                        <span>To: {latestLog.recipientPhone || 'Customer'}</span>
+                                                    </div>
+                                                )}
+
+                                                <button
+                                                    onClick={() => handleSendWhatsAppRole(role.key)}
+                                                    disabled={sendingWhatsAppRole === role.key || isSent}
+                                                    className={`btn btn-xs rounded-lg font-bold w-full gap-1 ${
+                                                        isSent ? 'btn-disabled bg-base-300 text-base-content/40' : isFailed ? 'btn-outline btn-error' : 'btn-outline btn-success'
+                                                    }`}
+                                                >
+                                                    <span className="material-symbols-outlined text-xs">{isSent ? 'check' : 'send'}</span>
+                                                    <span>{sendingWhatsAppRole === role.key ? 'Dispatching...' : isSent ? (isRTL ? 'تم الإرسال' : 'Sent') : (isRTL ? 'إرسال الآن' : 'Send WhatsApp')}</span>
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Tab Content 5: Audit Log & Notes */}
+                        {activeCockpitTab === 'audit' && (
+                            <div className="card bg-base-100 border border-base-200 shadow-sm rounded-2xl p-5 space-y-4">
+                                <div className="flex justify-between items-center border-b border-base-200 pb-3">
+                                    <h4 className="text-xs font-black uppercase tracking-wider text-base-content/70">
+                                        {isRTL ? 'سجل التيليميتري والملاحظات التشغيلية' : 'Carrier Telemetry & Internal Notes'}
+                                    </h4>
+                                </div>
+
+                                {/* Add note input */}
+                                {canEdit && (
+                                    <form onSubmit={handleAddComment} className="space-y-2">
                                         <textarea
                                             rows={2}
                                             value={newCommentText}
                                             onChange={(e) => setNewCommentText(e.target.value)}
-                                            placeholder={isRTL ? 'اكتب ملاحظة تشغيلية (مثال: تم التنسيق مع العميل للاستلام بعد الساعة 4 مساءً)...' : 'Write an operational comment (e.g. Consignee requested delivery after 4 PM, customs duty collected)...'}
-                                            className="textarea textarea-bordered textarea-sm w-full text-xs font-normal bg-base-100"
+                                            placeholder={isRTL ? 'اكتب ملاحظة تشغيلية...' : 'Write an operational comment...'}
+                                            className="textarea textarea-bordered textarea-sm w-full text-xs bg-base-100"
                                             disabled={isSubmittingComment}
                                         />
                                         <div className="flex justify-end">
@@ -1963,246 +1655,188 @@ const ShipmentDetailsPage = () => {
                                                 className="btn btn-primary btn-xs font-bold rounded-lg gap-1"
                                             >
                                                 <span className="material-symbols-outlined text-xs">send</span>
-                                                <span>{isSubmittingComment ? (isRTL ? 'جاري الحفظ...' : 'Saving...') : (isRTL ? 'إضافة الملاحظة' : 'Post Note')}</span>
+                                                <span>{isSubmittingComment ? 'Saving...' : (isRTL ? 'إضافة الملاحظة' : 'Post Note')}</span>
                                             </button>
                                         </div>
                                     </form>
                                 )}
 
-                                {/* Existing Notes Stream */}
-                                {commentEvents.length === 0 ? (
-                                    <div className="text-center py-8 text-base-content/60 font-semibold text-xs">
-                                        {isRTL ? 'لا توجد ملاحظات أو تعليقات مسجلة لهذه الشحنة.' : 'No comments or operational notes recorded for this consignment.'}
-                                    </div>
-                                ) : (
-                                    <div className="space-y-3">
-                                        {commentEvents.map((cEvt, idx) => {
-                                            const { date, time } = formatTimestampKuwait(cEvt.timestamp);
-                                            return (
-                                                <div key={idx} className="p-3 bg-base-100 border border-base-200 rounded-xl shadow-xs space-y-1">
-                                                    <div className="flex justify-between items-baseline gap-2">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="font-extrabold text-xs text-primary">{cEvt.author}</span>
-                                                            <span className="badge badge-xs badge-ghost text-[10px]">{cEvt.source}</span>
-                                                        </div>
-                                                        <span className="font-mono text-[10.5px] text-base-content/50">{date} • {time}</span>
-                                                    </div>
-                                                    <p className="text-xs text-base-content font-medium whitespace-pre-wrap">{cEvt.text}</p>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
+                                {/* Telemetry Table */}
+                                <div className="overflow-x-auto border border-base-200 rounded-xl">
+                                    <table className="table table-zebra table-hover w-full text-[11px] font-mono">
+                                        <thead>
+                                            <tr className="text-xs text-base-content/60 bg-base-200/50">
+                                                <th>{isRTL ? 'التاريخ والوقت' : 'Time'}</th>
+                                                <th>{isRTL ? 'الحدث' : 'Event'}</th>
+                                                <th>{isRTL ? 'الموقع' : 'Location'}</th>
+                                                <th>{isRTL ? 'المصدر' : 'Source'}</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {telemetryEvents.map((evt, idx) => (
+                                                <tr key={idx}>
+                                                    <td className="whitespace-nowrap">{evt.dateParts.date} {evt.dateParts.time}</td>
+                                                    <td className="font-bold text-base-content">{evt.description}</td>
+                                                    <td>{evt.location}</td>
+                                                    <td><span className="badge badge-xs badge-neutral text-[9px]">{evt.source}</span></td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         )}
+
                     </div>
 
                 </div>
 
-                {/* RIGHT SIDEBAR (35% / 1 Column) */}
-                <div className="space-y-6">
+                {/* RIGHT SIDEBAR (4 cols = 1fr) */}
+                <div className="lg:col-span-4 space-y-5">
                     
-                    {/* Financial Summary Card */}
-                    <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 space-y-4">
+                    {/* Shipper Party Card */}
+                    <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 space-y-3">
                         <div className="flex justify-between items-center border-b border-base-200 pb-2.5">
-                            <div className="flex items-center gap-1.5">
-                                <span className="material-symbols-outlined text-primary text-lg">account_balance_wallet</span>
-                                <h3 className="text-sm font-black text-base-content">
-                                    {isRTL ? 'البيان المالي والرسوم' : 'Financial Ledger'}
+                            <div className="flex items-center gap-2">
+                                <span className="text-lg">{senderFlag}</span>
+                                <h3 className="text-xs font-black uppercase tracking-wider text-primary">
+                                    {isRTL ? 'الراسل (المنشأ)' : 'Shipper (Origin)'}
                                 </h3>
                             </div>
-                            <span className={`badge badge-sm font-black ${isPaid ? 'badge-success' : 'badge-error'}`}>
-                                {isPaid ? 'PAID' : 'DUE'}
-                            </span>
-                        </div>
-
-                        <div className="space-y-2 text-xs">
-                            <div className="flex justify-between items-center font-semibold">
-                                <span className="text-base-content/60">{isRTL ? 'إجمالي الرسوم:' : 'Total Charge:'}</span>
-                                <span className="font-black text-sm text-base-content">
-                                    {Number(accountingSummary.totalCharge || 0).toFixed(3)} {shipment.currency || 'KWD'}
-                                </span>
-                            </div>
-                            <div className="flex justify-between items-center font-semibold">
-                                <span className="text-base-content/60">{isRTL ? 'المدفوع:' : 'Total Paid:'}</span>
-                                <span className="font-black text-success">
-                                    {Number(accountingSummary.totalPaid || 0).toFixed(3)} {shipment.currency || 'KWD'}
-                                </span>
-                            </div>
-                            <div className="flex justify-between items-center font-semibold border-t border-base-200 pt-2">
-                                <span className="text-base-content/60">{isRTL ? 'الرصيد المتبقي:' : 'Balance Due:'}</span>
-                                <span className={`font-black text-sm ${accountingSummary.remainingBalance > 0 ? 'text-error' : 'text-success'}`}>
-                                    {Number(accountingSummary.remainingBalance || 0).toFixed(3)} {shipment.currency || 'KWD'}
-                                </span>
-                            </div>
-                        </div>
-
-                        {accountingSummary.remainingBalance > 0 && (
-                            <div className="space-y-2 pt-2 border-t border-base-200">
-                                <button
-                                    onClick={() => handleSendPaymentLink('sender')}
-                                    disabled={sendingPaymentLink}
-                                    className="btn btn-primary btn-sm rounded-xl font-extrabold w-full gap-1.5 shadow-sm text-xs"
-                                >
-                                    <span className="material-symbols-outlined text-base">chat</span>
-                                    {sendingPaymentLink ? 'Dispatching...' : (isRTL ? 'إرسال رابط الدفع واتساب' : 'Send WhatsApp Payment Link')}
+                            {canEdit && (
+                                <button onClick={() => handleOpenEdit('sender')} className="btn btn-ghost btn-xs text-primary font-bold">
+                                    {isRTL ? 'تعديل' : 'Edit'}
                                 </button>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={handleCopyPaymentLink}
-                                        className="btn btn-outline btn-xs rounded-lg font-bold flex-1"
-                                    >
-                                        {isRTL ? 'نسخ الرابط' : 'Copy Link'}
-                                    </button>
-                                    <button
-                                        onClick={() => window.open(`/pay/${shipment.trackingNumber}`, '_blank')}
-                                        className="btn btn-ghost btn-xs text-primary font-bold flex-1"
-                                    >
-                                        {isRTL ? 'بوابة الدفع ↗' : 'Pay Online ↗'}
-                                    </button>
-                                </div>
+                            )}
+                        </div>
+
+                        <div className="space-y-1 text-xs">
+                            <h4 className="font-black text-sm text-base-content">
+                                {sender.company || sender.contactPerson || (isRTL ? 'الراسل' : 'Shipper Contact')}
+                            </h4>
+                            {sender.contactPerson && sender.company && (
+                                <p className="text-base-content/70 font-semibold">{sender.contactPerson}</p>
+                            )}
+                            <div className="flex items-center gap-1.5 font-mono text-base-content/80 pt-1">
+                                <span className="material-symbols-outlined text-sm text-base-content/50">call</span>
+                                <span>{sender.phone || '+965 ********'}</span>
                             </div>
-                        )}
-                    </div>
-
-                    {/* WhatsApp Dispatch Tracker Card */}
-                    {isStaff && (
-                        <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 space-y-4">
-                            <div className="flex justify-between items-center border-b border-base-200 pb-2.5">
-                                <div className="flex items-center gap-1.5">
-                                    <span className="material-symbols-outlined text-success text-lg">chat</span>
-                                    <h3 className="text-sm font-black text-base-content">
-                                        {isRTL ? 'سجل إشعارات واتساب' : 'WhatsApp Dispatch Tracker'}
-                                    </h3>
-                                </div>
-                                <span className="badge badge-outline badge-xs font-bold">
-                                    {(shipment.notificationLogs || []).length} logs
-                                </span>
-                            </div>
-
-                            <div className="space-y-3">
-                                {[
-                                    { key: 'sender', label: isRTL ? 'إشعار الراسل' : 'Sender Notification' },
-                                    { key: 'receiver', label: isRTL ? 'إشعار المستلم' : 'Receiver Notification' }
-                                ].map((role) => {
-                                    const isSenderRole = role.key === 'sender';
-                                    const roleAliases = isSenderRole ? ['sender', 'shipper', 'merchant'] : ['receiver', 'consignee', 'customer'];
-                                    const roleLogs = (shipment.notificationLogs || []).filter(l => 
-                                        roleAliases.includes((l.recipientRole || '').toLowerCase())
-                                    );
-                                    const latestLog = roleLogs[0] || null;
-                                    const logStatus = (latestLog?.status || '').toUpperCase();
-                                    const isSent = ['SENT', 'DELIVERED', 'READ'].includes(logStatus);
-                                    const isFailed = logStatus === 'FAILED';
-
-                                    return (
-                                        <div key={role.key} className="p-3 bg-base-200/40 border border-base-200 rounded-xl space-y-2 text-xs">
-                                            <div className="flex justify-between items-center">
-                                                <span className="font-extrabold text-base-content">{role.label}</span>
-                                                <span className={`badge badge-xs font-bold py-1 px-2 ${
-                                                    isSent ? 'badge-success text-white' : isFailed ? 'badge-error text-white' : latestLog ? 'badge-warning' : 'badge-ghost text-base-content/60'
-                                                }`}>
-                                                    {latestLog ? logStatus : (isRTL ? 'لم يُرسل' : 'NOT SENT')}
-                                                </span>
-                                            </div>
-
-                                            {latestLog && (
-                                                <div className="space-y-1">
-                                                    <div className="text-[11px] text-base-content/60 font-mono flex justify-between items-center">
-                                                        <span>To: {latestLog.recipientPhone || 'Customer'}</span>
-                                                        <span>{latestLog.sentAt ? new Date(latestLog.sentAt).toLocaleDateString() : ''}</span>
-                                                    </div>
-                                                    {isFailed && latestLog.errorMessage && (
-                                                        <div className="text-[10px] text-error bg-error/10 p-1.5 rounded flex items-center gap-1">
-                                                            <span className="material-symbols-outlined text-xs">error</span>
-                                                            <span>{latestLog.errorMessage}</span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-
-                                            <button
-                                                onClick={() => handleSendWhatsAppRole(role.key)}
-                                                disabled={sendingWhatsAppRole === role.key || isSent}
-                                                className={`btn btn-xs rounded-lg font-bold w-full gap-1 ${
-                                                    isSent 
-                                                        ? 'btn-disabled bg-base-300 text-base-content/40 cursor-not-allowed border-base-300' 
-                                                        : isFailed 
-                                                            ? 'btn-outline btn-error' 
-                                                            : 'btn-outline btn-success'
-                                                }`}
-                                            >
-                                                <span className="material-symbols-outlined text-sm">
-                                                    {isSent ? 'check_circle' : isFailed ? 'replay' : 'send'}
-                                                </span>
-                                                {sendingWhatsAppRole === role.key 
-                                                    ? (isRTL ? 'جاري الإرسال...' : 'Dispatching...') 
-                                                    : (isSent 
-                                                        ? (isRTL ? 'تم الإرسال بنجاح' : 'Delivered (Already Sent)') 
-                                                        : isFailed 
-                                                            ? (isRTL ? 'إعادة المحاولة' : 'Retry WhatsApp') 
-                                                            : (isRTL ? 'إرسال الآن' : 'Send WhatsApp Now'))}
-                                            </button>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-
-                            {/* Detailed Dispatch Attempts & History Audit List */}
-                            {Array.isArray(shipment.notificationLogs) && shipment.notificationLogs.length > 0 ? (
-                                <div className="pt-2 border-t border-base-200/80 space-y-2">
-                                    <div className="flex justify-between items-center text-[11px] font-black text-base-content/70 uppercase">
-                                        <span>{isRTL ? 'سجل المحاولات' : 'Dispatch History'}</span>
-                                        <Link to={`/admin/whatsapp-logs?search=${shipment.trackingNumber}`} className="text-primary hover:underline font-bold text-[10px]">
-                                            {isRTL ? 'سجلات النظام ↗' : 'System Logs ↗'}
-                                        </Link>
-                                    </div>
-                                    <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
-                                        {shipment.notificationLogs.map((log) => {
-                                            const s = (log.status || '').toUpperCase();
-                                            const badgeStyle = s === 'DELIVERED' || s === 'READ' ? 'badge-success text-white'
-                                                : s === 'SENT' ? 'badge-info text-white'
-                                                : s === 'FAILED' ? 'badge-error text-white'
-                                                : 'badge-ghost';
-                                            const roleName = ['receiver', 'consignee', 'customer'].includes((log.recipientRole || '').toLowerCase())
-                                                ? (isRTL ? 'المستلم' : 'Receiver')
-                                                : (isRTL ? 'الراسل' : 'Sender');
-
-                                            return (
-                                                <div key={log.id} className="p-2 bg-base-200/40 rounded-lg text-[11px] space-y-1 border border-base-200/70">
-                                                    <div className="flex justify-between items-center gap-1">
-                                                        <span className="font-bold text-base-content flex items-center gap-1">
-                                                            <span className="material-symbols-outlined text-[13px] text-base-content/60">
-                                                                {roleName === 'Receiver' || roleName === 'المستلم' ? 'person' : 'storefront'}
-                                                            </span>
-                                                            {roleName}: {log.recipientPhone || 'N/A'}
-                                                        </span>
-                                                        <span className={`badge badge-xs font-bold py-0.5 px-1.5 ${badgeStyle}`}>
-                                                            {s || 'QUEUED'}
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center text-[10px] text-base-content/60 font-mono">
-                                                        <span>{log.templateName || log.eventType || 'Notification'}</span>
-                                                        <span>{log.sentAt || log.createdAt ? new Date(log.sentAt || log.createdAt).toLocaleDateString() : ''}</span>
-                                                    </div>
-                                                    {s === 'FAILED' && log.errorMessage && (
-                                                        <div className="text-[10px] text-error font-medium flex items-start gap-1 bg-error/10 p-1.5 rounded">
-                                                            <span className="material-symbols-outlined text-xs flex-shrink-0">error</span>
-                                                            <span>{log.errorMessage}</span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="text-center py-2 text-[11px] text-base-content/50 italic border-t border-base-200/60">
-                                    {isRTL ? 'لا توجد محاولات إرسال مسجلة حتى الآن' : 'No previous dispatch attempts recorded'}
+                            {sender.email && (
+                                <div className="flex items-center gap-1.5 text-base-content/80">
+                                    <span className="material-symbols-outlined text-sm text-base-content/50">mail</span>
+                                    <span>{sender.email}</span>
                                 </div>
                             )}
                         </div>
-                    )}
+
+                        <div className="p-2.5 bg-base-200/40 rounded-xl border border-base-200 text-xs text-base-content/80 space-y-0.5">
+                            <p>{[sender.line1, sender.line2, sender.address].filter(Boolean).join(', ') || 'Address on file'}</p>
+                            <p className="font-extrabold text-base-content">{sender.city}, {sender.countryCode || 'KW'}</p>
+                        </div>
+                    </div>
+
+                    {/* Consignee Party Card */}
+                    <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 space-y-3">
+                        <div className="flex justify-between items-center border-b border-base-200 pb-2.5">
+                            <div className="flex items-center gap-2">
+                                <span className="text-lg">{receiverFlag}</span>
+                                <h3 className="text-xs font-black uppercase tracking-wider text-accent">
+                                    {isRTL ? 'المستلم (الوجهة)' : 'Consignee (Destination)'}
+                                </h3>
+                            </div>
+                            {canEdit && (
+                                <button onClick={() => handleOpenEdit('receiver')} className="btn btn-ghost btn-xs text-primary font-bold">
+                                    {isRTL ? 'تعديل' : 'Edit'}
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="space-y-1 text-xs">
+                            <h4 className="font-black text-sm text-base-content">
+                                {receiver.company || receiver.contactPerson || (isRTL ? 'المستلم' : 'Consignee Contact')}
+                            </h4>
+                            {receiver.contactPerson && receiver.company && (
+                                <p className="text-base-content/70 font-semibold">{receiver.contactPerson}</p>
+                            )}
+                            <div className="flex items-center justify-between pt-1">
+                                <div className="flex items-center gap-1.5 font-mono text-base-content/80">
+                                    <span className="material-symbols-outlined text-sm text-base-content/50">call</span>
+                                    <span>{receiver.phone || 'No phone'}</span>
+                                </div>
+                                {receiver.phone && (
+                                    <a
+                                        href={`https://wa.me/${receiver.phone.replace(/\D/g, '')}?text=Hello%20${receiver.contactPerson || receiver.name},%20regarding%20Target%20Logistics%20Shipment%20${shipment.trackingNumber}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="btn btn-outline btn-success btn-xs font-bold rounded-lg gap-1"
+                                    >
+                                        <span className="material-symbols-outlined text-xs">chat</span>
+                                        <span>WhatsApp</span>
+                                    </a>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="p-2.5 bg-base-200/40 rounded-xl border border-base-200 text-xs text-base-content/80 space-y-0.5">
+                            <p>{[receiver.line1, receiver.line2, receiver.address].filter(Boolean).join(', ') || 'Address on file'}</p>
+                            <p className="font-extrabold text-base-content">{receiver.city}, {receiver.countryCode || 'GCC'}</p>
+                        </div>
+
+                        {/* Location Pin Button */}
+                        <div className="pt-2 border-t border-base-200 flex justify-between items-center">
+                            <button
+                                type="button"
+                                onClick={() => window.open(`/track/${shipment.trackingNumber}/location`, '_blank')}
+                                className="btn btn-ghost btn-xs text-primary font-bold gap-1"
+                            >
+                                <span className="material-symbols-outlined text-xs">location_on</span>
+                                <span>{isRTL ? 'عرض موقع التسليم (GPS)' : 'Pin Delivery Location'}</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleShareLocationWithCarrier}
+                                className="btn btn-xs bg-[#25D366] text-white hover:bg-[#1ebc57] border-none font-bold gap-1"
+                                title="Share with courier driver via WhatsApp"
+                            >
+                                <span className="material-symbols-outlined text-xs">share</span>
+                                <span>{isRTL ? 'مشاركة' : 'Share'}</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Turn 2a At A Glance Card */}
+                    <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 space-y-3">
+                        <div className="flex justify-between items-center border-b border-base-200 pb-2">
+                            <h4 className="text-[11px] font-black uppercase tracking-wider text-base-content/60">
+                                {isRTL ? 'نظرة سريعة' : 'At a glance'}
+                            </h4>
+                            <span className="text-[10px] font-mono text-base-content/40">{shipment.shipmentType || 'express'}</span>
+                        </div>
+                        <div className="space-y-2 text-xs">
+                            <div className="flex justify-between items-center">
+                                <span className="text-base-content/60">{isRTL ? 'القطع' : 'Pieces'}</span>
+                                <span className="font-extrabold text-base-content">{totalPieces}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-base-content/60">{isRTL ? 'الوزن الإجمالي' : 'Weight'}</span>
+                                <span className="font-extrabold text-base-content">{Number(totalWeight).toFixed(2)} KG</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-base-content/60">{isRTL ? 'خدمة الشحن' : 'Service'}</span>
+                                <span className="font-extrabold text-base-content text-end truncate max-w-[160px]">{carrierDisplayName}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-base-content/60">{isRTL ? 'الرسوم' : 'Charged'}</span>
+                                <span className="font-black text-primary">{Number(accountingSummary.totalCharge || 0).toFixed(3)} {shipment.currency || 'KWD'}</span>
+                            </div>
+                            <div className="flex justify-between items-center border-t border-base-200 pt-2">
+                                <span className="text-base-content/60">{isRTL ? 'حالة السداد' : 'Payment'}</span>
+                                <span className={`badge badge-xs font-black ${isPaid ? 'badge-success text-white' : 'badge-error text-white'}`}>
+                                    {isPaid ? (isRTL ? 'مدفوع' : 'Prepaid') : (isRTL ? 'مستحق الدفع' : 'Due')}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
 
                     {/* Operational Direct Conversion Card (If internally managed) */}
                     {isInternalShipment && (

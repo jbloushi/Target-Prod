@@ -271,164 +271,227 @@ const DashboardPage = () => {
 
     if (statsLoading && !stats.total) {
         return (
-            <div className="flex justify-center items-center min-h-[70vh]">
-                <span className="loading loading-spinner loading-lg text-primary"></span>
+            <div className="w-full max-w-[1600px] mx-auto px-2 sm:px-4 py-3 space-y-5 animate-pulse">
+                {/* Skeleton Header Card */}
+                <div className="bg-base-100 border border-base-200/90 rounded-2xl p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div className="space-y-2">
+                        <div className="h-3.5 w-36 bg-base-300 rounded" />
+                        <div className="h-7 w-56 bg-base-300 rounded-lg" />
+                        <div className="flex items-center gap-2 pt-1">
+                            <div className="h-5 w-24 bg-base-300 rounded-full" />
+                            <div className="h-5 w-36 bg-base-300 rounded-full" />
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2.5">
+                        <div className="h-10 w-24 bg-base-200 border border-base-300 rounded-xl" />
+                        <div className="h-10 w-36 bg-primary/25 rounded-xl" />
+                    </div>
+                </div>
+
+                {/* Skeleton Subordinate Controls */}
+                <div className="bg-base-100 border border-base-200/90 rounded-2xl p-3 sm:p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                    <div className="flex items-center gap-2">
+                        <div className="h-7 w-20 bg-base-300 rounded-lg" />
+                        <div className="h-7 w-20 bg-base-300 rounded-lg" />
+                        <div className="h-7 w-20 bg-base-300 rounded-lg" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className="h-7 w-16 bg-base-300 rounded-lg" />
+                        <div className="h-7 w-16 bg-base-300 rounded-lg" />
+                        <div className="h-7 w-20 bg-base-300 rounded-lg" />
+                        <div className="h-7 w-16 bg-base-300 rounded-lg" />
+                    </div>
+                </div>
+
+                {/* Skeleton KPI Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                    {[1, 2, 3, 4].map((i) => (
+                        <div key={i} className="card bg-base-100 border border-base-200/90 p-4 rounded-2xl space-y-3">
+                            <div className="flex justify-between items-center">
+                                <div className="h-3 w-24 bg-base-300 rounded" />
+                                <div className="h-5 w-5 bg-base-300 rounded-md" />
+                            </div>
+                            <div className="h-8 w-20 bg-base-300 rounded-lg" />
+                            <div className="h-3 w-36 bg-base-300 rounded" />
+                        </div>
+                    ))}
+                </div>
+
+                {/* Status Indicator */}
+                <div className="flex justify-center items-center gap-2 text-xs text-base-content/50 pt-2 font-medium">
+                    <span className="w-2 h-2 rounded-full bg-primary animate-ping" />
+                    <span>{isRTL ? 'جاري تحميل لوحة التحكم والبيانات اللوجستية...' : 'Loading Target Cockpit & live telemetry...'}</span>
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="w-full max-w-[1600px] mx-auto px-2 sm:px-4 py-3 space-y-6">
-            {/* Command Header: Role Clearance & Dynamic Context Switcher */}
-            <div className="bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+        <div className="w-full max-w-[1600px] mx-auto px-2 sm:px-4 py-3 space-y-5">
+            {/* Command Header: Tier 1 Hero Cockpit */}
+            <div className="bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 
-                {/* Operator Profile & Role Indicator */}
-                <div className="flex items-center gap-3.5">
-                    <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
-                        <span className="material-symbols-outlined text-2xl">
-                            {isSuperadmin ? 'admin_panel_settings' : isTargetOwner ? 'crown' : isTargetAccounting ? 'account_balance' : 'hub'}
+                {/* Left Side: Context, Hero Greeting & Status/Org Pill Strip */}
+                <div className="min-w-0 space-y-1.5">
+                    <div className="text-xs font-bold text-base-content/60 flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-sm text-primary">hub</span>
+                        <span>
+                            {isTargetManagement 
+                                ? (isRTL ? 'مركز العمليات الدولية • مطار الكويت الدولي (KWI)' : 'Kuwait Hub · Operations')
+                                : (isRTL ? 'بوابة إدارة حساب الشركة والشحنات' : 'Enterprise Portal · Client Scope')}
                         </span>
                     </div>
-                    <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-base-content">
-                                {t('dash_hello', 'Hello,')} {user?.name?.split(' ')[0] || (isRTL ? 'المشغل' : 'Operator')}
-                            </h1>
-                            <span className="badge badge-primary text-[11px] font-black uppercase tracking-wider py-2">
-                                {getRoleLabel(userRole)}
+
+                    <div className="flex items-center gap-3 flex-wrap">
+                        <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-base-content">
+                            {t('dash_hello', 'Hello,')} {user?.name?.split(' ')[0] || (isRTL ? 'المشغل' : 'Operator')}
+                        </h1>
+                    </div>
+
+                    {/* Subordinate Meta Strip: Role Indicator, Executive Badges & Dynamic Org Selector */}
+                    <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap pt-0.5 text-xs">
+                        {/* Role clearance status indicator */}
+                        <span className="inline-flex items-center gap-1.5 font-bold text-base-content/70">
+                            <span className="w-2 h-2 rounded-full bg-success inline-block" />
+                            <span>{getRoleLabel(userRole)}</span>
+                        </span>
+
+                        {isTargetOwner && (
+                            <span className="badge badge-warning badge-xs font-bold py-1">
+                                {isRTL ? 'سلطة تنفيذية' : 'Executive Authority'}
                             </span>
-                            {isTargetOwner && <span className="badge badge-warning text-[10px] font-bold">Executive Authority</span>}
-                            {isTargetAccounting && <span className="badge badge-accent text-[10px] font-bold">Finance Controller</span>}
-                        </div>
-                        <p className="text-xs text-base-content/60 font-semibold mt-0.5">
-                            {isTargetManagement 
-                                ? (isRTL ? 'مركز العمليات الدولية والربط الجمركي • مطار الكويت الدولي (KWI)' : 'Global Air Cargo Telemetry & Customs Gate • Kuwait Hub (KWI)')
-                                : (isRTL ? 'بوابة إدارة حساب الشركة والشحنات الصادرة والواردة' : 'B2B Enterprise Portal & Consignment Dispatcher')}
-                        </p>
+                        )}
+                        {isTargetAccounting && (
+                            <span className="badge badge-accent badge-xs font-bold py-1">
+                                {isRTL ? 'مراقب مالي' : 'Finance Controller'}
+                            </span>
+                        )}
+
+                        {/* Dot divider */}
+                        {isTargetManagement && <span className="text-base-content/30">•</span>}
+
+                        {/* ── Organization Selector (Strictly Preserved with live scoping) ── */}
+                        {isTargetManagement && (
+                            <div className="inline-flex items-center gap-1.5 bg-base-200/60 hover:bg-base-200 border border-base-300/80 rounded-xl px-2.5 py-0.5 transition-colors">
+                                <span className="material-symbols-outlined text-sm text-primary">apartment</span>
+                                <select 
+                                    value={selectedOrgId} 
+                                    onChange={(e) => setSelectedOrgId(e.target.value)}
+                                    className="select select-ghost select-xs font-bold text-xs bg-transparent focus:bg-transparent text-base-content p-0 h-6 border-none focus:outline-none cursor-pointer"
+                                    title={isRTL ? 'نطاق الحساب المحدد' : 'Selected Account Scope'}
+                                >
+                                    {organizations.map((org) => (
+                                        <option key={org.id} value={org.id} className="bg-base-100 text-base-content font-bold">
+                                            {org.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
                     </div>
                 </div>
 
-                {/* Perspective & Organization Context Selector */}
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
-                    
-                    {/* Organization Dropdown */}
-                    {isTargetManagement && (
-                        <div className="form-control">
-                            <label className="label py-0.5 px-1">
-                                <span className="label-text text-[10.5px] font-black uppercase tracking-wider text-base-content/60">
-                                    {isRTL ? 'نطاق الحساب المحدد' : 'Selected Account Scope'}
-                                </span>
-                            </label>
-                            <select 
-                                value={selectedOrgId} 
-                                onChange={(e) => setSelectedOrgId(e.target.value)}
-                                className="select select-bordered select-sm rounded-xl font-bold text-xs bg-base-100 text-base-content w-full sm:w-64"
-                            >
-                                {organizations.map((org) => (
-                                    <option key={org.id} value={org.id}>
-                                        {org.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
+                {/* Right Side: Action Rail (Track Waybill + Primary New Waybill CTA) */}
+                <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+                    <button
+                        type="button"
+                        onClick={() => navigate('/shipments')}
+                        className="btn btn-outline border-base-300 hover:bg-base-200 btn-sm rounded-xl font-bold text-xs gap-1.5 px-3.5"
+                    >
+                        <span className="material-symbols-outlined text-base">search</span>
+                        <span>{isRTL ? 'تتبع وبحث' : 'Track'}</span>
+                    </button>
+                    <button 
+                        type="button"
+                        onClick={() => navigate('/shipment/new')}
+                        className="btn btn-primary btn-sm rounded-xl font-extrabold shadow-sm gap-1.5 px-4 text-xs"
+                    >
+                        <span className="material-symbols-outlined text-base">add</span>
+                        <span>{isRTL ? 'شحنة جديدة' : 'New shipment'}</span>
+                    </button>
+                </div>
+            </div>
 
-                    {/* Dual Mode Switcher (Target Management vs Client View) */}
+            {/* Subordinate Control Bar: Perspective Cockpit & Period Filters */}
+            <div className="bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-3 sm:p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
+                    {/* Perspective Selector (Segmented pills) */}
                     {isTargetManagement && (
-                        <div className="form-control">
-                            <label className="label py-0.5 px-1">
-                                <span className="label-text text-[10.5px] font-black uppercase tracking-wider text-base-content/60">
-                                    {isRTL ? 'منظور الواجهة' : 'Cockpit Perspective'}
-                                </span>
-                            </label>
-                            <div className="join w-full">
+                        <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-black uppercase tracking-wider text-base-content/50">
+                                {isRTL ? 'المنظور' : 'View'}
+                            </span>
+                            <div className="flex bg-base-200/80 p-0.5 rounded-xl border border-base-300/60">
                                 <button
                                     onClick={() => setPerspective('target')}
-                                    className={`btn btn-sm join-item font-bold text-xs flex-1 ${
-                                        perspective === 'target' ? 'btn-primary' : 'btn-ghost border-base-300'
+                                    className={`px-3 py-1 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 ${
+                                        perspective === 'target' 
+                                            ? 'bg-base-100 text-base-content font-black shadow-xs' 
+                                            : 'text-base-content/60 hover:text-base-content'
                                     }`}
                                 >
                                     <span className="material-symbols-outlined text-sm">hub</span>
-                                    {isRTL ? 'إدارة تارغت' : 'Target Ops'}
+                                    <span>{isRTL ? 'إدارة تارغت' : 'Operations'}</span>
                                 </button>
                                 <button
                                     onClick={() => setPerspective('client')}
-                                    className={`btn btn-sm join-item font-bold text-xs flex-1 ${
-                                        perspective === 'client' ? 'btn-primary' : 'btn-ghost border-base-300'
+                                    className={`px-3 py-1 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 ${
+                                        perspective === 'client' 
+                                            ? 'bg-base-100 text-base-content font-black shadow-xs' 
+                                            : 'text-base-content/60 hover:text-base-content'
                                     }`}
                                 >
                                     <span className="material-symbols-outlined text-sm">apartment</span>
-                                    {isRTL ? 'حساب العميل' : 'Client View'}
+                                    <span>{isRTL ? 'حساب العميل' : 'Client'}</span>
                                 </button>
                                 {isTargetAccounting && (
                                     <button
                                         onClick={() => setPerspective('accounting')}
-                                        className={`btn btn-sm join-item font-bold text-xs flex-1 ${
-                                            perspective === 'accounting' ? 'btn-primary' : 'btn-ghost border-base-300'
+                                        className={`px-3 py-1 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 ${
+                                            perspective === 'accounting' 
+                                                ? 'bg-base-100 text-base-content font-black shadow-xs' 
+                                                : 'text-base-content/60 hover:text-base-content'
                                         }`}
                                     >
                                         <span className="material-symbols-outlined text-sm">account_balance</span>
-                                        {isRTL ? 'المحاسبة' : 'Finance'}
+                                        <span>{isRTL ? 'المحاسبة' : 'Finance'}</span>
                                     </button>
                                 )}
                             </div>
                         </div>
                     )}
 
-                    {/* Quick Action Button */}
-                    <div className="sm:self-end">
-                        <button 
-                            onClick={() => navigate('/shipment/new')}
-                            className="btn btn-primary btn-sm rounded-xl font-extrabold shadow-sm w-full gap-1.5 px-4"
-                        >
-                            <span className="material-symbols-outlined text-base">add_circle</span>
-                            {isRTL ? 'شحنة جديدة' : 'New Waybill'}
-                        </button>
-                    </div>
-                </div>
-            </div>
+                    {isTargetManagement && <div className="hidden sm:block h-6 w-[1px] bg-base-200 mx-1" />}
 
-            {/* Timeframe & Period Control Deck */}
-            <div className="bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-3 sm:p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
-                <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                        <span className="material-symbols-outlined text-lg">calendar_month</span>
-                    </div>
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <span className="text-xs font-black uppercase tracking-wider text-base-content">
-                                {isRTL ? 'نطاق الفترة الزمنية' : 'Dashboard Period'}
-                            </span>
-                            <span className="badge badge-primary badge-outline badge-xs font-bold">
-                                {selectedPeriod === 'today' && (isRTL ? 'اليوم' : 'Today')}
-                                {selectedPeriod === '7days' && (isRTL ? 'آخر 7 أيام' : 'Past 7 Days')}
-                                {selectedPeriod === 'this_month' && (isRTL ? 'هذا الشهر' : 'This Month')}
-                                {selectedPeriod === 'last_month' && (isRTL ? 'الشهر الماضي' : 'Last Month')}
-                                {selectedPeriod === 'all' && (isRTL ? 'جميع البيانات التاريخية' : 'All-Time')}
-                                {selectedPeriod === 'custom' && (isRTL ? 'نطاق مخصص' : 'Custom Range')}
-                            </span>
-                        </div>
-                        <p className="text-[11px] text-base-content/60 font-medium mt-0.5">
-                            {selectedPeriod === 'today' && (isRTL ? 'عرض إحصائيات وشحنات اليوم فقط' : 'Displaying metrics and shipments recorded today')}
-                            {selectedPeriod === '7days' && (isRTL ? 'عرض إحصائيات آخر 7 أيام تشغيلية' : 'Displaying metrics for the past 7 operational days')}
-                            {selectedPeriod === 'this_month' && (isRTL ? 'عرض إحصائيات دورة الشهر الحالي' : 'Displaying metrics for current monthly billing & shipping cycle')}
-                            {selectedPeriod === 'last_month' && (isRTL ? 'عرض إحصائيات الشهر الماضي كاملاً' : 'Displaying metrics for full previous calendar month')}
-                            {selectedPeriod === 'all' && (isRTL ? 'نظرة شاملة لكافة البيانات المسجلة' : 'Complete historical ledger and operational overview')}
-                            {selectedPeriod === 'custom' && (isRTL ? `الفترة المحددة: ${customStartDate || 'من البداية'} إلى ${customEndDate || 'اليوم'}` : `Selected range: ${customStartDate || 'Start'} to ${customEndDate || 'End'}`)}
-                        </p>
+                    {/* Period Description Label */}
+                    <div className="flex items-center gap-1.5 text-xs text-base-content/60">
+                        <span className="badge badge-primary badge-outline badge-xs font-bold">
+                            {selectedPeriod === 'today' && (isRTL ? 'اليوم' : 'Today')}
+                            {selectedPeriod === '7days' && (isRTL ? 'آخر 7 أيام' : '7 Days')}
+                            {selectedPeriod === 'this_month' && (isRTL ? 'هذا الشهر' : 'This Month')}
+                            {selectedPeriod === 'last_month' && (isRTL ? 'الشهر الماضي' : 'Last Month')}
+                            {selectedPeriod === 'all' && (isRTL ? 'الكل' : 'All-Time')}
+                            {selectedPeriod === 'custom' && (isRTL ? 'نطاق مخصص' : 'Custom Range')}
+                        </span>
+                        <span className="hidden lg:inline font-medium text-[11px]">
+                            {selectedPeriod === 'custom' 
+                                ? (customStartDate && customEndDate ? `${customStartDate} ➔ ${customEndDate}` : (isRTL ? 'حدد التاريخ' : 'Select dates'))
+                                : (isRTL ? 'تحديث دورة الشحن والبيانات' : 'Live cycle scope')}
+                        </span>
                     </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                {/* Period Controls & Custom Date Pickers */}
+                <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
                     {/* Preset Period Buttons */}
-                    <div className="join w-full sm:w-auto overflow-x-auto">
+                    <div className="flex gap-1 overflow-x-auto pb-0.5">
                         {[
-                            { id: 'today', label: isRTL ? 'اليوم' : 'Today', icon: 'today' },
-                            { id: '7days', label: isRTL ? '7 أيام' : '7 Days', icon: 'date_range' },
-                            { id: 'this_month', label: isRTL ? 'هذا الشهر' : 'This Month', icon: 'calendar_today' },
-                            { id: 'last_month', label: isRTL ? 'الشهر الماضي' : 'Last Month', icon: 'history' },
-                            { id: 'all', label: isRTL ? 'الكل' : 'All Time', icon: 'all_inclusive' },
-                            { id: 'custom', label: isRTL ? 'مخصص' : 'Custom', icon: 'tune' },
+                            { id: 'today', label: isRTL ? 'اليوم' : 'Today' },
+                            { id: '7days', label: isRTL ? '7 أيام' : '7 days' },
+                            { id: 'this_month', label: isRTL ? 'هذا الشهر' : 'This month' },
+                            { id: 'last_month', label: isRTL ? 'الشهر الماضي' : 'Last month' },
+                            { id: 'all', label: isRTL ? 'الكل' : 'All' },
+                            { id: 'custom', label: isRTL ? 'مخصص' : 'Custom' },
                         ].map((p) => (
                             <button
                                 key={p.id}
@@ -437,19 +500,20 @@ const DashboardPage = () => {
                                     if (p.id === 'custom') setIsCustomDateOpen(true);
                                     else setIsCustomDateOpen(false);
                                 }}
-                                className={`btn btn-xs sm:btn-sm join-item font-bold text-xs gap-1 ${
-                                    selectedPeriod === p.id ? 'btn-primary shadow-sm' : 'btn-ghost border-base-200 text-base-content/70'
+                                className={`px-2.5 py-1 rounded-lg font-bold text-xs transition-all ${
+                                    selectedPeriod === p.id 
+                                        ? 'bg-primary text-primary-content shadow-xs' 
+                                        : 'text-base-content/60 hover:text-base-content hover:bg-base-200'
                                 }`}
                             >
-                                <span className="material-symbols-outlined text-sm">{p.icon}</span>
-                                <span>{p.label}</span>
+                                {p.label}
                             </button>
                         ))}
                     </div>
 
                     {/* Custom Date Pickers Popover / Controls */}
                     {(selectedPeriod === 'custom' || isCustomDateOpen) && (
-                        <div className="flex items-center gap-1.5 bg-base-200/70 p-1.5 rounded-xl border border-base-300 w-full sm:w-auto animate-in fade-in duration-200">
+                        <div className="flex items-center gap-1.5 bg-base-200/70 p-1 rounded-xl border border-base-300 w-full sm:w-auto animate-in fade-in duration-150">
                             <input
                                 type="date"
                                 value={customStartDate}

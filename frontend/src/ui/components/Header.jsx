@@ -3,6 +3,7 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useThemeMode } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { useModules } from '../../context/ModuleContext';
 import { financeService } from '../../services/api';
 import { getRoleLabel } from '../../utils/roleLabels';
 
@@ -16,6 +17,7 @@ const Header = () => {
     const { user, logout, isAuthenticated } = useAuth();
     const { isDark, toggleTheme } = useThemeMode();
     const { lang, toggleLanguage, t, isRTL } = useLanguage();
+    const { modules, isModuleEnabled, toggleModule } = useModules();
     const navigate = useNavigate();
     const location = useLocation();
 
@@ -23,6 +25,7 @@ const Header = () => {
     const [opsMenuOpen, setOpsMenuOpen] = useState(false);
     const [mgmtMenuOpen, setMgmtMenuOpen] = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [moduleModalOpen, setModuleModalOpen] = useState(false);
     const [financeSummary, setFinanceSummary] = useState(null);
 
     const userMenuRef = useRef(null);
@@ -147,13 +150,29 @@ const Header = () => {
                                 <span>{t('nav_shipments', 'Shipments')}</span>
                             </Link>
 
+                            {/* Analytics & BI (Admin-Toggled Enterprise Module) */}
+                            {isModuleEnabled('analytics') && (
+                                <Link
+                                    to="/analytics"
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                        isActive('/analytics')
+                                            ? 'bg-primary/10 text-primary font-black shadow-xs'
+                                            : 'text-base-content/70 hover:text-base-content hover:bg-base-200/60'
+                                    }`}
+                                >
+                                    <span className="material-symbols-outlined text-base text-primary">insights</span>
+                                    <span>{isRTL ? 'التحليلات' : 'Analytics'}</span>
+                                    <span className="badge badge-primary badge-xs text-[8.5px] font-black uppercase px-1.5 py-0.5">Enterprise</span>
+                                </Link>
+                            )}
+
                             {/* Operations Dropdown */}
                             <div className="relative" ref={opsMenuRef}>
                                 <button
                                     type="button"
                                     onClick={() => { setOpsMenuOpen(!opsMenuOpen); setMgmtMenuOpen(false); }}
                                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
-                                        isActive('/warehouse') || isActive('/driver') || isActive('/address-book') || isActive('/shipment/new')
+                                        isActive('/warehouse') || isActive('/driver') || isActive('/address-book') || isActive('/shipment/new') || isActive('/fleets') || isActive('/drivers') || isActive('/calendar')
                                             ? 'bg-primary/10 text-primary font-black'
                                             : 'text-base-content/70 hover:text-base-content hover:bg-base-200/60'
                                     }`}
@@ -164,7 +183,7 @@ const Header = () => {
                                 </button>
 
                                 {opsMenuOpen && (
-                                    <div className="absolute top-full mt-2 start-0 w-56 p-1.5 bg-base-100 border border-base-200 rounded-2xl shadow-xl z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                                    <div className="absolute top-full mt-2 start-0 w-64 p-1.5 bg-base-100 border border-base-200 rounded-2xl shadow-xl z-50 animate-in fade-in slide-in-from-top-2 duration-150">
                                         <Link
                                             to="/shipment/new"
                                             className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
@@ -200,6 +219,63 @@ const Header = () => {
                                             <span className="material-symbols-outlined text-base text-base-content/60">menu_book</span>
                                             <span>{isRTL ? 'دليل العناوين' : 'Address Book'}</span>
                                         </Link>
+
+                                        {/* Enterprise Modules Gated via Toggles */}
+                                        {(isModuleEnabled('fleets') || isModuleEnabled('drivers') || isModuleEnabled('warehouse') || isModuleEnabled('calendar')) && (
+                                            <div className="my-1 border-t border-base-200" />
+                                        )}
+
+                                        {isModuleEnabled('fleets') && (
+                                            <Link
+                                                to="/fleets"
+                                                className="flex items-center justify-between px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <span className="material-symbols-outlined text-base text-accent">directions_car</span>
+                                                    <span>{isRTL ? 'تتبع الأسطول المباشر' : 'Fleet Telemetry'}</span>
+                                                </div>
+                                                <span className="badge badge-accent badge-xs text-[8px] font-black uppercase">Enterprise</span>
+                                            </Link>
+                                        )}
+
+                                        {isModuleEnabled('drivers') && (
+                                            <Link
+                                                to="/drivers"
+                                                className="flex items-center justify-between px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <span className="material-symbols-outlined text-base text-secondary">badge</span>
+                                                    <span>{isRTL ? 'إدارة المناديب والتوزيع' : 'Driver Dispatch'}</span>
+                                                </div>
+                                                <span className="badge badge-secondary badge-xs text-[8px] font-black uppercase">Enterprise</span>
+                                            </Link>
+                                        )}
+
+                                        {isModuleEnabled('warehouse') && (
+                                            <Link
+                                                to="/warehouse"
+                                                className="flex items-center justify-between px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <span className="material-symbols-outlined text-base text-warning">warehouse</span>
+                                                    <span>{isRTL ? 'المستودع الذكي والأرفف' : 'Smart Warehouse'}</span>
+                                                </div>
+                                                <span className="badge badge-warning badge-xs text-[8px] font-black uppercase">Enterprise</span>
+                                            </Link>
+                                        )}
+
+                                        {isModuleEnabled('calendar') && (
+                                            <Link
+                                                to="/calendar"
+                                                className="flex items-center justify-between px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <span className="material-symbols-outlined text-base text-info">calendar_month</span>
+                                                    <span>{isRTL ? 'جدول حجوزات الشحن' : 'Dispatch Calendar'}</span>
+                                                </div>
+                                                <span className="badge badge-info badge-xs text-[8px] font-black uppercase">Pro</span>
+                                            </Link>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -282,6 +358,23 @@ const Header = () => {
                                                 <span className="material-symbols-outlined text-base text-base-content/60">code</span>
                                                 <span>{isRTL ? 'دليل الربط والمطورين (API)' : 'API Documentation'}</span>
                                             </Link>
+
+                                            {isAdminOrOwnerOrAcct && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { setModuleModalOpen(true); setMgmtMenuOpen(false); }}
+                                                    className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors text-start cursor-pointer"
+                                                >
+                                                    <div className="flex items-center gap-2.5">
+                                                        <span className="material-symbols-outlined text-base text-primary">toggle_on</span>
+                                                        <div>
+                                                            <p>{isRTL ? 'إدارة ظهور الوحدات' : 'Enterprise Module Toggles'}</p>
+                                                            <p className="text-[10px] text-base-content/50 font-normal">{isRTL ? 'تشغيل أو إخفاء وحدات النظام' : 'Feature Flags & Visibility'}</p>
+                                                        </div>
+                                                    </div>
+                                                    <span className="badge badge-primary badge-xs text-[8px] font-black uppercase">Admin</span>
+                                                </button>
+                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -567,9 +660,172 @@ const Header = () => {
                                     <span className="material-symbols-outlined text-base text-base-content/60">code</span>
                                     <span>{isRTL ? 'دليل الربط والمطورين (API)' : 'API Documentation'}</span>
                                 </Link>
+                                {isAdminOrOwnerOrAcct && (
+                                    <button
+                                        type="button"
+                                        onClick={() => { setModuleModalOpen(true); setMobileMenuOpen(false); }}
+                                        className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content text-start"
+                                    >
+                                        <div className="flex items-center gap-2.5">
+                                            <span className="material-symbols-outlined text-base text-primary">toggle_on</span>
+                                            <span>{isRTL ? 'إدارة ظهور الوحدات (Toggles)' : 'Enterprise Module Toggles'}</span>
+                                        </div>
+                                        <span className="badge badge-primary badge-xs text-[8px] font-black uppercase">Admin</span>
+                                    </button>
+                                )}
                             </div>
                         </div>
                     )}
+
+                    {/* Enterprise Modules Mobile Hub */}
+                    {(isModuleEnabled('analytics') || isModuleEnabled('fleets') || isModuleEnabled('drivers') || isModuleEnabled('warehouse') || isModuleEnabled('calendar') || isModuleEnabled('messages')) && (
+                        <div className="pt-2 border-t border-base-200">
+                            <p className="text-[10px] font-black uppercase tracking-wider text-base-content/50 mb-2">
+                                {isRTL ? 'وحدات المؤسسة والميزات المتقدمة' : 'Enterprise Modules'}
+                            </p>
+                            <div className="space-y-1">
+                                {isModuleEnabled('analytics') && (
+                                    <Link
+                                        to="/analytics"
+                                        className="flex items-center justify-between px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <span className="material-symbols-outlined text-base text-primary">insights</span>
+                                            <span>{isRTL ? 'التحليلات اللوجستية' : 'Analytics & BI'}</span>
+                                        </div>
+                                        <span className="badge badge-primary badge-xs text-[8px] font-black uppercase">Enterprise</span>
+                                    </Link>
+                                )}
+                                {isModuleEnabled('fleets') && (
+                                    <Link
+                                        to="/fleets"
+                                        className="flex items-center justify-between px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <span className="material-symbols-outlined text-base text-accent">directions_car</span>
+                                            <span>{isRTL ? 'تتبع الأسطول المباشر' : 'Fleet Telemetry'}</span>
+                                        </div>
+                                        <span className="badge badge-accent badge-xs text-[8px] font-black uppercase">Enterprise</span>
+                                    </Link>
+                                )}
+                                {isModuleEnabled('drivers') && (
+                                    <Link
+                                        to="/drivers"
+                                        className="flex items-center justify-between px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <span className="material-symbols-outlined text-base text-secondary">badge</span>
+                                            <span>{isRTL ? 'إدارة المناديب والتوزيع' : 'Driver Dispatch'}</span>
+                                        </div>
+                                        <span className="badge badge-secondary badge-xs text-[8px] font-black uppercase">Enterprise</span>
+                                    </Link>
+                                )}
+                                {isModuleEnabled('warehouse') && (
+                                    <Link
+                                        to="/warehouse"
+                                        className="flex items-center justify-between px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <span className="material-symbols-outlined text-base text-warning">warehouse</span>
+                                            <span>{isRTL ? 'المستودع الذكي والأرفف' : 'Smart Warehouse'}</span>
+                                        </div>
+                                        <span className="badge badge-warning badge-xs text-[8px] font-black uppercase">Enterprise</span>
+                                    </Link>
+                                )}
+                                {isModuleEnabled('calendar') && (
+                                    <Link
+                                        to="/calendar"
+                                        className="flex items-center justify-between px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <span className="material-symbols-outlined text-base text-info">calendar_month</span>
+                                            <span>{isRTL ? 'جدول حجوزات الشحن' : 'Dispatch Calendar'}</span>
+                                        </div>
+                                        <span className="badge badge-info badge-xs text-[8px] font-black uppercase">Pro</span>
+                                    </Link>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ── Admin Enterprise Module Feature Flags Modal ─────────────── */}
+            {moduleModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div 
+                        className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity"
+                        onClick={() => setModuleModalOpen(false)}
+                    />
+                    <div className="relative bg-base-100 border border-base-200 rounded-3xl max-w-lg w-full p-6 shadow-2xl z-10 space-y-5 animate-in zoom-in-95 duration-150">
+                        <div className="flex justify-between items-start border-b border-base-200 pb-3">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                                    <span className="material-symbols-outlined text-xl">toggle_on</span>
+                                </div>
+                                <div>
+                                    <h3 className="font-black text-base text-base-content">
+                                        {isRTL ? 'إدارة ظهور وحدات المؤسسة' : 'Enterprise Module Toggles'}
+                                    </h3>
+                                    <p className="text-xs text-base-content/60 font-medium mt-0.5">
+                                        {isRTL ? 'تحكم في إظهار أو إخفاء الوحدات في القوائم' : 'Turn navigation visibility on or off in real-time'}
+                                    </p>
+                                </div>
+                            </div>
+                            <button 
+                                type="button"
+                                onClick={() => setModuleModalOpen(false)}
+                                className="btn btn-ghost btn-sm btn-square rounded-full"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <div className="space-y-2.5 max-h-[60vh] overflow-y-auto pr-1">
+                            {Object.values(modules).map((mod) => (
+                                <div 
+                                    key={mod.id}
+                                    className="p-3 bg-base-200/50 border border-base-200 rounded-2xl flex items-center justify-between gap-3"
+                                >
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <div className="w-8 h-8 rounded-lg bg-base-100 border border-base-200 flex items-center justify-center text-primary shrink-0">
+                                            <span className="material-symbols-outlined text-lg">{mod.icon}</span>
+                                        </div>
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <span className="text-xs font-black text-base-content">{isRTL ? mod.labelAr : mod.label}</span>
+                                                <span className={`badge ${mod.badgeColor || 'badge-primary'} badge-xs text-[8px] font-black uppercase`}>{mod.tier}</span>
+                                            </div>
+                                            <p className="text-[10.5px] text-base-content/60 truncate mt-0.5">
+                                                {isRTL ? mod.descriptionAr : mod.description}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <input 
+                                        type="checkbox" 
+                                        checked={mod.enabled}
+                                        onChange={() => toggleModule(mod.id)}
+                                        className="toggle toggle-primary toggle-sm shrink-0"
+                                        title={`Toggle ${mod.label}`}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="flex justify-between items-center pt-2 border-t border-base-200">
+                            <span className="text-[11px] text-base-content/50 font-medium">
+                                {isRTL ? 'التغييرات تنعكس فوراً على القوائم' : 'Changes reflect immediately in navigation'}
+                            </span>
+                            <button 
+                                type="button"
+                                onClick={() => setModuleModalOpen(false)}
+                                className="btn btn-primary btn-sm rounded-xl font-bold px-4"
+                            >
+                                {isRTL ? 'إغلاق' : 'Done'}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </header>

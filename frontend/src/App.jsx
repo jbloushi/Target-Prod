@@ -5,6 +5,7 @@ import { LanguageProvider } from './context/LanguageContext';
 import AppRoutes from './routes';
 import { AuthProvider } from './context/AuthContext';
 import { ShipmentProvider } from './context/ShipmentContext';
+import { ModuleProvider } from './context/ModuleContext';
 import './ui/tokens.css'; // Import Design System Tokens
 
 // Configure React Router future flags
@@ -26,11 +27,13 @@ function App() {
           autoHideDuration={3000}
         >
           <AuthProvider>
-            <ShipmentProvider>
-              <Router future={routerFutureConfig}>
-                <AppRoutes />
-              </Router>
-            </ShipmentProvider>
+            <ModuleProvider>
+              <ShipmentProvider>
+                <Router future={routerFutureConfig}>
+                  <AppRoutes />
+                </Router>
+              </ShipmentProvider>
+            </ModuleProvider>
           </AuthProvider>
         </SnackbarProvider>
       </ThemeModeProvider>

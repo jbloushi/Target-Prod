@@ -20,6 +20,8 @@ describe('statusConfig', () => {
       'booked',
       'ready_for_pickup',
       'picked_up',
+      'received_at_hub',
+      'verified',
       'in_transit',
       'out_for_delivery',
       'delivered',
