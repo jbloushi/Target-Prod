@@ -330,17 +330,19 @@ describe('KineticShipmentWizard Integration Tests', () => {
     window.HTMLElement.prototype.scrollIntoView = vi.fn();
   });
 
-  it('renders "Next Step" as clickable (not disabled) on initial mount', () => {
+  // The primary CTA now names the next step ("Continue to Receiver")
+  // per the visibility redesign — match by the "Continue to" prefix.
+  it('renders next-step CTA as clickable (not disabled) on initial mount', () => {
     render(<KineticShipmentWizard />);
-    const nextBtn = screen.getByRole('button', { name: /next step/i });
+    const nextBtn = screen.getByRole('button', { name: /continue to/i });
     expect(nextBtn).toBeDefined();
     expect(nextBtn.disabled).toBe(false);
   });
 
-  it('clicking "Next Step" with invalid Step 1 shows error toast, highlights red, and scrolls', async () => {
+  it('clicking next-step CTA with invalid Step 1 shows error toast, highlights red, and scrolls', async () => {
     render(<KineticShipmentWizard />);
 
-    const nextBtn = screen.getByRole('button', { name: /next step/i });
+    const nextBtn = screen.getByRole('button', { name: /continue to/i });
     expect(nextBtn.disabled).toBe(false);
 
     fireEvent.click(nextBtn);
@@ -360,7 +362,7 @@ describe('KineticShipmentWizard Integration Tests', () => {
   it('clears error in real-time when user enters required data', async () => {
     render(<KineticShipmentWizard />);
 
-    const nextBtn = screen.getByRole('button', { name: /next step/i });
+    const nextBtn = screen.getByRole('button', { name: /continue to/i });
     fireEvent.click(nextBtn);
 
     // sender_addr1 has an error because addr1 is initially empty
