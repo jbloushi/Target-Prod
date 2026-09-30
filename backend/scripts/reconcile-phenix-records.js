@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { prisma } = require('../src/config/database');
-const whatsappService = require('../src/services/whatsappIntegration.service');
+const phenixSyncService = require('../src/services/phenixSync.service');
 const financeLedgerService = require('../src/services/financeLedger.service');
 
 function parsePhenixDate(rawDate) {
@@ -22,7 +22,7 @@ function parsePhenixDate(rawDate) {
 
 async function reconcilePhenixRecords() {
     console.log('===============================================================');
-    console.log(`🔗 RECONCILING PHENIX SHIPMENTS: DATES, FINANCIALS & WHATSAPP LOGS`);
+    console.log(`🔗 RECONCILING PHENIX SHIPMENTS: LIVE ERP DATES & FINANCIALS`);
     console.log('===============================================================\n');
 
     const defaultAdmin = await prisma.user.findFirst({
@@ -35,7 +35,33 @@ async function reconcilePhenixRecords() {
         process.exit(1);
     }
 
-    // 1. Fetch all shipments from database
+    // 1. Fetch live 35-day backlog from Phenix ERP
+    console.log(`1. Fetching 35-day operational report from Phenix ERP API...`);
+    let phenixRows = [];
+    try {
+        const phenixRes = await phenixSyncService.fetchPhenixReportData({ daysBack: 35 });
+        phenixRows = phenixRes.rows || [];
+        console.log(`✅ Phenix API Response: Received ${phenixRows.length} total bills from Phenix\n`);
+    } catch (err) {
+        console.warn(`⚠️ Could not reach Phenix API live: ${err.message}. Proceeding with local documents reconciliation.`);
+    }
+
+    // Index Phenix rows by AWB, Receipt No, and Bill ID
+    const phenixByAwb = new Map();
+    const phenixByReceipt = new Map();
+    const phenixByBill = new Map();
+
+    for (const r of phenixRows) {
+        const awb = String(r.bill_detailCustomField_1 || '').trim();
+        const receipt = String(r.Receipt_no || '').trim();
+        const bill = String(r.bill_id || '').trim();
+
+        if (awb) phenixByAwb.set(awb, r);
+        if (receipt) phenixByReceipt.set(receipt, r);
+        if (bill) phenixByBill.set(bill, r);
+    }
+
+    // 2. Fetch all shipments from database
     const shipments = await prisma.shipment.findMany({
         include: {
             organization: true,
@@ -49,29 +75,58 @@ async function reconcilePhenixRecords() {
     let datesUpdated = 0;
     let financeReconciled = 0;
     let whatsappLogsLinked = 0;
+    const dateDistribution = {};
 
     for (let i = 0; i < shipments.length; i++) {
         const s = shipments[i];
         const docs = (s.documents && typeof s.documents === 'object') ? s.documents : {};
-        const rawDate = docs.rawDate || docs.date || s.history?.[0]?.timestamp;
+        const cleanAwb = s.dhlTrackingNumber || s.trackingNumber.replace(/^TRK-/i, '').replace(/^ARM-/i, '');
         const phenixBillId = docs.phenixBillId || null;
         const phenixReceiptNo = docs.phenixReceiptNo || null;
-        const rawAmount = s.price ? Number(s.price) : 0;
-        const isPaid = s.paid || (docs.paymentMethod && !docs.paymentMethod.includes('آجل'));
 
-        const cleanAwb = s.dhlTrackingNumber || s.trackingNumber.replace(/^TRK-/i, '');
+        // Match with Phenix live row
+        const matchedRow = (cleanAwb && phenixByAwb.get(cleanAwb))
+            || (phenixReceiptNo && phenixByReceipt.get(phenixReceiptNo))
+            || (phenixBillId && phenixByBill.get(phenixBillId))
+            || (s.trackingNumber && phenixByAwb.get(s.trackingNumber));
 
-        // 1. Correct Shipment createdAt if rawDate exists
-        const actualDate = parsePhenixDate(rawDate);
-        if (actualDate && Math.abs(new Date(s.createdAt).getTime() - actualDate.getTime()) > 60000) {
-            await prisma.shipment.update({
-                where: { id: s.id },
-                data: { createdAt: actualDate }
-            });
-            datesUpdated++;
+        const rawPhenixDate = matchedRow ? (matchedRow.Date || matchedRow.date) : (docs.rawDate || docs.date);
+        const actualDate = parsePhenixDate(rawPhenixDate);
+
+        const rawAmount = s.price ? Number(s.price) : (matchedRow ? (parseFloat(matchedRow.Total || matchedRow.payment || 0) || 0) : 0);
+        const paymentMethod = matchedRow ? String(matchedRow.Payment_method || '').trim() : (docs.paymentMethod || '');
+        const isPaid = s.paid || (paymentMethod && !paymentMethod.includes('آجل'));
+
+        // 1. Correct Shipment createdAt & documents.rawDate if live Phenix date exists
+        if (actualDate) {
+            const currentCreatedTime = new Date(s.createdAt).getTime();
+            const actualTime = actualDate.getTime();
+            const needsDateUpdate = Math.abs(currentCreatedTime - actualTime) > 60000;
+            const needsDocsUpdate = docs.rawDate !== rawPhenixDate;
+
+            if (needsDateUpdate || needsDocsUpdate) {
+                await prisma.shipment.update({
+                    where: { id: s.id },
+                    data: {
+                        createdAt: actualDate,
+                        documents: {
+                            ...docs,
+                            rawDate: rawPhenixDate,
+                            date: rawPhenixDate,
+                            phenixBillId: docs.phenixBillId || (matchedRow ? matchedRow.bill_id : undefined),
+                            phenixReceiptNo: docs.phenixReceiptNo || (matchedRow ? matchedRow.Receipt_no : undefined),
+                            paymentMethod: docs.paymentMethod || paymentMethod || undefined,
+                            source: 'PHENIX_ERP'
+                        }
+                    }
+                });
+                datesUpdated++;
+            }
         }
 
         const effectiveDate = actualDate || new Date(s.createdAt);
+        const dayKey = effectiveDate.toISOString().slice(0, 10);
+        dateDistribution[dayKey] = (dateDistribution[dayKey] || 0) + 1;
 
         // 2. Reconcile Double-Entry Ledger, Invoices, and Payments
         if (s.organizationId && rawAmount > 0) {
@@ -107,8 +162,9 @@ async function reconcilePhenixRecords() {
                 }
 
                 // If Paid, ensure Payment & Allocation exist & match date
-                if (isPaid && phenixReceiptNo) {
-                    const paymentRef = `PHENIX-${phenixReceiptNo}`;
+                if (isPaid && (phenixReceiptNo || phenixBillId)) {
+                    const refCode = phenixReceiptNo || phenixBillId;
+                    const paymentRef = `PHENIX-${refCode}`;
                     let payment = await prisma.payment.findFirst({
                         where: { reference: paymentRef }
                     });
@@ -120,9 +176,9 @@ async function reconcilePhenixRecords() {
                                 amount: rawAmount,
                                 currency: s.currency || 'KWD',
                                 status: 'APPLIED',
-                                method: docs.paymentMethod || 'CASH',
+                                method: paymentMethod || 'CASH',
                                 reference: paymentRef,
-                                notes: `Automated payment receipt from Phenix ERP #${phenixReceiptNo}`,
+                                notes: `Automated payment receipt from Phenix ERP #${refCode}`,
                                 createdById: defaultAdmin.id,
                                 postedAt: effectiveDate,
                                 createdAt: effectiveDate,
@@ -152,7 +208,7 @@ async function reconcilePhenixRecords() {
                             currency: s.currency || 'KWD',
                             entryType: 'CREDIT',
                             category: 'PAYMENT',
-                            description: `Payment Receipt (${docs.paymentMethod || 'CASH'} - Phenix #${phenixReceiptNo})`,
+                            description: `Payment Receipt (${paymentMethod || 'CASH'} - Phenix #${refCode})`,
                             reference: paymentRef,
                             sourceRepo: 'Payment',
                             sourceId: payment.id,
@@ -170,7 +226,8 @@ async function reconcilePhenixRecords() {
 
                 // Ensure Official Invoice exists & matches date
                 if (phenixReceiptNo || phenixBillId) {
-                    const invoiceNumber = `INV-PH-${phenixReceiptNo || phenixBillId}`;
+                    const refCode = phenixReceiptNo || phenixBillId;
+                    const invoiceNumber = `INV-PH-${refCode}`;
                     let invoice = await prisma.invoice.findUnique({
                         where: { invoiceNumber }
                     });
@@ -251,38 +308,7 @@ async function reconcilePhenixRecords() {
                 });
                 whatsappLogsLinked++;
             }
-
-            // Check if microservice has autosend history for this bill
-            if (phenixBillId && s.notificationLogs.length === 0) {
-                for (const role of ['receiver', 'sender']) {
-                    const microSent = await whatsappService.checkMicroserviceSent(phenixBillId, role);
-                    if (microSent?.sent) {
-                        const sentAtDate = microSent.sentAt ? new Date(microSent.sentAt) : effectiveDate;
-                        await prisma.shipmentNotificationLog.create({
-                            data: {
-                                shipmentId: s.id,
-                                trackingNumber: s.trackingNumber,
-                                eventType: 'shipment_created',
-                                recipientRole: role,
-                                recipientName: role === 'receiver' ? s.customer?.name : (s.origin?.contactPerson || 'Shipper'),
-                                recipientPhone: role === 'receiver' ? s.customer?.phone : (s.origin?.phone || null),
-                                provider: 'SHIPMENT_WHATSAPP',
-                                templateName: 'shipment_confirmation_2',
-                                status: 'SENT',
-                                chatwootMessageId: `msg-autosend-${microSent.sentAt || Date.now()}`,
-                                payloadJson: { source: 'MICROSERVICE_AUTOSEND', billId: phenixBillId, role },
-                                responseJson: { autoSent: true, sentAt: microSent.sentAt },
-                                sentAt: sentAtDate,
-                                createdAt: sentAtDate
-                            }
-                        });
-                        whatsappLogsLinked++;
-                    }
-                }
-            }
-        } catch (waErr) {
-            // skip wa log linking error
-        }
+        } catch (_) {}
 
         if ((i + 1) % 50 === 0 || i === shipments.length - 1) {
             console.log(`Processed ${i + 1}/${shipments.length} shipments...`);
@@ -290,17 +316,25 @@ async function reconcilePhenixRecords() {
     }
 
     console.log('\n===============================================================');
-    console.log(`🎉 RECONCILIATION COMPLETE`);
+    console.log('🎉 RECONCILIATION COMPLETE');
     console.log('===============================================================');
     console.log(`   • Shipment Dates Updated    : ${datesUpdated}`);
     console.log(`   • Finance Records Synced    : ${financeReconciled}`);
     console.log(`   • WhatsApp Logs Linked      : ${whatsappLogsLinked}`);
+    console.log('\n📅 Reconciled Shipment Date Distribution across Database:');
+    Object.entries(dateDistribution)
+        .sort(([a], [b]) => b.localeCompare(a))
+        .forEach(([date, count]) => {
+            console.log(`   • ${date}: ${count} shipments`);
+        });
     console.log('===============================================================\n');
-
-    await prisma.$disconnect();
 }
 
-reconcilePhenixRecords().catch(err => {
-    console.error('Reconciliation error:', err);
-    process.exit(1);
-});
+reconcilePhenixRecords()
+    .catch((err) => {
+        console.error('❌ Reconciliation error:', err);
+        process.exit(1);
+    })
+    .finally(async () => {
+        await prisma.$disconnect();
+    });
