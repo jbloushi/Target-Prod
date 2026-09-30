@@ -851,7 +851,23 @@ const ShipmentDetailsPage = () => {
                         <p className="text-xs text-base-content/60 font-semibold flex items-center gap-1.5 flex-wrap mt-0.5">
                             <span>{getShipmentTypeLabel(shipment.shipmentType)} • {shipment.organization?.name || 'Standard Organization'}</span>
                             <span className="opacity-40">•</span>
-                            <span>{isRTL ? 'تاريخ الحجز:' : 'Booked:'} {formatTimestampKuwait(shipment.documents?.rawDate || shipment.documents?.date || shipment.createdAt).date}</span>
+                            <span>{isRTL ? 'تاريخ الحجز:' : 'Booked:'} {formatTimestampKuwait((() => {
+                                let earliest = parseDateRobust(shipment.createdAt);
+                                const rawHistory = Array.isArray(shipment.history) ? shipment.history : [];
+                                for (const h of rawHistory) {
+                                    if (h.timestamp) {
+                                        const ht = new Date(h.timestamp);
+                                        if (!Number.isNaN(ht.getTime())) {
+                                            if (!earliest || ht.getTime() < earliest.getTime()) {
+                                                earliest = ht;
+                                            }
+                                        }
+                                    }
+                                }
+                                const rawPhenixDate = shipment.documents?.rawDate || shipment.documents?.date;
+                                const phenixParsed = parseDateRobust(rawPhenixDate);
+                                return (phenixParsed && (!earliest || phenixParsed < earliest)) ? phenixParsed : (earliest || phenixParsed);
+                            })()).date}</span>
                             {isImported && (
                                 <span className="badge badge-ghost badge-xs text-[9px] font-mono text-primary/80">PHENIX ERP</span>
                             )}

@@ -98,10 +98,24 @@ const toRowShape = (s) => {
   };
 
   const resolveDisplayDate = () => {
+    let earliest = parseDateRobust(s.createdAt);
+    if (Array.isArray(s.history) && s.history.length > 0) {
+      for (const h of s.history) {
+        if (h.timestamp) {
+          const ht = new Date(h.timestamp);
+          if (!Number.isNaN(ht.getTime())) {
+            if (!earliest || ht.getTime() < earliest.getTime()) {
+              earliest = ht;
+            }
+          }
+        }
+      }
+    }
     const rawPhenixDate = s.documents?.rawDate || s.documents?.date;
-    const parsed = parseDateRobust(rawPhenixDate) || parseDateRobust(s.createdAt);
-    if (!parsed) return '—';
-    return parsed.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kuwait' });
+    const phenixParsed = parseDateRobust(rawPhenixDate);
+    const finalDate = (phenixParsed && (!earliest || phenixParsed < earliest)) ? phenixParsed : (earliest || phenixParsed);
+    if (!finalDate) return '—';
+    return finalDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kuwait' });
   };
 
   return {

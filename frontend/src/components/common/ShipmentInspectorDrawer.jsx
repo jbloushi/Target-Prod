@@ -63,8 +63,28 @@ export const ShipmentInspectorDrawer = ({
         return Number.isNaN(d.getTime()) ? null : d;
     };
 
-    const rawPhenixDate = shipment.documents?.rawDate || shipment.documents?.date;
-    const parsedDate = parseDateRobust(rawPhenixDate) || parseDateRobust(shipment.createdAt);
+    const resolveTrueDate = () => {
+        let earliest = parseDateRobust(shipment.createdAt);
+        const rawHistory = Array.isArray(shipment.history) ? shipment.history : [];
+        for (const h of rawHistory) {
+            if (h.timestamp) {
+                const ht = new Date(h.timestamp);
+                if (!Number.isNaN(ht.getTime())) {
+                    if (!earliest || ht.getTime() < earliest.getTime()) {
+                        earliest = ht;
+                    }
+                }
+            }
+        }
+        const rawPhenixDate = shipment.documents?.rawDate || shipment.documents?.date;
+        const phenixParsed = parseDateRobust(rawPhenixDate);
+        if (phenixParsed && (!earliest || phenixParsed < earliest)) {
+            return phenixParsed;
+        }
+        return earliest || phenixParsed;
+    };
+
+    const parsedDate = resolveTrueDate();
     const formattedDate = parsedDate 
         ? parsedDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kuwait' }) 
         : '—';

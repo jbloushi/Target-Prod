@@ -97,22 +97,40 @@ async function reconcilePhenixRecords() {
         const paymentMethod = matchedRow ? String(matchedRow.Payment_method || '').trim() : (docs.paymentMethod || '');
         const isPaid = s.paid || (paymentMethod && !paymentMethod.includes('آجل'));
 
-        // 1. Correct Shipment createdAt & documents.rawDate if live Phenix date exists
-        if (actualDate) {
+        // 1. Determine True Real-World Booking Date
+        // Earliest between Phenix invoice Date and Carrier initial history checkpoint (e.g. Aramex / DHL initial scan / pickup)
+        let trueBookingDate = actualDate;
+        if (Array.isArray(s.history) && s.history.length > 0) {
+            for (const h of s.history) {
+                if (h.timestamp) {
+                    const ht = new Date(h.timestamp);
+                    if (!Number.isNaN(ht.getTime())) {
+                        if (!trueBookingDate || ht.getTime() < trueBookingDate.getTime()) {
+                            trueBookingDate = ht;
+                        }
+                    }
+                }
+            }
+        }
+
+        const effectiveDate = trueBookingDate || actualDate || new Date(s.createdAt);
+
+        // Update Shipment createdAt & documents.rawDate if live Phenix date exists
+        if (effectiveDate) {
             const currentCreatedTime = new Date(s.createdAt).getTime();
-            const actualTime = actualDate.getTime();
+            const actualTime = effectiveDate.getTime();
             const needsDateUpdate = Math.abs(currentCreatedTime - actualTime) > 60000;
-            const needsDocsUpdate = docs.rawDate !== rawPhenixDate;
+            const needsDocsUpdate = rawPhenixDate && docs.rawDate !== rawPhenixDate;
 
             if (needsDateUpdate || needsDocsUpdate) {
                 await prisma.shipment.update({
                     where: { id: s.id },
                     data: {
-                        createdAt: actualDate,
+                        createdAt: effectiveDate,
                         documents: {
                             ...docs,
-                            rawDate: rawPhenixDate,
-                            date: rawPhenixDate,
+                            rawDate: rawPhenixDate || docs.rawDate,
+                            date: rawPhenixDate || docs.date,
                             phenixBillId: docs.phenixBillId || (matchedRow ? matchedRow.bill_id : undefined),
                             phenixReceiptNo: docs.phenixReceiptNo || (matchedRow ? matchedRow.Receipt_no : undefined),
                             paymentMethod: docs.paymentMethod || paymentMethod || undefined,
@@ -124,7 +142,6 @@ async function reconcilePhenixRecords() {
             }
         }
 
-        const effectiveDate = actualDate || new Date(s.createdAt);
         const dayKey = effectiveDate.toISOString().slice(0, 10);
         dateDistribution[dayKey] = (dateDistribution[dayKey] || 0) + 1;
 
