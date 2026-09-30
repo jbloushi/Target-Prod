@@ -179,6 +179,11 @@ const DashboardPage = () => {
         return active[0] || null;
     }, [tradeCorridors]);
 
+    const maxCorridorVol = useMemo(() => {
+        if (!tradeCorridors || tradeCorridors.length === 0) return 1;
+        return Math.max(...tradeCorridors.map(c => c.volume || 0), 1);
+    }, [tradeCorridors]);
+
     // Live Carrier Network Breakdown from database
     const carrierBreakdown = useMemo(() => {
         if (Array.isArray(stats?.carriers) && stats.carriers.length > 0) {
@@ -490,249 +495,300 @@ const DashboardPage = () => {
                 </div>
             </div>
 
-            {/* DYNAMIC PULSE RIBBON (Adapts to perspective: Target Ops vs Client B2B vs Accounting) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                {perspective === 'target' ? (
-                    // Target Management Pulse
-                    <>
-                        <div 
-                            onClick={() => navigate('/shipments?status=active')}
-                            className="card bg-base-100 border border-base-200/90 hover:border-primary/50 shadow-sm p-4 rounded-2xl flex flex-col justify-between cursor-pointer transition-all hover:shadow-md"
-                        >
-                            <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
-                                <span>{isRTL ? 'إجمالي خط النقل النشط' : 'Active Pipeline'}</span>
-                                <span className="material-symbols-outlined text-primary text-lg">flight_takeoff</span>
-                            </div>
-                            <div className="flex items-baseline gap-2 mt-2">
-                                <span className="text-3xl font-black text-base-content">
-                                    <AnimatedNumber value={(stats?.inTransit || 0) + (stats?.pickedUp || 0)} />
-                                </span>
-                                {stats?.total > 0 ? (
-                                    <span className="badge badge-success badge-sm font-bold">
-                                        {Math.round((((stats?.inTransit || 0) + (stats?.pickedUp || 0)) / stats.total) * 100)}% {isRTL ? 'نشط' : 'active'}
-                                    </span>
-                                ) : (
-                                    <span className="badge badge-ghost badge-sm text-[10px] font-bold">Nominal</span>
-                                )}
-                            </div>
-                            <span className="text-[11px] text-base-content/60 mt-1">{isRTL ? 'طرد قيد الشحن العابر للحدود (اضغط للعرض)' : 'Packages in flight/transit (Click to view)'}</span>
-                        </div>
+            {/* DYNAMIC PULSE & ACTIVE TRADE LANES ROW */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                
+                {/* LEFT (7 or 8 cols): 4 Compact Metric Cards (2x2 Grid) */}
+                <div className="lg:col-span-7 xl:col-span-8">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 h-full">
+                        {perspective === 'target' ? (
+                            <>
+                                {/* 1. Active Pipeline */}
+                                <div 
+                                    onClick={() => navigate('/shipments?status=active')}
+                                    className="card bg-base-100 border border-base-200/90 hover:border-primary/50 shadow-sm p-3.5 sm:p-4 rounded-2xl flex flex-col justify-between cursor-pointer transition-all hover:shadow-md group"
+                                >
+                                    <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
+                                        <span>{isRTL ? 'إجمالي خط النقل النشط' : 'Active Pipeline'}</span>
+                                        <div className="w-11 h-11 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                                            <span className="material-symbols-outlined text-2xl">flight_takeoff</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-baseline gap-2 mt-1">
+                                        <span className="text-2xl sm:text-3xl font-black font-mono text-base-content">
+                                            <AnimatedNumber value={(stats?.inTransit || 0) + (stats?.pickedUp || 0)} />
+                                        </span>
+                                        {stats?.total > 0 ? (
+                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-black bg-emerald-600 text-white shadow-2xs">
+                                                {Math.round((((stats?.inTransit || 0) + (stats?.pickedUp || 0)) / stats.total) * 100)}% {isRTL ? 'نشط' : 'active'}
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-black bg-emerald-600 text-white shadow-2xs">
+                                                Nominal
+                                            </span>
+                                        )}
+                                    </div>
+                                    <span className="text-[11px] text-base-content/60 mt-1 truncate">{isRTL ? 'طرد قيد الشحن العابر للحدود (اضغط للعرض)' : 'Packages in flight/transit (Click to view)'}</span>
+                                </div>
 
-                        <div 
-                            onClick={() => navigate('/shipments?status=exceptions')}
-                            className="card bg-base-100 border border-error/30 hover:border-error shadow-sm p-4 rounded-2xl flex flex-col justify-between bg-error/5 cursor-pointer transition-all hover:shadow-md"
-                        >
-                            <div className="flex justify-between items-center text-xs text-error font-extrabold uppercase tracking-wider">
-                                <span>{isRTL ? 'طابور التدخل والاستثناءات' : 'Urgent Triage Queue'}</span>
-                                <span className="material-symbols-outlined text-error text-lg">warning</span>
+                                {/* 2. Urgent Triage Queue */}
+                                <div 
+                                    onClick={() => navigate('/shipments?status=exceptions')}
+                                    className="card bg-base-100 border border-error/30 hover:border-error shadow-sm p-3.5 sm:p-4 rounded-2xl flex flex-col justify-between bg-error/5 cursor-pointer transition-all hover:shadow-md group"
+                                >
+                                    <div className="flex justify-between items-center text-xs text-error font-extrabold uppercase tracking-wider">
+                                        <span>{isRTL ? 'طابور التدخل والاستثناءات' : 'Urgent Triage Queue'}</span>
+                                        <div className="w-11 h-11 rounded-2xl bg-error/15 text-error flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                                            <span className="material-symbols-outlined text-2xl">warning</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-baseline gap-2 mt-1">
+                                        <span className="text-2xl sm:text-3xl font-black font-mono text-error">
+                                            <AnimatedNumber value={triageCount || triageItems.length} />
+                                        </span>
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-black shadow-2xs text-white ${triageItems.length > 0 ? 'bg-rose-600' : 'bg-emerald-600'}`}>
+                                            {triageItems.length > 0 ? (isRTL ? 'يتطلب إجراء فوري' : 'Action Required') : (isRTL ? 'طبيعي' : 'Nominal')}
+                                        </span>
+                                    </div>
+                                    <span className="text-[11px] text-error/80 mt-1 truncate">
+                                        {triageItems.length === 0 ? (isRTL ? '0 استثناءات معطلة' : '0 delivery blockers') : (isRTL ? `${triageItems.length} شحنة تتطلب إجراء (اضغط للعرض)` : `${triageItems.length} shipments requiring action`)}
+                                    </span>
+                                </div>
+
+                                {/* 3. Network On-Time SLA */}
+                                <div 
+                                    onClick={() => navigate('/shipments')}
+                                    className="card bg-base-100 border border-base-200/90 hover:border-success/50 shadow-sm p-3.5 sm:p-4 rounded-2xl flex flex-col justify-between cursor-pointer transition-all hover:shadow-md group"
+                                >
+                                    <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
+                                        <span>{isRTL ? 'دقة الالتزام بالمواعيد (SLA)' : 'Network On-Time SLA'}</span>
+                                        <div className="w-11 h-11 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                                            <span className="material-symbols-outlined text-2xl">verified</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-baseline gap-2 mt-1">
+                                        <span className="text-2xl sm:text-3xl font-black font-mono text-base-content">{networkSla}</span>
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-black bg-emerald-600 text-white shadow-2xs">
+                                            Nominal
+                                        </span>
+                                    </div>
+                                    <span className="text-[11px] text-base-content/60 mt-1 truncate">{isRTL ? 'معدل التسليم الدولي بالموعد' : 'Live delivery performance across network'}</span>
+                                </div>
+
+                                {/* 4. Total B2B Receivables */}
+                                {canViewFinancials ? (
+                                    <div 
+                                        onClick={() => navigate('/finance')}
+                                        className="card bg-base-100 border border-base-200/90 hover:border-warning/60 shadow-sm p-3.5 sm:p-4 rounded-2xl flex flex-col justify-between cursor-pointer transition-all hover:shadow-md group"
+                                    >
+                                        <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
+                                            <span>
+                                                {selectedOrgId !== 'all'
+                                                    ? (isRTL ? 'مستحقات الحساب (ذمم)' : 'Account Receivables')
+                                                    : (isRTL ? 'مستحقات الحسابات (ذمم)' : 'Total B2B Receivables')}
+                                            </span>
+                                            <div className="w-11 h-11 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                                                <span className="material-symbols-outlined text-2xl">account_balance_wallet</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-baseline gap-2 mt-1">
+                                            <span className="text-2xl sm:text-3xl font-black font-mono text-base-content">
+                                                <AnimatedNumber value={Math.round(totalReceivables)} />
+                                            </span>
+                                            <span className="text-xs font-bold text-base-content/60 font-mono">
+                                                .{((totalReceivables % 1) * 1000).toFixed(0).padStart(3, '0')} KWD
+                                            </span>
+                                        </div>
+                                        <span className="text-[11px] text-base-content/60 mt-1 truncate">
+                                            {selectedOrgId !== 'all'
+                                                ? (selectedPeriod !== 'all'
+                                                    ? (isRTL ? `المستحقات غير المحصلة لحساب ${activeOrg.name}` : `Uncollected receivables for ${activeOrg.name}`)
+                                                    : (isRTL ? `رصيد حساب ${activeOrg.name}` : `Active ledger balance for ${activeOrg.name}`))
+                                                : (selectedPeriod !== 'all'
+                                                    ? (isRTL ? 'إجمالي المستحقات غير المحصلة' : 'Outstanding period receivables')
+                                                    : (isRTL ? 'رصيد الشركات الفعلي غير المحصل' : 'Active ledger balances across accounts'))
+                                            }
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <div 
+                                        onClick={() => navigate('/shipments?status=delivered')}
+                                        className="card bg-base-100 border border-base-200/90 hover:border-success/50 shadow-sm p-3.5 sm:p-4 rounded-2xl flex flex-col justify-between cursor-pointer transition-all hover:shadow-md group"
+                                    >
+                                        <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
+                                            <span>{isRTL ? 'الشحنات المسلمة بنجاح' : 'Delivered Consignments'}</span>
+                                            <div className="w-11 h-11 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                                                <span className="material-symbols-outlined text-2xl">check_circle</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-baseline gap-2 mt-1">
+                                            <span className="text-2xl sm:text-3xl font-black font-mono text-base-content">
+                                                <AnimatedNumber value={stats?.delivered || 0} />
+                                            </span>
+                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-black bg-emerald-600 text-white shadow-2xs">
+                                                {isRTL ? 'مكتمل' : 'Fulfilled'}
+                                            </span>
+                                        </div>
+                                        <span className="text-[11px] text-base-content/60 mt-1 truncate">{isRTL ? 'إجمالي الشحنات المنجزة' : 'Total consignments delivered'}</span>
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            // Client perspective
+                            <>
+                                <div 
+                                    onClick={() => navigate('/shipments?status=active')}
+                                    className="card bg-base-100 border border-base-200/90 hover:border-primary/50 shadow-sm p-3.5 sm:p-4 rounded-2xl flex flex-col justify-between cursor-pointer transition-all hover:shadow-md group"
+                                >
+                                    <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
+                                        <span>{isRTL ? 'شحنات الشركة النشطة' : 'Active Company Shipments'}</span>
+                                        <div className="w-11 h-11 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                                            <span className="material-symbols-outlined text-2xl">local_shipping</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-baseline gap-2 mt-1">
+                                        <span className="text-2xl sm:text-3xl font-black font-mono text-base-content"><AnimatedNumber value={clientActiveCount} /></span>
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-black bg-blue-100 text-blue-950 border border-blue-300">{activeOrg.name.slice(0, 15)}...</span>
+                                    </div>
+                                    <span className="text-[11px] text-base-content/60 mt-1 truncate">{isRTL ? 'شحنات قيد التوصيل والجمارك' : 'Consignments moving globally'}</span>
+                                </div>
+
+                                <div 
+                                    onClick={() => navigate('/finance')}
+                                    className="card bg-base-100 border border-base-200/90 hover:border-accent/50 shadow-sm p-3.5 sm:p-4 rounded-2xl flex flex-col justify-between cursor-pointer transition-all hover:shadow-md group"
+                                >
+                                    <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
+                                        <span>{isRTL ? 'رصيد الحساب المالي' : 'Account Balance'}</span>
+                                        <div className="w-11 h-11 rounded-2xl bg-accent/10 text-accent flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                                            <span className="material-symbols-outlined text-2xl">payments</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-baseline gap-2 mt-1">
+                                        <span className="text-2xl sm:text-3xl font-black font-mono text-base-content">{activeOrg.balance.toFixed(3)}</span>
+                                        <span className="text-xs font-bold text-base-content/60 font-mono">KWD</span>
+                                    </div>
+                                    <span className="text-[11px] text-base-content/60 mt-1 truncate">
+                                        {isRTL ? `الحد الائتماني: ${activeOrg.creditLimit.toLocaleString()} د.ك` : `Credit Limit: ${activeOrg.creditLimit.toLocaleString()} KWD`}
+                                    </span>
+                                </div>
+
+                                <div 
+                                    onClick={() => navigate('/shipments?status=pending')}
+                                    className="card bg-base-100 border border-base-200/90 hover:border-info/50 shadow-sm p-3.5 sm:p-4 rounded-2xl flex flex-col justify-between cursor-pointer transition-all hover:shadow-md group"
+                                >
+                                    <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
+                                        <span>{isRTL ? 'طلبات الاستلام اليوم' : 'Pickups Scheduled Today'}</span>
+                                        <div className="w-11 h-11 rounded-2xl bg-info/10 text-info flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                                            <span className="material-symbols-outlined text-2xl">schedule</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-baseline gap-2 mt-1">
+                                        <span className="text-2xl sm:text-3xl font-black font-mono text-base-content">
+                                            <AnimatedNumber value={stats?.pending || 0} />
+                                        </span>
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-black bg-sky-100 text-sky-950 border border-sky-300">{isRTL ? 'مجدول' : 'Scheduled'}</span>
+                                    </div>
+                                    <span className="text-[11px] text-base-content/60 mt-1 truncate">{isRTL ? 'موعد الاستلام القادم: خلال يوم العمل' : 'Standard courier pickup dispatch'}</span>
+                                </div>
+
+                                <div 
+                                    onClick={() => navigate('/finance')}
+                                    className="card bg-base-100 border border-base-200/90 hover:border-success/50 shadow-sm p-3.5 sm:p-4 rounded-2xl flex flex-col justify-between cursor-pointer transition-all hover:shadow-md group"
+                                >
+                                    <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
+                                        <span>{isRTL ? 'الفواتير والبيانات الجمركية' : 'Invoices & Customs'}</span>
+                                        <div className="w-11 h-11 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                                            <span className="material-symbols-outlined text-2xl">receipt_long</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-baseline gap-2 mt-1">
+                                        <span className="text-2xl sm:text-3xl font-black font-mono text-base-content">{networkSla}</span>
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-black bg-emerald-600 text-white shadow-2xs">{isRTL ? 'معتمد' : 'Verified'}</span>
+                                    </div>
+                                    <span className="text-[11px] text-base-content/60 mt-1 truncate">{isRTL ? 'جميع البيانات الجمركية مصادقة' : 'Customs declarations in good standing'}</span>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+
+                {/* RIGHT (5 or 4 cols): Active Trade Lane Corridors Chart Widget (Top Right Corner) */}
+                <div className="lg:col-span-5 xl:col-span-4">
+                    <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 flex flex-col justify-between h-full hover:shadow-md transition-all">
+                        <div className="flex justify-between items-center mb-3">
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                                    <span className="material-symbols-outlined text-lg">explore</span>
+                                </div>
+                                <div>
+                                    <h3 className="text-xs sm:text-sm font-black text-base-content">
+                                        {isRTL ? 'مسارات الشحن والربط الدولي' : 'Active Trade Lanes'}
+                                    </h3>
+                                    <span className="text-[10.5px] text-base-content/60 font-medium">
+                                        {tradeCorridors.reduce((acc, c) => acc + (c.volume || 0), 0).toLocaleString()} {isRTL ? 'طرد عبر المسارات' : 'pkgs routed'}
+                                    </span>
+                                </div>
                             </div>
-                            <div className="flex items-baseline gap-2 mt-2">
-                                <span className="text-3xl font-black text-error">
-                                    <AnimatedNumber value={triageCount || triageItems.length} />
-                                </span>
-                                <span className={`badge ${triageItems.length > 0 ? 'badge-error' : 'badge-success'} badge-sm font-bold`}>
-                                    {triageItems.length > 0 ? (isRTL ? 'يتطلب تدخل فوري' : 'Action Required') : (isRTL ? 'طبيعي' : 'Nominal')}
-                                </span>
-                            </div>
-                            <span className="text-[11px] text-error/80 mt-1">
-                                {triageItems.length === 0 ? (isRTL ? '0 استثناءات معطلة' : '0 delivery blockers') : (isRTL ? `${triageItems.length} شحنات تتطلب إجراء فوري (اضغط للعرض)` : `${triageItems.length} shipments requiring action (Click to view)`)}
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-black bg-blue-50 text-blue-950 border border-blue-200">
+                                {isRTL ? 'تحديث فوري' : 'Live Gateway'}
                             </span>
                         </div>
 
-                        <div 
-                            onClick={() => navigate('/shipments')}
-                            className="card bg-base-100 border border-base-200/90 hover:border-success/50 shadow-sm p-4 rounded-2xl flex flex-col justify-between cursor-pointer transition-all hover:shadow-md"
-                        >
-                            <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
-                                <span>{isRTL ? 'دقة الالتزام بالمواعيد (SLA)' : 'Network On-Time SLA'}</span>
-                                <span className="material-symbols-outlined text-success text-lg">verified</span>
-                            </div>
-                            <div className="flex items-baseline gap-2 mt-2">
-                                <span className="text-3xl font-black text-base-content">{networkSla}</span>
-                                <span className="badge badge-success badge-sm font-bold">Nominal</span>
-                            </div>
-                            <span className="text-[11px] text-base-content/60 mt-1">{isRTL ? 'معدل التسليم الدولي بالموعد' : 'Live delivery performance across network'}</span>
-                        </div>
-
-                        {canViewFinancials ? (
-                            <div 
-                                onClick={() => navigate('/finance')}
-                                className="card bg-base-100 border border-base-200/90 hover:border-warning/60 shadow-sm p-4 rounded-2xl flex flex-col justify-between cursor-pointer transition-all hover:shadow-md"
-                            >
-                                <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
-                                    <span>
-                                        {selectedOrgId !== 'all'
-                                            ? (isRTL ? 'مستحقات الحساب (ذمم)' : 'Account Receivables')
-                                            : (isRTL ? 'مستحقات الحسابات (ذمم)' : 'Total B2B Receivables')}
-                                    </span>
-                                    <span className="material-symbols-outlined text-warning text-lg">account_balance_wallet</span>
-                                </div>
-                                <div className="flex items-baseline gap-2 mt-2">
-                                    <span className="text-3xl font-black text-base-content">
-                                        <AnimatedNumber value={Math.round(totalReceivables)} />
-                                    </span>
-                                    <span className="text-xs font-bold text-base-content/60">
-                                        .{((totalReceivables % 1) * 1000).toFixed(0).padStart(3, '0')} KWD
-                                    </span>
-                                </div>
-                                <span className="text-[11px] text-base-content/60 mt-1">
-                                    {selectedOrgId !== 'all'
-                                        ? (selectedPeriod !== 'all'
-                                            ? (isRTL ? `المستحقات غير المحصلة لحساب ${activeOrg.name} للفترة المحددة` : `Uncollected receivables for ${activeOrg.name} in selected period`)
-                                            : (isRTL ? `رصيد حساب ${activeOrg.name} القائم الفعلي` : `Active ledger balance for ${activeOrg.name}`))
-                                        : (selectedPeriod !== 'all'
-                                            ? (isRTL ? 'إجمالي المستحقات غير المحصلة للشحنات خلال الفترة المحددة' : 'Outstanding period receivables across accounts')
-                                            : (isRTL ? 'رصيد الشركات الفعلي غير المحصل (اضغط للمالية)' : 'Active ledger balances across accounts (Click for finance)'))
-                                    }
-                                </span>
+                        {tradeCorridors.length > 0 ? (
+                            <div className="space-y-2.5 overflow-y-auto max-h-[220px] pe-1">
+                                {tradeCorridors.slice(0, 5).map((c) => {
+                                    const pct = Math.max(8, Math.round(((c.volume || 0) / maxCorridorVol) * 100));
+                                    const destCode = c.id.split('-')[1]?.toUpperCase() || '';
+                                    return (
+                                        <div 
+                                            key={c.id} 
+                                            onClick={() => navigate(`/shipments?q=${destCode}`)}
+                                            className="p-2 rounded-xl bg-base-200/40 hover:bg-base-200 border border-base-200/60 hover:border-primary/40 cursor-pointer transition-all space-y-1.5 group"
+                                            title={isRTL ? `تصفية شحنات ${c.nameAr}` : `Filter ${c.name} shipments`}
+                                        >
+                                            <div className="flex justify-between items-center text-xs">
+                                                <div className="flex items-center gap-1.5 truncate">
+                                                    <span className="text-sm shrink-0">{c.flag1} {isRTL ? '←' : '→'} {c.flag2}</span>
+                                                    <span className="font-extrabold text-base-content group-hover:text-primary transition-colors">{c.id.replace('-', ' → ')}</span>
+                                                    <span className="text-[10px] text-base-content/50 truncate hidden sm:inline">
+                                                        ({isRTL ? (c.nameAr?.split('⇄')[1]?.trim() || c.nameAr) : (c.name?.split('⇄')[1]?.trim() || c.name)})
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 shrink-0 ms-1">
+                                                    <span className="font-mono font-bold text-xs text-base-content">{c.volume} {isRTL ? 'طرد' : 'pkgs'}</span>
+                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-600 text-white shadow-2xs">
+                                                        {c.onTime}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="w-full bg-base-300/80 rounded-full h-1.5 overflow-hidden">
+                                                <div 
+                                                    className="h-full rounded-full bg-gradient-to-r from-primary to-blue-400 transition-all duration-500" 
+                                                    style={{ width: `${pct}%` }} 
+                                                />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         ) : (
-                            <div 
-                                onClick={() => navigate('/shipments?status=delivered')}
-                                className="card bg-base-100 border border-base-200/90 hover:border-success/50 shadow-sm p-4 rounded-2xl flex flex-col justify-between cursor-pointer transition-all hover:shadow-md"
-                            >
-                                <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
-                                    <span>{isRTL ? 'الشحنات المسلمة بنجاح' : 'Delivered Consignments'}</span>
-                                    <span className="material-symbols-outlined text-success text-lg">check_circle</span>
-                                </div>
-                                <div className="flex items-baseline gap-2 mt-2">
-                                    <span className="text-3xl font-black text-base-content">
-                                        <AnimatedNumber value={stats?.delivered || 0} />
-                                    </span>
-                                    <span className="badge badge-success badge-sm font-bold">{isRTL ? 'مكتمل' : 'Fulfilled'}</span>
-                                </div>
-                                <span className="text-[11px] text-base-content/60 mt-1">{isRTL ? 'إجمالي الشحنات المنجزة (اضغط للعرض)' : 'Total consignments successfully delivered (Click to view)'}</span>
+                            <div className="p-4 text-center bg-base-200/30 rounded-xl border border-dashed border-base-300">
+                                <span className="material-symbols-outlined text-xl text-base-content/40 block mb-1">explore</span>
+                                <p className="text-xs font-bold text-base-content/60">
+                                    {isRTL ? 'لا توجد مسارات شحن نشطة' : 'No active trade lanes'}
+                                </p>
                             </div>
                         )}
-                    </>
-                ) : (
-                    // Client / Organization Account Perspective
-                    <>
-                        <div 
-                            onClick={() => navigate('/shipments?status=active')}
-                            className="card bg-base-100 border border-base-200/90 hover:border-primary/50 shadow-sm p-4 rounded-2xl flex flex-col justify-between cursor-pointer transition-all hover:shadow-md"
-                        >
-                            <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
-                                <span>{isRTL ? 'شحنات الشركة النشطة' : 'Active Company Shipments'}</span>
-                                <span className="material-symbols-outlined text-primary text-lg">local_shipping</span>
-                            </div>
-                            <div className="flex items-baseline gap-2 mt-2">
-                                <span className="text-3xl font-black text-base-content"><AnimatedNumber value={clientActiveCount} /></span>
-                                <span className="badge badge-primary badge-sm font-bold">{activeOrg.name.slice(0, 15)}...</span>
-                            </div>
-                            <span className="text-[11px] text-base-content/60 mt-1">{isRTL ? 'شحنات قيد التوصيل والجمارك (اضغط للعرض)' : 'Consignments moving globally (Click to view)'}</span>
-                        </div>
+                    </div>
+                </div>
 
-                        <div 
-                            onClick={() => navigate('/finance')}
-                            className="card bg-base-100 border border-base-200/90 hover:border-accent/50 shadow-sm p-4 rounded-2xl flex flex-col justify-between cursor-pointer transition-all hover:shadow-md"
-                        >
-                            <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
-                                <span>{isRTL ? 'رصيد الحساب المالي' : 'Account Balance'}</span>
-                                <span className="material-symbols-outlined text-accent text-lg">payments</span>
-                            </div>
-                            <div className="flex items-baseline gap-2 mt-2">
-                                <span className="text-3xl font-black text-base-content">{activeOrg.balance.toFixed(3)}</span>
-                                <span className="text-xs font-bold text-base-content/60">KWD</span>
-                            </div>
-                            <span className="text-[11px] text-base-content/60 mt-1">
-                                {isRTL ? `الحد الائتماني: ${activeOrg.creditLimit.toLocaleString()} د.ك (اضغط للحسابات)` : `Credit Limit: ${activeOrg.creditLimit.toLocaleString()} KWD (Click for finance)`}
-                            </span>
-                        </div>
-
-                        <div 
-                            onClick={() => navigate('/shipments?status=pending')}
-                            className="card bg-base-100 border border-base-200/90 hover:border-info/50 shadow-sm p-4 rounded-2xl flex flex-col justify-between cursor-pointer transition-all hover:shadow-md"
-                        >
-                            <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
-                                <span>{isRTL ? 'طلبات الاستلام اليوم' : 'Pickups Scheduled Today'}</span>
-                                <span className="material-symbols-outlined text-info text-lg">schedule</span>
-                            </div>
-                            <div className="flex items-baseline gap-2 mt-2">
-                                <span className="text-3xl font-black text-base-content">
-                                    <AnimatedNumber value={stats?.pending || 0} />
-                                </span>
-                                <span className="badge badge-info badge-sm font-bold">{isRTL ? 'مجدول' : 'Scheduled'}</span>
-                            </div>
-                            <span className="text-[11px] text-base-content/60 mt-1">{isRTL ? 'موعد الاستلام القادم: خلال يوم العمل' : 'Standard courier pickup dispatch (Click to view)'}</span>
-                        </div>
-
-                        <div 
-                            onClick={() => navigate('/finance')}
-                            className="card bg-base-100 border border-base-200/90 hover:border-success/50 shadow-sm p-4 rounded-2xl flex flex-col justify-between cursor-pointer transition-all hover:shadow-md"
-                        >
-                            <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
-                                <span>{isRTL ? 'الفواتير والبيانات الجمركية' : 'Invoices & Customs'}</span>
-                                <span className="material-symbols-outlined text-success text-lg">receipt_long</span>
-                            </div>
-                            <div className="flex items-baseline gap-2 mt-2">
-                                <span className="text-3xl font-black text-base-content">{networkSla}</span>
-                                <span className="badge badge-success badge-sm font-bold">{isRTL ? 'معتمد' : 'Verified'}</span>
-                            </div>
-                            <span className="text-[11px] text-base-content/60 mt-1">{isRTL ? 'جميع البيانات الجمركية مصادقة' : 'Customs declarations in good standing'}</span>
-                        </div>
-                    </>
-                )}
             </div>
 
             {/* TWO-COLUMN COMMAND WORKSPACE */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
                 
-                {/* LEFT WING (65%): Trade Corridors, Pipeline Lifecycle, & Manifest Grid */}
+                {/* LEFT WING (65%): Carrier Network, Pipeline Lifecycle, & Manifest Grid */}
                 <div className="lg:col-span-8 space-y-5">
-                    
-                    {/* Trade Lane Corridors (GCC & Global Flight Tracks) */}
-                    <div className="card bg-base-100 border border-base-200/90 shadow-sm rounded-2xl p-4 sm:p-5">
-                        <div className="flex justify-between items-center mb-3">
-                            <div>
-                                <h3 className="text-sm sm:text-base font-black text-base-content flex items-center gap-2">
-                                    <span className="material-symbols-outlined text-primary text-lg">explore</span>
-                                    {isRTL ? 'مسارات الشحن والربط الدولي (Trade Corridors)' : 'Active Trade Lane Corridors & Telemetry'}
-                                </h3>
-                                <p className="text-xs text-base-content/60 font-medium">
-                                    {isRTL ? 'مراقبة خطوط النقل الجوي والبري المباشرة من الكويت (اضغط لتصفية المسار)' : 'Live volume & on-time performance across corridors (Click to filter)'}
-                                </p>
-                            </div>
-                            <span className="badge badge-outline badge-sm font-bold text-xs">{isRTL ? 'تحديث فوري' : 'Live Gateway'}</span>
-                        </div>
-
-                        {tradeCorridors.length > 0 ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                                {tradeCorridors.map((c) => (
-                                    <div 
-                                        key={c.id} 
-                                        onClick={() => {
-                                            const destCode = c.id.split('-')[1]?.toUpperCase() || '';
-                                            navigate(`/shipments?q=${destCode}`);
-                                        }}
-                                        className="p-3 bg-base-200/50 hover:bg-base-200 border border-base-200 hover:border-primary/40 rounded-xl transition-all cursor-pointer group"
-                                    >
-                                        <div className="flex justify-between items-center text-xs font-bold text-base-content">
-                                            <span className="flex items-center gap-1.5 text-base">{c.flag1} {isRTL ? '←' : '→'} {c.flag2}</span>
-                                            <span className="badge badge-success badge-xs font-bold">{c.onTime}</span>
-                                        </div>
-                                        <div className="font-extrabold text-xs text-base-content mt-1.5 truncate group-hover:text-primary transition-colors">
-                                            {isRTL ? c.nameAr : c.name}
-                                        </div>
-                                        <div className="flex justify-between items-baseline text-[11px] text-base-content/60 mt-1">
-                                            <span className="badge badge-ghost badge-xs text-[10px]">{c.mode}</span>
-                                            <span className="font-black text-base-content">{c.volume} {isRTL ? 'طرد' : 'pkgs'}</span>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="p-6 text-center bg-base-200/30 rounded-xl border border-dashed border-base-300">
-                                <span className="material-symbols-outlined text-2xl text-base-content/40 block mb-1">explore</span>
-                                <p className="text-xs font-bold text-base-content/60">
-                                    {isRTL ? 'لا توجد مسارات شحن مسجلة حالياً' : 'No active trade lane corridors recorded'}
-                                </p>
-                                <span className="text-[11px] text-base-content/40 block mt-0.5">
-                                    {isRTL ? 'ستظهر بيانات المسارات تلقائياً فور استيراد الشحنات' : 'Corridor volume & SLA metrics will populate automatically when shipments are active'}
-                                </span>
-                            </div>
-                        )}
-                    </div>
 
                     {/* Carrier Network & Volume Distribution */}
                     {isTargetManagement && perspective === 'target' && carrierBreakdown.length > 0 && (
