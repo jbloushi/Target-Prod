@@ -79,6 +79,7 @@ const toRowShape = (s) => {
 
   const resolveCarrierCode = () => {
     if (s.carrierCode) return s.carrierCode.toUpperCase();
+    if (s.carrier) return s.carrier.toUpperCase();
     if (s.dhlTrackingNumber || s.serviceType?.toLowerCase().includes('dhl') || s.service?.toLowerCase().includes('dhl')) return 'DHL';
     if (s.serviceType?.toLowerCase().includes('aramex') || s.service?.toLowerCase().includes('aramex')) return 'ARM';
     if (s.serviceType?.toLowerCase().includes('fedex') || s.service?.toLowerCase().includes('fedex')) return 'FDX';

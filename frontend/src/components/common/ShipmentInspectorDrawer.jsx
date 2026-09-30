@@ -42,7 +42,7 @@ export const ShipmentInspectorDrawer = ({
 
     const trackingNumber = shipment.trackingNumber || '—';
     const status = shipment.status || 'draft';
-    const carrierCode = shipment.carrierCode || (shipment.serviceType?.toLowerCase().includes('dhl') ? 'DHL' : shipment.serviceType?.toLowerCase().includes('fedex') ? 'FEDEX' : shipment.serviceType?.toLowerCase().includes('aramex') ? 'ARAMEX' : null);
+    const carrierCode = shipment.carrierCode || shipment.carrier || (shipment.serviceType?.toLowerCase().includes('dhl') ? 'DHL' : shipment.serviceType?.toLowerCase().includes('fedex') ? 'FEDEX' : shipment.serviceType?.toLowerCase().includes('aramex') ? 'ARAMEX' : null);
     const origin = shipment.origin || { city: shipment.originCity || 'Kuwait City', country: shipment.originCountry || 'KW' };
     const destination = shipment.destination || { city: shipment.destCity || 'Riyadh', country: shipment.destCountry || 'SA' };
     const consigneeName = shipment.receiver?.contactPerson || shipment.receiver?.name || (typeof shipment.destination === 'object' ? (shipment.destination?.contactPerson || shipment.destination?.name) : null) || (typeof shipment.customer === 'object' ? (shipment.customer?.name || shipment.customer?.contactPerson) : (typeof shipment.customer === 'string' ? shipment.customer : null)) || (isRTL ? 'المستلم' : 'Consignee');
