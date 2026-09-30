@@ -199,10 +199,21 @@ const DashboardPage = () => {
     // Live Financial Aggregates from database
     const financials = stats?.financials || null;
 
-    // Live Total B2B Receivables from live database accounts
+    // Live Total B2B Receivables dynamically scoped by selected organization and selected period
     const totalReceivables = useMemo(() => {
+        // If a specific period is selected (other than 'all') and financials are loaded from backend stats
+        if (selectedPeriod !== 'all') {
+            if (financials?.outstandingBalance !== undefined && financials?.outstandingBalance !== null) {
+                return Number(financials.outstandingBalance) || 0;
+            }
+        }
+        // If all-time is selected for a specific organization
+        if (selectedOrgId !== 'all') {
+            return Number(activeOrg?.balance) || 0;
+        }
+        // All organizations across all-time: sum of all active organization ledger balances
         return organizations.reduce((acc, o) => acc + (o.id !== 'all' ? (Number(o.balance) || 0) : 0), 0);
-    }, [organizations]);
+    }, [organizations, selectedOrgId, activeOrg, selectedPeriod, financials]);
 
     // Dynamic On-Time SLA from live database
     const networkSla = useMemo(() => {
@@ -549,7 +560,11 @@ const DashboardPage = () => {
                                 className="card bg-base-100 border border-base-200/90 hover:border-warning/60 shadow-sm p-4 rounded-2xl flex flex-col justify-between cursor-pointer transition-all hover:shadow-md"
                             >
                                 <div className="flex justify-between items-center text-xs text-base-content/60 font-bold uppercase tracking-wider">
-                                    <span>{isRTL ? 'مستحقات الحسابات (ذمم)' : 'Total B2B Receivables'}</span>
+                                    <span>
+                                        {selectedOrgId !== 'all'
+                                            ? (isRTL ? 'مستحقات الحساب (ذمم)' : 'Account Receivables')
+                                            : (isRTL ? 'مستحقات الحسابات (ذمم)' : 'Total B2B Receivables')}
+                                    </span>
                                     <span className="material-symbols-outlined text-warning text-lg">account_balance_wallet</span>
                                 </div>
                                 <div className="flex items-baseline gap-2 mt-2">
@@ -560,7 +575,16 @@ const DashboardPage = () => {
                                         .{((totalReceivables % 1) * 1000).toFixed(0).padStart(3, '0')} KWD
                                     </span>
                                 </div>
-                                <span className="text-[11px] text-base-content/60 mt-1">{isRTL ? 'رصيد الشركات الفعلي غير المحصل (اضغط للمالية)' : 'Active ledger balances across accounts (Click for finance)'}</span>
+                                <span className="text-[11px] text-base-content/60 mt-1">
+                                    {selectedOrgId !== 'all'
+                                        ? (selectedPeriod !== 'all'
+                                            ? (isRTL ? `المستحقات غير المحصلة لحساب ${activeOrg.name} للفترة المحددة` : `Uncollected receivables for ${activeOrg.name} in selected period`)
+                                            : (isRTL ? `رصيد حساب ${activeOrg.name} القائم الفعلي` : `Active ledger balance for ${activeOrg.name}`))
+                                        : (selectedPeriod !== 'all'
+                                            ? (isRTL ? 'إجمالي المستحقات غير المحصلة للشحنات خلال الفترة المحددة' : 'Outstanding period receivables across accounts')
+                                            : (isRTL ? 'رصيد الشركات الفعلي غير المحصل (اضغط للمالية)' : 'Active ledger balances across accounts (Click for finance)'))
+                                    }
+                                </span>
                             </div>
                         ) : (
                             <div 
