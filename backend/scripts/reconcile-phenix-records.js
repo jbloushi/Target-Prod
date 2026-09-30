@@ -176,38 +176,44 @@ async function reconcilePhenixRecords() {
                     });
 
                     if (!invoice && ledgerEntry) {
-                        await prisma.invoice.create({
-                            data: {
-                                invoiceNumber,
-                                organizationId: s.organizationId,
-                                periodStart: effectiveDate,
-                                periodEnd: effectiveDate,
-                                subtotal: rawAmount,
-                                vat: 0,
-                                total: rawAmount,
-                                currency: s.currency || 'KWD',
-                                status: isPaid ? 'paid' : 'issued',
-                                paidAt: isPaid ? effectiveDate : null,
-                                notes: `Phenix ERP Official Tax Invoice (Bill #${phenixBillId}, Receipt #${phenixReceiptNo})`,
-                                createdById: defaultAdmin.id,
-                                createdAt: effectiveDate,
-                                lines: {
-                                    create: {
-                                        shipmentId: s.id,
-                                        ledgerEntryId: ledgerEntry.id,
-                                        trackingNumber: s.trackingNumber,
-                                        shipmentDate: effectiveDate,
-                                        amount: rawAmount,
-                                        currency: s.currency || 'KWD',
-                                        paid: isPaid,
-                                        totalPaid: isPaid ? rawAmount : 0,
-                                        remainingBalance: isPaid ? 0 : rawAmount,
-                                        createdAt: effectiveDate
+                        const existingLine = await prisma.invoiceLine.findUnique({
+                            where: { ledgerEntryId: ledgerEntry.id }
+                        });
+
+                        if (!existingLine) {
+                            await prisma.invoice.create({
+                                data: {
+                                    invoiceNumber,
+                                    organizationId: s.organizationId,
+                                    periodStart: effectiveDate,
+                                    periodEnd: effectiveDate,
+                                    subtotal: rawAmount,
+                                    vat: 0,
+                                    total: rawAmount,
+                                    currency: s.currency || 'KWD',
+                                    status: isPaid ? 'paid' : 'issued',
+                                    paidAt: isPaid ? effectiveDate : null,
+                                    notes: `Phenix ERP Official Tax Invoice (Bill #${phenixBillId}, Receipt #${phenixReceiptNo})`,
+                                    createdById: defaultAdmin.id,
+                                    createdAt: effectiveDate,
+                                    lines: {
+                                        create: {
+                                            shipmentId: s.id,
+                                            ledgerEntryId: ledgerEntry.id,
+                                            trackingNumber: s.trackingNumber,
+                                            shipmentDate: effectiveDate,
+                                            amount: rawAmount,
+                                            currency: s.currency || 'KWD',
+                                            paid: isPaid,
+                                            totalPaid: isPaid ? rawAmount : 0,
+                                            remainingBalance: isPaid ? 0 : rawAmount,
+                                            createdAt: effectiveDate
+                                        }
                                     }
                                 }
-                            }
-                        });
-                        financeReconciled++;
+                            });
+                            financeReconciled++;
+                        }
                     } else if (invoice && actualDate && Math.abs(new Date(invoice.createdAt).getTime() - actualDate.getTime()) > 60000) {
                         await prisma.invoice.update({
                             where: { id: invoice.id },
