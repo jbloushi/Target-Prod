@@ -720,9 +720,9 @@ export const financeService = {
     }
   },
 
-  getOrganizationOverview: async (orgId) => {
+  getOrganizationOverview: async (orgId, params = {}) => {
     try {
-      const response = await api.get(`finance/organizations/${orgId}/overview`);
+      const response = await api.get(`finance/organizations/${orgId}/overview`, { params });
       return response.data;
     } catch (error) {
       console.error('Error fetching organization overview:', error);
@@ -730,9 +730,9 @@ export const financeService = {
     }
   },
 
-  getOrganizationBalance: async (orgId) => {
+  getOrganizationBalance: async (orgId, params = {}) => {
     try {
-      const response = await api.get(`finance/organizations/${orgId}/overview`);
+      const response = await api.get(`finance/organizations/${orgId}/overview`, { params });
       return response.data;
     } catch (error) {
       console.error('Error fetching organization balance:', error);
@@ -740,9 +740,9 @@ export const financeService = {
     }
   },
 
-  listPayments: async (orgId) => {
+  listPayments: async (orgId, params = {}) => {
     try {
-      const response = await api.get(`finance/organizations/${orgId}/payments`);
+      const response = await api.get(`finance/organizations/${orgId}/payments`, { params });
       return response.data;
     } catch (error) {
       console.error('Error fetching payments:', error);

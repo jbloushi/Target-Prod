@@ -1190,24 +1190,32 @@ const FinancePage = () => {
 
                     {/* 4 Balance Metric Cards */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        {/* Card 1: Available Balance */}
+                        {/* Card 1: Available / Period Net Balance */}
                         <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4">
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
-                                    {t('fin_available_balance', 'Available Balance')}
+                                    {selectedPeriod !== 'all'
+                                        ? (lang === 'ar' ? 'صافي رصيد الفترة' : 'Period Net Balance')
+                                        : t('fin_available_balance', 'Available Balance')}
                                 </span>
                                 <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
                                     <span className="material-symbols-outlined text-[18px]">account_balance</span>
                                 </div>
                             </div>
                             <div className="text-2xl font-black font-mono text-base-content">
-                                {fmtAmount(selectedOrgId === 'all' ? summary.balance : (Number(summary.creditLimit || 0) > 0 ? summary.availableCredit : summary.balance))} <span className="text-xs font-semibold text-base-content/60">{currentCurrency}</span>
+                                {fmtAmount(selectedPeriod !== 'all' ? summary.balance : (selectedOrgId === 'all' ? summary.balance : (Number(summary.creditLimit || 0) > 0 ? summary.availableCredit : summary.balance)))} <span className="text-xs font-semibold text-base-content/60">{currentCurrency}</span>
                             </div>
                             <div className="flex items-center justify-between text-[11px] text-base-content/50 mt-2">
                                 <span>
-                                    {selectedOrgId === 'all'
-                                        ? `${summary.totalOrganizationsCount || organizations.length} ${lang === 'ar' ? 'منظمات' : 'Organizations'}`
-                                        : `${t('fin_credit_limit', 'Credit Limit')}: ${money(summary.creditLimit, currentCurrency)}`}
+                                    {selectedPeriod !== 'all'
+                                        ? (selectedPeriod === 'today' ? (lang === 'ar' ? 'حركات اليوم المالية' : 'Activity recorded today')
+                                            : selectedPeriod === '7days' ? (lang === 'ar' ? 'حركات آخر 7 أيام' : 'Activity in past 7 days')
+                                            : selectedPeriod === 'this_month' ? (lang === 'ar' ? 'حركات هذا الشهر' : 'Activity this month')
+                                            : selectedPeriod === 'last_month' ? (lang === 'ar' ? 'حركات الشهر الماضي' : 'Activity last month')
+                                            : (lang === 'ar' ? 'حركات الفترة المحددة' : 'Activity in custom range'))
+                                        : (selectedOrgId === 'all'
+                                            ? `${summary.totalOrganizationsCount || organizations.length} ${lang === 'ar' ? 'منظمات' : 'Organizations'}`
+                                            : `${t('fin_credit_limit', 'Credit Limit')}: ${money(summary.creditLimit, currentCurrency)}`)}
                                 </span>
                                 <span className="badge badge-success badge-xs font-bold text-white">Active</span>
                             </div>

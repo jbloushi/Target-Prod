@@ -313,6 +313,9 @@ exports.getOrganizationOverview = async (req, res) => {
 
         if (!assertFinanceOrgAccess(req, res, orgId)) return;
 
+        const { period, startDate, endDate, fromDate, toDate, from, to } = req.query;
+        const dateRange = resolveDateRange({ startDate, endDate, from, to, period, fromDate, toDate });
+
         let organization = null;
         let creditLimit = 0;
         if (!isNone && !isAll) {
@@ -326,7 +329,12 @@ exports.getOrganizationOverview = async (req, res) => {
             creditLimit = Number(orgsSum._sum?.creditLimit || 0);
         }
 
-        const overview = await financeLedgerService.getOrganizationOverview(orgId, creditLimit, organization?.currency || 'KWD');
+        const overview = await financeLedgerService.getOrganizationOverview(
+            orgId,
+            creditLimit,
+            organization?.currency || 'KWD',
+            { dateRange, period, startDate, endDate }
+        );
 
         res.status(200).json({
             success: true,

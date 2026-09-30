@@ -96,19 +96,22 @@ const emptyBuckets = () => AGING_BUCKETS.reduce((acc, bucket) => ({ ...acc, [buc
 
 const signedAmount = (entryType, amount) => normalizeAmount(amount).times(entryType === 'DEBIT' ? 1 : -1);
 
-const getOrganizationBalance = async (organizationId, currency = null) => {
+const getOrganizationBalance = async (organizationId, currency = null, dateRange = null) => {
     if (organizationId === 'all') {
         const balanceCurrency = normalizeCurrencyCode(currency || BASE_CURRENCY);
+        const where = { currency: balanceCurrency };
+        if (dateRange) where.createdAt = dateRange;
+
         const totals = await prisma.organizationLedger.groupBy({
             by: ['entryType'],
-            where: { currency: balanceCurrency },
+            where,
             _sum: { amount: true }
         });
         const debitTotal = totals.find(row => row.entryType === 'DEBIT')?._sum.amount || 0;
         const creditTotal = totals.find(row => row.entryType === 'CREDIT')?._sum.amount || 0;
         const ledgerBalance = normalizeAmount(debitTotal).minus(creditTotal);
 
-        if (totals.length === 0 || ledgerBalance.isZero()) {
+        if (!dateRange && (totals.length === 0 || ledgerBalance.isZero())) {
             const orgsSum = await prisma.organization.aggregate({
                 _sum: { balance: true }
             });
@@ -121,9 +124,12 @@ const getOrganizationBalance = async (organizationId, currency = null) => {
     if (!organizationId && organizationId !== null) return 0;
     const balanceCurrency = normalizeCurrencyCode(currency || await getOrganizationCurrency(organizationId));
 
+    const where = { organizationId: organizationId || null, currency: balanceCurrency };
+    if (dateRange) where.createdAt = dateRange;
+
     const totals = await prisma.organizationLedger.groupBy({
         by: ['entryType'],
-        where: { organizationId: organizationId || null, currency: balanceCurrency },
+        where,
         _sum: { amount: true }
     });
 
@@ -131,7 +137,7 @@ const getOrganizationBalance = async (organizationId, currency = null) => {
     const creditTotal = totals.find(row => row.entryType === 'CREDIT')?._sum.amount || 0;
     const ledgerBalance = normalizeAmount(debitTotal).minus(creditTotal);
 
-    if (organizationId && totals.length === 0) {
+    if (!dateRange && organizationId && totals.length === 0) {
         const org = await prisma.organization.findUnique({
             where: { id: organizationId },
             select: { balance: true }
@@ -144,8 +150,10 @@ const getOrganizationBalance = async (organizationId, currency = null) => {
     return toApiAmount(ledgerBalance);
 };
 
-const getOrganizationBalancesByCurrency = async (organizationId) => {
+const getOrganizationBalancesByCurrency = async (organizationId, dateRange = null) => {
     const where = organizationId === 'all' ? {} : { organizationId: organizationId || null };
+    if (dateRange) where.createdAt = dateRange;
+
     const totals = await prisma.organizationLedger.groupBy({
         by: ['currency', 'entryType'],
         where,
@@ -160,7 +168,7 @@ const getOrganizationBalancesByCurrency = async (organizationId) => {
         return acc;
     }, {});
 
-    if (Object.keys(result).length === 0 || Object.values(result).every(v => v === 0)) {
+    if (!dateRange && (Object.keys(result).length === 0 || Object.values(result).every(v => v === 0))) {
         if (organizationId === 'all') {
             const orgs = await prisma.organization.groupBy({
                 by: ['currency'],
@@ -254,15 +262,22 @@ const getAllocationTotal = async ({ organizationId, shipmentId, paymentId, curre
     return normalizeAmount(summary._sum.amount || 0);
 };
 
-const getUnappliedCashByCurrency = async (organizationId) => {
+const getUnappliedCashByCurrency = async (organizationId, dateRange = null) => {
     const where = organizationId === 'all' ? {} : { organizationId: organizationId || null };
+    const paymentsWhere = { ...where };
+    const allocationsWhere = { ...where, status: 'ACTIVE' };
+    if (dateRange) {
+        paymentsWhere.createdAt = dateRange;
+        allocationsWhere.createdAt = dateRange;
+    }
+
     const payments = await prisma.payment.findMany({
-        where,
+        where: paymentsWhere,
         select: { id: true, amount: true, currency: true }
     });
     const allocations = await prisma.paymentAllocation.groupBy({
         by: ['paymentId'],
-        where: { ...where, status: 'ACTIVE' },
+        where: allocationsWhere,
         _sum: { amount: true }
     });
 
@@ -279,8 +294,8 @@ const getUnappliedCashByCurrency = async (organizationId) => {
     }, {});
 };
 
-const getUnappliedCash = async (organizationId, currency = null) => {
-    const balances = await getUnappliedCashByCurrency(organizationId);
+const getUnappliedCash = async (organizationId, currency = null, dateRange = null) => {
+    const balances = await getUnappliedCashByCurrency(organizationId, dateRange);
     const targetCurrency = normalizeCurrencyCode(currency || await getOrganizationCurrency(organizationId));
     return toApiAmount(balances[targetCurrency] || 0);
 };
@@ -326,13 +341,15 @@ const getShipmentAccounting = async (shipmentId, txClient = prisma) => {
     };
 };
 
-const getAgingReport = async (organizationId, currency = null) => {
+const getAgingReport = async (organizationId, currency = null, dateRange = null) => {
     const requestedCurrency = currency ? normalizeCurrencyCode(currency) : null;
     const bucketsByCurrency = {};
     const totalsByCurrency = {};
     let unpaidShipmentsCount = 0;
 
     const baseWhere = organizationId === 'all' ? {} : { organizationId: organizationId || null };
+    if (dateRange) baseWhere.createdAt = dateRange;
+
     const unpaidWhere = {
         ...baseWhere,
         paid: false
@@ -405,16 +422,17 @@ const getAgingReport = async (organizationId, currency = null) => {
     };
 };
 
-const getOrganizationOverview = async (organizationId, creditLimit = 0, currency = BASE_CURRENCY) => {
+const getOrganizationOverview = async (organizationId, creditLimit = 0, currency = BASE_CURRENCY, options = {}) => {
+    const dateRange = options?.dateRange || null;
     const baseCurrency = normalizeCurrencyCode(
         organizationId === 'all' ? (currency || BASE_CURRENCY) : (currency || await getOrganizationCurrency(organizationId))
     );
     const [balance, balancesByCurrency, unappliedCash, unappliedCashByCurrency, aging] = await Promise.all([
-        getOrganizationBalance(organizationId, baseCurrency),
-        getOrganizationBalancesByCurrency(organizationId),
-        getUnappliedCash(organizationId, baseCurrency),
-        getUnappliedCashByCurrency(organizationId),
-        getAgingReport(organizationId, baseCurrency)
+        getOrganizationBalance(organizationId, baseCurrency, dateRange),
+        getOrganizationBalancesByCurrency(organizationId, dateRange),
+        getUnappliedCash(organizationId, baseCurrency, dateRange),
+        getUnappliedCashByCurrency(organizationId, dateRange),
+        getAgingReport(organizationId, baseCurrency, dateRange)
     ]);
 
     const limit = normalizeAmount(creditLimit);
@@ -432,6 +450,10 @@ const getOrganizationOverview = async (organizationId, creditLimit = 0, currency
             ...(organizationId === 'all' ? {} : { organizationId: organizationId || null }),
             status: { not: 'APPLIED' }
         };
+        if (dateRange) {
+            invWhere.createdAt = dateRange;
+            payWhere.createdAt = dateRange;
+        }
 
         const [orgsCount, invAggregate, payCount] = await Promise.all([
             prisma.organization.count(),
@@ -461,6 +483,9 @@ const getOrganizationOverview = async (organizationId, creditLimit = 0, currency
             shipmentsWhere.organizationId = organizationId;
         } else if (organizationId === 'none') {
             shipmentsWhere.organizationId = null;
+        }
+        if (dateRange) {
+            shipmentsWhere.createdAt = dateRange;
         }
 
         const orgShipments = await prisma.shipment.findMany({

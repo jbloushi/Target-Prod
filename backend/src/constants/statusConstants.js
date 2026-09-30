@@ -97,7 +97,7 @@ function normalizeStatus(raw) {
     if (DHL_STATUS_MAP[s] != null) return DHL_STATUS_MAP[s];
 
     // Semantic matching for carrier descriptions and freeform statuses (Aramex, FedEx, DHL, OTE, etc.)
-    if (s.includes('exception') || s.includes('hold') || s.includes('delay') || s.includes('undeliver') || s.includes('failed') || s.includes('damage') || s.includes('clearance_delay')) return 'exception';
+    if (s.includes('exception') || s.includes('hold') || s.includes('held') || s.includes('delay') || s.includes('undeliver') || s.includes('failed') || s.includes('incomplete') || s.includes('damage') || s.includes('clearance_delay')) return 'exception';
     if (s.includes('out_for_delivery') || s.includes('for_delivery') || s.includes('with_courier') || s.includes('with_driver') || s === 'od') return 'out_for_delivery';
     if (s.includes('delivered') || s.includes('consignee') || s === 'dlv' || s.includes('pod') || s === 'delivered_to_recipient') return 'delivered';
     if (s.includes('rto') || s.includes('returned')) return 'returned';

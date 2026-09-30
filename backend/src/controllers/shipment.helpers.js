@@ -482,7 +482,9 @@ const syncCarrierTrackingHistory = async (shipment) => {
         const latestEvent = sortedEvents[sortedEvents.length - 1];
         const latestRaw = latestEvent ? (latestEvent.statusCode || latestEvent.status || latestEvent.description) : null;
         const latestRawNorm = latestRaw ? normalizeStatus(latestRaw) : null;
-        let latestCarrierStatus = normalizeStatus(tracking?.status || latestRaw || highestCarrierStatus);
+        let latestCarrierStatus = (latestRawNorm === 'exception')
+            ? 'exception'
+            : normalizeStatus(latestRaw || tracking?.status || highestCarrierStatus);
 
         // If carrier tracking top-level reported exception, but the latest chronological scan is active movement or delivery, active movement takes precedence!
         if (latestCarrierStatus === 'exception' && latestRawNorm && ['picked_up', 'received_at_hub', 'verified', 'in_transit', 'out_for_delivery', 'delivered'].includes(latestRawNorm)) {
@@ -656,6 +658,52 @@ const canUpdateShipmentStatus = (user, shipment, nextStatus) => {
 };
 
 /**
+ * Evaluates whether a shipment has an active exception or a resolved exception based on its history.
+ * @param {Object} shipment - The shipment model object with .status and .history
+ * @returns {string|null} - The target status ('exception', 'in_transit', 'delivered', etc.) if a change is needed, or null
+ */
+function evaluateRealtimeExceptionStatus(shipment) {
+    if (!shipment) return null;
+    const currentStatus = normalizeStatus(shipment.status);
+    if (currentStatus === 'delivered' || currentStatus === 'cancelled' || currentStatus === 'draft') return null;
+
+    const rawHistory = Array.isArray(shipment.history) ? shipment.history : [];
+    if (rawHistory.length === 0) return null;
+
+    // 1. Any delivered milestone conclusively resolves any past exception
+    const hasDelivered = rawHistory.some((e) => {
+        const s = normalizeStatus(e.status || e.description || e.statusCode);
+        return s === 'delivered';
+    });
+    if (hasDelivered) {
+        return currentStatus !== 'delivered' ? 'delivered' : null;
+    }
+
+    // 2. Chronologically sort events (most recent first)
+    const sortedDesc = [...rawHistory]
+        .filter(e => e && e.timestamp)
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    
+    if (sortedDesc.length === 0) return null;
+
+    const latestScan = sortedDesc[0];
+    const latestRaw = latestScan?.statusCode || latestScan?.status || latestScan?.description || '';
+    const latestStatus = normalizeStatus(latestRaw);
+
+    // If the latest chronological scan is an exception (hold, delay, customs hold, failed, etc.)
+    if (latestStatus === 'exception') {
+        return currentStatus !== 'exception' ? 'exception' : null;
+    }
+
+    // If currently in exception, but the latest chronological scan is active pipeline movement
+    if (currentStatus === 'exception' && ['picked_up', 'received_at_hub', 'verified', 'in_transit', 'out_for_delivery', 'delivered'].includes(latestStatus)) {
+        return latestStatus;
+    }
+
+    return null;
+}
+
+/**
  * Evaluates whether a shipment currently marked with status 'exception' has already
  * resolved the exception via subsequent active movement scans or a delivery scan.
  * @param {Object} shipment - The shipment model object with .status and .history
@@ -666,32 +714,8 @@ function getResolvedExceptionStatus(shipment) {
     const currentStatus = normalizeStatus(shipment.status);
     if (currentStatus !== 'exception') return null;
 
-    const rawHistory = Array.isArray(shipment.history) ? shipment.history : [];
-    if (rawHistory.length === 0) return null;
-
-    // 1. Any delivered milestone conclusively resolves any past exception
-    const hasDelivered = rawHistory.some((e) => {
-        const s = normalizeStatus(e.status || e.description || e.statusCode);
-        return s === 'delivered';
-    });
-    if (hasDelivered) return 'delivered';
-
-    // 2. Chronologically sort events (most recent first)
-    const sortedDesc = [...rawHistory]
-        .filter(e => e.timestamp)
-        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    
-    if (sortedDesc.length === 0) return null;
-
-    const latestScan = sortedDesc[0];
-    const latestStatus = normalizeStatus(latestScan?.status || latestScan?.description || latestScan?.statusCode);
-
-    // If the latest chronological scan is active pipeline movement, the hold/exception is resolved
-    if (latestStatus && latestStatus !== 'exception' && ['picked_up', 'received_at_hub', 'verified', 'in_transit', 'out_for_delivery', 'delivered'].includes(latestStatus)) {
-        return latestStatus;
-    }
-
-    return null;
+    const target = evaluateRealtimeExceptionStatus(shipment);
+    return (target && target !== 'exception') ? target : null;
 }
 
 /**
@@ -729,12 +753,13 @@ async function autoHealResolvedShipment(shipment, prismaClient) {
 }
 
 /**
- * Bulk auto-heals all shipments in the database that are currently flagged as 'exception'
- * but have subsequent movement or delivery in their history.
+ * Bulk synchronizes and heals all exceptions in the database:
+ * 1. Heals resolved exceptions that have subsequent movement/delivery
+ * 2. Flags active shipments whose latest carrier scan is an exception/hold
  * @param {Object} [prismaClient]
- * @returns {Promise<number>} Number of shipments healed
+ * @returns {Promise<number>} Number of shipments updated
  */
-async function autoHealAllResolvedExceptions(prismaClient) {
+async function autoSyncAllExceptions(prismaClient) {
     let client = prismaClient;
     if (!client) {
         try {
@@ -747,34 +772,44 @@ async function autoHealAllResolvedExceptions(prismaClient) {
 
     try {
         const candidates = await client.shipment.findMany({
-            where: { status: 'exception' },
+            where: {
+                status: {
+                    in: [
+                        'exception', 'failed', 'cancelled', 'returned',
+                        'booked', 'ready_for_pickup', 'picked_up',
+                        'received_at_hub', 'verified', 'in_transit', 'out_for_delivery'
+                    ]
+                }
+            },
             select: { id: true, trackingNumber: true, status: true, history: true }
         });
 
         if (candidates.length === 0) return 0;
 
-        let healedCount = 0;
+        let syncedCount = 0;
         for (const s of candidates) {
-            const resolved = getResolvedExceptionStatus(s);
-            if (resolved) {
+            const nextStatus = evaluateRealtimeExceptionStatus(s);
+            if (nextStatus && nextStatus !== s.status) {
                 await client.shipment.update({
                     where: { id: s.id },
-                    data: { status: resolved }
+                    data: { status: nextStatus }
                 });
-                healedCount++;
-                logger.info(`[autoHeal] Resolved exception for ${s.trackingNumber}: exception -> ${resolved}`);
+                syncedCount++;
+                logger.info(`[autoSyncExceptions] Synced status for ${s.trackingNumber}: ${s.status} -> ${nextStatus}`);
             }
         }
 
-        if (healedCount > 0) {
-            logger.info(`[autoHeal] Successfully auto-healed ${healedCount} resolved exceptions in database`);
+        if (syncedCount > 0) {
+            logger.info(`[autoSyncExceptions] Successfully synced ${syncedCount} exception/movement statuses in database`);
         }
-        return healedCount;
+        return syncedCount;
     } catch (err) {
-        logger.warn(`[autoHeal] Bulk auto-heal encountered error: ${err.message}`);
+        logger.warn(`[autoSyncExceptions] Bulk auto-sync encountered error: ${err.message}`);
         return 0;
     }
 }
+
+const autoHealAllResolvedExceptions = autoSyncAllExceptions;
 
 module.exports = {
     DEFAULT_MARKUP,
@@ -792,7 +827,9 @@ module.exports = {
     isInternalShipment,
     getAllowedStatusUpdates,
     canUpdateShipmentStatus,
+    evaluateRealtimeExceptionStatus,
     getResolvedExceptionStatus,
     autoHealResolvedShipment,
-    autoHealAllResolvedExceptions
+    autoHealAllResolvedExceptions,
+    autoSyncAllExceptions
 };

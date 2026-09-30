@@ -10,7 +10,7 @@ const { hasCapability, isPlatformRole } = require('../middleware/rbac.policy');
 const { canAccessShipment, scopeShipmentWhere } = require('../middleware/authorize.middleware');
 const { INTERNAL_SHIPMENT_STATUSES, SHIPMENT_STATUSES, normalizeStatus } = require('../constants/statusConstants');
 const { DELETABLE_SHIPMENT_STATUSES, buildShipmentDeleteBlockedMessage, hasCarrierBooking, canDeleteShipment } = require('../utils/shipmentDeletionPolicy');
-const { syncCarrierTrackingHistory, hasCriticalChanges, canUpdateShipmentStatus, isInternalShipment, buildDisplayHistory, autoHealAllResolvedExceptions, autoHealResolvedShipment, getResolvedExceptionStatus } = require('./shipment.helpers');
+const { syncCarrierTrackingHistory, hasCriticalChanges, canUpdateShipmentStatus, isInternalShipment, buildDisplayHistory, autoHealAllResolvedExceptions, autoHealResolvedShipment, getResolvedExceptionStatus, autoSyncAllExceptions } = require('./shipment.helpers');
 const chatwootNotificationService = require('../services/chatwootNotificationService');
 const WebhookDispatcher = require('../services/WebhookDispatcher');
 const { isTrackingSyncDue, markTrackingSynced, triggerBackgroundTrackingSync } = require('../services/queue/trackingCache');
@@ -113,9 +113,9 @@ exports.getShipmentStats = async (req, res) => {
             }
         }
 
-        // Auto-heal any stale exceptions before aggregating stats to ensure exact counts
+        // Auto-sync and heal all exceptions before aggregating stats to ensure exact counts
         try {
-            await autoHealAllResolvedExceptions(prisma);
+            await autoSyncAllExceptions(prisma);
         } catch (_) {}
 
         // 1. Group by Status
@@ -511,6 +511,11 @@ exports.getTriageShipments = async (req, res) => {
         } else {
             scopeShipmentWhere(req, where);
         }
+
+        // Auto-sync any hold/exception states from recent checkpoint events
+        try {
+            await autoSyncAllExceptions(prisma);
+        } catch (_) {}
 
         const triageWhere = {
             ...where,
