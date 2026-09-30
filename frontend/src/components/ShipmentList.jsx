@@ -24,6 +24,8 @@ const CARRIER_INFO_MAP = {
   'ARAMEX': { name: 'Aramex', nameAr: 'أرامكس', badge: 'badge-warning' },
   'FDX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'badge-secondary' },
   'FEDEX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'badge-secondary' },
+  'OTE': { name: 'Target GCC (OTE)', nameAr: 'تارجت الخليج (OTE)', badge: 'badge-accent' },
+  'LOGESTECHS': { name: 'Target GCC (OTE)', nameAr: 'تارجت الخليج (OTE)', badge: 'badge-accent' },
   'MAN': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'badge-primary' },
   'MANUAL': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'badge-primary' },
   'INTERNAL': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'badge-primary' },
@@ -34,6 +36,7 @@ const CARRIER_OPTIONS = [
   { value: 'DHL', label: 'DHL Express', labelAr: 'دي إتش إل إكسبريس' },
   { value: 'FEDEX', label: 'FedEx Express', labelAr: 'فيديكس إكسبريس' },
   { value: 'ARAMEX', label: 'Aramex', labelAr: 'أرامكس' },
+  { value: 'OTE', label: 'Target GCC (OTE)', labelAr: 'تارجت الخليج (OTE)' },
   { value: 'INTERNAL', label: 'Internal Fleet', labelAr: 'الأسطول الداخلي' },
 ];
 
@@ -362,6 +365,7 @@ export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) 
                   ['DHL', 'DGR'].includes(carrierParam.toUpperCase()) ? 'DHL' :
                   ['FEDEX', 'FDX'].includes(carrierParam.toUpperCase()) ? 'FEDEX' :
                   ['ARAMEX', 'ARM'].includes(carrierParam.toUpperCase()) ? 'ARAMEX' :
+                  ['OTE', 'LOGESTECHS'].includes(carrierParam.toUpperCase()) ? 'OTE' :
                   ['INTERNAL', 'MAN', 'MANUAL'].includes(carrierParam.toUpperCase()) ? 'INTERNAL' :
                   carrierParam.toUpperCase() || 'ALL'
                 }
