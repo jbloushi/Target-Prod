@@ -16,23 +16,23 @@ import {
   getShipmentDeleteErrorMessage
 } from '../utils/shipmentDeletionPolicy';
 
-// Carrier display helper metadata
+// Carrier display helper metadata with high contrast tokens
 const CARRIER_INFO_MAP = {
-  'DGR': { name: 'DHL Express', nameAr: 'دي إتش إل إكسبريس', badge: 'badge-error' },
-  'DHL': { name: 'DHL Express', nameAr: 'دي إتش إل إكسبريس', badge: 'badge-error' },
-  'ARM': { name: 'Aramex', nameAr: 'أرامكس', badge: 'badge-warning' },
-  'ARAMEX': { name: 'Aramex', nameAr: 'أرامكس', badge: 'badge-warning' },
-  'FDX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'badge-secondary' },
-  'FEDEX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'badge-secondary' },
-  'OTE': { name: 'Target GCC (OTE)', nameAr: 'تارجت الخليج (OTE)', badge: 'badge-accent' },
-  'LOGESTECHS': { name: 'Target GCC (OTE)', nameAr: 'تارجت الخليج (OTE)', badge: 'badge-accent' },
-  'POSTA_PLUS': { name: 'Posta Plus', nameAr: 'بوستا بلس', badge: 'badge-info' },
-  'POSTAPLUS': { name: 'Posta Plus', nameAr: 'بوستا بلس', badge: 'badge-info' },
-  'SEA_FREIGHT': { name: 'Sea Freight', nameAr: 'شحن بحري', badge: 'badge-neutral' },
-  'LAND_FREIGHT': { name: 'Land Freight', nameAr: 'شحن بري', badge: 'badge-neutral' },
-  'MAN': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'badge-primary' },
-  'MANUAL': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'badge-primary' },
-  'INTERNAL': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'badge-primary' },
+  'DGR': { name: 'DHL Express', nameAr: 'دي إتش إل إكسبريس', badge: 'bg-amber-100 text-amber-950 border border-amber-300' },
+  'DHL': { name: 'DHL Express', nameAr: 'دي إتش إل إكسبريس', badge: 'bg-amber-100 text-amber-950 border border-amber-300' },
+  'ARM': { name: 'Aramex', nameAr: 'أرامكس', badge: 'bg-rose-100 text-rose-950 border border-rose-300' },
+  'ARAMEX': { name: 'Aramex', nameAr: 'أرامكس', badge: 'bg-rose-100 text-rose-950 border border-rose-300' },
+  'FDX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'bg-purple-100 text-purple-950 border border-purple-300' },
+  'FEDEX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'bg-purple-100 text-purple-950 border border-purple-300' },
+  'OTE': { name: 'Target GCC (OTE)', nameAr: 'تارجت الخليج (OTE)', badge: 'bg-sky-100 text-sky-950 border border-sky-300' },
+  'LOGESTECHS': { name: 'Target GCC (OTE)', nameAr: 'تارجت الخليج (OTE)', badge: 'bg-sky-100 text-sky-950 border border-sky-300' },
+  'POSTA_PLUS': { name: 'Posta Plus', nameAr: 'بوستا بلس', badge: 'bg-teal-100 text-teal-950 border border-teal-300' },
+  'POSTAPLUS': { name: 'Posta Plus', nameAr: 'بوستا بلس', badge: 'bg-teal-100 text-teal-950 border border-teal-300' },
+  'SEA_FREIGHT': { name: 'Sea Freight', nameAr: 'شحن بحري', badge: 'bg-blue-100 text-blue-950 border border-blue-300' },
+  'LAND_FREIGHT': { name: 'Land Freight', nameAr: 'شحن بري', badge: 'bg-emerald-100 text-emerald-950 border border-emerald-300' },
+  'MAN': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'bg-indigo-100 text-indigo-950 border border-indigo-300' },
+  'MANUAL': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'bg-indigo-100 text-indigo-950 border border-indigo-300' },
+  'INTERNAL': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'bg-indigo-100 text-indigo-950 border border-indigo-300' },
 };
 
 const CARRIER_OPTIONS = [
@@ -224,12 +224,12 @@ export const ShipmentList = ({
     const activeTransitCount = (stats.inTransit || 0) + (stats.pickedUp || 0);
 
     return [
-      { key: 'all', label: t('filter_all', 'All'), count: stats.total || 0, badge: 'badge-primary', badgeLabel: 'ALL', border: 'border-primary' },
-      { key: 'exceptions', label: t('filter_exceptions', 'Triage / Holds'), count: stats.exceptions || 0, badge: 'badge-error', badgeLabel: 'EXCEPTIONS', border: 'border-error', isTriage: true },
-      { key: 'active', label: t('filter_in_transit', 'In Transit'), count: activeTransitCount, badge: 'badge-info', badgeLabel: 'ACTIVE', border: 'border-info' },
-      { key: 'outForDelivery', label: t('filter_out_for_delivery', 'Out for Delivery'), count: stats.outForDelivery || 0, badge: 'badge-warning', badgeLabel: 'OUT FOR DELIVERY', border: 'border-warning' },
-      { key: 'delivered', label: t('filter_delivered', 'Delivered'), count: stats.delivered || 0, badge: 'badge-success', badgeLabel: 'DELIVERED', border: 'border-success' },
-      { key: 'readyForPickup', label: t('filter_ready_for_pickup', 'Ready for Pickup'), count: readyPickupCount, badge: 'badge-neutral', badgeLabel: 'READY PICKUP', border: 'border-base-300' },
+      { key: 'all', label: t('filter_all', 'All'), count: stats.total || 0, badgeStyle: 'bg-blue-100 text-blue-950 border-blue-300', badgeLabel: 'ALL', border: 'border-primary' },
+      { key: 'exceptions', label: t('filter_exceptions', 'Triage / Holds'), count: stats.exceptions || 0, badgeStyle: 'bg-rose-100 text-rose-950 border-rose-300', badgeLabel: 'EXCEPTIONS', border: 'border-error', isTriage: true },
+      { key: 'active', label: t('filter_in_transit', 'In Transit'), count: activeTransitCount, badgeStyle: 'bg-sky-100 text-sky-950 border-sky-300', badgeLabel: 'ACTIVE', border: 'border-info' },
+      { key: 'outForDelivery', label: t('filter_out_for_delivery', 'Out for Delivery'), count: stats.outForDelivery || 0, badgeStyle: 'bg-amber-100 text-amber-950 border-amber-300', badgeLabel: 'OUT FOR DELIVERY', border: 'border-warning' },
+      { key: 'delivered', label: t('filter_delivered', 'Delivered'), count: stats.delivered || 0, badgeStyle: 'bg-emerald-100 text-emerald-950 border-emerald-300', badgeLabel: 'DELIVERED', border: 'border-success' },
+      { key: 'readyForPickup', label: t('filter_ready_for_pickup', 'Ready for Pickup'), count: readyPickupCount, badgeStyle: 'bg-slate-100 text-slate-900 border-slate-300', badgeLabel: 'READY PICKUP', border: 'border-base-300' },
     ];
   }, [stats, t]);
 
@@ -319,7 +319,7 @@ export const ShipmentList = ({
   return (
     <div className="space-y-4">
       
-      {/* 1. Filter Tabs Ribbon (DaisyUI Interactive Cards) */}
+      {/* 1. Filter Tabs Ribbon (Interactive Summary Cards) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
         {filterTabs.map((tab) => {
           const isActive = activeFilter === tab.key;
@@ -334,23 +334,23 @@ export const ShipmentList = ({
                   : 'border-base-200/90 shadow-sm hover:border-base-300 hover:shadow-md'
               }`}
             >
-              <div className="flex justify-between items-center">
-                <span className="text-2xl font-black text-base-content tracking-tight">
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-2xl sm:text-3xl font-black font-mono text-base-content tracking-tight">
                   {tab.count.toLocaleString()}
                 </span>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 shrink-0">
                   {tab.isTriage && tab.count > 0 && (
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-error opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-error"></span>
+                    <span className="relative flex h-2 w-2 shrink-0">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-500 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600"></span>
                     </span>
                   )}
-                  <span className={`badge ${tab.badge} badge-xs py-1.5 px-2 font-bold`}>
+                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-black tracking-wider uppercase border shadow-2xs ${tab.badgeStyle}`}>
                     {tab.badgeLabel || tab.key.toUpperCase()}
                   </span>
                 </div>
               </div>
-              <div className="text-[11px] font-extrabold uppercase tracking-wider text-base-content/60 mt-1">
+              <div className="text-xs font-bold uppercase tracking-wider text-base-content/60 mt-1.5">
                 {tab.label}
               </div>
             </button>
@@ -556,14 +556,14 @@ export const ShipmentList = ({
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-mono hover:text-primary transition-colors">{s.trackingNumber}</span>
                             {s.carrierCode && (
-                              <span className={`badge ${CARRIER_INFO_MAP[s.carrierCode]?.badge || 'badge-neutral'} badge-xs font-black uppercase py-0.5 px-1.5`}>
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-black uppercase ${CARRIER_INFO_MAP[s.carrierCode]?.badge || 'bg-slate-100 text-slate-800 border border-slate-300'}`}>
                                 {isRTL 
                                   ? (CARRIER_INFO_MAP[s.carrierCode]?.nameAr || s.carrierCode) 
                                   : (CARRIER_INFO_MAP[s.carrierCode]?.name || s.carrierCode)}
                               </span>
                             )}
                             {s.isTest && (
-                              <span className="badge badge-warning badge-xs font-black py-0.5 px-1.5">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-black uppercase bg-amber-100 text-amber-950 border border-amber-300">
                                 TEST
                               </span>
                             )}
@@ -621,11 +621,11 @@ export const ShipmentList = ({
                               className="btn btn-ghost btn-xs btn-square text-base-content/60 hover:text-primary"
                               title={isRTL ? 'معاينة سريعة' : 'Quick Inspect'}
                             >
-                              <span className="material-symbols-outlined text-base">visibility</span>
+                              <span className="material-symbols-outlined text-[13px]">visibility</span>
                             </button>
                             <div className="dropdown dropdown-end">
                               <label tabIndex={0} className="btn btn-ghost btn-xs btn-square text-base-content/60 hover:text-primary">
-                                <span className="material-symbols-outlined text-base">more_horiz</span>
+                                <span className="material-symbols-outlined text-[13px]">more_horiz</span>
                               </label>
                               <ul tabIndex={0} className="dropdown-content z-30 menu p-1.5 shadow-xl bg-base-100 rounded-xl border border-base-200 w-44 text-xs font-semibold">
                                 <li>
