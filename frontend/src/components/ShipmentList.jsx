@@ -495,7 +495,7 @@ export const ShipmentList = ({ organizationId = 'all', initialFilter = 'all' }) 
         ) : (
           <>
             {/* Desktop & Tablet Table */}
-            <div className="overflow-x-auto">
+            <div className="w-full">
               <table className="table table-zebra table-hover w-full text-xs">
                 <thead>
                   <tr className="text-xs uppercase text-base-content/60 border-b border-base-200 font-extrabold bg-base-200/30">
