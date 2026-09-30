@@ -969,7 +969,10 @@ class PhenixSyncService {
                 });
 
                 if (v.carrierTracking && v.derivedCarrier !== 'INTERNAL' && v.derivedCarrier !== 'MANUAL') {
-                    shipmentsToSyncCarrier.push(shipment);
+                    const isWithin7Days = (Date.now() - new Date(consignmentDate).getTime()) <= 7 * 24 * 60 * 60 * 1000;
+                    if (isWithin7Days) {
+                        shipmentsToSyncCarrier.push(shipment);
+                    }
                 }
 
                 if (sendWhatsApp) {

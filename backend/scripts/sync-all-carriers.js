@@ -15,18 +15,22 @@ async function syncAllShipments() {
     const args = process.argv.slice(2);
     let limit = 200;
     let carrier = null;
+    let maxDays = 7;
 
     for (const arg of args) {
         if (arg.startsWith('--limit=')) {
             limit = parseInt(arg.split('=')[1], 10) || 200;
         } else if (arg.startsWith('--carrier=')) {
             carrier = arg.split('=')[1].toUpperCase();
+        } else if (arg.startsWith('--days=')) {
+            maxDays = parseInt(arg.split('=')[1], 10) || 7;
         }
     }
 
     console.log('====================================================');
     console.log(`🚀 ON-DEMAND CARRIER TRACKING SYNCHRONIZATION`);
     console.log(`Carrier Filter:  ${carrier || 'ALL CARRIERS (Aramex, DHL, OTE, etc.)'}`);
+    console.log(`Max Age Window:  ${maxDays} days (Older shipments strictly skipped)`);
     console.log(`Batch Limit:     ${limit}`);
     console.log(`Start Time:      ${new Date().toISOString()}`);
     console.log('====================================================\n');
@@ -35,7 +39,8 @@ async function syncAllShipments() {
         console.log('Starting sync batch...');
         const result = await carrierSyncCronService.runSyncBatch({
             limit,
-            carrier
+            carrier,
+            maxDays
         });
 
         console.log('\n--- Synchronization Summary ---');

@@ -96,15 +96,22 @@ class CarrierSyncCronService {
             }
 
             const activeStatuses = ['created', 'pending', 'booked', 'picked_up', 'in_transit', 'out_for_delivery', 'received_at_hub', 'verified', 'exception'];
-            
+            const maxAgeDays = parseInt(options.maxDays || process.env.CARRIER_CRON_MAX_AGE_DAYS, 10) || 7;
+            const cutoffDate = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000);
+
             const whereClause = {
-                status: { in: activeStatuses }
+                status: { in: activeStatuses },
+                createdAt: { gte: cutoffDate }
             };
 
             if (carrierFilter) {
-                whereClause.OR = [
-                    { carrier: carrierFilter },
-                    { carrierCode: carrierFilter }
+                whereClause.AND = [
+                    {
+                        OR: [
+                            { carrier: carrierFilter },
+                            { carrierCode: carrierFilter }
+                        ]
+                    }
                 ];
             }
 
