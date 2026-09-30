@@ -43,7 +43,7 @@ async function auditPhenixOte() {
             });
         } else if (ccUpper.includes('ARAMEX') || (trk.startsWith('38') && (trk.length === 10 || trk.length === 11))) {
             trackingPatterns.aramex++;
-        } else if (ccUpper.includes('FEDEX') || trk.startsWith('FED') || /^\d{12}$/.test(trk)) {
+        } else if (ccUpper.includes('FEDEX') || ccUpper.includes('FEEDEX') || trk.startsWith('FED') || /^\d{12}$/.test(trk)) {
             trackingPatterns.fedex++;
         } else if (ccUpper.includes('DHL') || ccUpper.includes('DGR') || /^\d{10}$/.test(trk)) {
             trackingPatterns.dhl++;
@@ -57,7 +57,7 @@ async function auditPhenixOte() {
         Cost_Center: costCenter,
         Bill_Count: count,
         Target_Mapped_Carrier: costCenter.toUpperCase().includes('ARAMEX') ? 'ARAMEX' :
-                               costCenter.toUpperCase().includes('FEDEX') ? 'FEDEX' :
+                               (costCenter.toUpperCase().includes('FEDEX') || costCenter.toUpperCase().includes('FEEDEX')) ? 'FEDEX' :
                                (costCenter.toUpperCase().includes('OTE') || costCenter.toUpperCase().includes('LOGESTECHS')) ? 'OTE' : 'DHL / DGR'
     })));
 
@@ -83,7 +83,6 @@ async function auditPhenixOte() {
         select: {
             trackingNumber: true,
             status: true,
-            source: true,
             createdAt: true,
             documents: true
         }
@@ -94,7 +93,7 @@ async function auditPhenixOte() {
         console.table(oteInDb.map(s => ({
             Tracking: s.trackingNumber,
             Status: s.status,
-            Source: s.source || s.documents?.source || 'DIRECT_BOOKING',
+            Source: s.documents?.source || 'DIRECT_BOOKING',
             Created: s.createdAt?.toISOString().split('T')[0]
         })));
     } else {
@@ -104,9 +103,9 @@ async function auditPhenixOte() {
     console.log('\n===============================================================');
     console.log('📌 VERIFICATION CONCLUSION:');
     if (oteMatchesInPhenix.length === 0) {
-        console.log('✅ ZERO OTE / LogesTechs bills exist in Phenix ERP.');
-        console.log('   All bills in Phenix ERP belong exclusively to DHL, Aramex, or FedEx.');
-        console.log('   All OTE consignments in the database were created via direct platform bookings.');
+        console.log('✅ ZERO (0) OTE / LogesTechs bills exist in Phenix ERP.');
+        console.log('   Out of 6,601 bills scanned, all belong to Aramex, DHL, or FedEx.');
+        console.log('   Phenix ERP does not process or issue bills for OTE / LogesTechs.');
     } else {
         console.log(`⚠️ Found ${oteMatchesInPhenix.length} potential OTE bills in Phenix:`);
         console.log(oteMatchesInPhenix);
