@@ -843,6 +843,25 @@ class DgrAdapter extends CarrierAdapter {
                     }
                 }
 
+                // Handle product code not available (410105 / 410138)
+                const isProductError = errorData?.detail?.includes('410105') || errorData?.detail?.includes('410138') || (errorData?.detail && errorData.detail.includes('Requested product'));
+                if (isProductError) {
+                    const isDom = shipment.origin?.countryCode === shipment.destination?.countryCode;
+                    if (isDom && shipment.serviceCode !== 'N') {
+                        shipment.serviceCode = 'N';
+                        offsetDays--;
+                        continue;
+                    } else if (!isDom && (shipment.isDocument || shipment.shipmentType === 'documents') && shipment.serviceCode !== 'D') {
+                        shipment.serviceCode = 'D';
+                        offsetDays--;
+                        continue;
+                    } else if (!isDom && shipment.serviceCode !== 'U' && shipment.serviceCode === 'P') {
+                        shipment.serviceCode = 'U';
+                        offsetDays--;
+                        continue;
+                    }
+                }
+
                 if (!isDateError || offsetDays === maxRetries) {
                     break;
                 }

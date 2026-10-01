@@ -463,11 +463,24 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
     // DGR API: 'pdf', 'zpl', 'lp2', 'epl'
     const labelFormat = order.labelSettings?.format || 'pdf';
 
+    const isDomestic = senderCountryCode === receiverCountryCode;
+    let resolvedProductCode = order.serviceCode;
+    if (!resolvedProductCode || resolvedProductCode === 'STD' || resolvedProductCode === 'EXP') {
+        if (isDomestic) {
+            resolvedProductCode = 'N';
+        } else {
+            resolvedProductCode = (order.isDocument || order.shipmentType === 'documents') ? 'D' : 'P';
+        }
+    }
+    if (isDomestic && resolvedProductCode === 'P') {
+        resolvedProductCode = 'N';
+    }
+
     const payload = {
         plannedShippingDateAndTime: timestamp,
         pickup: { isRequested: false },
-        productCode: order.serviceCode,
-        localProductCode: order.serviceCode,
+        productCode: resolvedProductCode,
+        ...(order.localProductCode && order.localProductCode !== resolvedProductCode ? { localProductCode: order.localProductCode } : {}),
         getRateEstimates: false,
         accounts: [
             {

@@ -1646,8 +1646,8 @@ const ServiceStep = ({
         </div>
 
         <div className="grid grid-cols-1 gap-3">
-          {rates.map(rate => {
-            const isSelected = data.carrierCode === rate.carrierCode;
+          {rates.map((rate, index) => {
+            const isSelected = data.carrierCode === rate.carrierCode && (data.serviceCode ? data.serviceCode === rate.serviceCode : true);
             const carrierMeta = KNOWN_CARRIERS[rate.carrierCode] || {
               name: rate.carrierName || rate.carrierCode,
               badge: rate.serviceName || 'Express Service',
@@ -1658,7 +1658,7 @@ const ServiceStep = ({
 
             return (
               <div
-                key={rate.carrierCode}
+                key={`${rate.carrierCode}-${rate.serviceCode || ''}-${index}`}
                 onClick={() => {
                   setData(d => ({
                     ...d,
