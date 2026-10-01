@@ -598,6 +598,57 @@ exports.processPublicPayment = async (req, res) => {
 };
 
 /**
+ * Initiate Ottu Payment Gateway Session for Checkout
+ * POST /api/public/shipments/:trackingNumber/ottu-session
+ */
+exports.createOttuSession = async (req, res) => {
+    try {
+        const { trackingNumber } = req.params;
+        const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
+        if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
+
+        if (shipment.paid && Number(shipment.remainingBalance || 0) <= 0) {
+            return res.status(200).json({
+                success: true,
+                message: 'This shipment is already settled and fully paid.',
+                alreadyPaid: true
+            });
+        }
+
+        const ottuService = require('../services/ottuPayment.service');
+        const session = await ottuService.createPaymentSession({
+            shipment,
+            customerName: req.body?.customerName,
+            customerPhone: req.body?.customerPhone,
+            customerEmail: req.body?.customerEmail
+        });
+
+        res.status(200).json({
+            success: true,
+            data: session
+        });
+    } catch (error) {
+        logger.error('Error creating Ottu payment session:', error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to initiate Ottu payment session' });
+    }
+};
+
+/**
+ * Handle incoming Ottu Webhook notification
+ * POST /api/public/checkout/ottu/webhook
+ */
+exports.handleOttuWebhook = async (req, res) => {
+    try {
+        const ottuService = require('../services/ottuPayment.service');
+        const result = await ottuService.handleWebhook(req.body);
+        res.status(200).json({ success: true, result });
+    } catch (error) {
+        logger.error('Error processing Ottu webhook:', error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to process Ottu webhook' });
+    }
+};
+
+/**
  * Public Customer Return Eligibility Check
  */
 exports.checkReturnEligibility = async (req, res) => {

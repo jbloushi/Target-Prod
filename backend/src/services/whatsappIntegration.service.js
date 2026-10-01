@@ -195,10 +195,13 @@ function buildMetaMessagePayload(toPhone, eventType, context, templateNameOverri
     const cleanPhone = String(toPhone).replace(/\D/g, '');
     
     const targetTemplateName = templateNameOverride || (
-        eventType === 'shipment_created' || eventType === 'new_shipment_created' ? 'new_shipment_created' :
+        eventType === 'payment_link_ready' ? 'payment_request_v1' :
+        eventType === 'location_request' ? 'location_request_v1' :
+        eventType === 'return_portal' ? 'return_portal_v1' :
+        eventType === 'customer_engagement' ? 'customer_inquiry_start' :
+        eventType === 'shipment_created' || eventType === 'new_shipment_created' ? 'shipment_confirmation_2' :
         eventType === 'out_for_delivery' ? 'out_for_delivery_v1' :
         eventType === 'delivered' ? 'delivery_complete_v1' :
-        eventType === 'payment_link_ready' ? 'payment_request_v1' :
         eventType === 'pickup_scheduled' ? 'pickup_alert_v1' :
         'new_shipment_created'
     );
@@ -207,25 +210,109 @@ function buildMetaMessagePayload(toPhone, eventType, context, templateNameOverri
     const dateFormatted = context.updatedAt ? formatLegibleDate(context.updatedAt) : formatLegibleDate(new Date());
     const timeFormatted = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
     const fullUpdatedText = `${dateFormatted} at ${timeFormatted}`;
+    const trackingUrl = context.publicTrackingLink || `https://target-kw.com/track/${context.trackingNumber}`;
+    const displayTracking = context.trackingNumber || 'TRG-SHIPMENT';
 
-    const components = [
-        {
-            type: 'header',
-            parameters: [
-                { type: 'text', text: context.trackingNumber || 'TRG-SHIPMENT' }
-            ]
-        },
-        {
-            type: 'body',
-            parameters: [
-                { type: 'text', text: context.route || 'Kuwait City, KW → Destination' },
-                { type: 'text', text: estDeliveryFormatted },
-                { type: 'text', text: context.currentStatus || 'Shipment Created' },
-                { type: 'text', text: fullUpdatedText },
-                { type: 'text', text: context.publicTrackingLink || `https://target-kw.com/track/${context.trackingNumber}` }
-            ]
-        }
-    ];
+    let components = [];
+
+    if (targetTemplateName === 'payment_request_v1') {
+        components = [
+            {
+                type: 'header',
+                parameters: [{ type: 'text', text: displayTracking }]
+            },
+            {
+                type: 'body',
+                parameters: [
+                    { type: 'text', text: context.recipientName || 'Valued Customer' },
+                    { type: 'text', text: context.amountDue || '0.000 KWD' },
+                    { type: 'text', text: context.publicPaymentLink || `https://target-kw.com/pay/${displayTracking}` },
+                    { type: 'text', text: dateFormatted }
+                ]
+            }
+        ];
+    } else if (targetTemplateName === 'location_request_v1') {
+        components = [
+            {
+                type: 'header',
+                parameters: [{ type: 'text', text: displayTracking }]
+            },
+            {
+                type: 'body',
+                parameters: [
+                    { type: 'text', text: context.recipientName || 'Valued Consignee' },
+                    { type: 'text', text: displayTracking },
+                    { type: 'text', text: `${trackingUrl}/location` }
+                ]
+            }
+        ];
+    } else if (targetTemplateName === 'return_portal_v1') {
+        components = [
+            {
+                type: 'header',
+                parameters: [{ type: 'text', text: displayTracking }]
+            },
+            {
+                type: 'body',
+                parameters: [
+                    { type: 'text', text: context.recipientName || 'Valued Customer' },
+                    { type: 'text', text: displayTracking },
+                    { type: 'text', text: `https://target-kw.com/returns/${displayTracking}` }
+                ]
+            }
+        ];
+    } else if (targetTemplateName === 'customer_inquiry_start') {
+        components = [
+            {
+                type: 'header',
+                parameters: [{ type: 'text', text: displayTracking }]
+            },
+            {
+                type: 'body',
+                parameters: [
+                    { type: 'text', text: context.recipientName || 'Valued Customer' },
+                    { type: 'text', text: displayTracking },
+                    { type: 'text', text: trackingUrl }
+                ]
+            }
+        ];
+    } else if (targetTemplateName === 'shipment_confirmation_2') {
+        components = [
+            {
+                type: 'header',
+                parameters: [{ type: 'text', text: displayTracking }]
+            },
+            {
+                type: 'body',
+                parameters: [
+                    { type: 'text', text: context.receiptNo || displayTracking },
+                    { type: 'text', text: dateFormatted },
+                    { type: 'text', text: context.recipientName || 'Customer' },
+                    { type: 'text', text: cleanPhone },
+                    { type: 'text', text: trackingUrl }
+                ]
+            }
+        ];
+    } else {
+        components = [
+            {
+                type: 'header',
+                parameters: [
+                    { type: 'text', text: displayTracking }
+                ]
+            },
+            {
+                type: 'body',
+                parameters: [
+                    { type: 'text', text: context.route || 'Kuwait City, KW → Destination' },
+                    { type: 'text', text: estDeliveryFormatted },
+                    { type: 'text', text: context.currentStatus || 'Shipment Created' },
+                    { type: 'text', text: fullUpdatedText },
+                    { type: 'text', text: trackingUrl }
+                ]
+            }
+        ];
+    }
 
     return {
         messaging_product: 'whatsapp',
@@ -448,6 +535,39 @@ class WhatsAppIntegrationService {
                     displayTracking,
                     resolvedReceiverName,
                     resolvedReceiverPhone,
+                    trackingUrl
+                ];
+                headerVariables = [displayTracking];
+            } else if (chosenTemplate === 'payment_request_v1') {
+                const payAmt = customMessage?.amount || context.amountDue || `${Number(shipment.remainingBalance || shipment.price || 0).toFixed(3)} ${shipment.currency || 'KWD'}`;
+                const payUrl = customMessage?.paymentLink || context.publicPaymentLink || `https://target-kw.com/pay/${displayTracking}`;
+                variables = [
+                    effectiveRecipientName,
+                    payAmt,
+                    payUrl,
+                    dateFormatted
+                ];
+                headerVariables = [displayTracking];
+            } else if (chosenTemplate === 'location_request_v1') {
+                const locUrl = customMessage?.locationUrl || `${trackingUrl}/location`;
+                variables = [
+                    effectiveRecipientName,
+                    displayTracking,
+                    locUrl
+                ];
+                headerVariables = [displayTracking];
+            } else if (chosenTemplate === 'return_portal_v1') {
+                const retUrl = customMessage?.returnUrl || `https://target-kw.com/returns/${displayTracking}`;
+                variables = [
+                    effectiveRecipientName,
+                    displayTracking,
+                    retUrl
+                ];
+                headerVariables = [displayTracking];
+            } else if (chosenTemplate === 'customer_inquiry_start') {
+                variables = [
+                    effectiveRecipientName,
+                    displayTracking,
                     trackingUrl
                 ];
                 headerVariables = [displayTracking];
@@ -730,7 +850,7 @@ class WhatsAppIntegrationService {
     /**
      * Send Account Statement summary via WhatsApp using approved template 'account_statement_v1'
      */
-    async sendStatementNotification({ organization, recipientPhone, summary = {}, currency = 'KWD', templateName = null }) {
+    async sendStatementNotification({ organization, recipientPhone, recipientName = null, summary = {}, currency = 'KWD', templateName = null, customDate = null }) {
         const rawPhone = recipientPhone || organization?.billingWhatsappNumber || organization?.members?.[0]?.phone;
         const normalizedTarget = normalizePhone(rawPhone, '965');
         const phone = resolveRecipientPhone(rawPhone, '965');
@@ -740,9 +860,9 @@ class WhatsAppIntegrationService {
 
         const orgName = organization?.name || 'Valued Partner';
         const cur = currency || organization?.currency || 'KWD';
-        const netBal = Number(summary.netBalance || 0).toFixed(3);
-        const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-        const contactName = organization?.billingContactName || organization?.members?.[0]?.name || orgName;
+        const netBal = Number(summary.netBalance !== undefined && summary.netBalance !== null ? summary.netBalance : 0).toFixed(3);
+        const today = customDate || new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        const contactName = recipientName || organization?.billingContactName || organization?.members?.find(m => m.role === 'org_manager')?.name || organization?.members?.[0]?.name || orgName;
 
         const cleanPhone = String(phone).replace(/\D/g, '');
         const settings = getSystemSettings()?.whatsapp || {};
@@ -805,7 +925,7 @@ www.target-kw.com | +965 6965 6563`;
     /**
      * Send Invoice notification via WhatsApp using approved template 'invoice_notification_v1'
      */
-    async sendInvoiceNotification({ invoice, organization, recipientPhone, templateName = null }) {
+    async sendInvoiceNotification({ invoice, organization, recipientPhone, recipientName = null, templateName = null }) {
         const rawPhone = recipientPhone || organization?.billingWhatsappNumber || organization?.members?.[0]?.phone;
         const normalizedTarget = normalizePhone(rawPhone, '965');
         const phone = resolveRecipientPhone(rawPhone, '965');
@@ -818,7 +938,7 @@ www.target-kw.com | +965 6965 6563`;
         const total = Number(invoice.total || 0).toFixed(3);
         const cur = invoice.currency || 'KWD';
         const dueDate = invoice.dueDate ? formatLegibleDate(invoice.dueDate) : 'Due upon receipt';
-        const contactName = organization?.billingContactName || organization?.members?.[0]?.name || orgName;
+        const contactName = recipientName || organization?.billingContactName || organization?.members?.find(m => m.role === 'org_manager')?.name || organization?.members?.[0]?.name || orgName;
 
         const cleanPhone = String(phone).replace(/\D/g, '');
         const settings = getSystemSettings()?.whatsapp || {};
@@ -1026,6 +1146,90 @@ www.target-kw.com | +965 6965 6563`;
             logger.warn(`[WhatsApp Direct OTP Text Error] ${directErr.message}`);
             return null;
         }
+    }
+
+    /**
+     * Dispatch Pay-by-Link Request via WhatsApp API using Meta template 'payment_request_v1'
+     */
+    async sendPaymentLinkNotification({ shipment, recipientPhone, recipientRole = 'sender', recipientName = null, paymentLink, amount, currency = 'KWD' }) {
+        const formattedAmount = `${Number(amount || 0).toFixed(3)} ${currency}`;
+        return await this.sendNotification({
+            shipment,
+            recipientRole,
+            recipientPhone,
+            recipientName,
+            eventType: 'payment_link_ready',
+            templateName: 'payment_request_v1',
+            customMessage: {
+                paymentLink,
+                amount: formattedAmount
+            },
+            force: true
+        });
+    }
+
+    /**
+     * Request Location Pin from Consignee via WhatsApp API using Meta template 'location_request_v1'
+     */
+    async sendLocationRequestNotification({ shipment, recipientPhone = null, recipientName = null, locationUrl = null }) {
+        const baseUrl = config.publicTrackingBaseUrl || config.frontendUrl || 'https://target-kw.com';
+        const url = locationUrl || `${String(baseUrl).replace(/\/+$/, '')}/track/${encodeURIComponent(shipment.trackingNumber)}/location`;
+        const phone = recipientPhone || shipment.destination?.phone || shipment.customerPhone;
+        const name = recipientName || shipment.destination?.contactPerson || shipment.destination?.name || shipment.customerName;
+
+        return await this.sendNotification({
+            shipment,
+            recipientRole: 'receiver',
+            recipientPhone: phone,
+            recipientName: name,
+            eventType: 'location_request',
+            templateName: 'location_request_v1',
+            customMessage: {
+                locationUrl: url
+            },
+            force: true
+        });
+    }
+
+    /**
+     * Send Reverse Return & Paperwork Portal link to Consignee via WhatsApp API using Meta template 'return_portal_v1'
+     */
+    async sendReturnPortalNotification({ shipment, recipientPhone = null, recipientName = null, returnUrl = null }) {
+        const baseUrl = config.publicTrackingBaseUrl || config.frontendUrl || 'https://target-kw.com';
+        const url = returnUrl || `${String(baseUrl).replace(/\/+$/, '')}/returns/${encodeURIComponent(shipment.trackingNumber)}`;
+        const phone = recipientPhone || shipment.destination?.phone || shipment.customerPhone;
+        const name = recipientName || shipment.destination?.contactPerson || shipment.destination?.name || shipment.customerName;
+
+        return await this.sendNotification({
+            shipment,
+            recipientRole: 'receiver',
+            recipientPhone: phone,
+            recipientName: name,
+            eventType: 'return_portal',
+            templateName: 'return_portal_v1',
+            customMessage: {
+                returnUrl: url
+            },
+            force: true
+        });
+    }
+
+    /**
+     * Initiate or restart a 24-hour customer conversation session via WhatsApp API using Meta template 'customer_inquiry_start'
+     */
+    async sendCustomerEngagementNotification({ shipment, recipientPhone = null, recipientName = null }) {
+        const phone = recipientPhone || shipment.destination?.phone || shipment.customerPhone;
+        const name = recipientName || shipment.destination?.contactPerson || shipment.destination?.name || shipment.customerName;
+
+        return await this.sendNotification({
+            shipment,
+            recipientRole: 'receiver',
+            recipientPhone: phone,
+            recipientName: name,
+            eventType: 'customer_engagement',
+            templateName: 'customer_inquiry_start',
+            force: true
+        });
     }
 }
 

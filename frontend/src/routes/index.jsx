@@ -32,6 +32,8 @@ const TrackingLandingPage = lazy(() => import('../pages/TrackingLandingPage'));
 const PrivacyPage = lazy(() => import('../pages/PrivacyPage'));
 const TermsPage = lazy(() => import('../pages/TermsPage'));
 const ApiDocsPage = lazy(() => import('../pages/ApiDocsPage'));
+const FleetDispatchPage = lazy(() => import('../pages/FleetDispatchPage'));
+const DriverRunPage = lazy(() => import('../pages/DriverRunPage'));
 
 
 
@@ -85,8 +87,13 @@ const AppRoutes = () => {
 
         {/* Standalone Driver Route (No Sidebar) */}
         <Route path="/driver/pickup" element={
-          <ProtectedRoute allowedRoles={['driver', 'admin', 'staff']}>
+          <ProtectedRoute allowedRoles={['driver', 'admin', 'staff', 'manager']}>
             <DriverPickupPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/driver/runs" element={
+          <ProtectedRoute allowedRoles={['driver', 'admin', 'staff', 'manager']}>
+            <DriverRunPage />
           </ProtectedRoute>
         } />
 
@@ -104,6 +111,12 @@ const AppRoutes = () => {
           } />
 
           <Route path="dashboard-v1" element={<Navigate to="/dashboard" replace />} />
+
+          <Route path="fleet/dispatch" element={
+            <ProtectedRoute allowedRoles={['admin', 'manager', 'staff', 'accounting']}>
+              <FleetDispatchPage />
+            </ProtectedRoute>
+          } />
 
           <Route path="admin/users" element={
             <ProtectedRoute allowedRoles={['admin', 'manager', 'accounting', 'org_manager']}>

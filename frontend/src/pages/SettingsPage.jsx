@@ -17,10 +17,11 @@ const ROLE_DISPLAY_NAMES = {
   client: 'Direct Shipper',
 };
 
-const getTabs = (lang) => [
+const getTabs = (lang, isOps) => [
   { id: 'profile', label: lang === 'ar' ? 'ملف الشاحن' : 'Shipper Profile', icon: 'person' },
   { id: 'addresses', label: lang === 'ar' ? 'سجل العناوين' : 'Address Presets', icon: 'location_on' },
   { id: 'api', label: lang === 'ar' ? 'واجهة API والويب هوك' : 'API & Webhooks', icon: 'key' },
+  ...(isOps ? [{ id: 'fleet', label: lang === 'ar' ? 'الأسطول والاشتراكات (Paywall)' : 'Fleet & Paywall Controls', icon: 'local_shipping' }] : []),
   { id: 'phenix', label: lang === 'ar' ? 'مزامنة فينيكس ERP' : 'Phenix ERP Sync', icon: 'sync_alt' },
   { id: 'whatsapp', label: lang === 'ar' ? 'إشعارات واتساب وميتا' : 'Meta WhatsApp Alerts', icon: 'chat' },
   { id: 'notifications', label: lang === 'ar' ? 'قنوات الإشعار' : 'Event Triggers', icon: 'notifications' },
@@ -334,6 +335,21 @@ export const SettingsPage = () => {
     }
   };
 
+  const handleUpdateFleetSettings = async (updates) => {
+    setSavingSettings(true);
+    try {
+      const currentFleet = systemSettings?.fleet || {};
+      const newFleet = { ...currentFleet, ...updates };
+      const res = await settingsService.updateSystemSettings({ fleet: newFleet });
+      setSystemSettings(res.data || res);
+      enqueueSnackbar(lang === 'ar' ? 'تم تحديث إعدادات الأسطول والاشتراكات بنجاح!' : 'Fleet & Paywall settings updated successfully!', { variant: 'success' });
+    } catch (err) {
+      enqueueSnackbar(err.message || 'Failed updating fleet settings', { variant: 'error' });
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
   const handlePasswordChange = async (e) => {
     if (e) e.preventDefault();
     if (!passwords.newPass || passwords.newPass.length < 8) {
@@ -379,7 +395,7 @@ export const SettingsPage = () => {
         {/* Navigation Menu */}
         <div className="md:col-span-3 card bg-base-100 border border-base-200 shadow-sm p-3">
           <ul className="menu menu-sm w-full gap-1 p-0">
-            {getTabs(lang).map((tab) => {
+            {getTabs(lang, isStaff || isAdmin).map((tab) => {
               const isActive = activeTab === tab.id;
               return (
                 <li key={tab.id}>
@@ -798,6 +814,206 @@ export const SettingsPage = () => {
                     )}
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB: Fleet Operations & Paywall Controls */}
+          {activeTab === 'fleet' && (
+            <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden animate-fade-in">
+              <div className="card-body p-6 sm:p-8 space-y-6">
+                <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-base-200">
+                  <div>
+                    <h2 className="text-lg font-black text-base-content tracking-tight flex items-center gap-2">
+                      <span className="material-symbols-outlined text-primary text-xl">local_shipping</span>
+                      {lang === 'ar' ? 'إدارة الأسطول وضوابط الاشتراكات (Paywall)' : 'Fleet Operations & Paywall Controls'}
+                    </h2>
+                    <p className="text-xs text-base-content/60 mt-0.5">
+                      {lang === 'ar' 
+                        ? 'لوحة تحكم المشرف العام لتفعيل موديول الأسطول وإخضاعه لنظام الدفع والاشتراك للشركات.' 
+                        : 'Super Admin switchboard to control fleet dispatch, driver digital POD, and merchant paywall entitlements.'}
+                    </p>
+                  </div>
+                  <span className="badge badge-primary font-bold text-xs">Super Admin Access</span>
+                </div>
+
+                {/* Section 1: Master Enable & Paywall Switch */}
+                <div className="p-4 rounded-2xl bg-base-200/50 border border-base-200 space-y-4">
+                  <h3 className="text-sm font-black text-base-content uppercase tracking-wider">
+                    {lang === 'ar' ? 'التحكم العام وبوابة الدفع' : 'Global Entitlements & Paywall Gate'}
+                  </h3>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Master Toggle */}
+                    <div className="flex items-center justify-between p-3.5 rounded-xl bg-base-100 border border-base-200">
+                      <div>
+                        <span className="text-xs font-bold text-base-content block">
+                          {lang === 'ar' ? 'تفعيل نظام الأسطول كلياً' : 'Enable Fleet Module'}
+                        </span>
+                        <span className="text-[11px] text-base-content/60">
+                          {lang === 'ar' ? 'تشغيل أو إيقاف ميزات التوزيع والتحكم' : 'Master toggle for all fleet & run-sheet APIs'}
+                        </span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={systemSettings?.fleet?.enabled !== false}
+                        onChange={(e) => handleUpdateFleetSettings({ enabled: e.target.checked })}
+                        className="toggle toggle-primary toggle-sm"
+                        disabled={savingSettings}
+                      />
+                    </div>
+
+                    {/* Paywall Gate */}
+                    <div className="flex items-center justify-between p-3.5 rounded-xl bg-base-100 border border-base-200">
+                      <div>
+                        <span className="text-xs font-bold text-base-content block">
+                          {lang === 'ar' ? 'تفعيل جدار الدفع (Paywall Modal)' : 'Enforce Paywall on Merchants'}
+                        </span>
+                        <span className="text-[11px] text-base-content/60">
+                          {lang === 'ar' ? 'عرض نافذة الترقية لحسابات الشركات والتجار' : 'Show Pro upgrade showcase on click'}
+                        </span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(systemSettings?.fleet?.paywallActive)}
+                        onChange={(e) => handleUpdateFleetSettings({ paywallActive: e.target.checked })}
+                        className="toggle toggle-warning toggle-sm"
+                        disabled={savingSettings}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Mode Selector */}
+                  <div className="space-y-2 pt-2 border-t border-base-200">
+                    <label className="text-xs font-bold text-base-content/70 uppercase">
+                      {lang === 'ar' ? 'نمط الوصول التشغيلي' : 'Operational Access Mode'}
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {[
+                        { 
+                          mode: 'internal_only', 
+                          title: lang === 'ar' ? 'حصري لعمليات تارجت' : 'Target Ops Only', 
+                          desc: lang === 'ar' ? 'السائقين والمستودع الخاص بنا فقط' : 'Merchants request pickup only' 
+                        },
+                        { 
+                          mode: 'saas_monetized', 
+                          title: lang === 'ar' ? 'اشتراك تجاري (SaaS)' : 'Monetized B2B SaaS', 
+                          desc: lang === 'ar' ? 'يتطلب باقة Fleet Pro للشركات' : 'Requires Fleet Pro subscription' 
+                        },
+                        { 
+                          mode: 'open_all', 
+                          title: lang === 'ar' ? 'متاح للجميع' : 'Open to All Users', 
+                          desc: lang === 'ar' ? 'مفتوح لجميع الحسابات بدون قفل' : 'Unrestricted platform access' 
+                        },
+                      ].map((m) => {
+                        const isSelected = (systemSettings?.fleet?.mode || 'internal_only') === m.mode;
+                        return (
+                          <div
+                            key={m.mode}
+                            onClick={() => handleUpdateFleetSettings({ mode: m.mode })}
+                            className={`p-3 rounded-xl border-2 cursor-pointer transition ${
+                              isSelected
+                                ? 'border-primary bg-primary/5 text-primary shadow-xs'
+                                : 'border-base-200 bg-base-100 hover:bg-base-200/40 text-base-content'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-xs">{m.title}</span>
+                              <input
+                                type="radio"
+                                checked={isSelected}
+                                onChange={() => {}}
+                                className="radio radio-primary radio-xs"
+                              />
+                            </div>
+                            <p className="text-[10px] opacity-70 mt-1">{m.desc}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 2: Automation & POD Verification Rules */}
+                <div className="p-4 rounded-2xl bg-base-200/50 border border-base-200 space-y-3">
+                  <h3 className="text-sm font-black text-base-content uppercase tracking-wider">
+                    {lang === 'ar' ? 'قواعد إثبات التسليم (POD) والأتمتة' : 'Automation & POD Verification Rules'}
+                  </h3>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-base-100 border border-base-200">
+                      <div>
+                        <span className="text-xs font-bold text-base-content block">
+                          {lang === 'ar' ? 'تجميع المناطق الكويتي الذكي (PACI)' : 'Auto Kuwait Zone Clustering'}
+                        </span>
+                        <span className="text-[10px] text-base-content/60">
+                          {lang === 'ar' ? 'فرز الشحنات تلقائياً حسب المحافظة والقطعة' : 'Automatic grouping by Governorate & PACI Block'}
+                        </span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={systemSettings?.fleet?.autoAssignZone !== false}
+                        onChange={(e) => handleUpdateFleetSettings({ autoAssignZone: e.target.checked })}
+                        className="toggle toggle-primary toggle-sm"
+                        disabled={savingSettings}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-base-100 border border-base-200">
+                      <div>
+                        <span className="text-xs font-bold text-base-content block">
+                          {lang === 'ar' ? 'إلزام توقيع العميل الرقمي' : 'Require Digital Screen Signature'}
+                        </span>
+                        <span className="text-[10px] text-base-content/60">
+                          {lang === 'ar' ? 'توقيع الشاشة على هاتف السائق قبل إتمام التسليم' : 'Customer must sign on driver canvas'}
+                        </span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={systemSettings?.fleet?.requireSignaturePod !== false}
+                        onChange={(e) => handleUpdateFleetSettings({ requireSignaturePod: e.target.checked })}
+                        className="toggle toggle-primary toggle-sm"
+                        disabled={savingSettings}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-base-100 border border-base-200">
+                      <div>
+                        <span className="text-xs font-bold text-base-content block">
+                          {lang === 'ar' ? 'إلزام تصوير الطرد عند الباب' : 'Require Doorstep Photo POD'}
+                        </span>
+                        <span className="text-[10px] text-base-content/60">
+                          {lang === 'ar' ? 'التقاط صورة الحزمة عند التسليم' : 'Camera capture of parcel at delivery point'}
+                        </span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={systemSettings?.fleet?.requirePhotoPod !== false}
+                        onChange={(e) => handleUpdateFleetSettings({ requirePhotoPod: e.target.checked })}
+                        className="toggle toggle-primary toggle-sm"
+                        disabled={savingSettings}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-base-100 border border-base-200">
+                      <div>
+                        <span className="text-xs font-bold text-base-content block">
+                          {lang === 'ar' ? 'الترحيل التلقائي للمدفوعات النقدية (COD Ledger)' : 'Auto COD Vault Ledger Posting'}
+                        </span>
+                        <span className="text-[10px] text-base-content/60">
+                          {lang === 'ar' ? 'إنشاء قيد محاسبي في الخزينة فور تسليم السائق للعهدة' : 'Direct journal entry to GL Account 1010'}
+                        </span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={systemSettings?.fleet?.codAutoReconciliation !== false}
+                        onChange={(e) => handleUpdateFleetSettings({ codAutoReconciliation: e.target.checked })}
+                        className="toggle toggle-primary toggle-sm"
+                        disabled={savingSettings}
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}

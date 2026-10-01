@@ -175,6 +175,7 @@ const sallaRoutes = require('./routes/salla.routes');
 const shipmentPublicRoutes = require('./routes/shipment-public.routes');
 const settingsRoutes = require('./routes/settings.routes');
 const whatsappRoutes = require('./routes/whatsapp.routes');
+const fleetRoutes = require('./routes/fleet.routes');
 
 // Standard API Route Mounting
 app.use('/api', whatsappRoutes);
@@ -187,6 +188,7 @@ app.use('/api/organizations', organizationRoutes);
 app.use('/api/integrations', integrationRoutes);
 app.use('/api/salla', sallaRoutes);
 app.use('/api/pickups', pickupRoutes);
+app.use('/api/fleet', fleetRoutes);
 app.use('/api/client', externalRoutes);
 app.use('/api/v1', apiRoutes);
 app.use('/api/geocode', geocodeRoutes);
@@ -202,6 +204,7 @@ app.use('/organizations', organizationRoutes);
 app.use('/integrations', integrationRoutes);
 app.use('/salla', sallaRoutes);
 app.use('/pickups', pickupRoutes);
+app.use('/fleet', fleetRoutes);
 app.use('/client', externalRoutes);
 app.use('/v1', apiRoutes);
 app.use('/geocode', geocodeRoutes);

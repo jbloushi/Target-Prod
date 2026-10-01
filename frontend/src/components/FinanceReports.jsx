@@ -405,6 +405,10 @@ const FinanceReports = ({ ledger = [], shipments = [], organizations = [] }) => 
     const [selectedTemplateName, setSelectedTemplateName] = useState('');
     const [loadingTemplates, setLoadingTemplates] = useState(false);
     const [sendingWhatsapp, setSendingWhatsapp] = useState(false);
+    const [customRecipientName, setCustomRecipientName] = useState('');
+    const [customRecipientPhone, setCustomRecipientPhone] = useState('');
+    const [customBalance, setCustomBalance] = useState('');
+    const [customDate, setCustomDate] = useState('');
 
     const handleDownloadStatement = async (orgId) => {
         try {
@@ -423,6 +427,10 @@ const FinanceReports = ({ ledger = [], shipments = [], organizations = [] }) => 
 
     const handleOpenWhatsappModal = async (org) => {
         setSelectedOrgForWhatsapp(org);
+        setCustomRecipientName(org.billingContactName || org.members?.[0]?.name || org.name || '');
+        setCustomRecipientPhone(org.billingWhatsappNumber || org.members?.[0]?.phone || '+965 6965 6563');
+        setCustomBalance(Number(org.balance || 0).toFixed(3));
+        setCustomDate(new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }));
         setWhatsappModalOpen(true);
         setLoadingTemplates(true);
         try {
@@ -450,7 +458,11 @@ const FinanceReports = ({ ledger = [], shipments = [], organizations = [] }) => 
         try {
             setSendingWhatsapp(true);
             const res = await financeService.sendStatementNotification(selectedOrgForWhatsapp.id, {
-                templateName: selectedTemplateName
+                templateName: selectedTemplateName,
+                recipientName: customRecipientName,
+                recipientPhone: customRecipientPhone,
+                customBalance: customBalance ? Number(customBalance) : undefined,
+                customDate: customDate || undefined
             });
             setWhatsappModalOpen(false);
             setSendSuccessMsg(res.message || 'Statement notification dispatched via WhatsApp successfully');
@@ -618,18 +630,72 @@ const FinanceReports = ({ ledger = [], shipments = [], organizations = [] }) => 
                                     )}
                                 </div>
 
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                                    <div className="space-y-1">
+                                        <label className="font-bold text-base-content/80 text-[11px]">
+                                            {lang === 'ar' ? 'اسم جهة الاتصال / المسؤول:' : 'Recipient Contact Name:'}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={customRecipientName}
+                                            onChange={(e) => setCustomRecipientName(e.target.value)}
+                                            placeholder="e.g. John Doe / Billing Dept"
+                                            className="input input-sm input-bordered w-full text-xs font-semibold"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="font-bold text-base-content/80 text-[11px]">
+                                            {lang === 'ar' ? 'رقم الواتساب المستهدف:' : 'Recipient WhatsApp Phone:'}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={customRecipientPhone}
+                                            onChange={(e) => setCustomRecipientPhone(e.target.value)}
+                                            placeholder="+965XXXXXXXX"
+                                            className="input input-sm input-bordered w-full text-xs font-mono"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="font-bold text-base-content/80 text-[11px]">
+                                            {lang === 'ar' ? `الرصيد المستحق (${curSymbol}):` : `Outstanding Balance (${curSymbol}):`}
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.001"
+                                            value={customBalance}
+                                            onChange={(e) => setCustomBalance(e.target.value)}
+                                            placeholder="0.000"
+                                            className="input input-sm input-bordered w-full text-xs font-mono font-bold"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="font-bold text-base-content/80 text-[11px]">
+                                            {lang === 'ar' ? 'تاريخ الكشف:' : 'Statement Date:'}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={customDate}
+                                            onChange={(e) => setCustomDate(e.target.value)}
+                                            placeholder="DD/MM/YYYY"
+                                            className="input input-sm input-bordered w-full text-xs"
+                                        />
+                                    </div>
+                                </div>
+
                                 <div className="space-y-1">
                                     <div className="font-bold text-base-content/70">
-                                        {lang === 'ar' ? 'معاينة الإشعار:' : 'Message Preview:'}
+                                        {lang === 'ar' ? 'معاينة الإشعار الفعلي:' : 'Live Message Preview:'}
                                     </div>
-                                    <div className="bg-base-200/50 border border-base-300 rounded-xl p-3 font-mono text-[11px] whitespace-pre-line max-h-32 overflow-y-auto">
+                                    <div className="bg-base-200/50 border border-base-300 rounded-xl p-3 font-mono text-[11px] whitespace-pre-line max-h-36 overflow-y-auto">
                                         {`📋 TARGET LOGISTICS - ACCOUNT STATEMENT\n` +
+                                         `👤 Contact: ${customRecipientName || 'Valued Partner'}\n` +
                                          `🏢 Account: ${selectedOrgForWhatsapp?.name || ''}\n` +
-                                         `💰 Outstanding: ${fmt(selectedOrgForWhatsapp?.balance)} ${curSymbol}\n` +
+                                         `📱 Phone: ${customRecipientPhone || '—'}\n` +
+                                         `💰 Outstanding: ${customBalance} ${curSymbol}\n` +
                                          `💳 Credit Limit: ${fmt(selectedOrgForWhatsapp?.creditLimit)} ${curSymbol}\n` +
-                                         `📅 Date: ${new Date().toLocaleDateString('en-GB')}\n` +
+                                         `📅 Date: ${customDate}\n` +
                                          `------------------------------------\n` +
-                                         `Template: [${selectedTemplateName || 'Auto-Detect'}]`}
+                                         `Meta Template: [${selectedTemplateName || 'Auto-Detect'}]`}
                                     </div>
                                 </div>
                             </div>

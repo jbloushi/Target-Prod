@@ -51,7 +51,7 @@ const Footer = ({ compact = false }) => {
                 <span className="material-symbols-outlined text-base">public</span>
               </a>
               <a
-                href="https://wa.me/96599554433"
+                href="https://wa.me/96569656563"
                 target="_blank"
                 rel="noreferrer"
                 className="btn btn-ghost btn-circle btn-xs text-base-content/70 hover:text-success"

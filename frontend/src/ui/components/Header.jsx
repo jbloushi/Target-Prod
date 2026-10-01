@@ -5,6 +5,7 @@ import { useThemeMode } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { financeService } from '../../services/api';
 import { getRoleLabel } from '../../utils/roleLabels';
+import PaywallModal from '../../components/PaywallModal';
 
 /**
  * Target Logistics Global — Master Top Navigation Bar
@@ -23,6 +24,7 @@ const Header = () => {
     const [opsMenuOpen, setOpsMenuOpen] = useState(false);
     const [mgmtMenuOpen, setMgmtMenuOpen] = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [paywallOpen, setPaywallOpen] = useState(false);
     const [financeSummary, setFinanceSummary] = useState(null);
 
     const userMenuRef = useRef(null);
@@ -172,6 +174,46 @@ const Header = () => {
                                             <span className="material-symbols-outlined text-base text-primary">add_circle</span>
                                             <span>{isRTL ? 'إنشاء شحنة جديدة' : 'New Consignment'}</span>
                                         </Link>
+
+                                        {isStaff && (
+                                            <Link
+                                                to="/fleet/dispatch"
+                                                className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
+                                            >
+                                                <span className="material-symbols-outlined text-base text-primary">local_shipping</span>
+                                                <div>
+                                                    <p>{isRTL ? 'برج مراقبة الأسطول' : 'Fleet Control Tower'}</p>
+                                                    <p className="text-[10px] text-base-content/50 font-normal">{isRTL ? 'توزيع المناطق ورزم السائقين' : 'Zone Dispatch & PACI Clustering'}</p>
+                                                </div>
+                                            </Link>
+                                        )}
+
+                                        {(isStaff || isDriver) && (
+                                            <Link
+                                                to="/driver/runs"
+                                                className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
+                                            >
+                                                <span className="material-symbols-outlined text-base text-success">pin_drop</span>
+                                                <div>
+                                                    <p>{isRTL ? 'كابينة السائق (إثبات التسليم)' : 'Driver Cockpit (POD)'}</p>
+                                                    <p className="text-[10px] text-base-content/50 font-normal">{isRTL ? 'تتبع المحطات وتوقيع الزبون' : 'Active Run & Stop Sequencer'}</p>
+                                                </div>
+                                            </Link>
+                                        )}
+
+                                        {!isStaff && !isDriver && (
+                                            <button
+                                                type="button"
+                                                onClick={() => { setOpsMenuOpen(false); setPaywallOpen(true); }}
+                                                className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold text-base-content hover:bg-amber-500/10 hover:text-amber-600 rounded-xl transition-colors text-start"
+                                            >
+                                                <div className="flex items-center gap-2.5">
+                                                    <span className="material-symbols-outlined text-base text-amber-500">local_shipping</span>
+                                                    <span>{isRTL ? 'إدارة الأسطول المتقدمة' : 'Fleet Management Pro'}</span>
+                                                </div>
+                                                <span className="badge badge-warning badge-xs font-bold uppercase text-[9px] px-1.5 py-0.5">PRO</span>
+                                            </button>
+                                        )}
 
                                         {isStaff && (
                                             <Link
@@ -493,6 +535,37 @@ const Header = () => {
                         <div className="space-y-1">
                             {isStaff && (
                                 <Link
+                                    to="/fleet/dispatch"
+                                    className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
+                                >
+                                    <span className="material-symbols-outlined text-base text-primary">local_shipping</span>
+                                    <span>{isRTL ? 'برج مراقبة الأسطول' : 'Fleet Control Tower'}</span>
+                                </Link>
+                            )}
+                            {(isStaff || isDriver) && (
+                                <Link
+                                    to="/driver/runs"
+                                    className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
+                                >
+                                    <span className="material-symbols-outlined text-base text-success">pin_drop</span>
+                                    <span>{isRTL ? 'كابينة السائق (POD)' : 'Driver Cockpit (POD)'}</span>
+                                </Link>
+                            )}
+                            {!isStaff && !isDriver && (
+                                <button
+                                    type="button"
+                                    onClick={() => { setMobileMenuOpen(false); setPaywallOpen(true); }}
+                                    className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold rounded-lg hover:bg-amber-500/10 text-amber-600 text-start"
+                                >
+                                    <div className="flex items-center gap-2.5">
+                                        <span className="material-symbols-outlined text-base text-amber-500">local_shipping</span>
+                                        <span>{isRTL ? 'إدارة الأسطول المتقدمة' : 'Fleet Management Pro'}</span>
+                                    </div>
+                                    <span className="badge badge-warning badge-xs font-bold uppercase text-[9px]">PRO</span>
+                                </button>
+                            )}
+                            {isStaff && (
+                                <Link
                                     to="/warehouse/scan"
                                     className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
                                 >
@@ -572,6 +645,9 @@ const Header = () => {
                     )}
                 </div>
             )}
+
+            {/* Paywall Upsell Modal */}
+            <PaywallModal isOpen={paywallOpen} onClose={() => setPaywallOpen(false)} />
         </header>
     );
 };

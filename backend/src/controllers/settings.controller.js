@@ -29,6 +29,15 @@ exports.getSystemSettings = async (req, res) => {
             whatsapp: {
                 enabled: rawSettings.whatsapp?.enabled || false,
                 provider: rawSettings.whatsapp?.provider || 'META'
+            },
+            fleet: rawSettings.fleet || {
+                enabled: true,
+                mode: 'internal_only',
+                paywallActive: false,
+                requirePhotoPod: true,
+                requireSignaturePod: true,
+                autoAssignZone: true,
+                codAutoReconciliation: true
             }
         };
 

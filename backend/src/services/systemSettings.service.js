@@ -61,6 +61,23 @@ const DEFAULT_SETTINGS = {
         lastAutoSyncAt: null,
         lastAutoSyncStatus: null,
         lastAutoSyncSummary: null
+    },
+    ottu: {
+        enabled: true,
+        domain: process.env.OTTU_DOMAIN || 'target.ottu.com',
+        apiKey: process.env.OTTU_API_KEY || '',
+        pgCodes: ['knet', 'apple-pay', 'mpgs'],
+        mode: process.env.OTTU_MODE || 'production'
+    },
+    fleet: {
+        enabled: true,
+        mode: 'internal_only', // 'internal_only' | 'saas_monetized' | 'disabled'
+        paywallActive: false, // Set to true to enforce paywall on non-admins
+        requirePhotoPod: true,
+        requireSignaturePod: true,
+        autoAssignZone: true,
+        codAutoReconciliation: true,
+        maxActiveRunsPerDriver: 2
     }
 };
 
@@ -102,6 +119,14 @@ function getSystemSettings() {
             phenixSync: {
                 ...DEFAULT_SETTINGS.phenixSync,
                 ...(parsed.phenixSync || {})
+            },
+            ottu: {
+                ...DEFAULT_SETTINGS.ottu,
+                ...(parsed.ottu || {})
+            },
+            fleet: {
+                ...DEFAULT_SETTINGS.fleet,
+                ...(parsed.fleet || {})
             }
         };
     } catch (err) {
@@ -136,6 +161,14 @@ function updateSystemSettings(updates) {
             phenixSync: {
                 ...current.phenixSync,
                 ...(updates.phenixSync || {})
+            },
+            ottu: {
+                ...current.ottu,
+                ...(updates.ottu || {})
+            },
+            fleet: {
+                ...current.fleet,
+                ...(updates.fleet || {})
             }
         };
         fs.writeFileSync(SETTINGS_FILE_PATH, JSON.stringify(next, null, 2), 'utf8');

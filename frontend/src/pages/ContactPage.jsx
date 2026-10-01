@@ -75,9 +75,9 @@ export const ContactPage = () => {
                 </div>
                 <div>
                   <div className="font-bold text-base-content">Meta WhatsApp Dispatch Support</div>
-                  <div className="font-mono text-base-content/60 mt-0.5">+965 2200 8899</div>
+                  <div className="font-mono text-base-content/60 mt-0.5">+965 6965 6563</div>
                   <a
-                    href="https://wa.me/96522008899"
+                    href="https://wa.me/96569656563"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="link link-primary font-bold text-[11px] block mt-0.5"

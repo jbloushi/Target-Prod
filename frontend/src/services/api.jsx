@@ -1484,6 +1484,68 @@ export const whatsappService = {
     }
   },
 
+  resendShipmentUpdate: async (trackingNumber) => {
+    try {
+      const response = await api.post(`shipments/${trackingNumber}/whatsapp/send`, {
+        eventType: 'shipment_created',
+        templateName: 'shipment_confirmation_2',
+        force: true
+      });
+      return response.data;
+    } catch (error) {
+      console.error(`Error resending shipment WhatsApp update for ${trackingNumber}:`, error);
+      throw error;
+    }
+  },
+
+  sendLocationRequest: async (trackingNumber, payload = {}) => {
+    try {
+      const response = await api.post(`shipments/${trackingNumber}/whatsapp/send`, {
+        eventType: 'location_request',
+        templateName: 'location_request_v1',
+        recipientRole: 'receiver',
+        force: true,
+        ...payload
+      });
+      return response.data;
+    } catch (error) {
+      console.error(`Error sending location request WhatsApp for ${trackingNumber}:`, error);
+      throw error;
+    }
+  },
+
+  sendReturnPortal: async (trackingNumber, payload = {}) => {
+    try {
+      const response = await api.post(`shipments/${trackingNumber}/whatsapp/send`, {
+        eventType: 'return_portal',
+        templateName: 'return_portal_v1',
+        recipientRole: 'receiver',
+        force: true,
+        ...payload
+      });
+      return response.data;
+    } catch (error) {
+      console.error(`Error sending return portal WhatsApp for ${trackingNumber}:`, error);
+      throw error;
+    }
+  },
+
+  startCustomerEngagement: async (trackingNumber, payload = {}) => {
+    try {
+      const response = await api.post(`shipments/${trackingNumber}/whatsapp/send`, {
+        eventType: 'customer_engagement',
+        templateName: 'customer_inquiry_start',
+        recipientRole: 'receiver',
+        force: true,
+        ...payload
+      });
+      return response.data;
+    } catch (error) {
+      console.error(`Error starting customer engagement WhatsApp for ${trackingNumber}:`, error);
+      throw error;
+    }
+  },
+
   getTemplates: async () => {
     try {
       const response = await api.get('whatsapp/templates');
@@ -1539,6 +1601,53 @@ export const phenixService = {
       console.error('Error synchronizing Phenix ERP shipments:', error);
       throw error;
     }
+  }
+};
+
+export const fleetService = {
+  getDispatchDeck: async () => {
+    const response = await api.get('fleet/dispatch-deck');
+    return response.data;
+  },
+  createRun: async (payload) => {
+    const response = await api.post('fleet/runs', payload);
+    return response.data;
+  },
+  getRuns: async (params = {}) => {
+    const response = await api.get('fleet/runs', { params });
+    return response.data;
+  },
+  getRunDetails: async (id) => {
+    const response = await api.get(`fleet/runs/${id}`);
+    return response.data;
+  },
+  getDriverActiveRun: async () => {
+    const response = await api.get('fleet/driver/active-run');
+    return response.data;
+  },
+  completeStop: async (payload) => {
+    const response = await api.post('fleet/driver/complete-stop', payload);
+    return response.data;
+  },
+  recordException: async (payload) => {
+    const response = await api.post('fleet/driver/record-exception', payload);
+    return response.data;
+  },
+  settleRunCod: async (id) => {
+    const response = await api.post(`fleet/runs/${id}/settle-cod`);
+    return response.data;
+  },
+  getVehicles: async () => {
+    const response = await api.get('fleet/vehicles');
+    return response.data;
+  },
+  createVehicle: async (payload) => {
+    const response = await api.post('fleet/vehicles', payload);
+    return response.data;
+  },
+  updateVehicle: async (id, payload) => {
+    const response = await api.patch(`fleet/vehicles/${id}`, payload);
+    return response.data;
   }
 };
 

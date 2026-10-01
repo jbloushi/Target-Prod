@@ -395,29 +395,46 @@ exports.sendPaymentLink = async (req, res) => {
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
         if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
 
-        let shipmentForSend = shipment;
-        if (recipientRole) {
-            shipmentForSend = {
-                ...shipment,
-                origin: recipientRole === 'sender' ? shipment.origin : { ...(shipment.origin || {}), phone: null },
-                destination: recipientRole === 'receiver' ? shipment.destination : { ...(shipment.destination || {}), phone: null }
-            };
-        }
+        const phone = recipientRole === 'receiver'
+            ? (shipment.destination?.phone || shipment.customerPhone)
+            : (shipment.origin?.phone || shipment.customerPhone);
+        const name = recipientRole === 'receiver'
+            ? (shipment.destination?.contactPerson || shipment.destination?.name || shipment.customerName)
+            : (shipment.origin?.contactPerson || shipment.customerName);
 
-        chatwootNotificationService.triggerShipmentNotification('payment_link_ready', shipmentForSend, { force: true });
+        // 1. Generate dynamic Ottu payment session link (or fallback)
+        const ottuService = require('../services/ottuPayment.service');
+        const ottuSession = await ottuService.createPaymentSession({
+            shipment,
+            customerPhone: phone,
+            customerName: name
+        });
 
-        const baseUrl = config.publicTrackingBaseUrl || config.frontendUrl || 'http://localhost:3000';
-        const paymentLink = `${String(baseUrl).replace(/\/+$/, '')}/pay/${encodeURIComponent(trackingNumber)}`;
+        const paymentLink = ottuSession.checkoutUrl;
 
-        logger.info(`[PaymentLink] Dispatched payment link for ${trackingNumber} to ${recipientRole}`);
+        // 2. Dispatch via official WhatsApp API using Meta template payment_request_v1
+        const whatsappService = require('../services/whatsappIntegration.service');
+        const sendResult = await whatsappService.sendPaymentLinkNotification({
+            shipment,
+            recipientPhone: phone,
+            recipientRole,
+            recipientName: name,
+            paymentLink,
+            amount: ottuSession.amount,
+            currency: ottuSession.currency
+        });
+
+        logger.info(`[PaymentLink] Dispatched Ottu payment link (${paymentLink}) for ${trackingNumber} to ${recipientRole} via WhatsApp (Gateway: ${ottuSession.gateway})`);
         res.status(200).json({
             success: true,
             message: 'Payment link dispatched via WhatsApp successfully',
-            paymentLink
+            paymentLink,
+            gateway: ottuSession.gateway,
+            dispatchStatus: sendResult?.status || 'SENT'
         });
     } catch (error) {
         logger.error('Error sending payment link:', error);
-        res.status(500).json({ success: false, error: 'Failed to send payment link' });
+        res.status(500).json({ success: false, error: error.message || 'Failed to send payment link' });
     }
 };
 

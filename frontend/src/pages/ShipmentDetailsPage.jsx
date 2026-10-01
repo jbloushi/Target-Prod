@@ -4,7 +4,7 @@ import { useShipment } from '../context/ShipmentContext';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useSnackbar } from 'notistack';
-import { financeService, integrationService, shipmentService, userService } from '../services/api';
+import { financeService, integrationService, shipmentService, userService, whatsappService } from '../services/api';
 import api from '../services/api';
 import {
     STATUS_ORDER, STATUS_LABELS, INTERNAL_SHIPMENT_STATUSES, getStepIndex, normalizeStatus, isStatusAhead
@@ -124,6 +124,10 @@ const ShipmentDetailsPage = () => {
 
     const [sendingWhatsAppRole, setSendingWhatsAppRole] = useState(null);
     const [sendingPaymentLink, setSendingPaymentLink] = useState(false);
+    const [resendingUpdate, setResendingUpdate] = useState(false);
+    const [sendingLocationReq, setSendingLocationReq] = useState(false);
+    const [sendingReturnPortal, setSendingReturnPortal] = useState(false);
+    const [startingEngagement, setStartingEngagement] = useState(false);
 
     // Keep ref in sync so polling interval can read latest status without stale closures
     shipmentRef.current = shipment;
@@ -273,6 +277,66 @@ const ShipmentDetailsPage = () => {
         const link = `${window.location.origin}/pay/${shipment.trackingNumber}`;
         navigator.clipboard.writeText(link);
         enqueueSnackbar(isRTL ? 'تم نسخ رابط الدفع الإلكتروني' : 'Payment checkout link copied to clipboard!', { variant: 'success' });
+    };
+
+    // Resend Latest Shipment Tracking Update via WhatsApp Template
+    const handleResendShipmentUpdateWhatsApp = async () => {
+        if (!shipment?.trackingNumber) return;
+        setResendingUpdate(true);
+        try {
+            await whatsappService.resendShipmentUpdate(shipment.trackingNumber);
+            enqueueSnackbar(isRTL ? 'تم إرسال تحديث الشحنة ورابط التتبع عبر واتساب للعميل' : 'Shipment update & tracking link sent via WhatsApp!', { variant: 'success' });
+            await getShipment(shipment.trackingNumber);
+        } catch (err) {
+            enqueueSnackbar(err.response?.data?.error || err.message || 'Failed to dispatch WhatsApp update', { variant: 'error' });
+        } finally {
+            setResendingUpdate(false);
+        }
+    };
+
+    // Send Location Pin Request Template to Consignee
+    const handleSendLocationPinRequestToConsignee = async () => {
+        if (!shipment?.trackingNumber) return;
+        setSendingLocationReq(true);
+        try {
+            await whatsappService.sendLocationRequest(shipment.trackingNumber);
+            enqueueSnackbar(isRTL ? 'تم إرسال طلب تحديد الموقع (GPS) للمستلم عبر واتساب' : 'Location request template dispatched to consignee via WhatsApp!', { variant: 'success' });
+            await getShipment(shipment.trackingNumber);
+        } catch (err) {
+            enqueueSnackbar(err.response?.data?.error || err.message || 'Failed to send location request', { variant: 'error' });
+        } finally {
+            setSendingLocationReq(false);
+        }
+    };
+
+    // Send Reverse Return Portal & Paperwork to Consignee
+    const handleSendReturnPortalToConsignee = async () => {
+        if (!shipment?.trackingNumber) return;
+        setSendingReturnPortal(true);
+        try {
+            await whatsappService.sendReturnPortal(shipment.trackingNumber);
+            enqueueSnackbar(isRTL ? 'تم إرسال رابط بوابة المرتجعات للمستلم عبر واتساب' : 'Return portal template dispatched to consignee via WhatsApp!', { variant: 'success' });
+            await getShipment(shipment.trackingNumber);
+        } catch (err) {
+            enqueueSnackbar(err.response?.data?.error || err.message || 'Failed to send return portal link', { variant: 'error' });
+        } finally {
+            setSendingReturnPortal(false);
+        }
+    };
+
+    // Start Customer Engagement Template outside 24h window
+    const handleStartWhatsAppEngagement = async () => {
+        if (!shipment?.trackingNumber) return;
+        setStartingEngagement(true);
+        try {
+            await whatsappService.startCustomerEngagement(shipment.trackingNumber);
+            enqueueSnackbar(isRTL ? 'تم إرسال قالب بدء المحادثة لفتح نافذة التواصل (24 ساعة)' : 'Customer engagement template dispatched to open 24h window!', { variant: 'success' });
+            await getShipment(shipment.trackingNumber);
+        } catch (err) {
+            enqueueSnackbar(err.response?.data?.error || err.message || 'Failed to start WhatsApp engagement', { variant: 'error' });
+        } finally {
+            setStartingEngagement(false);
+        }
     };
 
     // Share Location Pin with Carrier / Courier Driver
@@ -918,6 +982,22 @@ const ShipmentDetailsPage = () => {
                     {/* Right: Quick Action Buttons Toolbar */}
                     <div className="flex items-center gap-2 flex-wrap w-full xl:w-auto">
                         
+                        {/* Resend WhatsApp Tracking Update (Item 1) */}
+                        <button
+                            type="button"
+                            onClick={handleResendShipmentUpdateWhatsApp}
+                            disabled={resendingUpdate}
+                            className="btn btn-sm bg-[#25D366] text-white hover:bg-[#1ebc57] border-none rounded-xl font-bold gap-1.5 text-xs shadow-sm"
+                            title={isRTL ? 'إرسال آخر تحديث للشحنة ورابط التتبع عبر قالب واتساب المعتمد' : 'Resend latest shipment update & tracking link via WhatsApp template'}
+                        >
+                            <span className="material-symbols-outlined text-xs">
+                                {resendingUpdate ? 'sync' : 'chat'}
+                            </span>
+                            {resendingUpdate 
+                                ? (isRTL ? 'إرسال...' : 'Sending...') 
+                                : (isRTL ? 'إرسال تحديث واتساب' : 'WhatsApp Update')}
+                        </button>
+
                         {/* Copy Public Link */}
                         <button
                             type="button"
@@ -926,9 +1006,10 @@ const ShipmentDetailsPage = () => {
                                 enqueueSnackbar(isRTL ? 'تم نسخ رابط التتبع العام' : 'Tracking link copied!', { variant: 'success' });
                             }}
                             className="btn btn-outline btn-sm rounded-xl font-bold gap-1 text-xs"
+                            title={isRTL ? 'نسخ رابط التتبع العام' : 'Copy public tracking link'}
                         >
-                            <span className="material-symbols-outlined text-xs">share</span>
-                            {isRTL ? 'مشاركة الرابط' : 'Share'}
+                            <span className="material-symbols-outlined text-xs">content_copy</span>
+                            {isRTL ? 'نسخ الرابط' : 'Copy Link'}
                         </button>
 
                         {/* Official Carrier AWB */}
@@ -1272,15 +1353,30 @@ const ShipmentDetailsPage = () => {
                                         <span>{receiver.phone || 'No phone'}</span>
                                     </div>
                                     {receiver.phone && (
-                                        <a
-                                            href={`https://wa.me/${receiver.phone.replace(/\D/g, '')}?text=Hello%20${receiver.contactPerson || receiver.name},%20regarding%20Target%20Logistics%20Shipment%20${shipment.trackingNumber}`}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="btn btn-outline btn-success btn-xs font-bold rounded-lg gap-1"
-                                        >
-                                            <span className="material-symbols-outlined text-xs">chat</span>
-                                            WhatsApp
-                                        </a>
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            <button
+                                                type="button"
+                                                onClick={handleStartWhatsAppEngagement}
+                                                disabled={startingEngagement}
+                                                className="btn btn-outline btn-success btn-xs font-bold rounded-lg gap-1"
+                                                title={isRTL ? 'بدء محادثة رسمية باستخدام قالب Meta المعتمد لفتح نافذة 24 ساعة' : 'Initiate formal chat using approved Meta template to open 24h window'}
+                                            >
+                                                <span className="material-symbols-outlined text-xs">
+                                                    {startingEngagement ? 'sync' : 'chat'}
+                                                </span>
+                                                {startingEngagement ? '...' : (isRTL ? 'بدء محادثة (قالب)' : 'WhatsApp (Template)')}
+                                            </button>
+                                            <a
+                                                href={`https://wa.me/${receiver.phone.replace(/\D/g, '')}?text=Hello%20${receiver.contactPerson || receiver.name},%20regarding%20Target%20Logistics%20Shipment%20${shipment.trackingNumber}`}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="btn btn-ghost btn-xs font-bold text-success gap-0.5 border border-success/30 rounded-lg hover:bg-success/10"
+                                                title={isRTL ? 'فتح واتساب ويب المباشر' : 'Open WhatsApp Web Direct Chat'}
+                                            >
+                                                <span className="material-symbols-outlined text-xs">open_in_new</span>
+                                                Web
+                                            </a>
+                                        </div>
                                     )}
                                 </div>
                                 {receiver.email && (
@@ -1626,15 +1722,27 @@ const ShipmentDetailsPage = () => {
                                     <span>{isRTL ? 'فتح موقع GPS' : 'Open Location Pin'}</span>
                                 </button>
 
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center gap-1 flex-wrap">
+                                    <button
+                                        type="button"
+                                        onClick={handleSendLocationPinRequestToConsignee}
+                                        disabled={sendingLocationReq}
+                                        className="btn btn-xs bg-[#25D366] text-white hover:bg-[#1ebc57] border-none font-bold gap-1 shadow-xs"
+                                        title={isRTL ? 'إرسال طلب تحديد الموقع (GPS) للمستلم عبر قالب واتساب المعتمد' : 'Send Location Pin Request Template to Consignee via WhatsApp'}
+                                    >
+                                        <span className="material-symbols-outlined text-[11px]">
+                                            {sendingLocationReq ? 'sync' : 'chat'}
+                                        </span>
+                                        <span>{sendingLocationReq ? '...' : (isRTL ? 'إرسال للمستلم' : 'Send to Consignee')}</span>
+                                    </button>
                                     <button
                                         type="button"
                                         onClick={handleShareLocationWithCarrier}
-                                        className="btn btn-xs bg-[#25D366] text-white hover:bg-[#1ebc57] border-none font-bold gap-1 shadow-xs"
-                                        title={isRTL ? 'مشاركة الموقع مع السائق عبر واتساب' : 'Share Location Link with Courier Driver'}
+                                        className="btn btn-xs btn-ghost border border-base-300 font-bold gap-1"
+                                        title={isRTL ? 'مشاركة الموقع مع السائق عبر واتساب ويب' : 'Share Location Link with Courier Driver'}
                                     >
                                         <span className="material-symbols-outlined text-[11px]">share</span>
-                                        <span>{isRTL ? 'مشاركة' : 'Share'}</span>
+                                        <span>{isRTL ? 'للسائق' : 'Driver'}</span>
                                     </button>
                                     <button
                                         type="button"
@@ -1703,15 +1811,27 @@ const ShipmentDetailsPage = () => {
                                     </button>
                                 </div>
 
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center gap-1 flex-wrap">
+                                    <button
+                                        type="button"
+                                        onClick={handleSendReturnPortalToConsignee}
+                                        disabled={sendingReturnPortal}
+                                        className="btn btn-xs bg-[#25D366] text-white hover:bg-[#1ebc57] border-none font-bold gap-1 shadow-xs"
+                                        title={isRTL ? 'إرسال رابط بوابة المرتجعات والمستندات للمستلم عبر قالب واتساب المعتمد' : 'Send Return Portal & Paperwork Template to Consignee via WhatsApp'}
+                                    >
+                                        <span className="material-symbols-outlined text-[11px]">
+                                            {sendingReturnPortal ? 'sync' : 'chat'}
+                                        </span>
+                                        <span>{sendingReturnPortal ? '...' : (isRTL ? 'إرسال للمستلم' : 'Send to Consignee')}</span>
+                                    </button>
                                     <button
                                         type="button"
                                         onClick={handleShareReturnWithCarrier}
-                                        className="btn btn-xs bg-[#25D366] text-white hover:bg-[#1ebc57] border-none font-bold gap-1 shadow-xs"
-                                        title={isRTL ? 'مشاركة رابط المرتجع والمستندات عبر واتساب' : 'Share Return Portal with Shipper/Carrier'}
+                                        className="btn btn-xs btn-ghost border border-base-300 text-xs font-bold gap-1"
+                                        title={isRTL ? 'مشاركة رابط المرتجع والمستندات مع الناقل عبر واتساب ويب' : 'Share Return Portal with Shipper/Carrier'}
                                     >
                                         <span className="material-symbols-outlined text-[11px]">share</span>
-                                        <span>{isRTL ? 'مشاركة' : 'Share'}</span>
+                                        <span>{isRTL ? 'للناقل' : 'Carrier'}</span>
                                     </button>
                                     <button
                                         type="button"

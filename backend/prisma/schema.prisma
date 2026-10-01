@@ -125,6 +125,8 @@ model User {
   accessScopes       UserAccessScope[]    @relation("UserGrantedAccessScopes")
   clientAccessScopes UserAccessScope[]    @relation("ClientUserAccessScopes")
   journalEntriesCreated JournalEntry[]    @relation("JournalCreatedBy")
+  deliveryRuns       DeliveryRun[]       @relation("DriverRuns")
+  assignedVehicles   Vehicle[]           @relation("DriverVehicles")
 
   @@index([organizationId, role, active], map: "User_org_role_active_idx")
   @@index([role, active], map: "User_role_active_idx")
@@ -210,6 +212,19 @@ model Shipment {
   awbUrl            String?
   invoiceUrl        String?
   
+  // Fleet & Delivery Run Fields
+  deliveryRunId    String?
+  deliveryRun      DeliveryRun?        @relation(fields: [deliveryRunId], references: [id])
+  stopSequence     Int?
+  podSignatureUrl  String?             @db.Text
+  podPhotoUrl      String?             @db.Text
+  podRecipientName String?
+  podTimestamp     DateTime?
+  podLocation      Json?
+  failureReason    String?
+  failureNotes     String?             @db.Text
+  deliveredAt      DateTime?
+  
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
@@ -221,6 +236,7 @@ model Shipment {
   journalLines     JournalEntryLine[]
   billLines        BillLine[]
 
+  @@index([deliveryRunId, stopSequence], map: "Shipment_deliveryRun_idx")
   @@index([userId, status, createdAt], map: "Shipment_user_status_created_idx")
   @@index([createdOnBehalfOfUserId, createdAt], map: "Shipment_on_behalf_created_idx")
   @@index([organizationId, status, createdAt], map: "Shipment_org_status_created_idx")
@@ -797,4 +813,61 @@ model BackgroundJob {
 
   @@index([queueName, status, nextRunAt], map: "idx_queue_status_run")
   @@map("_background_jobs")
+}
+
+model DeliveryRun {
+  id                String       @id @default(uuid())
+  runNumber         String       @unique
+  driverId          String?
+  driver            User?        @relation("DriverRuns", fields: [driverId], references: [id])
+  vehicleId         String?
+  vehicle           Vehicle?     @relation(fields: [vehicleId], references: [id])
+  zone              String?      // e.g. "HAWALLI", "CAPITAL", "FARWANIYA", "AHMADI", "JAHRA", "MUBARAK_AL_KABEER", "ALL"
+  status            String       @default("DRAFT") // "DRAFT", "ASSIGNED", "IN_TRANSIT", "COMPLETED", "CANCELLED"
+  startedAt         DateTime?
+  completedAt       DateTime?
+  totalStops        Int          @default(0)
+  completedStops    Int          @default(0)
+  failedStops       Int          @default(0)
+  totalCodExpected  Decimal      @default(0.0) @db.Decimal(18, 4)
+  totalCodCollected Decimal      @default(0.0) @db.Decimal(18, 4)
+  codSettled        Boolean      @default(false)
+  codSettledAt      DateTime?
+  notes             String?      @db.Text
+  metadata          Json?
+  
+  createdById       String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  shipments         Shipment[]
+
+  @@index([driverId, status, createdAt], map: "DeliveryRun_driver_status_idx")
+  @@index([status, createdAt], map: "DeliveryRun_status_idx")
+  @@index([zone, createdAt], map: "DeliveryRun_zone_idx")
+}
+
+model Vehicle {
+  id                 String       @id @default(uuid())
+  plateNumber        String       @unique
+  make               String?
+  model              String?
+  year               Int?
+  driverId           String?
+  driver             User?        @relation("DriverVehicles", fields: [driverId], references: [id])
+  status             String       @default("ACTIVE") // "ACTIVE", "MAINTENANCE", "INACTIVE"
+  registrationExpiry DateTime?
+  insuranceExpiry    DateTime?
+  capacityParcels    Int          @default(50)
+  capacityWeightKg   Decimal      @default(500.0) @db.Decimal(10, 2)
+  odometerKm         Int          @default(0)
+  notes              String?      @db.Text
+  active             Boolean      @default(true)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  runs               DeliveryRun[]
+
+  @@index([driverId, active], map: "Vehicle_driver_active_idx")
+  @@index([status, active], map: "Vehicle_status_active_idx")
 }

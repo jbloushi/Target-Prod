@@ -1154,37 +1154,51 @@ exports.sendStatementNotification = async (req, res) => {
         });
         if (!organization) return res.status(404).json({ success: false, error: 'Organization not found' });
 
-        const phone = organization.billingWhatsappNumber
-            || organization.members?.find(m => m.role === 'org_manager')?.phone
-            || organization.members?.find(m => m.phone)?.phone;
+        const { templateName, recipientPhone: customPhone, recipientName: customName, customBalance, customDate } = req.body || {};
+        const assignedMember = organization.members?.find(m => m.role === 'org_manager')
+            || organization.members?.find(m => m.role === 'admin')
+            || organization.members?.find(m => m.phone);
+
+        const phone = customPhone
+            || organization.billingWhatsappNumber
+            || assignedMember?.phone;
 
         if (!phone) {
             return res.status(400).json({ success: false, error: 'No contact phone number found for this organization manager' });
         }
 
+        const name = customName
+            || organization.billingContactName
+            || assignedMember?.name
+            || organization.name;
+
         const currency = normalizeCurrencyCode(organization.currency || 'KWD');
         const overview = await financeLedgerService.getOrganizationOverview(orgId, Number(organization.creditLimit || 0), currency);
-        const netBalance = Number(organization.balance !== null && organization.balance !== undefined ? organization.balance : (overview?.balance || 0));
+        const netBalance = customBalance !== undefined && customBalance !== null
+            ? Number(customBalance)
+            : Number(organization.balance !== null && organization.balance !== undefined ? organization.balance : (overview?.balance || 0));
+
         const summary = {
             netBalance,
             creditLimit: Number(organization.creditLimit || 0),
             unappliedBalance: Number(organization.unappliedBalance ?? overview?.unappliedCash ?? 0)
         };
 
-        const { templateName } = req.body || {};
         const whatsappIntegration = require('../services/whatsappIntegration.service');
         const result = await whatsappIntegration.sendStatementNotification({
             organization,
             recipientPhone: phone,
+            recipientName: name,
             summary,
             currency,
-            templateName
+            templateName,
+            customDate
         });
 
         logger.info(`[Finance] Dispatched account statement notification for ${organization.name} (${orgId}) to ${result.phone || phone} (Template: ${result.template || templateName || 'DEFAULT'})`);
         res.status(200).json({
             success: true,
-            message: `Account statement dispatched via WhatsApp to ${organization.name} (${result.phone || phone})${result.template ? ` via template [${result.template}]` : ''}`,
+            message: `Account statement dispatched via WhatsApp to ${name} (${result.phone || phone})${result.template ? ` via template [${result.template}]` : ''}`,
             data: result
         });
     } catch (error) {
@@ -1210,20 +1224,31 @@ exports.sendInvoiceWhatsApp = async (req, res) => {
         if (!assertFinanceOrgAccess(req, res, invoice.organizationId)) return;
 
         const org = invoice.organization;
-        const managerPhone = org?.billingWhatsappNumber
-            || org?.members?.find(m => m.role === 'org_manager')?.phone
-            || org?.members?.find(m => m.phone)?.phone;
+        const { templateName, recipientPhone: customPhone, recipientName: customName } = req.body || {};
+
+        const assignedMember = org?.members?.find(m => m.role === 'org_manager')
+            || org?.members?.find(m => m.role === 'admin')
+            || org?.members?.find(m => m.phone);
+
+        const managerPhone = customPhone
+            || org?.billingWhatsappNumber
+            || assignedMember?.phone;
 
         if (!managerPhone) {
             return res.status(400).json({ success: false, error: 'No contact phone number found for this organization manager' });
         }
 
-        const { templateName } = req.body || {};
+        const managerName = customName
+            || org?.billingContactName
+            || assignedMember?.name
+            || org?.name;
+
         const whatsappIntegration = require('../services/whatsappIntegration.service');
         const result = await whatsappIntegration.sendInvoiceNotification({
             invoice,
             organization: org,
             recipientPhone: managerPhone,
+            recipientName: managerName,
             templateName
         });
 

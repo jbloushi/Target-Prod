@@ -14,6 +14,14 @@ router.get('/:trackingNumber/checkout', publicController.getPublicCheckout);
 // @desc    Settle shipment payment online (K-Net / Card / Apple Pay)
 router.post('/:trackingNumber/pay', publicController.processPublicPayment);
 
+// @route   POST /api/public/shipments/:trackingNumber/ottu-session
+// @desc    Generate Ottu Hosted Checkout Session Link
+router.post('/:trackingNumber/ottu-session', publicController.createOttuSession);
+
+// @route   POST /api/public/checkout/ottu/webhook
+// @desc    Receive incoming payment event from Ottu Payment Gateway
+router.post('/checkout/ottu/webhook', publicController.handleOttuWebhook);
+
 // @route   POST /api/public/shipments/:trackingNumber/location/send-otp
 // @desc    Send 6-digit OTP to receiver's registered WhatsApp phone number
 router.post('/:trackingNumber/location/send-otp', publicController.sendReceiverLocationOtp);
