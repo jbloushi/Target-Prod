@@ -205,7 +205,14 @@ class ShipmentDraftService {
                     }
                 ],
                 bookingAttempts: [],
-                documents: []
+                documents: cleanData.customsInvoice || cleanData.documents ? {
+                    invoiceNumber: cleanData.customsInvoice?.invoiceNumber || cleanData.invoiceNumber || '',
+                    declaredValue: cleanData.customsInvoice?.declaredValue || 0,
+                    notes: cleanData.customsInvoice?.notes || '',
+                    phenixBillId: cleanData.phenixBillId || cleanData.documents?.phenixBillId || null,
+                    phenixReceiptNo: cleanData.phenixReceiptNo || cleanData.documents?.phenixReceiptNo || null,
+                    ...(typeof cleanData.documents === 'object' && !Array.isArray(cleanData.documents) ? cleanData.documents : {})
+                } : {}
             }
         });
 

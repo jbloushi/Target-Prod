@@ -59,6 +59,73 @@ const formatLegibleDate = (val) => {
 };
 
 /**
+ * Filter out city/country/generic placeholder strings so they are never used as person names
+ */
+function isLocationOrGenericName(val) {
+    if (!val || typeof val !== 'string') return true;
+    const clean = val.trim().toLowerCase();
+    if (!clean || clean.length < 2) return true;
+
+    const locationKeywords = [
+        'dubai', 'kuwait', 'kuwait city', 'riyadh', 'jeddah', 'dammam',
+        'abu dhabi', 'sharjah', 'doha', 'manama', 'muscat', 'cairo',
+        'alexandria', 'amman', 'beirut', 'khobar', 'mecca', 'medina',
+        'united arab emirates', 'saudi arabia', 'bahrain', 'qatar', 'oman',
+        'uae', 'ksa', 'kwt', 'destination', 'consignee', 'receiver', 'customer',
+        'shipper', 'sender', 'unknown', 'na', 'n/a', 'none', 'null', 'direct account'
+    ];
+    return locationKeywords.includes(clean);
+}
+
+function resolvePersonName(candidates, fallback = 'Valued Customer') {
+    for (const cand of candidates) {
+        if (cand && typeof cand === 'string' && !isLocationOrGenericName(cand)) {
+            return cand.trim();
+        }
+    }
+    for (const cand of candidates) {
+        if (cand && typeof cand === 'string' && cand.trim().length > 0 && !isLocationOrGenericName(cand)) {
+            return cand.trim();
+        }
+    }
+    return fallback;
+}
+
+/**
+ * Resolve the most accurate invoice reference: Phenix ERP Bill/Receipt, Customs Invoice Number, or Tracking
+ */
+function resolveInvoiceDetail(shipment, displayTracking = '') {
+    if (!shipment) return displayTracking || 'TRG-SHIPMENT';
+    const docs = (typeof shipment.documents === 'object' && shipment.documents) ? shipment.documents : {};
+    const cst = (typeof shipment.customsInvoice === 'object' && shipment.customsInvoice)
+        ? shipment.customsInvoice
+        : (typeof shipment.origin?.customsInvoice === 'object' ? shipment.origin.customsInvoice : {});
+
+    // 1. Phenix ERP Official Bill ID & Receipt No
+    const phenixBill = docs.phenixBillId || shipment.phenixBillId;
+    const phenixReceipt = docs.phenixReceiptNo || shipment.phenixReceiptNo;
+    if (phenixBill && phenixReceipt) {
+        return `Bill #${phenixBill} (Receipt #${phenixReceipt})`;
+    }
+    if (phenixBill) {
+        return `Bill #${phenixBill}`;
+    }
+    if (phenixReceipt) {
+        return `Receipt #${phenixReceipt}`;
+    }
+
+    // 2. Customs / Commercial / Client Invoice Number provided at shipment creation
+    const manualInv = docs.invoiceNumber || cst.invoiceNumber || docs.commercialInvoiceNumber || docs.customsInvoiceNumber || shipment.invoiceNumber;
+    if (manualInv && String(manualInv).trim()) {
+        const cleanInv = String(manualInv).trim();
+        return cleanInv.toUpperCase().startsWith('INV') ? cleanInv : `INV-${cleanInv}`;
+    }
+
+    // 3. Fallback: Display Tracking / Waybill Number
+    return displayTracking || shipment.trackingNumber || 'TRG-SHIPMENT';
+}
+
+/**
  * Check if a bill has already been sent via the Shipment-WhatsApp Microservice
  */
 async function checkMicroserviceSent(billId, role = 'receiver') {
@@ -277,6 +344,8 @@ function buildMetaMessagePayload(toPhone, eventType, context, templateNameOverri
             }
         ];
     } else if (targetTemplateName === 'shipment_confirmation_2') {
+        const receiptNo = resolveInvoiceDetail(context.shipment || context, displayTracking);
+        const resolvedRecv = resolvePersonName([context.recipientName, context.consigneeName, context.customerName], 'Valued Customer');
         components = [
             {
                 type: 'header',
@@ -285,9 +354,9 @@ function buildMetaMessagePayload(toPhone, eventType, context, templateNameOverri
             {
                 type: 'body',
                 parameters: [
-                    { type: 'text', text: context.receiptNo || displayTracking },
+                    { type: 'text', text: receiptNo },
                     { type: 'text', text: dateFormatted },
-                    { type: 'text', text: context.recipientName || 'Customer' },
+                    { type: 'text', text: resolvedRecv },
                     { type: 'text', text: cleanPhone },
                     { type: 'text', text: trackingUrl }
                 ]
@@ -441,11 +510,27 @@ class WhatsAppIntegrationService {
 
         const context = chatwootService.buildShipmentNotificationContext(shipment);
 
-        // Resolve explicit Sender and Consignee parties from shipment data
-        const resolvedSenderName = shipment.origin?.contactPerson || shipment.origin?.companyName || shipment.documents?.senderName || shipment.documents?.merchantName || (role === 'sender' ? recipientName : null) || 'Shipper';
+        // Resolve explicit Sender and Consignee parties from shipment data using smart person-name resolution
+        const resolvedSenderName = resolvePersonName([
+            shipment.origin?.contactPerson,
+            shipment.origin?.companyName,
+            shipment.origin?.company,
+            shipment.documents?.senderName,
+            shipment.documents?.merchantName,
+            (role === 'sender' ? recipientName : null)
+        ], 'Shipper');
         const resolvedSenderPhone = normalizePhone(shipment.origin?.phone || shipment.documents?.senderPhone || (role === 'sender' ? phone : '')) || phone;
 
-        const resolvedReceiverName = shipment.destination?.contactPerson || shipment.destination?.name || shipment.customer?.name || shipment.customerName || shipment.documents?.receiverName || (role === 'receiver' || role === 'customer' ? recipientName : null) || 'Valued Consignee';
+        const resolvedReceiverName = resolvePersonName([
+            shipment.destination?.contactPerson,
+            shipment.destination?.consigneeName,
+            shipment.customer?.name,
+            shipment.customerName,
+            shipment.documents?.receiverName,
+            (role === 'receiver' || role === 'customer' ? recipientName : null),
+            shipment.destination?.company,
+            shipment.destination?.name
+        ], 'Valued Customer');
         const resolvedReceiverPhone = normalizePhone(shipment.destination?.phone || shipment.customer?.phone || shipment.customerPhone || shipment.documents?.receiverPhone || (role === 'receiver' || role === 'customer' ? phone : '')) || phone;
 
         const effectiveRecipientName = (role === 'sender') ? resolvedSenderName : resolvedReceiverName;
@@ -517,7 +602,7 @@ class WhatsAppIntegrationService {
             } else if (chosenTemplate === 'shipment_confirmation_2') {
                 // Meta template: HEADER={{1}} (trackingNumber)
                 // BODY: {{1}}=Invoice/Receipt, {{2}}=Date, {{3}}=Receiver Name, {{4}}=Receiver Tel, {{5}}=Tracking Link
-                const receiptNo = shipment.documents?.phenixReceiptNo || shipment.documents?.phenixBillId || displayTracking;
+                const receiptNo = resolveInvoiceDetail(shipment, displayTracking);
                 
                 // Receiver Name & Tel in the template body MUST ALWAYS be the destination Consignee
                 variables = [
@@ -529,10 +614,11 @@ class WhatsAppIntegrationService {
                 ];
                 headerVariables = [displayTracking];
             } else if (chosenTemplate === 'shipment_tracking_quick') {
+                const receiptNo = resolveInvoiceDetail(shipment, displayTracking);
                 variables = [
                     displayTracking,
                     dateFormatted,
-                    displayTracking,
+                    receiptNo,
                     resolvedReceiverName,
                     resolvedReceiverPhone,
                     trackingUrl

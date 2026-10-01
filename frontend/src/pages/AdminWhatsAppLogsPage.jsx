@@ -19,14 +19,15 @@ export function formatExactMessageCopy(log) {
         const [invoice = '', date = '', recvName = '', recvTel = '', trackUrl = ''] = vars;
         const effDate = date || (log.sentAt ? new Date(log.sentAt).toISOString().slice(0, 10) : '');
         const effTel = recvTel || log.recipientPhone || '';
-        const effInvoice = invoice || log.shipment?.documents?.phenixBillId || shipmentAwb || '';
+        const docs = log.shipment?.documents || {};
+        const effInvoice = invoice || (docs.phenixReceiptNo ? `Bill #${docs.phenixBillId} (Receipt #${docs.phenixReceiptNo})` : (docs.phenixBillId ? `Bill #${docs.phenixBillId}` : (docs.invoiceNumber || shipmentAwb || '')));
         const effUrl = trackUrl || (shipmentAwb ? `https://target-kw.com/track/${shipmentAwb}` : '');
 
         return (
             (shipmentAwb ? `Shipment: ${shipmentAwb}\n\n` : '') +
             `Invoice: ${effInvoice}\n` +
             `Date: ${effDate}\n` +
-            `Receiver Name: ${recvName || log.recipientName || 'Customer'}\n` +
+            `Receiver Name: ${recvName || log.recipientName || 'Valued Customer'}\n` +
             `Receiver Tel: ${effTel}\n` +
             `Track Order: ${effUrl}`
         ).trim();
