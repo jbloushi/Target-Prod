@@ -58,33 +58,9 @@ const formatLegibleDate = (val) => {
     return Number.isNaN(d.getTime()) ? String(val) : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 };
 
-/**
- * Filter out city/country/generic placeholder strings so they are never used as person names
- */
-function isLocationOrGenericName(val) {
-    if (!val || typeof val !== 'string') return true;
-    const clean = val.trim().toLowerCase();
-    if (!clean || clean.length < 2) return true;
-
-    const locationKeywords = [
-        'dubai', 'kuwait', 'kuwait city', 'riyadh', 'jeddah', 'dammam',
-        'abu dhabi', 'sharjah', 'doha', 'manama', 'muscat', 'cairo',
-        'alexandria', 'amman', 'beirut', 'khobar', 'mecca', 'medina',
-        'united arab emirates', 'saudi arabia', 'bahrain', 'qatar', 'oman',
-        'uae', 'ksa', 'kwt', 'destination', 'consignee', 'receiver', 'customer',
-        'shipper', 'sender', 'unknown', 'na', 'n/a', 'none', 'null', 'direct account'
-    ];
-    return locationKeywords.includes(clean);
-}
-
-function resolvePersonName(candidates, fallback = 'Valued Customer') {
+function resolvePersonName(candidates, fallback = 'Customer') {
     for (const cand of candidates) {
-        if (cand && typeof cand === 'string' && !isLocationOrGenericName(cand)) {
-            return cand.trim();
-        }
-    }
-    for (const cand of candidates) {
-        if (cand && typeof cand === 'string' && cand.trim().length > 0 && !isLocationOrGenericName(cand)) {
+        if (cand && typeof cand === 'string' && cand.trim().length > 0) {
             return cand.trim();
         }
     }
