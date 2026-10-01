@@ -37,14 +37,80 @@ class AddressService {
     constructor() {
         this.apiKey = GOOGLE_API_KEY;
         this.allowedCountries = ALLOWED_COUNTRIES;
+        this.osmCache = new Map();
+    }
+
+    /**
+     * Fallback search using OpenStreetMap Nominatim
+     * @param {string} query 
+     * @returns {Promise<Array>}
+     */
+    async searchNominatim(query) {
+        try {
+            const response = await axios.get('https://nominatim.openstreetmap.org/search', {
+                params: {
+                    q: query,
+                    format: 'json',
+                    addressdetails: 1,
+                    limit: 7
+                },
+                headers: {
+                    'User-Agent': 'TargetLogistics/1.0 (support@target-kw.com)'
+                },
+                timeout: 5000
+            });
+
+            if (Array.isArray(response.data) && response.data.length > 0) {
+                return response.data.map(item => {
+                    const addr = item.address || {};
+                    const countryCode = (addr.country_code || '').toUpperCase();
+                    const city = addr.city || addr.town || addr.municipality || addr.state_district || addr.county || addr.state || '';
+                    const mainText = item.name || addr.building || addr.road || addr.suburb || item.display_name.split(',')[0];
+                    const secondaryText = [city, addr.country].filter(Boolean).join(', ');
+
+                    const osmPlaceId = `osm_${item.place_id}`;
+                    
+                    // Maintain LRU size limit
+                    if (this.osmCache.size > 500) {
+                        const firstKey = this.osmCache.keys().next().value;
+                        this.osmCache.delete(firstKey);
+                    }
+
+                    this.osmCache.set(osmPlaceId, {
+                        placeId: osmPlaceId,
+                        formattedAddress: item.display_name,
+                        latitude: parseFloat(item.lat),
+                        longitude: parseFloat(item.lon),
+                        city: city,
+                        postalCode: addr.postcode || '',
+                        country: addr.country || '',
+                        countryCode: countryCode,
+                        streetLines: [
+                            [addr.house_number, addr.road || mainText].filter(Boolean).join(' ') || item.display_name.split(',')[0]
+                        ],
+                        validationStatus: 'CONFIRMED'
+                    });
+
+                    return {
+                        placeId: osmPlaceId,
+                        description: item.display_name,
+                        mainText: mainText,
+                        secondaryText: secondaryText || item.display_name
+                    };
+                });
+            }
+            return [];
+        } catch (err) {
+            logger.warn('Nominatim fallback search error: ' + err.message);
+            return [];
+        }
     }
 
     /**
      * Check if we should use mock data
      */
     shouldUseMock() {
-        // Only use mock if no API key is configured
-        return !this.apiKey;
+        return false;
     }
 
     /**
@@ -55,62 +121,84 @@ class AddressService {
      * @returns {Array} Address suggestions
      */
     async autocomplete(query, sessionToken = null) {
-        if (!query || query.length < 3) {
+        if (!query || query.trim().length < 2) {
             return [];
         }
 
-        // Use mock in development
-        if (this.shouldUseMock()) {
-            const filtered = MOCK_ADDRESSES.filter(a =>
-                a.description.toLowerCase().includes(query.toLowerCase())
-            );
-            return filtered.length > 0 ? filtered : MOCK_ADDRESSES.slice(0, 3);
+        const trimmedQuery = query.trim();
+
+        // 1. Try Google Places API if key exists
+        if (this.apiKey) {
+            try {
+                const params = {
+                    input: trimmedQuery,
+                    key: this.apiKey
+                };
+
+                // Google Places Autocomplete legacy API accepts max 5 country codes in components
+                if (this.allowedCountries && this.allowedCountries.length > 0 && this.allowedCountries.length <= 5) {
+                    params.components = this.allowedCountries.map(c => `country:${c.trim()}`).join('|');
+                }
+
+                if (sessionToken) {
+                    params.sessiontoken = sessionToken;
+                }
+
+                const response = await axios.get(
+                    config.googleMapsAutocompleteUrl,
+                    { params, timeout: 5000 }
+                );
+
+                if (response.data.status === 'OK' && Array.isArray(response.data.predictions) && response.data.predictions.length > 0) {
+                    return response.data.predictions.map(p => ({
+                        placeId: p.place_id,
+                        description: p.description,
+                        mainText: p.structured_formatting?.main_text || p.description,
+                        secondaryText: p.structured_formatting?.secondary_text || ''
+                    }));
+                } else if (response.data.status === 'ZERO_RESULTS') {
+                    // Try Nominatim as fallback
+                    const osmResults = await this.searchNominatim(trimmedQuery);
+                    if (osmResults.length > 0) return osmResults;
+                    return [];
+                } else {
+                    logger.warn(`Google Places API notice [${response.data.status}]: ${response.data.error_message || 'Falling back to OSM'}`);
+                    const osmResults = await this.searchNominatim(trimmedQuery);
+                    if (osmResults.length > 0) return osmResults;
+                }
+            } catch (error) {
+                logger.warn(`Google Places autocomplete network error, falling back to OSM: ${error.message}`);
+                const osmResults = await this.searchNominatim(trimmedQuery);
+                if (osmResults.length > 0) return osmResults;
+            }
+        } else {
+            const osmResults = await this.searchNominatim(trimmedQuery);
+            if (osmResults.length > 0) return osmResults;
         }
 
-        try {
-            const params = {
-                input: query,
-                key: this.apiKey,
-                types: 'address',
-                components: this.allowedCountries.map(c => `country:${c}`).join('|')
-            };
-
-            if (sessionToken) {
-                params.sessiontoken = sessionToken;
-            }
-
-            const response = await axios.get(
-                config.googleMapsAutocompleteUrl,
-                { params }
-            );
-
-            if (response.data.status !== 'OK' && response.data.status !== 'ZERO_RESULTS') {
-                logger.warn('Google Places API error:', response.data.status);
-                return MOCK_ADDRESSES.slice(0, 3);
-            }
-
-            return (response.data.predictions || []).map(p => ({
-                placeId: p.place_id,
-                description: p.description,
-                mainText: p.structured_formatting?.main_text || '',
-                secondaryText: p.structured_formatting?.secondary_text || ''
-            }));
-        } catch (error) {
-            logger.error('Autocomplete error:', error.message);
-            // DEBUG: Return error details
-            throw error;
-            // return MOCK_ADDRESSES.slice(0, 3);
-        }
+        // 2. Final Fallback to MOCK_ADDRESSES filtered
+        const filtered = MOCK_ADDRESSES.filter(a =>
+            a.description.toLowerCase().includes(trimmedQuery.toLowerCase()) ||
+            a.city.toLowerCase().includes(trimmedQuery.toLowerCase())
+        );
+        return filtered.length > 0 ? filtered : [];
     }
 
     /**
      * Get Place Details - Retrieve full address data
      * 
-     * @param {string} placeId - Google Place ID
+     * @param {string} placeId - Google Place ID or OSM Place ID
      * @param {string} sessionToken - Same token used in autocomplete (for billing)
      * @returns {Object} Structured address data
      */
     async getPlaceDetails(placeId, sessionToken = null) {
+        if (!placeId) return null;
+
+        // Check OSM Cache
+        if (this.osmCache.has(placeId)) {
+            return this.osmCache.get(placeId);
+        }
+
         // Handle mock placeIds
         if (placeId.startsWith('mock_')) {
             const mock = MOCK_ADDRESSES.find(a => a.placeId === placeId) || MOCK_ADDRESSES[0];
@@ -121,25 +209,52 @@ class AddressService {
                 longitude: mock.lng,
                 city: mock.city,
                 postalCode: mock.postalCode,
+                country: mock.countryCode === 'KW' ? 'Kuwait' : (mock.countryCode === 'AE' ? 'United Arab Emirates' : (mock.countryCode === 'SA' ? 'Saudi Arabia' : 'Germany')),
                 countryCode: mock.countryCode,
                 streetLines: [mock.description.split(',')[0]],
                 validationStatus: 'PENDING'
             };
         }
 
-        if (this.shouldUseMock()) {
-            const mock = MOCK_ADDRESSES[0];
-            return {
-                placeId: mock.placeId,
-                formattedAddress: mock.description,
-                latitude: mock.lat,
-                longitude: mock.lng,
-                city: mock.city,
-                postalCode: mock.postalCode,
-                countryCode: mock.countryCode,
-                streetLines: [mock.description.split(',')[0]],
-                validationStatus: 'PENDING'
-            };
+        // Handle OSM placeIds not in cache
+        if (placeId.startsWith('osm_')) {
+            const rawOsmId = placeId.replace('osm_', '');
+            try {
+                const osmRes = await axios.get('https://nominatim.openstreetmap.org/details', {
+                    params: {
+                        place_id: rawOsmId,
+                        format: 'json',
+                        addressdetails: 1
+                    },
+                    headers: {
+                        'User-Agent': 'TargetLogistics/1.0 (support@target-kw.com)'
+                    },
+                    timeout: 5000
+                });
+                if (osmRes.data) {
+                    const addr = osmRes.data.address || {};
+                    const countryCode = (addr.country_code || '').toUpperCase();
+                    const city = addr.city || addr.town || addr.municipality || addr.state || '';
+                    return {
+                        placeId,
+                        formattedAddress: osmRes.data.localname || osmRes.data.calculated_postcode || '',
+                        latitude: parseFloat(osmRes.data.centroid?.coordinates?.[1] || osmRes.data.lat || 0),
+                        longitude: parseFloat(osmRes.data.centroid?.coordinates?.[0] || osmRes.data.lon || 0),
+                        city,
+                        postalCode: addr.postcode || '',
+                        country: addr.country || '',
+                        countryCode,
+                        streetLines: [addr.road || addr.building || city || 'Main Street'],
+                        validationStatus: 'CONFIRMED'
+                    };
+                }
+            } catch (osmErr) {
+                logger.warn('OSM Place Details lookup failed: ' + osmErr.message);
+            }
+        }
+
+        if (!this.apiKey) {
+            return null;
         }
 
         try {
@@ -155,11 +270,11 @@ class AddressService {
 
             const response = await axios.get(
                 config.googleMapsDetailsUrl,
-                { params }
+                { params, timeout: 5000 }
             );
 
             if (response.data.status !== 'OK') {
-                logger.warn('Place Details API error:', response.data.status);
+                logger.warn(`Place Details API warning [${response.data.status}]: ${response.data.error_message || ''}`);
                 return null;
             }
 
@@ -179,9 +294,9 @@ class AddressService {
                 streetNumber: getComponent('street_number'),
                 route: getComponent('route'),
                 streetLines: [
-                    `${getComponent('street_number')} ${getComponent('route')}`.trim()
-                ].filter(s => s),
-                city: getComponent('locality') || getComponent('administrative_area_level_2'),
+                    `${getComponent('street_number')} ${getComponent('route')}`.trim() || getComponent('sublocality') || getComponent('locality') || result.formatted_address?.split(',')[0]
+                ].filter(Boolean),
+                city: getComponent('locality') || getComponent('postal_town') || getComponent('administrative_area_level_2') || getComponent('sublocality'),
                 state: getComponent('administrative_area_level_1'),
                 postalCode: getComponent('postal_code'),
                 country: getComponent('country'),

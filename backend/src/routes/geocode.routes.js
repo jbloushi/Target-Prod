@@ -34,10 +34,10 @@ router.get('/autocomplete', async (req, res) => {
         const { query, sessionToken } = req.query;
         logger.info(`Autocomplete request: "${query}"`);
 
-        if (!query || query.length < 3) {
+        if (!query || query.trim().length < 2) {
             return res.status(400).json({
                 success: false,
-                error: 'Query must be at least 3 characters'
+                error: 'Query must be at least 2 characters'
             });
         }
 

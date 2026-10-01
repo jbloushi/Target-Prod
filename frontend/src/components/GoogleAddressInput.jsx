@@ -461,10 +461,8 @@ const GoogleAddressInput = ({
 
     const helperMessage = useMemo(() => {
         if (helperText) return helperText;
-        if (!apiKey) return 'Google address search is not configured. Enter the address details manually below.';
-        if (loadError) return 'Google address search could not load. Enter the address details manually below.';
         return undefined;
-    }, [apiKey, helperText, loadError]);
+    }, [helperText]);
 
     const handleInputChange = (e) => {
         const nextVal = e.target.value;
