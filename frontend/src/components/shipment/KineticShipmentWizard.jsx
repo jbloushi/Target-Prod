@@ -478,6 +478,35 @@ const AddressStep = ({
         )}
       </div>
 
+      {/* Prominent Validation Error Alert Box */}
+      {Object.keys(errors).filter(k => k.startsWith(pfx)).length > 0 && (
+        <div className="alert alert-error bg-error/10 border border-error/30 text-error rounded-xl p-3.5 flex items-start gap-3 animate-in fade-in duration-200">
+          <span className="material-symbols-outlined text-xl text-error shrink-0 mt-0.5">error</span>
+          <div className="space-y-1">
+            <h4 className="font-black text-xs">
+              {lang === 'ar' ? 'يرجى استكمال الحقول الإلزامية التالية للمتابعة إلى الخطوة التالية:' : 'Please complete the following required fields to proceed:'}
+            </h4>
+            <ul className="list-disc list-inside text-xs space-y-0.5 font-medium opacity-90">
+              {Object.keys(errors)
+                .filter(k => k.startsWith(pfx))
+                .map(k => (
+                  <li
+                    key={k}
+                    className="cursor-pointer hover:underline"
+                    onClick={() => {
+                      const el = document.querySelector(`[data-field-key="${k}"]`) || document.getElementById(`field-${k}`);
+                      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      el?.querySelector('input, select, textarea')?.focus();
+                    }}
+                  >
+                    {errors[k]}
+                  </li>
+                ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
       {/* Quick Location Presets */}
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs font-bold text-base-content/50">⚡ {lang === 'ar' ? 'عناوين سريعة:' : 'Quick Presets:'}</span>
@@ -526,7 +555,7 @@ const AddressStep = ({
         <DaisyInput
           dataFieldKey={`${pfx}_company`}
           id={`field-${pfx}_company`}
-          label={lang === 'ar' ? 'اسم الشركة / المؤسسة' : 'Company / Entity Name'}
+          label={lang === 'ar' ? 'اسم الشركة / المؤسسة (اختياري)' : 'Company / Entity Name (Optional)'}
           placeholder="e.g. Al-Bahar Logistics Corp."
           value={data.company}
           onChange={e => upd('company', e.target.value)}
@@ -551,7 +580,7 @@ const AddressStep = ({
         <DaisyInput
           dataFieldKey={`${pfx}_email`}
           id={`field-${pfx}_email`}
-          label={lang === 'ar' ? 'البريد الإلكتروني' : 'Email Address'}
+          label={lang === 'ar' ? 'البريد الإلكتروني (اختياري)' : 'Email Address (Optional)'}
           placeholder="contact@company.com"
           value={data.email}
           onChange={e => upd('email', e.target.value)}
@@ -563,12 +592,12 @@ const AddressStep = ({
         <DaisyInput
           dataFieldKey={`${pfx}_taxId`}
           id={`field-${pfx}_taxId`}
-          label={lang === 'ar' ? 'الرقم الضريبي / السجل التجاري / البطاقة المدنية' : 'Tax ID / VAT / Customs CR / Civil ID'}
-          placeholder="e.g. VAT-KW-9482710 or Commercial Registry No."
+          label={lang === 'ar' ? 'الرقم الضريبي / السجل التجاري / البطاقة المدنية (اختياري)' : 'Tax ID / VAT / Customs CR / Civil ID (Optional)'}
+          placeholder={lang === 'ar' ? 'اختياري: الرقم المدني أو الضريبي' : 'Optional: e.g. Civil ID, Tax ID or Commercial CR'}
           value={data.taxId}
           onChange={e => upd('taxId', e.target.value)}
           icon="badge"
-          helperText={lang === 'ar' ? 'مطلوب للتخليص الجمركي وإصدار الفواتير' : 'Required for GCC customs clearance & commercial invoice generation'}
+          helperText={lang === 'ar' ? 'اختياري للشحن الداخلي — يُستخدم للتخليص الجمركي للشحنات الدولية والتجارية' : 'Optional for domestic shipping — used for international commercial customs declarations'}
         />
       </div>
 
@@ -907,6 +936,35 @@ const PackageStep = ({ data, setData, templates, onSaveNewTemplate, errors = {},
           {lang === 'ar' ? 'حفظ كقالب مخصص' : 'Save as Template'}
         </button>
       </div>
+
+      {/* Prominent Validation Error Alert Box */}
+      {Object.keys(errors).filter(k => k.startsWith('pkg')).length > 0 && (
+        <div className="alert alert-error bg-error/10 border border-error/30 text-error rounded-xl p-3.5 flex items-start gap-3 animate-in fade-in duration-200">
+          <span className="material-symbols-outlined text-xl text-error shrink-0 mt-0.5">error</span>
+          <div className="space-y-1">
+            <h4 className="font-black text-xs">
+              {lang === 'ar' ? 'يرجى استكمال مواصفات الطرد للمتابعة:' : 'Please complete the package specifications to proceed:'}
+            </h4>
+            <ul className="list-disc list-inside text-xs space-y-0.5 font-medium opacity-90">
+              {Object.keys(errors)
+                .filter(k => k.startsWith('pkg'))
+                .map(k => (
+                  <li
+                    key={k}
+                    className="cursor-pointer hover:underline"
+                    onClick={() => {
+                      const el = document.querySelector(`[data-field-key="${k}"]`) || document.getElementById(`field-${k}`);
+                      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      el?.querySelector('input, select, textarea')?.focus();
+                    }}
+                  >
+                    {errors[k]}
+                  </li>
+                ))}
+            </ul>
+          </div>
+        </div>
+      )}
 
       {/* Quick Template Chips */}
       <div className="space-y-2">

@@ -62,9 +62,16 @@ export const isValidInternationalPhone = (phone) => {
  * Checks if country requires postal code.
  * Non-postal countries (KW, AE, QA, BH, OM, HK, IE) do not require postal code.
  */
-export const isPostalCodeRequired = (countryCode) => {
-  if (!countryCode) return true;
-  return !NON_POSTAL_COUNTRIES.includes(String(countryCode).trim().toUpperCase());
+export const isPostalCodeRequired = (countryCode, countryName) => {
+  const code = String(countryCode || '').trim().toUpperCase();
+  if (NON_POSTAL_COUNTRIES.includes(code)) return false;
+  if (countryName) {
+    const cLower = String(countryName).trim().toLowerCase();
+    if (COUNTRY_NAME_TO_CODE[cLower] && NON_POSTAL_COUNTRIES.includes(COUNTRY_NAME_TO_CODE[cLower])) {
+      return false;
+    }
+  }
+  return true;
 };
 
 const COUNTRY_NAME_TO_CODE = {
@@ -159,9 +166,9 @@ export const validateWizardStep = (step, state = {}, options = {}, maybeLang = '
       errors.sender_country = lang === 'ar' ? 'دولة الراسل مطلوبة' : 'Country is required';
     }
     const sCountryCode = (sender.countryCode || '').toUpperCase();
-    if (isPostalCodeRequired(sCountryCode)) {
+    if (isPostalCodeRequired(sCountryCode, sender.country)) {
       if (!sender.zip || !String(sender.zip).trim() || String(sender.zip).trim() === '00000') {
-        errors.sender_zip = lang === 'ar' ? 'الرمز البريدي مطلوب للدول البريدية' : 'Postal Code is required unless country is in non-postal list';
+        errors.sender_zip = lang === 'ar' ? 'الرمز البريدي مطلوب للدول البريدية' : 'Postal Code is required for this country';
       }
     }
   } else if (step === 2) {
@@ -183,9 +190,9 @@ export const validateWizardStep = (step, state = {}, options = {}, maybeLang = '
       errors.receiver_country = lang === 'ar' ? 'دولة المستلم مطلوبة' : 'Country is required';
     }
     const rCountryCode = (receiver.countryCode || '').toUpperCase();
-    if (isPostalCodeRequired(rCountryCode)) {
+    if (isPostalCodeRequired(rCountryCode, receiver.country)) {
       if (!receiver.zip || !String(receiver.zip).trim() || String(receiver.zip).trim() === '00000') {
-        errors.receiver_zip = lang === 'ar' ? 'الرمز البريدي مطلوب للدول البريدية' : 'Postal Code is required unless country is in non-postal list';
+        errors.receiver_zip = lang === 'ar' ? 'الرمز البريدي مطلوب للدول البريدية' : 'Postal Code is required for this country';
       }
     }
   } else if (step === 3) {
