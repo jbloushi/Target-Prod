@@ -287,12 +287,22 @@ const AdminUsersPage = () => {
 
             if (editingUser?.id) {
                 const userUpdatePayload = { ...payload };
-                const newPasswordToSet = userUpdatePayload.password;
-                delete userUpdatePayload.password;
+                const rawPassword = userUpdatePayload.password ? String(userUpdatePayload.password).trim() : '';
+                if (rawPassword.length > 0 && rawPassword.length < 8) {
+                    enqueueSnackbar(lang === 'ar' ? 'كلمة المرور يجب أن تكون 8 أحرف على الأقل' : 'Password must be at least 8 characters', { variant: 'warning' });
+                    setSaveLoading(false);
+                    return;
+                }
+
+                if (rawPassword.length >= 8) {
+                    userUpdatePayload.password = rawPassword;
+                } else {
+                    delete userUpdatePayload.password;
+                }
 
                 await userService.updateUser(editingUser.id, userUpdatePayload);
-                if (newPasswordToSet && newPasswordToSet.length >= 8) {
-                    await userService.resetPassword(editingUser.id, newPasswordToSet);
+                if (rawPassword.length >= 8) {
+                    await userService.resetPassword(editingUser.id, rawPassword);
                 }
                 if (!isOrgManager && ['staff', 'driver'].includes(payload.role)) {
                     await userService.replaceAccessScopes(editingUser.id, accessScopes);

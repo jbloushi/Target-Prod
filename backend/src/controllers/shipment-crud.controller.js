@@ -890,16 +890,58 @@ exports.getAllShipments = async (req, res) => {
             where.paid = isPaid;
         }
 
-        // 7. Search Query (Tracking, Customer, City, Country)
+        // 7. Search Query (Tracking, Mobile/Phone, Recipient, Sender, City, Country)
         if (q) {
-            where.OR = [
-                { trackingNumber: { contains: q } },
-                { customer: { path: '$.name', string_contains: q } },
-                { destination: { path: '$.city', string_contains: q } },
-                { destination: { path: '$.countryCode', string_contains: q } },
-                { origin: { path: '$.city', string_contains: q } },
-                { origin: { path: '$.countryCode', string_contains: q } }
+            const queryStr = String(q).trim();
+            const cleanDigits = queryStr.replace(/[^\d]/g, '');
+            const orConditions = [
+                { trackingNumber: { contains: queryStr } },
+                { dhlTrackingNumber: { contains: queryStr } },
+                { carrierShipmentId: { contains: queryStr } },
+                { customer: { path: '$.name', string_contains: queryStr } },
+                { customer: { path: '$.phone', string_contains: queryStr } },
+                { customer: { path: '$.mobile', string_contains: queryStr } },
+                { customer: { path: '$.email', string_contains: queryStr } },
+                { destination: { path: '$.name', string_contains: queryStr } },
+                { destination: { path: '$.contactPerson', string_contains: queryStr } },
+                { destination: { path: '$.company', string_contains: queryStr } },
+                { destination: { path: '$.phone', string_contains: queryStr } },
+                { destination: { path: '$.mobile', string_contains: queryStr } },
+                { destination: { path: '$.contactPhone', string_contains: queryStr } },
+                { destination: { path: '$.email', string_contains: queryStr } },
+                { destination: { path: '$.city', string_contains: queryStr } },
+                { destination: { path: '$.countryCode', string_contains: queryStr } },
+                { destination: { path: '$.country', string_contains: queryStr } },
+                { destination: { path: '$.addressLine1', string_contains: queryStr } },
+                { destination: { path: '$.postalCode', string_contains: queryStr } },
+                { origin: { path: '$.name', string_contains: queryStr } },
+                { origin: { path: '$.contactPerson', string_contains: queryStr } },
+                { origin: { path: '$.company', string_contains: queryStr } },
+                { origin: { path: '$.phone', string_contains: queryStr } },
+                { origin: { path: '$.mobile', string_contains: queryStr } },
+                { origin: { path: '$.contactPhone', string_contains: queryStr } },
+                { origin: { path: '$.email', string_contains: queryStr } },
+                { origin: { path: '$.city', string_contains: queryStr } },
+                { origin: { path: '$.countryCode', string_contains: queryStr } },
+                { origin: { path: '$.country', string_contains: queryStr } },
+                { origin: { path: '$.addressLine1', string_contains: queryStr } },
+                { origin: { path: '$.postalCode', string_contains: queryStr } }
             ];
+
+            if (cleanDigits.length >= 4 && cleanDigits !== queryStr) {
+                orConditions.push(
+                    { customer: { path: '$.phone', string_contains: cleanDigits } },
+                    { customer: { path: '$.mobile', string_contains: cleanDigits } },
+                    { destination: { path: '$.phone', string_contains: cleanDigits } },
+                    { destination: { path: '$.mobile', string_contains: cleanDigits } },
+                    { destination: { path: '$.contactPhone', string_contains: cleanDigits } },
+                    { origin: { path: '$.phone', string_contains: cleanDigits } },
+                    { origin: { path: '$.mobile', string_contains: cleanDigits } },
+                    { origin: { path: '$.contactPhone', string_contains: cleanDigits } }
+                );
+            }
+
+            where.OR = orConditions;
         }
 
         scopeShipmentWhere(req, where);

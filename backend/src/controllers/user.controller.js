@@ -523,6 +523,9 @@ exports.updateUser = async (req, res) => {
         if (email !== undefined) updateData.email = email.toLowerCase();
         if (phone !== undefined) updateData.phone = phone;
         if (role !== undefined) updateData.role = role;
+        if (req.body.password && String(req.body.password).trim().length >= 8) {
+            updateData.password = await hashPassword(String(req.body.password).trim());
+        }
         const existingUser = await prisma.user.findUnique({ where: { id: userId }, include: { organization: true } });
         if (!existingUser) throw new Error("User not found");
         if (!assertOrgUserManagementAllowed(req, res, { targetOrgId, targetRole: role, existingUser })) return;

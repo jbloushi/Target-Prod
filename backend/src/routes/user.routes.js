@@ -22,9 +22,9 @@ router.get('/:id/access-scopes', authorize('MANAGE_USERS'), userController.getAc
 router.put('/:id/access-scopes', authorize('MANAGE_USERS'), userController.replaceAccessScopes);
 router.patch('/:id', authorizeAny('MANAGE_USERS', 'MANAGE_ORG_USERS'), userController.updateUser);
 router.delete('/:id', authorizeAny('MANAGE_USERS', 'MANAGE_ORG_USERS'), userController.deleteUser);
-router.patch('/:id/password', authController.restrictTo('admin', 'manager', 'accounting'), authController.resetUserPassword);
+router.patch('/:id/password', authorizeAny('MANAGE_USERS', 'MANAGE_ORG_USERS'), authController.resetUserPassword);
 
-// Password reset by admin, manager, or accounting
-router.post('/:id/reset-password', authController.restrictTo('admin', 'manager', 'accounting'), authController.resetUserPassword);
+// Password reset by admin, manager, accounting, or ops staff
+router.post('/:id/reset-password', authorizeAny('MANAGE_USERS', 'MANAGE_ORG_USERS'), authController.resetUserPassword);
 
 module.exports = router;
