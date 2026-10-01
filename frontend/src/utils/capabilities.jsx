@@ -95,6 +95,14 @@ const ROLE_CAPABILITIES = Object.freeze({
         CAPABILITIES.VIEW_FLEET,
     ],
     staff: [
+        CAPABILITIES.MANAGE_USERS,
+        CAPABILITIES.MANAGE_ORGS,
+        CAPABILITIES.MANAGE_PRICING,
+        CAPABILITIES.MANAGE_CARRIERS,
+        CAPABILITIES.VIEW_COST_DATA,
+        CAPABILITIES.VIEW_FINANCE,
+        CAPABILITIES.VIEW_INVOICES,
+        CAPABILITIES.VIEW_ALL_SHIPMENTS,
         CAPABILITIES.APPROVE_SHIPMENTS,
         CAPABILITIES.BOOK_CARRIERS,
         CAPABILITIES.VIEW_DOCUMENTS,
@@ -131,6 +139,27 @@ const ROLE_CAPABILITIES = Object.freeze({
         CAPABILITIES.VIEW_INVOICES,
     ],
 });
+
+export const PLATFORM_ROLES = Object.freeze(['admin', 'accounting', 'manager', 'staff']);
+export const ORG_ROLES = Object.freeze(['org_manager', 'org_agent', 'client']);
+
+/**
+ * Check if a role is a platform-level role (can see all orgs).
+ * @param {string} role
+ * @returns {boolean}
+ */
+export function isPlatformRole(role) {
+    return PLATFORM_ROLES.includes(role);
+}
+
+/**
+ * Check if a role is org-scoped.
+ * @param {string} role
+ * @returns {boolean}
+ */
+export function isOrgRole(role) {
+    return ORG_ROLES.includes(role);
+}
 
 /**
  * Get capabilities for a role

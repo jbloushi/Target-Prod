@@ -116,6 +116,14 @@ const ROLE_CAPABILITIES = Object.freeze({
     ],
 
     staff: [
+        CAPABILITIES.MANAGE_USERS,
+        CAPABILITIES.MANAGE_ORGS,
+        CAPABILITIES.MANAGE_PRICING,
+        CAPABILITIES.MANAGE_CARRIERS,
+        CAPABILITIES.VIEW_COST_DATA,
+        CAPABILITIES.VIEW_FINANCE,
+        CAPABILITIES.VIEW_INVOICES,
+        CAPABILITIES.VIEW_ALL_SHIPMENTS,
         CAPABILITIES.APPROVE_SHIPMENTS,
         CAPABILITIES.BOOK_CARRIERS,
         CAPABILITIES.VIEW_DOCUMENTS,
@@ -160,7 +168,7 @@ const ROLE_CAPABILITIES = Object.freeze({
 /**
  * Roles that can see data across all organizations (platform-level visibility).
  */
-const PLATFORM_ROLES = Object.freeze(['admin', 'accounting', 'manager']);
+const PLATFORM_ROLES = Object.freeze(['admin', 'accounting', 'manager', 'staff']);
 
 /**
  * Roles scoped to their own organization's data.

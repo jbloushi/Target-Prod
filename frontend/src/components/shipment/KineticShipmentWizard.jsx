@@ -2983,18 +2983,19 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
           {/* Admin / Staff / Manager "On Behalf Of" Client Scope */}
           {(isAdmin || isStaff || isManager || isAccounting) && clients.length > 0 && (
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-base-content/60">
-                {lang === 'ar' ? 'حساب العميل:' : 'On Behalf Of:'}
+              <span className="text-xs font-bold text-base-content/70 flex items-center gap-1">
+                <span className="material-symbols-outlined text-xs text-primary">domain</span>
+                {lang === 'ar' ? 'الجهة / المنظمة:' : 'Acting On Behalf Of:'}
               </span>
               <select
                 value={selectedClientId}
                 onChange={e => handleClientChange(e.target.value)}
-                className="select select-bordered select-xs w-44 bg-base-100 text-xs font-semibold focus:select-primary"
+                className="select select-bordered select-xs w-52 sm:w-60 bg-base-100 text-xs font-bold text-primary focus:select-primary"
               >
-                <option value="">{user?.name || 'Direct Account'}</option>
+                <option value="">{user?.name ? `${user.name} (Direct / Internal)` : 'Direct Account'}</option>
                 {clients.map(c => (
                   <option key={c.id} value={c.id}>
-                    {c.organization?.name || c.name}
+                    {c.organization?.name ? `${c.organization.name} — ${c.name}` : c.name}
                   </option>
                 ))}
               </select>

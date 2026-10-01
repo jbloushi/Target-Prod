@@ -1,7 +1,7 @@
 import React, { createContext, useState, useContext, useEffect, useCallback, useMemo } from 'react';
 import api from '../services/api';
 
-import { getCapabilitiesForRole } from '../utils/capabilities';
+import { getCapabilitiesForRole, isPlatformRole, isOrgRole } from '../utils/capabilities';
 
 const AuthContext = createContext();
 
@@ -189,6 +189,9 @@ export const AuthProvider = ({ children }) => {
             logout,
             refreshUser: loadUser,
             isAuthenticated: !!user,
+            isPlatform: isPlatformRole(user?.role),
+            isPlatformRole: isPlatformRole(user?.role),
+            isOrgRole: isOrgRole(user?.role),
             isStaff: ['staff', 'admin', 'manager', 'accounting', 'driver'].includes(user?.role),
             isAdmin: user?.role === 'admin',
             isManager: user?.role === 'manager',
