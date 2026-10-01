@@ -925,7 +925,9 @@ exports.getAllShipments = async (req, res) => {
                 { origin: { path: '$.countryCode', string_contains: queryStr } },
                 { origin: { path: '$.country', string_contains: queryStr } },
                 { origin: { path: '$.addressLine1', string_contains: queryStr } },
-                { origin: { path: '$.postalCode', string_contains: queryStr } }
+                { origin: { path: '$.postalCode', string_contains: queryStr } },
+                { user: { phone: { contains: queryStr } } },
+                { user: { name: { contains: queryStr } } }
             ];
 
             if (cleanDigits.length >= 4 && cleanDigits !== queryStr) {
@@ -937,7 +939,8 @@ exports.getAllShipments = async (req, res) => {
                     { destination: { path: '$.contactPhone', string_contains: cleanDigits } },
                     { origin: { path: '$.phone', string_contains: cleanDigits } },
                     { origin: { path: '$.mobile', string_contains: cleanDigits } },
-                    { origin: { path: '$.contactPhone', string_contains: cleanDigits } }
+                    { origin: { path: '$.contactPhone', string_contains: cleanDigits } },
+                    { user: { phone: { contains: cleanDigits } } }
                 );
             }
 
