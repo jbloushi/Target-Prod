@@ -658,11 +658,11 @@ export const ShipmentList = ({
                                     {t('action_approve_edit', 'Approve / Edit')}
                                   </button>
                                 </li>
-                                {user?.role === 'admin' && (
+                                {['admin', 'manager', 'superadmin', 'accounting'].includes(user?.role) && (
                                   <>
                                     <div className="divider my-1"></div>
                                     <li>
-                                      <button onClick={() => handleDelete(s)} className="text-error">
+                                      <button onClick={() => handleDelete(s)} className="text-error font-bold">
                                         <span className="material-symbols-outlined text-base">delete</span>
                                         {t('action_delete', 'Delete')}
                                       </button>

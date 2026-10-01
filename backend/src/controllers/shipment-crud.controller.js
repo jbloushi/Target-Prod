@@ -1048,13 +1048,16 @@ exports.deleteShipment = async (req, res) => {
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
         // Deletion is restricted to Admin, Owner (manager), and Accounting
-        const allowedRoles = ['admin', 'manager', 'accounting'];
-        if (!allowedRoles.includes(user.role)) {
-            return res.status(403).json({ success: false, error: 'Only administrators, owners, and accounting can delete shipments' });
+        const allowedRoles = ['admin', 'manager', 'accounting', 'superadmin'];
+        const normalizedRole = String(user.role || '').toLowerCase();
+        const isSuperAdmin = ['admin', 'manager', 'superadmin'].includes(normalizedRole);
+
+        if (!allowedRoles.includes(normalizedRole)) {
+            return res.status(403).json({ success: false, error: 'Only administrators, managers, and accounting can delete shipments' });
         }
 
-        // Deletion is blocked if shipment is already connected/booked with an external carrier
-        if (hasCarrierBooking(shipment)) {
+        // Non-superadmin roles cannot delete if shipment is already connected/booked with an external carrier
+        if (!isSuperAdmin && hasCarrierBooking(shipment)) {
             return res.status(400).json({
                 success: false,
                 code: 'SHIPMENT_DELETE_NOT_ALLOWED',
@@ -1064,14 +1067,43 @@ exports.deleteShipment = async (req, res) => {
             });
         }
 
-        // Clean up all related finance, logs, and dependencies
+        // Clean up all related finance, logs, whatsapp, and dependencies completely
         await prisma.$transaction([
-            prisma.shipmentNotificationLog.deleteMany({ where: { shipmentId: shipment.id } }),
+            prisma.shipmentNotificationLog.deleteMany({
+                where: {
+                    OR: [
+                        { shipmentId: shipment.id },
+                        { trackingNumber: shipment.trackingNumber }
+                    ]
+                }
+            }),
             prisma.paymentAllocation.deleteMany({ where: { shipmentId: shipment.id } }),
             prisma.pickupRequest.deleteMany({ where: { shipmentId: shipment.id } }),
-            prisma.invoiceLine.deleteMany({ where: { shipmentId: shipment.id } }),
-            prisma.billLine.deleteMany({ where: { shipmentId: shipment.id } }),
+            prisma.invoiceLine.deleteMany({
+                where: {
+                    OR: [
+                        { shipmentId: shipment.id },
+                        { trackingNumber: shipment.trackingNumber }
+                    ]
+                }
+            }),
+            prisma.billLine.deleteMany({
+                where: {
+                    OR: [
+                        { shipmentId: shipment.id },
+                        { trackingNumber: shipment.trackingNumber }
+                    ]
+                }
+            }),
             prisma.journalEntryLine.deleteMany({ where: { shipmentId: shipment.id } }),
+            prisma.journalEntry.deleteMany({
+                where: {
+                    OR: [
+                        { sourceType: 'SHIPMENT', sourceId: shipment.id },
+                        { reference: shipment.trackingNumber }
+                    ]
+                }
+            }),
             prisma.organizationLedger.deleteMany({
                 where: {
                     OR: [
@@ -1081,12 +1113,28 @@ exports.deleteShipment = async (req, res) => {
                 }
             }),
             prisma.carrierLog.deleteMany({ where: { trackingNumber: shipment.trackingNumber } }),
-            prisma.shipmentAuditLog.deleteMany({ where: { shipmentId: shipment.id } }),
+            prisma.shipmentAuditLog.deleteMany({
+                where: {
+                    OR: [
+                        { shipmentId: shipment.id },
+                        { trackingNumber: shipment.trackingNumber }
+                    ]
+                }
+            }),
+            prisma.systemAuditLog.deleteMany({
+                where: {
+                    resource: 'Shipment',
+                    OR: [
+                        { resourceId: shipment.id },
+                        { resourceId: shipment.trackingNumber }
+                    ]
+                }
+            }),
             prisma.shipment.delete({ where: { id: shipment.id } })
         ]);
 
-        logger.info(`Shipment ${trackingNumber} and all related finance records deleted by superadmin ${user.email || user.id}`);
-        return res.status(200).json({ success: true, message: 'Shipment and all related financial records deleted successfully' });
+        logger.info(`Shipment ${trackingNumber} and all related logs/financial records deleted by ${user.email || user.id} (role: ${user.role})`);
+        return res.status(200).json({ success: true, message: 'Shipment and all associated logs, WhatsApp records, and financials deleted successfully' });
     } catch (error) {
         logger.error('Error deleting shipment:', error);
         res.status(500).json({ success: false, error: 'Failed to delete shipment' });

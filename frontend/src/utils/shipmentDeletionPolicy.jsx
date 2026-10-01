@@ -15,13 +15,17 @@ export const hasCarrierBooking = (shipment) => {
   );
 };
 
-const CAN_DELETE_ROLES = ['admin', 'manager', 'accounting'];
+const CAN_DELETE_ROLES = ['admin', 'manager', 'accounting', 'superadmin'];
 
 export const canDeleteShipmentStatus = (status, shipment = null, userRole = null) => {
   const normalizedRole = String(userRole || '').toLowerCase();
-  if (!CAN_DELETE_ROLES.includes(normalizedRole)) return false;
-  if (shipment && hasCarrierBooking(shipment)) return false;
-  return true;
+  if (['admin', 'manager', 'superadmin'].includes(normalizedRole)) {
+    return true; // Superadmin & Admin have full master deletion authority
+  }
+  if (['accounting'].includes(normalizedRole)) {
+    return !shipment || !hasCarrierBooking(shipment);
+  }
+  return false;
 };
 
 export const formatShipmentStatus = (status) => {

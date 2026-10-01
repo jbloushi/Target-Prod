@@ -1101,13 +1101,13 @@ const ShipmentDetailsPage = () => {
                             </button>
                         )}
 
-                        {/* Delete Consignment (Admin, Owner, Accounting - only before carrier is connected) */}
-                        {['admin', 'manager', 'accounting'].includes(user?.role) && !hasCarrierBooking(shipment) && (
+                        {/* Delete Consignment (Superadmin/Admin always, Accounting pre-carrier) */}
+                        {canDeleteShipmentStatus(shipment?.status, shipment, user?.role) && (
                             <button
                                 type="button"
                                 onClick={handleDelete}
                                 className="btn btn-error btn-outline btn-sm rounded-xl font-bold gap-1 text-xs"
-                                title={isRTL ? 'حذف الشحنة وسجلاتها المالية' : 'Delete shipment and related financial records'}
+                                title={isRTL ? 'حذف الشحنة وجميع سجلاتها المالية والإشعارات' : 'Delete shipment and all related financial/notification records'}
                             >
                                 <span className="material-symbols-outlined text-xs">delete</span>
                                 {isRTL ? 'حذف' : 'Delete'}

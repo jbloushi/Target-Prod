@@ -55,18 +55,23 @@ const hasCarrierBooking = (shipment) => {
     );
 };
 
-const CAN_DELETE_ROLES = ['admin', 'manager', 'accounting'];
+const CAN_DELETE_ROLES = ['admin', 'manager', 'accounting', 'superadmin'];
 
 /**
  * Validates if a shipment can be deleted.
- * Admin, Owner (Manager), and Accounting can delete as long as no carrier is connected.
+ * Superadmin (Admin & Manager) can delete ANY shipment (including carrier-booked shipments).
+ * Accounting can delete pre-carrier shipments.
  */
 const canDeleteShipment = (shipment, userRole = null) => {
     if (!shipment) return false;
     const normalizedRole = String(userRole || '').toLowerCase();
-    if (!CAN_DELETE_ROLES.includes(normalizedRole)) return false;
-    if (hasCarrierBooking(shipment)) return false;
-    return true;
+    if (['admin', 'manager', 'superadmin'].includes(normalizedRole)) {
+        return true;
+    }
+    if (['accounting'].includes(normalizedRole)) {
+        return !hasCarrierBooking(shipment);
+    }
+    return false;
 };
 
 const buildShipmentDeleteBlockedMessage = (status, hasCarrier = false) => {
