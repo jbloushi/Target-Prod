@@ -14,7 +14,7 @@ export const getApiBaseUrl = () => (
 export const getGoogleMapsApiKey = () => (
   getClientEnv('VITE_GOOGLE_MAPS_API_KEY')
   || getClientEnv('REACT_APP_GOOGLE_MAPS_API_KEY')
-  || ''
+  || 'AIzaSyA_ZT_vtQaASzRUy8OWIuvfqDQzBY_5NCY'
 );
 
 export const getMapboxToken = () => (

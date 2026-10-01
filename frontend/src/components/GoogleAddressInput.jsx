@@ -4,6 +4,8 @@ import { useJsApiLoader } from '@react-google-maps/api';
 import { getGoogleMapsApiKey } from '../utils/env';
 import { countries } from '../utils/countries';
 
+import api from '../services/api';
+
 const libraries = ['places'];
 const INPUT_DEBOUNCE_MS = 300;
 
@@ -78,12 +80,6 @@ const GoogleAddressInput = ({
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const containerRef = useRef(null);
 
-    useEffect(() => {
-        if (!apiKey) {
-            console.warn('Google Maps API key missing. Set VITE_GOOGLE_MAPS_API_KEY to enable address search.');
-        }
-    }, [apiKey]);
-
     const { isLoaded, loadError } = useJsApiLoader({
         id: 'google-map-script',
         googleMapsApiKey: apiKey,
@@ -119,7 +115,7 @@ const GoogleAddressInput = ({
         let cancelled = false;
 
         const fetchSuggestions = async () => {
-            if (!apiKey || !isLoaded || !debouncedInput || debouncedInput.length < 2) {
+            if (!debouncedInput || debouncedInput.length < 2) {
                 setOptions([]);
                 return;
             }
@@ -127,58 +123,101 @@ const GoogleAddressInput = ({
             try {
                 setLoadingSuggestions(true);
 
-                if (!window.google?.maps) {
-                    setOptions([]);
-                    return;
-                }
+                // Strategy A: Google Maps Client SDK Autocomplete
+                if (window.google?.maps?.places?.AutocompleteService) {
+                    try {
+                        const service = new window.google.maps.places.AutocompleteService();
+                        const predictions = await new Promise((resolve) => {
+                            service.getPlacePredictions({ input: debouncedInput }, (res, status) => {
+                                if (status === window.google.maps.places.PlacesServiceStatus.OK && Array.isArray(res)) {
+                                    resolve(res);
+                                } else {
+                                    resolve([]);
+                                }
+                            });
+                        });
 
-                const placesLib = await window.google.maps.importLibrary('places');
-                const AutocompleteSuggestion = placesLib?.AutocompleteSuggestion;
-
-                if (AutocompleteSuggestion?.fetchAutocompleteSuggestions) {
-                    const response = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
-                        input: debouncedInput
-                    });
-
-                    const nextOptions = (response?.suggestions || [])
-                        .map((entry, index) => {
-                            const prediction = entry?.placePrediction;
-                            const text = prediction?.text?.text || '';
-                            const secondary = prediction?.structuredFormat?.secondaryText?.text || '';
-                            const placeId = prediction?.placeId || `${text}-${index}`;
-
-                            if (!text) return null;
-
-                            return {
-                                placeId,
-                                description: text,
-                                mainText: text,
-                                secondaryText: secondary,
-                                prediction
-                            };
-                        })
-                        .filter(Boolean);
-
-                    if (!cancelled) {
-                        setOptions(nextOptions);
-                        setIsDropdownOpen(nextOptions.length > 0);
+                        if (predictions && predictions.length > 0) {
+                            const nextOptions = predictions.map((p) => ({
+                                placeId: p.place_id,
+                                description: p.description,
+                                mainText: p.structured_formatting?.main_text || p.description,
+                                secondaryText: p.structured_formatting?.secondary_text || ''
+                            }));
+                            if (!cancelled) {
+                                setOptions(nextOptions);
+                                setIsDropdownOpen(nextOptions.length > 0);
+                            }
+                            return;
+                        }
+                    } catch (clientPlacesErr) {
+                        console.debug('Client AutocompleteService error, trying backend fallback:', clientPlacesErr.message);
                     }
-                    return;
                 }
 
-                const service = new window.google.maps.places.AutocompleteService();
-                service.getPlacePredictions({ input: debouncedInput }, (predictions = []) => {
-                    if (cancelled) return;
+                // Strategy B: Modern Places Library importLibrary
+                if (window.google?.maps?.importLibrary) {
+                    try {
+                        const placesLib = await window.google.maps.importLibrary('places');
+                        const AutocompleteSuggestion = placesLib?.AutocompleteSuggestion;
+                        if (AutocompleteSuggestion?.fetchAutocompleteSuggestions) {
+                            const response = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
+                                input: debouncedInput
+                            });
+                            const nextOptions = (response?.suggestions || [])
+                                .map((entry, index) => {
+                                    const prediction = entry?.placePrediction;
+                                    const text = prediction?.text?.text || prediction?.mainText?.text || '';
+                                    const secondary = prediction?.structuredFormat?.secondaryText?.text || '';
+                                    const placeId = prediction?.placeId || `${text}-${index}`;
+                                    if (!text) return null;
+                                    return {
+                                        placeId,
+                                        description: text,
+                                        mainText: text,
+                                        secondaryText: secondary,
+                                        prediction
+                                    };
+                                })
+                                .filter(Boolean);
 
-                    const nextOptions = (predictions || []).map((prediction) => ({
-                        placeId: prediction.place_id,
-                        description: prediction.description,
-                        mainText: prediction.structured_formatting?.main_text || prediction.description,
-                        secondaryText: prediction.structured_formatting?.secondary_text || ''
-                    }));
-                    setOptions(nextOptions);
-                    setIsDropdownOpen(nextOptions.length > 0);
-                });
+                            if (nextOptions.length > 0 && !cancelled) {
+                                setOptions(nextOptions);
+                                setIsDropdownOpen(true);
+                                return;
+                            }
+                        }
+                    } catch (newPlacesErr) {
+                        console.debug('Modern Places library fetch failed:', newPlacesErr.message);
+                    }
+                }
+
+                // Strategy C: Backend Proxy Autocomplete Fallback (/api/geocode/autocomplete)
+                try {
+                    const res = await api.get('/geocode/autocomplete', {
+                        params: { query: debouncedInput }
+                    });
+                    const rawList = res.data?.data || res.data || [];
+                    if (Array.isArray(rawList) && rawList.length > 0) {
+                        const nextOptions = rawList.map((item) => ({
+                            placeId: item.placeId || item.place_id,
+                            description: item.description || item.formattedAddress || item.mainText,
+                            mainText: item.mainText || item.description || item.city,
+                            secondaryText: item.secondaryText || item.country || ''
+                        }));
+                        if (!cancelled) {
+                            setOptions(nextOptions);
+                            setIsDropdownOpen(nextOptions.length > 0);
+                        }
+                        return;
+                    }
+                } catch (backendErr) {
+                    console.debug('Backend geocode autocomplete fallback failed:', backendErr.message);
+                }
+
+                if (!cancelled) {
+                    setOptions([]);
+                }
             } catch (suggestionError) {
                 if (!cancelled) {
                     console.error('Address suggestions failed:', suggestionError);
@@ -208,31 +247,45 @@ const GoogleAddressInput = ({
         try {
             let addressData = null;
 
-            // Strategy 1: Modern Places API fetchFields
-            if (option.prediction?.toPlace) {
+            // Strategy 1: Google PlacesService getDetails (Client-Side)
+            if (option.placeId && window.google?.maps?.places?.PlacesService) {
                 try {
-                    const place = option.prediction.toPlace();
-                    await place.fetchFields({
-                        fields: ['addressComponents', 'formattedAddress', 'location']
+                    const dummyNode = document.createElement('div');
+                    const placesService = new window.google.maps.places.PlacesService(dummyNode);
+                    const placeDetail = await new Promise((resolve) => {
+                        placesService.getDetails(
+                            {
+                                placeId: option.placeId,
+                                fields: ['address_components', 'formatted_address', 'geometry', 'name']
+                            },
+                            (result, status) => {
+                                if (status === window.google.maps.places.PlacesServiceStatus.OK && result) {
+                                    resolve(result);
+                                } else {
+                                    resolve(null);
+                                }
+                            }
+                        );
                     });
 
-                    const mapped = mapPlaceComponentsToAddress(place.addressComponents || []);
-                    const lat = place.location?.lat();
-                    const lng = place.location?.lng();
-
-                    addressData = {
-                        formattedAddress: place.formattedAddress || description,
-                        ...mapped,
-                        latitude: typeof lat === 'number' ? lat : undefined,
-                        longitude: typeof lng === 'number' ? lng : undefined,
-                        validationStatus: 'CONFIRMED'
-                    };
-                } catch (placeErr) {
-                    console.debug('Modern place fetch failed, trying Geocoder fallback:', placeErr.message);
+                    if (placeDetail) {
+                        const mapped = mapPlaceComponentsToAddress(placeDetail.address_components || []);
+                        const lat = placeDetail.geometry?.location?.lat?.();
+                        const lng = placeDetail.geometry?.location?.lng?.();
+                        addressData = {
+                            formattedAddress: placeDetail.formatted_address || description,
+                            ...mapped,
+                            latitude: typeof lat === 'number' ? lat : undefined,
+                            longitude: typeof lng === 'number' ? lng : undefined,
+                            validationStatus: 'CONFIRMED'
+                        };
+                    }
+                } catch (placesServiceErr) {
+                    console.debug('PlacesService.getDetails failed:', placesServiceErr.message);
                 }
             }
 
-            // Strategy 2: Google Maps Geocoder by placeId or address
+            // Strategy 2: Google Maps Geocoder by placeId or address (Client-Side)
             if (!addressData && window.google?.maps?.Geocoder) {
                 try {
                     const geocoder = new window.google.maps.Geocoder();
@@ -252,8 +305,8 @@ const GoogleAddressInput = ({
 
                     if (geoResult) {
                         const mapped = mapPlaceComponentsToAddress(geoResult.address_components || []);
-                        const lat = geoResult.geometry?.location?.lat();
-                        const lng = geoResult.geometry?.location?.lng();
+                        const lat = geoResult.geometry?.location?.lat?.() ?? (typeof geoResult.geometry?.location?.lat === 'number' ? geoResult.geometry.location.lat : undefined);
+                        const lng = geoResult.geometry?.location?.lng?.() ?? (typeof geoResult.geometry?.location?.lng === 'number' ? geoResult.geometry.location.lng : undefined);
                         addressData = {
                             formattedAddress: geoResult.formatted_address || description,
                             ...mapped,
@@ -263,11 +316,37 @@ const GoogleAddressInput = ({
                         };
                     }
                 } catch (geoErr) {
-                    console.debug('Geocoder by address failed:', geoErr.message);
+                    console.debug('Geocoder fallback failed:', geoErr.message);
                 }
             }
 
-            // Strategy 3: use-places-autocomplete getGeocode
+            // Strategy 3: Backend Details API (/api/geocode/details/:placeId)
+            if (!addressData && option.placeId && !option.placeId.startsWith('mock_')) {
+                try {
+                    const res = await api.get(`/geocode/details/${encodeURIComponent(option.placeId)}`);
+                    const backendData = res.data?.data || res.data;
+                    if (backendData && (backendData.formattedAddress || backendData.city)) {
+                        const countryObj = countries.find(c => c.code === backendData.countryCode) || countries.find(c => c.name.toLowerCase() === (backendData.country || '').toLowerCase());
+                        addressData = {
+                            formattedAddress: backendData.formattedAddress || description,
+                            city: backendData.city || '',
+                            country: countryObj?.name || backendData.country || '',
+                            countryCode: countryObj?.code || backendData.countryCode || '',
+                            postalCode: backendData.postalCode || '',
+                            state: backendData.state || '',
+                            streetLines: backendData.streetLines || [backendData.streetNumber ? `${backendData.streetNumber} ${backendData.route || ''}`.trim() : description],
+                            latitude: backendData.latitude,
+                            longitude: backendData.longitude,
+                            phoneCountryCode: countryObj?.dialCode || '+965',
+                            validationStatus: 'CONFIRMED'
+                        };
+                    }
+                } catch (backendDetailErr) {
+                    console.debug('Backend details fallback failed:', backendDetailErr.message);
+                }
+            }
+
+            // Strategy 4: use-places-autocomplete getGeocode
             if (!addressData && description) {
                 try {
                     const results = await getGeocode({ address: description });
