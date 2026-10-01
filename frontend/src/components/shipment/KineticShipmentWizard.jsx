@@ -261,7 +261,7 @@ const DaisyInput = ({
   className = '',
   ...rest
 }) => {
-  const isError = Boolean(error || helperText);
+  const isError = Boolean(error);
   const key = dataFieldKey || id;
   return (
     <div
@@ -270,23 +270,38 @@ const DaisyInput = ({
       className={`form-control ${half ? 'w-full md:w-[calc(50%-0.375rem)]' : 'w-full'} ${className}`}
       {...rest}
     >
-      {(label || helperText) && (
+      {(label || helperText || error) && (
         <div className="flex justify-between items-baseline mb-1 gap-2">
           {label && (
-            <label className="text-xs font-bold text-base-content/80 select-none">
-              {label} {required && <span className="text-error font-black">*</span>}
+            <label className="text-xs font-bold text-base-content/85 flex items-center gap-1.5 select-none">
+              <span>{label}</span>
+              {required ? (
+                <span className="inline-flex items-center px-1.5 py-0.5 bg-primary/10 text-primary text-[10px] font-black rounded-md tracking-wide">
+                  *
+                </span>
+              ) : (
+                <span className="text-[10px] font-normal text-base-content/40">
+                  (Optional)
+                </span>
+              )}
             </label>
           )}
-          {helperText && (
-            <span className={`text-[11px] font-semibold text-right ${isError ? 'text-error' : 'text-base-content/60'}`}>
+          {isError ? (
+            <span className="text-[11px] font-semibold text-right text-error animate-in fade-in">
+              {typeof error === 'string' ? error : helperText}
+            </span>
+          ) : helperText ? (
+            <span className="text-[11px] font-medium text-right text-base-content/50">
               {helperText}
             </span>
-          )}
+          ) : null}
         </div>
       )}
       <div className="relative flex items-center">
         {icon && (
-          <span className="material-symbols-outlined absolute start-3 text-base-content/40 text-lg pointer-events-none select-none">
+          <span className={`material-symbols-outlined absolute start-3 text-lg pointer-events-none select-none transition-colors ${
+            isError ? 'text-error' : required && value ? 'text-primary' : 'text-base-content/40'
+          }`}>
             {icon}
           </span>
         )}
@@ -298,8 +313,19 @@ const DaisyInput = ({
           disabled={disabled}
           className={`input input-bordered input-sm w-full bg-base-100 text-sm font-medium transition-all ${
             icon ? 'ps-9' : ''
-          } ${isError ? 'input-error border-error focus:border-error' : 'focus:input-primary'}`}
+          } ${
+            isError
+              ? 'input-error border-error focus:border-error bg-error/5'
+              : required && !value
+              ? 'border-base-300 hover:border-primary/50 focus:border-primary'
+              : 'focus:input-primary'
+          }`}
         />
+        {required && value && !isError && (
+          <span className="material-symbols-outlined absolute end-2.5 text-success text-base pointer-events-none select-none">
+            check_circle
+          </span>
+        )}
       </div>
     </div>
   );
@@ -321,7 +347,7 @@ const DaisyPhoneInput = ({
   className = '',
   ...rest
 }) => {
-  const isError = Boolean(error || helperText);
+  const isError = Boolean(error);
   const key = dataFieldKey || id;
   return (
     <div
@@ -330,18 +356,31 @@ const DaisyPhoneInput = ({
       className={`form-control ${half ? 'w-full md:w-[calc(50%-0.375rem)]' : 'w-full'} ${className}`}
       {...rest}
     >
-      {(label || helperText) && (
+      {(label || helperText || error) && (
         <div className="flex justify-between items-baseline mb-1 gap-2">
           {label && (
-            <label className="text-xs font-bold text-base-content/80 select-none">
-              {label} {required && <span className="text-error font-black">*</span>}
+            <label className="text-xs font-bold text-base-content/85 flex items-center gap-1.5 select-none">
+              <span>{label}</span>
+              {required ? (
+                <span className="inline-flex items-center px-1.5 py-0.5 bg-primary/10 text-primary text-[10px] font-black rounded-md tracking-wide">
+                  *
+                </span>
+              ) : (
+                <span className="text-[10px] font-normal text-base-content/40">
+                  (Optional)
+                </span>
+              )}
             </label>
           )}
-          {helperText && (
-            <span className={`text-[11px] font-semibold text-right ${isError ? 'text-error' : 'text-base-content/60'}`}>
+          {isError ? (
+            <span className="text-[11px] font-semibold text-right text-error animate-in fade-in">
+              {typeof error === 'string' ? error : helperText}
+            </span>
+          ) : helperText ? (
+            <span className="text-[11px] font-medium text-right text-base-content/50">
               {helperText}
             </span>
-          )}
+          ) : null}
         </div>
       )}
       <div className="flex items-center gap-1.5">
@@ -365,9 +404,18 @@ const DaisyPhoneInput = ({
             onChange={onChange}
             disabled={disabled}
             className={`input input-bordered input-sm w-full bg-base-100 text-sm font-medium font-mono transition-all ${
-              isError ? 'input-error border-error focus:border-error' : 'focus:input-primary'
+              isError
+                ? 'input-error border-error focus:border-error bg-error/5'
+                : required && !value
+                ? 'border-base-300 hover:border-primary/50 focus:border-primary'
+                : 'focus:input-primary'
             }`}
           />
+          {required && value && !isError && (
+            <span className="material-symbols-outlined absolute end-2.5 top-1/2 -translate-y-1/2 text-success text-base pointer-events-none select-none">
+              check_circle
+            </span>
+          )}
         </div>
       </div>
     </div>
