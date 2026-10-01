@@ -381,3 +381,23 @@ body {
   font-size: 0.6875rem !important;
   line-height: 0.95rem !important;
 }
+
+/* Improve .select-xs visibility, height and typography so text and names are clearly readable */
+.select-xs {
+  height: auto !important;
+  min-height: 2.125rem !important;
+  padding-top: 0.25rem !important;
+  padding-bottom: 0.25rem !important;
+  padding-left: 0.65rem !important;
+  padding-right: 1.85rem !important;
+  font-size: 0.8125rem !important;
+  line-height: 1.25rem !important;
+  border-radius: 0.5rem !important;
+}
+
+[dir="rtl"] .select-xs,
+[dir="rtl"] select.select-xs {
+  padding-right: 0.65rem !important;
+  padding-left: 1.85rem !important;
+}
+

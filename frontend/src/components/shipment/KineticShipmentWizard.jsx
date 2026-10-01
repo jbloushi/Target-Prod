@@ -513,7 +513,7 @@ const AddressStep = ({
             <select
               onChange={handleSelectSavedAddress}
               defaultValue=""
-              className="select select-bordered select-xs w-48 text-xs bg-base-100 focus:select-primary"
+              className="select select-bordered select-sm w-56 text-xs font-semibold bg-base-100 focus:select-primary"
             >
               <option value="" disabled>{lang === 'ar' ? 'اختر عنواناً محفوظاً' : 'Select saved address'}</option>
               {savedAddresses.map((a, idx) => (
@@ -3096,7 +3096,7 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
               <select
                 value={selectedClientId}
                 onChange={e => handleClientChange(e.target.value)}
-                className="select select-bordered select-xs w-52 sm:w-60 bg-base-100 text-xs font-bold text-primary focus:select-primary"
+                className="select select-bordered select-sm w-64 sm:w-72 bg-base-100 text-xs font-bold text-primary focus:select-primary"
               >
                 <option value="">{user?.name ? `${user.name} (Direct / Internal)` : 'Direct Account'}</option>
                 {clients.map(c => (
