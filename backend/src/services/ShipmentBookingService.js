@@ -478,7 +478,11 @@ class ShipmentBookingService {
 
         const carrierPolicy = PricingService.resolveCarrierPricingPolicy(payingUser, carrierCode, selectedQuote.currency || shipment.currency || 'KWD');
         const rateCurrency = selectedQuote.currency || carrierPolicy.currency || shipment.currency || 'KWD';
-        const carrierRate = PricingService.applyCarrierBasePricePolicy(Number(selectedQuote.totalPrice || 0), payingUser, carrierCode);
+        const carrierRate = PricingService.applyCarrierBasePricePolicy(Number(selectedQuote.totalPrice || 0), payingUser, carrierCode, {
+            countryCode: shipment.destination?.countryCode || shipment.destination?.country,
+            packages: shipment.packages,
+            weight: shipment.weight
+        });
         const snapshot = PricingService.createSnapshot(
             carrierRate,
             markup,

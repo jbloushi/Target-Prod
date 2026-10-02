@@ -30,6 +30,22 @@ const resolveEffectiveCarrierPolicy = ({ targetUser, carrierCode, availableCarri
             throw deniedError;
         }
 
+        const carrierPricing = targetUser?.carrierConfig?.pricingByCarrier?.[assignedCarrier]
+            || targetUser?.agentPolicy?.carrierPricing?.[assignedCarrier];
+        if (carrierPricing?.rateCardId || carrierPricing?.pricingModel === 'RATE_CARD') {
+            try {
+                const RateCardService = require('../services/RateCardService');
+                const card = RateCardService.getRateCard(carrierPricing.rateCardId);
+                if (card?.pricingMode === 'SELLING_PRICE' || card?.isSellingPrice) {
+                    return {
+                        effectiveAllowed: [assignedCarrier],
+                        markup: { type: 'FLAT', flatValue: 0, percentageValue: 0 },
+                        policySource: 'contract_rate_card'
+                    };
+                }
+            } catch (_) {}
+        }
+
         return {
             effectiveAllowed: [assignedCarrier],
             markup: hasMarkupShape(targetUser?.agentPolicy?.markupOverride)
@@ -82,6 +98,19 @@ const resolveEffectiveCarrierPolicy = ({ targetUser, carrierCode, availableCarri
     if (hasMarkupShape(agentMarkup)) {
         markup = agentMarkup;
         policySource = 'agent_default';
+    }
+
+    const carrierPricing = targetUser?.carrierConfig?.pricingByCarrier?.[normalizedCarrier]
+        || targetUser?.agentPolicy?.carrierPricing?.[normalizedCarrier];
+    if (carrierPricing?.rateCardId || carrierPricing?.pricingModel === 'RATE_CARD') {
+        try {
+            const RateCardService = require('../services/RateCardService');
+            const card = RateCardService.getRateCard(carrierPricing.rateCardId);
+            if (card?.pricingMode === 'SELLING_PRICE' || card?.isSellingPrice) {
+                markup = { type: 'FLAT', flatValue: 0, percentageValue: 0 };
+                policySource = 'contract_rate_card';
+            }
+        } catch (_) {}
     }
 
     return { effectiveAllowed, markup, policySource };

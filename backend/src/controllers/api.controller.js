@@ -322,7 +322,11 @@ exports.updateShipment = async (req, res) => {
 
             const ratingCarrier = (tempState.carrierCode || 'DGR').toUpperCase();
             const policy = PricingService.resolveCarrierPricingPolicy(shipment.user, ratingCarrier, selected.currency || 'KWD');
-            const carrierRate = PricingService.applyCarrierBasePricePolicy(Number(selected.totalPrice), shipment.user, ratingCarrier);
+            const carrierRate = PricingService.applyCarrierBasePricePolicy(Number(selected.totalPrice), shipment.user, ratingCarrier, {
+                countryCode: tempState.destination?.countryCode || tempState.destination?.country,
+                packages: tempState.packages,
+                weight: tempState.weight
+            });
             finalSnapshot = PricingService.createSnapshot(carrierRate, markup, selected.currency || policy.currency || 'KWD', source);
             finalPrice = Number(finalSnapshot.totalPrice);
 
@@ -415,7 +419,38 @@ exports.getQuotation = async (req, res) => {
         const normalized = normalizeShipment(req.body);
         normalized.serviceCode = resolvedServiceCode;
 
-        const rawRates = await CarrierRateService.getRates(normalized, resolvedCarrierCode);
+        const policy = PricingService.resolveCarrierPricingPolicy(user, resolvedCarrierCode, req.body.currency || 'KWD');
+        let rawRates = [];
+
+        if (policy.pricingModel === 'RATE_CARD' && policy.rateCardId) {
+            try {
+                const RateCardService = require('../services/RateCardService');
+                const countryCode = normalized.receiver?.countryCode || normalized.receiver?.country;
+                if (countryCode) {
+                    const rateCardResult = RateCardService.calculateRate({
+                        rateCardId: policy.rateCardId,
+                        carrierCode: resolvedCarrierCode,
+                        countryCode,
+                        weight: normalized.weight,
+                        packages: normalized.packages
+                    });
+                    rawRates = [{
+                        serviceName: `DHL Express Worldwide (${rateCardResult.rateCardName})`,
+                        serviceCode: resolvedServiceCode || 'P',
+                        carrier: resolvedCarrierCode,
+                        totalPrice: rateCardResult.totalPrice,
+                        currency: rateCardResult.currency || 'KWD',
+                        estimatedDelivery: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+                    }];
+                }
+            } catch (err) {
+                logger.warn(`RateCard rating fallback for ${policy.rateCardId}: ${err.message}`);
+            }
+        }
+
+        if (rawRates.length === 0) {
+            rawRates = await CarrierRateService.getRates(normalized, resolvedCarrierCode);
+        }
 
         const visibleRates = resolvedServiceCode
             ? rawRates.filter(rate => String(rate.serviceCode || '').toUpperCase() === String(resolvedServiceCode).toUpperCase())

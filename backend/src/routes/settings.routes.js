@@ -7,6 +7,9 @@ const { authorize } = require('../middleware/authorize.middleware');
 // Public/Authenticated reading of system settings (e.g. carrier display names)
 router.get('/system', settingsController.getSystemSettings);
 
+// Available rate cards for carrier assignment
+router.get('/rate-cards', settingsController.getRateCards);
+
 // Superadmin update of system settings
 router.patch(
     '/system',

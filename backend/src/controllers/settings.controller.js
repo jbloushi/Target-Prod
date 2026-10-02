@@ -137,3 +137,19 @@ exports.testCarrierConnection = async (req, res) => {
         });
     }
 };
+
+/**
+ * GET /api/settings/rate-cards
+ * Retrieve available carrier contract rate cards
+ */
+exports.getRateCards = async (req, res) => {
+    try {
+        const RateCardService = require('../services/RateCardService');
+        const carrierCode = req.query.carrierCode;
+        const cards = RateCardService.listRateCards(carrierCode);
+        return res.status(200).json({ success: true, data: cards });
+    } catch (err) {
+        return handleControllerError(res, err, 'Get rate cards');
+    }
+};
+

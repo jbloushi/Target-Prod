@@ -285,6 +285,17 @@ const AdminUsersPage = () => {
                 currency: String(currentOtePricing.currency || 'AED').toUpperCase().slice(0, 3)
             };
 
+            const currentDgrPricing = payload.carrierConfig.pricingByCarrier.DGR || {};
+            if (currentDgrPricing.pricingModel === 'RATE_CARD' && currentDgrPricing.rateCardId) {
+                payload.carrierConfig.pricingByCarrier.DGR = {
+                    pricingModel: 'RATE_CARD',
+                    rateCardId: String(currentDgrPricing.rateCardId).toUpperCase(),
+                    currency: 'KWD'
+                };
+            } else {
+                delete payload.carrierConfig.pricingByCarrier.DGR;
+            }
+
             if (editingUser?.id) {
                 const userUpdatePayload = { ...payload };
                 const rawPassword = userUpdatePayload.password ? String(userUpdatePayload.password).trim() : '';
@@ -1160,6 +1171,109 @@ const AdminUsersPage = () => {
                                             )}
                                         </div>
                                     </div>
+                                </div>
+
+                                {/* Carrier Pricing & Contract Rate Cards */}
+                                <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-2xl space-y-2.5">
+                                    <div className="text-xs font-bold text-base-content flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="material-symbols-outlined text-[17px] text-primary">price_change</span>
+                                            {lang === 'ar' ? 'نموذج تسعير الناقل المعين' : 'Carrier Pricing & Rate Cards'}
+                                        </div>
+                                        <span className="badge badge-xs badge-ghost font-mono">
+                                            {formData.shippingAccess?.carrierCode || 'DGR'}
+                                        </span>
+                                    </div>
+
+                                    {(formData.shippingAccess?.carrierCode === 'DGR' || formData.carrierConfig?.preferredCarrier === 'DGR') && (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                            <div>
+                                                <label className="text-[11px] font-bold text-base-content/60 block mb-1">
+                                                    {lang === 'ar' ? 'طريقة التسعير' : 'Pricing Model'}
+                                                </label>
+                                                <select
+                                                    value={formData.carrierConfig?.pricingByCarrier?.DGR?.pricingModel || (formData.carrierConfig?.pricingByCarrier?.DGR?.rateCardId ? 'RATE_CARD' : 'STANDARD')}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        const nextDgr = { ...(formData.carrierConfig?.pricingByCarrier?.DGR || {}) };
+                                                        nextDgr.pricingModel = val;
+                                                        if (val === 'STANDARD') {
+                                                            nextDgr.rateCardId = null;
+                                                        } else if (val === 'RATE_CARD' && !nextDgr.rateCardId) {
+                                                            nextDgr.rateCardId = '5535_AMANI';
+                                                        }
+                                                        updateNested('carrierConfig', 'pricingByCarrier', {
+                                                            ...(formData.carrierConfig?.pricingByCarrier || {}),
+                                                            DGR: nextDgr
+                                                        });
+                                                    }}
+                                                    className="select select-sm select-bordered w-full text-xs font-semibold"
+                                                >
+                                                    <option value="STANDARD">{lang === 'ar' ? 'تسعير مباشر (API) + هامش ربح' : 'Live Carrier API + Markup'}</option>
+                                                    <option value="RATE_CARD">{lang === 'ar' ? 'جدول أسعار تعاقدي (Rate Card)' : 'Contract Rate Card (Selling Price)'}</option>
+                                                </select>
+                                            </div>
+                                            {(formData.carrierConfig?.pricingByCarrier?.DGR?.pricingModel === 'RATE_CARD' || formData.carrierConfig?.pricingByCarrier?.DGR?.rateCardId) && (
+                                                <div>
+                                                    <label className="text-[11px] font-bold text-base-content/60 block mb-1">
+                                                        {lang === 'ar' ? 'جدول الأسعار المعتمد' : 'Assigned Rate Card'}
+                                                    </label>
+                                                    <select
+                                                        value={formData.carrierConfig?.pricingByCarrier?.DGR?.rateCardId || '5535_AMANI'}
+                                                        onChange={(e) => {
+                                                            const nextDgr = { ...(formData.carrierConfig?.pricingByCarrier?.DGR || {}) };
+                                                            nextDgr.rateCardId = e.target.value;
+                                                            nextDgr.pricingModel = 'RATE_CARD';
+                                                            updateNested('carrierConfig', 'pricingByCarrier', {
+                                                                ...(formData.carrierConfig?.pricingByCarrier || {}),
+                                                                DGR: nextDgr
+                                                            });
+                                                        }}
+                                                        className="select select-sm select-bordered w-full text-xs font-semibold text-primary"
+                                                    >
+                                                        <option value="5535_AMANI">5535 - Amani (DHL 2025 Matrix)</option>
+                                                    </select>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {formData.shippingAccess?.carrierCode === 'OTE' && (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                            <div>
+                                                <label className="text-[11px] font-bold text-base-content/60 block mb-1">
+                                                    {lang === 'ar' ? 'رسوم التوصيل الثابتة' : 'Fixed Fee'}
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    step="0.5"
+                                                    value={formData.carrierConfig?.pricingByCarrier?.OTE?.fixedFee ?? 25}
+                                                    onChange={(e) => {
+                                                        updateNested('carrierConfig', 'pricingByCarrier', {
+                                                            ...(formData.carrierConfig?.pricingByCarrier || {}),
+                                                            OTE: {
+                                                                ...(formData.carrierConfig?.pricingByCarrier?.OTE || {}),
+                                                                fixedFee: Number(e.target.value),
+                                                                currency: 'AED'
+                                                            }
+                                                        });
+                                                    }}
+                                                    className="input input-sm input-bordered w-full font-mono text-xs"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[11px] font-bold text-base-content/60 block mb-1">
+                                                    {lang === 'ar' ? 'العملة' : 'Currency'}
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    disabled
+                                                    value={formData.carrierConfig?.pricingByCarrier?.OTE?.currency || 'AED'}
+                                                    className="input input-sm input-bordered w-full text-xs opacity-60"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}

@@ -16,8 +16,13 @@ const normalizeCarrierPricing = (carrierConfig = {}) => {
         if (!normalizedCarrier) return;
 
         const fixedFee = Number(policy.fixedFee);
+        const rateCardId = policy.rateCardId ? String(policy.rateCardId).trim().toUpperCase() : null;
+        const pricingModel = policy.pricingModel || (rateCardId ? 'RATE_CARD' : (Number.isFinite(fixedFee) && fixedFee >= 0 ? 'FIXED_FEE' : 'STANDARD'));
+
         normalized[normalizedCarrier] = {
             ...policy,
+            pricingModel,
+            rateCardId,
             fixedFee: Number.isFinite(fixedFee) && fixedFee >= 0 ? fixedFee : null,
             currency: String(policy.currency || 'KWD').trim().toUpperCase().substring(0, 3)
         };

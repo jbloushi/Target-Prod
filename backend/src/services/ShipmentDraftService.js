@@ -256,25 +256,58 @@ class ShipmentDraftService {
         const isTest = data.isTest === true || data.environment === 'test';
         const environment = isTest ? 'test' : (data.environment || 'production');
 
-        // 1. Call Carrier
-        const carrier = CarrierFactory.getAdapter(carrierCode, { isTest, environment });
-        const quotes = await carrier.getRates({ ...data, isTest, environment });
+        const carrierPricingPolicy = PricingService.resolveCarrierPricingPolicy(user, carrierCode, data.currency || 'KWD');
+        let quote;
+        let rateCardResult = null;
 
-        // 2. Find selected service
-        let quote = quotes.find(q => q.serviceCode === serviceCode);
-        if (!quote) {
-            quote = quotes.find(q => String(q.serviceCode).toUpperCase() === String(serviceCode).toUpperCase()) || quotes[0];
+        if (carrierPricingPolicy.pricingModel === 'RATE_CARD' && carrierPricingPolicy.rateCardId) {
+            try {
+                const RateCardService = require('./RateCardService');
+                const countryCode = data.receiver?.countryCode || data.receiver?.country;
+                if (countryCode) {
+                    rateCardResult = RateCardService.calculateRate({
+                        rateCardId: carrierPricingPolicy.rateCardId,
+                        carrierCode,
+                        countryCode,
+                        weight: data.weight,
+                        packages: data.packages
+                    });
+                    quote = {
+                        serviceName: `DHL Express Worldwide (${rateCardResult.rateCardName})`,
+                        serviceCode: serviceCode || 'P',
+                        carrierCode,
+                        totalPrice: rateCardResult.totalPrice,
+                        currency: rateCardResult.currency || 'KWD',
+                        deliveryDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+                        optionalServices: []
+                    };
+                }
+            } catch (err) {
+                logger.warn(`RateCard rating fallback for ${carrierPricingPolicy.rateCardId}: ${err.message}`);
+            }
         }
+
         if (!quote) {
-            throw new Error(`Service ${serviceCode} not available from ${carrierCode}`);
+            // 1. Call Carrier
+            const carrier = CarrierFactory.getAdapter(carrierCode, { isTest, environment });
+            const quotes = await carrier.getRates({ ...data, isTest, environment });
+
+            // 2. Find selected service
+            quote = quotes.find(q => q.serviceCode === serviceCode);
+            if (!quote) {
+                quote = quotes.find(q => String(q.serviceCode).toUpperCase() === String(serviceCode).toUpperCase()) || quotes[0];
+            }
+            if (!quote) {
+                throw new Error(`Service ${serviceCode} not available from ${carrierCode}`);
+            }
         }
 
         if (quote.requiresManualPricing) {
             return buildManualPricingSnapshot(quote.currency || data.currency || 'KWD');
         }
 
-        const carrierPricingPolicy = PricingService.resolveCarrierPricingPolicy(user, carrierCode, quote.currency || data.currency || 'KWD');
-        const quoteCurrency = carrierPricingPolicy.currency || quote.currency || 'KWD';
+        const resolvedPolicy = PricingService.resolveCarrierPricingPolicy(user, carrierCode, quote.currency || data.currency || 'KWD');
+        const quoteCurrency = resolvedPolicy.currency || quote.currency || 'KWD';
         const selectedOptionalCodes = new Set(
             (data.optionalServiceCodes || [])
                 .map(code => String(code))
@@ -319,12 +352,26 @@ class ShipmentDraftService {
 
         // 3. Resolve Markup & Create Snapshot
         const { markup, source } = PricingService.resolveMarkup(user, user.organization, carrierCode);
-        const baseCarrierRate = PricingService.applyCarrierBasePricePolicy(quote.totalPrice, user, carrierCode);
+        const baseCarrierRate = PricingService.applyCarrierBasePricePolicy(quote.totalPrice, user, carrierCode, {
+            countryCode: data.receiver?.countryCode || data.receiver?.country,
+            packages: data.packages,
+            weight: data.weight
+        });
         const snapshot = PricingService.createSnapshot(
             baseCarrierRate,
             markup,
             quoteCurrency,
-            source
+            source,
+            rateCardResult ? {
+                rateCardId: rateCardResult.rateCardId,
+                zone: rateCardResult.zone,
+                billableWeight: rateCardResult.billableWeight,
+                actualWeight: rateCardResult.actualWeight,
+                volumetricWeight: rateCardResult.volumetricWeight,
+                pricingMode: rateCardResult.pricingMode,
+                excessWeight: rateCardResult.excessWeight,
+                excessPerKgRate: rateCardResult.excessPerKgRate
+            } : {}
         );
         snapshot.billingCurrency = quoteCurrency || 'KWD';
         snapshot.declaredCurrency = data.currency || quoteCurrency || 'KWD';

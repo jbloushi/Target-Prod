@@ -66,7 +66,11 @@ const buildPricedConversionSnapshot = ({ shipment, targetUser, carrierCode, serv
         quote.currency || shipment.currency || 'KWD'
     );
     const quoteCurrency = carrierPolicy.currency || quote.currency || shipment.currency || 'KWD';
-    const baseCarrierRate = PricingService.applyCarrierBasePricePolicy(Number(quote.totalPrice || 0), targetUser, carrierCode);
+    const baseCarrierRate = PricingService.applyCarrierBasePricePolicy(Number(quote.totalPrice || 0), targetUser, carrierCode, {
+        countryCode: shipment.destination?.countryCode || shipment.destination?.country,
+        packages: shipment.packages,
+        weight: shipment.weight
+    });
     const { markup, source } = PricingService.resolveMarkup(targetUser, targetUser.organization, carrierCode);
     const snapshot = PricingService.createSnapshot(baseCarrierRate, markup, quoteCurrency, source);
 

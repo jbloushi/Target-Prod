@@ -21,8 +21,12 @@ class PricingService {
         const carrierPolicy = byCarrier?.[normalizedCarrier] || {};
 
         const defaultPolicy = normalizedCarrier === 'OTE'
-            ? { fixedFee: 25, currency: 'AED' }
-            : { fixedFee: null, currency: fallbackCurrency || 'KWD' };
+            ? { pricingModel: 'FIXED_FEE', fixedFee: 25, currency: 'AED' }
+            : { pricingModel: 'STANDARD', fixedFee: null, currency: fallbackCurrency || 'KWD' };
+
+        const rateCardId = carrierPolicy.rateCardId ? String(carrierPolicy.rateCardId).trim().toUpperCase() : null;
+        const pricingModel = carrierPolicy.pricingModel
+            || (rateCardId ? 'RATE_CARD' : (carrierPolicy.fixedFee !== undefined && carrierPolicy.fixedFee !== null ? 'FIXED_FEE' : defaultPolicy.pricingModel));
 
         const hasFixedFee = carrierPolicy.fixedFee !== undefined && carrierPolicy.fixedFee !== null && carrierPolicy.fixedFee !== '';
         const parsedFixedFee = hasFixedFee ? Number(carrierPolicy.fixedFee) : NaN;
@@ -35,22 +39,57 @@ class PricingService {
             .toUpperCase()
             .substring(0, 3);
 
-        return {
+        const res = {
             fixedFee,
             currency: policyCurrency || 'KWD'
         };
+
+        if (rateCardId) {
+            res.rateCardId = rateCardId;
+            res.pricingModel = 'RATE_CARD';
+        } else if (carrierPolicy.pricingModel) {
+            res.pricingModel = carrierPolicy.pricingModel;
+        }
+
+        return res;
     }
 
-    static applyCarrierBasePricePolicy(basePrice, user, carrierCode) {
+    static applyCarrierBasePricePolicy(basePrice, user, carrierCode, shipmentContext = {}) {
         const normalizedCarrier = String(carrierCode || '').toUpperCase();
         const normalizedBasePrice = Number(basePrice || 0);
 
-        if (normalizedCarrier !== 'OTE') return normalizedBasePrice;
+        const policy = this.resolveCarrierPricingPolicy(user, normalizedCarrier);
 
-        const policy = this.resolveCarrierPricingPolicy(user, normalizedCarrier, 'AED');
-        if (policy.fixedFee === null || policy.fixedFee === undefined) return normalizedBasePrice;
+        if (policy.pricingModel === 'RATE_CARD' && policy.rateCardId) {
+            try {
+                const RateCardService = require('./RateCardService');
+                const countryCode = shipmentContext.countryCode
+                    || shipmentContext.receiver?.countryCode
+                    || shipmentContext.receiver?.country
+                    || shipmentContext.destinationCountry;
 
-        return Number(policy.fixedFee);
+                if (countryCode) {
+                    const calculation = RateCardService.calculateRate({
+                        rateCardId: policy.rateCardId,
+                        carrierCode: normalizedCarrier,
+                        countryCode,
+                        weight: shipmentContext.weight,
+                        packages: shipmentContext.packages
+                    });
+                    return Number(calculation.totalPrice);
+                }
+            } catch (err) {
+                logger.warn(`RateCard calculation failed for ${policy.rateCardId}: ${err.message}`);
+            }
+        }
+
+        if (normalizedCarrier === 'OTE') {
+            if (policy.fixedFee !== null && policy.fixedFee !== undefined) {
+                return Number(policy.fixedFee);
+            }
+        }
+
+        return normalizedBasePrice;
     }
 
     static normalizeMarkupConfig(markup) {
@@ -174,6 +213,26 @@ class PricingService {
      * @business_rule Hierarchy: 1. Agent-Carrier Override > 2. Agent Default > 3. Org-Carrier Override > 4. Org Default > 5. System Fallback (15%).
      */
     static resolveMarkup(user, organization, carrierCode) {
+        const normalizedCarrier = String(carrierCode || '').toUpperCase();
+
+        // 0. Contract Rate Card Override (If selling price rate card is active, markup is 0)
+        const carrierPricing = user?.carrierConfig?.pricingByCarrier?.[normalizedCarrier]
+            || user?.agentPolicy?.carrierPricing?.[normalizedCarrier]
+            || organization?.markup?.carrierPricing?.[normalizedCarrier];
+
+        if (carrierPricing?.rateCardId || carrierPricing?.pricingModel === 'RATE_CARD') {
+            try {
+                const RateCardService = require('./RateCardService');
+                const card = RateCardService.getRateCard(carrierPricing.rateCardId);
+                if (card?.pricingMode === 'SELLING_PRICE' || card?.isSellingPrice) {
+                    return {
+                        markup: { type: 'FLAT', flatValue: 0, percentageValue: 0 },
+                        source: 'contract_rate_card'
+                    };
+                }
+            } catch (_) {}
+        }
+
         // 1. Agent Carrier Override
         if (user?.agentPolicy?.markupByCarrier?.[carrierCode]) {
             const m = user.agentPolicy.markupByCarrier[carrierCode];
@@ -248,7 +307,7 @@ class PricingService {
      * @returns {Object} Secure PricingSnapshot object.
      * @business_rule Includes a SHA-256 'rateHash' to detect any manual database modifications to pricing after creation.
      */
-    static createSnapshot(carrierRate, markupInput, currency = 'KWD', policySource = 'org_default') {
+    static createSnapshot(carrierRate, markupInput, currency = 'KWD', policySource = 'org_default', extraMeta = {}) {
         const carrierDecimal = new Decimal(carrierRate || 0);
         const mConfig = typeof markupInput === 'number' ? { type: 'PERCENTAGE', percentageValue: markupInput } : markupInput;
 
@@ -263,7 +322,7 @@ class PricingService {
             .update(`${carrierDecimal.toFixed(3)}-${sMarkup.toFixed(3)}-${sFinal.toFixed(3)}-${currency}`)
             .digest('hex');
 
-        return {
+        const snapshot = {
             carrierRate: Number(carrierDecimal.toFixed(3)),
             markup: Number(sMarkup.toFixed(3)),
             totalPrice: Number(sFinal.toFixed(3)),
@@ -273,6 +332,19 @@ class PricingService {
             expiresAt: new Date(Date.now() + 86400000), // Valid for 24h
             rulesVersion: 'v1'
         };
+
+        if (extraMeta && typeof extraMeta === 'object') {
+            if (extraMeta.rateCardId) snapshot.rateCardId = extraMeta.rateCardId;
+            if (extraMeta.zone !== undefined) snapshot.zone = extraMeta.zone;
+            if (extraMeta.billableWeight !== undefined) snapshot.billableWeight = extraMeta.billableWeight;
+            if (extraMeta.actualWeight !== undefined) snapshot.actualWeight = extraMeta.actualWeight;
+            if (extraMeta.volumetricWeight !== undefined) snapshot.volumetricWeight = extraMeta.volumetricWeight;
+            if (extraMeta.pricingMode) snapshot.pricingMode = extraMeta.pricingMode;
+            if (extraMeta.excessWeight !== undefined) snapshot.excessWeight = extraMeta.excessWeight;
+            if (extraMeta.excessPerKgRate !== undefined) snapshot.excessPerKgRate = extraMeta.excessPerKgRate;
+        }
+
+        return snapshot;
     }
 
     /**

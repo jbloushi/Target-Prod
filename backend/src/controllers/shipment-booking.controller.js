@@ -64,8 +64,44 @@ exports.getQuotes = async (req, res) => {
 
         const isTest = req.body.isTest === true || req.body.environment === 'test';
         const environment = isTest ? 'test' : (req.body.environment || 'production');
-        const carrier = CarrierFactory.getAdapter(carrierCode, { isTest, environment });
-        const rawQuotes = await carrier.getRates({ ...req.body, carrierCode, serviceCode, isTest, environment });
+
+        const policy = PricingService.resolveCarrierPricingPolicy(targetUser, carrierCode, req.body.currency || 'KWD');
+        let rawQuotes = [];
+        let rateCardResult = null;
+
+        if (policy.pricingModel === 'RATE_CARD' && policy.rateCardId) {
+            try {
+                const RateCardService = require('../services/RateCardService');
+                const countryCode = req.body.receiver?.countryCode || req.body.receiver?.country;
+                if (countryCode) {
+                    rateCardResult = RateCardService.calculateRate({
+                        rateCardId: policy.rateCardId,
+                        carrierCode,
+                        countryCode,
+                        weight: req.body.weight,
+                        packages: req.body.packages
+                    });
+                    rawQuotes = [{
+                        serviceName: `DHL Express Worldwide (${rateCardResult.rateCardName})`,
+                        serviceCode: serviceCode || 'P',
+                        carrierCode,
+                        totalPrice: rateCardResult.totalPrice,
+                        currency: rateCardResult.currency || 'KWD',
+                        deliveryDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+                        optionalServices: [],
+                        rateCardResult
+                    }];
+                }
+            } catch (err) {
+                logger.warn(`RateCard rating fallback in getQuotes for ${policy.rateCardId}: ${err.message}`);
+            }
+        }
+
+        if (rawQuotes.length === 0) {
+            const carrier = CarrierFactory.getAdapter(carrierCode, { isTest, environment });
+            rawQuotes = await carrier.getRates({ ...req.body, carrierCode, serviceCode, isTest, environment });
+        }
+
         const visibleQuotes = serviceCode
             ? rawQuotes.filter(quote => String(quote.serviceCode || '').toUpperCase() === String(serviceCode).toUpperCase())
             : rawQuotes;
@@ -85,9 +121,12 @@ exports.getQuotes = async (req, res) => {
                 };
             }
 
-            const policy = PricingService.resolveCarrierPricingPolicy(targetUser, carrierCode, quote.currency || req.body.currency || 'KWD');
             const quoteCurrency = policy.currency || quote.currency || 'KWD';
-            const basePrice = PricingService.applyCarrierBasePricePolicy(quote.totalPrice, targetUser, carrierCode);
+            const basePrice = PricingService.applyCarrierBasePricePolicy(quote.totalPrice, targetUser, carrierCode, {
+                countryCode: req.body.receiver?.countryCode || req.body.receiver?.country,
+                packages: req.body.packages,
+                weight: req.body.weight
+            });
             const calculation = PricingService.calculateFinalPrice(basePrice, markup);
             
             const optionalServices = (quote.optionalServices || []).map(service => ({

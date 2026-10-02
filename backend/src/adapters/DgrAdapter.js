@@ -353,6 +353,38 @@ class DgrAdapter extends CarrierAdapter {
      */
     async getRates(shipmentData) {
         const shipment = normalizeShipment(shipmentData);
+
+        const rateCardId = shipmentData?.rateCardId || shipment?.rateCardId;
+        if (rateCardId) {
+            try {
+                const RateCardService = require('../services/RateCardService');
+                const countryCode = shipment.receiver?.countryCode || shipment.receiver?.country;
+                if (countryCode) {
+                    const rateCardResult = RateCardService.calculateRate({
+                        rateCardId,
+                        carrierCode: 'DGR',
+                        countryCode,
+                        weight: shipment.weight,
+                        packages: shipment.packages
+                    });
+                    return [
+                        {
+                            serviceName: `DHL Express Worldwide (${rateCardResult.rateCardName})`,
+                            serviceCode: shipmentData.serviceCode || 'P',
+                            carrierCode: 'DGR',
+                            totalPrice: rateCardResult.totalPrice,
+                            currency: rateCardResult.currency || 'KWD',
+                            deliveryDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+                            optionalServices: [],
+                            rateCardResult
+                        }
+                    ];
+                }
+            } catch (err) {
+                logger.warn(`Rate card evaluation failed in DgrAdapter: ${err.message}`);
+            }
+        }
+
         const activeConfig = await this._getResolvedConfig(shipment);
 
         // Fallback gracefully in development if DHL API keys are not provided in .env
