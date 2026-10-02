@@ -1,6 +1,6 @@
 import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import { useSnackbar } from 'notistack';
-import { userService, organizationService, shipmentService } from '../services/api';
+import { userService, organizationService, shipmentService, settingsService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { getRoleLabel } from '../utils/roleLabels';
@@ -71,6 +71,7 @@ const AdminUsersPage = () => {
     const [organizations, setOrganizations] = useState([]);
     const [clientUsers, setClientUsers] = useState([]);
     const [availableCarriers, setAvailableCarriers] = useState([]);
+    const [availableRateCards, setAvailableRateCards] = useState([]);
     const [deleteConfirmId, setDeleteConfirmId] = useState(null);
     const [deleteLoading, setDeleteLoading] = useState(false);
 
@@ -143,6 +144,15 @@ const AdminUsersPage = () => {
         }
     }, []);
 
+    const fetchRateCards = useCallback(async () => {
+        try {
+            const res = await settingsService.getRateCards();
+            setAvailableRateCards(res.data || []);
+        } catch (err) {
+            console.error('Failed to fetch rate cards:', err);
+        }
+    }, []);
+
     useEffect(() => {
         fetchUsers();
     }, [fetchUsers]);
@@ -152,8 +162,9 @@ const AdminUsersPage = () => {
             fetchOrgs();
             fetchCarriers();
             fetchClientUsers();
+            fetchRateCards();
         }
-    }, [openDialog, fetchOrgs, fetchCarriers, fetchClientUsers]);
+    }, [openDialog, fetchOrgs, fetchCarriers, fetchClientUsers, fetchRateCards]);
 
     // KPI Metrics
     const kpiMetrics = useMemo(() => {
@@ -1219,7 +1230,7 @@ const AdminUsersPage = () => {
                                                         {lang === 'ar' ? 'جدول الأسعار المعتمد' : 'Assigned Rate Card'}
                                                     </label>
                                                     <select
-                                                        value={formData.carrierConfig?.pricingByCarrier?.DGR?.rateCardId || '5535_AMANI'}
+                                                        value={formData.carrierConfig?.pricingByCarrier?.DGR?.rateCardId || (availableRateCards[0]?.id || '5535_AMANI')}
                                                         onChange={(e) => {
                                                             const nextDgr = { ...(formData.carrierConfig?.pricingByCarrier?.DGR || {}) };
                                                             nextDgr.rateCardId = e.target.value;
@@ -1231,7 +1242,11 @@ const AdminUsersPage = () => {
                                                         }}
                                                         className="select select-sm select-bordered w-full text-xs font-semibold text-primary"
                                                     >
-                                                        <option value="5535_AMANI">5535 - Amani (DHL 2025 Matrix)</option>
+                                                        {(availableRateCards.length > 0 ? availableRateCards : [{ id: '5535_AMANI', name: '5535 - Amani', carrierCode: 'DGR' }]).map(card => (
+                                                            <option key={card.id} value={card.id}>
+                                                                {card.name} ({card.carrierCode || 'DGR'})
+                                                            </option>
+                                                        ))}
                                                     </select>
                                                 </div>
                                             )}

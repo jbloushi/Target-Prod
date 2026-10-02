@@ -1410,6 +1410,16 @@ export const settingsService = {
     }
   },
 
+  getRateCards: async (carrierCode = null) => {
+    try {
+      const response = await api.get('settings/rate-cards', { params: carrierCode ? { carrierCode } : {} });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching rate cards:', error);
+      return { success: false, data: [] };
+    }
+  },
+
   updateSystemSettings: async (updates) => {
     try {
       const response = await api.patch('settings/system', updates);
