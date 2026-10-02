@@ -245,6 +245,7 @@ export const TargetLogisticsWizard = ({
         origin: primaryItem.countryOfOrigin || 'Kuwait',
         invoiceNum: cinv.invoiceNumber || cinv.number || '',
         invoiceVal: String(cinv.declaredValue || shipment.price || ''),
+        currency: shipment.currency || cinv.currency || 'KWD',
         notes: cinv.notes || '',
         paperlessTrade: true
       };
@@ -256,6 +257,7 @@ export const TargetLogisticsWizard = ({
       origin: 'Kuwait',
       invoiceNum: '',
       invoiceVal: '',
+      currency: 'KWD',
       notes: '',
       paperlessTrade: true
     };
@@ -429,6 +431,23 @@ export const TargetLogisticsWizard = ({
       if (!receiver.countryCode?.trim()) errs.receiver_country = isRTL ? 'الدولة مطلوبة' : 'Country is required';
       if (!NON_POSTAL_COUNTRIES.includes((receiver.countryCode || '').toUpperCase()) && !receiver.zip?.trim()) {
         errs.receiver_zip = isRTL ? 'الرمز البريدي مطلوب' : 'Postal code is required';
+      }
+    } else if (currentStep === 3) {
+      if (pkg.dangerousGoods) {
+        if (!pkg.unCode?.trim()) errs.pkg_unCode = isRTL ? 'رمز الأمم المتحدة (UN Code) مطلوب' : 'UN Identification Code is required';
+        if (!pkg.dgClass?.trim()) errs.pkg_dgClass = isRTL ? 'فئة الخطورة (Hazard Class) مطلوبة' : 'Hazard Class is required';
+        if (!pkg.properShippingName?.trim()) errs.pkg_properShippingName = isRTL ? 'اسم الشحن المعتمد مطلوب' : 'Proper Shipping Name is required';
+      }
+    } else if (currentStep === 4) {
+      if (!service.carrierCode) {
+        errs.service_carrierCode = isRTL ? 'يرجى اختيار شركة الشحن' : 'Carrier selection is required';
+      }
+    } else if (currentStep === 5) {
+      if (customs.shipmentType?.toLowerCase().includes('commercial') && !customs.invoiceNum?.trim()) {
+        errs.customs_invoiceNum = isRTL ? 'رقم الفاتورة التجارية مطلوب للشحنات التجارية' : 'Commercial invoice number is required';
+      }
+      if (!customs.hsCode?.trim()) {
+        errs.customs_hsCode = isRTL ? 'رمز البند الجمركي (HS Code) مطلوب' : 'HS Tariff Code is required';
       }
     }
     setErrors(errs);
@@ -2004,34 +2023,204 @@ export const TargetLogisticsWizard = ({
 
                 {/* DGR Details Sub-panel */}
                 {pkg.dangerousGoods && (
-                  <div className="p-3 bg-amber-50/50 border border-amber-200 rounded-xl space-y-3">
-                    <div className="text-[11px] font-bold text-amber-900">
-                      {isRTL ? 'اختر تصنيف البضاعة الخطرة الجاهز:' : 'Select IATA DGR Preset Category:'}
+                  <div className="p-4 bg-amber-50/60 border border-amber-200 rounded-xl space-y-4">
+                    <div>
+                      <label className="text-[11px] font-bold text-amber-900 block mb-1.5">
+                        {isRTL ? 'اختر تصنيف البضاعة الخطرة الجاهز (IATA Presets):' : 'Select IATA Dangerous Goods Preset Category:'}
+                      </label>
+                      <select
+                        value={pkg.unCode || 'none'}
+                        onChange={(e) => {
+                          const sel = DG_PRESET_OPTIONS.find(o => o.unCode === e.target.value || o.id === e.target.value);
+                          if (sel) {
+                            setPkg(prev => ({
+                              ...prev,
+                              unCode: sel.unCode,
+                              dgClass: sel.dgClass,
+                              properShippingName: sel.properShippingName,
+                              packingGroup: sel.packingGroup,
+                              dgServiceCode: sel.serviceCode,
+                              dgContentId: sel.contentId,
+                              dgMarks: sel.marks
+                            }));
+                            setErrors(prev => {
+                              const next = { ...prev };
+                              delete next.pkg_unCode;
+                              delete next.pkg_dgClass;
+                              delete next.pkg_properShippingName;
+                              return next;
+                            });
+                          }
+                        }}
+                        className="w-full p-2 border-[1.5px] border-amber-300 rounded-xl text-xs font-semibold bg-white text-amber-950 outline-none focus:border-amber-600 cursor-pointer"
+                      >
+                        {DG_PRESET_OPTIONS.map(opt => (
+                          <option key={opt.id} value={opt.unCode || opt.id}>
+                            {opt.name}
+                          </option>
+                        ))}
+                      </select>
                     </div>
+
+                    {/* Quick Preset Buttons */}
                     <div className="flex flex-wrap gap-1.5">
-                      {DG_PRESET_OPTIONS.map(opt => (
+                      {DG_PRESET_OPTIONS.filter(o => o.id !== 'none').slice(0, 4).map(opt => (
                         <button
                           key={opt.id}
                           type="button"
-                          onClick={() => setPkg(prev => ({
-                            ...prev,
-                            unCode: opt.unCode,
-                            dgClass: opt.dgClass,
-                            properShippingName: opt.properShippingName,
-                            packingGroup: opt.packingGroup,
-                            dgServiceCode: opt.serviceCode,
-                            dgContentId: opt.contentId,
-                            dgMarks: opt.marks
-                          }))}
-                          className={`px-2 py-1 rounded-md text-[10.5px] font-bold border transition-colors ${
+                          onClick={() => {
+                            setPkg(prev => ({
+                              ...prev,
+                              unCode: opt.unCode,
+                              dgClass: opt.dgClass,
+                              properShippingName: opt.properShippingName,
+                              packingGroup: opt.packingGroup,
+                              dgServiceCode: opt.serviceCode,
+                              dgContentId: opt.contentId,
+                              dgMarks: opt.marks
+                            }));
+                            setErrors(prev => {
+                              const next = { ...prev };
+                              delete next.pkg_unCode;
+                              delete next.pkg_dgClass;
+                              delete next.pkg_properShippingName;
+                              return next;
+                            });
+                          }}
+                          className={`px-2.5 py-1 rounded-lg text-[10.5px] font-bold border transition-colors ${
                             pkg.unCode === opt.unCode 
-                              ? 'bg-amber-600 text-white border-amber-600' 
-                              : 'bg-white text-amber-900 border-amber-200 hover:bg-amber-100'
+                              ? 'bg-amber-600 text-white border-amber-600 shadow-xs' 
+                              : 'bg-white text-amber-900 border-amber-200 hover:bg-amber-100/70'
                           }`}
                         >
-                          {opt.name}
+                          {opt.unCode ? `${opt.unCode} – ` : ''}{opt.name.split('—')[0].split('(')[0].trim()}
                         </button>
                       ))}
+                    </div>
+
+                    {/* All Editable IATA DGR Data Fields */}
+                    <div className="pt-3 border-t border-amber-200/80 space-y-3">
+                      <div className="text-[11px] font-black text-amber-900 uppercase tracking-wider">
+                        {isRTL ? 'بيانات ومواصفات الشحن للمواد الخطرة (DGR Data Fields):' : 'IATA DGR Technical Compliance Fields:'}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {/* UN Code */}
+                        <div>
+                          <label className="text-[10.5px] font-bold text-amber-950 block mb-1">
+                            {isRTL ? 'رمز الأمم المتحدة (UN Code)' : 'UN Identification Code'} <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={pkg.unCode}
+                            onChange={(e) => {
+                              setPkg({ ...pkg, unCode: e.target.value });
+                              if (errors.pkg_unCode) setErrors(prev => { const n = { ...prev }; delete n.pkg_unCode; return n; });
+                            }}
+                            placeholder="e.g. UN1266"
+                            className={`w-full p-2 border-[1.5px] rounded-xl text-xs font-semibold font-mono bg-white outline-none ${
+                              errors.pkg_unCode ? 'border-red-400 bg-red-50/20' : 'border-amber-200 focus:border-amber-600'
+                            }`}
+                          />
+                          {errors.pkg_unCode && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.pkg_unCode}</span>}
+                        </div>
+
+                        {/* Hazard Class */}
+                        <div>
+                          <label className="text-[10.5px] font-bold text-amber-950 block mb-1">
+                            {isRTL ? 'فئة الخطورة (Hazard Class)' : 'Hazard Class'} <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={pkg.dgClass}
+                            onChange={(e) => {
+                              setPkg({ ...pkg, dgClass: e.target.value });
+                              if (errors.pkg_dgClass) setErrors(prev => { const n = { ...prev }; delete n.pkg_dgClass; return n; });
+                            }}
+                            placeholder="e.g. Class 3 — Flammable Liquid"
+                            className={`w-full p-2 border-[1.5px] rounded-xl text-xs font-semibold bg-white outline-none ${
+                              errors.pkg_dgClass ? 'border-red-400 bg-red-50/20' : 'border-amber-200 focus:border-amber-600'
+                            }`}
+                          />
+                          {errors.pkg_dgClass && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.pkg_dgClass}</span>}
+                        </div>
+
+                        {/* Packing Group */}
+                        <div>
+                          <label className="text-[10.5px] font-bold text-amber-950 block mb-1">
+                            {isRTL ? 'مجموعة التعبئة (Packing Group)' : 'Packing Group'}
+                          </label>
+                          <input
+                            type="text"
+                            value={pkg.packingGroup}
+                            onChange={(e) => setPkg({ ...pkg, packingGroup: e.target.value })}
+                            placeholder="e.g. PG II / PG III"
+                            className="w-full p-2 border-[1.5px] border-amber-200 rounded-xl text-xs font-semibold bg-white outline-none focus:border-amber-600 font-mono"
+                          />
+                        </div>
+
+                        {/* Carrier DGR Service Code */}
+                        <div>
+                          <label className="text-[10.5px] font-bold text-amber-950 block mb-1">
+                            {isRTL ? 'رمز خدمة الناقل (HE, HV, HK, HC)' : 'Carrier Service Code'}
+                          </label>
+                          <input
+                            type="text"
+                            value={pkg.dgServiceCode}
+                            onChange={(e) => setPkg({ ...pkg, dgServiceCode: e.target.value })}
+                            placeholder="e.g. HE / HV"
+                            className="w-full p-2 border-[1.5px] border-amber-200 rounded-xl text-xs font-semibold bg-white outline-none focus:border-amber-600 font-mono"
+                          />
+                        </div>
+
+                        {/* DGR Content ID */}
+                        <div>
+                          <label className="text-[10.5px] font-bold text-amber-950 block mb-1">
+                            {isRTL ? 'معرف المحتوى (Content ID)' : 'DGR Content ID'}
+                          </label>
+                          <input
+                            type="text"
+                            value={pkg.dgContentId}
+                            onChange={(e) => setPkg({ ...pkg, dgContentId: e.target.value })}
+                            placeholder="e.g. 910 / 965"
+                            className="w-full p-2 border-[1.5px] border-amber-200 rounded-xl text-xs font-semibold bg-white outline-none focus:border-amber-600 font-mono"
+                          />
+                        </div>
+
+                        {/* Proper Shipping Name */}
+                        <div className="sm:col-span-2 lg:col-span-1">
+                          <label className="text-[10.5px] font-bold text-amber-950 block mb-1">
+                            {isRTL ? 'اسم الشحن المعتمد' : 'Proper Shipping Name'} <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={pkg.properShippingName}
+                            onChange={(e) => {
+                              setPkg({ ...pkg, properShippingName: e.target.value });
+                              if (errors.pkg_properShippingName) setErrors(prev => { const n = { ...prev }; delete n.pkg_properShippingName; return n; });
+                            }}
+                            placeholder="PERFUMERY PRODUCTS WITH FLAMMABLE SOLVENTS"
+                            className={`w-full p-2 border-[1.5px] rounded-xl text-xs font-semibold bg-white outline-none ${
+                              errors.pkg_properShippingName ? 'border-red-400 bg-red-50/20' : 'border-amber-200 focus:border-amber-600'
+                            }`}
+                          />
+                          {errors.pkg_properShippingName && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.pkg_properShippingName}</span>}
+                        </div>
+                      </div>
+
+                      {/* DGR Marks / Description */}
+                      <div>
+                        <label className="text-[10.5px] font-bold text-amber-950 block mb-1">
+                          {isRTL ? 'بيان وعلامات المواد الخطرة (DGR Marks / Declaration)' : 'DGR Marks & Custom Declaration'}
+                        </label>
+                        <input
+                          type="text"
+                          value={pkg.dgMarks}
+                          onChange={(e) => setPkg({ ...pkg, dgMarks: e.target.value })}
+                          placeholder="DANGEROUS GOODS AS PER ASSOCIATED DGD"
+                          className="w-full p-2 border-[1.5px] border-amber-200 rounded-xl text-xs font-semibold bg-white outline-none focus:border-amber-600"
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
@@ -2046,10 +2235,11 @@ export const TargetLogisticsWizard = ({
                 </div>
 
                 {/* Carrier Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   {[
-                    { id: 'DGR', name: 'DHL Express Global', desc: 'Worldwide express air · door-to-door', price: '18.500', time: '2–3 business days', icon: 'flight_takeoff', color: '#D40511', bg: '#fef2f2' },
+                    { id: 'DGR', name: 'DHL Express Global', desc: 'Worldwide express air · door-to-door', price: '18.500', time: '1–3 business days', icon: 'flight_takeoff', color: '#D40511', bg: '#fef2f2' },
                     { id: 'FEDEX', name: 'FedEx Express Global', desc: 'Global priority air · automated customs', price: '21.750', time: '2–4 business days', icon: 'flight', color: '#4D148C', bg: '#f5f3ff' },
+                    { id: 'ARAMEX', name: 'Aramex Priority', desc: 'Regional express & GCC ground network', price: '14.250', time: '2–4 business days', icon: 'local_shipping', color: '#E31837', bg: '#fff1f2' },
                     { id: 'INTERNAL', name: 'Target Dedicated Fleet', desc: 'Domestic same-day courier · Kuwait only', price: '4.500', time: 'Same day delivery', icon: 'electric_rickshaw', color: '#059669', bg: '#ecfdf5' }
                   ].map(c => {
                     const isSelected = service.carrierCode === c.id;
@@ -2059,25 +2249,26 @@ export const TargetLogisticsWizard = ({
                         onClick={() => {
                           if (isCarrierLocked) return;
                           setService({ ...service, carrierCode: c.id, carrierId: c.id, serviceName: c.name, quotedPrice: parseFloat(c.price) });
+                          if (errors.service_carrierCode) setErrors(prev => { const n = { ...prev }; delete n.service_carrierCode; return n; });
                         }}
-                        className={`p-3.5 rounded-xl border-[1.5px] cursor-pointer transition-all ${
+                        className={`p-3.5 rounded-xl border-[1.5px] cursor-pointer transition-all flex flex-col justify-between ${
                           isSelected 
-                            ? 'border-[#0050d4] bg-[#f5f8ff] shadow-sm' 
+                            ? 'border-[#0050d4] bg-[#f5f8ff] shadow-sm ring-1 ring-[#0050d4]' 
                             : 'border-[#e9edf2] bg-white hover:border-[#c7d7fa]'
                         } ${isCarrierLocked ? 'opacity-80 cursor-not-allowed' : ''}`}
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: c.bg }}>
-                              <span className="material-symbols-outlined text-lg" style={{ color: c.color }}>{c.icon}</span>
+                        <div>
+                          <div className="flex items-center gap-2.5 mb-2">
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: c.bg }}>
+                              <span className="material-symbols-outlined text-base" style={{ color: c.color }}>{c.icon}</span>
                             </div>
-                            <div>
-                              <div className="text-xs font-black text-[#1a1f23]">{c.name}</div>
-                              <div className="text-[10px] text-[#8c9196]">{c.desc}</div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-black text-[#1a1f23] truncate">{c.name}</div>
+                              <div className="text-[10px] text-[#8c9196] truncate">{c.desc}</div>
                             </div>
                           </div>
                         </div>
-                        <div className="mt-3 pt-2 border-t border-[#f0f4f8] flex items-center justify-between">
+                        <div className="pt-2 border-t border-[#f0f4f8] flex items-center justify-between">
                           <span className="text-[10px] text-[#8c9196]">{c.time}</span>
                           <span className="text-xs font-black text-[#0050d4]">KWD {c.price}</span>
                         </div>
@@ -2089,13 +2280,15 @@ export const TargetLogisticsWizard = ({
                 {/* Service Add-ons */}
                 <div>
                   <div className="text-[11px] font-black text-[#575c60] uppercase tracking-wider mb-2">
-                    {isRTL ? 'الخدمات اللوجستية الإضافية' : 'Service Add-ons'}
+                    {isRTL ? 'الخدمات اللوجستية الإضافية' : 'Value-Added Services & Delivery Options'}
                   </div>
-                  <div className="space-y-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                     {[
-                      { serviceCode: 'SIG', name: 'Direct Signature Required', desc: 'Delivery only to designated consignee', rate: 1.5 },
-                      { serviceCode: 'DDP', name: 'Delivered Duty Paid (DDP)', desc: 'Shipper covers all customs duties & clearance', rate: 5.0 },
-                      { serviceCode: 'PRM', name: 'Priority Morning Delivery (10:30 AM)', desc: 'Earliest time-definite business delivery', rate: 3.0 }
+                      { serviceCode: 'SIG', name: 'Direct Signature Required', desc: 'Delivery only to designated consignee', rate: 1.5, icon: 'draw' },
+                      { serviceCode: 'DDP', name: 'Delivered Duty Paid (DDP)', desc: 'Shipper covers all destination customs duties & clearance', rate: 5.0, icon: 'receipt_long' },
+                      { serviceCode: 'PRM', name: 'Priority Morning Delivery (10:30 AM)', desc: 'Earliest time-definite business delivery commitment', rate: 3.0, icon: 'alarm_on' },
+                      { serviceCode: 'SA', name: 'Adult (18+) ID Verified Signature', desc: 'Requires government physical ID check upon handover', rate: 2.5, icon: 'badge' },
+                      { serviceCode: 'AA', name: 'Saturday / Weekend Priority Delivery', desc: 'Guaranteed weekend delivery schedule in GCC destinations', rate: 4.5, icon: 'event' }
                     ].map(addon => {
                       const isActive = (service.selectedAddons || []).some(a => a.serviceCode === addon.serviceCode);
                       return (
@@ -2108,117 +2301,298 @@ export const TargetLogisticsWizard = ({
                               : [...service.selectedAddons, addon];
                             setService({ ...service, selectedAddons: updated });
                           }}
-                          className={`flex items-center justify-between p-2.5 rounded-xl border-[1.5px] cursor-pointer transition-all ${
-                            isActive ? 'border-[#0050d4] bg-[#f5f8ff]' : 'border-[#e9edf2] bg-white'
+                          className={`flex items-center justify-between p-3 rounded-xl border-[1.5px] cursor-pointer transition-all ${
+                            isActive ? 'border-[#0050d4] bg-[#f5f8ff]' : 'border-[#e9edf2] bg-white hover:border-[#c7d7fa]'
                           }`}
                         >
-                          <div className="flex items-center gap-2.5">
-                            <div className={`w-4 h-4 rounded flex items-center justify-center border ${
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`w-4 h-4 rounded flex items-center justify-center border shrink-0 ${
                               isActive ? 'bg-[#0050d4] border-[#0050d4] text-white' : 'border-[#e9edf2] bg-white'
                             }`}>
                               {isActive && <span className="material-symbols-outlined text-[11px]">check</span>}
                             </div>
-                            <div>
-                              <div className="text-xs font-bold text-[#1a1f23]">{addon.name}</div>
-                              <div className="text-[10px] text-[#8c9196]">{addon.desc}</div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-bold text-[#1a1f23] truncate">{addon.name}</div>
+                              <div className="text-[10px] text-[#8c9196] truncate">{addon.desc}</div>
                             </div>
                           </div>
-                          <span className="text-xs font-mono font-bold text-[#0050d4]">+KWD {addon.rate.toFixed(3)}</span>
+                          <span className="text-xs font-mono font-bold text-[#0050d4] shrink-0 ms-2">+KWD {addon.rate.toFixed(3)}</span>
                         </div>
                       );
                     })}
                   </div>
                 </div>
+
+                {/* Courier Pickup & Drop-off Logistics */}
+                <div className="p-4 bg-[#f8fafc] border border-[#e9edf2] rounded-xl space-y-4">
+                  <div className="flex items-center gap-2 text-xs font-black text-[#1a1f23] uppercase tracking-wider">
+                    <span className="material-symbols-outlined text-base text-[#0050d4]">event_available</span>
+                    <span>{isRTL ? 'جدولة استلام الطرد اللوجستي' : 'Pickup & Drop-off Logistics'}</span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-[#1a1f23]">
+                      <input
+                        type="radio"
+                        name="pickupType"
+                        checked={service.pickupType?.includes('Pickup')}
+                        onChange={() => setService({ ...service, pickupType: 'Schedule Driver Pickup' })}
+                        className="radio radio-primary radio-xs"
+                      />
+                      <span>{isRTL ? 'طلب مندوب استلام من الموقع' : 'Schedule Driver Pickup'}</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-[#1a1f23]">
+                      <input
+                        type="radio"
+                        name="pickupType"
+                        checked={service.pickupType?.includes('Drop-off')}
+                        onChange={() => setService({ ...service, pickupType: 'Drop-off at Station / Hub' })}
+                        className="radio radio-primary radio-xs"
+                      />
+                      <span>{isRTL ? 'تسليم مباشر في فرع تارجت' : 'Drop-off at Station / Hub'}</span>
+                    </label>
+                  </div>
+
+                  {service.pickupType?.includes('Pickup') && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                          {isRTL ? 'تاريخ استلام المندوب' : 'Pickup Date'}
+                        </label>
+                        <input
+                          type="date"
+                          value={service.pickupDate}
+                          onChange={(e) => setService({ ...service, pickupDate: e.target.value })}
+                          className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold bg-white outline-none focus:border-[#0050d4]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                          {isRTL ? 'الفترة الزمنية للاستلام' : 'Pickup Time Slot'}
+                        </label>
+                        <select
+                          value={service.pickupTime || '9:00 AM – 12:00 PM'}
+                          onChange={(e) => setService({ ...service, pickupTime: e.target.value })}
+                          className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold bg-white outline-none focus:border-[#0050d4] cursor-pointer"
+                        >
+                          <option value="9:00 AM – 12:00 PM">9:00 AM – 12:00 PM (Morning Window)</option>
+                          <option value="12:00 PM – 4:00 PM">12:00 PM – 4:00 PM (Afternoon Window)</option>
+                          <option value="4:00 PM – 8:00 PM">4:00 PM – 8:00 PM (Evening Window)</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                      {isRTL ? 'تعليمات خاصة للسائق ومندوب الاستلام' : 'Special Driver Instructions & Notes'}
+                    </label>
+                    <input
+                      type="text"
+                      value={service.instructions || ''}
+                      onChange={(e) => setService({ ...service, instructions: e.target.value })}
+                      placeholder={isRTL ? 'مثال: رنين جرس المستودع، بوابة رقم 3' : 'e.g. Ring warehouse bell, gate 4 loading dock, reception desk'}
+                      className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold bg-white outline-none focus:border-[#0050d4]"
+                    />
+                  </div>
+                </div>
               </div>
             )}
 
-            {/* ═══ STEP 5: CUSTOMS & LOGISTICS ("Shrinked into space") ═══ */}
+            {/* ═══ STEP 5: CUSTOMS & LOGISTICS ═══ */}
             {step === 5 && (
               <div className="bg-white border border-[#e9edf2] rounded-2xl p-5 space-y-4">
-                <div className="text-xs font-black text-[#1a1f23] uppercase tracking-wider">
-                  {isRTL ? 'البيانات الجمركية والتجارة اللاورقية' : 'Customs Declarations & Paperless Trade (PLT)'}
+                <div className="flex items-center justify-between pb-3 border-b border-[#f0f4f8]">
+                  <div>
+                    <div className="text-xs font-black text-[#1a1f23] uppercase tracking-wider">
+                      {isRTL ? 'البيانات الجمركية والفاتورة التجارية والتجارة اللاورقية' : 'Customs Declarations, Commercial Invoice & PLT'}
+                    </div>
+                    <div className="text-[11px] text-[#8c9196]">
+                      {isRTL ? 'شروط التجارة الدولية (Incoterms) وبيانات الفاتورة التجارية للتخليص' : 'International trade terms, declared invoice valuation, tariff classification and PLT'}
+                    </div>
+                  </div>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#ebf0fc] text-[#0050d4] rounded-lg text-[11px] font-black">
+                    <span className="material-symbols-outlined text-xs">verified</span>
+                    PLT Active
+                  </span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                {/* Validation Error Banner */}
+                {Object.keys(errors).filter(k => k.startsWith('customs_')).length > 0 && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs flex items-start gap-2 animate-in fade-in">
+                    <span className="material-symbols-outlined text-base text-red-600 shrink-0 mt-0.5">error</span>
+                    <div>
+                      <div className="font-bold">
+                        {isRTL ? 'يرجى استكمال الحقول الجمركية التالية للمتابعة:' : 'Please complete the following customs fields:'}
+                      </div>
+                      <ul className="list-disc list-inside text-[11px] mt-1 space-y-0.5 opacity-90">
+                        {Object.keys(errors).filter(k => k.startsWith('customs_')).map(k => (
+                          <li key={k}>{errors[k]}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+
+                {/* Grid 1: Invoice Number, Declared Value, Currency, HS Code */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {/* Commercial Invoice Number */}
                   <div>
-                    <label className="text-[10.5px] font-bold text-[#575c60] block mb-1">
-                      {isRTL ? 'رمز البند الجمركي (HS Code)' : 'HS / Tariff Code'} <span className="text-red-500">*</span>
+                    <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                      {isRTL ? 'رقم الفاتورة التجارية' : 'Commercial Invoice No.'} {customs.shipmentType?.toLowerCase().includes('commercial') && <span className="text-red-500">*</span>}
                     </label>
-                    <div className="flex items-center gap-1.5 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4]">
-                      <span className="material-symbols-outlined text-base text-[#8c9196]">tag</span>
+                    <div className={`flex items-center gap-1.5 p-2 border-[1.5px] rounded-xl transition-all ${
+                      errors.customs_invoiceNum ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus-within:border-[#0050d4]'
+                    }`}>
+                      <span className="material-symbols-outlined text-base text-[#8c9196]">receipt</span>
                       <input
                         type="text"
-                        value={customs.hsCode}
-                        onChange={(e) => setCustoms({ ...customs, hsCode: e.target.value })}
-                        placeholder="8517.12.00"
-                        className="w-full text-xs font-semibold outline-none bg-transparent font-mono"
+                        value={customs.invoiceNum}
+                        onChange={(e) => {
+                          setCustoms({ ...customs, invoiceNum: e.target.value });
+                          if (errors.customs_invoiceNum) setErrors(prev => { const n = { ...prev }; delete n.customs_invoiceNum; return n; });
+                        }}
+                        placeholder="e.g. INV-2026-9042"
+                        className="w-full text-xs font-semibold font-mono outline-none bg-transparent"
+                      />
+                    </div>
+                    {errors.customs_invoiceNum && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.customs_invoiceNum}</span>}
+                  </div>
+
+                  {/* Declared Customs Value */}
+                  <div>
+                    <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                      {isRTL ? 'القيمة الجمركية المصرحة' : 'Declared Customs Value'} <span className="text-[#8c9196] text-[10px] font-normal">(Valuation)</span>
+                    </label>
+                    <div className="flex items-center gap-1.5 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
+                      <span className="material-symbols-outlined text-base text-[#8c9196]">payments</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={customs.invoiceVal}
+                        onChange={(e) => setCustoms({ ...customs, invoiceVal: e.target.value })}
+                        placeholder={String(totalDeclaredValue.toFixed(3))}
+                        className="w-full text-xs font-semibold font-mono outline-none bg-transparent"
                       />
                     </div>
                   </div>
 
+                  {/* Invoice Currency */}
                   <div>
-                    <label className="text-[10.5px] font-bold text-[#575c60] block mb-1">
-                      {isRTL ? 'شروط التجارة (Incoterms)' : 'Incoterms'}
+                    <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                      {isRTL ? 'عملة الفاتورة' : 'Invoice Currency'}
+                    </label>
+                    <select
+                      value={customs.currency || 'KWD'}
+                      onChange={(e) => setCustoms({ ...customs, currency: e.target.value })}
+                      className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold bg-white outline-none focus:border-[#0050d4] cursor-pointer"
+                    >
+                      <option value="KWD">KWD – Kuwaiti Dinar</option>
+                      <option value="SAR">SAR – Saudi Riyal</option>
+                      <option value="AED">AED – UAE Dirham</option>
+                      <option value="USD">USD – US Dollar</option>
+                      <option value="EUR">EUR – Euro</option>
+                      <option value="GBP">GBP – British Pound</option>
+                    </select>
+                  </div>
+
+                  {/* HS Tariff Code */}
+                  <div>
+                    <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                      {isRTL ? 'رمز البند الجمركي (HS Code)' : 'HS / Tariff Code'} <span className="text-red-500">*</span>
+                    </label>
+                    <div className={`flex items-center gap-1.5 p-2 border-[1.5px] rounded-xl transition-all ${
+                      errors.customs_hsCode ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus-within:border-[#0050d4]'
+                    }`}>
+                      <span className="material-symbols-outlined text-base text-[#8c9196]">tag</span>
+                      <input
+                        type="text"
+                        value={customs.hsCode}
+                        onChange={(e) => {
+                          setCustoms({ ...customs, hsCode: e.target.value });
+                          if (errors.customs_hsCode) setErrors(prev => { const n = { ...prev }; delete n.customs_hsCode; return n; });
+                        }}
+                        placeholder="8517.12.00 / 3303.00.00"
+                        className="w-full text-xs font-semibold outline-none bg-transparent font-mono"
+                      />
+                    </div>
+                    {errors.customs_hsCode && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.customs_hsCode}</span>}
+                  </div>
+                </div>
+
+                {/* Grid 2: Incoterms, Shipment Category, Country of Origin */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                      {isRTL ? 'شروط التجارة الدولية (Incoterms)' : 'Incoterms (Terms of Sale)'}
                     </label>
                     <select
                       value={customs.incoterms}
                       onChange={(e) => setCustoms({ ...customs, incoterms: e.target.value })}
                       className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold bg-white outline-none focus:border-[#0050d4] cursor-pointer"
                     >
-                      <option>DAP – Delivered at Place</option>
-                      <option>DDP – Delivered Duty Paid</option>
-                      <option>EXW – Ex Works</option>
-                      <option>CIF – Cost, Insurance & Freight</option>
+                      <option value="DAP – Delivered at Place">DAP – Delivered at Place (Standard)</option>
+                      <option value="DDP – Delivered Duty Paid">DDP – Delivered Duty Paid (Duties Paid by Shipper)</option>
+                      <option value="CIF – Cost, Insurance and Freight">CIF – Cost, Insurance and Freight</option>
+                      <option value="EXW – Ex Works">EXW – Ex Works</option>
+                      <option value="FOB – Free on Board">FOB – Free on Board</option>
                     </select>
                   </div>
 
                   <div>
-                    <label className="text-[10.5px] font-bold text-[#575c60] block mb-1">
-                      {isRTL ? 'الغرض من الشحن' : 'Shipment Purpose'}
+                    <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                      {isRTL ? 'تصنيف وغرض الشحنة' : 'Shipment Category / Purpose'}
                     </label>
                     <select
                       value={customs.shipmentType}
                       onChange={(e) => setCustoms({ ...customs, shipmentType: e.target.value })}
                       className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold bg-white outline-none focus:border-[#0050d4] cursor-pointer"
                     >
-                      <option>Commercial – General Merchandise</option>
-                      <option>Commercial – Sample</option>
-                      <option>Personal – Gift</option>
-                      <option>Return / Repair</option>
+                      <option value="Commercial">Commercial Cargo / Merchandise</option>
+                      <option value="Personal">Personal Effects / Private Goods</option>
+                      <option value="Sample">Commercial Sample / Prototype</option>
+                      <option value="Return">Return for Repair / Warranty</option>
                     </select>
                   </div>
 
                   <div>
-                    <label className="text-[10.5px] font-bold text-[#575c60] block mb-1">
-                      {isRTL ? 'بلد المنشأ' : 'Country of Origin'}
+                    <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                      {isRTL ? 'بلد المنشأ (Country of Origin)' : 'Country of Origin'}
                     </label>
                     <input
                       type="text"
                       value={customs.origin}
                       onChange={(e) => setCustoms({ ...customs, origin: e.target.value })}
+                      placeholder="Kuwait"
                       className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold bg-white outline-none focus:border-[#0050d4]"
                     />
                   </div>
                 </div>
 
+                {/* Customs Notes */}
                 <div>
-                  <label className="text-[10.5px] font-bold text-[#575c60] block mb-1">
-                    {isRTL ? 'ملاحظات الفاتورة التجارية والبيان الجمركي' : 'Commercial Invoice Instructions & Declarations'}
+                  <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                    {isRTL ? 'ملاحظات الفاتورة التجارية وتصريحات التخليص الجمركي' : 'Commercial Invoice Declarations & Clearance Instructions'}
                   </label>
                   <textarea
                     rows={2}
                     value={customs.notes}
                     onChange={(e) => setCustoms({ ...customs, notes: e.target.value })}
-                    placeholder="Electronic customs invoice notes, commercial ref..."
+                    placeholder="Electronic customs invoice declarations, duty payment account numbers, or COO details..."
                     className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold outline-none focus:border-[#0050d4] resize-none"
                   />
                 </div>
 
                 {/* Paperless Trade Badge */}
-                <div className="flex items-center gap-2.5 p-3 bg-[#f8fafc] border border-[#e9edf2] rounded-xl">
-                  <span className="material-symbols-outlined text-lg text-[#0050d4]">receipt_long</span>
+                <div className="flex items-center gap-3 p-3 bg-[#f8fafc] border border-[#e9edf2] rounded-xl">
+                  <span className="material-symbols-outlined text-xl text-[#0050d4]">receipt_long</span>
                   <div className="text-[11px] text-[#575c60]">
-                    <strong>📋 {isRTL ? 'التجارة اللاورقية مفعلة (PLT):' : 'Paperless Trade (PLT) Active:'}</strong> {isRTL ? 'يتم إرسال الفاتورة والبيانات الجمركية إلكترونياً مباشرة إلى منافذ الجمارك دون الحاجة للمستندات الورقية.' : 'Electronic invoice transmitted directly to customs without physical paperwork requirement.'}
+                    <strong>📋 {isRTL ? 'التجارة اللاورقية مفعلة (Paperless Trade - PLT):' : 'Paperless Trade (PLT) Digital Submission:'}</strong>{' '}
+                    {isRTL 
+                      ? 'يتم إرسال الفاتورة والبيانات الجمركية إلكترونياً مباشرة إلى منافذ وهيئات الجمارك، مما يسرع التخليص الجمركي الفوري دون تأخير ورقي.'
+                      : 'Commercial invoice and items data will be transmitted digitally directly to customs authorities for accelerated digital pre-clearance.'}
                   </div>
                 </div>
               </div>
@@ -2271,8 +2645,12 @@ export const TargetLogisticsWizard = ({
                       <span className="font-bold text-[#1a1f23]">{pkg.pkgType} ({totalWeight.toFixed(1)} kg)</span>
                     </div>
                     <div className="flex justify-between py-1 border-b border-[#f0f4f8]">
-                      <span className="text-[#8c9196] font-semibold">{isRTL ? 'القيمة المعلنة' : 'Declared Value'}</span>
-                      <span className="font-bold text-[#1a1f23]">KWD {totalDeclaredValue.toFixed(3)}</span>
+                      <span className="text-[#8c9196] font-semibold">{isRTL ? 'رقم الفاتورة التجارية' : 'Commercial Invoice'}</span>
+                      <span className="font-mono font-bold text-[#1a1f23]">{customs.invoiceNum || (mode === 'create' ? 'AUTO-GEN' : 'None')}</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-[#f0f4f8]">
+                      <span className="text-[#8c9196] font-semibold">{isRTL ? 'القيمة الجمركية المعلنة' : 'Customs Valuation'}</span>
+                      <span className="font-bold text-[#0050d4]">{customs.currency || 'KWD'} {Number(customs.invoiceVal || totalDeclaredValue).toFixed(3)}</span>
                     </div>
                     <div className="flex justify-between py-1 border-b border-[#f0f4f8]">
                       <span className="text-[#8c9196] font-semibold">{isRTL ? 'الناقل المختار' : 'Carrier'}</span>
@@ -2283,6 +2661,16 @@ export const TargetLogisticsWizard = ({
                       <span className="font-bold text-[#1a1f23]">
                         {service.selectedAddons.length > 0 ? service.selectedAddons.map(a => a.serviceCode).join(', ') : 'None'}
                       </span>
+                    </div>
+                    {pkg.dangerousGoods && (
+                      <div className="flex justify-between py-1 border-b border-[#f0f4f8]">
+                        <span className="text-amber-800 font-semibold">{isRTL ? 'المواد الخطرة (DGR)' : 'IATA Dangerous Goods'}</span>
+                        <span className="font-mono font-bold text-amber-800">{pkg.unCode || 'Active'} ({pkg.dgClass || 'DGR'})</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between py-1 border-b border-[#f0f4f8]">
+                      <span className="text-[#8c9196] font-semibold">{isRTL ? 'شروط الشحن (Incoterms)' : 'Incoterms'}</span>
+                      <span className="font-bold text-[#1a1f23]">{customs.incoterms?.split('–')[0]?.trim() || 'DAP'}</span>
                     </div>
                     <div className="flex justify-between py-1">
                       <span className="text-[#8c9196] font-semibold">{isRTL ? 'الرمز الجمركي' : 'HS Tariff Code'}</span>

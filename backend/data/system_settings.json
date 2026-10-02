@@ -55,5 +55,26 @@
     "lastAutoSyncAt": null,
     "lastAutoSyncStatus": null,
     "lastAutoSyncSummary": null
+  },
+  "ottu": {
+    "enabled": true,
+    "domain": "target.ottu.com",
+    "apiKey": "",
+    "pgCodes": [
+      "knet",
+      "apple-pay",
+      "mpgs"
+    ],
+    "mode": "production"
+  },
+  "fleet": {
+    "enabled": true,
+    "mode": "internal_only",
+    "paywallActive": false,
+    "requirePhotoPod": true,
+    "requireSignaturePod": true,
+    "autoAssignZone": true,
+    "codAutoReconciliation": true,
+    "maxActiveRunsPerDriver": 2
   }
 }
