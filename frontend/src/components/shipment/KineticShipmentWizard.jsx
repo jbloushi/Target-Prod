@@ -1970,7 +1970,7 @@ const LogisticsStep = ({ customs, setCustoms, errors = {}, clearError }) => {
 };
 
 // ── Step 6: Review & Final Confirmation ────────────────────────
-const ReviewStep = ({ sender, receiver, pkg, service, customs, confirmed, setConfirmed, isTestMode, errors = {}, clearError }) => {
+const ReviewStep = ({ sender, receiver, pkg, service, customs, confirmed, setConfirmed, isTestMode, errors = {}, clearError, onEditStep }) => {
   const { lang } = useLanguage();
   const declaredVal = parseFloat(customs.invoiceVal || pkg.value) || 0;
   const insurancePremium = pkg.insurance ? Math.max(2.5, declaredVal * 0.01).toFixed(3) : '0.000';
@@ -1990,7 +1990,7 @@ const ReviewStep = ({ sender, receiver, pkg, service, customs, confirmed, setCon
           </div>
           <div>
             <h2 className="text-base font-bold text-base-content">{lang === 'ar' ? 'مراجعة وتأكيد بيان الشحنة' : 'Review & Confirm Dispatch Manifest'}</h2>
-            <p className="text-xs text-base-content/60">{lang === 'ar' ? 'يرجى تدقيق جميع التفاصيل قبل إصدار بوليصة الشحن الرسمية' : 'Audit consignee, cargo particulars, and rate breakdown before generating airway bill'}</p>
+            <p className="text-xs text-base-content/60">{lang === 'ar' ? 'يرجى تدقيق جميع التفاصيل قبل إصدار بوليصة الشحن الرسمية - يمكنك تعديل أي قسم مباشرة' : 'Audit consignee, cargo particulars, and rate breakdown before generating airway bill'}</p>
           </div>
         </div>
 
@@ -2005,9 +2005,21 @@ const ReviewStep = ({ sender, receiver, pkg, service, customs, confirmed, setCon
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Shipper */}
         <div className="p-4 rounded-xl border border-base-200 bg-base-200/30 space-y-1.5 text-xs">
-          <div className="flex items-center gap-2 font-bold text-primary text-sm pb-1 border-b border-base-200">
-            <span className="material-symbols-outlined text-base">flight_takeoff</span>
-            {lang === 'ar' ? 'الراسل (المصدر)' : 'Shipper (Origin)'}
+          <div className="flex items-center justify-between pb-1 border-b border-base-200">
+            <div className="flex items-center gap-2 font-bold text-primary text-sm">
+              <span className="material-symbols-outlined text-base">flight_takeoff</span>
+              {lang === 'ar' ? 'الراسل (المصدر)' : 'Shipper (Origin)'}
+            </div>
+            {onEditStep && (
+              <button
+                type="button"
+                onClick={() => onEditStep(1)}
+                className="btn btn-xs btn-outline btn-primary gap-1 font-bold text-[11px] h-6 min-h-0 px-2"
+              >
+                <span className="material-symbols-outlined text-xs">edit</span>
+                {lang === 'ar' ? 'تعديل الراسل' : 'Edit Shipper'}
+              </button>
+            )}
           </div>
           <div className="font-bold text-sm text-base-content pt-1">{sender.name || '—'}</div>
           {sender.company && <div className="text-base-content/70">{sender.company}</div>}
@@ -2022,9 +2034,21 @@ const ReviewStep = ({ sender, receiver, pkg, service, customs, confirmed, setCon
 
         {/* Consignee */}
         <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 space-y-1.5 text-xs">
-          <div className="flex items-center gap-2 font-bold text-primary text-sm pb-1 border-b border-primary/20">
-            <span className="material-symbols-outlined text-base">flight_land</span>
-            {lang === 'ar' ? 'المستلم (الوجهة)' : 'Consignee (Destination)'}
+          <div className="flex items-center justify-between pb-1 border-b border-primary/20">
+            <div className="flex items-center gap-2 font-bold text-primary text-sm">
+              <span className="material-symbols-outlined text-base">flight_land</span>
+              {lang === 'ar' ? 'المستلم (الوجهة)' : 'Consignee (Destination)'}
+            </div>
+            {onEditStep && (
+              <button
+                type="button"
+                onClick={() => onEditStep(2)}
+                className="btn btn-xs btn-outline btn-primary gap-1 font-bold text-[11px] h-6 min-h-0 px-2"
+              >
+                <span className="material-symbols-outlined text-xs">edit</span>
+                {lang === 'ar' ? 'تعديل المستلم' : 'Edit Consignee'}
+              </button>
+            )}
           </div>
           <div className="font-bold text-sm text-base-content pt-1">{receiver.name || '—'}</div>
           {receiver.company && <div className="text-base-content/70">{receiver.company}</div>}
@@ -2045,9 +2069,21 @@ const ReviewStep = ({ sender, receiver, pkg, service, customs, confirmed, setCon
             <span className="material-symbols-outlined text-base text-primary">inventory_2</span>
             {lang === 'ar' ? 'مواصفات الطرود والقطع' : 'Consignment Cargo Manifest'}
           </div>
-          <span className="badge badge-sm badge-neutral font-bold">
-            {packagesList.length} Piece{packagesList.length > 1 ? 's' : ''} • {pkg.weight || 1} kg total
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="badge badge-sm badge-neutral font-bold">
+              {packagesList.length} Piece{packagesList.length > 1 ? 's' : ''} • {pkg.weight || 1} kg total
+            </span>
+            {onEditStep && (
+              <button
+                type="button"
+                onClick={() => onEditStep(3)}
+                className="btn btn-xs btn-outline btn-primary gap-1 font-bold text-[11px] h-6 min-h-0 px-2"
+              >
+                <span className="material-symbols-outlined text-xs">edit</span>
+                {lang === 'ar' ? 'تعديل الطرود' : 'Edit Packages'}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="space-y-2">
@@ -2084,7 +2120,19 @@ const ReviewStep = ({ sender, receiver, pkg, service, customs, confirmed, setCon
             <span className="material-symbols-outlined text-base text-primary">local_shipping</span>
             {KNOWN_CARRIERS[service.carrierCode]?.name || service.carrierCode || 'Carrier Gateway'}
           </div>
-          <span className="badge badge-sm badge-outline font-semibold">{service.serviceName || service.serviceCode}</span>
+          <div className="flex items-center gap-2">
+            <span className="badge badge-sm badge-outline font-semibold">{service.serviceName || service.serviceCode}</span>
+            {onEditStep && (
+              <button
+                type="button"
+                onClick={() => onEditStep(4)}
+                className="btn btn-xs btn-outline btn-primary gap-1 font-bold text-[11px] h-6 min-h-0 px-2"
+              >
+                <span className="material-symbols-outlined text-xs">edit</span>
+                {lang === 'ar' ? 'تعديل الشاحن' : 'Edit Carrier'}
+              </button>
+            )}
+          </div>
         </div>
 
         {selectedAddons.length > 0 && (
@@ -2101,6 +2149,53 @@ const ReviewStep = ({ sender, receiver, pkg, service, customs, confirmed, setCon
           <div className="flex items-center justify-between pt-2 border-t border-base-200">
             <span className="font-bold text-base-content">{lang === 'ar' ? 'إجمالي تكلفة الشحن المستحقة:' : 'Total Airway Bill Price:'}</span>
             <span className="text-base font-black text-primary font-mono">{grandTotal} KWD</span>
+          </div>
+        )}
+      </div>
+
+      {/* Customs & Logistics Breakdown */}
+      <div className="p-4 rounded-xl border border-base-200 bg-base-100 space-y-2 text-xs">
+        <div className="flex items-center justify-between pb-2 border-b border-base-200">
+          <div className="flex items-center gap-2 font-bold text-base-content">
+            <span className="material-symbols-outlined text-base text-primary">event_note</span>
+            {lang === 'ar' ? 'البيان الجمركي واللوجستي' : 'Customs & Logistics Particulars'}
+          </div>
+          {onEditStep && (
+            <button
+              type="button"
+              onClick={() => onEditStep(5)}
+              className="btn btn-xs btn-outline btn-primary gap-1 font-bold text-[11px] h-6 min-h-0 px-2"
+            >
+              <span className="material-symbols-outlined text-xs">edit</span>
+              {lang === 'ar' ? 'تعديل الجمارك' : 'Edit Customs'}
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-base-content/80">
+          <div>
+            <span className="text-base-content/50 block text-[10px]">{lang === 'ar' ? 'شروط التجارة:' : 'Incoterms:'}</span>
+            <span className="font-bold">{customs.incoterms || 'DAP'}</span>
+          </div>
+          <div>
+            <span className="text-base-content/50 block text-[10px]">{lang === 'ar' ? 'رقم الفاتورة:' : 'Invoice No:'}</span>
+            <span className="font-mono font-semibold">{customs.invoiceNum || 'AUTO-GEN'}</span>
+          </div>
+          <div>
+            <span className="text-base-content/50 block text-[10px]">{lang === 'ar' ? 'القيمة المصرحة:' : 'Declared Value:'}</span>
+            <span className="font-mono font-bold text-primary">{customs.invoiceVal || pkg.value || 0} {customs.currency || 'KWD'}</span>
+          </div>
+          <div>
+            <span className="text-base-content/50 block text-[10px]">{lang === 'ar' ? 'جدولة الاستلام:' : 'Pickup Mode:'}</span>
+            <span className="font-semibold">{service.pickupType || 'Drop-off at Hub'}</span>
+          </div>
+        </div>
+
+        {(service.pickupDate || service.instructions || customs.notes) && (
+          <div className="text-[11px] text-base-content/70 pt-2 border-t border-base-200/50 space-y-0.5">
+            {service.pickupDate && <div><strong>Pickup:</strong> {service.pickupDate} {service.pickupTime || ''}</div>}
+            {service.instructions && <div><strong>Instructions:</strong> {service.instructions}</div>}
+            {customs.notes && <div><strong>Customs Notes:</strong> {customs.notes}</div>}
           </div>
         )}
       </div>
@@ -2293,41 +2388,51 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
           const res = await shipmentService.getShipmentByTrackingNumber(editing.trackingNumber);
           const data = res.data?.data || res.data;
           if (data) {
-            if (data.sender) {
+            const senderSrc = data.sender || data.origin;
+            if (senderSrc) {
               setSender(prev => ({
                 ...prev,
-                name: data.sender.contactPerson || data.sender.name || prev.name,
-                company: data.sender.company || prev.company,
-                phone: data.sender.phone || prev.phone,
-                phoneCountryCode: data.sender.phoneCountryCode || prev.phoneCountryCode,
-                email: data.sender.email || prev.email,
-                taxId: data.sender.taxId || prev.taxId,
-                addr1: data.sender.addressLine1 || data.sender.streetLines?.[0] || data.sender.addr1 || prev.addr1,
-                addr2: data.sender.addressLine2 || data.sender.streetLines?.[1] || data.sender.addr2 || prev.addr2,
-                area: data.sender.area || prev.area,
-                city: data.sender.city || prev.city,
-                country: data.sender.country || prev.country,
-                countryCode: data.sender.countryCode || prev.countryCode,
-                zip: data.sender.postalCode || data.sender.zip || prev.zip
+                name: senderSrc.contactPerson || senderSrc.name || prev.name,
+                company: senderSrc.company || prev.company,
+                phone: senderSrc.phone || prev.phone,
+                phoneCountryCode: senderSrc.phoneCountryCode || prev.phoneCountryCode,
+                email: senderSrc.email || prev.email,
+                taxId: senderSrc.taxId || prev.taxId,
+                addr1: senderSrc.addressLine1 || senderSrc.streetLines?.[0] || senderSrc.addr1 || prev.addr1,
+                addr2: senderSrc.addressLine2 || senderSrc.streetLines?.[1] || senderSrc.addr2 || prev.addr2,
+                area: senderSrc.area || prev.area,
+                city: senderSrc.city || prev.city,
+                state: senderSrc.state || prev.state,
+                country: senderSrc.country || prev.country,
+                countryCode: senderSrc.countryCode || prev.countryCode,
+                zip: senderSrc.postalCode || senderSrc.zip || prev.zip,
+                formattedAddress: senderSrc.formattedAddress || prev.formattedAddress,
+                latitude: senderSrc.latitude || prev.latitude,
+                longitude: senderSrc.longitude || prev.longitude
               }));
             }
-            if (data.receiver) {
+            const receiverDest = data.receiver || data.destination;
+            if (receiverDest) {
               setReceiver(prev => ({
                 ...prev,
-                name: data.receiver.contactPerson || data.receiver.name || prev.name,
-                company: data.receiver.company || prev.company,
-                phone: data.receiver.phone || prev.phone,
-                phoneCountryCode: data.receiver.phoneCountryCode || prev.phoneCountryCode,
-                email: data.receiver.email || prev.email,
-                taxId: data.receiver.taxId || prev.taxId,
-                addr1: data.receiver.addressLine1 || data.receiver.streetLines?.[0] || data.receiver.addr1 || prev.addr1,
-                addr2: data.receiver.addressLine2 || data.receiver.streetLines?.[1] || data.receiver.addr2 || prev.addr2,
-                area: data.receiver.area || prev.area,
-                city: data.receiver.city || prev.city,
-                country: data.receiver.country || prev.country,
-                countryCode: data.receiver.countryCode || prev.countryCode,
-                zip: data.receiver.postalCode || data.receiver.zip || prev.zip,
-                instructions: data.receiver.instructions || prev.instructions
+                name: receiverDest.contactPerson || receiverDest.name || prev.name,
+                company: receiverDest.company || prev.company,
+                phone: receiverDest.phone || prev.phone,
+                phoneCountryCode: receiverDest.phoneCountryCode || prev.phoneCountryCode,
+                email: receiverDest.email || prev.email,
+                taxId: receiverDest.taxId || prev.taxId,
+                addr1: receiverDest.addressLine1 || receiverDest.streetLines?.[0] || receiverDest.addr1 || prev.addr1,
+                addr2: receiverDest.addressLine2 || receiverDest.streetLines?.[1] || receiverDest.addr2 || prev.addr2,
+                area: receiverDest.area || prev.area,
+                city: receiverDest.city || prev.city,
+                state: receiverDest.state || prev.state,
+                country: receiverDest.country || prev.country,
+                countryCode: receiverDest.countryCode || prev.countryCode,
+                zip: receiverDest.postalCode || receiverDest.zip || prev.zip,
+                instructions: receiverDest.instructions || data.specialInstructions || prev.instructions,
+                formattedAddress: receiverDest.formattedAddress || prev.formattedAddress,
+                latitude: receiverDest.latitude || prev.latitude,
+                longitude: receiverDest.longitude || prev.longitude
               }));
             }
             if (data.packages?.length || data.parcels?.length) {
@@ -2338,9 +2443,28 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
                 length: String(list[0]?.length || prev.length),
                 width: String(list[0]?.width || prev.width),
                 height: String(list[0]?.height || prev.height),
+                pkgType: list[0]?.packageType || list[0]?.pkgType || prev.pkgType,
                 description: list[0]?.description || prev.description,
+                qty: list[0]?.qty || list[0]?.quantity || prev.qty,
+                value: String(list[0]?.value || list[0]?.declaredValue || prev.value),
                 packagesList: list
               }));
+            }
+            const dg = data.dangerousGoods || data.origin?.dangerousGoods;
+            if (dg && (dg.contains || dg.code || dg.unCode)) {
+              setPkg(prev => ({
+                ...prev,
+                dangerousGoods: true,
+                unCode: dg.unCode || dg.code || prev.unCode,
+                dgClass: dg.class || prev.dgClass,
+                properShippingName: dg.properShippingName || prev.properShippingName,
+                dgServiceCode: dg.serviceCode || prev.dgServiceCode,
+                dgContentId: dg.contentId || prev.dgContentId,
+                dgMarks: dg.customDescription || dg.marks || prev.dgMarks
+              }));
+            }
+            if (data.insurance || data.origin?.insuredValue) {
+              setPkg(prev => ({ ...prev, insurance: true }));
             }
             if (data.carrierCode) {
               setService(prev => ({
@@ -2348,9 +2472,27 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
                 carrierCode: data.carrierCode,
                 carrierId: data.carrierCode,
                 serviceCode: data.serviceCode || prev.serviceCode,
-                quotedPrice: data.price || prev.quotedPrice
+                quotedPrice: data.price ? String(data.price) : prev.quotedPrice,
+                currency: data.currency || prev.currency,
+                pickupType: data.pickupRequired ? 'Schedule Pickup' : prev.pickupType,
+                pickupDate: data.pickupDate ? new Date(data.pickupDate).toISOString().split('T')[0] : prev.pickupDate,
+                pickupTime: data.pickupTime || prev.pickupTime,
+                instructions: data.specialInstructions || prev.instructions
               }));
             }
+            if (data.customsInvoice || data.incoterm || data.items) {
+              setCustoms(prev => ({
+                ...prev,
+                invoiceNum: data.customsInvoice?.invoiceNumber || prev.invoiceNum,
+                invoiceVal: data.customsInvoice?.declaredValue != null ? String(data.customsInvoice.declaredValue) : prev.invoiceVal,
+                notes: data.customsInvoice?.notes || prev.notes,
+                incoterms: data.incoterm || prev.incoterms,
+                hsCode: data.items?.[0]?.hsCode || prev.hsCode,
+                origin: data.items?.[0]?.countryOfOrigin || prev.origin,
+                currency: data.currency || prev.currency
+              }));
+            }
+            setConfirmed(true);
           }
         } catch (e) {
           console.debug('Failed to load editing shipment:', e.message);
@@ -2828,6 +2970,10 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
         }
       };
 
+      // Ensure both sender/receiver and origin/destination aliases are populated
+      payload.origin = payload.sender;
+      payload.destination = payload.receiver;
+
       const res = editing
         ? await shipmentService.updateShipmentDetails(editing.trackingNumber, payload)
         : await shipmentService.createShipment(payload);
@@ -2835,15 +2981,19 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
       if (saveSenderToBook) handleSaveAddressNow(sender, 'Sender');
       if (saveReceiverToBook) handleSaveAddressNow(receiver, 'Receiver');
 
-      const tn = res.data?.trackingNumber || ('TLG-' + Date.now().toString().slice(-8));
+      const tn = editing?.trackingNumber || res.data?.trackingNumber || ('TLG-' + Date.now().toString().slice(-8));
       const createdObj = { ...payload, trackingNumber: tn, id: res.data?.id || tn };
       setCreatedTn(tn);
       setCreatedShipment(createdObj);
       setSuccess(true);
-      enqueueSnackbar(lang === 'ar' ? `تم إصدار البوليصة ${tn} بنجاح!` : `Shipment ${tn} created successfully!`, { variant: 'success' });
+      if (editing) {
+        enqueueSnackbar(lang === 'ar' ? `تم حفظ تعديلات الشحنة ${tn} بنجاح!` : `Shipment ${tn} updated successfully!`, { variant: 'success' });
+      } else {
+        enqueueSnackbar(lang === 'ar' ? `تم إصدار البوليصة ${tn} بنجاح!` : `Shipment ${tn} created successfully!`, { variant: 'success' });
+      }
       if (onComplete) onComplete(createdObj);
     } catch (err) {
-      enqueueSnackbar(err.message || 'Failed to create shipment', { variant: 'error' });
+      enqueueSnackbar(err.message || (editing ? 'Failed to update shipment' : 'Failed to create shipment'), { variant: 'error' });
     } finally {
       setSubmitting(false);
     }
@@ -3175,11 +3325,10 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
             return (
               <li
                 key={s.id}
-                onClick={() => {
-                  if (s.id < step) setStep(s.id);
-                }}
-                className={`step cursor-pointer transition-all ${
-                  isCurrent || isCompleted ? 'step-primary font-bold text-xs' : 'font-medium text-xs text-base-content/50'
+                onClick={() => setStep(s.id)}
+                title={lang === 'ar' ? `الانتقال مباشرة إلى: ${s.labelAr || s.label}` : `Jump directly to: ${s.label}`}
+                className={`step cursor-pointer transition-all hover:opacity-80 ${
+                  isCurrent || isCompleted ? 'step-primary font-bold text-xs' : 'font-medium text-xs text-base-content/60 hover:text-primary'
                 }`}
                 data-content={isCompleted ? '✓' : s.id}
               >
@@ -3279,6 +3428,7 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
               isTestMode={isTestMode}
               errors={errors}
               clearError={clearError}
+              onEditStep={setStep}
             />
           )}
         </div>
@@ -3342,8 +3492,52 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
               </div>
             )}
 
+            {/* Quick Section Jump Navigator */}
+            <div className="space-y-1.5 pt-2 border-t border-base-200">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-base-content/50 mb-1 flex items-center justify-between">
+                <span>{lang === 'ar' ? 'أقسام البوليصة' : 'Consignment Sections'}</span>
+                <span className="text-[10px] font-mono text-primary font-bold">{step}/6</span>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {WIZARD_STEPS.map((s) => {
+                  const isCurrent = step === s.id;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setStep(s.id)}
+                      className={`btn btn-xs justify-start gap-1.5 text-[11px] font-medium transition-all ${
+                        isCurrent
+                          ? 'btn-primary font-bold shadow-sm'
+                          : 'btn-ghost bg-base-200/50 hover:bg-base-200 text-base-content/70'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-xs">{s.icon}</span>
+                      <span className="truncate">{lang === 'ar' ? (s.labelAr || s.label) : s.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Stepper Navigation Buttons */}
             <div className="space-y-2 pt-2 border-t border-base-200">
+              {editing && step < 6 && (
+                <button
+                  type="button"
+                  onClick={handleConfirmSubmit}
+                  disabled={submitting}
+                  className="btn btn-outline btn-primary w-full btn-sm font-bold gap-1.5 shadow-sm"
+                >
+                  {submitting ? (
+                    <span className="loading loading-spinner loading-xs" />
+                  ) : (
+                    <span className="material-symbols-outlined text-xs">save</span>
+                  )}
+                  <span>{lang === 'ar' ? 'حفظ التعديلات مباشرة' : 'Quick Save Changes'}</span>
+                </button>
+              )}
+
               {step < 6 ? (
                 <button
                   type="button"
@@ -3363,12 +3557,14 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
                   {submitting ? (
                     <span className="loading loading-spinner loading-sm" />
                   ) : (
-                    <span className="material-symbols-outlined text-base">rocket_launch</span>
+                    <span className="material-symbols-outlined text-base">{editing ? 'save' : 'rocket_launch'}</span>
                   )}
                   <span>
                     {submitting
-                      ? (lang === 'ar' ? 'جاري الإصدار والترحيل...' : 'Dispatching Manifest...')
-                      : (lang === 'ar' ? 'إصدار وترحيل بوليصة الشحن' : 'Dispatch Shipment & Issue Waybill')}
+                      ? (lang === 'ar' ? 'جاري الحفظ والترحيل...' : 'Processing...')
+                      : (editing
+                          ? (lang === 'ar' ? 'حفظ التعديلات' : 'Save Changes')
+                          : (lang === 'ar' ? 'إصدار وترحيل بوليصة الشحن' : 'Dispatch Shipment & Issue Waybill'))}
                   </span>
                 </button>
               )}

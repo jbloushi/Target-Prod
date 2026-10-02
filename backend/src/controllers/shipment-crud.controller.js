@@ -1183,7 +1183,23 @@ exports.updateShipment = async (req, res) => {
         const isAdminOrStaff = ['admin', 'staff', 'manager', 'accounting'].includes(user.role);
         if (!isAdminOrStaff && !canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Not authorized' });
 
-        const allowedFields = ['destination', 'origin', 'items', 'parcels', 'incoterm', 'currency', 'serviceCode', 'status', 'allowPublicLocationUpdate'];
+        // Map aliases from wizard or API clients
+        if (updates.sender && !updates.origin) {
+            updates.origin = updates.sender;
+        }
+        if (updates.receiver && !updates.destination) {
+            updates.destination = updates.receiver;
+        }
+        if (updates.packages && !updates.parcels) {
+            updates.parcels = updates.packages;
+        }
+
+        const allowedFields = [
+            'destination', 'origin', 'items', 'parcels', 'incoterm', 'currency',
+            'serviceCode', 'status', 'allowPublicLocationUpdate', 'carrierCode',
+            'shipmentType', 'packagingType', 'specialInstructions', 'remarks',
+            'customsInvoice', 'pickupDate', 'pickupTime', 'pickupRequired'
+        ];
         const manualEditableFields = ['price', 'costPrice', 'estimatedDelivery'];
         const updateData = {};
         let nextOrigin = null;
