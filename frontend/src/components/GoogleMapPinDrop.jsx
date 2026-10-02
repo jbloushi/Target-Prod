@@ -85,52 +85,87 @@ export const GoogleMapPinDrop = ({
   }, []);
 
   const reverseGeocode = useCallback(async (lat, lng) => {
-    if (!window.google?.maps?.Geocoder) return;
+    // 1. Try Google Maps Geocoder if loaded and active
+    if (window.google?.maps?.Geocoder && !authFailed && !window.__googleMapsAuthFailed) {
+      try {
+        const geocoder = new window.google.maps.Geocoder();
+        const response = await geocoder.geocode({ location: { lat, lng } });
+        if (response.results && response.results.length > 0) {
+          const place = response.results[0];
+          let city = '';
+          let countryCode = '';
+          let postalCode = '';
+          let state = '';
+          let area = '';
+
+          place.address_components.forEach(comp => {
+            const types = comp.types || [];
+            if (types.includes('locality')) city = comp.long_name;
+            if (types.includes('country')) countryCode = comp.short_name;
+            if (types.includes('postal_code')) postalCode = comp.long_name;
+            if (types.includes('administrative_area_level_1')) state = comp.long_name;
+            if (types.includes('sublocality') || types.includes('neighborhood')) area = comp.long_name;
+          });
+
+          const countryObj = countries.find(c => c.code === countryCode);
+
+          if (onLocationChange) {
+            onLocationChange({
+              latitude: lat,
+              longitude: lng,
+              formattedAddress: place.formatted_address,
+              city: city || (countryCode === 'KW' ? 'Kuwait City' : ''),
+              country: countryObj?.name || '',
+              countryCode: countryCode || 'KW',
+              postalCode: postalCode || '',
+              state: state || '',
+              area: area || ''
+            });
+          }
+          return;
+        }
+      } catch (err) {
+        console.debug('Google Geocoder error, falling back to Nominatim:', err.message);
+      }
+    }
+
+    // 2. High-reliability reverse geocode via Nominatim
     try {
-      const geocoder = new window.google.maps.Geocoder();
-      const response = await geocoder.geocode({ location: { lat, lng } });
-      if (response.results && response.results.length > 0) {
-        const place = response.results[0];
-        let city = '';
-        let countryCode = '';
-        let postalCode = '';
-        let state = '';
-        let area = '';
-
-        place.address_components.forEach(comp => {
-          const types = comp.types || [];
-          if (types.includes('locality')) city = comp.long_name;
-          if (types.includes('country')) countryCode = comp.short_name;
-          if (types.includes('postal_code')) postalCode = comp.long_name;
-          if (types.includes('administrative_area_level_1')) state = comp.long_name;
-          if (types.includes('sublocality') || types.includes('neighborhood')) area = comp.long_name;
-        });
-
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`, {
+        headers: { 'Accept-Language': 'en' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const addr = data.address || {};
+        const countryCode = (addr.country_code || 'KW').toUpperCase();
         const countryObj = countries.find(c => c.code === countryCode);
+        const city = addr.city || addr.town || addr.municipality || addr.state || (countryCode === 'KW' ? 'Kuwait City' : '');
+        const street = addr.road || addr.pedestrian || addr.suburb || '';
 
         if (onLocationChange) {
           onLocationChange({
             latitude: lat,
             longitude: lng,
-            formattedAddress: place.formatted_address,
-            city: city || (countryCode === 'KW' ? 'Kuwait City' : ''),
-            country: countryObj?.name || '',
-            countryCode: countryCode || 'KW',
-            postalCode: postalCode || '',
-            state: state || '',
-            area: area || ''
+            formattedAddress: data.display_name,
+            addr1: street,
+            city,
+            country: countryObj?.name || addr.country || '',
+            countryCode,
+            postalCode: addr.postcode || '',
+            state: addr.state || '',
+            area: addr.suburb || addr.neighbourhood || ''
           });
         }
-      } else if (onLocationChange) {
-        onLocationChange({ latitude: lat, longitude: lng });
+        return;
       }
-    } catch (err) {
-      console.debug('Reverse geocode error:', err.message);
-      if (onLocationChange) {
-        onLocationChange({ latitude: lat, longitude: lng });
-      }
+    } catch (e) {
+      console.debug('Reverse geocode error:', e.message);
     }
-  }, [onLocationChange]);
+
+    if (onLocationChange) {
+      onLocationChange({ latitude: lat, longitude: lng });
+    }
+  }, [authFailed, onLocationChange]);
 
   const handleMapClick = (e) => {
     if (!e.latLng) return;
@@ -148,6 +183,13 @@ export const GoogleMapPinDrop = ({
     reverseGeocode(lat, lng);
   };
 
+  const handleNudge = (dLat, dLng) => {
+    const newLat = Number((position.lat + dLat).toFixed(5));
+    const newLng = Number((position.lng + dLng).toFixed(5));
+    setPosition({ lat: newLat, lng: newLng });
+    reverseGeocode(newLat, newLng);
+  };
+
   const handleGetCurrentLocation = () => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -162,7 +204,8 @@ export const GoogleMapPinDrop = ({
         },
         (err) => {
           console.debug('Geolocation error:', err.message);
-        }
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
       );
     }
   };
@@ -175,9 +218,9 @@ export const GoogleMapPinDrop = ({
         padding: '10px 14px', background: '#f8fafc', borderRadius: 10, border: `1px solid ${TK.border}`
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 18, color: TK.primary }}>pin_drop</span>
-          <span style={{ fontSize: 12, fontWeight: 600, color: TK.text2 }}>
-            Map Pin Coordinates: {position.lat ? `${position.lat.toFixed(4)}, ${position.lng.toFixed(4)}` : 'Auto-detected'}
+          <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#D40511' }}>location_on</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: TK.text2 }}>
+            Google Maps Pin: {position.lat ? `${position.lat.toFixed(4)}° N, ${position.lng.toFixed(4)}° E` : 'Kuwait City'}
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -203,12 +246,12 @@ export const GoogleMapPinDrop = ({
             }}
           >
             <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{showMap ? 'expand_less' : 'map'}</span>
-            {showMap ? 'Hide Map' : 'Adjust Pin on Map'}
+            {showMap ? 'Hide Map' : 'Show Map'}
           </button>
         </div>
       </div>
 
-      {/* Map Dropdown */}
+      {/* Map Display */}
       {showMap && (
         <div style={{
           marginTop: 8, height, borderRadius: 12, overflow: 'hidden',
@@ -232,12 +275,84 @@ export const GoogleMapPinDrop = ({
               />
             </GoogleMap>
           ) : (
-            <MapFallbackCard
-              address={addressLabel || 'Kuwait City, Kuwait'}
-              coordinates={position}
-              title="Pin Location Preview"
-              height="100%"
-            />
+            <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: height || '240px', background: '#e8eef3' }}>
+              {/* Live Google Maps Embed with Pin */}
+              <iframe
+                title="Google Maps Location with Pin"
+                width="100%"
+                height="100%"
+                style={{ border: 0, width: '100%', height: '100%', display: 'block' }}
+                loading="lazy"
+                src={`https://maps.google.com/maps?q=${position.lat},${position.lng}&z=15&output=embed`}
+              />
+
+              {/* Pin Coordinates & Nudge Repositioning Controls */}
+              <div style={{
+                position: 'absolute', top: 10, left: 10, zIndex: 10,
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '6px 12px', background: 'rgba(255, 255, 255, 0.96)',
+                borderRadius: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.18)',
+                fontSize: '11px', fontWeight: 'bold', color: '#1a1f23',
+                border: '1px solid #e2e8f0'
+              }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#D40511' }}>location_on</span>
+                <span>{position.lat ? `${position.lat.toFixed(4)}° N, ${position.lng.toFixed(4)}° E` : 'Pin Dropped'}</span>
+                
+                <div style={{ display: 'flex', alignItems: 'center', gap: 3, borderLeft: '1px solid #cbd5e1', paddingLeft: 8, marginLeft: 2 }}>
+                  <button
+                    type="button"
+                    title="Nudge North"
+                    onClick={() => handleNudge(0.001, 0)}
+                    style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 4, border: '1px solid #cbd5e1', background: '#f8fafc', cursor: 'pointer', fontWeight: 'bold', fontSize: 10 }}
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    title="Nudge South"
+                    onClick={() => handleNudge(-0.001, 0)}
+                    style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 4, border: '1px solid #cbd5e1', background: '#f8fafc', cursor: 'pointer', fontWeight: 'bold', fontSize: 10 }}
+                  >
+                    ▼
+                  </button>
+                  <button
+                    type="button"
+                    title="Nudge West"
+                    onClick={() => handleNudge(0, -0.001)}
+                    style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 4, border: '1px solid #cbd5e1', background: '#f8fafc', cursor: 'pointer', fontWeight: 'bold', fontSize: 10 }}
+                  >
+                    ◀
+                  </button>
+                  <button
+                    type="button"
+                    title="Nudge East"
+                    onClick={() => handleNudge(0, 0.001)}
+                    style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 4, border: '1px solid #cbd5e1', background: '#f8fafc', cursor: 'pointer', fontWeight: 'bold', fontSize: 10 }}
+                  >
+                    ▶
+                  </button>
+                </div>
+              </div>
+
+              {/* Direct Open in Google Maps */}
+              <div style={{
+                position: 'absolute', bottom: 10, right: 10, zIndex: 10,
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '4px 10px', background: 'rgba(255, 255, 255, 0.92)',
+                borderRadius: 8, fontSize: '10.5px', fontWeight: 'bold',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.12)'
+              }}>
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${position.lat},${position.lng}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: '#0050d4', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 3 }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: 13 }}>open_in_new</span>
+                  <span>Google Maps</span>
+                </a>
+              </div>
+            </div>
           )}
         </div>
       )}

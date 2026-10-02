@@ -356,6 +356,31 @@ export const TargetLogisticsWizard = ({
     return () => { isMounted = false; };
   }, [user, isStaffOrAdmin]);
 
+  const handleSelectClient = (clientId) => {
+    setSelectedClientId(clientId);
+    if (!clientId) return;
+    const cl = clients.find(c => String(c.id || c._id) === String(clientId));
+    if (cl) {
+      const defAddr = Array.isArray(cl.addresses) ? (cl.addresses.find(a => a.isDefault) || cl.addresses[0]) : null;
+      const countryObj = defAddr ? (countries.find(c => c.code === defAddr.countryCode) || countries.find(c => c.name === defAddr.country)) : null;
+      setSender(prev => ({
+        ...prev,
+        company: cl.organization?.name || cl.company || cl.name || prev.company,
+        phone: cl.phone || prev.phone,
+        email: cl.email || prev.email,
+        taxId: cl.carrierConfig?.taxId || cl.carrierConfig?.vatNo || prev.taxId,
+        addr1: defAddr?.addressLine1 || defAddr?.streetLines?.[0] || prev.addr1,
+        city: defAddr?.city || prev.city,
+        state: defAddr?.state || prev.state,
+        country: countryObj?.name || defAddr?.country || prev.country,
+        countryCode: countryObj?.code || defAddr?.countryCode || prev.countryCode
+      }));
+      if (cl.organizationId) {
+        setSelectedOrgId(cl.organizationId);
+      }
+    }
+  };
+
   const handleSelectOrganization = (orgId) => {
     setSelectedOrgId(orgId);
     if (!orgId) return;
@@ -364,16 +389,17 @@ export const TargetLogisticsWizard = ({
       const countryObj = countries.find(c => c.code === org.countryCode) || countries.find(c => c.name?.toLowerCase() === org.country?.toLowerCase());
       setSender(prev => ({
         ...prev,
+        name: org.contactPerson || org.name || prev.name,
         company: org.name || prev.company,
         phone: org.phone || prev.phone,
         email: org.email || prev.email,
-        addr1: org.address || prev.addr1,
+        addr1: org.address || org.addressLine1 || prev.addr1,
         city: org.city || prev.city,
         state: org.state || prev.state,
         country: countryObj?.name || org.country || prev.country,
         countryCode: countryObj?.code || org.countryCode || prev.countryCode,
         phoneCountryCode: countryObj?.dialCode || prev.phoneCountryCode,
-        taxId: org.taxNumber || org.vatNumber || prev.taxId
+        taxId: org.taxNumber || org.vatNumber || org.taxId || prev.taxId
       }));
     }
   };
@@ -1182,8 +1208,8 @@ export const TargetLogisticsWizard = ({
             {/* ═══ STEP 1: ORIGIN (SHIPPER) ═══ */}
             {step === 1 && (
               <div className="space-y-5">
-                {/* Staff Acting On Behalf Of Delegation Card */}
-                {isStaffOrAdmin && (
+                {/* Staff Acting On Behalf Of Delegation Card (Creation only, never in edit mode) */}
+                {mode === 'create' && isStaffOrAdmin && (
                   <div className="p-4 bg-[#f5f8ff] border-[1.5px] border-[#c7d7fa] rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-xl bg-[#0050d4] text-white flex items-center justify-center shrink-0 shadow-xs">
@@ -1191,36 +1217,39 @@ export const TargetLogisticsWizard = ({
                       </div>
                       <div>
                         <div className="text-xs font-black text-[#1a1f23] uppercase tracking-wider">
-                          {isRTL ? 'الإنشاء نيابة عن منظمة أو عميل (صلاحيات الموظفين)' : 'Acting On Behalf Of (Staff Delegation)'}
+                          {isRTL ? 'الإنشاء نيابة عن عميل أو منظمة (صلاحيات الموظفين)' : 'Acting On Behalf Of (Staff Delegation)'}
                         </div>
                         <div className="text-[11px] text-[#575c60]">
-                          {isRTL ? 'حدد المنظمة أو العميل لربط الشحنة بحسابه وسجلاته وتعبئة بياناته' : 'Select an organization or client account to bind this consignment'}
+                          {isRTL ? 'حدد العميل أو المنظمة لربط الشحنة بحسابه وسجلاته وتعبئة بياناته' : 'Select client account or organization to bind consignment and pre-fill details'}
                         </div>
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+                      {/* Swapped Label: Labeled Client / User (using organizations data as requested) */}
                       <select
                         value={selectedOrgId}
                         onChange={(e) => handleSelectOrganization(e.target.value)}
                         className="flex-1 sm:flex-initial text-xs font-bold text-[#0050d4] bg-white border border-[#c7d7fa] rounded-xl px-3 py-2 outline-none cursor-pointer min-w-[200px]"
                       >
-                        <option value="">{isRTL ? '— اختر منظمة الشحن —' : '— Select Organization —'}</option>
+                        <option value="">{isRTL ? '— حساب العميل / المستخدم —' : '— Client / User —'}</option>
                         {organizations.map(org => (
                           <option key={org.id || org._id} value={org.id || org._id}>
-                            🏢 {org.name}
+                            👤 {org.name || org.email}
                           </option>
                         ))}
                       </select>
+
+                      {/* Swapped Label: Labeled Organization (using clients data as requested) */}
                       {clients.length > 0 && (
                         <select
                           value={selectedClientId}
-                          onChange={(e) => setSelectedClientId(e.target.value)}
+                          onChange={(e) => handleSelectClient(e.target.value)}
                           className="flex-1 sm:flex-initial text-xs font-bold text-[#1a1f23] bg-white border border-[#e9edf2] rounded-xl px-3 py-2 outline-none cursor-pointer min-w-[170px]"
                         >
-                          <option value="">{isRTL ? '— حساب العميل (اختياري) —' : '— Client User (Optional) —'}</option>
+                          <option value="">{isRTL ? '— منظمة الشحن (اختياري) —' : '— Organization (Optional) —'}</option>
                           {clients.map(cl => (
                             <option key={cl.id || cl._id} value={cl.id || cl._id}>
-                              👤 {cl.name || cl.email}
+                              🏢 {cl.organization?.name || cl.name || cl.company || cl.email}
                             </option>
                           ))}
                         </select>
