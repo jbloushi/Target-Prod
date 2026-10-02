@@ -745,6 +745,21 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
             return res.status(403).json({ success: false, error: 'Permission denied' });
         }
 
+        // Auto-heal missing URLs from documents array if present
+        if (Array.isArray(shipment.documents)) {
+            if (!shipment.invoiceUrl) {
+                const invDoc = shipment.documents.find(d => /inv|customs|commercial/i.test(String(d?.type || '')));
+                if (invDoc?.url) shipment.invoiceUrl = invDoc.url;
+            }
+            if (!shipment.labelUrl) {
+                const lblDoc = shipment.documents.find(d => /label|awb|waybill/i.test(String(d?.type || '')));
+                if (lblDoc?.url) shipment.labelUrl = lblDoc.url;
+            }
+            if (!shipment.awbUrl && shipment.labelUrl) {
+                shipment.awbUrl = shipment.labelUrl;
+            }
+        }
+
         // Capability checks
         if (!hasCapability(req.user.role, 'VIEW_COST_DATA')) { 
             shipment.costPrice = null; 

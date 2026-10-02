@@ -1069,7 +1069,9 @@ class DgrAdapter extends CarrierAdapter {
         }
 
         const accountNumber = options.accountNumber || options.shipperAccount || activeConfig.accountNumber;
-        const requestedTypes = options.typeCode ? [options.typeCode] : ['label', 'waybillDoc', 'invoice'];
+        const requestedTypes = options.typeCode
+            ? [options.typeCode]
+            : ['label', 'waybillDoc', 'invoice', 'customs-declarations', 'commercial-invoice'];
 
         let label, awb, invoice;
         const documents = [];
@@ -1102,12 +1104,16 @@ class DgrAdapter extends CarrierAdapter {
                         ? doc.url
                         : (doc.content?.startsWith('data:') ? doc.content : `data:${mime};base64,${doc.content}`);
 
-                    if (['label', 'transportlabel', 'shippinglabel', 'transport-label'].includes(docTypeCode)) {
-                        if (!label) label = contentUri;
-                    } else if (['waybilldoc', 'waybill', 'awb', 'archivedoc', 'archive-doc'].includes(docTypeCode)) {
-                        if (!awb) awb = contentUri;
-                    } else if (['invoice', 'commercialinvoice', 'customsinvoice', 'commercial_invoice', 'customs_invoice', 'inv'].includes(docTypeCode)) {
-                        if (!invoice) invoice = contentUri;
+                    const isLabelDoc = /label|transport|shipping/i.test(docTypeCode);
+                    const isWaybillDoc = /waybill|awb|archive/i.test(docTypeCode);
+                    const isInvoiceDoc = /inv|customs|commercial/i.test(docTypeCode);
+
+                    if (isLabelDoc && !label) {
+                        label = contentUri;
+                    } else if (isWaybillDoc && !awb) {
+                        awb = contentUri;
+                    } else if (isInvoiceDoc && !invoice) {
+                        invoice = contentUri;
                     }
 
                     documents.push({
@@ -1115,6 +1121,17 @@ class DgrAdapter extends CarrierAdapter {
                         format: 'pdf',
                         url: contentUri
                     });
+                }
+
+                // If specific requested type was invoice/customs and we got a document, safely bind to invoice
+                if (!invoice && /inv|customs|commercial/i.test(typeCode) && rawDocs.length > 0) {
+                    const firstDoc = rawDocs[0];
+                    const rawContent = firstDoc?.content || firstDoc?.url;
+                    if (rawContent) {
+                        invoice = String(rawContent).startsWith('http') || String(rawContent).startsWith('data:')
+                            ? String(rawContent)
+                            : `data:application/pdf;base64,${rawContent}`;
+                    }
                 }
             } catch (err) {
                 logger.debug(`[DgrAdapter] getShipmentDocuments note for ${trackingNumber} (${typeCode}): ${err.response?.data?.detail || err.message}`);

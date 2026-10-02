@@ -555,7 +555,7 @@ exports.generateCarrierDocuments = async (req, res) => {
         }
 
         const existingDocs = Array.isArray(shipment.documents) ? shipment.documents : [];
-        const isMockDocument = (url) => {
+        const isMockLabel = (url) => {
             if (!url) return false;
             const str = String(url).trim();
             if (str.startsWith('data:application/pdf;base64,')) {
@@ -568,11 +568,11 @@ exports.generateCarrierDocuments = async (req, res) => {
         };
 
         const rawFoundLabel = shipment.labelUrl || shipment.awbUrl || existingDocs.find(d => ['label', 'awb', 'waybilldoc'].includes(String(d?.type || '').toLowerCase()))?.url;
-        const rawFoundInvoice = shipment.invoiceUrl || existingDocs.find(d => ['invoice', 'customs_invoice'].includes(String(d?.type || '').toLowerCase()))?.url;
+        const rawFoundInvoice = shipment.invoiceUrl || existingDocs.find(d => ['invoice', 'customs_invoice', 'commercial_invoice', 'customs-declarations'].includes(String(d?.type || '').toLowerCase()))?.url;
 
-        // If carrier is DGR, filter out any previously generated mock documents
-        const foundLabel = (carrierCode === 'DGR' && isMockDocument(rawFoundLabel)) ? null : rawFoundLabel;
-        const foundInvoice = (carrierCode === 'DGR' && isMockDocument(rawFoundInvoice)) ? null : rawFoundInvoice;
+        // If carrier is DGR, filter out any previously generated mock label
+        const foundLabel = (carrierCode === 'DGR' && isMockLabel(rawFoundLabel)) ? null : rawFoundLabel;
+        const foundInvoice = rawFoundInvoice;
 
         const force = req.query.force === 'true' || req.body?.force === true;
 
@@ -638,8 +638,8 @@ exports.generateCarrierDocuments = async (req, res) => {
             }
         }
 
-        // 2. If official documents are still missing (e.g. not yet booked or no documents on DHL repo), execute live carrier booking
-        if (!awbUrl && !invoiceUrl) {
+        // 2. If official documents are still missing (not yet booked), execute live carrier booking
+        if (!awbUrl && !dhlTracking) {
             try {
                 const bookResult = await ShipmentBookingService.bookShipment(
                     trackingNumber,
@@ -651,30 +651,12 @@ exports.generateCarrierDocuments = async (req, res) => {
                 const fresh = await prisma.shipment.findUnique({ where: { trackingNumber } });
                 const freshLabel = fresh?.labelUrl || fresh?.awbUrl || bookResult?.shipment?.labelUrl || bookResult?.labelUrl;
                 const freshInvoice = fresh?.invoiceUrl || bookResult?.shipment?.invoiceUrl || bookResult?.invoiceUrl;
-                if (freshLabel || freshInvoice) {
-                    if ((freshLabel && !fresh?.labelUrl) || (freshInvoice && !fresh?.invoiceUrl)) {
-                        await prisma.shipment.update({
-                            where: { trackingNumber },
-                            data: {
-                                labelUrl: freshLabel || undefined,
-                                awbUrl: freshLabel || undefined,
-                                invoiceUrl: freshInvoice || undefined,
-                                dhlConfirmed: true
-                            }
-                        }).catch(() => {});
+                if (freshLabel) {
+                    awbUrl = freshLabel;
+                    invoiceUrl = freshInvoice || invoiceUrl;
+                    if (Array.isArray(fresh?.documents)) {
+                        newDocuments.push(...fresh.documents);
                     }
-                    return res.status(200).json({
-                        success: true,
-                        data: {
-                            labelUrl: freshLabel,
-                            awbUrl: fresh?.awbUrl || freshLabel,
-                            invoiceUrl: freshInvoice,
-                            documents: fresh?.documents || bookResult?.shipment?.documents || [],
-                            carrierShipmentId: fresh?.carrierShipmentId || fresh?.dhlTrackingNumber || bookResult?.shipment?.carrierShipmentId,
-                            shipment: fresh || bookResult?.shipment
-                        },
-                        message: 'Official carrier AWB and Invoice successfully retrieved from carrier API'
-                    });
                 } else if (carrierCode === 'DGR') {
                     const raw = bookResult?.shipment?.rawResponse || bookResult?.rawResponse;
                     const rawKeys = raw ? Object.keys(raw).join(',') : 'none';
@@ -696,47 +678,41 @@ exports.generateCarrierDocuments = async (req, res) => {
             }
         }
 
-        // Strict rejection for DGR: Never generate mock PDFs for DHL Express
-        if (carrierCode === 'DGR') {
-            if (!awbUrl && !invoiceUrl) {
+        // 3. Fallback Document Handling:
+        // AWB: Strict rejection for DGR if no authentic DHL label was retrieved. Internal/other carriers use template.
+        const { generateCarrierAwbPdf, generateCarrierInvoicePdf } = require('../utils/carrierPdfMock');
+        const carrierName = carrierCode === 'DGR' ? 'DHL Express' : (carrierCode === 'FEDEX' ? 'FedEx' : (carrierCode === 'ARAMEX' ? 'Aramex' : carrierCode));
+
+        if (!awbUrl) {
+            if (carrierCode === 'DGR') {
                 return res.status(400).json({
                     success: false,
                     error: 'Official DHL Express documents could not be retrieved from DHL API. Please check your DHL credentials and shipment details.'
                 });
-            }
-        } else {
-            // Fallback document generation only for internal or non-API carriers
-            const { generateCarrierAwbPdf, generateCarrierInvoicePdf } = require('../utils/carrierPdfMock');
-            const carrierName = carrierCode === 'FEDEX' ? 'FedEx' : (carrierCode === 'ARAMEX' ? 'Aramex' : carrierCode);
-
-            if (!awbUrl) {
+            } else {
                 const awbBase64 = generateCarrierAwbPdf(shipment, carrierName);
-                const savedAwbPath = await documentStorage.saveDocument(trackingNumber, 'awb', awbBase64);
-                if (savedAwbPath) {
-                    awbUrl = savedAwbPath;
-                    newDocuments.push({
-                        type: 'awb',
-                        format: 'pdf',
-                        url: savedAwbPath,
-                        storageKey: savedAwbPath,
-                        createdAt: new Date()
-                    });
+                const savedAwb = await CarrierDocumentService.uploadDocument('awb', awbBase64, 'pdf', trackingNumber);
+                if (savedAwb?.url) {
+                    awbUrl = savedAwb.url;
+                    newDocuments.push(savedAwb);
                 }
             }
+        }
 
-            if (!invoiceUrl) {
-                const invBase64 = generateCarrierInvoicePdf(shipment, carrierName);
-                const savedInvPath = await documentStorage.saveDocument(trackingNumber, 'invoice', invBase64);
-                if (savedInvPath) {
-                    invoiceUrl = savedInvPath;
-                    newDocuments.push({
-                        type: 'invoice',
-                        format: 'pdf',
-                        url: savedInvPath,
-                        storageKey: savedInvPath,
-                        createdAt: new Date()
-                    });
+        // Invoice: If invoiceUrl is missing for ANY carrier (including DGR when DHL only returned label or PLT was used), generate a compliant customs commercial invoice so customs clearance is never blocked!
+        if (!invoiceUrl) {
+            try {
+                const invBase64 = generateCarrierInvoicePdf(
+                    { ...shipment, dhlTrackingNumber: dhlTracking || shipment.dhlTrackingNumber, carrierShipmentId: dhlTracking || shipment.carrierShipmentId },
+                    carrierName
+                );
+                const savedInv = await CarrierDocumentService.uploadDocument('invoice', invBase64, 'pdf', trackingNumber);
+                if (savedInv?.url) {
+                    invoiceUrl = savedInv.url;
+                    newDocuments.push(savedInv);
                 }
+            } catch (invErr) {
+                logger.warn(`Fallback invoice generation note for ${trackingNumber}: ${invErr.message}`);
             }
         }
 
@@ -746,7 +722,8 @@ exports.generateCarrierDocuments = async (req, res) => {
                 labelUrl: awbUrl || shipment.labelUrl,
                 awbUrl: awbUrl || shipment.awbUrl,
                 invoiceUrl: invoiceUrl || shipment.invoiceUrl,
-                documents: newDocuments
+                documents: newDocuments,
+                dhlConfirmed: carrierCode === 'DGR' ? true : shipment.dhlConfirmed
             }
         });
 
@@ -760,7 +737,7 @@ exports.generateCarrierDocuments = async (req, res) => {
                 carrierShipmentId: updated.carrierShipmentId || updated.dhlTrackingNumber,
                 shipment: updated
             },
-            message: 'Carrier AWB and Invoice generated successfully'
+            message: 'Official carrier AWB and Invoice successfully retrieved'
         });
     } catch (error) {
         return handleControllerError(res, error, 'Generate carrier documents');

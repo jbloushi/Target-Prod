@@ -172,6 +172,43 @@ describe('DHL Express (DGR) Official Documents & Templates', () => {
             expect(docs.invoiceUrl).toContain(fakeDocBase64);
             expect(docs.documents.length).toBeGreaterThanOrEqual(2);
         });
+
+        it('recognizes customs-declarations typeCode as invoice', async () => {
+            const adapter = new DgrAdapter({
+                apiKey: 'test-api-key',
+                apiSecret: 'test-secret',
+                accountNumber: '418002621',
+                baseUrl: 'https://express.api.dhl.com/mydhlapi'
+            });
+
+            const fakeCustomsBase64 = Buffer.from('OFFICIAL-CUSTOMS-DECLARATION-PDF').toString('base64');
+
+            axios.get.mockImplementation((url, config) => {
+                const typeCode = config?.params?.typeCode;
+                if (typeCode === 'customs-declarations') {
+                    return Promise.resolve({
+                        status: 200,
+                        data: {
+                            documents: [
+                                {
+                                    typeCode: 'customs-declarations',
+                                    imageFormat: 'PDF',
+                                    content: fakeCustomsBase64
+                                }
+                            ]
+                        }
+                    });
+                }
+                return Promise.reject(new Error('Not found'));
+            });
+
+            const docs = await adapter.getShipmentDocuments('1234567890', {
+                accountNumber: '418002621',
+                typeCode: 'customs-declarations'
+            });
+
+            expect(docs.invoiceUrl).toContain(fakeCustomsBase64);
+        });
     });
 
     describe('Carrier fallback PDF generators', () => {

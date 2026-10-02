@@ -631,8 +631,8 @@ const ShipmentDetailsPage = () => {
         return doc.url || doc.path || null;
     };
 
-    const carrierAwbDoc = rawDocuments.find(d => ['label', 'awb', 'waybilldoc'].includes(String(d?.type || '').toLowerCase()));
-    const carrierInvoiceDoc = rawDocuments.find(d => ['invoice', 'customs_invoice'].includes(String(d?.type || '').toLowerCase()));
+    const carrierAwbDoc = rawDocuments.find(d => /label|awb|waybill/i.test(String(d?.type || '')));
+    const carrierInvoiceDoc = rawDocuments.find(d => /inv|customs|commercial/i.test(String(d?.type || '')));
 
     const isImported = Boolean(
         shipment.documents?.phenixBillId ||

@@ -309,6 +309,21 @@ class ShipmentBookingService {
                 await tryAttachDocument('label', carrierResult.labelUrl, 'labelUrl');
                 await tryAttachDocument('invoice', carrierResult.invoiceUrl, 'invoiceUrl');
                 await tryAttachDocument('awb', carrierResult.awbUrl, 'awbUrl');
+
+                // If carrier did not return a separate commercial invoice, generate compliant customs invoice fallback
+                if (!updateData.invoiceUrl) {
+                    try {
+                        const { generateCarrierInvoicePdf } = require('../utils/carrierPdfMock');
+                        const carrierName = carrierCode === 'DGR' ? 'DHL Express' : (carrierCode === 'FEDEX' ? 'FedEx' : (carrierCode === 'ARAMEX' ? 'Aramex' : carrierCode));
+                        const invBase64 = generateCarrierInvoicePdf(
+                            { ...freshShipment, dhlTrackingNumber: carrierTrackingNumber, carrierShipmentId },
+                            carrierName
+                        );
+                        await tryAttachDocument('invoice', invBase64, 'invoiceUrl');
+                    } catch (invErr) {
+                        logger.warn(`Fallback invoice generation skipped for ${freshShipment.trackingNumber}: ${invErr.message}`);
+                    }
+                }
             }
 
             // Update in DB
