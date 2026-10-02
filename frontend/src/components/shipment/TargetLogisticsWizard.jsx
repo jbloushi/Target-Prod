@@ -6,7 +6,7 @@ import api, { shipmentService, userService } from '../../services/api';
 import GoogleAddressInput from '../GoogleAddressInput';
 import { countries } from '../../utils/countries';
 import { getContainerTypes, getContainerTypeById } from '../../utils/containerTypesConfig';
-import { DG_PRESET_OPTIONS } from './KineticShipmentWizard';
+import { DG_PRESET_OPTIONS, DEFAULT_PACKAGE_TEMPLATES } from './KineticShipmentWizard';
 import { NON_POSTAL_COUNTRIES } from './shipmentValidation';
 
 /**
@@ -40,6 +40,18 @@ export const TargetLogisticsWizard = ({
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
+
+  // ── Package Templates State ──
+  const [templates, setTemplates] = useState(() => {
+    try {
+      const stored = localStorage.getItem('tl_package_templates');
+      return stored ? JSON.parse(stored) : DEFAULT_PACKAGE_TEMPLATES;
+    } catch (e) {
+      return DEFAULT_PACKAGE_TEMPLATES;
+    }
+  });
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [templateName, setTemplateName] = useState('');
 
   // ── Address Book & Client Data ──
   const [userAddresses, setUserAddresses] = useState([]);
@@ -433,6 +445,29 @@ export const TargetLogisticsWizard = ({
         errs.receiver_zip = isRTL ? 'الرمز البريدي مطلوب' : 'Postal code is required';
       }
     } else if (currentStep === 3) {
+      const packagesList = (pkg.packagesList && pkg.packagesList.length > 0) ? pkg.packagesList : [pkg];
+      packagesList.forEach((p, idx) => {
+        const pfx = idx === 0 ? 'pkg' : `pkg_${idx}`;
+        if (!p.description || !String(p.description).trim()) {
+          errs[`${pfx}_description`] = isRTL ? 'وصف محتوى الطرد مطلوب' : 'Package contents description is required';
+        }
+        const weight = Number(p.weight);
+        if (isNaN(weight) || weight <= 0) {
+          errs[`${pfx}_weight`] = isRTL ? 'الوزن يجب أن يكون أكبر من صفر' : 'Gross weight (> 0) is required';
+        }
+        const length = Number(p.length);
+        if (isNaN(length) || length <= 0) {
+          errs[`${pfx}_length`] = isRTL ? 'الطول يجب أن يكون أكبر من صفر' : 'Length (> 0) is required';
+        }
+        const width = Number(p.width);
+        if (isNaN(width) || width <= 0) {
+          errs[`${pfx}_width`] = isRTL ? 'العرض يجب أن يكون أكبر من صفر' : 'Width (> 0) is required';
+        }
+        const height = Number(p.height);
+        if (isNaN(height) || height <= 0) {
+          errs[`${pfx}_height`] = isRTL ? 'الارتفاع يجب أن يكون أكبر من صفر' : 'Height (> 0) is required';
+        }
+      });
       if (pkg.dangerousGoods) {
         if (!pkg.unCode?.trim()) errs.pkg_unCode = isRTL ? 'رمز الأمم المتحدة (UN Code) مطلوب' : 'UN Identification Code is required';
         if (!pkg.dgClass?.trim()) errs.pkg_dgClass = isRTL ? 'فئة الخطورة (Hazard Class) مطلوبة' : 'Hazard Class is required';
@@ -464,6 +499,86 @@ export const TargetLogisticsWizard = ({
     }
     setErrors({});
     setStep(s => Math.min(6, s + 1));
+  };
+
+  // ── Package Templates Handlers ──
+  const handleApplyTemplate = (tmpl) => {
+    if (!tmpl) return;
+    const defaultType = tmpl.pkgType || 'Box';
+    const newParcel = {
+      id: 1,
+      pkgType: defaultType,
+      description: tmpl.description || 'General Cargo',
+      qty: '1',
+      weight: String(tmpl.weight || '1.0'),
+      length: String(tmpl.length || '20'),
+      width: String(tmpl.width || '15'),
+      height: String(tmpl.height || '10'),
+      value: String(tmpl.value || '15.00'),
+      currency: 'KWD',
+      hsCode: ''
+    };
+    setPkg(prev => ({
+      ...prev,
+      pkgType: defaultType,
+      weight: String(tmpl.weight || '1.0'),
+      length: String(tmpl.length || '20'),
+      width: String(tmpl.width || '15'),
+      height: String(tmpl.height || '10'),
+      description: tmpl.description || 'General Cargo',
+      value: String(tmpl.value || '15.00'),
+      dangerousGoods: Boolean(tmpl.dangerousGoods),
+      unCode: tmpl.unCode || '',
+      dgClass: tmpl.dgClass || '',
+      properShippingName: tmpl.properShippingName || '',
+      packagesList: [newParcel]
+    }));
+    setErrors(prev => {
+      const next = { ...prev };
+      delete next.pkg_description;
+      delete next.pkg_weight;
+      delete next.pkg_length;
+      delete next.pkg_width;
+      delete next.pkg_height;
+      return next;
+    });
+    enqueueSnackbar(
+      isRTL ? `تم تطبيق قالب: ${tmpl.name}` : `Template applied: ${tmpl.name}`,
+      { variant: 'info' }
+    );
+  };
+
+  const handleSaveTemplate = () => {
+    if (!templateName.trim()) return;
+    const firstParcel = pkg.packagesList?.[0] || pkg;
+    const newTmpl = {
+      id: 'custom_' + Date.now(),
+      name: templateName.trim(),
+      pkgType: firstParcel.pkgType || pkg.pkgType || 'Box',
+      weight: firstParcel.weight || pkg.weight || '1.0',
+      length: firstParcel.length || pkg.length || '20',
+      width: firstParcel.width || pkg.width || '15',
+      height: firstParcel.height || pkg.height || '10',
+      description: firstParcel.description || pkg.description || 'General Cargo',
+      value: firstParcel.value || pkg.value || '15.00',
+      dangerousGoods: Boolean(pkg.dangerousGoods),
+      unCode: pkg.unCode || '',
+      dgClass: pkg.dgClass || '',
+      properShippingName: pkg.properShippingName || ''
+    };
+    const updated = [...templates, newTmpl];
+    setTemplates(updated);
+    try {
+      localStorage.setItem('tl_package_templates', JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Failed to save templates to localStorage:', e);
+    }
+    setTemplateName('');
+    setShowSaveModal(false);
+    enqueueSnackbar(
+      isRTL ? 'تم حفظ القالب بنجاح' : 'Template saved successfully',
+      { variant: 'success' }
+    );
   };
 
   // ── Recalculate package fields when container type is selected ──
@@ -503,6 +618,15 @@ export const TargetLogisticsWizard = ({
         ...(idx === 0 ? { [field]: val } : {})
       };
     });
+    const pfx = idx === 0 ? 'pkg' : `pkg_${idx}`;
+    const errKey = `${pfx}_${field}`;
+    if (errors[errKey]) {
+      setErrors(prev => {
+        const next = { ...prev };
+        delete next[errKey];
+        return next;
+      });
+    }
   };
 
   const handleAddParcel = () => {
@@ -1845,11 +1969,56 @@ export const TargetLogisticsWizard = ({
 
             {/* ═══ STEP 3: PACKAGE & CARGO ═══ */}
             {step === 3 && (
-              <div className="bg-white border border-[#e9edf2] rounded-2xl p-5 space-y-5">
-                {/* Container Types Selection Buttons */}
+              <div className="bg-white border border-[#e9edf2] rounded-2xl p-5 space-y-6">
+                {/* Step Header */}
+                <div className="flex items-center justify-between pb-4 border-b border-[#e9edf2] flex-wrap gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-[#ebf0fc] flex items-center justify-center shrink-0 text-[#0050d4]">
+                      <span className="material-symbols-outlined text-2xl">inventory_2</span>
+                    </div>
+                    <div>
+                      <h2 className="text-sm md:text-base font-extrabold text-[#1a1f23]">
+                        {isRTL ? 'مواصفات الطرود والبضائع' : 'Package & Cargo'}
+                      </h2>
+                      <p className="text-xs text-[#8c9196]">
+                        {isRTL ? 'إدارة الأبعاد والأوزان وتصنيف المواد الخطرة والتأمين' : 'Manage weight, volumetric dimensions, IATA DGR classification and insurance'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowSaveModal(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-bold text-[#575c60] hover:border-[#0050d4] hover:text-[#0050d4] transition-all"
+                  >
+                    <span className="material-symbols-outlined text-[15px]">bookmark_add</span>
+                    <span>{isRTL ? 'حفظ كقالب مخصص' : 'Save as Template'}</span>
+                  </button>
+                </div>
+
+                {/* Package Quick Templates */}
                 <div>
-                  <div className="text-[11px] font-black text-[#575c60] uppercase tracking-wider mb-2">
-                    {isRTL ? 'نوع حاوية الشحن (اختر للتعبئة التلقائية للأبعاد)' : 'Container Type (Click to populate default dimensions)'}
+                  <div className="text-[11px] font-bold text-[#575c60] mb-2 flex items-center gap-1.5">
+                    <span>📦</span>
+                    <span>{isRTL ? 'قوالب الشحنات الجاهزة:' : 'Package Templates:'}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {templates.map(tmpl => (
+                      <button
+                        key={tmpl.id}
+                        type="button"
+                        onClick={() => handleApplyTemplate(tmpl)}
+                        className="px-2.5 py-1 text-xs font-bold rounded-lg border border-[#e9edf2] bg-white text-[#575c60] hover:border-[#0050d4] hover:bg-[#ebf0fc] hover:text-[#0050d4] transition-all"
+                      >
+                        {tmpl.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Package Container Types Selection */}
+                <div>
+                  <div className="text-[11px] font-bold text-[#575c60] mb-2">
+                    {isRTL ? 'نوع حاوية الشحن (اختر للتعبئة التلقائية للأبعاد)' : 'Package Container Type'}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {containerTypes.map(c => {
@@ -1859,13 +2028,13 @@ export const TargetLogisticsWizard = ({
                           key={c.id}
                           type="button"
                           onClick={() => handleSelectContainerType(c.id)}
-                          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border ${
+                          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
                             isSelected 
                               ? 'bg-[#0050d4] text-white border-[#0050d4] shadow-xs' 
                               : 'bg-white text-[#575c60] border-[#e9edf2] hover:bg-[#f8fafc]'
                           }`}
                         >
-                          <span className="material-symbols-outlined text-[17px]">{c.icon || 'inventory_2'}</span>
+                          <span className="material-symbols-outlined text-[16px]">{c.icon || 'inventory_2'}</span>
                           <span>{isRTL ? (c.nameAr || c.name) : c.name}</span>
                         </button>
                       );
@@ -1874,99 +2043,260 @@ export const TargetLogisticsWizard = ({
                 </div>
 
                 {/* Multi-parcel Packages List */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black text-[#1a1f23] uppercase tracking-wider">
-                      {isRTL ? 'طرود الشحنة ومواصفات البضاعة' : 'Cargo Parcels & Dimensions'}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between pb-2 border-b border-[#e9edf2]">
+                    <span className="text-xs font-black text-[#1a1f23] flex items-center gap-1.5">
+                      <span>📦</span>
+                      <span>{isRTL ? 'قائمة الطرود والقطع' : 'Parcels & Packages List'}</span>
+                      <span className="text-[#8c9196] font-normal">({(pkg.packagesList || []).length})</span>
                     </span>
                     <button
                       type="button"
                       onClick={handleAddParcel}
-                      className="flex items-center gap-1 px-2.5 py-1 bg-[#ebf0fc] text-[#0050d4] rounded-lg text-xs font-bold hover:bg-[#dbe4fa] transition-colors"
+                      className="flex items-center gap-1 px-3 py-1.5 bg-[#ebf0fc] text-[#0050d4] rounded-xl text-xs font-bold hover:bg-[#dbe4fa] transition-colors"
                     >
                       <span className="material-symbols-outlined text-sm">add</span>
-                      {isRTL ? 'إضافة طرد إضافي' : 'Add Parcel'}
+                      {isRTL ? 'إضافة طرد إضافي' : 'Add Another Package'}
                     </button>
                   </div>
 
-                  {(pkg.packagesList || []).map((parcel, idx) => (
-                    <div key={parcel.id || idx} className="p-3.5 bg-[#f8fafc] border border-[#e9edf2] rounded-xl space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-black text-[#0050d4]">
-                          {isRTL ? `طرد #${idx + 1}` : `Parcel #${idx + 1}`} ({parcel.pkgType || 'Box'})
-                        </span>
-                        {pkg.packagesList.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveParcel(idx)}
-                            className="text-red-500 hover:text-red-700 text-xs flex items-center gap-0.5 font-bold"
-                          >
-                            <span className="material-symbols-outlined text-sm">delete</span>
-                            {isRTL ? 'حذف' : 'Remove'}
-                          </button>
-                        )}
-                      </div>
+                  {(pkg.packagesList || []).map((parcel, idx) => {
+                    const l = parseFloat(parcel.length) || 1;
+                    const w = parseFloat(parcel.width) || 1;
+                    const h = parseFloat(parcel.height) || 1;
+                    const volWeight = ((l * w * h) / 5000).toFixed(2);
+                    const pfxKey = idx === 0 ? 'pkg' : `pkg_${idx}`;
 
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">
-                        <div>
-                          <label className="text-[10px] font-bold text-[#8c9196] block mb-1">{isRTL ? 'الوزن (كجم)' : 'Weight (kg)'} *</label>
-                          <input
-                            type="number"
-                            step="0.1"
-                            value={parcel.weight}
-                            onChange={(e) => handleUpdateParcel(idx, 'weight', e.target.value)}
-                            className="w-full p-1.5 border border-[#e9edf2] rounded-lg text-xs font-semibold bg-white outline-none focus:border-[#0050d4]"
-                          />
+                    return (
+                      <div key={parcel.id || idx} className="p-4 bg-[#f8fafc] border border-[#e9edf2] rounded-2xl space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 bg-[#1a1f23] text-white text-[11px] font-mono font-bold rounded-md">
+                              #{idx + 1}
+                            </span>
+                            <span className="text-xs font-bold text-[#1a1f23]">
+                              {parcel.description || (isRTL ? 'محتويات الطرد' : 'Cargo Item')} ({parcel.pkgType || pkg.pkgType || 'Box'})
+                            </span>
+                          </div>
+                          {(pkg.packagesList || []).length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveParcel(idx)}
+                              className="text-red-500 hover:text-red-700 text-xs flex items-center gap-1 font-bold px-2 py-1 rounded-lg hover:bg-red-50 transition-colors"
+                            >
+                              <span className="material-symbols-outlined text-sm">delete</span>
+                              {isRTL ? 'حذف' : 'Remove'}
+                            </button>
+                          )}
                         </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-[#8c9196] block mb-1">{isRTL ? 'الطول (سم)' : 'Length (cm)'} *</label>
-                          <input
-                            type="number"
-                            value={parcel.length}
-                            onChange={(e) => handleUpdateParcel(idx, 'length', e.target.value)}
-                            className="w-full p-1.5 border border-[#e9edf2] rounded-lg text-xs font-semibold bg-white outline-none focus:border-[#0050d4]"
-                          />
+
+                        {/* Row 1: Description & Quantity */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <div className="md:col-span-2">
+                            <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                              {isRTL ? 'وصف المحتوى' : 'Contents Description'} <span className="text-red-500">*</span>
+                            </label>
+                            <div className={`flex items-center gap-2 p-2 border-[1.5px] rounded-xl transition-all ${
+                              errors[`${pfxKey}_description`] ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] bg-white focus-within:border-[#0050d4]'
+                            }`}>
+                              <span className="material-symbols-outlined text-[17px] text-[#8c9196]">description</span>
+                              <input
+                                type="text"
+                                value={parcel.description}
+                                onChange={(e) => handleUpdateParcel(idx, 'description', e.target.value)}
+                                placeholder="General merchandise & consumer goods"
+                                className="w-full text-xs font-semibold outline-none bg-transparent"
+                              />
+                            </div>
+                            {errors[`${pfxKey}_description`] && (
+                              <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors[`${pfxKey}_description`]}</span>
+                            )}
+                          </div>
+
+                          <div>
+                            <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                              {isRTL ? 'الكمية (قطع)' : 'Quantity (pieces)'} <span className="text-red-500">*</span>
+                            </label>
+                            <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] bg-white rounded-xl focus-within:border-[#0050d4] transition-all">
+                              <span className="material-symbols-outlined text-[17px] text-[#8c9196]">pin</span>
+                              <input
+                                type="number"
+                                min="1"
+                                value={parcel.qty || '1'}
+                                onChange={(e) => handleUpdateParcel(idx, 'qty', e.target.value)}
+                                placeholder="1"
+                                className="w-full text-xs font-semibold outline-none bg-transparent"
+                              />
+                              <span className="text-[11px] font-bold text-[#575c60] bg-[#f0f4f8] px-2 py-0.5 rounded-md shrink-0">pcs</span>
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-[#8c9196] block mb-1">{isRTL ? 'العرض (سم)' : 'Width (cm)'} *</label>
-                          <input
-                            type="number"
-                            value={parcel.width}
-                            onChange={(e) => handleUpdateParcel(idx, 'width', e.target.value)}
-                            className="w-full p-1.5 border border-[#e9edf2] rounded-lg text-xs font-semibold bg-white outline-none focus:border-[#0050d4]"
-                          />
+
+                        {/* Row 2: Weight & Dimensions */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                          <div>
+                            <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                              {isRTL ? 'الوزن الفعلي' : 'Weight'} <span className="text-red-500">*</span>
+                            </label>
+                            <div className={`flex items-center gap-2 p-2 border-[1.5px] rounded-xl transition-all ${
+                              errors[`${pfxKey}_weight`] ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] bg-white focus-within:border-[#0050d4]'
+                            }`}>
+                              <span className="material-symbols-outlined text-[17px] text-[#8c9196]">scale</span>
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0.1"
+                                value={parcel.weight}
+                                onChange={(e) => handleUpdateParcel(idx, 'weight', e.target.value)}
+                                placeholder="1.0"
+                                className="w-full text-xs font-semibold outline-none bg-transparent"
+                              />
+                              <span className="text-[11px] font-bold text-[#575c60] bg-[#f0f4f8] px-2 py-0.5 rounded-md shrink-0">kg</span>
+                            </div>
+                            {errors[`${pfxKey}_weight`] && (
+                              <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors[`${pfxKey}_weight`]}</span>
+                            )}
+                          </div>
+
+                          <div>
+                            <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                              {isRTL ? 'الطول' : 'Length'} <span className="text-red-500">*</span>
+                            </label>
+                            <div className={`flex items-center gap-2 p-2 border-[1.5px] rounded-xl transition-all ${
+                              errors[`${pfxKey}_length`] ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] bg-white focus-within:border-[#0050d4]'
+                            }`}>
+                              <input
+                                type="number"
+                                min="1"
+                                value={parcel.length}
+                                onChange={(e) => handleUpdateParcel(idx, 'length', e.target.value)}
+                                placeholder="20"
+                                className="w-full text-xs font-semibold outline-none bg-transparent"
+                              />
+                              <span className="text-[11px] font-bold text-[#575c60] bg-[#f0f4f8] px-2 py-0.5 rounded-md shrink-0">cm</span>
+                            </div>
+                            {errors[`${pfxKey}_length`] && (
+                              <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors[`${pfxKey}_length`]}</span>
+                            )}
+                          </div>
+
+                          <div>
+                            <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                              {isRTL ? 'العرض' : 'Width'} <span className="text-red-500">*</span>
+                            </label>
+                            <div className={`flex items-center gap-2 p-2 border-[1.5px] rounded-xl transition-all ${
+                              errors[`${pfxKey}_width`] ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] bg-white focus-within:border-[#0050d4]'
+                            }`}>
+                              <input
+                                type="number"
+                                min="1"
+                                value={parcel.width}
+                                onChange={(e) => handleUpdateParcel(idx, 'width', e.target.value)}
+                                placeholder="15"
+                                className="w-full text-xs font-semibold outline-none bg-transparent"
+                              />
+                              <span className="text-[11px] font-bold text-[#575c60] bg-[#f0f4f8] px-2 py-0.5 rounded-md shrink-0">cm</span>
+                            </div>
+                            {errors[`${pfxKey}_width`] && (
+                              <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors[`${pfxKey}_width`]}</span>
+                            )}
+                          </div>
+
+                          <div>
+                            <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                              {isRTL ? 'الارتفاع' : 'Height'} <span className="text-red-500">*</span>
+                            </label>
+                            <div className={`flex items-center gap-2 p-2 border-[1.5px] rounded-xl transition-all ${
+                              errors[`${pfxKey}_height`] ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] bg-white focus-within:border-[#0050d4]'
+                            }`}>
+                              <input
+                                type="number"
+                                min="1"
+                                value={parcel.height}
+                                onChange={(e) => handleUpdateParcel(idx, 'height', e.target.value)}
+                                placeholder="10"
+                                className="w-full text-xs font-semibold outline-none bg-transparent"
+                              />
+                              <span className="text-[11px] font-bold text-[#575c60] bg-[#f0f4f8] px-2 py-0.5 rounded-md shrink-0">cm</span>
+                            </div>
+                            {errors[`${pfxKey}_height`] && (
+                              <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors[`${pfxKey}_height`]}</span>
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-[#8c9196] block mb-1">{isRTL ? 'الارتفاع (سم)' : 'Height (cm)'} *</label>
-                          <input
-                            type="number"
-                            value={parcel.height}
-                            onChange={(e) => handleUpdateParcel(idx, 'height', e.target.value)}
-                            className="w-full p-1.5 border border-[#e9edf2] rounded-lg text-xs font-semibold bg-white outline-none focus:border-[#0050d4]"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-[#8c9196] block mb-1">{isRTL ? 'القيمة المعلنة' : 'Value (KWD)'} *</label>
-                          <input
-                            type="number"
-                            step="0.5"
-                            value={parcel.value}
-                            onChange={(e) => handleUpdateParcel(idx, 'value', e.target.value)}
-                            className="w-full p-1.5 border border-[#e9edf2] rounded-lg text-xs font-semibold bg-white outline-none focus:border-[#0050d4]"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-[#8c9196] block mb-1">{isRTL ? 'وصف المحتوى' : 'Description'} *</label>
-                          <input
-                            type="text"
-                            value={parcel.description}
-                            onChange={(e) => handleUpdateParcel(idx, 'description', e.target.value)}
-                            className="w-full p-1.5 border border-[#e9edf2] rounded-lg text-xs font-semibold bg-white outline-none focus:border-[#0050d4]"
-                          />
+
+                        {/* Row 3: Declared Value, Currency, HS Code & Volumetric Weight */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                          <div>
+                            <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                              {isRTL ? 'القيمة المعلنة' : 'Declared Value'} <span className="text-red-500">*</span>
+                            </label>
+                            <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] bg-white rounded-xl focus-within:border-[#0050d4] transition-all">
+                              <span className="material-symbols-outlined text-[17px] text-[#8c9196]">payments</span>
+                              <input
+                                type="number"
+                                step="0.5"
+                                value={parcel.value}
+                                onChange={(e) => handleUpdateParcel(idx, 'value', e.target.value)}
+                                placeholder="15.000"
+                                className="w-full text-xs font-semibold outline-none bg-transparent"
+                              />
+                              <span className="text-[11px] font-bold text-[#575c60] bg-[#f0f4f8] px-2 py-0.5 rounded-md shrink-0">
+                                {parcel.currency || customs.currency || 'KWD'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                              {isRTL ? 'العملة' : 'Currency'}
+                            </label>
+                            <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] bg-white rounded-xl focus-within:border-[#0050d4] transition-all">
+                              <span className="material-symbols-outlined text-[17px] text-[#8c9196]">paid</span>
+                              <select
+                                value={parcel.currency || customs.currency || 'KWD'}
+                                onChange={(e) => handleUpdateParcel(idx, 'currency', e.target.value)}
+                                className="w-full text-xs font-semibold outline-none bg-transparent cursor-pointer"
+                              >
+                                <option value="KWD">KWD - Kuwaiti Dinar</option>
+                                <option value="USD">USD - US Dollar</option>
+                                <option value="EUR">EUR - Euro</option>
+                                <option value="GBP">GBP - British Pound</option>
+                                <option value="AED">AED - UAE Dirham</option>
+                                <option value="SAR">SAR - Saudi Riyal</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                              {isRTL ? 'رمز التعرفة الجمركية' : 'HS / Tariff Code'} <span className="text-[#8c9196] text-[10px] font-normal">(Optional)</span>
+                            </label>
+                            <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] bg-white rounded-xl focus-within:border-[#0050d4] transition-all">
+                              <span className="material-symbols-outlined text-[17px] text-[#8c9196]">qr_code</span>
+                              <input
+                                type="text"
+                                value={parcel.hsCode || ''}
+                                onChange={(e) => handleUpdateParcel(idx, 'hsCode', e.target.value)}
+                                placeholder="8517.12.00"
+                                className="w-full text-xs font-semibold outline-none bg-transparent"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex items-end">
+                            <div className="w-full p-2.5 rounded-xl border border-[#e9edf2] bg-white flex items-center justify-between text-xs">
+                              <span className="text-[#575c60] font-medium flex items-center gap-1">
+                                <span>📐</span>
+                                <span>{isRTL ? 'الوزن الحجمي:' : 'Volumetric Wt:'}</span>
+                              </span>
+                              <span className="font-mono font-bold text-[#0050d4]">{volWeight} kg</span>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* Insurance Card Toggle */}
@@ -2770,6 +3100,74 @@ export const TargetLogisticsWizard = ({
           </footer>
         </main>
       </div>
+
+      {/* ── Save Template Modal ── */}
+      {showSaveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl border border-[#e9edf2] shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#e9edf2]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-[#ebf0fc] text-[#0050d4] flex items-center justify-center">
+                  <span className="material-symbols-outlined text-lg">bookmark_add</span>
+                </div>
+                <h3 className="text-sm font-extrabold text-[#1a1f23]">
+                  {isRTL ? 'حفظ مواصفات الطرد كقالب' : 'Save Package as Template'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSaveModal(false)}
+                className="text-[#8c9196] hover:text-[#1a1f23] text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-[#575c60]">
+              {isRTL 
+                ? 'احفظ الأبعاد والوزن والنوع الحالي كقالب جاهز للاستخدام الفوري في الشحنات المستقبلية.'
+                : 'Save current container type, weight, dimensions, and declared value for 1-click reuse.'}
+            </p>
+
+            <div>
+              <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                {isRTL ? 'اسم القالب المخصص' : 'Template Name'} <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+                placeholder={isRTL ? 'مثال: صندوق العطور القياسي' : 'e.g. Standard Small Carton'}
+                className="w-full p-2.5 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold outline-none focus:border-[#0050d4]"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleSaveTemplate();
+                  }
+                }}
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowSaveModal(false)}
+                className="px-4 py-2 border border-[#e9edf2] text-[#575c60] rounded-xl text-xs font-bold hover:bg-[#f8fafc]"
+              >
+                {isRTL ? 'إلغاء' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveTemplate}
+                className="px-4 py-2 bg-[#0050d4] text-white rounded-xl text-xs font-bold hover:bg-[#0040b0]"
+              >
+                {isRTL ? 'حفظ القالب' : 'Save Template'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

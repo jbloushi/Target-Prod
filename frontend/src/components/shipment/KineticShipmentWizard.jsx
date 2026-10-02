@@ -166,7 +166,7 @@ export const DG_PRESET_OPTIONS = [
 ];
 
 // ── Built-in Package Templates ─────────────────────────
-const DEFAULT_PACKAGE_TEMPLATES = [
+export const DEFAULT_PACKAGE_TEMPLATES = [
   { id: 'box_std_1kg', name: 'Standard Small Box (1 kg)', pkgType: 'Box', weight: '1.0', length: '20', width: '15', height: '10', description: 'General merchandise & consumer goods', value: '15.00', dangerousGoods: false },
   { id: 'doc_env', name: 'Document Envelope (0.2 kg)', pkgType: 'Envelope', weight: '0.2', length: '32', width: '24', height: '2', description: 'Legal documents & contracts', value: '5.00', dangerousGoods: false },
   { id: 'box_med_5kg', name: 'Medium Carton (5 kg)', pkgType: 'Box', weight: '5.0', length: '40', width: '30', height: '25', description: 'Apparel & electronics', value: '45.00', dangerousGoods: false },
