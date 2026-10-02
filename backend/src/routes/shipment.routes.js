@@ -201,6 +201,16 @@ router.get(
   shipmentController.generateLabel
 );
 
+// View Shipment Commercial / Customs Invoice (Official Carrier PDF)
+router.get(
+  '/:trackingNumber/invoice',
+  [
+    param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
+    validate
+  ],
+  shipmentController.generateInvoice
+);
+
 // Serve Shipment Document (Secure/Hosted PDF)
 router.get(
   '/:trackingNumber/documents/:filename',

@@ -80,9 +80,33 @@ exports.generateLabel = async (req, res) => {
         if (!shipment) return res.status(404).send('Shipment not found');
         if (!canAccessShipment(req, shipment)) return res.status(403).send('Permission denied');
 
+        const safeTrackingNumber = escapeHtml(trackingNumber);
+
+        // If official carrier PDF document exists, stream or send it directly
+        const existingLabel = shipment.labelUrl || shipment.awbUrl;
+        if (existingLabel) {
+            if (typeof existingLabel === 'string' && existingLabel.startsWith('data:application/pdf;base64,')) {
+                const buffer = Buffer.from(existingLabel.split(',')[1], 'base64');
+                res.setHeader('Content-Type', 'application/pdf');
+                res.setHeader('Content-Disposition', `inline; filename="awb-${safeTrackingNumber}.pdf"`);
+                return res.send(buffer);
+            }
+            if (typeof existingLabel === 'string' && existingLabel.startsWith('/uploads/documents/')) {
+                const filename = existingLabel.split('/').pop();
+                const filePath = path.resolve(process.cwd(), 'uploads', 'documents', filename);
+                if (fs.existsSync(filePath)) {
+                    res.setHeader('Content-Type', 'application/pdf');
+                    res.setHeader('Content-Disposition', `inline; filename="awb-${safeTrackingNumber}.pdf"`);
+                    return res.sendFile(filePath);
+                }
+            }
+            if (/^https?:\/\//i.test(existingLabel)) {
+                return res.redirect(existingLabel);
+            }
+        }
+
         const origin = shipment.origin && typeof shipment.origin === 'object' ? shipment.origin : {};
         const destination = shipment.destination && typeof shipment.destination === 'object' ? shipment.destination : {};
-        const safeTrackingNumber = escapeHtml(trackingNumber);
         const safeOriginContact = escapeHtml(origin.contactPerson || '');
         const safeOriginCompany = origin.company ? `${escapeHtml(origin.company)}<br>` : '';
         const safeOriginAddress = escapeHtml(origin.formattedAddress || 'N/A');
@@ -118,6 +142,43 @@ exports.generateLabel = async (req, res) => {
     } catch (error) {
         logger.error('Error generating label:', error);
         res.status(500).send('Failed to generate label');
+    }
+};
+
+exports.generateInvoice = async (req, res) => {
+    try {
+        const { trackingNumber } = req.params;
+        const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
+        if (!shipment) return res.status(404).send('Shipment not found');
+        if (!canAccessShipment(req, shipment)) return res.status(403).send('Permission denied');
+
+        const safeTrackingNumber = escapeHtml(trackingNumber);
+        const existingInvoice = shipment.invoiceUrl;
+        if (existingInvoice) {
+            if (typeof existingInvoice === 'string' && existingInvoice.startsWith('data:application/pdf;base64,')) {
+                const buffer = Buffer.from(existingInvoice.split(',')[1], 'base64');
+                res.setHeader('Content-Type', 'application/pdf');
+                res.setHeader('Content-Disposition', `inline; filename="invoice-${safeTrackingNumber}.pdf"`);
+                return res.send(buffer);
+            }
+            if (typeof existingInvoice === 'string' && existingInvoice.startsWith('/uploads/documents/')) {
+                const filename = existingInvoice.split('/').pop();
+                const filePath = path.resolve(process.cwd(), 'uploads', 'documents', filename);
+                if (fs.existsSync(filePath)) {
+                    res.setHeader('Content-Type', 'application/pdf');
+                    res.setHeader('Content-Disposition', `inline; filename="invoice-${safeTrackingNumber}.pdf"`);
+                    return res.sendFile(filePath);
+                }
+            }
+            if (/^https?:\/\//i.test(existingInvoice)) {
+                return res.redirect(existingInvoice);
+            }
+        }
+
+        return res.status(404).send('Commercial/Customs invoice has not been generated yet for this shipment.');
+    } catch (error) {
+        logger.error('Error serving invoice:', error);
+        res.status(500).send('Failed to serve invoice');
     }
 };
 

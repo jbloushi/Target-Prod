@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const CarrierAdapter = require('./CarrierAdapter');
 const { normalizeShipment } = require('../utils/shipmentNormalizer');
+const logger = require('../utils/logger');
 const {
     dhlApiKey,
     dhlApiSecret,
@@ -834,19 +835,48 @@ class DgrAdapter extends CarrierAdapter {
                 }).catch(e => console.error('CarrierLog Save Failed:', e.message));
 
                 let label, awb, invoice;
-                if (res.data.documents) {
-                    res.data.documents.forEach(doc => {
-                        if (doc.typeCode === 'label') label = `data:application/pdf;base64,${doc.content}`;
-                        if (doc.typeCode === 'waybillDoc') awb = `data:application/pdf;base64,${doc.content}`;
-                        if (doc.typeCode === 'invoice') invoice = `data:application/pdf;base64,${doc.content}`;
+                const allRawDocs = [
+                    ...(Array.isArray(res.data?.documents) ? res.data.documents : []),
+                    ...(Array.isArray(res.data?.packages) ? res.data.packages.flatMap(p => p.documents || []) : [])
+                ];
+
+                const returnedDocuments = [];
+                for (const doc of allRawDocs) {
+                    if (!doc?.content && !doc?.url) continue;
+                    const typeCode = String(doc.typeCode || doc.type || '').trim().toLowerCase();
+                    const format = String(doc.imageFormat || doc.format || 'pdf').toLowerCase();
+                    const mime = format === 'pdf' ? 'application/pdf' : (format === 'zpl' ? 'application/x-zpl' : 'application/octet-stream');
+                    const contentUri = doc.url
+                        ? doc.url
+                        : (doc.content?.startsWith('data:') ? doc.content : `data:${mime};base64,${doc.content}`);
+
+                    if (['label', 'transportlabel', 'shippinglabel', 'transport-label'].includes(typeCode)) {
+                        if (!label) label = contentUri;
+                    } else if (['waybilldoc', 'waybill', 'awb', 'archivedoc', 'archive-doc'].includes(typeCode)) {
+                        if (!awb) awb = contentUri;
+                    } else if (['invoice', 'commercialinvoice', 'customsinvoice', 'commercial_invoice', 'customs_invoice', 'inv'].includes(typeCode)) {
+                        if (!invoice) invoice = contentUri;
+                    }
+
+                    returnedDocuments.push({
+                        type: typeCode,
+                        format,
+                        url: contentUri
                     });
                 }
 
+                // If only one of AWB or Label is provided by DHL, allow fallback between them
+                if (!awb && label) awb = label;
+                if (!label && awb) label = awb;
+
                 return {
                     trackingNumber: res.data.shipmentTrackingNumber,
+                    carrierShipmentId: res.data.shipmentTrackingNumber,
+                    serviceCode: shipment.serviceCode || res.data.productCode,
                     labelUrl: label,
                     awbUrl: awb,
                     invoiceUrl: invoice,
+                    documents: returnedDocuments,
                     rawResponse: res.data
                 };
             } catch (error) {
@@ -1056,6 +1086,98 @@ class DgrAdapter extends CarrierAdapter {
         } catch (error) {
             throw new Error(`DHL Tracking Error: ${error.response?.data?.detail || error.message}`);
         }
+    }
+
+    /**
+     * Retrieves official DHL shipment document images (AWB label, waybill document, customs invoice).
+     * Uses MyDHL API GET /shipments/{shipmentTrackingNumber}/get-image
+     * @param {string} trackingNumber - DHL Express Tracking Number (AWB)
+     * @param {Object} options - Options including shipperAccountNumber, typeCode, etc.
+     * @returns {Promise<{ labelUrl?: string, awbUrl?: string, invoiceUrl?: string, documents: Array }>}
+     */
+    async getShipmentDocuments(trackingNumber, options = {}) {
+        if (!trackingNumber) throw new Error('Tracking number is required to retrieve carrier documents');
+        const activeConfig = await this._getResolvedConfig(options);
+
+        if (!activeConfig?.apiKey || !activeConfig?.apiSecret) {
+            throw new Error('DGR (DHL) credentials not configured on server.');
+        }
+
+        const accountNumber = options.accountNumber || options.shipperAccount || activeConfig.accountNumber;
+        const requestedTypes = options.typeCode ? [options.typeCode] : ['label', 'waybillDoc', 'invoice'];
+
+        let label, awb, invoice;
+        const documents = [];
+
+        for (const typeCode of requestedTypes) {
+            try {
+                const params = {
+                    shipperAccountNumber: accountNumber,
+                    typeCode,
+                    encodingFormat: 'pdf',
+                    allInOnePDF: false
+                };
+
+                const res = await axios.get(`${activeConfig.baseUrl}/shipments/${encodeURIComponent(trackingNumber)}/get-image`, {
+                    headers: this.getAuthHeader(activeConfig),
+                    params
+                });
+
+                const rawDocs = [
+                    ...(Array.isArray(res.data?.documents) ? res.data.documents : []),
+                    ...(Array.isArray(res.data?.packages) ? res.data.packages.flatMap(p => p.documents || []) : [])
+                ];
+
+                for (const doc of rawDocs) {
+                    if (!doc?.content && !doc?.url) continue;
+                    const docTypeCode = String(doc.typeCode || typeCode).trim().toLowerCase();
+                    const format = String(doc.imageFormat || doc.format || 'pdf').toLowerCase();
+                    const mime = format === 'pdf' ? 'application/pdf' : 'application/octet-stream';
+                    const contentUri = doc.url
+                        ? doc.url
+                        : (doc.content?.startsWith('data:') ? doc.content : `data:${mime};base64,${doc.content}`);
+
+                    if (['label', 'transportlabel', 'shippinglabel', 'transport-label'].includes(docTypeCode)) {
+                        if (!label) label = contentUri;
+                    } else if (['waybilldoc', 'waybill', 'awb', 'archivedoc', 'archive-doc'].includes(docTypeCode)) {
+                        if (!awb) awb = contentUri;
+                    } else if (['invoice', 'commercialinvoice', 'customsinvoice', 'commercial_invoice', 'customs_invoice', 'inv'].includes(docTypeCode)) {
+                        if (!invoice) invoice = contentUri;
+                    }
+
+                    documents.push({
+                        type: docTypeCode,
+                        format: 'pdf',
+                        url: contentUri
+                    });
+                }
+            } catch (err) {
+                logger.debug(`[DgrAdapter] getShipmentDocuments note for ${trackingNumber} (${typeCode}): ${err.response?.data?.detail || err.message}`);
+            }
+        }
+
+        if (!awb && label) awb = label;
+        if (!label && awb) label = awb;
+
+        return {
+            labelUrl: label,
+            awbUrl: awb,
+            invoiceUrl: invoice,
+            documents
+        };
+    }
+
+    /**
+     * Standard CarrierAdapter getLabel method.
+     * @param {string|string[]} ids - Tracking number or array of tracking numbers
+     * @returns {Promise<string>} Base64 PDF or document URL
+     */
+    async getLabel(ids = []) {
+        const idList = Array.isArray(ids) ? ids : [ids];
+        const trackingNumber = idList[0];
+        if (!trackingNumber) throw new Error('Tracking number is required for getLabel');
+        const docs = await this.getShipmentDocuments(trackingNumber);
+        return docs.labelUrl || docs.awbUrl || null;
     }
 }
 

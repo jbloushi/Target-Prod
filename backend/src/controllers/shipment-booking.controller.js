@@ -558,8 +558,10 @@ exports.generateCarrierDocuments = async (req, res) => {
         const foundLabel = shipment.labelUrl || shipment.awbUrl || existingDocs.find(d => ['label', 'awb', 'waybilldoc'].includes(String(d?.type || '').toLowerCase()))?.url;
         const foundInvoice = shipment.invoiceUrl || existingDocs.find(d => ['invoice', 'customs_invoice'].includes(String(d?.type || '').toLowerCase()))?.url;
 
-        // If documents already exist on shipment, return them
-        if (foundLabel && foundInvoice) {
+        const force = req.query.force === 'true' || req.body?.force === true;
+
+        // If documents already exist on shipment, return them unless force refresh is requested
+        if (foundLabel && foundInvoice && !force) {
             return res.status(200).json({
                 success: true,
                 data: {
@@ -575,10 +577,11 @@ exports.generateCarrierDocuments = async (req, res) => {
 
         const { generateCarrierAwbPdf, generateCarrierInvoicePdf } = require('../utils/carrierPdfMock');
         const documentStorage = require('../utils/documentStorage');
+        const CarrierDocumentService = require('../services/CarrierDocumentService');
 
-        let awbUrl = foundLabel;
-        let invoiceUrl = foundInvoice;
-        const newDocuments = [...existingDocs];
+        let awbUrl = force ? null : foundLabel;
+        let invoiceUrl = force ? null : foundInvoice;
+        const newDocuments = force ? [] : [...existingDocs];
 
         // 1. If not yet booked with live API, attempt live carrier booking first
         const isAlreadyBooked = Boolean(shipment.carrierShipmentId || shipment.dhlTrackingNumber || shipment.dhlConfirmed);
@@ -603,15 +606,44 @@ exports.generateCarrierDocuments = async (req, res) => {
                             carrierShipmentId: fresh.carrierShipmentId || fresh.dhlTrackingNumber,
                             shipment: fresh
                         },
-                        message: 'Carrier AWB and Invoice successfully generated'
+                        message: 'Carrier AWB and Invoice successfully generated from official API'
                     });
                 }
             } catch (bookErr) {
                 logger.warn(`Live carrier booking encountered note for ${trackingNumber}: ${bookErr.message}. Generating carrier documentation directly.`);
             }
+        } else if (carrierCode === 'DGR') {
+            // Already booked with DHL: fetch official DHL documents via MyDHL API get-image endpoint
+            const dhlTracking = shipment.dhlTrackingNumber || shipment.carrierShipmentId;
+            if (dhlTracking && (!awbUrl || !invoiceUrl || force)) {
+                try {
+                    const isTest = shipment.pricingSnapshot?.isTest === true ||
+                                   shipment.pricingSnapshot?.environment === 'test' ||
+                                   shipment.isTest === true ||
+                                   shipment.environment === 'test';
+                    const dgrAdapter = CarrierFactory.getAdapter('DGR', { isTest });
+                    const carrierDocs = await dgrAdapter.getShipmentDocuments(dhlTracking, {
+                        accountNumber: shipment.origin?.shipperAccount || shipment.customer?.accountNumber,
+                        isTest
+                    });
+
+                    if (carrierDocs.labelUrl && (!awbUrl || force)) {
+                        const savedAwb = await CarrierDocumentService.uploadDocument('awb', carrierDocs.labelUrl, 'pdf', trackingNumber);
+                        awbUrl = savedAwb.url;
+                        newDocuments.push(savedAwb);
+                    }
+                    if (carrierDocs.invoiceUrl && (!invoiceUrl || force)) {
+                        const savedInv = await CarrierDocumentService.uploadDocument('invoice', carrierDocs.invoiceUrl, 'pdf', trackingNumber);
+                        invoiceUrl = savedInv.url;
+                        newDocuments.push(savedInv);
+                    }
+                } catch (dhlFetchErr) {
+                    logger.warn(`DHL official get-image retrieval note for ${dhlTracking}: ${dhlFetchErr.message}`);
+                }
+            }
         }
 
-        // 2. Generate compliant PDF documents if any are missing
+        // 2. Generate compliant PDF documents if any are still missing
         const carrierName = carrierCode === 'DGR' ? 'DHL Express' : (carrierCode === 'FEDEX' ? 'FedEx' : (carrierCode === 'ARAMEX' ? 'Aramex' : carrierCode));
 
         if (!awbUrl) {

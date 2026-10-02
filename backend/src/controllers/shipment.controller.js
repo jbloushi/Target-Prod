@@ -63,6 +63,7 @@ module.exports = {
   // Ops
   updateShipmentStatus: ops.updateShipmentStatus,
   generateLabel: ops.generateLabel,
+  generateInvoice: ops.generateInvoice,
   pickupShipment: ops.pickupShipment,
   processWarehouseScan: ops.processWarehouseScan,
   serveDocument: ops.serveDocument,

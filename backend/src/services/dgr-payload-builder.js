@@ -498,11 +498,32 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
         valueAddedServices: valueAddedServices.length > 0 ? valueAddedServices : undefined,
 
         outputImageProperties: {
+            printerDPI: 300,
             encodingFormat: labelFormat.toLowerCase(),
             imageOptions: [
-                { typeCode: 'label', isRequested: true },
-                { typeCode: 'waybillDoc', isRequested: true },
-                { typeCode: 'invoice', isRequested: true }
+                {
+                    typeCode: 'label',
+                    templateName: 'ECOM26_84_001',
+                    isRequested: true,
+                    hideAccountNumber: false,
+                    numberOfCopies: 1
+                },
+                {
+                    typeCode: 'waybillDoc',
+                    templateName: 'ARCH_8X4',
+                    isRequested: true,
+                    hideAccountNumber: false,
+                    numberOfCopies: 1
+                },
+                ...((!order.isDocument && order.shipmentType !== 'documents' && !isDomestic) ? [{
+                    typeCode: 'invoice',
+                    templateName: 'COMMERCIAL_INVOICE_P_10',
+                    isRequested: true,
+                    invoiceProperties: {
+                        numberOfCopies: 1,
+                        isInvoiceDataAllowed: true
+                    }
+                }] : [])
             ]
         },
 
