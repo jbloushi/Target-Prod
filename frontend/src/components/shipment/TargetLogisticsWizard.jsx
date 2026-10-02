@@ -519,8 +519,10 @@ export const TargetLogisticsWizard = ({
       }
 
       let res;
+      let createdTrackingNumber = null;
       if (mode === 'edit' && shipment?.trackingNumber) {
-        res = await shipmentService.update(shipment.trackingNumber, payload);
+        res = await shipmentService.updateShipmentDetails(shipment.trackingNumber, payload);
+        createdTrackingNumber = shipment.trackingNumber;
         enqueueSnackbar(
           isDraft 
             ? (isRTL ? 'تم حفظ التعديلات كمسودة بنجاح' : 'Changes saved as draft successfully') 
@@ -528,14 +530,20 @@ export const TargetLogisticsWizard = ({
           { variant: 'success' }
         );
       } else {
-        res = await shipmentService.create(payload);
+        res = await shipmentService.createShipment(payload);
+        createdTrackingNumber = res?.trackingNumber || res?.shipment?.trackingNumber || res?.data?.trackingNumber || (typeof res === 'string' ? res : null);
         enqueueSnackbar(
           isRTL ? 'تم إنشاء الشحنة الجديدة بنجاح' : 'Shipment created successfully',
           { variant: 'success' }
         );
       }
 
-      if (onComplete) onComplete(res);
+      const resultObject = res?.shipment || res?.data || (typeof res === 'object' && res ? res : { trackingNumber: createdTrackingNumber });
+      if (resultObject && !resultObject.trackingNumber && createdTrackingNumber) {
+        resultObject.trackingNumber = createdTrackingNumber;
+      }
+
+      if (onComplete) onComplete(resultObject);
       if (onClose) onClose();
     } catch (err) {
       console.error('[TargetLogisticsWizard] Submit failed:', err);
