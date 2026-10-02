@@ -243,13 +243,23 @@ class ShipmentBookingService {
             freshAttempts[attemptIndex].carrierShipmentId = carrierTrackingNumber;
             freshAttempts[attemptIndex].updatedAt = new Date();
 
+            let docsArray = [];
+            if (Array.isArray(freshShipment.documents)) {
+                docsArray = [...freshShipment.documents];
+            } else if (typeof freshShipment.documents === 'string') {
+                try {
+                    const parsed = JSON.parse(freshShipment.documents);
+                    if (Array.isArray(parsed)) docsArray = parsed;
+                } catch {}
+            }
+
             const updateData = {
                 dhlConfirmed: true,
                 carrierShipmentId,
                 dhlTrackingNumber: carrierTrackingNumber,
                 status: 'booked',
                 bookingAttempts: freshAttempts,
-                documents: freshShipment.documents || []
+                documents: docsArray
             };
 
             if (carrierCapabilities.supportsExternalApi === false) {
@@ -271,12 +281,15 @@ class ShipmentBookingService {
                 if (!sourceValue) return;
                 try {
                     const doc = await CarrierDocumentService.uploadDocument(type, sourceValue, 'pdf', freshShipment.trackingNumber);
+                    if (!Array.isArray(updateData.documents)) {
+                        updateData.documents = [];
+                    }
                     updateData.documents.push(doc);
                     updateData[targetField] = doc.url;
                 } catch (docError) {
                     logger.warn(`Document upload skipped for ${freshShipment.trackingNumber} (${type}): ${docError.message}`);
                     const sourceText = typeof sourceValue === 'string' ? sourceValue.trim() : '';
-                    if (/^https?:\/\//i.test(sourceText)) {
+                    if (sourceText) {
                         updateData[targetField] = updateData[targetField] || sourceText;
                     }
                 }
@@ -380,7 +393,14 @@ class ShipmentBookingService {
                 logger.debug(`[ShipmentBookingService] Chatwoot notification error: ${cwErr.message}`);
             }
 
-            return { success: true, shipment: finalizedShipment };
+            return {
+                success: true,
+                shipment: finalizedShipment,
+                carrierResult,
+                labelUrl: finalizedShipment.labelUrl || carrierResult.labelUrl,
+                awbUrl: finalizedShipment.awbUrl || carrierResult.awbUrl,
+                invoiceUrl: finalizedShipment.invoiceUrl || carrierResult.invoiceUrl
+            };
 
         } catch (commitError) {
             logger.error('Commit Failure After Carrier Success:', commitError);
