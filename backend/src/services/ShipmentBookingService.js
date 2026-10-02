@@ -155,10 +155,13 @@ class ShipmentBookingService {
         );
 
         if (activeAttempt) {
-            if (activeAttempt.status === 'succeeded') {
+            const hasRealDocs = Boolean(shipment.labelUrl || shipment.awbUrl);
+            if (activeAttempt.status === 'succeeded' && hasRealDocs) {
                 return { alreadyBooked: true, shipment, attemptId: activeAttempt.attemptId, carrierCode };
             }
-            throw new Error('A booking request is currently being processed by the carrier. Please wait.');
+            if (activeAttempt.status === 'pending' && new Date() - new Date(activeAttempt.createdAt) < 60000) {
+                throw new Error('A booking request is currently being processed by the carrier. Please wait.');
+            }
         }
 
         const attemptId = crypto.randomUUID();

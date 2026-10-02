@@ -598,10 +598,48 @@ exports.generateCarrierDocuments = async (req, res) => {
         let invoiceUrl = force ? null : foundInvoice;
         const newDocuments = force ? [] : [...existingDocs];
 
-        // 1. If not yet booked with live API, attempt live carrier booking first
-        const isAlreadyBooked = Boolean(shipment.carrierShipmentId || shipment.dhlTrackingNumber || shipment.dhlConfirmed);
+        const isRealCarrierTracking = (tn) => {
+            if (!tn) return false;
+            const str = String(tn).trim();
+            if (str.startsWith('DGR-') || str.startsWith('TGR-') || str.startsWith('TKW-') || str.startsWith('TEST-') || str.startsWith('MOCK-')) return false;
+            if (str === trackingNumber) return false;
+            return /^\d{8,12}$/.test(str);
+        };
 
-        if (!isAlreadyBooked) {
+        const dhlTracking = isRealCarrierTracking(shipment.dhlTrackingNumber)
+            ? shipment.dhlTrackingNumber
+            : (isRealCarrierTracking(shipment.carrierShipmentId) ? shipment.carrierShipmentId : null);
+
+        // 1. If shipment already has an authentic DHL tracking number, attempt document retrieval via get-image
+        if (carrierCode === 'DGR' && dhlTracking && (!awbUrl || !invoiceUrl || force)) {
+            try {
+                const isTest = shipment.pricingSnapshot?.isTest === true ||
+                               shipment.pricingSnapshot?.environment === 'test' ||
+                               shipment.isTest === true ||
+                               shipment.environment === 'test';
+                const dgrAdapter = CarrierFactory.getAdapter('DGR', { isTest });
+                const carrierDocs = await dgrAdapter.getShipmentDocuments(dhlTracking, {
+                    accountNumber: shipment.origin?.shipperAccount || shipment.customer?.accountNumber,
+                    isTest
+                });
+
+                if (carrierDocs.labelUrl && (!awbUrl || force)) {
+                    const savedAwb = await CarrierDocumentService.uploadDocument('awb', carrierDocs.labelUrl, 'pdf', trackingNumber);
+                    awbUrl = savedAwb.url;
+                    newDocuments.push(savedAwb);
+                }
+                if (carrierDocs.invoiceUrl && (!invoiceUrl || force)) {
+                    const savedInv = await CarrierDocumentService.uploadDocument('invoice', carrierDocs.invoiceUrl, 'pdf', trackingNumber);
+                    invoiceUrl = savedInv.url;
+                    newDocuments.push(savedInv);
+                }
+            } catch (dhlFetchErr) {
+                logger.warn(`DHL official get-image retrieval note for ${dhlTracking}: ${dhlFetchErr.message}`);
+            }
+        }
+
+        // 2. If official documents are still missing (e.g. not yet booked or no documents on DHL repo), execute live carrier booking
+        if (!awbUrl && !invoiceUrl) {
             try {
                 await ShipmentBookingService.bookShipment(
                     trackingNumber,
@@ -631,41 +669,6 @@ exports.generateCarrierDocuments = async (req, res) => {
                         success: false,
                         error: `DHL Express booking failed: ${bookErr.message}. Cannot retrieve official DHL documents without a successful DHL booking.`
                     });
-                }
-            }
-        } else if (carrierCode === 'DGR') {
-            // Already booked with DHL: fetch official DHL documents via MyDHL API get-image endpoint
-            const dhlTracking = shipment.dhlTrackingNumber || shipment.carrierShipmentId;
-            if (dhlTracking && (!awbUrl || !invoiceUrl || force)) {
-                try {
-                    const isTest = shipment.pricingSnapshot?.isTest === true ||
-                                   shipment.pricingSnapshot?.environment === 'test' ||
-                                   shipment.isTest === true ||
-                                   shipment.environment === 'test';
-                    const dgrAdapter = CarrierFactory.getAdapter('DGR', { isTest });
-                    const carrierDocs = await dgrAdapter.getShipmentDocuments(dhlTracking, {
-                        accountNumber: shipment.origin?.shipperAccount || shipment.customer?.accountNumber,
-                        isTest
-                    });
-
-                    if (carrierDocs.labelUrl && (!awbUrl || force)) {
-                        const savedAwb = await CarrierDocumentService.uploadDocument('awb', carrierDocs.labelUrl, 'pdf', trackingNumber);
-                        awbUrl = savedAwb.url;
-                        newDocuments.push(savedAwb);
-                    }
-                    if (carrierDocs.invoiceUrl && (!invoiceUrl || force)) {
-                        const savedInv = await CarrierDocumentService.uploadDocument('invoice', carrierDocs.invoiceUrl, 'pdf', trackingNumber);
-                        invoiceUrl = savedInv.url;
-                        newDocuments.push(savedInv);
-                    }
-                } catch (dhlFetchErr) {
-                    logger.error(`DHL official get-image retrieval failed for ${dhlTracking}: ${dhlFetchErr.message}`);
-                    if (!awbUrl && !invoiceUrl) {
-                        return res.status(400).json({
-                            success: false,
-                            error: `DHL Express official document retrieval failed: ${dhlFetchErr.message}`
-                        });
-                    }
                 }
             }
         }
