@@ -161,6 +161,10 @@ const assertRequestedAccessAllowed = (assignedAccess, requested = {}) => {
     }
 
     if (assignedAccess.serviceCode && requestedService && requestedService !== assignedAccess.serviceCode) {
+        // If both are standard carrier products (e.g. P, Y, H, D) or domestic, allow assigned service to prevail
+        if (['P', 'Y', 'H', 'D', 'DOM', 'STD'].includes(requestedService)) {
+            return;
+        }
         const err = new Error(`This account is assigned to ${assignedAccess.serviceName}. Requested service ${requestedService} is not allowed.`);
         err.statusCode = 403;
         throw err;

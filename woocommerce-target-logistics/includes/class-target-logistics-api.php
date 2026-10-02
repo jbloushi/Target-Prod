@@ -135,20 +135,18 @@ class Target_Logistics_API {
             $args['body'] = wp_json_encode( $payload );
         }
 
-        $this->log( sprintf( 'API Request: %s %s', $args['method'], $url ), $payload );
+        $this->log( sprintf( 'API Request: %s %s', $args['method'], $url ), $payload, 'info' );
 
         $response = wp_remote_request( $url, $args );
 
         if ( is_wp_error( $response ) ) {
-            $this->log( 'API Request Failed (WP_Error): ' . $response->get_error_message() );
+            $this->log( 'API Request Failed (WP_Error): ' . $response->get_error_message(), array( 'url' => $url ), 'error' );
             return $response;
         }
 
         $status_code = wp_remote_retrieve_response_code( $response );
         $raw_body    = wp_remote_retrieve_body( $response );
         $json        = json_decode( $raw_body, true );
-
-        $this->log( sprintf( 'API Response: Status %d', $status_code ), $json ? $json : $raw_body );
 
         if ( $status_code < 200 || $status_code >= 300 ) {
             $error_message = '';
@@ -163,12 +161,19 @@ class Target_Logistics_API {
                 $error_message = sprintf( __( 'HTTP Error %d returned by Target Logistics API.', 'wc-target-logistics' ), $status_code );
             }
 
+            $this->log( sprintf( 'API Error [%d]: %s', $status_code, $error_message ), array(
+                'url'      => $url,
+                'request'  => $payload,
+                'response' => $json ? $json : $raw_body,
+            ), 'error' );
+
             return new WP_Error( 'api_error_' . $status_code, $error_message, array(
                 'status'   => $status_code,
                 'response' => $json,
             ) );
         }
 
+        $this->log( sprintf( 'API Success [%d]: %s', $status_code, $endpoint ), $json, 'info' );
         return $json;
     }
 
@@ -302,26 +307,45 @@ class Target_Logistics_API {
     }
 
     /**
-     * Helper to log messages if debugging is enabled
+     * Helper to log messages to WooCommerce logger and rolling local buffer
      *
      * @param string $message Log message.
      * @param mixed  $context Context data.
+     * @param string $level Log level: 'info', 'error', 'warning'.
      */
-    private function log( $message, $context = null ) {
-        $settings = get_option( 'woocommerce_target_logistics_settings', array() );
-        $debug    = isset( $settings['debug_log'] ) && 'yes' === $settings['debug_log'];
-
-        if ( ! $debug ) {
-            return;
-        }
-
+    public static function log( $message, $context = null, $level = 'info' ) {
+        // 1. Write to WooCommerce system logs
         if ( function_exists( 'wc_get_logger' ) ) {
             $logger = wc_get_logger();
             $log_message = $message;
             if ( $context !== null ) {
-                $log_message .= ' Context: ' . wp_json_encode( $context );
+                $log_message .= ' | Context: ' . wp_json_encode( $context );
             }
-            $logger->debug( $log_message, array( 'source' => 'target-logistics' ) );
+            if ( 'error' === $level ) {
+                $logger->error( $log_message, array( 'source' => 'target-logistics' ) );
+            } else {
+                $logger->info( $log_message, array( 'source' => 'target-logistics' ) );
+            }
         }
+
+        // 2. Rolling buffer in WordPress options for instant in-plugin settings viewing
+        $recent_logs = get_option( 'target_logistics_recent_logs', array() );
+        if ( ! is_array( $recent_logs ) ) {
+            $recent_logs = array();
+        }
+
+        $entry = array(
+            'time'    => current_time( 'Y-m-d H:i:s' ),
+            'level'   => strtoupper( $level ),
+            'message' => $message,
+            'context' => $context,
+        );
+
+        array_unshift( $recent_logs, $entry );
+        if ( count( $recent_logs ) > 50 ) {
+            $recent_logs = array_slice( $recent_logs, 0, 50 );
+        }
+
+        update_option( 'target_logistics_recent_logs', $recent_logs, false );
     }
 }

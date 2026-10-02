@@ -80,6 +80,7 @@ class Target_Logistics {
         add_action( 'wp_ajax_target_logistics_test_connection', array( $this, 'ajax_test_connection' ) );
         add_action( 'wp_ajax_target_logistics_seed_products', array( $this, 'ajax_seed_products' ) );
         add_action( 'wp_ajax_target_logistics_seed_orders', array( $this, 'ajax_seed_orders' ) );
+        add_action( 'wp_ajax_target_logistics_clear_logs', array( $this, 'ajax_clear_logs' ) );
 
         // Direct action handler for sample products & orders seeding
         add_action( 'admin_init', array( $this, 'handle_direct_seeding' ) );
@@ -171,7 +172,15 @@ class Target_Logistics {
     }
 
     /**
-     * Handle Direct URL seeding action for products and orders
+     * AJAX handler for clear logs
+     */
+    public function ajax_clear_logs() {
+        $settings = new Target_Logistics_Settings();
+        $settings->ajax_clear_logs();
+    }
+
+    /**
+     * Handle Direct URL seeding action for products, orders, and log cleanup
      */
     public function handle_direct_seeding() {
         if ( ! isset( $_GET['tl_action'] ) ) {
@@ -185,6 +194,21 @@ class Target_Logistics {
         check_admin_referer( 'target_logistics_seed_direct' );
 
         $action = sanitize_text_field( wp_unslash( $_GET['tl_action'] ) );
+
+        if ( 'clear_logs' === $action ) {
+            delete_option( 'target_logistics_recent_logs' );
+            $redirect_url = add_query_arg(
+                array(
+                    'page'            => 'wc-settings',
+                    'tab'             => 'integration',
+                    'section'         => 'target_logistics',
+                    'tl_logs_cleared' => '1',
+                ),
+                admin_url( 'admin.php' )
+            );
+            wp_safe_redirect( $redirect_url );
+            exit;
+        }
 
         if ( 'seed_products' === $action ) {
             $created = Target_Logistics_Settings::seed_sample_products();
@@ -219,6 +243,17 @@ class Target_Logistics {
      * Render Admin Notice on successful direct seeding
      */
     public function render_admin_notices() {
+        if ( isset( $_GET['tl_logs_cleared'] ) ) {
+            ?>
+            <div class="notice notice-success is-dismissible">
+                <p>
+                    <strong><?php esc_html_e( 'Target Logistics:', 'wc-target-logistics' ); ?></strong>
+                    <?php esc_html_e( 'API activity logs cleared successfully.', 'wc-target-logistics' ); ?>
+                </p>
+            </div>
+            <?php
+        }
+
         if ( isset( $_GET['tl_seeded'] ) ) {
             $count = absint( $_GET['tl_seeded'] );
             ?>

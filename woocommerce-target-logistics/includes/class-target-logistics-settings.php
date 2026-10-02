@@ -328,7 +328,12 @@ class Target_Logistics_Settings extends WC_Integration {
                 'title'       => __( 'Enable Debug Logging', 'wc-target-logistics' ),
                 'type'        => 'checkbox',
                 'label'       => __( 'Log API requests, responses, and errors to WooCommerce > Status > Logs (target-logistics).', 'wc-target-logistics' ),
-                'default'     => 'no',
+                'default'     => 'yes',
+            ),
+            'recent_logs_viewer' => array(
+                'title'       => __( 'Live API Activity Logs', 'wc-target-logistics' ),
+                'type'        => 'target_logistics_logs_viewer',
+                'description' => __( 'Shows recent API requests, response status codes, and server errors.', 'wc-target-logistics' ),
             ),
         );
     }
@@ -611,6 +616,116 @@ class Target_Logistics_Settings extends WC_Integration {
         wp_send_json_success( array(
             'message' => sprintf( __( 'Created %d test orders (Kuwait Domestic, Saudi Arabia, UAE)! Go to WooCommerce > Orders to view.', 'wc-target-logistics' ), count( $order_ids ) ),
             'orders'  => $order_ids,
+        ) );
+    }
+
+    /**
+     * Custom field renderer for Live API Activity Logs Viewer
+     */
+    public function generate_target_logistics_logs_viewer_html( $key, $data ) {
+        $defaults = array(
+            'title'       => '',
+            'description' => '',
+        );
+        $data = wp_parse_args( $data, $defaults );
+
+        $logs = get_option( 'target_logistics_recent_logs', array() );
+        if ( ! is_array( $logs ) ) {
+            $logs = array();
+        }
+
+        $direct_clear_url = wp_nonce_url(
+            admin_url( 'admin.php?page=wc-settings&tab=integration&section=target_logistics&tl_action=clear_logs' ),
+            'target_logistics_seed_direct'
+        );
+
+        $wc_logs_url = admin_url( 'admin.php?page=wc-status&tab=logs' );
+
+        ob_start();
+        ?>
+        <tr valign="top">
+            <th scope="row" class="titledesc">
+                <label><?php echo esc_html( $data['title'] ); ?></label>
+            </th>
+            <td class="forminp">
+                <div style="margin-bottom: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <button type="button" class="button button-secondary" id="tl-btn-clear-logs">
+                        <span class="dashicons dashicons-trash" style="vertical-align: middle; margin-right: 4px;"></span>
+                        <?php esc_html_e( 'Clear Recent Logs', 'wc-target-logistics' ); ?>
+                    </button>
+                    <a href="<?php echo esc_url( $direct_clear_url ); ?>" class="button button-secondary">
+                        <?php esc_html_e( 'Direct Clear', 'wc-target-logistics' ); ?>
+                    </a>
+                    <button type="button" class="button button-secondary" onclick="window.location.reload();">
+                        <span class="dashicons dashicons-image-rotate" style="vertical-align: middle; margin-right: 4px;"></span>
+                        <?php esc_html_e( 'Refresh Logs', 'wc-target-logistics' ); ?>
+                    </button>
+                    <a href="<?php echo esc_url( $wc_logs_url ); ?>" target="_blank" class="button button-link" style="margin-left: auto;">
+                        <span class="dashicons dashicons-external" style="vertical-align: middle; margin-right: 4px;"></span>
+                        <?php esc_html_e( 'Open Full WooCommerce Logs', 'wc-target-logistics' ); ?>
+                    </a>
+                    <span id="tl-clear-logs-status" style="font-weight: 600;"></span>
+                </div>
+
+                <div id="tl-logs-container" style="background: #0f172a; color: #f8fafc; border-radius: 8px; padding: 14px; max-height: 480px; overflow-y: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 12px; line-height: 1.5; border: 1px solid #334155; box-shadow: inset 0 2px 4px rgba(0,0,0,0.4);">
+                    <?php if ( empty( $logs ) ) : ?>
+                        <div style="padding: 24px; color: #94a3b8; font-style: italic; text-align: center;">
+                            <?php esc_html_e( 'No API activity logged yet. Test connection, get quotes, or book a shipment to see live requests, response status codes, and server diagnostics here.', 'wc-target-logistics' ); ?>
+                        </div>
+                    <?php else : ?>
+                        <?php foreach ( $logs as $idx => $entry ) :
+                            $time    = isset( $entry['time'] ) ? $entry['time'] : '';
+                            $level   = isset( $entry['level'] ) ? strtoupper( $entry['level'] ) : 'INFO';
+                            $message = isset( $entry['message'] ) ? $entry['message'] : '';
+                            $context = isset( $entry['context'] ) ? $entry['context'] : null;
+
+                            $bg_badge = '#0284c7'; // blue for INFO
+                            if ( 'ERROR' === $level ) {
+                                $bg_badge = '#dc2626'; // red
+                            } elseif ( 'WARN' === $level || 'WARNING' === $level ) {
+                                $bg_badge = '#d97706'; // amber
+                            }
+                        ?>
+                            <div style="border-bottom: 1px solid #1e293b; padding: 8px 0; margin-bottom: 6px;">
+                                <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;">
+                                    <span style="color: #64748b; font-size: 11px; white-space: nowrap;"><?php echo esc_html( $time ); ?></span>
+                                    <span style="background: <?php echo esc_attr( $bg_badge ); ?>; color: #ffffff; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px;"><?php echo esc_html( $level ); ?></span>
+                                    <span style="color: #f1f5f9; font-weight: 600; word-break: break-all;"><?php echo esc_html( $message ); ?></span>
+                                </div>
+                                <?php if ( ! empty( $context ) ) : ?>
+                                    <details style="margin-top: 6px; margin-left: 20px;">
+                                        <summary style="cursor: pointer; color: #38bdf8; font-size: 11px;">
+                                            <?php esc_html_e( 'View Details & Payload', 'wc-target-logistics' ); ?>
+                                        </summary>
+                                        <pre style="background: #1e293b; color: #a5f3fc; padding: 8px 12px; border-radius: 6px; margin-top: 6px; overflow-x: auto; white-space: pre-wrap; font-size: 11px;"><?php echo esc_html( wp_json_encode( $context, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) ); ?></pre>
+                                    </details>
+                                <?php endif; ?>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+
+                <p class="description" style="margin-top: 8px;"><?php echo esc_html( $data['description'] ); ?></p>
+            </td>
+        </tr>
+        <?php
+        return ob_get_clean();
+    }
+
+    /**
+     * AJAX handler for clearing logs
+     */
+    public function ajax_clear_logs() {
+        check_ajax_referer( 'target_logistics_admin_nonce', 'security' );
+
+        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+            wp_send_json_error( array( 'message' => __( 'Permission denied.', 'wc-target-logistics' ) ) );
+        }
+
+        delete_option( 'target_logistics_recent_logs' );
+
+        wp_send_json_success( array(
+            'message' => __( 'API activity logs cleared successfully.', 'wc-target-logistics' ),
         ) );
     }
 

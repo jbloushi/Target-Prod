@@ -99,6 +99,36 @@
             });
         });
 
+        // 1d. Settings Screen: Clear Recent Logs
+        $('#tl-btn-clear-logs').on('click', function(e) {
+            e.preventDefault();
+            if (!confirm('Clear all recent Target Logistics activity logs?')) {
+                return;
+            }
+
+            var $btn = $(this);
+            var $status = $('#tl-clear-logs-status');
+
+            $btn.prop('disabled', true);
+            $status.html('<span class="dashicons dashicons-update tl-spinning"></span> Clearing...');
+
+            $.post(targetLogisticsAdmin.ajax_url, {
+                action: 'target_logistics_clear_logs',
+                security: targetLogisticsAdmin.nonce
+            }, function(response) {
+                $btn.prop('disabled', false);
+                if (response.success) {
+                    $status.html('<span style="color: #15803d;"><span class="dashicons dashicons-yes-alt"></span> ' + response.data.message + '</span>');
+                    $('#tl-logs-container').html('<div style="padding: 24px; color: #94a3b8; font-style: italic; text-align: center;">No API activity logged yet. Test connection, get quotes, or book a shipment to see live requests, response status codes, and server diagnostics here.</div>');
+                } else {
+                    $status.html('<span style="color: #b91c1c;">Failed to clear logs.</span>');
+                }
+            }).fail(function() {
+                $btn.prop('disabled', false);
+                $status.html('<span style="color: #b91c1c;">Failed to clear logs.</span>');
+            });
+        });
+
         // Toggle custom URL field depending on environment selection
         function toggleCustomUrlField() {
             var env = $('#woocommerce_target_logistics_environment').val();

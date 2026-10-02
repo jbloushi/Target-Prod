@@ -77,7 +77,7 @@ exports.createShipment = async (req, res) => {
         }
 
         const resolvedCarrierCode = assignedAccess.carrierCode;
-        const resolvedServiceCode = serviceCode || assignedAccess.serviceCode || null;
+        const resolvedServiceCode = assignedAccess.serviceCode || serviceCode || null;
         const carrierCapabilities = typeof CarrierFactory.getCarrierCapabilities === 'function'
             ? (CarrierFactory.getCarrierCapabilities(resolvedCarrierCode) || {})
             : { supportsExternalApi: true };
@@ -471,7 +471,7 @@ exports.getQuotation = async (req, res) => {
         }
 
         const resolvedCarrierCode = assignedAccess.carrierCode;
-        const resolvedServiceCode = serviceCode || assignedAccess.serviceCode || null;
+        const resolvedServiceCode = assignedAccess.serviceCode || serviceCode || null;
         normalized.serviceCode = resolvedServiceCode;
 
         const policy = typeof PricingService.resolveCarrierPricingPolicy === 'function'
