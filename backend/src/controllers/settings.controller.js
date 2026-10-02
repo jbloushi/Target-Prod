@@ -153,3 +153,102 @@ exports.getRateCards = async (req, res) => {
     }
 };
 
+/**
+ * GET /api/settings/rate-cards/sample-template
+ * Download ready-to-use sample .xlsx template for rate cards
+ */
+exports.downloadSampleTemplate = async (req, res) => {
+    try {
+        const path = require('path');
+        const fs = require('fs');
+        const templatePath = path.join(__dirname, '../constants/rateCards/templates/rate_card_template_sample.xlsx');
+        if (!fs.existsSync(templatePath)) {
+            return res.status(404).json({ success: false, error: 'Sample template file not found' });
+        }
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename="target_rate_card_sample_template.xlsx"');
+        const fileStream = fs.createReadStream(templatePath);
+        fileStream.pipe(res);
+    } catch (err) {
+        return handleControllerError(res, err, 'Download sample template');
+    }
+};
+
+/**
+ * GET /api/settings/rate-cards/:id
+ * Retrieve full rate card matrix and details
+ */
+exports.getRateCardDetails = async (req, res) => {
+    try {
+        const RateCardService = require('../services/RateCardService');
+        const card = RateCardService.getRateCard(req.params.id);
+        if (!card) {
+            return res.status(404).json({ success: false, error: `Rate card '${req.params.id}' not found` });
+        }
+        return res.status(200).json({ success: true, data: card });
+    } catch (err) {
+        return handleControllerError(res, err, 'Get rate card details');
+    }
+};
+
+/**
+ * POST /api/settings/rate-cards/upload
+ * Upload and parse Excel .xlsx rate card
+ */
+exports.uploadRateCard = async (req, res) => {
+    try {
+        const { id, name, carrierCode = 'DGR', currency = 'KWD', pricingMode = 'SELLING_PRICE', fileBase64 } = req.body || {};
+
+        if (!id || !name || !fileBase64) {
+            return res.status(400).json({
+                success: false,
+                error: 'Card ID, display name, and Excel file content (base64) are required.'
+            });
+        }
+
+        const cleanId = String(id).trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
+        if (!cleanId) {
+            return res.status(400).json({ success: false, error: 'Invalid card ID' });
+        }
+
+        const RateCardService = require('../services/RateCardService');
+        const result = await RateCardService.importRateCardFromBase64({
+            id: cleanId,
+            name: String(name).trim(),
+            carrierCode: String(carrierCode || 'DGR').trim().toUpperCase(),
+            currency: String(currency || 'KWD').trim().toUpperCase(),
+            pricingMode: pricingMode === 'BASE_COST' ? 'BASE_COST' : 'SELLING_PRICE',
+            fileBase64
+        });
+
+        return res.status(201).json({
+            success: true,
+            data: result,
+            message: `Rate card '${cleanId}' imported successfully!`
+        });
+    } catch (err) {
+        logger.error('Error uploading rate card:', err);
+        return res.status(500).json({ success: false, error: err.message || 'Failed to upload rate card' });
+    }
+};
+
+/**
+ * DELETE /api/settings/rate-cards/:id
+ * Delete a custom rate card
+ */
+exports.deleteRateCard = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const RateCardService = require('../services/RateCardService');
+        RateCardService.deleteRateCard(id);
+        return res.status(200).json({
+            success: true,
+            message: `Rate card '${id}' deleted successfully`
+        });
+    } catch (err) {
+        logger.error('Error deleting rate card:', err);
+        return res.status(400).json({ success: false, error: err.message || 'Failed to delete rate card' });
+    }
+};
+
+

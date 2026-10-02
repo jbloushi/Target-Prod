@@ -174,4 +174,49 @@ describe('DHL Zone Pricing and Contract Rate Cards (5535 - Amani)', () => {
             expect(PricingService.validateSnapshot(snapshot)).toBe(true);
         });
     });
+
+    describe('Rate Card Template & Management Lifecycle', () => {
+        const fs = require('fs');
+        const path = require('path');
+
+        it('has a pre-generated downloadable Excel sample template file', () => {
+            const templatePath = path.resolve(__dirname, '../src/constants/rateCards/templates/rate_card_template_sample.xlsx');
+            expect(fs.existsSync(templatePath)).toBe(true);
+            const stats = fs.statSync(templatePath);
+            expect(stats.size).toBeGreaterThan(1000);
+        });
+
+        it('imports a rate card from base64 excel and deletes it cleanly', async () => {
+            const templatePath = path.resolve(__dirname, '../src/constants/rateCards/templates/rate_card_template_sample.xlsx');
+            const fileBase64 = fs.readFileSync(templatePath).toString('base64');
+
+            // 1. Import
+            const imported = await RateCardService.importRateCardFromBase64({
+                id: '9999_TEST_LIFECYCLE',
+                name: '9999 - Test Lifecycle Card',
+                carrierCode: 'DGR',
+                currency: 'KWD',
+                pricingMode: 'SELLING_PRICE',
+                fileBase64
+            });
+
+            expect(imported.id).toBe('9999_TEST_LIFECYCLE');
+            expect(imported.name).toBe('9999 - Test Lifecycle Card');
+            expect(imported.totalBrackets).toBe(60);
+
+            // Verify in memory list
+            const found = RateCardService.getRateCard('9999_TEST_LIFECYCLE');
+            expect(found).not.toBeNull();
+            expect(found.brackets.length).toBe(60);
+
+            // 2. Prevent deletion of default system card
+            expect(() => RateCardService.deleteRateCard('5535_AMANI')).toThrow(/Cannot delete default/i);
+
+            // 3. Delete the imported card
+            const deleted = RateCardService.deleteRateCard('9999_TEST_LIFECYCLE');
+            expect(deleted).toBe(true);
+            expect(RateCardService.getRateCard('9999_TEST_LIFECYCLE')).toBeNull();
+        });
+    });
 });
+

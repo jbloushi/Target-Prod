@@ -1226,9 +1226,14 @@ const AdminUsersPage = () => {
                                             </div>
                                             {(formData.carrierConfig?.pricingByCarrier?.DGR?.pricingModel === 'RATE_CARD' || formData.carrierConfig?.pricingByCarrier?.DGR?.rateCardId) && (
                                                 <div>
-                                                    <label className="text-[11px] font-bold text-base-content/60 block mb-1">
-                                                        {lang === 'ar' ? 'جدول الأسعار المعتمد' : 'Assigned Rate Card'}
-                                                    </label>
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <label className="text-[11px] font-bold text-base-content/60">
+                                                            {lang === 'ar' ? 'جدول الأسعار المعتمد' : 'Assigned Rate Card'}
+                                                        </label>
+                                                        <a href="/settings?tab=ratecards" target="_blank" rel="noreferrer" className="text-[10px] text-primary hover:underline">
+                                                            {lang === 'ar' ? 'إدارة البطاقات ↗' : 'Manage Cards ↗'}
+                                                        </a>
+                                                    </div>
                                                     <select
                                                         value={formData.carrierConfig?.pricingByCarrier?.DGR?.rateCardId || (availableRateCards[0]?.id || '5535_AMANI')}
                                                         onChange={(e) => {

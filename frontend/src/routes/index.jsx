@@ -142,6 +142,12 @@ const AppRoutes = () => {
             </ProtectedRoute>
           } />
 
+          <Route path="admin/rate-cards" element={
+            <ProtectedRoute allowedRoles={['admin', 'manager', 'accounting', 'staff']}>
+              <Navigate to="/settings?tab=ratecards" replace />
+            </ProtectedRoute>
+          } />
+
           <Route path="shipments" element={
             <ProtectedRoute allowedRoles={['admin', 'staff', 'client', 'manager', 'accounting', 'org_manager', 'org_agent']}>
               <ShipmentsPage />

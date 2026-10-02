@@ -5,6 +5,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { useSnackbar } from 'notistack';
 import api, { settingsService } from '../services/api';
 import PageHeader from '../components/common/PageHeader';
+import RateCardsManager from '../components/admin/RateCardsManager';
 
 const ROLE_DISPLAY_NAMES = {
   admin: 'Superadmin (Full Control)',
@@ -22,6 +23,7 @@ const getTabs = (lang, isOps) => [
   { id: 'addresses', label: lang === 'ar' ? 'سجل العناوين' : 'Address Presets', icon: 'location_on' },
   { id: 'api', label: lang === 'ar' ? 'واجهة API والويب هوك' : 'API & Webhooks', icon: 'key' },
   ...(isOps ? [{ id: 'fleet', label: lang === 'ar' ? 'الأسطول والاشتراكات (Paywall)' : 'Fleet & Paywall Controls', icon: 'local_shipping' }] : []),
+  ...(isOps ? [{ id: 'ratecards', label: lang === 'ar' ? 'بطاقات الأسعار (Rate Cards)' : 'Rate Cards & Tariffs', icon: 'table_chart' }] : []),
   { id: 'phenix', label: lang === 'ar' ? 'مزامنة فينيكس ERP' : 'Phenix ERP Sync', icon: 'sync_alt' },
   { id: 'whatsapp', label: lang === 'ar' ? 'إشعارات واتساب وميتا' : 'Meta WhatsApp Alerts', icon: 'chat' },
   { id: 'notifications', label: lang === 'ar' ? 'قنوات الإشعار' : 'Event Triggers', icon: 'notifications' },
@@ -1017,6 +1019,9 @@ export const SettingsPage = () => {
               </div>
             </div>
           )}
+
+          {/* TAB: Carrier Contract Rate Cards & Matrices */}
+          {activeTab === 'ratecards' && <RateCardsManager />}
 
           {/* TAB: Phenix ERP Sync & Auto-Pull */}
           {activeTab === 'phenix' && (

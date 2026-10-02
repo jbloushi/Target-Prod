@@ -1420,6 +1420,56 @@ export const settingsService = {
     }
   },
 
+  getRateCardDetails: async (cardId) => {
+    try {
+      const response = await api.get(`settings/rate-cards/${cardId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching rate card details:', error);
+      throw error;
+    }
+  },
+
+  uploadRateCard: async (rateCardData) => {
+    try {
+      const response = await api.post('settings/rate-cards/upload', rateCardData);
+      return response.data;
+    } catch (error) {
+      console.error('Error uploading rate card:', error);
+      throw error;
+    }
+  },
+
+  deleteRateCard: async (cardId) => {
+    try {
+      const response = await api.delete(`settings/rate-cards/${cardId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error deleting rate card:', error);
+      throw error;
+    }
+  },
+
+  downloadRateCardSample: async () => {
+    try {
+      const response = await api.get('settings/rate-cards/sample-template', {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'target_rate_card_sample_template.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      return true;
+    } catch (error) {
+      console.error('Error downloading rate card sample template:', error);
+      throw error;
+    }
+  },
+
   updateSystemSettings: async (updates) => {
     try {
       const response = await api.patch('settings/system', updates);

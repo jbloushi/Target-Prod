@@ -19,6 +19,7 @@ class RateCardService {
                 return;
             }
 
+            this.rateCards.clear();
             const files = fs.readdirSync(rateCardsDir).filter(f => f.endsWith('.json'));
             for (const file of files) {
                 try {
@@ -52,6 +53,7 @@ class RateCardService {
     }
 
     _summarizeCard(card) {
+        const zones = card.brackets?.[0]?.rates ? Object.keys(card.brackets[0].rates).sort((a,b)=>Number(a)-Number(b)) : [];
         return {
             id: card.id,
             name: card.name,
@@ -60,8 +62,118 @@ class RateCardService {
             pricingMode: card.pricingMode || 'SELLING_PRICE',
             isSellingPrice: card.pricingMode === 'SELLING_PRICE',
             maxBracketWeight: card.maxBracketWeight || 30.0,
-            weightStep: card.weightStep || 0.5
+            weightStep: card.weightStep || 0.5,
+            totalBrackets: Array.isArray(card.brackets) ? card.brackets.length : 0,
+            zones,
+            over30KgPerKgRate: card.over30KgPerKgRate || {}
         };
+    }
+
+    /**
+     * Import a new rate card from base64 Excel (.xlsx) file
+     * @param {Object} options
+     * @param {string} options.id - Unique ID e.g. '6000_KHALID'
+     * @param {string} options.name - Display name e.g. '6000 - Khalid'
+     * @param {string} [options.carrierCode='DGR']
+     * @param {string} [options.currency='KWD']
+     * @param {string} [options.pricingMode='SELLING_PRICE']
+     * @param {string} options.fileBase64 - Base64 encoded Excel content
+     * @returns {Promise<Object>} Created rate card
+     */
+    async importRateCardFromBase64({ id, name, carrierCode = 'DGR', currency = 'KWD', pricingMode = 'SELLING_PRICE', fileBase64 }) {
+        const { execFile } = require('child_process');
+        const cleanId = String(id || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
+        if (!cleanId) throw new Error('Valid rate card ID is required.');
+        if (!name) throw new Error('Rate card display name is required.');
+        if (!fileBase64) throw new Error('Excel file base64 content is required.');
+
+        // Strip data URI prefix if present
+        const rawBase64 = fileBase64.replace(/^data:.*?;base64,/, '');
+        const buffer = Buffer.from(rawBase64, 'base64');
+        if (buffer.length < 50) {
+            throw new Error('Invalid or empty file content.');
+        }
+
+        const tempDir = path.resolve(__dirname, '../../uploads');
+        if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
+        }
+        const tempFilePath = path.join(tempDir, `temp_rc_${Date.now()}_${cleanId}.xlsx`);
+        fs.writeFileSync(tempFilePath, buffer);
+
+        const scriptPath = path.resolve(__dirname, '../../scripts/import-rate-card.py');
+        const pythonCmd = process.platform === 'win32' ? 'python' : (process.env.PYTHON_BIN || 'python3');
+
+        return new Promise((resolve, reject) => {
+            execFile(
+                pythonCmd,
+                [
+                    scriptPath,
+                    '--file', tempFilePath,
+                    '--id', cleanId,
+                    '--name', String(name).trim(),
+                    '--carrier', String(carrierCode || 'DGR').trim().toUpperCase(),
+                    '--currency', String(currency || 'KWD').trim().toUpperCase(),
+                    '--mode', pricingMode === 'BASE_COST' ? 'BASE_COST' : 'SELLING_PRICE'
+                ],
+                (error, stdout, stderr) => {
+                    // Clean up temp file
+                    try {
+                        if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+                    } catch (_) {}
+
+                    if (error) {
+                        logger.error('Failed to execute import-rate-card.py:', error, stderr);
+                        return reject(new Error(stderr || error.message || 'Failed to process Excel rate card'));
+                    }
+
+                    // Reload cache
+                    this.loadRateCards();
+                    const card = this.getRateCard(cleanId);
+                    if (!card) {
+                        return reject(new Error(`Rate card '${cleanId}' was processed but could not be retrieved.`));
+                    }
+                    resolve(this._summarizeCard(card));
+                }
+            );
+        });
+    }
+
+    /**
+     * Delete a rate card file
+     * @param {string} rateCardId
+     */
+    deleteRateCard(rateCardId) {
+        const cleanId = String(rateCardId || '').trim().toUpperCase();
+        if (!cleanId) throw new Error('Rate card ID is required.');
+        if (cleanId === '5535_AMANI' || cleanId === 'DHL_5535_AMANI') {
+            throw new Error('Cannot delete default system rate card.');
+        }
+
+        const rateCardsDir = path.join(__dirname, '../constants/rateCards');
+        if (!fs.existsSync(rateCardsDir)) return false;
+
+        const files = fs.readdirSync(rateCardsDir).filter(f => f.endsWith('.json'));
+        let deleted = false;
+        for (const file of files) {
+            const filePath = path.join(rateCardsDir, file);
+            try {
+                const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+                if (String(content?.id || '').toUpperCase() === cleanId) {
+                    fs.unlinkSync(filePath);
+                    deleted = true;
+                    logger.info(`Deleted rate card file: ${filePath}`);
+                    break;
+                }
+            } catch (_) {}
+        }
+
+        if (!deleted) {
+            throw new Error(`Rate card '${cleanId}' not found.`);
+        }
+
+        this.loadRateCards();
+        return true;
     }
 
     /**

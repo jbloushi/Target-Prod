@@ -10,6 +10,28 @@ router.get('/system', settingsController.getSystemSettings);
 // Available rate cards for carrier assignment
 router.get('/rate-cards', settingsController.getRateCards);
 
+// Download sample rate card Excel template
+router.get('/rate-cards/sample-template', settingsController.downloadSampleTemplate);
+
+// View specific rate card matrix details
+router.get('/rate-cards/:id', settingsController.getRateCardDetails);
+
+// Upload new rate card from Excel (Superadmin / Managers)
+router.post(
+    '/rate-cards/upload',
+    authController.protect,
+    authorize('MANAGE_USERS'),
+    settingsController.uploadRateCard
+);
+
+// Delete custom rate card (Superadmin / Managers)
+router.delete(
+    '/rate-cards/:id',
+    authController.protect,
+    authorize('MANAGE_USERS'),
+    settingsController.deleteRateCard
+);
+
 // Superadmin update of system settings
 router.patch(
     '/system',
