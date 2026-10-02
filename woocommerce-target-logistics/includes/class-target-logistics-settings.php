@@ -404,6 +404,11 @@ class Target_Logistics_Settings extends WC_Integration {
         );
         $data = wp_parse_args( $data, $defaults );
 
+        $direct_url = wp_nonce_url(
+            admin_url( 'admin.php?page=wc-settings&tab=integration&section=target_logistics&tl_action=seed_products' ),
+            'target_logistics_seed_direct'
+        );
+
         ob_start();
         ?>
         <tr valign="top">
@@ -415,6 +420,10 @@ class Target_Logistics_Settings extends WC_Integration {
                     <span class="dashicons dashicons-products" style="vertical-align: middle; margin-right: 4px;"></span>
                     <?php esc_html_e( 'Generate Sample Test Products', 'wc-target-logistics' ); ?>
                 </button>
+                <a href="<?php echo esc_url( $direct_url ); ?>" class="button button-secondary" style="margin-left: 6px;">
+                    <span class="dashicons dashicons-download" style="vertical-align: middle; margin-right: 4px;"></span>
+                    <?php esc_html_e( 'Direct Import Fallback', 'wc-target-logistics' ); ?>
+                </a>
                 <span id="tl-seed-products-status" style="margin-left: 10px; font-weight: 600;"></span>
                 <p class="description"><?php echo esc_html( $data['description'] ); ?></p>
             </td>
@@ -433,6 +442,19 @@ class Target_Logistics_Settings extends WC_Integration {
             wp_send_json_error( array( 'message' => __( 'Permission denied.', 'wc-target-logistics' ) ) );
         }
 
+        $created = self::seed_sample_products();
+
+        wp_send_json_success( array(
+            'message' => sprintf( __( 'Created/Updated %d sample products with weights, dimensions & HS codes! Go to Products to view.', 'wc-target-logistics' ), $created ),
+        ) );
+    }
+
+    /**
+     * Core worker to seed or update sample products
+     *
+     * @return int Count of created/updated products.
+     */
+    public static function seed_sample_products() {
         $sample_products = array(
             array(
                 'name'           => 'Kuwait Royal Arabian Oud Perfume 100ml',
@@ -528,8 +550,6 @@ class Target_Logistics_Settings extends WC_Integration {
             $created++;
         }
 
-        wp_send_json_success( array(
-            'message' => sprintf( __( 'Created/Updated %d sample products with weights, dimensions & HS codes! Go to Products to view.', 'wc-target-logistics' ), $created ),
-        ) );
+        return $created;
     }
 }

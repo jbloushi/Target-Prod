@@ -7,24 +7,28 @@ const SERVICE_LABELS = {
     DGR: {
         P: 'DHL Express Worldwide',
         Y: 'DHL Express 12:00',
-        H: 'DHL Economy Select'
+        H: 'DHL Economy Select',
+        DOM: 'Target Express (Domestic Delivery)'
     },
     DHL: {
         P: 'DHL Express Worldwide',
         Y: 'DHL Express 12:00',
-        H: 'DHL Economy Select'
+        H: 'DHL Economy Select',
+        DOM: 'Target Express (Domestic Delivery)'
     },
     ARAMEX: {
         P: 'Aramex Priority'
     },
     OTE: {
-        STD: 'OTE Standard'
+        STD: 'OTE Standard',
+        DOM: 'Target Express (Domestic Delivery)'
     },
     LOGESTECHS: {
         STD: 'OTE Standard'
     },
     INTERNAL: {
-        STD: 'Internal Standard'
+        STD: 'Internal Standard',
+        DOM: 'Target Express (Domestic Delivery)'
     },
     FEDEX: {
         P: 'FedEx Priority'
@@ -144,11 +148,15 @@ const assertRequestedAccessAllowed = (assignedAccess, requested = {}) => {
     }
 
     if (assignedAccess.mode === 'internal') {
-        if (requestedService) {
+        if (requestedService && !['STD', 'DOM'].includes(requestedService)) {
             const err = new Error('Internal shipments do not allow a carrier service code.');
             err.statusCode = 403;
             throw err;
         }
+        return;
+    }
+
+    if (requestedService && ['DOM', 'STD'].includes(requestedService)) {
         return;
     }
 

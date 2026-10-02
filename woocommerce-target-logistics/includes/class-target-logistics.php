@@ -75,6 +75,16 @@ class Target_Logistics {
 
         // Admin menu shortcut under WooCommerce
         add_action( 'admin_menu', array( $this, 'add_admin_menu_shortcut' ), 60 );
+
+        // AJAX handlers for settings screen
+        add_action( 'wp_ajax_target_logistics_test_connection', array( $this, 'ajax_test_connection' ) );
+        add_action( 'wp_ajax_target_logistics_seed_products', array( $this, 'ajax_seed_products' ) );
+
+        // Direct action handler for sample products seeding
+        add_action( 'admin_init', array( $this, 'handle_direct_seed_products' ) );
+
+        // Admin notices
+        add_action( 'admin_notices', array( $this, 'render_admin_notices' ) );
     }
 
     /**
@@ -136,6 +146,69 @@ class Target_Logistics {
     }
 
     /**
+     * AJAX handler for connection test
+     */
+    public function ajax_test_connection() {
+        $settings = new Target_Logistics_Settings();
+        $settings->ajax_test_connection();
+    }
+
+    /**
+     * AJAX handler for seed products
+     */
+    public function ajax_seed_products() {
+        $settings = new Target_Logistics_Settings();
+        $settings->ajax_seed_products();
+    }
+
+    /**
+     * Handle Direct URL seed products action
+     */
+    public function handle_direct_seed_products() {
+        if ( ! isset( $_GET['tl_action'] ) || 'seed_products' !== $_GET['tl_action'] ) {
+            return;
+        }
+
+        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+            wp_die( esc_html__( 'Permission denied.', 'wc-target-logistics' ) );
+        }
+
+        check_admin_referer( 'target_logistics_seed_direct' );
+
+        $created = Target_Logistics_Settings::seed_sample_products();
+
+        $redirect_url = add_query_arg(
+            array(
+                'page'      => 'wc-settings',
+                'tab'       => 'integration',
+                'section'   => 'target_logistics',
+                'tl_seeded' => $created,
+            ),
+            admin_url( 'admin.php' )
+        );
+
+        wp_safe_redirect( $redirect_url );
+        exit;
+    }
+
+    /**
+     * Render Admin Notice on successful direct seeding
+     */
+    public function render_admin_notices() {
+        if ( isset( $_GET['tl_seeded'] ) ) {
+            $count = absint( $_GET['tl_seeded'] );
+            ?>
+            <div class="notice notice-success is-dismissible">
+                <p>
+                    <strong><?php esc_html_e( 'Target Logistics:', 'wc-target-logistics' ); ?></strong>
+                    <?php echo esc_html( sprintf( __( 'Successfully generated/updated %d sample products with realistic weights, dimensions, and HS codes! Go to Products to view.', 'wc-target-logistics' ), $count ) ); ?>
+                </p>
+            </div>
+            <?php
+        }
+    }
+
+    /**
      * Enqueue Admin Assets
      *
      * @param string $hook_suffix
@@ -147,7 +220,10 @@ class Target_Logistics {
         }
 
         $is_order_screen = in_array( $screen->id, array( 'shop_order', 'woocommerce_page_wc-orders', 'edit-shop_order' ), true );
-        $is_settings_screen = ( 'woocommerce_page_wc-settings' === $screen->id && isset( $_GET['section'] ) && 'target_logistics' === $_GET['section'] );
+        $is_settings_screen = ( 'woocommerce_page_wc-settings' === $screen->id && (
+            ( isset( $_GET['tab'] ) && 'integration' === $_GET['tab'] ) ||
+            ( isset( $_GET['section'] ) && 'target_logistics' === $_GET['section'] )
+        ) );
 
         if ( ! $is_order_screen && ! $is_settings_screen ) {
             return;
