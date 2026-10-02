@@ -244,3 +244,13 @@
         transform: rotate(360deg);
     }
 }
+
+/* Orders list table print action button */
+.wc-action-button-target_logistics_print::after,
+.order-status.tl-order-print-btn::after,
+a.tl-order-print-btn::after {
+    font-family: dashicons !important;
+    content: "\f166" !important; /* dashicons-printer */
+    color: #1d4ed8;
+}
+

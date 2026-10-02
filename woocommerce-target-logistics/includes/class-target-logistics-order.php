@@ -31,7 +31,14 @@ class Target_Logistics_Order_Manager {
         // Order Actions dropdown in order edit
         add_filter( 'woocommerce_order_actions', array( $this, 'add_order_actions' ) );
         add_action( 'woocommerce_order_action_target_logistics_book', array( $this, 'process_order_action_book' ) );
+        add_action( 'woocommerce_order_action_target_logistics_print_label', array( $this, 'process_order_action_print_label' ) );
         add_action( 'woocommerce_order_action_target_logistics_refresh', array( $this, 'process_order_action_refresh' ) );
+
+        // Direct Print Label endpoint handler
+        add_action( 'admin_post_target_logistics_print_label', array( $this, 'handle_print_label' ) );
+
+        // Add Print Label button in WooCommerce Orders List table
+        add_filter( 'woocommerce_admin_order_actions', array( $this, 'add_order_table_action_buttons' ), 10, 2 );
 
         // Automatic booking on order status change
         add_action( 'woocommerce_order_status_changed', array( $this, 'handle_order_status_change' ), 10, 4 );
@@ -137,16 +144,21 @@ class Target_Logistics_Order_Manager {
                         </p>
                     <?php endif; ?>
 
+                    <?php
+                    $print_label_url = wp_nonce_url(
+                        admin_url( 'admin-post.php?action=target_logistics_print_label&order_id=' . $order->get_id() ),
+                        'target_logistics_print_label'
+                    );
+                    ?>
                     <div class="tl-actions-row">
-                        <?php if ( ! empty( $label_url ) ) : ?>
-                            <a href="<?php echo esc_url( $label_url ); ?>" target="_blank" class="button button-primary tl-btn-block">
-                                <span class="dashicons dashicons-pdf" style="vertical-align: middle;"></span>
-                                <?php esc_html_e( 'Download / Print Label', 'wc-target-logistics' ); ?>
-                            </a>
-                        <?php endif; ?>
+                        <a href="<?php echo esc_url( $print_label_url ); ?>" target="_blank" class="button button-primary tl-btn-block" style="text-align: center; margin-bottom: 8px;">
+                            <span class="dashicons dashicons-printer" style="vertical-align: middle; margin-right: 4px;"></span>
+                            <strong><?php esc_html_e( 'Print Target Shipping Label', 'wc-target-logistics' ); ?></strong>
+                        </a>
 
                         <?php if ( ! empty( $invoice_url ) ) : ?>
-                            <a href="<?php echo esc_url( $invoice_url ); ?>" target="_blank" class="button button-secondary tl-btn-block">
+                            <a href="<?php echo esc_url( $invoice_url ); ?>" target="_blank" class="button button-secondary tl-btn-block" style="text-align: center; margin-bottom: 8px;">
+                                <span class="dashicons dashicons-media-document" style="vertical-align: middle; margin-right: 4px;"></span>
                                 <?php esc_html_e( 'Commercial Invoice', 'wc-target-logistics' ); ?>
                             </a>
                         <?php endif; ?>
@@ -301,8 +313,9 @@ class Target_Logistics_Order_Manager {
      * @return array
      */
     public function add_order_actions( $actions ) {
-        $actions['target_logistics_book']    = __( 'Target Logistics: Book Shipment & Pickup', 'wc-target-logistics' );
-        $actions['target_logistics_refresh'] = __( 'Target Logistics: Refresh Tracking Status', 'wc-target-logistics' );
+        $actions['target_logistics_book']        = __( 'Target Logistics: Book Shipment & Pickup', 'wc-target-logistics' );
+        $actions['target_logistics_print_label'] = __( 'Target Logistics: Print Shipping Label', 'wc-target-logistics' );
+        $actions['target_logistics_refresh']     = __( 'Target Logistics: Refresh Tracking Status', 'wc-target-logistics' );
         return $actions;
     }
 
@@ -319,12 +332,105 @@ class Target_Logistics_Order_Manager {
     }
 
     /**
+     * Process Print Shipping Label from dropdown
+     *
+     * @param WC_Order $order
+     */
+    public function process_order_action_print_label( $order ) {
+        $print_url = wp_nonce_url(
+            admin_url( 'admin-post.php?action=target_logistics_print_label&order_id=' . $order->get_id() ),
+            'target_logistics_print_label'
+        );
+        wp_safe_redirect( $print_url );
+        exit;
+    }
+
+    /**
      * Process Refresh Order Action from dropdown
      *
      * @param WC_Order $order
      */
     public function process_order_action_refresh( $order ) {
         $this->pickup_service->refresh_status( $order );
+    }
+
+    /**
+     * Add Print Label button in WooCommerce Orders List table
+     *
+     * @param array    $actions
+     * @param WC_Order $order
+     * @return array
+     */
+    public function add_order_table_action_buttons( $actions, $order ) {
+        $tracking_number = $order->get_meta( '_target_logistics_tracking_number' );
+        if ( ! empty( $tracking_number ) ) {
+            $print_url = wp_nonce_url(
+                admin_url( 'admin-post.php?action=target_logistics_print_label&order_id=' . $order->get_id() ),
+                'target_logistics_print_label'
+            );
+            $actions['target_logistics_print'] = array(
+                'url'    => $print_url,
+                'name'   => __( 'Print Target Shipping Label', 'wc-target-logistics' ),
+                'action' => 'view tl-order-print-btn',
+            );
+        }
+        return $actions;
+    }
+
+    /**
+     * Handle Direct Print Label Request (admin-post.php)
+     */
+    public function handle_print_label() {
+        if ( ! current_user_can( 'edit_shop_orders' ) ) {
+            wp_die( esc_html__( 'Permission denied.', 'wc-target-logistics' ) );
+        }
+
+        check_admin_referer( 'target_logistics_print_label' );
+
+        $order_id = isset( $_GET['order_id'] ) ? absint( $_GET['order_id'] ) : 0;
+        $order    = wc_get_order( $order_id );
+
+        if ( ! $order ) {
+            wp_die( esc_html__( 'Order not found.', 'wc-target-logistics' ) );
+        }
+
+        $tracking_number = $order->get_meta( '_target_logistics_tracking_number' );
+        if ( empty( $tracking_number ) ) {
+            wp_die( esc_html__( 'Order has not been booked with Target Logistics yet. Please book the shipment first.', 'wc-target-logistics' ) );
+        }
+
+        $label_url = $order->get_meta( '_target_logistics_label_url' );
+
+        // 1. If stored label is base64 data URI, decode and stream PDF directly
+        if ( ! empty( $label_url ) && 0 === strpos( $label_url, 'data:application/pdf;base64,' ) ) {
+            $base64_data = substr( $label_url, strlen( 'data:application/pdf;base64,' ) );
+            $pdf_binary  = base64_decode( $base64_data );
+            if ( $pdf_binary ) {
+                header( 'Content-Type: application/pdf' );
+                header( 'Content-Disposition: inline; filename="label-' . sanitize_file_name( $tracking_number ) . '.pdf"' );
+                header( 'Content-Length: ' . strlen( $pdf_binary ) );
+                echo $pdf_binary;
+                exit;
+            }
+        }
+
+        // 2. If stored label is an external URL, redirect directly
+        if ( ! empty( $label_url ) && preg_match( '#^https?://#i', $label_url ) ) {
+            wp_redirect( $label_url );
+            exit;
+        }
+
+        // 3. Otherwise redirect to Target Logistics API GET /v1/shipments/:number/label
+        $settings = get_option( 'woocommerce_target_logistics_settings', array() );
+        $api_key  = isset( $settings['api_key'] ) ? $settings['api_key'] : '';
+        $env      = isset( $settings['environment'] ) ? $settings['environment'] : 'production';
+        $custom   = isset( $settings['custom_api_url'] ) ? $settings['custom_api_url'] : '';
+
+        $api = new Target_Logistics_API( $api_key, $env, $custom );
+        $api_url = rtrim( $api->get_base_url(), '/' ) . '/v1/shipments/' . rawurlencode( $tracking_number ) . '/label?api_key=' . rawurlencode( $api_key );
+
+        wp_redirect( $api_url );
+        exit;
     }
 
     /**

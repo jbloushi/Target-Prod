@@ -12,16 +12,17 @@ const { compareApiKey } = require('../utils/security');
 exports.validateApiKey = async (req, res, next) => {
     try {
         // Primary auth header for external clients.
-        // Fallback supports "Authorization: ApiKey <key>" for compatibility.
+        // Fallback supports "Authorization: ApiKey <key>" or query param "?api_key=<key>" for browser link compatibility.
         const apiKeyFromHeader = req.headers['x-api-key'];
         const authHeader = req.headers.authorization || '';
+        const apiKeyFromQuery = req.query ? (req.query.apiKey || req.query.api_key || req.query['x-api-key']) : null;
         const apiKeyFromAuthorization = authHeader.startsWith('ApiKey ')
             ? authHeader.slice('ApiKey '.length).trim()
             : null;
-        const apiKey = (apiKeyFromHeader || apiKeyFromAuthorization || '').trim();
+        const apiKey = (apiKeyFromHeader || apiKeyFromAuthorization || apiKeyFromQuery || '').trim();
 
         if (!apiKey) {
-            return res.status(401).json({ success: false, error: 'API Key missing. Please provide x-api-key header.' });
+            return res.status(401).json({ success: false, error: 'API Key missing. Please provide x-api-key header or api_key parameter.' });
         }
 
         // Parse compound key format: {userId}.{randomBytes}

@@ -1,3 +1,5 @@
+const path = require('path');
+const fs = require('fs');
 const CarrierFactory = require('../services/CarrierFactory');
 const CarrierRateService = require('../services/CarrierRateService');
 const PricingService = require('../services/pricing.service');
@@ -12,6 +14,16 @@ const {
     getAssignedShippingAccess,
     assertRequestedAccessAllowed
 } = require('../services/shippingAccess.service');
+
+const escapeHtml = (unsafe) => {
+    if (unsafe == null) return '';
+    return String(unsafe)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
 
 /**
  * Helper to map normalized address to schema format
@@ -183,8 +195,8 @@ exports.createShipment = async (req, res) => {
                 carrierCode: resolvedCarrierCode,
                 serviceCode: resolvedServiceCode,
                 status: 'booked',
-                labelUrl: result.labelBase64 ? `data:application/pdf;base64,${result.labelBase64}` : null,
-                invoiceUrl: result.invoiceBase64 ? `data:application/pdf;base64,${result.invoiceBase64}` : null,
+                labelUrl: result.labelBase64 ? `data:application/pdf;base64,${result.labelBase64}` : (result.labelUrl || `/api/v1/shipments/${result.trackingNumber}/label`),
+                invoiceUrl: result.invoiceBase64 ? `data:application/pdf;base64,${result.invoiceBase64}` : (result.invoiceUrl || null),
                 origin: mapAddressToSchema(normalized.sender),
                 destination: mapAddressToSchema(normalized.receiver),
                 currentLocation: mapAddressToSchema(normalized.sender),
@@ -612,5 +624,180 @@ exports.updateAddress = async (req, res) => {
         res.status(200).json({ success: true, data: addresses[index] });
     } catch (error) {
         res.status(500).json({ success: false, error: 'Failed' });
+    }
+};
+
+/**
+ * GET /api/v1/shipments/:number/label
+ * Stream official carrier PDF or render Target Logistics printable label
+ */
+exports.getShipmentLabel = async (req, res) => {
+    try {
+        const { number } = req.params;
+        const shipment = await prisma.shipment.findUnique({
+            where: { trackingNumber: number }
+        });
+
+        if (!shipment) {
+            return res.status(404).send('Shipment not found');
+        }
+
+        // Authorize: user must own shipment or belong to same organization or be admin
+        const isAdmin = ['ADMIN', 'SUPER_ADMIN', 'DISPATCHER'].includes(req.user.role);
+        const isOwner = shipment.userId === req.user.id;
+        const isSameOrg = req.user.organizationId && shipment.organizationId === req.user.organizationId;
+        if (!isAdmin && !isOwner && !isSameOrg) {
+            return res.status(403).send('Permission denied');
+        }
+
+        const safeTrackingNumber = escapeHtml(number);
+
+        // 1. If official carrier PDF document exists, stream it as PDF
+        const existingLabel = shipment.labelUrl || shipment.awbUrl;
+        if (existingLabel) {
+            if (typeof existingLabel === 'string' && existingLabel.startsWith('data:application/pdf;base64,')) {
+                const buffer = Buffer.from(existingLabel.split(',')[1], 'base64');
+                res.setHeader('Content-Type', 'application/pdf');
+                res.setHeader('Content-Disposition', `inline; filename="label-${safeTrackingNumber}.pdf"`);
+                return res.send(buffer);
+            }
+            if (typeof existingLabel === 'string' && existingLabel.startsWith('/uploads/documents/')) {
+                const filename = existingLabel.split('/').pop();
+                const filePath = path.resolve(process.cwd(), 'uploads', 'documents', filename);
+                if (fs.existsSync(filePath)) {
+                    res.setHeader('Content-Type', 'application/pdf');
+                    res.setHeader('Content-Disposition', `inline; filename="label-${safeTrackingNumber}.pdf"`);
+                    return res.sendFile(filePath);
+                }
+            }
+            if (/^https?:\/\//i.test(existingLabel)) {
+                return res.redirect(existingLabel);
+            }
+        }
+
+        // 2. Otherwise generate HTML Target Logistics shipping label with barcodes and print button
+        const origin = shipment.origin && typeof shipment.origin === 'object' ? shipment.origin : {};
+        const destination = shipment.destination && typeof shipment.destination === 'object' ? shipment.destination : {};
+        const safeOriginContact = escapeHtml(origin.contactPerson || '');
+        const safeOriginCompany = origin.company ? `${escapeHtml(origin.company)}<br>` : '';
+        const safeOriginAddress = escapeHtml(origin.formattedAddress || 'N/A');
+        const safeOriginCity = escapeHtml(origin.city || '');
+        const safeOriginCountry = escapeHtml(origin.countryCode || '');
+        const safeOriginPhone = escapeHtml(origin.phone || '');
+
+        const safeDestContact = escapeHtml(destination.contactPerson || '');
+        const safeDestCompany = destination.company ? `${escapeHtml(destination.company)}<br>` : '';
+        const safeDestAddress = escapeHtml(destination.formattedAddress || 'N/A');
+        const safeDestCity = escapeHtml(destination.city || '');
+        const safeDestCountry = escapeHtml(destination.countryCode || '');
+        const safeDestPhone = escapeHtml(destination.phone || '');
+
+        const safeStatus = escapeHtml((shipment.status || '').replace(/_/g, ' ').toUpperCase());
+        const safePieces = Array.isArray(shipment.items) ? shipment.items.length : 1;
+        const safeWeight = Array.isArray(shipment.items) ? shipment.items.reduce((acc, i) => acc + (Number(i.weight) || 0), 0) : 0;
+        const safeDate = escapeHtml(new Date(shipment.createdAt || Date.now()).toLocaleDateString());
+        const safeCarrier = escapeHtml(shipment.carrierCode || 'TARGET');
+        const safeService = escapeHtml(shipment.serviceCode || 'DOMESTIC');
+        const safeCod = shipment.codAmount ? `${shipment.codAmount} ${shipment.codCurrency || 'KWD'}` : null;
+
+        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Label - ${safeTrackingNumber}</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f1f5f9;margin:0;padding:24px;display:flex;flex-direction:column;align-items:center}
+.label-container{width:420px;min-height:580px;background:#fff;padding:24px;border:2px solid #000;box-sizing:border-box;position:relative;border-radius:4px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1)}
+.header{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #000;padding-bottom:12px;margin-bottom:14px}
+.logo{font-size:20px;font-weight:900;letter-spacing:-0.5px;color:#b91c1c}
+.route-badge{background:#000;color:#fff;font-weight:bold;padding:4px 8px;font-size:12px;border-radius:3px}
+.barcode-box{border:2px solid #000;margin:12px 0;padding:12px;text-align:center;background:#fff}
+.barcode-code{font-family:monospace;font-size:18px;font-weight:bold;letter-spacing:3px;margin:8px 0 2px}
+.address-grid{display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:12px}
+.addr-card{border:1px solid #000;padding:10px}
+.addr-title{font-size:11px;font-weight:800;text-transform:uppercase;color:#475569;margin-bottom:4px;letter-spacing:0.5px}
+.addr-body{font-size:13px;line-height:1.4}
+.meta-table{width:100%;border-collapse:collapse;margin:10px 0;font-size:12px}
+.meta-table td{border:1px solid #000;padding:6px 8px}
+.meta-label{font-weight:bold;background:#f8fafc;width:35%}
+.footer{text-align:center;font-size:11px;color:#64748b;margin-top:14px;border-top:1px dashed #cbd5e1;padding-top:10px}
+.print-actions{margin-top:16px;display:flex;gap:10px}
+.print-btn{padding:10px 24px;background:#0f172a;color:#fff;border:none;border-radius:6px;font-weight:600;font-size:14px;cursor:pointer}
+.print-btn:hover{background:#1e293b}
+@media print{
+  body{background:#fff;padding:0}
+  .print-actions{display:none}
+  .label-container{box-shadow:none;border:2px solid #000;width:100%;max-width:420px;margin:0 auto}
+}
+</style>
+</head>
+<body>
+<div class="label-container">
+  <div class="header">
+    <div class="logo">TARGET LOGISTICS</div>
+    <div class="route-badge">${safeCarrier} - ${safeService}</div>
+  </div>
+  <div class="barcode-box">
+    <svg id="barcode" style="width:100%;max-height:55px"></svg>
+    <div class="barcode-code">${safeTrackingNumber}</div>
+  </div>
+  <div class="address-grid">
+    <div class="addr-card">
+      <div class="addr-title">To (Receiver)</div>
+      <div class="addr-body">
+        <strong>${safeDestContact}</strong><br>
+        ${safeDestCompany}
+        ${safeDestAddress}<br>
+        ${safeDestCity} ${safeDestCountry}<br>
+        <strong>Ph:</strong> ${safeDestPhone}
+      </div>
+    </div>
+    <div class="addr-card">
+      <div class="addr-title">From (Shipper)</div>
+      <div class="addr-body">
+        <strong>${safeOriginContact || 'Target Logistics Shipper'}</strong><br>
+        ${safeOriginCompany}
+        ${safeOriginAddress}<br>
+        ${safeOriginCity} ${safeOriginCountry}<br>
+        <strong>Ph:</strong> ${safeOriginPhone}
+      </div>
+    </div>
+  </div>
+  <table class="meta-table">
+    <tr>
+      <td class="meta-label">Pieces / Weight</td>
+      <td>${safePieces} pc(s) | ${safeWeight} kg</td>
+    </tr>
+    <tr>
+      <td class="meta-label">Date Booked</td>
+      <td>${safeDate}</td>
+    </tr>
+    ${safeCod ? `<tr><td class="meta-label">C.O.D. Amount</td><td><strong>${safeCod}</strong></td></tr>` : ''}
+  </table>
+  <div class="footer">
+    Target Logistics Global Express & Domestic Delivery &bull; mawthook.io
+  </div>
+</div>
+<div class="print-actions">
+  <button class="print-btn" onclick="window.print()">🖨️ Print Label</button>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+<script>
+  try {
+    JsBarcode("#barcode", "${safeTrackingNumber}", {
+      format: "CODE128",
+      displayValue: false,
+      margin: 0,
+      height: 50
+    });
+  } catch(e) {}
+  window.addEventListener('load', function() {
+    if (window.location.search.includes('autoprint=1')) {
+      window.print();
+    }
+  });
+</script>
+</body></html>`;
+
+        res.send(html);
+    } catch (error) {
+        logger.error('Error generating API shipment label:', error);
+        res.status(500).send('Failed to generate shipment label');
     }
 };

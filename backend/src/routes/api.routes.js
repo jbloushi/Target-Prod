@@ -10,6 +10,7 @@ router.use(validateApiKey);
 
 // Shipment Routes
 router.post('/shipments', authorize('CREATE_SHIPMENTS'), requireIdempotency, apiController.createShipment);
+router.get('/shipments/:number/label', apiController.getShipmentLabel);
 router.put('/shipments/:number', apiController.updateShipment);
 router.get('/tracking/:number', apiController.trackShipment);
 
