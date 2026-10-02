@@ -76,10 +76,6 @@ describe('DHL Express (DGR) Official Documents & Templates', () => {
             expect(invoiceOpt).toBeDefined();
             expect(invoiceOpt.templateName).toBe('COMMERCIAL_INVOICE_P_10');
             expect(invoiceOpt.isRequested).toBe(true);
-            expect(invoiceOpt.invoiceProperties).toEqual({
-                numberOfCopies: 1,
-                isInvoiceDataAllowed: true
-            });
         });
 
         it('omits invoice template when shipment is non-declarable or document-only', () => {

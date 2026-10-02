@@ -192,7 +192,8 @@ export const SettingsPage = () => {
       enqueueSnackbar(lang === 'ar' ? 'تم تحديث ملف الشاحن بنجاح!' : 'Shipper profile updated successfully!', { variant: 'success' });
       if (refreshUser) await refreshUser();
     } catch (err) {
-      enqueueSnackbar(lang === 'ar' ? 'فشل في تحديث الملف الشخصي' : 'Failed to update profile', { variant: 'error' });
+      const errMsg = err.response?.data?.error || err.message || (lang === 'ar' ? 'فشل في تحديث الملف الشخصي' : 'Failed to update profile');
+      enqueueSnackbar(errMsg, { variant: 'error' });
     } finally {
       setSavingProfile(false);
     }

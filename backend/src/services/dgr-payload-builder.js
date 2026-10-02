@@ -504,9 +504,7 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
                 {
                     typeCode: 'label',
                     templateName: 'ECOM26_84_001',
-                    isRequested: true,
-                    hideAccountNumber: false,
-                    numberOfCopies: 1
+                    isRequested: true
                 },
                 {
                     typeCode: 'waybillDoc',
@@ -518,11 +516,7 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
                 ...((!order.isDocument && order.shipmentType !== 'documents' && !isDomestic) ? [{
                     typeCode: 'invoice',
                     templateName: 'COMMERCIAL_INVOICE_P_10',
-                    isRequested: true,
-                    invoiceProperties: {
-                        numberOfCopies: 1,
-                        isInvoiceDataAllowed: true
-                    }
+                    isRequested: true
                 }] : [])
             ]
         },

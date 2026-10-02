@@ -21,7 +21,7 @@ router.get('/organizations/:orgId/payments', authorize('VIEW_FINANCE'), financeC
 router.post('/organizations/:orgId/payments', authorize('MANAGE_PAYMENTS'), requireIdempotency, financeController.postPayment);
 router.post('/organizations/:orgId/allocations', authorize('MANAGE_PAYMENTS'), requireIdempotency, financeController.allocatePaymentManual);
 router.post('/organizations/:orgId/allocations/fifo', authorize('MANAGE_PAYMENTS'), requireIdempotency, financeController.allocatePaymentsFifo);
-router.get('/shipments/:shipmentId/accounting', authorize('VIEW_FINANCE'), financeController.getShipmentAccounting);
+router.get('/shipments/:shipmentId/accounting', authorizeAny('VIEW_FINANCE', 'VIEW_ALL_SHIPMENTS', 'VIEW_OWN_SHIPMENTS', 'VIEW_INVOICES'), financeController.getShipmentAccounting);
 router.patch('/invoices/:invoiceId/status', authorize('MANAGE_PAYMENTS'), financeController.updateInvoiceStatus);
 router.get('/invoices/:invoiceId', authorizeAny('VIEW_FINANCE', 'VIEW_INVOICES'), financeController.getInvoice);
 router.post('/invoices/:invoiceId/send-whatsapp', authorizeAny('MANAGE_PAYMENTS', 'VIEW_INVOICES'), financeController.sendInvoiceWhatsApp);

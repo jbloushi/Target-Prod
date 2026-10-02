@@ -355,8 +355,11 @@ exports.getOrganizationOverview = async (req, res) => {
 exports.getShipmentAccounting = async (req, res) => {
     try {
         const accounting = await financeLedgerService.getShipmentAccounting(req.params.shipmentId);
-        if (!accounting) return res.status(404).json({ success: false, error: 'Shipment not found' });
-        if (!assertFinanceOrgAccess(req, res, accounting.shipment?.organizationId || null)) return;
+        if (!accounting || !accounting.shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
+        const { canAccessShipment } = require('../middleware/authorize.middleware');
+        if (!canAccessShipment(req, accounting.shipment)) {
+            return res.status(403).json({ success: false, error: 'Permission denied' });
+        }
 
         const allocations = await prisma.paymentAllocation.findMany({
             where: { shipmentId: req.params.shipmentId },

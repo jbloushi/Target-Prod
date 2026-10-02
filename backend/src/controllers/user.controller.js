@@ -482,13 +482,38 @@ exports.getMe = async (req, res) => {
  */
 exports.updateProfile = async (req, res) => {
     try {
-        const { name, phone, addresses, carrierConfig } = req.body;
+        const { name, phone, addresses, carrierConfig, company } = req.body;
         const updateData = {};
 
-        if (name) updateData.name = name;
-        if (phone) updateData.phone = phone;
-        if (addresses) updateData.addresses = addresses;
-        if (carrierConfig) updateData.carrierConfig = carrierConfig;
+        if (name !== undefined) updateData.name = String(name).trim();
+        if (addresses !== undefined) updateData.addresses = addresses;
+        if (carrierConfig !== undefined || company !== undefined) {
+            updateData.carrierConfig = {
+                ...(carrierConfig || {}),
+                ...(company !== undefined ? { company: String(company).trim() } : {})
+            };
+        }
+
+        if (phone !== undefined) {
+            const cleanPhone = phone ? String(phone).trim() : null;
+            if (cleanPhone) {
+                const duplicate = await prisma.user.findFirst({
+                    where: {
+                        phone: cleanPhone,
+                        id: { not: req.user.id }
+                    }
+                });
+                if (duplicate) {
+                    return res.status(409).json({
+                        success: false,
+                        error: 'This phone number is already registered to another user account.'
+                    });
+                }
+                updateData.phone = cleanPhone;
+            } else {
+                updateData.phone = null;
+            }
+        }
 
         const user = await prisma.user.update({
             where: { id: req.user.id },
