@@ -129,7 +129,23 @@ function normalizeShipment(data) {
 
         items,
         packages,
-        dangerousGoods: data.dangerousGoods || data.origin?.dangerousGoods,
+        dangerousGoods: (() => {
+            const rawDg = data.dangerousGoods || data.origin?.dangerousGoods;
+            if (!rawDg) return undefined;
+            const code = rawDg.code || (rawDg.unCode ? String(rawDg.unCode).replace(/^(UN|ID)/i, '') : '');
+            const hasDgData = Boolean(code || rawDg.serviceCode || rawDg.dgServiceCode);
+            return {
+                ...rawDg,
+                contains: Boolean(rawDg.contains && hasDgData),
+                code: code,
+                unCode: rawDg.unCode || (code ? `UN${code}` : ''),
+                serviceCode: rawDg.serviceCode || rawDg.dgServiceCode || '',
+                contentId: rawDg.contentId || rawDg.dgContentId || '',
+                properShippingName: rawDg.properShippingName || '',
+                customDescription: rawDg.customDescription || rawDg.marks || rawDg.dgMarks || rawDg.properShippingName || '',
+                dryIceWeight: rawDg.dryIceWeight
+            };
+        })(),
 
         gstPaid: data.gstPaid,
         payerOfVat: data.payerOfVat,

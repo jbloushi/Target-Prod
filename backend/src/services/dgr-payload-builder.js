@@ -130,6 +130,13 @@ function validateShipmentForDgr(order) {
 
     // DG Validation
     if (dangerousGoods && dangerousGoods.contains) {
+        const dgCode = dangerousGoods.code || (dangerousGoods.unCode ? String(dangerousGoods.unCode).replace(/^(UN|ID)/i, '') : '');
+        dangerousGoods.code = dgCode;
+        dangerousGoods.serviceCode = dangerousGoods.serviceCode || dangerousGoods.dgServiceCode;
+        dangerousGoods.contentId = dangerousGoods.contentId || dangerousGoods.dgContentId;
+        dangerousGoods.properShippingName = dangerousGoods.properShippingName || dangerousGoods.name;
+        dangerousGoods.customDescription = dangerousGoods.customDescription || dangerousGoods.marks || dangerousGoods.dgMarks || dangerousGoods.properShippingName;
+
         if (!dangerousGoods.code) errors.push('DG: UN Code is required.');
         if (!dangerousGoods.serviceCode) errors.push('DG: Service Code (HE/HV/HK/HC) is required.');
         if (!dangerousGoods.contentId) errors.push('DG: Content ID is required.');
@@ -331,26 +338,31 @@ function buildExportDeclaration(order, config = {}) {
 const buildDangerousGoodsValueAddedServices = (dg) => {
     if (!dg || !dg.contains) return [];
 
+    const code = dg.code || (dg.unCode ? String(dg.unCode).replace(/^(UN|ID)/i, '') : '');
+    const serviceCode = dg.serviceCode || dg.dgServiceCode;
+    const contentId = dg.contentId || dg.dgContentId;
+    const customDescription = dg.customDescription || dg.marks || dg.dgMarks || dg.properShippingName;
+
     // Safety check for required fields (already checked in validate, but double safety)
-    if (!dg.serviceCode || !dg.contentId || !dg.code || !dg.customDescription) {
+    if (!serviceCode || !contentId || !code || !customDescription) {
         throw new Error('DG payload requires serviceCode, contentId, code, and customDescription.');
     }
 
-    const unCode = (dg.code && !dg.code.startsWith('UN') && !dg.code.startsWith('ID'))
-        ? (dg.code === '8000' ? `ID${dg.code}` : `UN${dg.code}`)
-        : dg.code;
+    const unCode = (code && !code.startsWith('UN') && !code.startsWith('ID'))
+        ? (code === '8000' ? `ID${code}` : `UN${code}`)
+        : (code || dg.unCode);
 
     // Strict DG Item construction - ONLY allowed fields
     const DG_CUSTOM_DESCRIPTION_MAX_LENGTH = 200;
 
     const dgItem = {
-        contentId: dg.contentId,
+        contentId: contentId,
         unCode: unCode, // e.g. UN1266
-        customDescription: String(dg.customDescription).substring(0, DG_CUSTOM_DESCRIPTION_MAX_LENGTH)
+        customDescription: String(customDescription).substring(0, DG_CUSTOM_DESCRIPTION_MAX_LENGTH)
     };
 
     const vas = {
-        serviceCode: dg.serviceCode, // e.g. HE, HV, HK, HC
+        serviceCode: serviceCode, // e.g. HE, HV, HK, HC
         dangerousGoods: [dgItem]
     };
 

@@ -106,8 +106,15 @@ class ShipmentDraftService {
             try {
                 snapshot = await this.getSecurePricing(cleanData, targetUser);
             } catch (err) {
-                logger.error(`ShipmentDraftService: Pricing failed: ${err.message}`, { cleanData, targetUserId });
-                throw err;
+                logger.warn(`ShipmentDraftService: Live pricing failed, falling back to manual snapshot: ${err.message}`);
+                const { markup, source } = PricingService.resolveMarkup(targetUser, targetUser.organization, cleanData.carrierCode || 'DGR');
+                snapshot = PricingService.createSnapshot(
+                    data.costPrice || data.price || 15.0,
+                    markup,
+                    data.currency || 'KWD',
+                    source
+                );
+                if (data.price || data.totalPrice) snapshot.totalPrice = Number(data.price || data.totalPrice);
             }
         } else {
             // Fallback for locally managed shipments / other carriers
@@ -169,9 +176,10 @@ class ShipmentDraftService {
                     gstPaid: cleanData.gstPaid || false,
                     palletCount: cleanData.palletCount || 0,
                     packageMarks: cleanData.packageMarks || '',
-                    labelSettings: cleanData.labelSettings || { format: 'pdf' },
-                    dangerousGoods: cleanData.dangerousGoods || { contains: false },
-                    insuredValue: cleanData.insuredValue || null
+                    dangerousGoods: cleanData.dangerousGoods ? {
+                        ...cleanData.dangerousGoods,
+                        contains: Boolean(cleanData.dangerousGoods.contains && (cleanData.dangerousGoods.code || cleanData.dangerousGoods.unCode))
+                    } : { contains: false },
                 },
                 destination: cleanData.destination,
                 currentLocation: cleanData.origin,
@@ -193,7 +201,7 @@ class ShipmentDraftService {
                 // Relations
                 userId: targetUserId,
                 createdOnBehalfOfUserId: targetUserId !== user.id ? targetUserId : null,
-                organizationId: targetUser.organizationId,
+                organizationId: cleanData.organizationId || targetUser.organizationId || null,
 
                 // Metadata
                 shipmentType: cleanData.shipmentType,
@@ -421,20 +429,40 @@ class ShipmentDraftService {
             return clean;
         };
 
-        const origin = sanitizeAddress(sender || legacyOrigin);
-        const destination = sanitizeAddress(receiver || legacyDestination);
+        let origin = sanitizeAddress(sender || legacyOrigin);
+        let destination = sanitizeAddress(receiver || legacyDestination);
 
-        if (!origin || !origin.formattedAddress) throw new Error('Sender address is required');
-        if (!destination || !destination.formattedAddress) throw new Error('Receiver address is required');
+        if (!origin || !origin.formattedAddress) {
+            if (data.status === 'DRAFT' || data.isDraft === true) {
+                origin = origin || {};
+                origin.formattedAddress = origin.formattedAddress || origin.city || 'Kuwait City, Kuwait';
+                origin.contactPerson = origin.contactPerson || origin.name || 'Draft Shipper';
+                origin.name = origin.name || origin.contactPerson;
+                origin.phone = origin.phone || '+96500000000';
+            } else {
+                throw new Error('Sender address is required');
+            }
+        }
+        if (!destination || !destination.formattedAddress) {
+            if (data.status === 'DRAFT' || data.isDraft === true) {
+                destination = destination || {};
+                destination.formattedAddress = destination.formattedAddress || destination.city || 'Draft Destination';
+                destination.contactPerson = destination.contactPerson || destination.name || 'Draft Consignee';
+                destination.name = destination.name || destination.contactPerson;
+                destination.phone = destination.phone || '+96500000000';
+            } else {
+                throw new Error('Receiver address is required');
+            }
+        }
 
         const customer = data.customer || {
-            name: origin.contactPerson,
-            email: origin.email,
-            phone: origin.phone
+            name: origin.contactPerson || origin.name || 'Draft Shipper',
+            email: origin.email || 'draft@target.com',
+            phone: origin.phone || '+96500000000'
         };
 
         if (!customer.name || !customer.email) {
-            if (!origin.contactPerson) throw new Error('Customer/Sender details required');
+            if (!origin.contactPerson && data.status !== 'DRAFT') throw new Error('Customer/Sender details required');
         }
 
         // Map and normalize items

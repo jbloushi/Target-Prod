@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { useSnackbar } from 'notistack';
-import api, { shipmentService, userService } from '../../services/api';
+import api, { shipmentService, userService, organizationService } from '../../services/api';
 import GoogleAddressInput from '../GoogleAddressInput';
+import { GoogleMapPinDrop } from '../GoogleMapPinDrop';
 import { countries } from '../../utils/countries';
 import { getContainerTypes, getContainerTypeById } from '../../utils/containerTypesConfig';
 import { DG_PRESET_OPTIONS, DEFAULT_PACKAGE_TEMPLATES } from './KineticShipmentWizard';
@@ -29,6 +31,7 @@ export const TargetLogisticsWizard = ({
   onComplete,
   isModal = false
 }) => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { isRTL, lang } = useLanguage();
   const { enqueueSnackbar } = useSnackbar();
@@ -40,6 +43,25 @@ export const TargetLogisticsWizard = ({
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
+
+  // ── Staff Organization & Client Selection ("Acting On Behalf Of") ──
+  const isStaffOrAdmin = useMemo(() => {
+    const role = String(user?.role || '').toUpperCase();
+    return ['ADMIN', 'SUPER_ADMIN', 'DISPATCHER', 'STAFF', 'OPERATOR'].includes(role);
+  }, [user]);
+
+  const [organizations, setOrganizations] = useState([]);
+  const [clients, setClients] = useState([]);
+  const [selectedOrgId, setSelectedOrgId] = useState(shipment?.organizationId || '');
+  const [selectedClientId, setSelectedClientId] = useState(shipment?.createdOnBehalfOfUserId || shipment?.userId || '');
+
+  // ── Collapsible Section State (Steps 1 & 2 start collapsed, Step 4 Addons drawer) ──
+  const [senderAddressExpanded, setSenderAddressExpanded] = useState(false);
+  const [receiverAddressExpanded, setReceiverAddressExpanded] = useState(false);
+  const [addonsDrawerOpen, setAddonsDrawerOpen] = useState(false);
+
+  // ── Step 6 Policy Agreement Checkbox ──
+  const [agreedToPolicy, setAgreedToPolicy] = useState(false);
 
   // ── Package Templates State ──
   const [templates, setTemplates] = useState(() => {
@@ -282,7 +304,7 @@ export const TargetLogisticsWizard = ({
   const [service, setService] = useState(initialService);
   const [customs, setCustoms] = useState(initialCustoms);
 
-  // ── Address Book Fetching ──
+  // ── Address Book & Organization Fetching ──
   useEffect(() => {
     let isMounted = true;
     const fetchAddressBook = async () => {
@@ -301,8 +323,70 @@ export const TargetLogisticsWizard = ({
       }
     };
     fetchAddressBook();
+
+    if (isStaffOrAdmin) {
+      organizationService.getOrganizations()
+        .then(res => {
+          if (isMounted) {
+            const orgs = res?.data || res || [];
+            setOrganizations(Array.isArray(orgs) ? orgs : []);
+          }
+        })
+        .catch(err => console.debug('Failed to fetch orgs:', err.message));
+
+      userService.getAssignableClients()
+        .then(res => {
+          if (isMounted) {
+            const clts = res?.data || res || [];
+            setClients(Array.isArray(clts) ? clts : []);
+          }
+        })
+        .catch(() => {
+          userService.getUsers({ role: 'CLIENT', limit: 100 })
+            .then(res => {
+              if (isMounted) {
+                const clts = res?.data || res?.users || res || [];
+                setClients(Array.isArray(clts) ? clts : []);
+              }
+            })
+            .catch(e => console.debug('Failed to fetch clients:', e.message));
+        });
+    }
+
     return () => { isMounted = false; };
-  }, [user]);
+  }, [user, isStaffOrAdmin]);
+
+  // ── Auto-sync Customs Declared Valuation from Package & Cargo ──
+  useEffect(() => {
+    if (totalDeclaredValue > 0) {
+      setCustoms(prev => ({
+        ...prev,
+        invoiceVal: String(Number(totalDeclaredValue).toFixed(2))
+      }));
+    }
+  }, [totalDeclaredValue]);
+
+  const handleSelectOrganization = (orgId) => {
+    setSelectedOrgId(orgId);
+    if (!orgId) return;
+    const org = organizations.find(o => String(o.id || o._id) === String(orgId));
+    if (org) {
+      const countryObj = countries.find(c => c.code === org.countryCode) || countries.find(c => c.name?.toLowerCase() === org.country?.toLowerCase());
+      setSender(prev => ({
+        ...prev,
+        company: org.name || prev.company,
+        phone: org.phone || prev.phone,
+        email: org.email || prev.email,
+        addr1: org.address || prev.addr1,
+        city: org.city || prev.city,
+        state: org.state || prev.state,
+        country: countryObj?.name || org.country || prev.country,
+        countryCode: countryObj?.code || org.countryCode || prev.countryCode,
+        phoneCountryCode: countryObj?.dialCode || prev.phoneCountryCode,
+        taxId: org.taxNumber || org.vatNumber || prev.taxId
+      }));
+    }
+  };
 
   // ── Quick Location Presets ──
   const senderPresets = useMemo(() => [
@@ -680,11 +764,7 @@ export const TargetLogisticsWizard = ({
     return (pkg.packagesList || []).reduce((sum, p) => sum + ((parseFloat(p.value) || 0) * (parseInt(p.qty, 10) || 1)), 0);
   }, [pkg.packagesList]);
 
-  const insurancePremium = useMemo(() => {
-    if (!pkg.insurance) return 0;
-    const val = parseFloat(customs.invoiceVal || totalDeclaredValue) || 0;
-    return Math.max(2.5, val * 0.01);
-  }, [pkg.insurance, customs.invoiceVal, totalDeclaredValue]);
+  const insurancePremium = 0; // Removed per spec: insurance is not wired to carrier API or calculated
 
   const addonsTotal = useMemo(() => {
     return (service.selectedAddons || []).reduce((sum, a) => sum + (parseFloat(a.rate) || 0), 0);
@@ -698,8 +778,8 @@ export const TargetLogisticsWizard = ({
 
   const finalCost = useMemo(() => {
     const fuelSurcharge = Number((baseRate * 0.095).toFixed(3));
-    return Number((baseRate + addonsTotal + insurancePremium + fuelSurcharge).toFixed(3));
-  }, [baseRate, addonsTotal, insurancePremium]);
+    return Number((baseRate + addonsTotal + fuelSurcharge).toFixed(3));
+  }, [baseRate, addonsTotal]);
 
   // ── Change-diff Tracking for Edit Mode ──
   const changedFieldsList = useMemo(() => {
@@ -768,6 +848,9 @@ export const TargetLogisticsWizard = ({
       }));
 
       const payload = {
+        organizationId: selectedOrgId || undefined,
+        createdOnBehalfOfUserId: selectedClientId || undefined,
+        userId: selectedClientId || undefined,
         origin: {
           name: sender.name,
           contactPerson: sender.name,
@@ -818,21 +901,24 @@ export const TargetLogisticsWizard = ({
         currency: service.currency || 'KWD',
         price: finalCost,
         incoterm: customs.incoterms.split(' ')[0] || 'DAP',
-        insurance: Boolean(pkg.insurance),
+        insurance: false,
         dangerousGoods: {
-          contains: Boolean(pkg.dangerousGoods),
-          unCode: pkg.unCode,
-          class: pkg.dgClass,
-          properShippingName: pkg.properShippingName,
-          packingGroup: pkg.packingGroup,
-          serviceCode: pkg.dgServiceCode,
-          contentId: pkg.dgContentId,
-          customDescription: pkg.dgMarks
+          contains: Boolean(pkg.dangerousGoods && (pkg.unCode || pkg.dgClass)),
+          code: (pkg.unCode || '').replace(/^UN|^ID/i, ''),
+          unCode: pkg.unCode || '',
+          class: pkg.dgClass || '',
+          properShippingName: pkg.properShippingName || '',
+          packingGroup: pkg.packingGroup || 'II',
+          serviceCode: pkg.dgServiceCode || '',
+          contentId: pkg.dgContentId || '',
+          customDescription: pkg.dgMarks || pkg.properShippingName || ''
         },
         valueAddedServices: (service.selectedAddons || []).map(a => a.serviceCode),
         customsInvoice: {
           invoiceNumber: customs.invoiceNum || '',
           declaredValue: Number(customs.invoiceVal || totalDeclaredValue || 0),
+          currency: customs.currency || service.currency || 'KWD',
+          countryOfOrigin: customs.origin || sender.country || 'Kuwait',
           notes: customs.notes || ''
         },
         specialInstructions: receiver.instructions || service.instructions || ''
@@ -840,6 +926,7 @@ export const TargetLogisticsWizard = ({
 
       if (isDraft) {
         payload.status = 'DRAFT';
+        payload.isDraft = true;
       }
 
       let res;
@@ -857,7 +944,9 @@ export const TargetLogisticsWizard = ({
         res = await shipmentService.createShipment(payload);
         createdTrackingNumber = res?.trackingNumber || res?.shipment?.trackingNumber || res?.data?.trackingNumber || (typeof res === 'string' ? res : null);
         enqueueSnackbar(
-          isRTL ? 'تم إنشاء الشحنة الجديدة بنجاح' : 'Shipment created successfully',
+          isDraft
+            ? (isRTL ? 'تم حفظ المسودة بنجاح' : 'Draft shipment saved successfully')
+            : (isRTL ? 'تم إنشاء الشحنة الجديدة بنجاح' : 'Shipment created successfully'),
           { variant: 'success' }
         );
       }
@@ -870,8 +959,14 @@ export const TargetLogisticsWizard = ({
       if (saveSenderToBook) handleSaveAddressToBook(sender, 'Sender');
       if (saveReceiverToBook) handleSaveAddressToBook(receiver, 'Receiver');
 
-      if (onComplete) onComplete(resultObject);
-      if (onClose) onClose();
+      const trackingNum = createdTrackingNumber || resultObject?.trackingNumber;
+      if (onComplete) {
+        onComplete(resultObject);
+      } else if (trackingNum) {
+        navigate(`/shipment/${trackingNum}`);
+      } else if (onClose) {
+        onClose();
+      }
     } catch (err) {
       console.error('[TargetLogisticsWizard] Submit failed:', err);
       enqueueSnackbar(err.response?.data?.message || err.message || 'Operation failed', { variant: 'error' });
@@ -1086,8 +1181,73 @@ export const TargetLogisticsWizard = ({
             
             {/* ═══ STEP 1: ORIGIN (SHIPPER) ═══ */}
             {step === 1 && (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-                <div className="lg:col-span-7 bg-white border border-[#e9edf2] rounded-2xl p-5 space-y-4">
+              <div className="space-y-5">
+                {/* Staff Acting On Behalf Of Delegation Card */}
+                {isStaffOrAdmin && (
+                  <div className="p-4 bg-[#f5f8ff] border-[1.5px] border-[#c7d7fa] rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-[#0050d4] text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <span className="material-symbols-outlined text-lg">corporate_fare</span>
+                      </div>
+                      <div>
+                        <div className="text-xs font-black text-[#1a1f23] uppercase tracking-wider">
+                          {isRTL ? 'الإنشاء نيابة عن منظمة أو عميل (صلاحيات الموظفين)' : 'Acting On Behalf Of (Staff Delegation)'}
+                        </div>
+                        <div className="text-[11px] text-[#575c60]">
+                          {isRTL ? 'حدد المنظمة أو العميل لربط الشحنة بحسابه وسجلاته وتعبئة بياناته' : 'Select an organization or client account to bind this consignment'}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+                      <select
+                        value={selectedOrgId}
+                        onChange={(e) => handleSelectOrganization(e.target.value)}
+                        className="flex-1 sm:flex-initial text-xs font-bold text-[#0050d4] bg-white border border-[#c7d7fa] rounded-xl px-3 py-2 outline-none cursor-pointer min-w-[200px]"
+                      >
+                        <option value="">{isRTL ? '— اختر منظمة الشحن —' : '— Select Organization —'}</option>
+                        {organizations.map(org => (
+                          <option key={org.id || org._id} value={org.id || org._id}>
+                            🏢 {org.name}
+                          </option>
+                        ))}
+                      </select>
+                      {clients.length > 0 && (
+                        <select
+                          value={selectedClientId}
+                          onChange={(e) => setSelectedClientId(e.target.value)}
+                          className="flex-1 sm:flex-initial text-xs font-bold text-[#1a1f23] bg-white border border-[#e9edf2] rounded-xl px-3 py-2 outline-none cursor-pointer min-w-[170px]"
+                        >
+                          <option value="">{isRTL ? '— حساب العميل (اختياري) —' : '— Client User (Optional) —'}</option>
+                          {clients.map(cl => (
+                            <option key={cl.id || cl._id} value={cl.id || cl._id}>
+                              👤 {cl.name || cl.email}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Validation Error Banner */}
+                {Object.keys(errors).filter(k => k.startsWith('sender_')).length > 0 && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs flex items-start gap-2 animate-in fade-in">
+                    <span className="material-symbols-outlined text-base text-red-600 shrink-0 mt-0.5">error</span>
+                    <div>
+                      <div className="font-bold">
+                        {isRTL ? 'يرجى استكمال الحقول الإلزامية التالية للمتابعة:' : 'Please complete the following required fields:'}
+                      </div>
+                      <ul className="list-disc list-inside text-[11px] mt-1 space-y-0.5 opacity-90">
+                        {Object.keys(errors).filter(k => k.startsWith('sender_')).map(k => (
+                          <li key={k}>{errors[k]}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+
+                {/* Contact Identity Details */}
+                <div className="bg-white border border-[#e9edf2] rounded-2xl p-5 space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#f0f4f8]">
                     <div>
                       <div className="text-xs font-black text-[#1a1f23] uppercase tracking-wider">
@@ -1115,61 +1275,6 @@ export const TargetLogisticsWizard = ({
                         </select>
                       </div>
                     )}
-                  </div>
-
-                  {/* Validation Error Banner */}
-                  {Object.keys(errors).filter(k => k.startsWith('sender_')).length > 0 && (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs flex items-start gap-2 animate-in fade-in">
-                      <span className="material-symbols-outlined text-base text-red-600 shrink-0 mt-0.5">error</span>
-                      <div>
-                        <div className="font-bold">
-                          {isRTL ? 'يرجى استكمال الحقول الإلزامية التالية للمتابعة:' : 'Please complete the following required fields:'}
-                        </div>
-                        <ul className="list-disc list-inside text-[11px] mt-1 space-y-0.5 opacity-90">
-                          {Object.keys(errors).filter(k => k.startsWith('sender_')).map(k => (
-                            <li key={k}>{errors[k]}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Quick Presets */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-[11px] font-black text-[#8c9196] uppercase flex items-center gap-1">
-                      <span>⚡</span> {isRTL ? 'عناوين سريعة:' : 'Quick Presets:'}
-                    </span>
-                    {senderPresets.map((preset, pIdx) => (
-                      <button
-                        key={pIdx}
-                        type="button"
-                        onClick={() => {
-                          setSender(prev => ({
-                            ...prev,
-                            addr1: preset.addr1,
-                            area: preset.area,
-                            city: preset.city,
-                            state: preset.state,
-                            country: preset.country,
-                            countryCode: preset.countryCode,
-                            phoneCountryCode: preset.phoneCountryCode,
-                            zip: preset.zip,
-                            formattedAddress: `${preset.addr1}, ${preset.city}, ${preset.country}`
-                          }));
-                          setErrors(prev => {
-                            const next = { ...prev };
-                            delete next.sender_addr1;
-                            delete next.sender_city;
-                            delete next.sender_country;
-                            delete next.sender_zip;
-                            return next;
-                          });
-                        }}
-                        className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-[#e9edf2] bg-[#f8fafc] text-[#575c60] hover:border-[#0050d4] hover:text-[#0050d4] hover:bg-[#ebf0fc] transition-all"
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
                   </div>
 
                   {/* Primary Contact Details */}
@@ -1277,178 +1382,64 @@ export const TargetLogisticsWizard = ({
                       </div>
                     </div>
                   </div>
-
-                  {/* Section Divider */}
-                  <div className="pt-2 border-t border-[#f0f4f8]">
-                    <div className="text-[11px] font-black text-[#575c60] uppercase tracking-wider mb-2">
-                      {isRTL ? 'العنوان التفصيلي للشاحن' : 'Structured Address Details'}
-                    </div>
-                  </div>
-
-                  {/* Address Line 1 */}
-                  <div>
-                    <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                      {isRTL ? 'عنوان الشارع والمبنى (السطر 1)' : 'Street Address (Line 1)'} <span className="text-red-500">*</span>
-                    </label>
-                    <div className={`flex items-center gap-2 p-2 border-[1.5px] rounded-xl transition-all ${
-                      errors.sender_addr1 ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus-within:border-[#0050d4]'
-                    }`}>
-                      <span className="material-symbols-outlined text-[17px] text-[#8c9196]">home</span>
-                      <input
-                        type="text"
-                        value={sender.addr1}
-                        onChange={(e) => {
-                          setSender({ ...sender, addr1: e.target.value });
-                          if (errors.sender_addr1) setErrors(prev => { const n = { ...prev }; delete n.sender_addr1; return n; });
-                        }}
-                        placeholder="Block 1, Street 14, Shuwaikh Industrial"
-                        className="w-full text-xs font-semibold outline-none bg-transparent"
-                      />
-                    </div>
-                    {errors.sender_addr1 && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.sender_addr1}</span>}
-                  </div>
-
-                  {/* Address Line 2 & Area */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                        {isRTL ? 'الشقة / الطابق / المكتب (السطر 2)' : 'Apartment / Suite / Office / Unit (Line 2)'}
-                      </label>
-                      <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
-                        <span className="material-symbols-outlined text-[17px] text-[#8c9196]">apartment</span>
-                        <input
-                          type="text"
-                          value={sender.addr2 || ''}
-                          onChange={(e) => setSender({ ...sender, addr2: e.target.value })}
-                          placeholder="Floor 2, Office 12"
-                          className="w-full text-xs font-semibold outline-none bg-transparent"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                        {isRTL ? 'المنطقة / الحي / القطعة' : 'District / Area / Block'}
-                      </label>
-                      <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
-                        <span className="material-symbols-outlined text-[17px] text-[#8c9196]">map</span>
-                        <input
-                          type="text"
-                          value={sender.area || ''}
-                          onChange={(e) => setSender({ ...sender, area: e.target.value })}
-                          placeholder="Block 4, Shuwaikh Industrial"
-                          className="w-full text-xs font-semibold outline-none bg-transparent"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* City, State, Country, Postal Code */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                    <div>
-                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                        {isRTL ? 'المدينة' : 'City / Municipality'} <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={sender.city}
-                        onChange={(e) => {
-                          setSender({ ...sender, city: e.target.value });
-                          if (errors.sender_city) setErrors(prev => { const n = { ...prev }; delete n.sender_city; return n; });
-                        }}
-                        placeholder="Kuwait City"
-                        className={`w-full p-2 border-[1.5px] rounded-xl text-xs font-semibold outline-none transition-all ${
-                          errors.sender_city ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus:border-[#0050d4]'
-                        }`}
-                      />
-                      {errors.sender_city && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.sender_city}</span>}
-                    </div>
-
-                    <div>
-                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                        {isRTL ? 'المحافظة / الإمارة' : 'State / Governorate'}
-                      </label>
-                      <input
-                        type="text"
-                        value={sender.state || ''}
-                        onChange={(e) => setSender({ ...sender, state: e.target.value })}
-                        placeholder="Al Asimah"
-                        className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold outline-none focus:border-[#0050d4]"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                        {isRTL ? 'الدولة / الإقليم' : 'Country / Territory'} <span className="text-red-500">*</span>
-                      </label>
-                      <select
-                        value={sender.countryCode}
-                        onChange={(e) => {
-                          const code = e.target.value;
-                          const cObj = countries.find(c => c.code === code);
-                          setSender(prev => ({
-                            ...prev,
-                            countryCode: code,
-                            country: cObj?.name || prev.country,
-                            phoneCountryCode: cObj?.dialCode || prev.phoneCountryCode,
-                            zip: NON_POSTAL_COUNTRIES.includes(code) ? '00000' : (prev.zip === '00000' ? '' : prev.zip)
-                          }));
-                          if (errors.sender_country) setErrors(prev => { const n = { ...prev }; delete n.sender_country; return n; });
-                        }}
-                        className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold outline-none focus:border-[#0050d4] bg-white cursor-pointer"
-                      >
-                        {countries.map(c => (
-                          <option key={c.code} value={c.code}>
-                            {c.flag} {c.name} ({c.code})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                        {isRTL ? 'الرمز البريدي' : 'Postal / ZIP Code'} {!NON_POSTAL_COUNTRIES.includes((sender.countryCode || '').toUpperCase()) && <span className="text-red-500">*</span>}
-                      </label>
-                      <input
-                        type="text"
-                        value={sender.zip}
-                        onChange={(e) => {
-                          setSender({ ...sender, zip: e.target.value });
-                          if (errors.sender_zip) setErrors(prev => { const n = { ...prev }; delete n.sender_zip; return n; });
-                        }}
-                        placeholder={NON_POSTAL_COUNTRIES.includes((sender.countryCode || '').toUpperCase()) ? "00000 (Optional)" : "13001"}
-                        className={`w-full p-2 border-[1.5px] rounded-xl text-xs font-semibold outline-none transition-all ${
-                          errors.sender_zip ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus:border-[#0050d4]'
-                        }`}
-                      />
-                      {errors.sender_zip && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.sender_zip}</span>}
-                    </div>
-                  </div>
-
-                  {/* Save to Address Book */}
-                  <label className="flex items-center gap-2.5 p-2.5 bg-[#f8fafc] border border-[#e9edf2] rounded-xl cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={saveSenderToBook}
-                      onChange={(e) => setSaveSenderToBook(e.target.checked)}
-                      className="checkbox checkbox-primary checkbox-xs rounded"
-                    />
-                    <span className="text-[11px] font-semibold text-[#1a1f23]">
-                      {isRTL ? 'حفظ عنوان الشاحن في دفتر العناوين للاستخدام المستقبلي' : 'Save shipper to Address Book for future consignments'}
-                    </span>
-                  </label>
                 </div>
 
-                {/* Right: Google Places & Map Coordinates Card */}
-                <div className="lg:col-span-5 bg-white border border-[#e9edf2] rounded-2xl p-5 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-xs font-black text-[#1a1f23]">
-                      <span className="material-symbols-outlined text-[17px] text-[#0050d4]">travel_explore</span>
-                      <span>{isRTL ? 'تحديد الموقع بالخريطة والبحث الذكي' : 'Google Address Search & GPS Pin'}</span>
+                {/* Google Places Search & Interactive Pin Drop (BEFORE Structured Address Details) */}
+                <div className="bg-white border border-[#e9edf2] rounded-2xl p-5 space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-[#f0f4f8]">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-[19px] text-[#0050d4]">travel_explore</span>
+                      <div>
+                        <div className="text-xs font-black text-[#1a1f23] uppercase tracking-wider">
+                          {isRTL ? 'البحث عن العنوان والخريطة التفاعلية' : 'Google Address Search & Map Pin Drop'}
+                        </div>
+                        <div className="text-[11px] text-[#8c9196]">
+                          {isRTL ? 'ابحث عبر خرائط جوجل أو اسحب الدبوس لتحديد الموقع بدقة وتعبئة العنوان' : 'Search with Google Places or drag the pin on map to auto-fill address details'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quick Presets */}
+                    <div className="hidden sm:flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10.5px] font-black text-[#8c9196] uppercase flex items-center gap-1">
+                        <span>⚡</span> {isRTL ? 'سريع:' : 'Quick:'}
+                      </span>
+                      {senderPresets.slice(0, 2).map((preset, pIdx) => (
+                        <button
+                          key={pIdx}
+                          type="button"
+                          onClick={() => {
+                            setSender(prev => ({
+                              ...prev,
+                              addr1: preset.addr1,
+                              area: preset.area,
+                              city: preset.city,
+                              state: preset.state,
+                              country: preset.country,
+                              countryCode: preset.countryCode,
+                              phoneCountryCode: preset.phoneCountryCode,
+                              zip: preset.zip,
+                              formattedAddress: `${preset.addr1}, ${preset.city}, ${preset.country}`
+                            }));
+                            setSenderAddressExpanded(true);
+                            setErrors(prev => {
+                              const next = { ...prev };
+                              delete next.sender_addr1;
+                              delete next.sender_city;
+                              delete next.sender_country;
+                              delete next.sender_zip;
+                              return next;
+                            });
+                          }}
+                          className="px-2 py-0.5 text-[10.5px] font-bold rounded-lg border border-[#e9edf2] bg-[#f8fafc] text-[#575c60] hover:border-[#0050d4] hover:text-[#0050d4] hover:bg-[#ebf0fc] transition-all"
+                        >
+                          {preset.label.split('Logistics')[0].split('Terminal')[0].trim()}
+                        </button>
+                      ))}
                     </div>
                   </div>
 
-                  {/* Google Address Autocomplete connected properly with value and onChange */}
+                  {/* Google Address Autocomplete */}
                   <GoogleAddressInput
                     label={isRTL ? 'ابحث عبر خرائط جوجل (Google Places)' : 'Search Global Address (Google Places)'}
                     placeholder={isRTL ? 'ابحث عن العنوان عبر خرائط جوجل...' : 'Search address with Google Maps...'}
@@ -1484,6 +1475,7 @@ export const TargetLogisticsWizard = ({
                         longitude: res.longitude !== undefined && res.longitude !== null ? Number(res.longitude) : prev.longitude,
                         formattedAddress: res.formattedAddress || prev.formattedAddress
                       }));
+                      setSenderAddressExpanded(true); // Automatically expand structured address details
                       setErrors(prev => {
                         const next = { ...prev };
                         delete next.sender_addr1;
@@ -1495,32 +1487,249 @@ export const TargetLogisticsWizard = ({
                     }}
                   />
 
-                  {/* Schematic Map Preview with Pin Drop */}
-                  <div className="relative h-44 rounded-xl overflow-hidden border border-[#e9edf2] bg-[#e8eef3] flex items-center justify-center">
-                    <div className="absolute inset-0 opacity-40 bg-[radial-gradient(#0050d4_1px,transparent_1px)] [background-size:16px_16px]" />
-                    <div className="absolute top-1/2 left-0 right-0 h-2 bg-white/80 shadow-xs" />
-                    <div className="absolute left-1/2 top-0 bottom-0 w-2 bg-white/80 shadow-xs" />
-                    {/* Pin Marker */}
-                    <div className="relative flex flex-col items-center z-10 animate-bounce">
-                      <span className="material-symbols-outlined text-4xl text-[#0050d4] drop-shadow-md">location_on</span>
+                  {/* Real Interactive GoogleMapPinDrop Component */}
+                  <div className="rounded-xl overflow-hidden border border-[#e9edf2]">
+                    <GoogleMapPinDrop
+                      latitude={sender.latitude}
+                      longitude={sender.longitude}
+                      addressLabel={sender.formattedAddress || sender.addr1}
+                      height="230px"
+                      onLocationChange={(loc) => {
+                        if (!loc) return;
+                        const countryObj = countries.find(c => c.code === loc.countryCode) || countries.find(c => c.name?.toLowerCase() === loc.country?.toLowerCase());
+                        setSender(prev => ({
+                          ...prev,
+                          latitude: loc.latitude,
+                          longitude: loc.longitude,
+                          formattedAddress: loc.formattedAddress || prev.formattedAddress,
+                          city: loc.city || prev.city,
+                          country: countryObj?.name || loc.country || prev.country,
+                          countryCode: countryObj?.code || loc.countryCode || prev.countryCode,
+                          phoneCountryCode: countryObj?.dialCode || prev.phoneCountryCode,
+                          state: loc.state || prev.state,
+                          area: loc.area || prev.area,
+                          zip: loc.postalCode || (NON_POSTAL_COUNTRIES.includes(loc.countryCode) ? '00000' : prev.zip),
+                          addr1: loc.formattedAddress ? String(loc.formattedAddress).split(',')[0].trim().substring(0, 45) : prev.addr1
+                        }));
+                        setSenderAddressExpanded(true); // Automatically expand structured address details on pin drop/drag
+                        setErrors(prev => {
+                          const next = { ...prev };
+                          delete next.sender_addr1;
+                          delete next.sender_city;
+                          delete next.sender_country;
+                          delete next.sender_zip;
+                          return next;
+                        });
+                      }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[10.5px] text-[#8c9196] px-1">
+                    <span>{isRTL ? 'اسحب الدبوس أو انقر على الخريطة لتحديد الموقع الجغرافي بدقة' : 'Drag the marker or click map to reposition and reverse-geocode address'}</span>
+                    <span className="font-mono font-bold text-[#0050d4]">
+                      {Number(sender.latitude || 29.3759).toFixed(4)}° N, {Number(sender.longitude || 47.9774).toFixed(4)}° E
+                    </span>
+                  </div>
+                </div>
+
+                {/* Structured Address Details (Starts Collapsed, auto-expands on search/pin drop) */}
+                <div className="bg-white border border-[#e9edf2] rounded-2xl overflow-hidden transition-all shadow-xs">
+                  <div 
+                    onClick={() => setSenderAddressExpanded(!senderAddressExpanded)}
+                    className="p-4 bg-[#f8fafc] hover:bg-[#f1f5f9] cursor-pointer flex items-center justify-between transition-colors border-b border-[#e9edf2]"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-[19px] text-[#0050d4]">location_city</span>
+                      <div>
+                        <div className="text-xs font-black text-[#1a1f23] uppercase tracking-wider flex items-center gap-2">
+                          <span>{isRTL ? 'العنوان التفصيلي للشاحن (الشارع، المدينة، الرمز البريدي)' : 'Structured Address Details'}</span>
+                          {sender.city && (
+                            <span className="px-2 py-0.5 bg-[#ebf0fc] text-[#0050d4] rounded-md text-[10px] font-bold">
+                              {sender.city}, {sender.countryCode}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-[#8c9196]">
+                          {senderAddressExpanded 
+                            ? (isRTL ? 'انقر للطي' : 'Click to collapse manual address fields') 
+                            : (isRTL ? 'انقر لعرض وتعديل تفاصيل الشارع والمدينة يدوياً' : 'Click to view and edit street, block, postal code and district')}
+                        </div>
+                      </div>
                     </div>
-                    {/* Coordinates Overlay */}
-                    <div className="absolute bottom-2 left-2 flex items-center gap-1.5 px-2.5 py-1 bg-white/95 rounded-lg shadow-xs text-[10.5px] font-mono font-bold text-[#1a1f23]">
-                      <span className="material-symbols-outlined text-xs text-[#0050d4]">my_location</span>
-                      <span>{Number(sender.latitude || 29.3759).toFixed(4)}° N, {Number(sender.longitude || 47.9774).toFixed(4)}° E</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold text-[#0050d4]">
+                        {senderAddressExpanded ? (isRTL ? 'طي' : 'Collapse') : (isRTL ? 'عرض وتعديل' : 'View / Edit')}
+                      </span>
+                      <span className="material-symbols-outlined text-[#0050d4] transition-transform duration-200">
+                        {senderAddressExpanded ? 'expand_less' : 'expand_more'}
+                      </span>
                     </div>
                   </div>
-                  <p className="text-[10px] text-[#8c9196] text-center">
-                    {isRTL ? 'يتم حفظ الإحداثيات الجغرافية بدقة لتسهيل وصول المندوب' : 'Precise GPS coordinates captured for driver navigation'}
-                  </p>
+
+                  {senderAddressExpanded && (
+                    <div className="p-5 space-y-4 animate-in fade-in duration-200">
+                      {/* Address Line 1 */}
+                      <div>
+                        <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                          {isRTL ? 'عنوان الشارع والمبنى (السطر 1)' : 'Street Address (Line 1)'} <span className="text-red-500">*</span>
+                        </label>
+                        <div className={`flex items-center gap-2 p-2 border-[1.5px] rounded-xl transition-all ${
+                          errors.sender_addr1 ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus-within:border-[#0050d4]'
+                        }`}>
+                          <span className="material-symbols-outlined text-[17px] text-[#8c9196]">home</span>
+                          <input
+                            type="text"
+                            value={sender.addr1}
+                            onChange={(e) => {
+                              setSender({ ...sender, addr1: e.target.value });
+                              if (errors.sender_addr1) setErrors(prev => { const n = { ...prev }; delete n.sender_addr1; return n; });
+                            }}
+                            placeholder="Block 1, Street 14, Shuwaikh Industrial"
+                            className="w-full text-xs font-semibold outline-none bg-transparent"
+                          />
+                        </div>
+                        {errors.sender_addr1 && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.sender_addr1}</span>}
+                      </div>
+
+                      {/* Address Line 2 & Area */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                            {isRTL ? 'الشقة / الطابق / المكتب (السطر 2)' : 'Apartment / Suite / Office / Unit (Line 2)'}
+                          </label>
+                          <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
+                            <span className="material-symbols-outlined text-[17px] text-[#8c9196]">apartment</span>
+                            <input
+                              type="text"
+                              value={sender.addr2 || ''}
+                              onChange={(e) => setSender({ ...sender, addr2: e.target.value })}
+                              placeholder="Floor 2, Office 12"
+                              className="w-full text-xs font-semibold outline-none bg-transparent"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                            {isRTL ? 'المنطقة / الحي / القطعة' : 'District / Area / Block'}
+                          </label>
+                          <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
+                            <span className="material-symbols-outlined text-[17px] text-[#8c9196]">map</span>
+                            <input
+                              type="text"
+                              value={sender.area || ''}
+                              onChange={(e) => setSender({ ...sender, area: e.target.value })}
+                              placeholder="Block 4, Shuwaikh Industrial"
+                              className="w-full text-xs font-semibold outline-none bg-transparent"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* City, State, Country, Postal Code */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div>
+                          <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                            {isRTL ? 'المدينة' : 'City / Municipality'} <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={sender.city}
+                            onChange={(e) => {
+                              setSender({ ...sender, city: e.target.value });
+                              if (errors.sender_city) setErrors(prev => { const n = { ...prev }; delete n.sender_city; return n; });
+                            }}
+                            placeholder="Kuwait City"
+                            className={`w-full p-2 border-[1.5px] rounded-xl text-xs font-semibold outline-none transition-all ${
+                              errors.sender_city ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus:border-[#0050d4]'
+                            }`}
+                          />
+                          {errors.sender_city && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.sender_city}</span>}
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                            {isRTL ? 'المحافظة / الإمارة' : 'State / Governorate'}
+                          </label>
+                          <input
+                            type="text"
+                            value={sender.state || ''}
+                            onChange={(e) => setSender({ ...sender, state: e.target.value })}
+                            placeholder="Al Asimah"
+                            className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold outline-none focus:border-[#0050d4]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                            {isRTL ? 'الدولة / الإقليم' : 'Country / Territory'} <span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            value={sender.countryCode}
+                            onChange={(e) => {
+                              const code = e.target.value;
+                              const cObj = countries.find(c => c.code === code);
+                              setSender(prev => ({
+                                ...prev,
+                                countryCode: code,
+                                country: cObj?.name || prev.country,
+                                phoneCountryCode: cObj?.dialCode || prev.phoneCountryCode,
+                                zip: NON_POSTAL_COUNTRIES.includes(code) ? '00000' : (prev.zip === '00000' ? '' : prev.zip)
+                              }));
+                              if (errors.sender_country) setErrors(prev => { const n = { ...prev }; delete n.sender_country; return n; });
+                            }}
+                            className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold outline-none focus:border-[#0050d4] bg-white cursor-pointer"
+                          >
+                            {countries.map(c => (
+                              <option key={c.code} value={c.code}>
+                                {c.flag} {c.name} ({c.code})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                            {isRTL ? 'الرمز البريدي' : 'Postal / ZIP Code'} {!NON_POSTAL_COUNTRIES.includes((sender.countryCode || '').toUpperCase()) && <span className="text-red-500">*</span>}
+                          </label>
+                          <input
+                            type="text"
+                            value={sender.zip}
+                            onChange={(e) => {
+                              setSender({ ...sender, zip: e.target.value });
+                              if (errors.sender_zip) setErrors(prev => { const n = { ...prev }; delete n.sender_zip; return n; });
+                            }}
+                            placeholder={NON_POSTAL_COUNTRIES.includes((sender.countryCode || '').toUpperCase()) ? "00000 (Optional)" : "13001"}
+                            className={`w-full p-2 border-[1.5px] rounded-xl text-xs font-semibold outline-none transition-all ${
+                              errors.sender_zip ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus:border-[#0050d4]'
+                            }`}
+                          />
+                          {errors.sender_zip && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.sender_zip}</span>}
+                        </div>
+                      </div>
+
+                      {/* Save to Address Book */}
+                      <label className="flex items-center gap-2.5 p-2.5 bg-[#f8fafc] border border-[#e9edf2] rounded-xl cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={saveSenderToBook}
+                          onChange={(e) => setSaveSenderToBook(e.target.checked)}
+                          className="checkbox checkbox-primary checkbox-xs rounded"
+                        />
+                        <span className="text-[11px] font-semibold text-[#1a1f23]">
+                          {isRTL ? 'حفظ عنوان الشاحن في دفتر العناوين للاستخدام المستقبلي' : 'Save shipper to Address Book for future consignments'}
+                        </span>
+                      </label>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
             {/* ═══ STEP 2: CONSIGNEE (RECEIVER) ═══ */}
             {step === 2 && (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-                <div className="lg:col-span-7 bg-white border border-[#e9edf2] rounded-2xl p-5 space-y-4">
+              <div className="space-y-5">
+                {/* Consignee Contact & Import Details */}
+                <div className="bg-white border border-[#e9edf2] rounded-2xl p-5 space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#f0f4f8]">
                     <div>
                       <div className="text-xs font-black text-[#1a1f23] uppercase tracking-wider">
@@ -1566,44 +1775,6 @@ export const TargetLogisticsWizard = ({
                       </div>
                     </div>
                   )}
-
-                  {/* Quick Presets */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-[11px] font-black text-[#8c9196] uppercase flex items-center gap-1">
-                      <span>⚡</span> {isRTL ? 'عناوين سريعة:' : 'Quick Presets:'}
-                    </span>
-                    {receiverPresets.map((preset, pIdx) => (
-                      <button
-                        key={pIdx}
-                        type="button"
-                        onClick={() => {
-                          setReceiver(prev => ({
-                            ...prev,
-                            addr1: preset.addr1,
-                            area: preset.area,
-                            city: preset.city,
-                            state: preset.state,
-                            country: preset.country,
-                            countryCode: preset.countryCode,
-                            phoneCountryCode: preset.phoneCountryCode,
-                            zip: preset.zip,
-                            formattedAddress: `${preset.addr1}, ${preset.city}, ${preset.country}`
-                          }));
-                          setErrors(prev => {
-                            const next = { ...prev };
-                            delete next.receiver_addr1;
-                            delete next.receiver_city;
-                            delete next.receiver_country;
-                            delete next.receiver_zip;
-                            return next;
-                          });
-                        }}
-                        className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-[#e9edf2] bg-[#f8fafc] text-[#575c60] hover:border-[#0050d4] hover:text-[#0050d4] hover:bg-[#ebf0fc] transition-all"
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
 
                   {/* Primary Contact Details */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1710,198 +1881,67 @@ export const TargetLogisticsWizard = ({
                       </div>
                     </div>
                   </div>
-
-                  {/* Section Divider */}
-                  <div className="pt-2 border-t border-[#f0f4f8]">
-                    <div className="text-[11px] font-black text-[#575c60] uppercase tracking-wider mb-2">
-                      {isRTL ? 'العنوان التفصيلي للتسليم' : 'Structured Delivery Address Details'}
-                    </div>
-                  </div>
-
-                  {/* Address Line 1 */}
-                  <div>
-                    <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                      {isRTL ? 'عنوان التسليم والشارع (السطر 1)' : 'Street Address (Line 1)'} <span className="text-red-500">*</span>
-                    </label>
-                    <div className={`flex items-center gap-2 p-2 border-[1.5px] rounded-xl transition-all ${
-                      errors.receiver_addr1 ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus-within:border-[#0050d4]'
-                    }`}>
-                      <span className="material-symbols-outlined text-[17px] text-[#8c9196]">home</span>
-                      <input
-                        type="text"
-                        value={receiver.addr1}
-                        onChange={(e) => {
-                          setReceiver({ ...receiver, addr1: e.target.value });
-                          if (errors.receiver_addr1) setErrors(prev => { const n = { ...prev }; delete n.receiver_addr1; return n; });
-                        }}
-                        placeholder="Bay Square, Building 4, Business Bay"
-                        className="w-full text-xs font-semibold outline-none bg-transparent"
-                      />
-                    </div>
-                    {errors.receiver_addr1 && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.receiver_addr1}</span>}
-                  </div>
-
-                  {/* Address Line 2 & Area */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                        {isRTL ? 'الشقة / الطابق / المكتب (السطر 2)' : 'Apartment / Suite / Office / Unit (Line 2)'}
-                      </label>
-                      <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
-                        <span className="material-symbols-outlined text-[17px] text-[#8c9196]">apartment</span>
-                        <input
-                          type="text"
-                          value={receiver.addr2 || ''}
-                          onChange={(e) => setReceiver({ ...receiver, addr2: e.target.value })}
-                          placeholder="Suite 302, 3rd Floor"
-                          className="w-full text-xs font-semibold outline-none bg-transparent"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                        {isRTL ? 'المنطقة / الحي / القطعة' : 'District / Area / Block'}
-                      </label>
-                      <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
-                        <span className="material-symbols-outlined text-[17px] text-[#8c9196]">map</span>
-                        <input
-                          type="text"
-                          value={receiver.area || ''}
-                          onChange={(e) => setReceiver({ ...receiver, area: e.target.value })}
-                          placeholder="Business Bay"
-                          className="w-full text-xs font-semibold outline-none bg-transparent"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* City, State, Country, Postal Code */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                    <div>
-                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                        {isRTL ? 'المدينة' : 'City / Municipality'} <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={receiver.city}
-                        onChange={(e) => {
-                          setReceiver({ ...receiver, city: e.target.value });
-                          if (errors.receiver_city) setErrors(prev => { const n = { ...prev }; delete n.receiver_city; return n; });
-                        }}
-                        placeholder="Dubai"
-                        className={`w-full p-2 border-[1.5px] rounded-xl text-xs font-semibold outline-none transition-all ${
-                          errors.receiver_city ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus:border-[#0050d4]'
-                        }`}
-                      />
-                      {errors.receiver_city && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.receiver_city}</span>}
-                    </div>
-
-                    <div>
-                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                        {isRTL ? 'المحافظة / الإمارة' : 'State / Governorate'}
-                      </label>
-                      <input
-                        type="text"
-                        value={receiver.state || ''}
-                        onChange={(e) => setReceiver({ ...receiver, state: e.target.value })}
-                        placeholder="Dubai"
-                        className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold outline-none focus:border-[#0050d4]"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                        {isRTL ? 'الدولة / الإقليم' : 'Country / Territory'} <span className="text-red-500">*</span>
-                      </label>
-                      <select
-                        value={receiver.countryCode}
-                        onChange={(e) => {
-                          const code = e.target.value;
-                          const cObj = countries.find(c => c.code === code);
-                          setReceiver(prev => ({
-                            ...prev,
-                            countryCode: code,
-                            country: cObj?.name || prev.country,
-                            phoneCountryCode: cObj?.dialCode || prev.phoneCountryCode,
-                            zip: NON_POSTAL_COUNTRIES.includes(code) ? '00000' : (prev.zip === '00000' ? '' : prev.zip)
-                          }));
-                          if (errors.receiver_country) setErrors(prev => { const n = { ...prev }; delete n.receiver_country; return n; });
-                        }}
-                        className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold outline-none focus:border-[#0050d4] bg-white cursor-pointer"
-                      >
-                        {countries.map(c => (
-                          <option key={c.code} value={c.code}>
-                            {c.flag} {c.name} ({c.code})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                        {isRTL ? 'الرمز البريدي' : 'Postal / ZIP Code'} {!NON_POSTAL_COUNTRIES.includes((receiver.countryCode || '').toUpperCase()) && <span className="text-red-500">*</span>}
-                      </label>
-                      <input
-                        type="text"
-                        value={receiver.zip}
-                        onChange={(e) => {
-                          setReceiver({ ...receiver, zip: e.target.value });
-                          if (errors.receiver_zip) setErrors(prev => { const n = { ...prev }; delete n.receiver_zip; return n; });
-                        }}
-                        placeholder={NON_POSTAL_COUNTRIES.includes((receiver.countryCode || '').toUpperCase()) ? "00000 (Optional)" : "00000"}
-                        className={`w-full p-2 border-[1.5px] rounded-xl text-xs font-semibold outline-none transition-all ${
-                          errors.receiver_zip ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus:border-[#0050d4]'
-                        }`}
-                      />
-                      {errors.receiver_zip && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.receiver_zip}</span>}
-                    </div>
-                  </div>
-
-                  {/* Delivery Instructions */}
-                  <div>
-                    <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                      {isRTL ? 'تعليمات تسليم المستلم / رمز البوابة / معالم الموقع' : 'Consignee Delivery Instructions / Gate Code / Landmarks'}
-                    </label>
-                    <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
-                      <span className="material-symbols-outlined text-[17px] text-[#8c9196]">door_front</span>
-                      <input
-                        type="text"
-                        value={receiver.instructions}
-                        onChange={(e) => setReceiver({ ...receiver, instructions: e.target.value })}
-                        placeholder="e.g. Gate 3, Ring intercom #12, leave at reception desk"
-                        className="w-full text-xs font-semibold outline-none bg-transparent"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Save to Address Book */}
-                  <label className="flex items-center gap-2.5 p-2.5 bg-[#f8fafc] border border-[#e9edf2] rounded-xl cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={saveReceiverToBook}
-                      onChange={(e) => setSaveReceiverToBook(e.target.checked)}
-                      className="checkbox checkbox-primary checkbox-xs rounded"
-                    />
-                    <span className="text-[11px] font-semibold text-[#1a1f23]">
-                      {isRTL ? 'حفظ عنوان المستلم في دفتر العناوين للاستخدام المستقبلي' : 'Save consignee to Address Book for future shipments'}
-                    </span>
-                  </label>
                 </div>
 
-                {/* Right: Google Places & Map Coordinates Card */}
-                <div className="lg:col-span-5 bg-white border border-[#e9edf2] rounded-2xl p-5 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-xs font-black text-[#1a1f23]">
-                      <span className="material-symbols-outlined text-[17px] text-[#0050d4]">pin_drop</span>
-                      <span>{isRTL ? 'تحديد عنوان التسليم بالخريطة' : 'Consignee Drop-off Location & GPS Pin'}</span>
+                {/* Google Places Search & Interactive Pin Drop (BEFORE Structured Address Details) */}
+                <div className="bg-white border border-[#e9edf2] rounded-2xl p-5 space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-[#f0f4f8]">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-[19px] text-[#0050d4]">travel_explore</span>
+                      <div>
+                        <div className="text-xs font-black text-[#1a1f23] uppercase tracking-wider">
+                          {isRTL ? 'البحث عن وجهة التسليم والخريطة التفاعلية' : 'Consignee Drop-off Search & Map Pin Drop'}
+                        </div>
+                        <div className="text-[11px] text-[#8c9196]">
+                          {isRTL ? 'ابحث عبر خرائط جوجل أو اسحب الدبوس لتحديد وجهة التسليم بدقة وتعبئة العنوان تلقائياً' : 'Search with Google Places or drag the pin on map to auto-fill delivery address'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quick Presets */}
+                    <div className="hidden sm:flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10.5px] font-black text-[#8c9196] uppercase flex items-center gap-1">
+                        <span>⚡</span> {isRTL ? 'سريع:' : 'Quick:'}
+                      </span>
+                      {receiverPresets.slice(0, 3).map((preset, pIdx) => (
+                        <button
+                          key={pIdx}
+                          type="button"
+                          onClick={() => {
+                            setReceiver(prev => ({
+                              ...prev,
+                              addr1: preset.addr1,
+                              area: preset.area,
+                              city: preset.city,
+                              state: preset.state,
+                              country: preset.country,
+                              countryCode: preset.countryCode,
+                              phoneCountryCode: preset.phoneCountryCode,
+                              zip: preset.zip,
+                              formattedAddress: `${preset.addr1}, ${preset.city}, ${preset.country}`
+                            }));
+                            setReceiverAddressExpanded(true);
+                            setErrors(prev => {
+                              const next = { ...prev };
+                              delete next.receiver_addr1;
+                              delete next.receiver_city;
+                              delete next.receiver_country;
+                              delete next.receiver_zip;
+                              return next;
+                            });
+                          }}
+                          className="px-2 py-0.5 text-[10.5px] font-bold rounded-lg border border-[#e9edf2] bg-[#f8fafc] text-[#575c60] hover:border-[#0050d4] hover:text-[#0050d4] hover:bg-[#ebf0fc] transition-all"
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
                     </div>
                   </div>
 
-                  {/* Google Address Autocomplete connected properly with value and onChange */}
+                  {/* Google Address Autocomplete */}
                   <GoogleAddressInput
-                    label={isRTL ? 'ابحث عبر خرائط جوجل (Google Places)' : 'Search Global Address (Google Places)'}
-                    placeholder={isRTL ? 'ابحث عن وجهة التسليم...' : 'Search drop-off point with Google Maps...'}
+                    label={isRTL ? 'ابحث عن وجهة التسليم عبر خرائط جوجل (Google Places)' : 'Search Global Drop-off Point (Google Places)'}
+                    placeholder={isRTL ? 'ابحث عن موقع التسليم...' : 'Search drop-off point with Google Maps...'}
                     value={{
                       formattedAddress: receiver.formattedAddress || (receiver.addr1 ? `${receiver.addr1}, ${receiver.city || ''}, ${receiver.country || ''}` : ''),
                       addressLine1: receiver.addr1,
@@ -1934,6 +1974,7 @@ export const TargetLogisticsWizard = ({
                         longitude: res.longitude !== undefined && res.longitude !== null ? Number(res.longitude) : prev.longitude,
                         formattedAddress: res.formattedAddress || prev.formattedAddress
                       }));
+                      setReceiverAddressExpanded(true); // Automatically expand structured address details
                       setErrors(prev => {
                         const next = { ...prev };
                         delete next.receiver_addr1;
@@ -1945,24 +1986,257 @@ export const TargetLogisticsWizard = ({
                     }}
                   />
 
-                  {/* Schematic Map Preview with Pin Drop */}
-                  <div className="relative h-44 rounded-xl overflow-hidden border border-[#e9edf2] bg-[#e8eef3] flex items-center justify-center">
-                    <div className="absolute inset-0 opacity-40 bg-[radial-gradient(#0050d4_1px,transparent_1px)] [background-size:16px_16px]" />
-                    <div className="absolute top-1/2 left-0 right-0 h-2 bg-white/80 shadow-xs" />
-                    <div className="absolute left-1/2 top-0 bottom-0 w-2 bg-white/80 shadow-xs" />
-                    {/* Pin Marker */}
-                    <div className="relative flex flex-col items-center z-10 animate-bounce">
-                      <span className="material-symbols-outlined text-4xl text-[#0050d4] drop-shadow-md">flag</span>
+                  {/* Real Interactive GoogleMapPinDrop Component */}
+                  <div className="rounded-xl overflow-hidden border border-[#e9edf2]">
+                    <GoogleMapPinDrop
+                      latitude={receiver.latitude}
+                      longitude={receiver.longitude}
+                      addressLabel={receiver.formattedAddress || receiver.addr1}
+                      height="230px"
+                      onLocationChange={(loc) => {
+                        if (!loc) return;
+                        const countryObj = countries.find(c => c.code === loc.countryCode) || countries.find(c => c.name?.toLowerCase() === loc.country?.toLowerCase());
+                        setReceiver(prev => ({
+                          ...prev,
+                          latitude: loc.latitude,
+                          longitude: loc.longitude,
+                          formattedAddress: loc.formattedAddress || prev.formattedAddress,
+                          city: loc.city || prev.city,
+                          country: countryObj?.name || loc.country || prev.country,
+                          countryCode: countryObj?.code || loc.countryCode || prev.countryCode,
+                          phoneCountryCode: countryObj?.dialCode || prev.phoneCountryCode,
+                          state: loc.state || prev.state,
+                          area: loc.area || prev.area,
+                          zip: loc.postalCode || (NON_POSTAL_COUNTRIES.includes(loc.countryCode) ? '00000' : prev.zip),
+                          addr1: loc.formattedAddress ? String(loc.formattedAddress).split(',')[0].trim().substring(0, 45) : prev.addr1
+                        }));
+                        setReceiverAddressExpanded(true); // Automatically expand structured address details on pin drop/drag
+                        setErrors(prev => {
+                          const next = { ...prev };
+                          delete next.receiver_addr1;
+                          delete next.receiver_city;
+                          delete next.receiver_country;
+                          delete next.receiver_zip;
+                          return next;
+                        });
+                      }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[10.5px] text-[#8c9196] px-1">
+                    <span>{isRTL ? 'اسحب الدبوس أو انقر على الخريطة لتحديد موقع التسليم وتحديث العنوان' : 'Drag the marker or click map to reposition and reverse-geocode address'}</span>
+                    <span className="font-mono font-bold text-[#0050d4]">
+                      {Number(receiver.latitude || 25.1850).toFixed(4)}° N, {Number(receiver.longitude || 55.2650).toFixed(4)}° E
+                    </span>
+                  </div>
+                </div>
+
+                {/* Structured Delivery Address Details (Starts Collapsed, auto-expands on search/pin drop) */}
+                <div className="bg-white border border-[#e9edf2] rounded-2xl overflow-hidden transition-all shadow-xs">
+                  <div 
+                    onClick={() => setReceiverAddressExpanded(!receiverAddressExpanded)}
+                    className="p-4 bg-[#f8fafc] hover:bg-[#f1f5f9] cursor-pointer flex items-center justify-between transition-colors border-b border-[#e9edf2]"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-[19px] text-[#0050d4]">location_city</span>
+                      <div>
+                        <div className="text-xs font-black text-[#1a1f23] uppercase tracking-wider flex items-center gap-2">
+                          <span>{isRTL ? 'العنوان التفصيلي للتسليم (الشارع، المدينة، الرمز البريدي)' : 'Structured Delivery Address Details'}</span>
+                          {receiver.city && (
+                            <span className="px-2 py-0.5 bg-[#ebf0fc] text-[#0050d4] rounded-md text-[10px] font-bold">
+                              {receiver.city}, {receiver.countryCode}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-[#8c9196]">
+                          {receiverAddressExpanded 
+                            ? (isRTL ? 'انقر للطي' : 'Click to collapse manual address fields') 
+                            : (isRTL ? 'انقر لعرض وتعديل تفاصيل الشارع والمدينة يدوياً' : 'Click to view and edit street, block, postal code and district')}
+                        </div>
+                      </div>
                     </div>
-                    {/* Coordinates Overlay */}
-                    <div className="absolute bottom-2 left-2 flex items-center gap-1.5 px-2.5 py-1 bg-white/95 rounded-lg shadow-xs text-[10.5px] font-mono font-bold text-[#1a1f23]">
-                      <span className="material-symbols-outlined text-xs text-[#0050d4]">my_location</span>
-                      <span>{Number(receiver.latitude || 25.1850).toFixed(4)}° N, {Number(receiver.longitude || 55.2650).toFixed(4)}° E</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold text-[#0050d4]">
+                        {receiverAddressExpanded ? (isRTL ? 'طي' : 'Collapse') : (isRTL ? 'عرض وتعديل' : 'View / Edit')}
+                      </span>
+                      <span className="material-symbols-outlined text-[#0050d4] transition-transform duration-200">
+                        {receiverAddressExpanded ? 'expand_less' : 'expand_more'}
+                      </span>
                     </div>
                   </div>
-                  <p className="text-[10px] text-[#8c9196] text-center">
-                    {isRTL ? 'يتم حفظ الإحداثيات الجغرافية بدقة لتسهيل وصول المندوب' : 'Precise GPS coordinates captured for driver navigation'}
-                  </p>
+
+                  {receiverAddressExpanded && (
+                    <div className="p-5 space-y-4 animate-in fade-in duration-200">
+                      {/* Address Line 1 */}
+                      <div>
+                        <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                          {isRTL ? 'عنوان التسليم والشارع (السطر 1)' : 'Street Address (Line 1)'} <span className="text-red-500">*</span>
+                        </label>
+                        <div className={`flex items-center gap-2 p-2 border-[1.5px] rounded-xl transition-all ${
+                          errors.receiver_addr1 ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus-within:border-[#0050d4]'
+                        }`}>
+                          <span className="material-symbols-outlined text-[17px] text-[#8c9196]">home</span>
+                          <input
+                            type="text"
+                            value={receiver.addr1}
+                            onChange={(e) => {
+                              setReceiver({ ...receiver, addr1: e.target.value });
+                              if (errors.receiver_addr1) setErrors(prev => { const n = { ...prev }; delete n.receiver_addr1; return n; });
+                            }}
+                            placeholder="Bay Square, Building 4, Business Bay"
+                            className="w-full text-xs font-semibold outline-none bg-transparent"
+                          />
+                        </div>
+                        {errors.receiver_addr1 && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.receiver_addr1}</span>}
+                      </div>
+
+                      {/* Address Line 2 & Area */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                            {isRTL ? 'الشقة / الطابق / المكتب (السطر 2)' : 'Apartment / Suite / Office / Unit (Line 2)'}
+                          </label>
+                          <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
+                            <span className="material-symbols-outlined text-[17px] text-[#8c9196]">apartment</span>
+                            <input
+                              type="text"
+                              value={receiver.addr2 || ''}
+                              onChange={(e) => setReceiver({ ...receiver, addr2: e.target.value })}
+                              placeholder="Suite 302, 3rd Floor"
+                              className="w-full text-xs font-semibold outline-none bg-transparent"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                            {isRTL ? 'المنطقة / الحي / القطعة' : 'District / Area / Block'}
+                          </label>
+                          <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
+                            <span className="material-symbols-outlined text-[17px] text-[#8c9196]">map</span>
+                            <input
+                              type="text"
+                              value={receiver.area || ''}
+                              onChange={(e) => setReceiver({ ...receiver, area: e.target.value })}
+                              placeholder="Business Bay"
+                              className="w-full text-xs font-semibold outline-none bg-transparent"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* City, State, Country, Postal Code */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div>
+                          <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                            {isRTL ? 'المدينة' : 'City / Municipality'} <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={receiver.city}
+                            onChange={(e) => {
+                              setReceiver({ ...receiver, city: e.target.value });
+                              if (errors.receiver_city) setErrors(prev => { const n = { ...prev }; delete n.receiver_city; return n; });
+                            }}
+                            placeholder="Dubai"
+                            className={`w-full p-2 border-[1.5px] rounded-xl text-xs font-semibold outline-none transition-all ${
+                              errors.receiver_city ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus:border-[#0050d4]'
+                            }`}
+                          />
+                          {errors.receiver_city && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.receiver_city}</span>}
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                            {isRTL ? 'المحافظة / الإمارة' : 'State / Governorate'}
+                          </label>
+                          <input
+                            type="text"
+                            value={receiver.state || ''}
+                            onChange={(e) => setReceiver({ ...receiver, state: e.target.value })}
+                            placeholder="Dubai"
+                            className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold outline-none focus:border-[#0050d4]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                            {isRTL ? 'الدولة / الإقليم' : 'Country / Territory'} <span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            value={receiver.countryCode}
+                            onChange={(e) => {
+                              const code = e.target.value;
+                              const cObj = countries.find(c => c.code === code);
+                              setReceiver(prev => ({
+                                ...prev,
+                                countryCode: code,
+                                country: cObj?.name || prev.country,
+                                phoneCountryCode: cObj?.dialCode || prev.phoneCountryCode,
+                                zip: NON_POSTAL_COUNTRIES.includes(code) ? '00000' : (prev.zip === '00000' ? '' : prev.zip)
+                              }));
+                              if (errors.receiver_country) setErrors(prev => { const n = { ...prev }; delete n.receiver_country; return n; });
+                            }}
+                            className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold outline-none focus:border-[#0050d4] bg-white cursor-pointer"
+                          >
+                            {countries.map(c => (
+                              <option key={c.code} value={c.code}>
+                                {c.flag} {c.name} ({c.code})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                            {isRTL ? 'الرمز البريدي' : 'Postal / ZIP Code'} {!NON_POSTAL_COUNTRIES.includes((receiver.countryCode || '').toUpperCase()) && <span className="text-red-500">*</span>}
+                          </label>
+                          <input
+                            type="text"
+                            value={receiver.zip}
+                            onChange={(e) => {
+                              setReceiver({ ...receiver, zip: e.target.value });
+                              if (errors.receiver_zip) setErrors(prev => { const n = { ...prev }; delete n.receiver_zip; return n; });
+                            }}
+                            placeholder={NON_POSTAL_COUNTRIES.includes((receiver.countryCode || '').toUpperCase()) ? "00000 (Optional)" : "00000"}
+                            className={`w-full p-2 border-[1.5px] rounded-xl text-xs font-semibold outline-none transition-all ${
+                              errors.receiver_zip ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus:border-[#0050d4]'
+                            }`}
+                          />
+                          {errors.receiver_zip && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.receiver_zip}</span>}
+                        </div>
+                      </div>
+
+                      {/* Delivery Instructions */}
+                      <div>
+                        <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                          {isRTL ? 'تعليمات تسليم المستلم / رمز البوابة / معالم الموقع' : 'Consignee Delivery Instructions / Gate Code / Landmarks'}
+                        </label>
+                        <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
+                          <span className="material-symbols-outlined text-[17px] text-[#8c9196]">door_front</span>
+                          <input
+                            type="text"
+                            value={receiver.instructions}
+                            onChange={(e) => setReceiver({ ...receiver, instructions: e.target.value })}
+                            placeholder="e.g. Gate 3, Ring intercom #12, leave at reception desk"
+                            className="w-full text-xs font-semibold outline-none bg-transparent"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Save to Address Book */}
+                      <label className="flex items-center gap-2.5 p-2.5 bg-[#f8fafc] border border-[#e9edf2] rounded-xl cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={saveReceiverToBook}
+                          onChange={(e) => setSaveReceiverToBook(e.target.checked)}
+                          className="checkbox checkbox-primary checkbox-xs rounded"
+                        />
+                        <span className="text-[11px] font-semibold text-[#1a1f23]">
+                          {isRTL ? 'حفظ عنوان المستلم في دفتر العناوين للاستخدام المستقبلي' : 'Save consignee to Address Book for future shipments'}
+                        </span>
+                      </label>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -2299,33 +2573,6 @@ export const TargetLogisticsWizard = ({
                   })}
                 </div>
 
-                {/* Insurance Card Toggle */}
-                <div 
-                  onClick={() => setPkg({ ...pkg, insurance: !pkg.insurance })}
-                  className={`flex items-center justify-between p-3.5 border-[1.5px] rounded-xl cursor-pointer transition-all ${
-                    pkg.insurance ? 'border-[#059669] bg-[#ecfdf5]' : 'border-[#e9edf2] bg-[#f8fafc]'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-5 h-5 rounded flex items-center justify-center border ${
-                      pkg.insurance ? 'bg-[#059669] border-[#059669] text-white' : 'border-[#e9edf2] bg-white'
-                    }`}>
-                      {pkg.insurance && <span className="material-symbols-outlined text-sm">check</span>}
-                    </div>
-                    <div>
-                      <div className="text-xs font-black text-[#1a1f23]">
-                        🛡️ {isRTL ? 'تأمين البضائع الشامل وحماية الشحن' : 'Full Cargo Insurance & Loss Protection'}
-                      </div>
-                      <div className="text-[11px] text-[#8c9196]">
-                        {isRTL ? '1% من القيمة المعلنة (الحد الأدنى 2.500 د.ك)' : '1% of declared value, min KWD 2.500'}
-                      </div>
-                    </div>
-                  </div>
-                  <span className="text-xs font-mono font-bold text-[#059669]">
-                    +KWD {insurancePremium.toFixed(3)}
-                  </span>
-                </div>
-
                 {/* Dangerous Goods (DGR) Card Toggle */}
                 <div 
                   onClick={() => setPkg({ ...pkg, dangerousGoods: !pkg.dangerousGoods })}
@@ -2560,17 +2807,30 @@ export const TargetLogisticsWizard = ({
             {/* ═══ STEP 4: CARRIER & SERVICES ═══ */}
             {step === 4 && (
               <div className="bg-white border border-[#e9edf2] rounded-2xl p-5 space-y-5">
-                <div className="text-xs font-black text-[#1a1f23] uppercase tracking-wider">
-                  {isRTL ? 'اختيار الناقل ومستوى الخدمة' : 'Select Carrier & Service Level'}
+                <div className="flex items-center justify-between pb-3 border-b border-[#f0f4f8]">
+                  <div>
+                    <div className="text-xs font-black text-[#1a1f23] uppercase tracking-wider">
+                      {isRTL ? 'اختيار الناقل ومستوى الخدمة' : 'Select Carrier & Service Level'}
+                    </div>
+                    <div className="text-[11px] text-[#8c9196]">
+                      {isRTL ? 'قارن الأسعار وأوقات العبور والخدمات المتاحة لكل شركة شحن' : 'Compare rates, transit times and carrier capabilities for your route'}
+                    </div>
+                  </div>
+                  {isCarrierLocked && (
+                    <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg flex items-center gap-1">
+                      <span className="material-symbols-outlined text-xs">lock</span>
+                      {isRTL ? 'الناقل مقفل' : 'Carrier Locked'}
+                    </span>
+                  )}
                 </div>
 
-                {/* Carrier Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {/* Carrier List: Each Service in its Own Row */}
+                <div className="flex flex-col gap-2.5">
                   {[
-                    { id: 'DGR', name: 'DHL Express Global', desc: 'Worldwide express air · door-to-door', price: '18.500', time: '1–3 business days', icon: 'flight_takeoff', color: '#D40511', bg: '#fef2f2' },
-                    { id: 'FEDEX', name: 'FedEx Express Global', desc: 'Global priority air · automated customs', price: '21.750', time: '2–4 business days', icon: 'flight', color: '#4D148C', bg: '#f5f3ff' },
-                    { id: 'ARAMEX', name: 'Aramex Priority', desc: 'Regional express & GCC ground network', price: '14.250', time: '2–4 business days', icon: 'local_shipping', color: '#E31837', bg: '#fff1f2' },
-                    { id: 'INTERNAL', name: 'Target Dedicated Fleet', desc: 'Domestic same-day courier · Kuwait only', price: '4.500', time: 'Same day delivery', icon: 'electric_rickshaw', color: '#059669', bg: '#ecfdf5' }
+                    { id: 'DGR', name: 'DHL Express Global', desc: 'Worldwide express air · door-to-door delivery · full IATA DGR dangerous goods handling', price: '18.500', time: '1–3 business days', icon: 'flight_takeoff', color: '#D40511', bg: '#fef2f2' },
+                    { id: 'FEDEX', name: 'FedEx Express Global', desc: 'Global priority air · automated customs clearance · worldwide coverage', price: '21.750', time: '2–4 business days', icon: 'flight', color: '#4D148C', bg: '#f5f3ff' },
+                    { id: 'ARAMEX', name: 'Aramex Priority', desc: 'Regional express & GCC ground network · reliable door-to-door delivery', price: '14.250', time: '2–4 business days', icon: 'local_shipping', color: '#E31837', bg: '#fff1f2' },
+                    { id: 'INTERNAL', name: 'Target Dedicated Fleet', desc: 'Domestic same-day courier dispatch · Kuwait nationwide delivery network', price: '4.500', time: 'Same day delivery', icon: 'electric_rickshaw', color: '#059669', bg: '#ecfdf5' }
                   ].map(c => {
                     const isSelected = service.carrierCode === c.id;
                     return (
@@ -2581,151 +2841,212 @@ export const TargetLogisticsWizard = ({
                           setService({ ...service, carrierCode: c.id, carrierId: c.id, serviceName: c.name, quotedPrice: parseFloat(c.price) });
                           if (errors.service_carrierCode) setErrors(prev => { const n = { ...prev }; delete n.service_carrierCode; return n; });
                         }}
-                        className={`p-3.5 rounded-xl border-[1.5px] cursor-pointer transition-all flex flex-col justify-between ${
+                        className={`p-3.5 rounded-xl border-[1.5px] cursor-pointer transition-all flex items-center justify-between gap-4 ${
                           isSelected 
-                            ? 'border-[#0050d4] bg-[#f5f8ff] shadow-sm ring-1 ring-[#0050d4]' 
-                            : 'border-[#e9edf2] bg-white hover:border-[#c7d7fa]'
+                            ? 'border-[#0050d4] bg-[#f5f8ff] shadow-xs ring-1 ring-[#0050d4]' 
+                            : 'border-[#e9edf2] bg-white hover:border-[#c7d7fa] hover:bg-[#fafbfd]'
                         } ${isCarrierLocked ? 'opacity-80 cursor-not-allowed' : ''}`}
                       >
-                        <div>
-                          <div className="flex items-center gap-2.5 mb-2">
-                            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: c.bg }}>
-                              <span className="material-symbols-outlined text-base" style={{ color: c.color }}>{c.icon}</span>
+                        <div className="flex items-center gap-3.5 min-w-0">
+                          <div className={`w-5 h-5 rounded-full flex items-center justify-center border shrink-0 transition-colors ${
+                            isSelected ? 'border-[#0050d4] bg-[#0050d4] text-white' : 'border-[#cbd5e1] bg-white'
+                          }`}>
+                            {isSelected && <span className="material-symbols-outlined text-[13px]">check</span>}
+                          </div>
+                          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: c.bg }}>
+                            <span className="material-symbols-outlined text-xl" style={{ color: c.color }}>{c.icon}</span>
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs sm:text-sm font-black text-[#1a1f23] truncate flex items-center gap-2">
+                              <span>{c.name}</span>
+                              {isSelected && (
+                                <span className="px-2 py-0.5 bg-[#ebf0fc] text-[#0050d4] rounded text-[10px] font-bold">
+                                  {isRTL ? 'الخيار المعتمد' : 'Selected'}
+                                </span>
+                              )}
                             </div>
-                            <div className="min-w-0">
-                              <div className="text-xs font-black text-[#1a1f23] truncate">{c.name}</div>
-                              <div className="text-[10px] text-[#8c9196] truncate">{c.desc}</div>
-                            </div>
+                            <div className="text-[11px] text-[#8c9196] truncate">{c.desc}</div>
                           </div>
                         </div>
-                        <div className="pt-2 border-t border-[#f0f4f8] flex items-center justify-between">
-                          <span className="text-[10px] text-[#8c9196]">{c.time}</span>
-                          <span className="text-xs font-black text-[#0050d4]">KWD {c.price}</span>
+
+                        <div className="flex items-center gap-4 shrink-0">
+                          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-white border border-[#e9edf2] rounded-lg text-[11px] font-semibold text-[#575c60]">
+                            <span className="material-symbols-outlined text-xs text-[#8c9196]">schedule</span>
+                            <span>{c.time}</span>
+                          </div>
+                          <div className="text-end">
+                            <div className="text-xs sm:text-sm font-black text-[#0050d4]">KWD {c.price}</div>
+                            <div className="text-[10px] text-[#8c9196] sm:hidden">{c.time}</div>
+                          </div>
                         </div>
                       </div>
                     );
                   })}
                 </div>
 
-                {/* Service Add-ons */}
-                <div>
-                  <div className="text-[11px] font-black text-[#575c60] uppercase tracking-wider mb-2">
-                    {isRTL ? 'الخدمات اللوجستية الإضافية' : 'Value-Added Services & Delivery Options'}
+                {/* Service Add-ons Collapsible Drawer with Count */}
+                <div className="border border-[#e9edf2] rounded-2xl overflow-hidden bg-white">
+                  <div
+                    onClick={() => setAddonsDrawerOpen(!addonsDrawerOpen)}
+                    className="p-3.5 bg-[#f8fafc] hover:bg-[#f1f5f9] cursor-pointer flex items-center justify-between transition-colors border-b border-[#e9edf2]"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-[18px] text-[#0050d4]">tune</span>
+                      <span className="text-xs font-black text-[#1a1f23] uppercase tracking-wider">
+                        {isRTL ? 'الخدمات اللوجستية الإضافية وخيارات التسليم' : 'Value-Added Services & Delivery Options'}
+                      </span>
+                      <span className="px-2.5 py-0.5 bg-[#ebf0fc] text-[#0050d4] rounded-full text-[10.5px] font-bold">
+                        {(service.selectedAddons || []).length} {isRTL ? 'محدد' : 'Selected'} (5 {isRTL ? 'متاح' : 'Available'})
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold text-[#0050d4]">
+                        {addonsDrawerOpen ? (isRTL ? 'إغلاق الدرج' : 'Collapse Drawer') : (isRTL ? 'عرض وتخصيص' : 'Configure')}
+                      </span>
+                      <span className="material-symbols-outlined text-[#0050d4] transition-transform duration-200">
+                        {addonsDrawerOpen ? 'expand_less' : 'expand_more'}
+                      </span>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                    {[
-                      { serviceCode: 'SIG', name: 'Direct Signature Required', desc: 'Delivery only to designated consignee', rate: 1.5, icon: 'draw' },
-                      { serviceCode: 'DDP', name: 'Delivered Duty Paid (DDP)', desc: 'Shipper covers all destination customs duties & clearance', rate: 5.0, icon: 'receipt_long' },
-                      { serviceCode: 'PRM', name: 'Priority Morning Delivery (10:30 AM)', desc: 'Earliest time-definite business delivery commitment', rate: 3.0, icon: 'alarm_on' },
-                      { serviceCode: 'SA', name: 'Adult (18+) ID Verified Signature', desc: 'Requires government physical ID check upon handover', rate: 2.5, icon: 'badge' },
-                      { serviceCode: 'AA', name: 'Saturday / Weekend Priority Delivery', desc: 'Guaranteed weekend delivery schedule in GCC destinations', rate: 4.5, icon: 'event' }
-                    ].map(addon => {
-                      const isActive = (service.selectedAddons || []).some(a => a.serviceCode === addon.serviceCode);
-                      return (
-                        <div
-                          key={addon.serviceCode}
-                          onClick={() => {
-                            const exists = (service.selectedAddons || []).some(a => a.serviceCode === addon.serviceCode);
-                            const updated = exists 
-                              ? service.selectedAddons.filter(a => a.serviceCode !== addon.serviceCode)
-                              : [...service.selectedAddons, addon];
-                            setService({ ...service, selectedAddons: updated });
-                          }}
-                          className={`flex items-center justify-between p-3 rounded-xl border-[1.5px] cursor-pointer transition-all ${
-                            isActive ? 'border-[#0050d4] bg-[#f5f8ff]' : 'border-[#e9edf2] bg-white hover:border-[#c7d7fa]'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div className={`w-4 h-4 rounded flex items-center justify-center border shrink-0 ${
-                              isActive ? 'bg-[#0050d4] border-[#0050d4] text-white' : 'border-[#e9edf2] bg-white'
-                            }`}>
-                              {isActive && <span className="material-symbols-outlined text-[11px]">check</span>}
+
+                  {addonsDrawerOpen && (
+                    <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 animate-in fade-in duration-200">
+                      {[
+                        { serviceCode: 'SIG', name: 'Direct Signature Required', desc: 'Delivery only to designated consignee', rate: 1.5, icon: 'draw' },
+                        { serviceCode: 'DDP', name: 'Delivered Duty Paid (DDP)', desc: 'Shipper covers all destination customs duties & clearance', rate: 5.0, icon: 'receipt_long' },
+                        { serviceCode: 'PRM', name: 'Priority Morning Delivery (10:30 AM)', desc: 'Earliest time-definite business delivery commitment', rate: 3.0, icon: 'alarm_on' },
+                        { serviceCode: 'SA', name: 'Adult (18+) ID Verified Signature', desc: 'Requires government physical ID check upon handover', rate: 2.5, icon: 'badge' },
+                        { serviceCode: 'AA', name: 'Saturday / Weekend Priority Delivery', desc: 'Guaranteed weekend delivery schedule in GCC destinations', rate: 4.5, icon: 'event' }
+                      ].map(addon => {
+                        const isActive = (service.selectedAddons || []).some(a => a.serviceCode === addon.serviceCode);
+                        return (
+                          <div
+                            key={addon.serviceCode}
+                            onClick={() => {
+                              const exists = (service.selectedAddons || []).some(a => a.serviceCode === addon.serviceCode);
+                              const updated = exists 
+                                ? service.selectedAddons.filter(a => a.serviceCode !== addon.serviceCode)
+                                : [...service.selectedAddons, addon];
+                              setService({ ...service, selectedAddons: updated });
+                            }}
+                            className={`flex items-center justify-between p-3 rounded-xl border-[1.5px] cursor-pointer transition-all ${
+                              isActive ? 'border-[#0050d4] bg-[#f5f8ff]' : 'border-[#e9edf2] bg-white hover:border-[#c7d7fa]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className={`w-4 h-4 rounded flex items-center justify-center border shrink-0 ${
+                                isActive ? 'bg-[#0050d4] border-[#0050d4] text-white' : 'border-[#e9edf2] bg-white'
+                              }`}>
+                                {isActive && <span className="material-symbols-outlined text-[11px]">check</span>}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-xs font-bold text-[#1a1f23] truncate">{addon.name}</div>
+                                <div className="text-[10px] text-[#8c9196] truncate">{addon.desc}</div>
+                              </div>
                             </div>
-                            <div className="min-w-0">
-                              <div className="text-xs font-bold text-[#1a1f23] truncate">{addon.name}</div>
-                              <div className="text-[10px] text-[#8c9196] truncate">{addon.desc}</div>
-                            </div>
+                            <span className="text-xs font-mono font-bold text-[#0050d4] shrink-0 ms-2">+KWD {addon.rate.toFixed(3)}</span>
                           </div>
-                          <span className="text-xs font-mono font-bold text-[#0050d4] shrink-0 ms-2">+KWD {addon.rate.toFixed(3)}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Courier Pickup & Drop-off Logistics */}
-                <div className="p-4 bg-[#f8fafc] border border-[#e9edf2] rounded-xl space-y-4">
-                  <div className="flex items-center gap-2 text-xs font-black text-[#1a1f23] uppercase tracking-wider">
-                    <span className="material-symbols-outlined text-base text-[#0050d4]">event_available</span>
-                    <span>{isRTL ? 'جدولة استلام الطرد اللوجستي' : 'Pickup & Drop-off Logistics'}</span>
-                  </div>
-
-                  <div className="flex flex-wrap gap-4">
-                    <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-[#1a1f23]">
-                      <input
-                        type="radio"
-                        name="pickupType"
-                        checked={service.pickupType?.includes('Pickup')}
-                        onChange={() => setService({ ...service, pickupType: 'Schedule Driver Pickup' })}
-                        className="radio radio-primary radio-xs"
-                      />
-                      <span>{isRTL ? 'طلب مندوب استلام من الموقع' : 'Schedule Driver Pickup'}</span>
-                    </label>
-
-                    <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-[#1a1f23]">
-                      <input
-                        type="radio"
-                        name="pickupType"
-                        checked={service.pickupType?.includes('Drop-off')}
-                        onChange={() => setService({ ...service, pickupType: 'Drop-off at Station / Hub' })}
-                        className="radio radio-primary radio-xs"
-                      />
-                      <span>{isRTL ? 'تسليم مباشر في فرع تارجت' : 'Drop-off at Station / Hub'}</span>
-                    </label>
-                  </div>
-
-                  {service.pickupType?.includes('Pickup') && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                      <div>
-                        <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                          {isRTL ? 'تاريخ استلام المندوب' : 'Pickup Date'}
-                        </label>
-                        <input
-                          type="date"
-                          value={service.pickupDate}
-                          onChange={(e) => setService({ ...service, pickupDate: e.target.value })}
-                          className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold bg-white outline-none focus:border-[#0050d4]"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                          {isRTL ? 'الفترة الزمنية للاستلام' : 'Pickup Time Slot'}
-                        </label>
-                        <select
-                          value={service.pickupTime || '9:00 AM – 12:00 PM'}
-                          onChange={(e) => setService({ ...service, pickupTime: e.target.value })}
-                          className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold bg-white outline-none focus:border-[#0050d4] cursor-pointer"
-                        >
-                          <option value="9:00 AM – 12:00 PM">9:00 AM – 12:00 PM (Morning Window)</option>
-                          <option value="12:00 PM – 4:00 PM">12:00 PM – 4:00 PM (Afternoon Window)</option>
-                          <option value="4:00 PM – 8:00 PM">4:00 PM – 8:00 PM (Evening Window)</option>
-                        </select>
-                      </div>
+                        );
+                      })}
                     </div>
                   )}
+                </div>
 
-                  <div>
-                    <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                      {isRTL ? 'تعليمات خاصة للسائق ومندوب الاستلام' : 'Special Driver Instructions & Notes'}
-                    </label>
-                    <input
-                      type="text"
-                      value={service.instructions || ''}
-                      onChange={(e) => setService({ ...service, instructions: e.target.value })}
-                      placeholder={isRTL ? 'مثال: رنين جرس المستودع، بوابة رقم 3' : 'e.g. Ring warehouse bell, gate 4 loading dock, reception desk'}
-                      className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold bg-white outline-none focus:border-[#0050d4]"
-                    />
+                {/* Pickup & Drop-off Logistics (Redistributed into compact columns) */}
+                <div className="p-4 bg-[#f8fafc] border border-[#e9edf2] rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-[#e9edf2]">
+                    <div className="flex items-center gap-2 text-xs font-black text-[#1a1f23] uppercase tracking-wider">
+                      <span className="material-symbols-outlined text-base text-[#0050d4]">event_available</span>
+                      <span>{isRTL ? 'جدولة استلام الطرد اللوجستي' : 'Pickup & Drop-off Logistics'}</span>
+                    </div>
+                    <span className="text-[10.5px] text-[#8c9196]">
+                      {service.pickupType?.includes('Pickup') ? (isRTL ? 'خدمة استلام مجدولة' : 'Scheduled Pickup') : (isRTL ? 'تسليم بالفرع' : 'Hub Drop-off')}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-start">
+                    {/* Col 1: Method Selector */}
+                    <div>
+                      <label className="text-[11px] font-bold text-[#575c60] block mb-1.5">
+                        {isRTL ? 'طريقة الاستلام / التسليم' : 'Logistics Method'}
+                      </label>
+                      <div className="space-y-2">
+                        <label className="flex items-center gap-2 p-2 bg-white border border-[#e9edf2] rounded-xl cursor-pointer text-xs font-bold text-[#1a1f23] hover:border-[#0050d4] transition-all">
+                          <input
+                            type="radio"
+                            name="pickupType"
+                            checked={service.pickupType?.includes('Pickup')}
+                            onChange={() => setService({ ...service, pickupType: 'Schedule Driver Pickup' })}
+                            className="radio radio-primary radio-xs"
+                          />
+                          <span>{isRTL ? 'طلب مندوب استلام من الموقع' : 'Schedule Driver Pickup'}</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 p-2 bg-white border border-[#e9edf2] rounded-xl cursor-pointer text-xs font-bold text-[#1a1f23] hover:border-[#0050d4] transition-all">
+                          <input
+                            type="radio"
+                            name="pickupType"
+                            checked={service.pickupType?.includes('Drop-off')}
+                            onChange={() => setService({ ...service, pickupType: 'Drop-off at Station / Hub' })}
+                            className="radio radio-primary radio-xs"
+                          />
+                          <span>{isRTL ? 'تسليم مباشر في فرع تارجت' : 'Drop-off at Station / Hub'}</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Col 2: Date & Window */}
+                    <div>
+                      {service.pickupType?.includes('Pickup') ? (
+                        <div className="space-y-2">
+                          <div>
+                            <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                              {isRTL ? 'تاريخ استلام المندوب' : 'Pickup Date'}
+                            </label>
+                            <input
+                              type="date"
+                              value={service.pickupDate}
+                              onChange={(e) => setService({ ...service, pickupDate: e.target.value })}
+                              className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold bg-white outline-none focus:border-[#0050d4]"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                              {isRTL ? 'الفترة الزمنية للاستلام' : 'Pickup Time Slot'}
+                            </label>
+                            <select
+                              value={service.pickupTime || '9:00 AM – 12:00 PM'}
+                              onChange={(e) => setService({ ...service, pickupTime: e.target.value })}
+                              className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold bg-white outline-none focus:border-[#0050d4] cursor-pointer"
+                            >
+                              <option value="9:00 AM – 12:00 PM">9:00 AM – 12:00 PM (Morning)</option>
+                              <option value="12:00 PM – 4:00 PM">12:00 PM – 4:00 PM (Afternoon)</option>
+                              <option value="4:00 PM – 8:00 PM">4:00 PM – 8:00 PM (Evening)</option>
+                            </select>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-3 bg-white border border-[#e9edf2] rounded-xl text-xs text-[#575c60] space-y-1">
+                          <div className="font-bold text-[#1a1f23]">📍 {isRTL ? 'فرع تارجت الرئيسي - الشويخ' : 'Target Main Hub - Shuwaikh'}</div>
+                          <div className="text-[11px] text-[#8c9196]">{isRTL ? 'ساعات العمل: السبت - الخميس 8 ص إلى 8 م' : 'Open: Sat–Thu 8:00 AM to 8:00 PM'}</div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Col 3: Special Driver Notes */}
+                    <div>
+                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                        {isRTL ? 'تعليمات خاصة للسائق ومندوب الاستلام' : 'Driver Instructions & Notes'}
+                      </label>
+                      <textarea
+                        rows={service.pickupType?.includes('Pickup') ? 3 : 2}
+                        value={service.instructions || ''}
+                        onChange={(e) => setService({ ...service, instructions: e.target.value })}
+                        placeholder={isRTL ? 'مثال: رنين جرس المستودع، بوابة رقم 3...' : 'e.g. Ring warehouse bell, gate 4 loading dock, reception desk...'}
+                        className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold bg-white outline-none focus:border-[#0050d4] resize-none"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2891,13 +3212,17 @@ export const TargetLogisticsWizard = ({
                     <label className="text-[11px] font-bold text-[#575c60] block mb-1">
                       {isRTL ? 'بلد المنشأ (Country of Origin)' : 'Country of Origin'}
                     </label>
-                    <input
-                      type="text"
-                      value={customs.origin}
+                    <select
+                      value={customs.origin || 'Kuwait'}
                       onChange={(e) => setCustoms({ ...customs, origin: e.target.value })}
-                      placeholder="Kuwait"
-                      className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold bg-white outline-none focus:border-[#0050d4]"
-                    />
+                      className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold bg-white outline-none focus:border-[#0050d4] cursor-pointer"
+                    >
+                      {countries.map(c => (
+                        <option key={c.code} value={c.name}>
+                          {c.flag} {c.name} ({c.code})
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
@@ -3023,12 +3348,6 @@ export const TargetLogisticsWizard = ({
                         <span className="font-mono">KWD {addonsTotal.toFixed(3)}</span>
                       </div>
                     )}
-                    {insurancePremium > 0 && (
-                      <div className="flex justify-between text-[#575c60]">
-                        <span>Cargo Insurance (1%)</span>
-                        <span className="font-mono">KWD {insurancePremium.toFixed(3)}</span>
-                      </div>
-                    )}
                     <div className="flex justify-between text-[#575c60]">
                       <span>Fuel Surcharge</span>
                       <span className="font-mono">KWD {(baseRate * 0.095).toFixed(3)}</span>
@@ -3038,6 +3357,24 @@ export const TargetLogisticsWizard = ({
                       <span className="text-[#0050d4] font-mono">KWD {finalCost.toFixed(3)}</span>
                     </div>
                   </div>
+                </div>
+
+                {/* Policy & Terms Agreement Card */}
+                <div className={`p-4 rounded-2xl border-[1.5px] transition-all flex items-start gap-3 ${
+                  agreedToPolicy ? 'bg-[#f5f8ff] border-[#0050d4]' : 'bg-[#f8fafc] border-[#e9edf2]'
+                }`}>
+                  <input
+                    type="checkbox"
+                    id="policyAgreement"
+                    checked={agreedToPolicy}
+                    onChange={(e) => setAgreedToPolicy(e.target.checked)}
+                    className="checkbox checkbox-primary checkbox-sm rounded mt-0.5"
+                  />
+                  <label htmlFor="policyAgreement" className="text-xs font-semibold text-[#1a1f23] cursor-pointer leading-relaxed select-none">
+                    {isRTL 
+                      ? 'أقر بصحة البيانات الجمركية ومحتويات الشحنة، وخلوها من أي مواد ممنوعة أو غير مصرح بها نظاماً، وأوافق على شروط الخدمة وسياسة النقل لشركة تارجت للخدمات اللوجستية والناقل المعتمد.' 
+                      : 'I confirm that the shipment details and customs declarations are accurate, that no prohibited or unregistered dangerous goods are enclosed, and I agree to the Target Logistics Terms of Service and Carrier Carriage Policy.'}
+                  </label>
                 </div>
               </div>
             )}
@@ -3080,9 +3417,13 @@ export const TargetLogisticsWizard = ({
               ) : (
                 <button
                   type="button"
-                  disabled={submitting}
+                  disabled={submitting || (mode === 'create' && !agreedToPolicy)}
                   onClick={() => handleSubmit(false)}
-                  className="flex items-center gap-1.5 px-6 py-2 bg-[#0050d4] text-white rounded-xl text-xs font-bold shadow-lg shadow-[#0050d4]/25 hover:bg-[#0040b0] transition-colors"
+                  className={`flex items-center gap-1.5 px-6 py-2 rounded-xl text-xs font-bold shadow-lg transition-all ${
+                    mode === 'create' && !agreedToPolicy
+                      ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
+                      : 'bg-[#0050d4] text-white shadow-[#0050d4]/25 hover:bg-[#0040b0]'
+                  }`}
                 >
                   {submitting ? (
                     <span className="loading loading-spinner loading-xs" />
