@@ -28,6 +28,7 @@ class Target_Logistics_Settings extends WC_Integration {
 
         // AJAX handler for connection test
         add_action( 'wp_ajax_target_logistics_test_connection', array( $this, 'ajax_test_connection' ) );
+        add_action( 'wp_ajax_target_logistics_seed_products', array( $this, 'ajax_seed_products' ) );
     }
 
     /**
@@ -77,6 +78,11 @@ class Target_Logistics_Settings extends WC_Integration {
                 'title'       => __( 'Connection Test', 'wc-target-logistics' ),
                 'type'        => 'target_logistics_test_btn',
                 'description' => __( 'Verify API key and connectivity with Target Logistics server.', 'wc-target-logistics' ),
+            ),
+            'seed_products_button' => array(
+                'title'       => __( 'Sample Products', 'wc-target-logistics' ),
+                'type'        => 'target_logistics_seed_btn',
+                'description' => __( 'One-click generate 5 sample products with weights, dimensions & HS codes for shipping tests.', 'wc-target-logistics' ),
             ),
 
             // Section: Warehouse / Shipper Details
@@ -386,5 +392,144 @@ class Target_Logistics_Settings extends WC_Integration {
                 'url'     => $api->get_base_url(),
             ) );
         }
+    }
+
+    /**
+     * Custom field renderer for Seed Products button
+     */
+    public function generate_target_logistics_seed_btn_html( $key, $data ) {
+        $defaults  = array(
+            'title'       => '',
+            'description' => '',
+        );
+        $data = wp_parse_args( $data, $defaults );
+
+        ob_start();
+        ?>
+        <tr valign="top">
+            <th scope="row" class="titledesc">
+                <label><?php echo esc_html( $data['title'] ); ?></label>
+            </th>
+            <td class="forminp">
+                <button type="button" class="button button-secondary" id="tl-btn-seed-products">
+                    <span class="dashicons dashicons-products" style="vertical-align: middle; margin-right: 4px;"></span>
+                    <?php esc_html_e( 'Generate Sample Test Products', 'wc-target-logistics' ); ?>
+                </button>
+                <span id="tl-seed-products-status" style="margin-left: 10px; font-weight: 600;"></span>
+                <p class="description"><?php echo esc_html( $data['description'] ); ?></p>
+            </td>
+        </tr>
+        <?php
+        return ob_get_clean();
+    }
+
+    /**
+     * AJAX handler for Seeding Sample Products
+     */
+    public function ajax_seed_products() {
+        check_ajax_referer( 'target_logistics_admin_nonce', 'security' );
+
+        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+            wp_send_json_error( array( 'message' => __( 'Permission denied.', 'wc-target-logistics' ) ) );
+        }
+
+        $sample_products = array(
+            array(
+                'name'           => 'Kuwait Royal Arabian Oud Perfume 100ml',
+                'sku'            => 'OUD-ROYAL-100',
+                'price'          => 28.500,
+                'weight'         => 0.75,
+                'length'         => 12,
+                'width'          => 8,
+                'height'         => 18,
+                'category'       => 'Fragrances',
+                'hs_code'        => '330300',
+                'origin_country' => 'KW',
+            ),
+            array(
+                'name'           => 'Traditional Incense Burner (Mabkhara)',
+                'sku'            => 'MBK-GOLD-01',
+                'price'          => 12.000,
+                'weight'         => 0.50,
+                'length'         => 15,
+                'width'          => 15,
+                'height'         => 22,
+                'category'       => 'Home & Living',
+                'hs_code'        => '741810',
+                'origin_country' => 'KW',
+            ),
+            array(
+                'name'           => 'Premium Embroidered Silk Abaya (Black)',
+                'sku'            => 'ABY-SILK-BLK',
+                'price'          => 45.000,
+                'weight'         => 0.90,
+                'length'         => 35,
+                'width'          => 28,
+                'height'         => 6,
+                'category'       => 'Fashion',
+                'hs_code'        => '620449',
+                'origin_country' => 'AE',
+            ),
+            array(
+                'name'           => 'Smart Watch Italian Leather Strap 22mm',
+                'sku'            => 'WTC-STRAP-BRN',
+                'price'          => 14.500,
+                'weight'         => 0.30,
+                'length'         => 20,
+                'width'          => 6,
+                'height'         => 2,
+                'category'       => 'Electronics',
+                'hs_code'        => '911390',
+                'origin_country' => 'IT',
+            ),
+            array(
+                'name'           => 'Wireless Fast Charging Station 3-in-1',
+                'sku'            => 'CHG-3IN1-WHT',
+                'price'          => 19.000,
+                'weight'         => 0.45,
+                'length'         => 18,
+                'width'          => 12,
+                'height'         => 5,
+                'category'       => 'Electronics',
+                'hs_code'        => '850440',
+                'origin_country' => 'CN',
+            ),
+        );
+
+        $created = 0;
+        foreach ( $sample_products as $p ) {
+            $existing_id = wc_get_product_id_by_sku( $p['sku'] );
+            $product = $existing_id ? wc_get_product( $existing_id ) : new WC_Product_Simple();
+            if ( ! $product ) {
+                continue;
+            }
+            $product->set_name( $p['name'] );
+            $product->set_sku( $p['sku'] );
+            $product->set_regular_price( $p['price'] );
+            $product->set_price( $p['price'] );
+            $product->set_weight( $p['weight'] );
+            $product->set_length( $p['length'] );
+            $product->set_width( $p['width'] );
+            $product->set_height( $p['height'] );
+            $product->set_manage_stock( true );
+            $product->set_stock_quantity( 50 );
+            $product->set_stock_status( 'instock' );
+            $product->update_meta_data( '_hs_code', $p['hs_code'] );
+            $product->update_meta_data( '_country_of_origin', $p['origin_country'] );
+
+            $term = term_exists( $p['category'], 'product_cat' );
+            if ( ! $term ) {
+                $term = wp_insert_term( $p['category'], 'product_cat' );
+            }
+            if ( ! is_wp_error( $term ) && isset( $term['term_id'] ) ) {
+                $product->set_category_ids( array( $term['term_id'] ) );
+            }
+            $product->save();
+            $created++;
+        }
+
+        wp_send_json_success( array(
+            'message' => sprintf( __( 'Created/Updated %d sample products with weights, dimensions & HS codes! Go to Products to view.', 'wc-target-logistics' ), $created ),
+        ) );
     }
 }

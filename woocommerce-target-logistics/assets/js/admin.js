@@ -42,6 +42,33 @@
             });
         });
 
+        // 1b. Settings Screen: Generate Sample Products
+        $('#tl-btn-seed-products').on('click', function(e) {
+            e.preventDefault();
+
+            var $btn    = $(this);
+            var $status = $('#tl-seed-products-status');
+
+            $btn.prop('disabled', true);
+            $status.html('<span class="dashicons dashicons-update tl-spinning"></span> Generating products...');
+
+            $.post(targetLogisticsAdmin.ajax_url, {
+                action: 'target_logistics_seed_products',
+                security: targetLogisticsAdmin.nonce
+            }, function(response) {
+                $btn.prop('disabled', false);
+                if (response.success) {
+                    $status.html('<span style="color: #15803d;"><span class="dashicons dashicons-yes-alt"></span> ' + response.data.message + '</span>');
+                } else {
+                    var msg = response.data && response.data.message ? response.data.message : targetLogisticsAdmin.i18n.error;
+                    $status.html('<span style="color: #b91c1c;"><span class="dashicons dashicons-warning"></span> ' + msg + '</span>');
+                }
+            }).fail(function() {
+                $btn.prop('disabled', false);
+                $status.html('<span style="color: #b91c1c;"><span class="dashicons dashicons-warning"></span> Failed to generate sample products.</span>');
+            });
+        });
+
         // Toggle custom URL field depending on environment selection
         function toggleCustomUrlField() {
             var env = $('#woocommerce_target_logistics_environment').val();
