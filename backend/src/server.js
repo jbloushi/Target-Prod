@@ -56,33 +56,71 @@ if (require.main === module && !process._hasTargetProdCrashHandlers) {
 
 app.set('trust proxy', 1); // Trust first proxy (Nginx)
 
+const isOriginAllowed = (origin) => {
+  if (!origin) return true;
+  const cleanOrigin = origin.replace(/\/$/, '').toLowerCase();
+
+  // 1. Any localhost / 127.0.0.1 (any port)
+  if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(cleanOrigin)) return true;
+
+  // 2. Server IP (157.173.118.162 with any port or protocol)
+  if (/^https?:\/\/157\.173\.118\.162(:\d+)?$/.test(cleanOrigin)) return true;
+
+  // 3. Official target-kw.com domain and all subdomains
+  if (/^https?:\/\/([a-z0-9-]+\.)*target-kw\.com(:\d+)?$/.test(cleanOrigin)) return true;
+
+  // 4. Official target-logistics.com domain and all subdomains
+  if (/^https?:\/\/([a-z0-9-]+\.)*target-logistics\.com(:\d+)?$/.test(cleanOrigin)) return true;
+
+  // 5. Configured origins from environment variables
+  const configuredList = [
+    ...(corsOrigin ? corsOrigin.split(',') : []),
+    process.env.FRONTEND_URL,
+    process.env.PUBLIC_TRACKING_BASE_URL,
+    'https://target-kw.com',
+    'https://www.target-kw.com',
+    'http://target-kw.com',
+    'http://www.target-kw.com',
+    'https://api.target-kw.com'
+  ].map(o => (o || '').trim().replace(/\/$/, '').toLowerCase()).filter(Boolean);
+
+  if (configuredList.includes(cleanOrigin)) return true;
+
+  return false;
+};
+
 // Enable CORS early to ensure all responses (including errors/rate limits) have CORS headers
 const corsOptions = {
   origin: (origin, callback) => {
-    // allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-
-    const cleanOrigin = origin.replace(/\/$/, '');
-
-    // In development, allow any localhost origin
-    if (process.env.NODE_ENV === 'development' && cleanOrigin.startsWith('http://localhost')) {
+    if (!origin || isOriginAllowed(origin)) {
       return callback(null, true);
     }
-
-    const allowedOrigins = corsOrigin.split(',').map(o => o.trim().replace(/\/$/, '')).filter(Boolean);
-
-    if (allowedOrigins.includes(cleanOrigin)) {
-      callback(null, true);
-    } else {
-      logger.warn(`CORS blocked origin: ${origin} (Clean: ${cleanOrigin})`);
-      logger.warn(`Allowed: ${JSON.stringify(allowedOrigins)}`);
-      callback(new Error('Not allowed by CORS'));
-    }
+    logger.warn(`CORS blocked origin: ${origin}`);
+    callback(null, false);
   },
   credentials: true,
-  optionsSuccessStatus: 200
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Authorization', 'Content-Type', 'Accept', 'Origin', 'Idempotency-Key', 'X-Requested-With'],
+  optionsSuccessStatus: 204
 };
+
 app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
+
+// Explicit header fallback to guarantee CORS headers on all responses, including errors and preflights
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && isOriginAllowed(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, Accept, Origin, Idempotency-Key, X-Requested-With');
+  }
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
 app.use(compression());
 
 // Security middleware

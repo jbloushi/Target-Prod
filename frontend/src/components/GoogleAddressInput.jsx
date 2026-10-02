@@ -63,6 +63,38 @@ const mapPlaceComponentsToAddress = (addressComponents = []) => {
     };
 };
 
+const LOCAL_FALLBACK_HUBS = [
+    // Kuwait
+    { placeId: 'loc_kw_kwi', description: 'Kuwait City, Capital, Kuwait', mainText: 'Kuwait City', secondaryText: 'Capital, Kuwait', city: 'Kuwait City', country: 'Kuwait', countryCode: 'KW', postalCode: '15300' },
+    { placeId: 'loc_kw_sal', description: 'Salmiya, Hawalli Governorate, Kuwait', mainText: 'Salmiya', secondaryText: 'Hawalli, Kuwait', city: 'Salmiya', country: 'Kuwait', countryCode: 'KW', postalCode: '22000' },
+    { placeId: 'loc_kw_haw', description: 'Hawally, Hawalli Governorate, Kuwait', mainText: 'Hawally', secondaryText: 'Hawalli, Kuwait', city: 'Hawally', country: 'Kuwait', countryCode: 'KW', postalCode: '30000' },
+    { placeId: 'loc_kw_far', description: 'Farwaniya, Farwaniya Governorate, Kuwait', mainText: 'Farwaniya', secondaryText: 'Farwaniya, Kuwait', city: 'Farwaniya', country: 'Kuwait', countryCode: 'KW', postalCode: '80000' },
+    { placeId: 'loc_kw_shw', description: 'Shuwaikh Industrial, Capital, Kuwait', mainText: 'Shuwaikh Industrial', secondaryText: 'Capital, Kuwait', city: 'Shuwaikh', country: 'Kuwait', countryCode: 'KW', postalCode: '70000' },
+    { placeId: 'loc_kw_ahm', description: 'Ahmadi, Al Ahmadi Governorate, Kuwait', mainText: 'Ahmadi', secondaryText: 'Ahmadi, Kuwait', city: 'Ahmadi', country: 'Kuwait', countryCode: 'KW', postalCode: '60000' },
+    { placeId: 'loc_kw_jah', description: 'Al Jahra, Jahra Governorate, Kuwait', mainText: 'Al Jahra', secondaryText: 'Jahra, Kuwait', city: 'Al Jahra', country: 'Kuwait', countryCode: 'KW', postalCode: '00000' },
+    { placeId: 'loc_kw_fah', description: 'Fahaheel, Al Ahmadi, Kuwait', mainText: 'Fahaheel', secondaryText: 'Ahmadi, Kuwait', city: 'Fahaheel', country: 'Kuwait', countryCode: 'KW', postalCode: '64000' },
+    { placeId: 'loc_kw_jab', description: 'Jabriya, Hawalli Governorate, Kuwait', mainText: 'Jabriya', secondaryText: 'Hawalli, Kuwait', city: 'Jabriya', country: 'Kuwait', countryCode: 'KW', postalCode: '46300' },
+    // GCC
+    { placeId: 'loc_ae_dxb', description: 'Dubai, United Arab Emirates', mainText: 'Dubai', secondaryText: 'Dubai, United Arab Emirates', city: 'Dubai', country: 'United Arab Emirates', countryCode: 'AE', postalCode: '00000' },
+    { placeId: 'loc_ae_auh', description: 'Abu Dhabi, United Arab Emirates', mainText: 'Abu Dhabi', secondaryText: 'Abu Dhabi, United Arab Emirates', city: 'Abu Dhabi', country: 'United Arab Emirates', countryCode: 'AE', postalCode: '00000' },
+    { placeId: 'loc_ae_shj', description: 'Sharjah, United Arab Emirates', mainText: 'Sharjah', secondaryText: 'Sharjah, United Arab Emirates', city: 'Sharjah', country: 'United Arab Emirates', countryCode: 'AE', postalCode: '00000' },
+    { placeId: 'loc_sa_ruh', description: 'Riyadh, Saudi Arabia', mainText: 'Riyadh', secondaryText: 'Riyadh Region, Saudi Arabia', city: 'Riyadh', country: 'Saudi Arabia', countryCode: 'SA', postalCode: '11564' },
+    { placeId: 'loc_sa_jed', description: 'Jeddah, Saudi Arabia', mainText: 'Jeddah', secondaryText: 'Makkah Region, Saudi Arabia', city: 'Jeddah', country: 'Saudi Arabia', countryCode: 'SA', postalCode: '21577' },
+    { placeId: 'loc_sa_dmm', description: 'Dammam, Saudi Arabia', mainText: 'Dammam', secondaryText: 'Eastern Province, Saudi Arabia', city: 'Dammam', country: 'Saudi Arabia', countryCode: 'SA', postalCode: '31422' },
+    { placeId: 'loc_qa_doh', description: 'Doha, Qatar', mainText: 'Doha', secondaryText: 'Ad-Dawhah, Qatar', city: 'Doha', country: 'Qatar', countryCode: 'QA', postalCode: '00000' },
+    { placeId: 'loc_bh_bah', description: 'Manama, Bahrain', mainText: 'Manama', secondaryText: 'Capital, Bahrain', city: 'Manama', country: 'Bahrain', countryCode: 'BH', postalCode: '0000' },
+    { placeId: 'loc_om_mct', description: 'Muscat, Oman', mainText: 'Muscat', secondaryText: 'Muscat Governorate, Oman', city: 'Muscat', country: 'Oman', countryCode: 'OM', postalCode: '100' },
+    // International
+    { placeId: 'loc_ca_ott', description: 'Ottawa, ON, Canada', mainText: 'Ottawa', secondaryText: 'Ontario, Canada', city: 'Ottawa', country: 'Canada', countryCode: 'CA', postalCode: 'K1P 1J1' },
+    { placeId: 'loc_ca_tor', description: 'Toronto, ON, Canada', mainText: 'Toronto', secondaryText: 'Ontario, Canada', city: 'Toronto', country: 'Canada', countryCode: 'CA', postalCode: 'M5H 2N2' },
+    { placeId: 'loc_eg_cai', description: 'Cairo, Egypt', mainText: 'Cairo', secondaryText: 'Cairo Governorate, Egypt', city: 'Cairo', country: 'Egypt', countryCode: 'EG', postalCode: '11511' },
+    { placeId: 'loc_eg_nc', description: 'Second New Cairo, Cairo Governorate, Egypt', mainText: 'Second New Cairo', secondaryText: 'Cairo Governorate, Egypt', city: 'Second New Cairo', country: 'Egypt', countryCode: 'EG', postalCode: '11835' },
+    { placeId: 'loc_ph_boc', description: 'Bocaue, Bulacan, Philippines', mainText: 'Bocaue', secondaryText: 'Bulacan, Central Luzon, Philippines', city: 'Bocaue', country: 'Philippines', countryCode: 'PH', postalCode: '3018' },
+    { placeId: 'loc_ph_mnl', description: 'Manila, Metro Manila, Philippines', mainText: 'Manila', secondaryText: 'Metro Manila, Philippines', city: 'Manila', country: 'Philippines', countryCode: 'PH', postalCode: '1000' },
+    { placeId: 'loc_gb_lon', description: 'London, United Kingdom', mainText: 'London', secondaryText: 'Greater London, United Kingdom', city: 'London', country: 'United Kingdom', countryCode: 'GB', postalCode: 'SW1A 1AA' },
+    { placeId: 'loc_us_nyc', description: 'New York, NY, United States', mainText: 'New York', secondaryText: 'New York, United States', city: 'New York', country: 'United States', countryCode: 'US', postalCode: '10001' }
+];
+
 const GoogleAddressInput = ({
     value = {},
     onChange,
@@ -81,7 +113,7 @@ const GoogleAddressInput = ({
     const [clientSdkFailed, setClientSdkFailed] = useState(() => Boolean(window.__googleMapsAuthFailed));
     const containerRef = useRef(null);
 
-    // Detect Google Maps client-side auth/activation failure (e.g. ApiNotActivatedMapError)
+    // Detect Google Maps client-side auth/activation failure (e.g. ApiNotActivatedMapError) or network/DNS failure
     useEffect(() => {
         const origAuthFailure = window.gm_authFailure;
         window.gm_authFailure = () => {
@@ -89,9 +121,28 @@ const GoogleAddressInput = ({
             setClientSdkFailed(true);
             if (typeof origAuthFailure === 'function') origAuthFailure();
         };
+
+        const handleGlobalError = (event) => {
+            const msg = String(event?.message || event?.error?.message || '');
+            const filename = String(event?.filename || '');
+            if (
+                filename.includes('maps.googleapis.com') ||
+                msg.includes('Google Maps') ||
+                msg.includes('AutocompletionService') ||
+                msg.includes('ApiNotActivatedMapError') ||
+                msg.includes('ERR_NAME_NOT_RESOLVED')
+            ) {
+                window.__googleMapsAuthFailed = true;
+                setClientSdkFailed(true);
+            }
+        };
+
+        window.addEventListener('error', handleGlobalError, true);
         if (window.__googleMapsAuthFailed) {
             setClientSdkFailed(true);
         }
+
+        return () => window.removeEventListener('error', handleGlobalError, true);
     }, []);
 
     const { isLoaded, loadError } = useJsApiLoader({
@@ -99,6 +150,13 @@ const GoogleAddressInput = ({
         googleMapsApiKey: apiKey,
         libraries
     });
+
+    useEffect(() => {
+        if (loadError) {
+            window.__googleMapsAuthFailed = true;
+            setClientSdkFailed(true);
+        }
+    }, [loadError]);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -125,7 +183,7 @@ const GoogleAddressInput = ({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Helper to query backend geocode proxy
+    // Helper to query backend geocode proxy with local emergency fallback
     const fetchBackendSuggestions = async (queryText) => {
         try {
             const res = await api.get('/geocode/autocomplete', {
@@ -143,7 +201,23 @@ const GoogleAddressInput = ({
         } catch (backendErr) {
             console.debug('Backend geocode autocomplete fallback failed:', backendErr.message);
         }
-        return [];
+
+        // Resilient emergency catalog matching
+        const q = (queryText || '').toLowerCase().trim();
+        if (!q) return [];
+        return LOCAL_FALLBACK_HUBS.filter(h =>
+            h.mainText.toLowerCase().includes(q) ||
+            h.description.toLowerCase().includes(q) ||
+            h.city.toLowerCase().includes(q) ||
+            h.country.toLowerCase().includes(q) ||
+            h.countryCode.toLowerCase().includes(q)
+        ).map(h => ({
+            placeId: h.placeId,
+            description: h.description,
+            mainText: h.mainText,
+            secondaryText: h.secondaryText,
+            localData: h
+        }));
     };
 
     useEffect(() => {
@@ -173,17 +247,24 @@ const GoogleAddressInput = ({
                     try {
                         const service = new window.google.maps.places.AutocompleteService();
                         const predictions = await new Promise((resolve) => {
-                            service.getPlacePredictions({ input: debouncedInput }, (res, status) => {
-                                if (status === window.google.maps.places.PlacesServiceStatus.OK && Array.isArray(res)) {
-                                    resolve(res);
-                                } else {
-                                    if (status === 'REQUEST_DENIED' || status === 'OVER_QUERY_LIMIT') {
-                                        window.__googleMapsAuthFailed = true;
-                                        setClientSdkFailed(true);
+                            const timer = setTimeout(() => resolve([]), 1200);
+                            try {
+                                service.getPlacePredictions({ input: debouncedInput }, (res, status) => {
+                                    clearTimeout(timer);
+                                    if (status === window.google.maps.places.PlacesServiceStatus.OK && Array.isArray(res)) {
+                                        resolve(res);
+                                    } else {
+                                        if (status === 'REQUEST_DENIED' || status === 'OVER_QUERY_LIMIT') {
+                                            window.__googleMapsAuthFailed = true;
+                                            setClientSdkFailed(true);
+                                        }
+                                        resolve([]);
                                     }
-                                    resolve([]);
-                                }
-                            });
+                                });
+                            } catch (e) {
+                                clearTimeout(timer);
+                                resolve([]);
+                            }
                         });
 
                         if (predictions && predictions.length > 0) {
@@ -209,34 +290,39 @@ const GoogleAddressInput = ({
                 // Strategy B: Modern Places Library importLibrary
                 if (window.google?.maps?.importLibrary && !clientSdkFailed && !window.__googleMapsAuthFailed) {
                     try {
-                        const placesLib = await window.google.maps.importLibrary('places');
-                        const AutocompleteSuggestion = placesLib?.AutocompleteSuggestion;
-                        if (AutocompleteSuggestion?.fetchAutocompleteSuggestions) {
-                            const response = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
-                                input: debouncedInput
-                            });
-                            const nextOptions = (response?.suggestions || [])
-                                .map((entry, index) => {
-                                    const prediction = entry?.placePrediction;
-                                    const text = prediction?.text?.text || prediction?.mainText?.text || '';
-                                    const secondary = prediction?.structuredFormat?.secondaryText?.text || '';
-                                    const placeId = prediction?.placeId || `${text}-${index}`;
-                                    if (!text) return null;
-                                    return {
-                                        placeId,
-                                        description: text,
-                                        mainText: text,
-                                        secondaryText: secondary,
-                                        prediction
-                                    };
-                                })
-                                .filter(Boolean);
-
-                            if (nextOptions.length > 0 && !cancelled) {
-                                setOptions(nextOptions);
-                                setIsDropdownOpen(true);
-                                return;
+                        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Places library timeout')), 1200));
+                        const fetchPromise = (async () => {
+                            const placesLib = await window.google.maps.importLibrary('places');
+                            const AutocompleteSuggestion = placesLib?.AutocompleteSuggestion;
+                            if (AutocompleteSuggestion?.fetchAutocompleteSuggestions) {
+                                const response = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
+                                    input: debouncedInput
+                                });
+                                return (response?.suggestions || [])
+                                    .map((entry, index) => {
+                                        const prediction = entry?.placePrediction;
+                                        const text = prediction?.text?.text || prediction?.mainText?.text || '';
+                                        const secondary = prediction?.structuredFormat?.secondaryText?.text || '';
+                                        const placeId = prediction?.placeId || `${text}-${index}`;
+                                        if (!text) return null;
+                                        return {
+                                            placeId,
+                                            description: text,
+                                            mainText: text,
+                                            secondaryText: secondary,
+                                            prediction
+                                        };
+                                    })
+                                    .filter(Boolean);
                             }
+                            return [];
+                        })();
+
+                        const nextOptions = await Promise.race([fetchPromise, timeoutPromise]);
+                        if (nextOptions && nextOptions.length > 0 && !cancelled) {
+                            setOptions(nextOptions);
+                            setIsDropdownOpen(true);
+                            return;
                         }
                     } catch (newPlacesErr) {
                         console.debug('Modern Places library fetch failed:', newPlacesErr.message);
@@ -280,18 +366,41 @@ const GoogleAddressInput = ({
         try {
             let addressData = null;
 
+            // Strategy 0: Direct Instant Match for Fallback / Local Hubs (Zero network lag, 100% reliable)
+            if (option.localData || (option.placeId && option.placeId.startsWith('loc_'))) {
+                const loc = option.localData || LOCAL_FALLBACK_HUBS.find(h => h.placeId === option.placeId) || {};
+                const countryObj = countries.find(c => c.code === loc.countryCode) || countries.find(c => c.name.toLowerCase() === (loc.country || '').toLowerCase());
+                const resolvedCountry = countryObj?.name || loc.country || '';
+                const resolvedCountryCode = countryObj?.code || loc.countryCode || '';
+                addressData = {
+                    formattedAddress: loc.description || description,
+                    city: loc.city || '',
+                    state: loc.state || '',
+                    country: resolvedCountry,
+                    countryCode: resolvedCountryCode,
+                    postalCode: loc.postalCode || (resolvedCountryCode === 'KW' ? '00000' : ''),
+                    streetLines: [loc.mainText || description],
+                    latitude: loc.lat,
+                    longitude: loc.lng,
+                    phoneCountryCode: countryObj?.dialCode || (resolvedCountryCode === 'KW' ? '+965' : '+971'),
+                    validationStatus: 'CONFIRMED'
+                };
+            }
+
             // Strategy 1: Google PlacesService getDetails (Client-Side) - only if client SDK is healthy
-            if (option.placeId && !clientSdkFailed && !window.__googleMapsAuthFailed && window.google?.maps?.places?.PlacesService) {
+            if (!addressData && option.placeId && !clientSdkFailed && !window.__googleMapsAuthFailed && window.google?.maps?.places?.PlacesService) {
                 try {
                     const dummyNode = document.createElement('div');
                     const placesService = new window.google.maps.places.PlacesService(dummyNode);
                     const placeDetail = await new Promise((resolve) => {
+                        const timer = setTimeout(() => resolve(null), 1500);
                         placesService.getDetails(
                             {
                                 placeId: option.placeId,
                                 fields: ['address_components', 'formatted_address', 'geometry', 'name']
                             },
                             (result, status) => {
+                                clearTimeout(timer);
                                 if (status === window.google.maps.places.PlacesServiceStatus.OK && result) {
                                     resolve(result);
                                 } else {
@@ -333,7 +442,9 @@ const GoogleAddressInput = ({
                         : { address: description };
 
                     const geoResult = await new Promise((resolve, reject) => {
+                        const timer = setTimeout(() => reject(new Error('Geocoder timeout')), 1500);
                         geocoder.geocode(geocodeReq, (results, status) => {
+                            clearTimeout(timer);
                             if (status === 'OK' && results && results[0]) {
                                 resolve(results[0]);
                             } else {
