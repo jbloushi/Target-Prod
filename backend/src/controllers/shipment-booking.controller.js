@@ -652,6 +652,17 @@ exports.generateCarrierDocuments = async (req, res) => {
                 const freshLabel = fresh?.labelUrl || fresh?.awbUrl || bookResult?.shipment?.labelUrl || bookResult?.labelUrl;
                 const freshInvoice = fresh?.invoiceUrl || bookResult?.shipment?.invoiceUrl || bookResult?.invoiceUrl;
                 if (freshLabel || freshInvoice) {
+                    if ((freshLabel && !fresh?.labelUrl) || (freshInvoice && !fresh?.invoiceUrl)) {
+                        await prisma.shipment.update({
+                            where: { trackingNumber },
+                            data: {
+                                labelUrl: freshLabel || undefined,
+                                awbUrl: freshLabel || undefined,
+                                invoiceUrl: freshInvoice || undefined,
+                                dhlConfirmed: true
+                            }
+                        }).catch(() => {});
+                    }
                     return res.status(200).json({
                         success: true,
                         data: {
@@ -665,7 +676,10 @@ exports.generateCarrierDocuments = async (req, res) => {
                         message: 'Official carrier AWB and Invoice successfully retrieved from carrier API'
                     });
                 } else if (carrierCode === 'DGR') {
-                    const errorDetail = bookResult?.message || 'DHL booking was processed but no label or invoice image was returned in the carrier response.';
+                    const raw = bookResult?.shipment?.rawResponse || bookResult?.rawResponse;
+                    const rawKeys = raw ? Object.keys(raw).join(',') : 'none';
+                    const tn = fresh?.dhlTrackingNumber || fresh?.carrierShipmentId || bookResult?.shipment?.dhlTrackingNumber || trackingNumber;
+                    const errorDetail = bookResult?.message || `DHL booking processed (Tracking: ${tn}), but DHL API response contained no document images (Response keys: ${rawKeys}).`;
                     return res.status(400).json({
                         success: false,
                         error: `DHL Express document retrieval failed: ${errorDetail}`

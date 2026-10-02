@@ -805,41 +805,78 @@ class DgrAdapter extends CarrierAdapter {
                 let label, awb, invoice;
                 const allRawDocs = [
                     ...(Array.isArray(res.data?.documents) ? res.data.documents : []),
-                    ...(Array.isArray(res.data?.packages) ? res.data.packages.flatMap(p => p.documents || []) : [])
+                    ...(Array.isArray(res.data?.shipmentDocuments) ? res.data.shipmentDocuments : []),
+                    ...(Array.isArray(res.data?.documentImages) ? res.data.documentImages : []),
+                    ...(Array.isArray(res.data?.labels) ? res.data.labels : []),
+                    ...(Array.isArray(res.data?.packages) ? res.data.packages.flatMap(p => p.documents || (p.label ? [p.label] : [])) : []),
+                    ...((res.data?.labelImage || res.data?.label) ? [{ typeCode: 'label', content: res.data.labelImage || res.data.label }] : [])
                 ];
 
                 const returnedDocuments = [];
                 for (const doc of allRawDocs) {
-                    if (!doc?.content && !doc?.url) continue;
-                    const typeCode = String(doc.typeCode || doc.type || '').trim().toLowerCase();
-                    const format = String(doc.imageFormat || doc.format || 'pdf').toLowerCase();
-                    const mime = format === 'pdf' ? 'application/pdf' : (format === 'zpl' ? 'application/x-zpl' : 'application/octet-stream');
-                    const contentUri = doc.url
-                        ? doc.url
-                        : (doc.content?.startsWith('data:') ? doc.content : `data:${mime};base64,${doc.content}`);
+                    const rawContent = doc?.content || doc?.image || doc?.data || doc?.base64 || doc?.url || (typeof doc === 'string' ? doc : null);
+                    if (!rawContent) continue;
 
-                    if (['label', 'transportlabel', 'shippinglabel', 'transport-label'].includes(typeCode)) {
-                        if (!label) label = contentUri;
-                    } else if (['waybilldoc', 'waybill', 'awb', 'archivedoc', 'archive-doc'].includes(typeCode)) {
-                        if (!awb) awb = contentUri;
-                    } else if (['invoice', 'commercialinvoice', 'customsinvoice', 'commercial_invoice', 'customs_invoice', 'inv'].includes(typeCode)) {
-                        if (!invoice) invoice = contentUri;
+                    const typeCode = String(doc?.typeCode || doc?.type || doc?.type_code || '').trim().toLowerCase();
+                    const format = String(doc?.imageFormat || doc?.format || 'pdf').toLowerCase();
+                    const mime = format === 'pdf' ? 'application/pdf' : (format === 'zpl' ? 'application/x-zpl' : 'application/octet-stream');
+                    const contentUri = String(rawContent).startsWith('http')
+                        ? String(rawContent)
+                        : (String(rawContent).startsWith('data:') ? String(rawContent) : `data:${mime};base64,${rawContent}`);
+
+                    const isLabelDoc = /label|transport|shipping/i.test(typeCode);
+                    const isWaybillDoc = /waybill|awb|archive/i.test(typeCode);
+                    const isInvoiceDoc = /inv|customs|commercial/i.test(typeCode);
+
+                    if (isLabelDoc && !label) {
+                        label = contentUri;
+                    } else if (isWaybillDoc && !awb) {
+                        awb = contentUri;
+                    } else if (isInvoiceDoc && !invoice) {
+                        invoice = contentUri;
                     }
 
                     returnedDocuments.push({
-                        type: typeCode,
+                        type: typeCode || 'document',
                         format,
                         url: contentUri
                     });
                 }
 
-                // If only one of AWB or Label is provided by DHL, allow fallback between them
+                // If specific typeCodes weren't tagged by DHL, safely assign from returned documents
+                if (!label && returnedDocuments.length > 0) {
+                    label = returnedDocuments[0].url;
+                }
                 if (!awb && label) awb = label;
                 if (!label && awb) label = awb;
+                if (!invoice && returnedDocuments.length > 1) {
+                    invoice = returnedDocuments[1].url;
+                }
+
+                // If still missing and DHL provided a tracking number, attempt immediate document fetch via get-image
+                const returnedTracking = res.data.shipmentTrackingNumber;
+                if ((!label || !invoice) && returnedTracking) {
+                    try {
+                        const fallbackDocs = await this.getShipmentDocuments(returnedTracking, {
+                            accountNumber: activeConfig.accountNumber,
+                            isTest: shipment.isTest
+                        });
+                        if (!label && fallbackDocs.labelUrl) label = fallbackDocs.labelUrl;
+                        if (!awb && (fallbackDocs.awbUrl || fallbackDocs.labelUrl)) awb = fallbackDocs.awbUrl || fallbackDocs.labelUrl;
+                        if (!invoice && fallbackDocs.invoiceUrl) invoice = fallbackDocs.invoiceUrl;
+                        if (Array.isArray(fallbackDocs.documents)) {
+                            returnedDocuments.push(...fallbackDocs.documents);
+                        }
+                    } catch (fetchErr) {
+                        logger.warn(`DHL post-booking document recovery note for ${returnedTracking}: ${fetchErr.message}`);
+                    }
+                }
+
+                logger.info(`[DgrAdapter] Booking completed for ${returnedTracking || shipment.trackingNumber}: label=${Boolean(label)}, awb=${Boolean(awb)}, invoice=${Boolean(invoice)}, rawDocsCount=${allRawDocs.length}`);
 
                 return {
-                    trackingNumber: res.data.shipmentTrackingNumber,
-                    carrierShipmentId: res.data.shipmentTrackingNumber,
+                    trackingNumber: returnedTracking || shipment.trackingNumber,
+                    carrierShipmentId: returnedTracking || shipment.trackingNumber,
                     serviceCode: shipment.serviceCode || res.data.productCode,
                     labelUrl: label,
                     awbUrl: awb,
