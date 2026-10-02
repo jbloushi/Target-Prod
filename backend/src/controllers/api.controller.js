@@ -12,7 +12,8 @@ const logger = require('../utils/logger');
 const { handleControllerError } = require('../utils/controllerError');
 const {
     getAssignedShippingAccess,
-    assertRequestedAccessAllowed
+    assertRequestedAccessAllowed,
+    normalizeCarrier
 } = require('../services/shippingAccess.service');
 
 const escapeHtml = (unsafe) => {
@@ -58,17 +59,17 @@ exports.createShipment = async (req, res) => {
         if (!apiUser) return res.status(404).json({ success: false, error: 'User not found' });
 
         const assignedAccess = getAssignedShippingAccess(apiUser);
-        assertRequestedAccessAllowed(assignedAccess, { carrierCode, serviceCode });
 
         const sCountry = shipmentData.sender?.countryCode || shipmentData.origin?.countryCode;
         const rCountry = shipmentData.receiver?.countryCode || shipmentData.destination?.countryCode;
         const isExplicitDomestic = Boolean(sCountry && rCountry && String(sCountry).toUpperCase() === String(rCountry).toUpperCase());
+        const requestedCarrier = carrierCode ? normalizeCarrier(carrierCode) : null;
 
-        if (assignedAccess.carrierCode === 'INTERNAL' || (isExplicitDomestic && serviceCode === 'DOM')) {
+        if (assignedAccess.carrierCode === 'INTERNAL' || requestedCarrier === 'INTERNAL' || isExplicitDomestic || serviceCode === 'DOM') {
             const shipment = await ShipmentDraftService.createDraft({
                 ...shipmentData,
                 carrierCode: 'INTERNAL',
-                serviceCode: assignedAccess.carrierCode === 'INTERNAL' ? null : 'DOM',
+                serviceCode: assignedAccess.carrierCode === 'INTERNAL' ? (serviceCode || null) : 'DOM',
                 internallyManaged: true
             }, apiUser);
 
@@ -79,6 +80,7 @@ exports.createShipment = async (req, res) => {
                     carrier: shipment.carrierCode,
                     serviceCode: shipment.serviceCode,
                     status: shipment.status,
+                    labelUrl: shipment.labelUrl || `/api/v1/shipments/${shipment.trackingNumber}/label`,
                     price: shipment.price,
                     currency: shipment.currency,
                     codAmount: shipment.codAmount || null,
@@ -87,6 +89,8 @@ exports.createShipment = async (req, res) => {
                 }
             });
         }
+
+        assertRequestedAccessAllowed(assignedAccess, { carrierCode, serviceCode });
 
         const resolvedCarrierCode = assignedAccess.carrierCode;
         const resolvedServiceCode = assignedAccess.serviceCode || serviceCode || null;
@@ -444,14 +448,13 @@ exports.getQuotation = async (req, res) => {
         if (!user) return res.status(404).json({ success: false, error: 'User not found' });
 
         const assignedAccess = getAssignedShippingAccess(user);
-        assertRequestedAccessAllowed(assignedAccess, { carrierCode, serviceCode });
 
         const normalized = normalizeShipment(req.body);
         const senderCountry = String(normalized.sender?.countryCode || normalized.sender?.country || 'KW').toUpperCase();
         const receiverCountry = String(normalized.receiver?.countryCode || normalized.receiver?.country || 'KW').toUpperCase();
         const isDomestic = Boolean(senderCountry && receiverCountry && senderCountry === receiverCountry);
 
-        if (assignedAccess.carrierCode === 'INTERNAL' || isDomestic) {
+        if (assignedAccess.carrierCode === 'INTERNAL' || isDomestic || carrierCode === 'INTERNAL' || serviceCode === 'DOM') {
             const domesticPolicy = typeof PricingService.resolveCarrierPricingPolicy === 'function'
                 ? PricingService.resolveCarrierPricingPolicy(user, 'INTERNAL', req.body.currency || 'KWD')
                 : { fixedFee: null, currency: 'KWD' };
@@ -481,6 +484,8 @@ exports.getQuotation = async (req, res) => {
                 }]
             });
         }
+
+        assertRequestedAccessAllowed(assignedAccess, { carrierCode, serviceCode });
 
         const resolvedCarrierCode = assignedAccess.carrierCode;
         const resolvedServiceCode = assignedAccess.serviceCode || serviceCode || null;

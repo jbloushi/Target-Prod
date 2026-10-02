@@ -48,7 +48,12 @@ describe('client API shipment workflows', () => {
             createSnapshot
         }));
         jest.doMock('../src/utils/shipmentNormalizer', () => ({
-            normalizeShipment: jest.fn(() => ({ ...normalizedShipment }))
+            normalizeShipment: jest.fn((body) => {
+                if (body && body.receiver && body.receiver.countryCode === 'KW') {
+                    return { ...normalizedShipment, sender: { countryCode: 'KW' }, receiver: { countryCode: 'KW' } };
+                }
+                return { ...normalizedShipment };
+            })
         }));
     });
 
@@ -239,6 +244,72 @@ describe('client API shipment workflows', () => {
                 carrier: 'DGR',
                 serviceCode: 'Y',
                 totalPrice: 16.5
+            })
+        ]);
+    });
+
+    it('allows domestic shipment creation even when account is assigned to DHL', async () => {
+        const controller = require('../src/controllers/api.controller');
+        const req = {
+            user: { id: 'user-1', organizationId: 'org-1' },
+            body: {
+                carrierCode: 'INTERNAL',
+                serviceCode: 'DOM',
+                sender: { countryCode: 'KW', city: 'Kuwait City' },
+                receiver: { countryCode: 'KW', city: 'Kuwait City' },
+                parcels: []
+            }
+        };
+        const res = createMockRes();
+
+        prisma.user.findUnique.mockResolvedValue(apiUser({ carrierCode: 'DGR', serviceCode: 'Y' }));
+        createDraft.mockResolvedValue({
+            trackingNumber: 'DOM-1',
+            carrierCode: 'INTERNAL',
+            serviceCode: 'DOM',
+            status: 'draft',
+            price: 2.875,
+            currency: 'KWD'
+        });
+
+        await controller.createShipment(req, res);
+
+        expect(createDraft).toHaveBeenCalledWith(expect.objectContaining({
+            carrierCode: 'INTERNAL',
+            serviceCode: 'DOM',
+            internallyManaged: true
+        }), expect.objectContaining({ id: 'user-1' }));
+        expect(res.status).toHaveBeenCalledWith(201);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({
+                carrier: 'INTERNAL',
+                serviceCode: 'DOM'
+            })
+        }));
+    });
+
+    it('returns domestic quotation for KW to KW routes even when account is assigned to DHL', async () => {
+        calculateFinalPrice.mockReturnValue({ finalPrice: 2.875 });
+        const controller = require('../src/controllers/api.controller');
+        const req = {
+            user: { id: 'user-1', organizationId: 'org-1' },
+            body: {
+                sender: { countryCode: 'KW' },
+                receiver: { countryCode: 'KW' }
+            }
+        };
+        const res = createMockRes();
+
+        prisma.user.findUnique.mockResolvedValue(apiUser({ carrierCode: 'DGR', serviceCode: 'Y' }));
+
+        await controller.getQuotation(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json.mock.calls[0][0].data).toEqual([
+            expect.objectContaining({
+                carrier: 'INTERNAL',
+                serviceCode: 'DOM',
+                totalPrice: 2.875
             })
         ]);
     });

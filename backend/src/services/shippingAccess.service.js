@@ -132,6 +132,11 @@ const assertRequestedAccessAllowed = (assignedAccess, requested = {}) => {
     const requestedCarrier = requested.carrierCode ? normalizeCarrier(requested.carrierCode) : null;
     const requestedService = requested.serviceCode ? normalizeService(requested.serviceCode) : null;
 
+    // INTERNAL or DOM service is always permitted for domestic deliveries
+    if (requestedCarrier === 'INTERNAL' || requestedService === 'DOM') {
+        return;
+    }
+
     if (requestedCarrier && requestedCarrier !== assignedAccess.carrierCode) {
         const err = new Error(`This account is assigned to ${assignedAccess.serviceName}. Requested carrier ${requestedCarrier} is not allowed.`);
         err.statusCode = 403;
