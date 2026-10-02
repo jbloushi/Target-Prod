@@ -555,13 +555,29 @@ exports.generateCarrierDocuments = async (req, res) => {
         }
 
         const existingDocs = Array.isArray(shipment.documents) ? shipment.documents : [];
-        const foundLabel = shipment.labelUrl || shipment.awbUrl || existingDocs.find(d => ['label', 'awb', 'waybilldoc'].includes(String(d?.type || '').toLowerCase()))?.url;
-        const foundInvoice = shipment.invoiceUrl || existingDocs.find(d => ['invoice', 'customs_invoice'].includes(String(d?.type || '').toLowerCase()))?.url;
+        const isMockDocument = (url) => {
+            if (!url) return false;
+            const str = String(url).trim();
+            if (str.startsWith('data:application/pdf;base64,')) {
+                const base64Part = str.split(',')[1] || '';
+                // carrierPdfMock generates a 1-2KB stream; genuine DHL PDFs are > 15KB
+                if (base64Part.length < 10000) return true;
+            }
+            if (str.includes('mock') || str.includes('simulation')) return true;
+            return false;
+        };
+
+        const rawFoundLabel = shipment.labelUrl || shipment.awbUrl || existingDocs.find(d => ['label', 'awb', 'waybilldoc'].includes(String(d?.type || '').toLowerCase()))?.url;
+        const rawFoundInvoice = shipment.invoiceUrl || existingDocs.find(d => ['invoice', 'customs_invoice'].includes(String(d?.type || '').toLowerCase()))?.url;
+
+        // If carrier is DGR, filter out any previously generated mock documents
+        const foundLabel = (carrierCode === 'DGR' && isMockDocument(rawFoundLabel)) ? null : rawFoundLabel;
+        const foundInvoice = (carrierCode === 'DGR' && isMockDocument(rawFoundInvoice)) ? null : rawFoundInvoice;
 
         const force = req.query.force === 'true' || req.body?.force === true;
 
-        // If documents already exist on shipment, return them unless force refresh is requested
-        if (foundLabel && foundInvoice && !force) {
+        // If official documents already exist on shipment, return them unless force refresh is requested
+        if (foundLabel && (foundInvoice || shipment.isDocument || shipment.shipmentType === 'documents') && !force) {
             return res.status(200).json({
                 success: true,
                 data: {
@@ -571,11 +587,10 @@ exports.generateCarrierDocuments = async (req, res) => {
                     documents: existingDocs,
                     carrierShipmentId: shipment.carrierShipmentId || shipment.dhlTrackingNumber
                 },
-                message: 'Carrier documents are already available'
+                message: 'Official carrier documents are already available'
             });
         }
 
-        const { generateCarrierAwbPdf, generateCarrierInvoicePdf } = require('../utils/carrierPdfMock');
         const documentStorage = require('../utils/documentStorage');
         const CarrierDocumentService = require('../services/CarrierDocumentService');
 
@@ -606,11 +621,17 @@ exports.generateCarrierDocuments = async (req, res) => {
                             carrierShipmentId: fresh.carrierShipmentId || fresh.dhlTrackingNumber,
                             shipment: fresh
                         },
-                        message: 'Carrier AWB and Invoice successfully generated from official API'
+                        message: 'Official carrier AWB and Invoice successfully retrieved from carrier API'
                     });
                 }
             } catch (bookErr) {
-                logger.warn(`Live carrier booking encountered note for ${trackingNumber}: ${bookErr.message}. Generating carrier documentation directly.`);
+                logger.error(`Live carrier booking failed for ${trackingNumber}: ${bookErr.message}`);
+                if (carrierCode === 'DGR') {
+                    return res.status(400).json({
+                        success: false,
+                        error: `DHL Express booking failed: ${bookErr.message}. Cannot retrieve official DHL documents without a successful DHL booking.`
+                    });
+                }
             }
         } else if (carrierCode === 'DGR') {
             // Already booked with DHL: fetch official DHL documents via MyDHL API get-image endpoint
@@ -638,41 +659,58 @@ exports.generateCarrierDocuments = async (req, res) => {
                         newDocuments.push(savedInv);
                     }
                 } catch (dhlFetchErr) {
-                    logger.warn(`DHL official get-image retrieval note for ${dhlTracking}: ${dhlFetchErr.message}`);
+                    logger.error(`DHL official get-image retrieval failed for ${dhlTracking}: ${dhlFetchErr.message}`);
+                    if (!awbUrl && !invoiceUrl) {
+                        return res.status(400).json({
+                            success: false,
+                            error: `DHL Express official document retrieval failed: ${dhlFetchErr.message}`
+                        });
+                    }
                 }
             }
         }
 
-        // 2. Generate compliant PDF documents if any are still missing
-        const carrierName = carrierCode === 'DGR' ? 'DHL Express' : (carrierCode === 'FEDEX' ? 'FedEx' : (carrierCode === 'ARAMEX' ? 'Aramex' : carrierCode));
-
-        if (!awbUrl) {
-            const awbBase64 = generateCarrierAwbPdf(shipment, carrierName);
-            const savedAwbPath = await documentStorage.saveDocument(trackingNumber, 'awb', awbBase64);
-            if (savedAwbPath) {
-                awbUrl = savedAwbPath;
-                newDocuments.push({
-                    type: 'awb',
-                    format: 'pdf',
-                    url: savedAwbPath,
-                    storageKey: savedAwbPath,
-                    createdAt: new Date()
+        // Strict rejection for DGR: Never generate mock PDFs for DHL Express
+        if (carrierCode === 'DGR') {
+            if (!awbUrl && !invoiceUrl) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Official DHL Express documents could not be retrieved from DHL API. Please check your DHL credentials and shipment details.'
                 });
             }
-        }
+        } else {
+            // Fallback document generation only for internal or non-API carriers
+            const { generateCarrierAwbPdf, generateCarrierInvoicePdf } = require('../utils/carrierPdfMock');
+            const carrierName = carrierCode === 'FEDEX' ? 'FedEx' : (carrierCode === 'ARAMEX' ? 'Aramex' : carrierCode);
 
-        if (!invoiceUrl) {
-            const invBase64 = generateCarrierInvoicePdf(shipment, carrierName);
-            const savedInvPath = await documentStorage.saveDocument(trackingNumber, 'invoice', invBase64);
-            if (savedInvPath) {
-                invoiceUrl = savedInvPath;
-                newDocuments.push({
-                    type: 'invoice',
-                    format: 'pdf',
-                    url: savedInvPath,
-                    storageKey: savedInvPath,
-                    createdAt: new Date()
-                });
+            if (!awbUrl) {
+                const awbBase64 = generateCarrierAwbPdf(shipment, carrierName);
+                const savedAwbPath = await documentStorage.saveDocument(trackingNumber, 'awb', awbBase64);
+                if (savedAwbPath) {
+                    awbUrl = savedAwbPath;
+                    newDocuments.push({
+                        type: 'awb',
+                        format: 'pdf',
+                        url: savedAwbPath,
+                        storageKey: savedAwbPath,
+                        createdAt: new Date()
+                    });
+                }
+            }
+
+            if (!invoiceUrl) {
+                const invBase64 = generateCarrierInvoicePdf(shipment, carrierName);
+                const savedInvPath = await documentStorage.saveDocument(trackingNumber, 'invoice', invBase64);
+                if (savedInvPath) {
+                    invoiceUrl = savedInvPath;
+                    newDocuments.push({
+                        type: 'invoice',
+                        format: 'pdf',
+                        url: savedInvPath,
+                        storageKey: savedInvPath,
+                        createdAt: new Date()
+                    });
+                }
             }
         }
 

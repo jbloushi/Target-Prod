@@ -1230,8 +1230,24 @@ const DashboardPage = () => {
                 shipment={selectedShipment}
                 onClose={() => setSelectedShipment(null)}
                 onDownloadLabel={async (s) => {
+                    const raw = s.raw || s;
+                    const existingLabel = raw.labelUrl || raw.awbUrl || (Array.isArray(raw.documents) ? raw.documents.find(d => ['label', 'awb', 'waybilldoc'].includes(String(d?.type || '').toLowerCase()))?.url : null);
+                    if (existingLabel) {
+                        if (typeof existingLabel === 'string' && existingLabel.startsWith('data:application/pdf;base64,')) {
+                            const byteCharacters = atob(existingLabel.split(',')[1]);
+                            const byteNumbers = new Array(byteCharacters.length);
+                            for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
+                            const blobUrl = URL.createObjectURL(new Blob([new Uint8Array(byteNumbers)], { type: 'application/pdf' }));
+                            window.open(blobUrl, '_blank');
+                        } else {
+                            const { BACKEND_URL } = await import('../services/api');
+                            const finalUrl = existingLabel.startsWith('http') ? existingLabel : `${BACKEND_URL}${existingLabel}`;
+                            window.open(finalUrl, '_blank');
+                        }
+                        return;
+                    }
                     const { generateWaybillPDF } = await import('../utils/pdfGenerator');
-                    await generateWaybillPDF(s.raw || s);
+                    await generateWaybillPDF(raw);
                 }}
             />
 

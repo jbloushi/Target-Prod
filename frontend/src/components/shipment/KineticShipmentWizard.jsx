@@ -2850,6 +2850,24 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
   };
 
   const handleDownloadWaybill = async () => {
+    if (carrierAwb) {
+      if (typeof carrierAwb === 'string' && carrierAwb.startsWith('data:application/pdf;base64,')) {
+        const byteCharacters = atob(carrierAwb.split(',')[1]);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
+        const blobUrl = URL.createObjectURL(new Blob([new Uint8Array(byteNumbers)], { type: 'application/pdf' }));
+        window.open(blobUrl, '_blank');
+      } else {
+        const { BACKEND_URL } = await import('../../services/api');
+        const finalUrl = carrierAwb.startsWith('http') ? carrierAwb : `${BACKEND_URL}${carrierAwb}`;
+        window.open(finalUrl, '_blank');
+      }
+      return;
+    }
+    if (service.carrierCode && service.carrierCode !== 'INTERNAL') {
+      await handleGenerateCarrierAwbAndInvoice('awb');
+      return;
+    }
     try {
       const { generateWaybillPDF } = await import('../../utils/pdfGenerator');
       await generateWaybillPDF(createdShipment || { trackingNumber: createdTn, sender, receiver, parcels: pkg.packagesList || [pkg] });
@@ -2860,6 +2878,24 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
   };
 
   const handleDownloadInvoice = async () => {
+    if (carrierInvoice) {
+      if (typeof carrierInvoice === 'string' && carrierInvoice.startsWith('data:application/pdf;base64,')) {
+        const byteCharacters = atob(carrierInvoice.split(',')[1]);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
+        const blobUrl = URL.createObjectURL(new Blob([new Uint8Array(byteNumbers)], { type: 'application/pdf' }));
+        window.open(blobUrl, '_blank');
+      } else {
+        const { BACKEND_URL } = await import('../../services/api');
+        const finalUrl = carrierInvoice.startsWith('http') ? carrierInvoice : `${BACKEND_URL}${carrierInvoice}`;
+        window.open(finalUrl, '_blank');
+      }
+      return;
+    }
+    if (service.carrierCode && service.carrierCode !== 'INTERNAL') {
+      await handleGenerateCarrierAwbAndInvoice('invoice');
+      return;
+    }
     try {
       const { generateCommercialInvoicePDF } = await import('../../utils/pdfGenerator');
       await generateCommercialInvoicePDF(createdShipment || { trackingNumber: createdTn, sender, receiver, parcels: pkg.packagesList || [pkg], customs });

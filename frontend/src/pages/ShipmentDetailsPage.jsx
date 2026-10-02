@@ -501,9 +501,9 @@ const ShipmentDetailsPage = () => {
 
         setIsGeneratingCarrierDocs(true);
         try {
-            const res = await shipmentService.generateCarrierDocuments(shipment.trackingNumber);
-            const awb = res?.data?.carrierShipmentId || res?.data?.awbUrl || res?.data?.labelUrl;
-            enqueueSnackbar(`Carrier AWB & Invoice generated successfully from ${carrierDisplayName}! ${awb ? `(AWB: ${awb})` : ''}`, { variant: 'success' });
+            const res = await shipmentService.generateCarrierDocuments(shipment.trackingNumber, { force: true });
+            const awb = res?.data?.carrierShipmentId || res?.data?.dhlTrackingNumber || res?.data?.awbUrl || res?.data?.labelUrl;
+            enqueueSnackbar(`Carrier AWB & Invoice retrieved successfully from ${carrierDisplayName}! ${awb ? `(AWB: ${awb})` : ''}`, { variant: 'success' });
             await getShipment(shipment.trackingNumber);
 
             const openUrl = docTypeToOpen === 'invoice'

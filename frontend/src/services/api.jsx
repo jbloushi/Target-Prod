@@ -389,9 +389,9 @@ export const shipmentService = {
   },
 
   // Generate or re-fetch Carrier AWB and Invoice from carrier
-  generateCarrierDocuments: async (trackingNumber) => {
+  generateCarrierDocuments: async (trackingNumber, options = {}) => {
     try {
-      const response = await api.post(`shipments/${trackingNumber}/carrier-documents/generate`);
+      const response = await api.post(`shipments/${trackingNumber}/carrier-documents/generate`, options);
       return response.data;
     } catch (error) {
       console.error(`Error generating carrier documents for ${trackingNumber}:`, error);

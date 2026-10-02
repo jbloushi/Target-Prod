@@ -285,9 +285,49 @@ export const ShipmentList = ({
   };
 
   const handleDownloadLabel = async (s) => {
+    const raw = s.raw || s;
+    const existingLabel = raw.labelUrl || raw.awbUrl || (Array.isArray(raw.documents) ? raw.documents.find(d => ['label', 'awb', 'waybilldoc'].includes(String(d?.type || '').toLowerCase()))?.url : null);
+
+    const openDocUrl = async (url) => {
+      if (typeof url === 'string' && url.startsWith('data:application/pdf;base64,')) {
+        const byteCharacters = atob(url.split(',')[1]);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
+        const blobUrl = URL.createObjectURL(new Blob([new Uint8Array(byteNumbers)], { type: 'application/pdf' }));
+        window.open(blobUrl, '_blank');
+      } else {
+        const { BACKEND_URL } = await import('../services/api');
+        const finalUrl = url.startsWith('http') ? url : `${BACKEND_URL}${url}`;
+        window.open(finalUrl, '_blank');
+      }
+    };
+
+    if (existingLabel) {
+      await openDocUrl(existingLabel);
+      return;
+    }
+
+    const carrierCode = String(raw.carrierCode || raw.carrier || '').toUpperCase();
+    if (carrierCode && carrierCode !== 'INTERNAL') {
+      try {
+        enqueueSnackbar(lang === 'ar' ? 'جاري جلب بوليصة الشحن الرسمية من الناقل...' : `Fetching official label from ${carrierCode === 'DGR' ? 'DHL Express' : carrierCode}...`, { variant: 'info' });
+        const res = await shipmentService.generateCarrierDocuments(raw.trackingNumber);
+        const docUrl = res?.data?.labelUrl || res?.data?.awbUrl;
+        if (docUrl) {
+          await openDocUrl(docUrl);
+          enqueueSnackbar(lang === 'ar' ? 'تم فتح بوليصة الناقل الرسمية بنجاح' : `Official ${carrierCode} label opened successfully`, { variant: 'success' });
+          return;
+        }
+      } catch (carrierErr) {
+        enqueueSnackbar(carrierErr.response?.data?.error || carrierErr.message || 'Failed to fetch carrier documents', { variant: 'error' });
+        return;
+      }
+    }
+
+    // Only internal platform consignments use internal waybill generator
     try {
       const { generateWaybillPDF } = await import('../utils/pdfGenerator');
-      await generateWaybillPDF(s.raw);
+      await generateWaybillPDF(raw);
       enqueueSnackbar(`Label generated for ${s.trackingNumber}`, { variant: 'success' });
     } catch {
       enqueueSnackbar('Failed to generate label', { variant: 'error' });

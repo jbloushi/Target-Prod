@@ -757,42 +757,10 @@ class DgrAdapter extends CarrierAdapter {
         if (serviceCode) shipment.serviceCode = serviceCode;
         const activeConfig = await this._getResolvedConfig(shipment);
 
-        // Fallback gracefully in development if DHL API keys are not provided in .env
         if (!activeConfig?.apiKey || !activeConfig?.apiSecret) {
-            if (process.env.NODE_ENV === 'production') {
-                const err = new Error('DGR (DHL) credentials not configured on server.');
-                err.statusCode = 500;
-                throw err;
-            }
-
-            const trackingNumber = shipment.trackingNumber || `DGR-${Date.now()}`;
-            const { createMinimalCarrierPdf } = require('../utils/carrierPdfMock');
-            const mockAwb = createMinimalCarrierPdf('Official Air Waybill', trackingNumber, 'DHL Express', {
-                origin: `${shipment.origin?.city || 'Kuwait City'}, ${shipment.origin?.countryCode || 'KW'}`,
-                destination: `${shipment.destination?.city || 'Destination'}, ${shipment.destination?.countryCode || 'GCC'}`,
-                service: serviceCode || 'Express Worldwide (P)'
-            });
-            const mockInvoice = createMinimalCarrierPdf('Commercial Customs Invoice', trackingNumber, 'DHL Express', {
-                origin: `${shipment.origin?.city || 'Kuwait City'}, ${shipment.origin?.countryCode || 'KW'}`,
-                destination: `${shipment.destination?.city || 'Destination'}, ${shipment.destination?.countryCode || 'GCC'}`,
-                service: 'Customs Declarable'
-            });
-
-            return {
-                trackingNumber,
-                carrierShipmentId: trackingNumber,
-                serviceCode: serviceCode || 'P',
-                internallyManaged: false,
-                requiresManualPricing: false,
-                labelUrl: mockAwb,
-                awbUrl: mockAwb,
-                invoiceUrl: mockInvoice,
-                rawResponse: {
-                    carrier: 'DGR',
-                    simulation: true,
-                    message: 'Development simulated booking'
-                }
-            };
+            const err = new Error('DGR (DHL) credentials not configured on server.');
+            err.statusCode = 500;
+            throw err;
         }
 
         const { buildDgrShipmentPayload } = require('../services/dgr-payload-builder');
@@ -954,46 +922,6 @@ class DgrAdapter extends CarrierAdapter {
             }
         }).catch(e => console.error('CarrierLog Save Failed:', e.message));
 
-        // Test sandbox fallback: DHL sandbox only supports specific simulated network segments.
-        // If 410301 or "Products not available" occurs in test mode, provide simulated test booking.
-        if (activeConfig.isTest && (
-            errorData?.detail?.includes('410301') ||
-            errorData?.detail?.includes('Products not available') ||
-            errorData?.title?.includes('Products not available') ||
-            detailedMessage.includes('410301') ||
-            detailedMessage.includes('Products not available')
-        )) {
-            const testTracking = `DGR-TEST-${Date.now().toString().slice(-8)}`;
-            const { createMinimalCarrierPdf } = require('../utils/carrierPdfMock');
-            const mockAwb = createMinimalCarrierPdf('Official Air Waybill', testTracking, 'DHL Express', {
-                origin: `${shipment.origin?.city || 'Kuwait City'}, ${shipment.origin?.countryCode || 'KW'}`,
-                destination: `${shipment.destination?.city || 'Destination'}, ${shipment.destination?.countryCode || 'GCC'}`,
-                service: serviceCode || 'Express Worldwide (P)'
-            });
-            const mockInvoice = createMinimalCarrierPdf('Commercial Customs Invoice', testTracking, 'DHL Express', {
-                origin: `${shipment.origin?.city || 'Kuwait City'}, ${shipment.origin?.countryCode || 'KW'}`,
-                destination: `${shipment.destination?.city || 'Destination'}, ${shipment.destination?.countryCode || 'GCC'}`,
-                service: 'Customs Declarable'
-            });
-
-            return {
-                trackingNumber: testTracking,
-                carrierShipmentId: testTracking,
-                serviceCode: serviceCode || 'P',
-                internallyManaged: false,
-                requiresManualPricing: false,
-                labelUrl: mockAwb,
-                awbUrl: mockAwb,
-                invoiceUrl: mockInvoice,
-                rawResponse: {
-                    carrier: 'DGR',
-                    simulation: true,
-                    sandboxFallback: true,
-                    originalError: errorData,
-                    message: 'DHL Test Sandbox simulated booking for test route'
-                }
-            };
-        }
 
         const providerError = new Error(`DGR Error: ${detailedMessage}`);
         providerError.statusCode = responseStatus;
