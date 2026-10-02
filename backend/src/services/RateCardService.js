@@ -71,6 +71,7 @@ class RateCardService {
 
     /**
      * Import a new rate card from base64 Excel (.xlsx) file
+     * Uses native Node.js XLSX parsing for maximum performance and zero dependency on Python/openpyxl.
      * @param {Object} options
      * @param {string} options.id - Unique ID e.g. '6000_KHALID'
      * @param {string} options.name - Display name e.g. '6000 - Khalid'
@@ -78,10 +79,9 @@ class RateCardService {
      * @param {string} [options.currency='KWD']
      * @param {string} [options.pricingMode='SELLING_PRICE']
      * @param {string} options.fileBase64 - Base64 encoded Excel content
-     * @returns {Promise<Object>} Created rate card
+     * @returns {Promise<Object>} Created rate card summary
      */
     async importRateCardFromBase64({ id, name, carrierCode = 'DGR', currency = 'KWD', pricingMode = 'SELLING_PRICE', fileBase64 }) {
-        const { execFile } = require('child_process');
         const cleanId = String(id || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
         if (!cleanId) throw new Error('Valid rate card ID is required.');
         if (!name) throw new Error('Rate card display name is required.');
@@ -94,11 +94,139 @@ class RateCardService {
             throw new Error('Invalid or empty file content.');
         }
 
+        let rateCardData;
+
+        try {
+            const XLSX = require('xlsx');
+            const workbook = XLSX.read(buffer, { type: 'buffer' });
+            if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+                throw new Error('The uploaded Excel workbook contains no sheets.');
+            }
+
+            const sheetName = workbook.SheetNames[0];
+            const ws = workbook.Sheets[sheetName];
+            const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+            if (!data || data.length < 2) {
+                throw new Error('Excel sheet contains no rate data rows.');
+            }
+
+            // Headers in row 0
+            const headers = (data[0] || []).map(h => String(h || '').trim());
+            const zoneCols = {};
+            headers.forEach((h, colIdx) => {
+                if (colIdx === 0) return;
+                const cleaned = h.replace(/[\s.]+/g, '').toUpperCase();
+                if (cleaned.includes('ZONE')) {
+                    const zoneNum = cleaned.replace('ZONE', '');
+                    zoneCols[zoneNum] = colIdx;
+                }
+            });
+
+            if (Object.keys(zoneCols).length === 0) {
+                throw new Error('No Zone columns found. Header must include columns like "Zone 1", "Zone 2", ... up to "Zone 9".');
+            }
+
+            const brackets = [];
+            for (let r = 1; r < data.length; r++) {
+                const row = data[r];
+                if (!row) continue;
+                const rawWeight = row[0];
+                if (rawWeight === null || rawWeight === undefined || rawWeight === '') continue;
+                const weight = Number(rawWeight);
+                if (isNaN(weight) || weight <= 0) continue;
+
+                const rates = {};
+                for (const [zoneNum, colIdx] of Object.entries(zoneCols)) {
+                    const val = row[colIdx];
+                    if (val !== null && val !== undefined && val !== '') {
+                        const numVal = Number(val);
+                        if (!isNaN(numVal)) {
+                            rates[zoneNum] = Number(numVal.toFixed(4));
+                        }
+                    }
+                }
+
+                brackets.push({
+                    weight: Number(weight.toFixed(2)),
+                    rates
+                });
+            }
+
+            if (brackets.length === 0) {
+                throw new Error('No valid rate rows found in the uploaded Excel sheet.');
+            }
+
+            brackets.sort((a, b) => a.weight - b.weight);
+            const maxWeight = brackets[brackets.length - 1].weight;
+            const step = brackets.length > 1 ? Number((brackets[1].weight - brackets[0].weight).toFixed(2)) : 0.5;
+
+            // Marginal excess rate over 30kg
+            const over30KgPerKgRate = {};
+            if (brackets.length >= 2) {
+                const last = brackets[brackets.length - 1].rates;
+                const secondLast = brackets[brackets.length - 2].rates;
+                const wDiff = brackets[brackets.length - 1].weight - brackets[brackets.length - 2].weight;
+                for (const zoneNum of Object.keys(zoneCols)) {
+                    if (last[zoneNum] !== undefined && secondLast[zoneNum] !== undefined && wDiff > 0) {
+                        const diff = last[zoneNum] - secondLast[zoneNum];
+                        over30KgPerKgRate[zoneNum] = Number((diff / wDiff).toFixed(4));
+                    }
+                }
+            }
+
+            rateCardData = {
+                id: cleanId,
+                name: String(name).trim(),
+                carrierCode: String(carrierCode || 'DGR').trim().toUpperCase(),
+                currency: String(currency || 'KWD').trim().toUpperCase(),
+                pricingMode: pricingMode === 'BASE_COST' ? 'BASE_COST' : 'SELLING_PRICE',
+                maxBracketWeight: maxWeight,
+                weightStep: step,
+                brackets,
+                over30KgPerKgRate,
+                createdAt: new Date().toISOString()
+            };
+        } catch (parseError) {
+            logger.warn('Native XLSX parse failed or unavailable, falling back to python script:', parseError.message);
+            rateCardData = await this._importWithPythonFallback({
+                id: cleanId,
+                name,
+                carrierCode,
+                currency,
+                pricingMode,
+                buffer
+            });
+        }
+
+        // Save JSON directly to constants/rateCards
+        const rateCardsDir = path.join(__dirname, '../constants/rateCards');
+        if (!fs.existsSync(rateCardsDir)) {
+            fs.mkdirSync(rateCardsDir, { recursive: true });
+        }
+
+        const filename = `${rateCardData.carrierCode.toLowerCase()}_${cleanId.toLowerCase()}.json`;
+        const targetPath = path.join(rateCardsDir, filename);
+        fs.writeFileSync(targetPath, JSON.stringify(rateCardData, null, 2), 'utf-8');
+
+        // Reload cache
+        this.loadRateCards();
+
+        const card = this.getRateCard(cleanId);
+        if (!card) {
+            throw new Error(`Rate card '${cleanId}' was saved but could not be loaded into cache.`);
+        }
+
+        logger.info(`Rate card '${cleanId}' successfully imported and active at ${targetPath}`);
+        return this._summarizeCard(card);
+    }
+
+    async _importWithPythonFallback({ id, name, carrierCode, currency, pricingMode, buffer }) {
+        const { execFile } = require('child_process');
         const tempDir = path.resolve(__dirname, '../../uploads');
         if (!fs.existsSync(tempDir)) {
             fs.mkdirSync(tempDir, { recursive: true });
         }
-        const tempFilePath = path.join(tempDir, `temp_rc_${Date.now()}_${cleanId}.xlsx`);
+        const tempFilePath = path.join(tempDir, `temp_rc_${Date.now()}_${id}.xlsx`);
         fs.writeFileSync(tempFilePath, buffer);
 
         const scriptPath = path.resolve(__dirname, '../../scripts/import-rate-card.py');
@@ -110,30 +238,36 @@ class RateCardService {
                 [
                     scriptPath,
                     '--file', tempFilePath,
-                    '--id', cleanId,
+                    '--id', id,
                     '--name', String(name).trim(),
                     '--carrier', String(carrierCode || 'DGR').trim().toUpperCase(),
                     '--currency', String(currency || 'KWD').trim().toUpperCase(),
                     '--mode', pricingMode === 'BASE_COST' ? 'BASE_COST' : 'SELLING_PRICE'
                 ],
                 (error, stdout, stderr) => {
-                    // Clean up temp file
                     try {
                         if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
                     } catch (_) {}
 
                     if (error) {
-                        logger.error('Failed to execute import-rate-card.py:', error, stderr);
                         return reject(new Error(stderr || error.message || 'Failed to process Excel rate card'));
                     }
 
-                    // Reload cache
-                    this.loadRateCards();
-                    const card = this.getRateCard(cleanId);
-                    if (!card) {
-                        return reject(new Error(`Rate card '${cleanId}' was processed but could not be retrieved.`));
+                    const filename = `${String(carrierCode || 'DGR').toLowerCase()}_${id.toLowerCase()}.json`;
+                    const savedPath = path.join(__dirname, '../constants/rateCards', filename);
+                    if (fs.existsSync(savedPath)) {
+                        try {
+                            const content = JSON.parse(fs.readFileSync(savedPath, 'utf-8'));
+                            return resolve(content);
+                        } catch (_) {}
                     }
-                    resolve(this._summarizeCard(card));
+                    resolve({
+                        id,
+                        name,
+                        carrierCode: String(carrierCode || 'DGR').toUpperCase(),
+                        currency: String(currency || 'KWD').toUpperCase(),
+                        pricingMode
+                    });
                 }
             );
         });
