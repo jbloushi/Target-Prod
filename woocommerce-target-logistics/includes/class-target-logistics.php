@@ -79,9 +79,10 @@ class Target_Logistics {
         // AJAX handlers for settings screen
         add_action( 'wp_ajax_target_logistics_test_connection', array( $this, 'ajax_test_connection' ) );
         add_action( 'wp_ajax_target_logistics_seed_products', array( $this, 'ajax_seed_products' ) );
+        add_action( 'wp_ajax_target_logistics_seed_orders', array( $this, 'ajax_seed_orders' ) );
 
-        // Direct action handler for sample products seeding
-        add_action( 'admin_init', array( $this, 'handle_direct_seed_products' ) );
+        // Direct action handler for sample products & orders seeding
+        add_action( 'admin_init', array( $this, 'handle_direct_seeding' ) );
 
         // Admin notices
         add_action( 'admin_notices', array( $this, 'render_admin_notices' ) );
@@ -162,10 +163,18 @@ class Target_Logistics {
     }
 
     /**
-     * Handle Direct URL seed products action
+     * AJAX handler for seed orders
      */
-    public function handle_direct_seed_products() {
-        if ( ! isset( $_GET['tl_action'] ) || 'seed_products' !== $_GET['tl_action'] ) {
+    public function ajax_seed_orders() {
+        $settings = new Target_Logistics_Settings();
+        $settings->ajax_seed_orders();
+    }
+
+    /**
+     * Handle Direct URL seeding action for products and orders
+     */
+    public function handle_direct_seeding() {
+        if ( ! isset( $_GET['tl_action'] ) ) {
             return;
         }
 
@@ -175,20 +184,35 @@ class Target_Logistics {
 
         check_admin_referer( 'target_logistics_seed_direct' );
 
-        $created = Target_Logistics_Settings::seed_sample_products();
+        $action = sanitize_text_field( wp_unslash( $_GET['tl_action'] ) );
 
-        $redirect_url = add_query_arg(
-            array(
-                'page'      => 'wc-settings',
-                'tab'       => 'integration',
-                'section'   => 'target_logistics',
-                'tl_seeded' => $created,
-            ),
-            admin_url( 'admin.php' )
-        );
+        if ( 'seed_products' === $action ) {
+            $created = Target_Logistics_Settings::seed_sample_products();
+            $redirect_url = add_query_arg(
+                array(
+                    'page'      => 'wc-settings',
+                    'tab'       => 'integration',
+                    'section'   => 'target_logistics',
+                    'tl_seeded' => $created,
+                ),
+                admin_url( 'admin.php' )
+            );
+            wp_safe_redirect( $redirect_url );
+            exit;
+        }
 
-        wp_safe_redirect( $redirect_url );
-        exit;
+        if ( 'seed_orders' === $action ) {
+            $created = Target_Logistics_Settings::seed_sample_orders();
+            $redirect_url = add_query_arg(
+                array(
+                    'page'             => 'wc-orders',
+                    'tl_orders_seeded' => count( $created ),
+                ),
+                admin_url( 'admin.php' )
+            );
+            wp_safe_redirect( $redirect_url );
+            exit;
+        }
     }
 
     /**
@@ -202,6 +226,18 @@ class Target_Logistics {
                 <p>
                     <strong><?php esc_html_e( 'Target Logistics:', 'wc-target-logistics' ); ?></strong>
                     <?php echo esc_html( sprintf( __( 'Successfully generated/updated %d sample products with realistic weights, dimensions, and HS codes! Go to Products to view.', 'wc-target-logistics' ), $count ) ); ?>
+                </p>
+            </div>
+            <?php
+        }
+
+        if ( isset( $_GET['tl_orders_seeded'] ) ) {
+            $count = absint( $_GET['tl_orders_seeded'] );
+            ?>
+            <div class="notice notice-success is-dismissible">
+                <p>
+                    <strong><?php esc_html_e( 'Target Logistics:', 'wc-target-logistics' ); ?></strong>
+                    <?php echo esc_html( sprintf( __( 'Successfully created %d sample production test orders (Kuwait Domestic, Saudi Arabia GCC, and UAE Dubai)! Click into any order below to test live quotation and 1-click booking.', 'wc-target-logistics' ), $count ) ); ?>
                 </p>
             </div>
             <?php

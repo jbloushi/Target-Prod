@@ -84,6 +84,11 @@ class Target_Logistics_Settings extends WC_Integration {
                 'type'        => 'target_logistics_seed_btn',
                 'description' => __( 'One-click generate 5 sample products with weights, dimensions & HS codes for shipping tests.', 'wc-target-logistics' ),
             ),
+            'seed_orders_button' => array(
+                'title'       => __( 'Sample Test Orders', 'wc-target-logistics' ),
+                'type'        => 'target_logistics_seed_orders_btn',
+                'description' => __( 'One-click generate 3 ready-to-test orders (Domestic Kuwait, Saudi Arabia GCC, and UAE) with real products, weights & customer phones.', 'wc-target-logistics' ),
+            ),
 
             // Section: Warehouse / Shipper Details
             'sender_section' => array(
@@ -551,5 +556,192 @@ class Target_Logistics_Settings extends WC_Integration {
         }
 
         return $created;
+    }
+
+    /**
+     * Custom field renderer for Seed Orders button
+     */
+    public function generate_target_logistics_seed_orders_btn_html( $key, $data ) {
+        $defaults  = array(
+            'title'       => '',
+            'description' => '',
+        );
+        $data = wp_parse_args( $data, $defaults );
+
+        $direct_url = wp_nonce_url(
+            admin_url( 'admin.php?page=wc-settings&tab=integration&section=target_logistics&tl_action=seed_orders' ),
+            'target_logistics_seed_direct'
+        );
+
+        ob_start();
+        ?>
+        <tr valign="top">
+            <th scope="row" class="titledesc">
+                <label><?php echo esc_html( $data['title'] ); ?></label>
+            </th>
+            <td class="forminp">
+                <button type="button" class="button button-primary" id="tl-btn-seed-orders">
+                    <span class="dashicons dashicons-cart" style="vertical-align: middle; margin-right: 4px;"></span>
+                    <?php esc_html_e( 'Generate 3 Sample Test Orders', 'wc-target-logistics' ); ?>
+                </button>
+                <a href="<?php echo esc_url( $direct_url ); ?>" class="button button-secondary" style="margin-left: 6px;">
+                    <span class="dashicons dashicons-download" style="vertical-align: middle; margin-right: 4px;"></span>
+                    <?php esc_html_e( 'Direct Order Import', 'wc-target-logistics' ); ?>
+                </a>
+                <span id="tl-seed-orders-status" style="margin-left: 10px; font-weight: 600;"></span>
+                <p class="description"><?php echo esc_html( $data['description'] ); ?></p>
+            </td>
+        </tr>
+        <?php
+        return ob_get_clean();
+    }
+
+    /**
+     * AJAX handler for Seeding Sample Orders
+     */
+    public function ajax_seed_orders() {
+        check_ajax_referer( 'target_logistics_admin_nonce', 'security' );
+
+        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+            wp_send_json_error( array( 'message' => __( 'Permission denied.', 'wc-target-logistics' ) ) );
+        }
+
+        $order_ids = self::seed_sample_orders();
+
+        wp_send_json_success( array(
+            'message' => sprintf( __( 'Created %d test orders (Kuwait Domestic, Saudi Arabia, UAE)! Go to WooCommerce > Orders to view.', 'wc-target-logistics' ), count( $order_ids ) ),
+            'orders'  => $order_ids,
+        ) );
+    }
+
+    /**
+     * Core worker to seed 3 ready-to-test orders
+     *
+     * @return array Created order IDs.
+     */
+    public static function seed_sample_orders() {
+        // Ensure products exist first
+        self::seed_sample_products();
+
+        $sample_orders = array(
+            // 1. Domestic Kuwait Order
+            array(
+                'customer' => array(
+                    'first_name' => 'Fahad',
+                    'last_name'  => 'Al-Otaibi',
+                    'company'    => 'Al-Otaibi Trading',
+                    'email'      => 'fahad.otaibi@example.kw',
+                    'phone'      => '+96599123456',
+                    'address_1'  => 'Block 3, Street 15, Villa 22',
+                    'address_2'  => 'Floor 2, Apt 4',
+                    'city'       => 'Kuwait City',
+                    'state'      => 'Capital',
+                    'postcode'   => '13001',
+                    'country'    => 'KW',
+                ),
+                'items' => array(
+                    array( 'sku' => 'OUD-ROYAL-100', 'qty' => 1, 'price' => 28.500 ),
+                    array( 'sku' => 'MBK-GOLD-01',   'qty' => 1, 'price' => 12.000 ),
+                ),
+                'shipping_title' => 'Target Express Delivery',
+                'shipping_cost'  => 2.875,
+                'carrier_code'   => 'INTERNAL',
+                'service_code'   => 'DOM',
+                'note'           => 'Kuwait Domestic Delivery Test Order',
+            ),
+            // 2. Regional GCC - Saudi Arabia (Riyadh)
+            array(
+                'customer' => array(
+                    'first_name' => 'Abdullah',
+                    'last_name'  => 'Al-Ghamdi',
+                    'company'    => 'Gulf Digital Tech',
+                    'email'      => 'a.ghamdi@example.sa',
+                    'phone'      => '+966501234567',
+                    'address_1'  => 'King Fahd Road, Al Olaya District',
+                    'address_2'  => 'Al Anoud Tower, Floor 14',
+                    'city'       => 'Riyadh',
+                    'state'      => 'Riyadh Province',
+                    'postcode'   => '12214',
+                    'country'    => 'SA',
+                ),
+                'items' => array(
+                    array( 'sku' => 'ABY-SILK-BLK', 'qty' => 1, 'price' => 45.000 ),
+                ),
+                'shipping_title' => 'Target Express (DHL Express Worldwide)',
+                'shipping_cost'  => 11.213,
+                'carrier_code'   => 'DGR',
+                'service_code'   => 'P',
+                'note'           => 'GCC International Export Test Order',
+            ),
+            // 3. Regional GCC - UAE (Dubai)
+            array(
+                'customer' => array(
+                    'first_name' => 'Rashid',
+                    'last_name'  => 'Al-Maktoum',
+                    'company'    => 'Emirates Commercial Est',
+                    'email'      => 'rashid.m@example.ae',
+                    'phone'      => '+971501234567',
+                    'address_1'  => 'Sheikh Zayed Road, Trade Centre 2',
+                    'address_2'  => 'Office 302',
+                    'city'       => 'Dubai',
+                    'state'      => 'Dubai',
+                    'postcode'   => '00000',
+                    'country'    => 'AE',
+                ),
+                'items' => array(
+                    array( 'sku' => 'CHG-3IN1-WHT',  'qty' => 2, 'price' => 19.000 ),
+                    array( 'sku' => 'WTC-STRAP-BRN', 'qty' => 1, 'price' => 14.500 ),
+                ),
+                'shipping_title' => 'Target Express (DHL Express Worldwide)',
+                'shipping_cost'  => 12.500,
+                'carrier_code'   => 'DGR',
+                'service_code'   => 'P',
+                'note'           => 'UAE International Export Test Order',
+            ),
+        );
+
+        $created_orders = array();
+
+        foreach ( $sample_orders as $order_data ) {
+            $order = wc_create_order();
+            if ( ! $order || is_wp_error( $order ) ) {
+                continue;
+            }
+
+            // Set addresses
+            $order->set_address( $order_data['customer'], 'billing' );
+            $order->set_address( $order_data['customer'], 'shipping' );
+
+            // Add line items
+            foreach ( $order_data['items'] as $item_info ) {
+                $product_id = wc_get_product_id_by_sku( $item_info['sku'] );
+                if ( $product_id ) {
+                    $order->add_product( wc_get_product( $product_id ), $item_info['qty'] );
+                }
+            }
+
+            // Add shipping method line item
+            $shipping_item = new WC_Order_Item_Shipping();
+            $shipping_item->set_method_title( $order_data['shipping_title'] );
+            $shipping_item->set_method_id( 'target_logistics_shipping' );
+            $shipping_item->set_total( $order_data['shipping_cost'] );
+            if ( ! empty( $order_data['carrier_code'] ) ) {
+                $shipping_item->add_meta_data( 'carrier_code', $order_data['carrier_code'] );
+            }
+            if ( ! empty( $order_data['service_code'] ) ) {
+                $shipping_item->add_meta_data( 'service_code', $order_data['service_code'] );
+            }
+            $order->add_item( $shipping_item );
+
+            // Status and notes
+            $order->set_status( 'processing' );
+            $order->set_customer_note( $order_data['note'] );
+            $order->calculate_totals();
+            $order->save();
+
+            $created_orders[] = $order->get_id();
+        }
+
+        return $created_orders;
     }
 }

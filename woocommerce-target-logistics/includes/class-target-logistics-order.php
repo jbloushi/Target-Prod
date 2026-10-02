@@ -191,10 +191,41 @@ class Target_Logistics_Order_Manager {
                         break;
                     }
                     ?>
+                    <?php
+                    $item_count       = $order->get_item_count();
+                    $receiver_country = $order->get_shipping_country() ?: $order->get_billing_country();
+                    $receiver_phone   = $order->get_billing_phone();
+                    $is_incomplete    = ( 0 === $item_count || empty( $receiver_country ) || empty( $receiver_phone ) );
+                    ?>
+
+                    <?php if ( $is_incomplete ) : ?>
+                        <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 10px; margin-bottom: 12px;">
+                            <div style="font-weight: 700; color: #92400e; font-size: 12px; margin-bottom: 4px;">
+                                <span class="dashicons dashicons-info" style="vertical-align: middle; color: #d97706; font-size: 16px;"></span>
+                                <?php esc_html_e( 'Order Incomplete for Live Quotation', 'wc-target-logistics' ); ?>
+                            </div>
+                            <ul style="margin: 0 0 8px 16px; padding: 0; font-size: 11px; color: #78350f; list-style-type: disc;">
+                                <?php if ( 0 === $item_count ) : ?>
+                                    <li><?php esc_html_e( 'No items added. Add product items in the order.', 'wc-target-logistics' ); ?></li>
+                                <?php endif; ?>
+                                <?php if ( empty( $receiver_country ) ) : ?>
+                                    <li><?php esc_html_e( 'No shipping country set (e.g. Kuwait or Saudi Arabia).', 'wc-target-logistics' ); ?></li>
+                                <?php endif; ?>
+                                <?php if ( empty( $receiver_phone ) ) : ?>
+                                    <li><?php esc_html_e( 'No customer phone number set in billing details.', 'wc-target-logistics' ); ?></li>
+                                <?php endif; ?>
+                            </ul>
+                            <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=wc-settings&tab=integration&section=target_logistics&tl_action=seed_orders' ), 'target_logistics_seed_direct' ) ); ?>" class="button button-small button-primary" style="display: block; text-align: center;">
+                                <span class="dashicons dashicons-cart" style="vertical-align: middle; font-size: 14px;"></span>
+                                <?php esc_html_e( 'Generate 3 Ready-to-Test Orders (1-Click)', 'wc-target-logistics' ); ?>
+                            </a>
+                        </div>
+                    <?php endif; ?>
+
                     <div class="tl-summary-box">
                         <div class="tl-route-row">
                             <span class="dashicons dashicons-location-alt"></span>
-                            <span><strong><?php esc_html_e( 'To:', 'wc-target-logistics' ); ?></strong> <?php echo esc_html( $order->get_shipping_city() ?: $order->get_billing_city() ); ?>, <?php echo esc_html( $order->get_shipping_country() ?: $order->get_billing_country() ); ?></span>
+                            <span><strong><?php esc_html_e( 'To:', 'wc-target-logistics' ); ?></strong> <?php echo esc_html( ( $order->get_shipping_city() ?: $order->get_billing_city() ) . ', ' . ( $order->get_shipping_country() ?: $order->get_billing_country() ) ); ?></span>
                         </div>
                         <div class="tl-route-row">
                             <span class="dashicons dashicons-cart"></span>
@@ -396,6 +427,15 @@ class Target_Logistics_Order_Manager {
 
         if ( ! $order ) {
             wp_send_json_error( array( 'message' => __( 'Order not found.', 'wc-target-logistics' ) ) );
+        }
+
+        if ( $order->get_item_count() === 0 ) {
+            wp_send_json_error( array( 'message' => __( 'This order has 0 items. Please add product items to the order before requesting quotes.', 'wc-target-logistics' ) ) );
+        }
+
+        $dest_country = $order->get_shipping_country() ?: $order->get_billing_country();
+        if ( empty( $dest_country ) ) {
+            wp_send_json_error( array( 'message' => __( 'Shipping country is not set. Please set the customer country (e.g. Kuwait or Saudi Arabia) before requesting quotes.', 'wc-target-logistics' ) ) );
         }
 
         $res = $this->pickup_service->get_order_quotes( $order );
