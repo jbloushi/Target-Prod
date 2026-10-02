@@ -9,7 +9,7 @@ router.use(authController.protect);
 
 router
     .route('/')
-    .get(authorize('VIEW_ALL_SHIPMENTS'), organizationController.getAllOrganizations)
+    .get(organizationController.getAllOrganizations)
     .post(authorize('MANAGE_ORGS'), organizationController.createOrganization);
 
 router

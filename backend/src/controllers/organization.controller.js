@@ -39,6 +39,33 @@ exports.createOrganization = async (req, res) => {
  */
 exports.getAllOrganizations = async (req, res) => {
     try {
+        const user = req.user;
+        const isOps = ['admin', 'manager', 'staff', 'accounting'].includes(user?.role);
+
+        // If not staff/admin, only return the user's assigned organization (or empty array)
+        if (!isOps) {
+            if (user?.organizationId) {
+                const org = await prisma.organization.findUnique({
+                    where: { id: user.organizationId },
+                    include: {
+                        members: {
+                            select: { id: true, name: true, email: true, role: true }
+                        }
+                    }
+                });
+                return res.status(200).json({
+                    success: true,
+                    count: org ? 1 : 0,
+                    data: org ? [org] : []
+                });
+            }
+            return res.status(200).json({
+                success: true,
+                count: 0,
+                data: []
+            });
+        }
+
         const organizations = await prisma.organization.findMany({
             include: {
                 members: {

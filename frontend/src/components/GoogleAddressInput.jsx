@@ -78,7 +78,21 @@ const GoogleAddressInput = ({
     const [options, setOptions] = useState([]);
     const [loadingSuggestions, setLoadingSuggestions] = useState(false);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const [clientSdkFailed, setClientSdkFailed] = useState(() => Boolean(window.__googleMapsAuthFailed));
     const containerRef = useRef(null);
+
+    // Detect Google Maps client-side auth/activation failure (e.g. ApiNotActivatedMapError)
+    useEffect(() => {
+        const origAuthFailure = window.gm_authFailure;
+        window.gm_authFailure = () => {
+            window.__googleMapsAuthFailed = true;
+            setClientSdkFailed(true);
+            if (typeof origAuthFailure === 'function') origAuthFailure();
+        };
+        if (window.__googleMapsAuthFailed) {
+            setClientSdkFailed(true);
+        }
+    }, []);
 
     const { isLoaded, loadError } = useJsApiLoader({
         id: 'google-map-script',
@@ -111,6 +125,27 @@ const GoogleAddressInput = ({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    // Helper to query backend geocode proxy
+    const fetchBackendSuggestions = async (queryText) => {
+        try {
+            const res = await api.get('/geocode/autocomplete', {
+                params: { query: queryText }
+            });
+            const rawList = res.data?.data || res.data || [];
+            if (Array.isArray(rawList) && rawList.length > 0) {
+                return rawList.map((item) => ({
+                    placeId: item.placeId || item.place_id,
+                    description: item.description || item.formattedAddress || item.mainText,
+                    mainText: item.mainText || item.description || item.city,
+                    secondaryText: item.secondaryText || item.country || ''
+                }));
+            }
+        } catch (backendErr) {
+            console.debug('Backend geocode autocomplete fallback failed:', backendErr.message);
+        }
+        return [];
+    };
+
     useEffect(() => {
         let cancelled = false;
 
@@ -123,6 +158,16 @@ const GoogleAddressInput = ({
             try {
                 setLoadingSuggestions(true);
 
+                // If client SDK failed or is disabled or has auth errors, use backend proxy directly
+                if (clientSdkFailed || window.__googleMapsAuthFailed || loadError || !apiKey) {
+                    const backendResults = await fetchBackendSuggestions(debouncedInput);
+                    if (!cancelled) {
+                        setOptions(backendResults);
+                        setIsDropdownOpen(backendResults.length > 0);
+                    }
+                    return;
+                }
+
                 // Strategy A: Google Maps Client SDK Autocomplete
                 if (window.google?.maps?.places?.AutocompleteService) {
                     try {
@@ -132,6 +177,10 @@ const GoogleAddressInput = ({
                                 if (status === window.google.maps.places.PlacesServiceStatus.OK && Array.isArray(res)) {
                                     resolve(res);
                                 } else {
+                                    if (status === 'REQUEST_DENIED' || status === 'OVER_QUERY_LIMIT') {
+                                        window.__googleMapsAuthFailed = true;
+                                        setClientSdkFailed(true);
+                                    }
                                     resolve([]);
                                 }
                             });
@@ -152,11 +201,13 @@ const GoogleAddressInput = ({
                         }
                     } catch (clientPlacesErr) {
                         console.debug('Client AutocompleteService error, trying backend fallback:', clientPlacesErr.message);
+                        window.__googleMapsAuthFailed = true;
+                        setClientSdkFailed(true);
                     }
                 }
 
                 // Strategy B: Modern Places Library importLibrary
-                if (window.google?.maps?.importLibrary) {
+                if (window.google?.maps?.importLibrary && !clientSdkFailed && !window.__googleMapsAuthFailed) {
                     try {
                         const placesLib = await window.google.maps.importLibrary('places');
                         const AutocompleteSuggestion = placesLib?.AutocompleteSuggestion;
@@ -189,34 +240,16 @@ const GoogleAddressInput = ({
                         }
                     } catch (newPlacesErr) {
                         console.debug('Modern Places library fetch failed:', newPlacesErr.message);
+                        window.__googleMapsAuthFailed = true;
+                        setClientSdkFailed(true);
                     }
                 }
 
                 // Strategy C: Backend Proxy Autocomplete Fallback (/api/geocode/autocomplete)
-                try {
-                    const res = await api.get('/geocode/autocomplete', {
-                        params: { query: debouncedInput }
-                    });
-                    const rawList = res.data?.data || res.data || [];
-                    if (Array.isArray(rawList) && rawList.length > 0) {
-                        const nextOptions = rawList.map((item) => ({
-                            placeId: item.placeId || item.place_id,
-                            description: item.description || item.formattedAddress || item.mainText,
-                            mainText: item.mainText || item.description || item.city,
-                            secondaryText: item.secondaryText || item.country || ''
-                        }));
-                        if (!cancelled) {
-                            setOptions(nextOptions);
-                            setIsDropdownOpen(nextOptions.length > 0);
-                        }
-                        return;
-                    }
-                } catch (backendErr) {
-                    console.debug('Backend geocode autocomplete fallback failed:', backendErr.message);
-                }
-
+                const fallbackList = await fetchBackendSuggestions(debouncedInput);
                 if (!cancelled) {
-                    setOptions([]);
+                    setOptions(fallbackList);
+                    setIsDropdownOpen(fallbackList.length > 0);
                 }
             } catch (suggestionError) {
                 if (!cancelled) {
@@ -235,7 +268,7 @@ const GoogleAddressInput = ({
         return () => {
             cancelled = true;
         };
-    }, [apiKey, debouncedInput, isLoaded]);
+    }, [apiKey, debouncedInput, isLoaded, clientSdkFailed, loadError]);
 
     const handleSelect = async (option) => {
         if (!option) return;
@@ -247,8 +280,8 @@ const GoogleAddressInput = ({
         try {
             let addressData = null;
 
-            // Strategy 1: Google PlacesService getDetails (Client-Side)
-            if (option.placeId && window.google?.maps?.places?.PlacesService) {
+            // Strategy 1: Google PlacesService getDetails (Client-Side) - only if client SDK is healthy
+            if (option.placeId && !clientSdkFailed && !window.__googleMapsAuthFailed && window.google?.maps?.places?.PlacesService) {
                 try {
                     const dummyNode = document.createElement('div');
                     const placesService = new window.google.maps.places.PlacesService(dummyNode);
@@ -262,6 +295,10 @@ const GoogleAddressInput = ({
                                 if (status === window.google.maps.places.PlacesServiceStatus.OK && result) {
                                     resolve(result);
                                 } else {
+                                    if (status === 'REQUEST_DENIED' || status === 'OVER_QUERY_LIMIT') {
+                                        window.__googleMapsAuthFailed = true;
+                                        setClientSdkFailed(true);
+                                    }
                                     resolve(null);
                                 }
                             }
@@ -282,11 +319,13 @@ const GoogleAddressInput = ({
                     }
                 } catch (placesServiceErr) {
                     console.debug('PlacesService.getDetails failed:', placesServiceErr.message);
+                    window.__googleMapsAuthFailed = true;
+                    setClientSdkFailed(true);
                 }
             }
 
-            // Strategy 2: Google Maps Geocoder by placeId or address (Client-Side)
-            if (!addressData && window.google?.maps?.Geocoder) {
+            // Strategy 2: Google Maps Geocoder by placeId or address (Client-Side) - only if client SDK is healthy
+            if (!addressData && !clientSdkFailed && !window.__googleMapsAuthFailed && window.google?.maps?.Geocoder) {
                 try {
                     const geocoder = new window.google.maps.Geocoder();
                     const geocodeReq = option.placeId
@@ -298,6 +337,10 @@ const GoogleAddressInput = ({
                             if (status === 'OK' && results && results[0]) {
                                 resolve(results[0]);
                             } else {
+                                if (status === 'REQUEST_DENIED') {
+                                    window.__googleMapsAuthFailed = true;
+                                    setClientSdkFailed(true);
+                                }
                                 reject(new Error(`Geocoder status: ${status}`));
                             }
                         });
@@ -325,19 +368,24 @@ const GoogleAddressInput = ({
                 try {
                     const res = await api.get(`/geocode/details/${encodeURIComponent(option.placeId)}`);
                     const backendData = res.data?.data || res.data;
-                    if (backendData && (backendData.formattedAddress || backendData.city)) {
+                    if (backendData) {
                         const countryObj = countries.find(c => c.code === backendData.countryCode) || countries.find(c => c.name.toLowerCase() === (backendData.country || '').toLowerCase());
+                        const resolvedCountry = countryObj?.name || backendData.country || (backendData.countryCode === 'KW' ? 'Kuwait' : '');
+                        const resolvedCountryCode = countryObj?.code || backendData.countryCode || (resolvedCountry === 'Kuwait' ? 'KW' : '');
+                        const resolvedCity = backendData.city || (resolvedCountryCode === 'KW' ? 'Kuwait City' : (resolvedCountryCode === 'AE' ? 'Dubai' : ''));
+                        const streetLine = backendData.streetLines?.[0] || (backendData.streetNumber ? `${backendData.streetNumber} ${backendData.route || ''}`.trim() : '') || description;
+
                         addressData = {
                             formattedAddress: backendData.formattedAddress || description,
-                            city: backendData.city || '',
-                            country: countryObj?.name || backendData.country || '',
-                            countryCode: countryObj?.code || backendData.countryCode || '',
-                            postalCode: backendData.postalCode || '',
+                            city: resolvedCity,
+                            country: resolvedCountry,
+                            countryCode: resolvedCountryCode,
+                            postalCode: backendData.postalCode || (resolvedCountryCode === 'KW' ? '00000' : ''),
                             state: backendData.state || '',
-                            streetLines: backendData.streetLines || [backendData.streetNumber ? `${backendData.streetNumber} ${backendData.route || ''}`.trim() : description],
-                            latitude: backendData.latitude,
-                            longitude: backendData.longitude,
-                            phoneCountryCode: countryObj?.dialCode || '+965',
+                            streetLines: [streetLine],
+                            latitude: typeof backendData.latitude === 'number' ? backendData.latitude : (resolvedCountryCode === 'KW' ? 29.3759 : 25.2048),
+                            longitude: typeof backendData.longitude === 'number' ? backendData.longitude : (resolvedCountryCode === 'KW' ? 47.9774 : 55.2708),
+                            phoneCountryCode: countryObj?.dialCode || (resolvedCountryCode === 'KW' ? '+965' : '+971'),
                             validationStatus: 'CONFIRMED'
                         };
                     }

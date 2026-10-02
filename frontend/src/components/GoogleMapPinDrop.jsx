@@ -46,7 +46,20 @@ export const GoogleMapPinDrop = ({
     lat: Number(latitude) || defaultCenter.lat,
     lng: Number(longitude) || defaultCenter.lng
   });
+  const [authFailed, setAuthFailed] = useState(() => Boolean(window.__googleMapsAuthFailed));
   const mapRef = useRef(null);
+
+  useEffect(() => {
+    const orig = window.gm_authFailure;
+    window.gm_authFailure = () => {
+      window.__googleMapsAuthFailed = true;
+      setAuthFailed(true);
+      if (typeof orig === 'function') orig();
+    };
+    if (window.__googleMapsAuthFailed) {
+      setAuthFailed(true);
+    }
+  }, []);
 
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
@@ -201,7 +214,7 @@ export const GoogleMapPinDrop = ({
           marginTop: 8, height, borderRadius: 12, overflow: 'hidden',
           border: `1px solid ${TK.border}`, position: 'relative'
         }}>
-          {isLoaded && apiKey && !loadError ? (
+          {isLoaded && apiKey && !loadError && !authFailed && !window.__googleMapsAuthFailed ? (
             <GoogleMap
               mapContainerStyle={{ width: '100%', height: '100%' }}
               center={position}

@@ -286,23 +286,32 @@ class AddressService {
             const getShortComponent = (type) =>
                 components.find(c => c.types.includes(type))?.short_name || '';
 
-            return {
-                placeId: result.place_id,
-                formattedAddress: result.formatted_address,
-                latitude: result.geometry?.location?.lat,
-                longitude: result.geometry?.location?.lng,
-                streetNumber: getComponent('street_number'),
-                route: getComponent('route'),
-                streetLines: [
-                    `${getComponent('street_number')} ${getComponent('route')}`.trim() || getComponent('sublocality') || getComponent('locality') || result.formatted_address?.split(',')[0]
-                ].filter(Boolean),
-                city: getComponent('locality') || getComponent('postal_town') || getComponent('administrative_area_level_2') || getComponent('sublocality'),
-                state: getComponent('administrative_area_level_1'),
-                postalCode: getComponent('postal_code'),
-                country: getComponent('country'),
-                countryCode: getShortComponent('country'),
-                validationStatus: 'PENDING'
-            };
+                const countryCode = getShortComponent('country');
+                let city = getComponent('locality') || getComponent('postal_town') || getComponent('administrative_area_level_2') || getComponent('sublocality');
+                if (!city && countryCode === 'KW') city = 'Kuwait City';
+                if (!city && countryCode === 'AE') city = 'Dubai';
+                if (!city && countryCode === 'SA') city = 'Riyadh';
+                if (!city && countryCode === 'QA') city = 'Doha';
+                if (!city && countryCode === 'BH') city = 'Manama';
+                if (!city && countryCode === 'OM') city = 'Muscat';
+
+                return {
+                    placeId: result.place_id,
+                    formattedAddress: result.formatted_address,
+                    latitude: result.geometry?.location?.lat,
+                    longitude: result.geometry?.location?.lng,
+                    streetNumber: getComponent('street_number'),
+                    route: getComponent('route'),
+                    streetLines: [
+                        `${getComponent('street_number')} ${getComponent('route')}`.trim() || getComponent('sublocality') || getComponent('locality') || result.formatted_address?.split(',')[0]
+                    ].filter(Boolean),
+                    city,
+                    state: getComponent('administrative_area_level_1'),
+                    postalCode: getComponent('postal_code'),
+                    country: getComponent('country'),
+                    countryCode,
+                    validationStatus: 'PENDING'
+                };
         } catch (error) {
             logger.error('Place Details error:', error.message);
             return null;
