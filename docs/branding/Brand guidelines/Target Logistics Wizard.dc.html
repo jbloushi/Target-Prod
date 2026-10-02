@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Manrope', sans-serif; background: #f0f4f8; color: #2a2f32; -webkit-font-smoothing: antialiased; }
+    @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .screen-panel { animation: slideIn 0.22s ease both; }
+    .field-row { display: flex; flex-wrap: wrap; gap: 12px; }
+    .field { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 180px; }
+    .field.half { flex: 1 1 calc(50% - 6px); min-width: 140px; }
+    .field-label { font-size: 11.5px; font-weight: 700; color: #575c60; }
+    .field-label span.req { color: #ef4444; margin-left: 3px; }
+    .field-label span.opt { font-size: 10px; font-weight: 500; color: #8c9196; margin-left: 4px; }
+    .input-wrap { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 12px; border: 1.5px solid #e9edf2; background: #fff; transition: all 0.15s; }
+    .input-wrap:focus-within { border-color: #0050d4; box-shadow: 0 0 0 3px rgba(0,80,212,0.08); }
+    .input-wrap input, .input-wrap select, .input-wrap textarea { border: none; outline: none; background: transparent; font-size: 13px; font-weight: 600; font-family: 'Manrope', sans-serif; color: #1a1f23; width: 100%; }
+    .input-wrap select { cursor: pointer; appearance: none; }
+    .input-icon { font-size: 17px; color: #8c9196; flex-shrink: 0; }
+    .hnav { display: flex; align-items: center; gap: 7px; padding: 7px 13px; border-radius: 9px; font-size: 12.5px; font-weight: 700; color: #6b7280; cursor: pointer; transition: all 0.15s; }
+    .hnav:hover { background: #f0f4f8; color: #0050d4; }
+    .hnav.active { background: #ebf0fc; color: #0050d4; }
+    .subtab { display: flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 9px; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.15s; }
+    .pkg-type-btn { display: flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1.5px solid #e9edf2; border-radius: 10px; font-size: 12px; font-weight: 700; font-family: 'Manrope', sans-serif; background: #fff; color: #575c60; cursor: pointer; transition: all 0.15s; }
+    .pkg-type-btn.active { background: #0050d4; color: #fff; border-color: #0050d4; }
+    .carrier-card { border: 1.5px solid #e9edf2; border-radius: 14px; padding: 16px; cursor: pointer; transition: all 0.15s; background: #fff; }
+    .carrier-card.active { border-color: #0050d4; background: #f5f8ff; box-shadow: 0 0 0 3px rgba(0,80,212,0.08); }
+    .addon-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border: 1.5px solid #e9edf2; border-radius: 10px; cursor: pointer; background: #fff; transition: all 0.15s; }
+    .addon-row.active { border-color: #0050d4; background: #f5f8ff; }
+    .review-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid #f0f4f8; }
+    .review-label { font-size: 11.5px; color: #8c9196; font-weight: 600; }
+    .review-val { font-size: 12.5px; color: #1a1f23; font-weight: 700; text-align: right; max-width: 55%; }
+    .place-sugg { display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; transition: background 0.12s; }
+    .place-sugg:hover { background: #f5f8ff; }
+    .gmap { position: relative; height: 200px; border-radius: 14px; overflow: hidden; border: 1.5px solid #e9edf2;
+      background-color: #e8eef3;
+      background-image:
+        linear-gradient(#dde7ee 2px, transparent 2px),
+        linear-gradient(90deg, #dde7ee 2px, transparent 2px),
+        linear-gradient(#eef3f7 1px, transparent 1px),
+        linear-gradient(90deg, #eef3f7 1px, transparent 1px);
+      background-size: 90px 90px, 90px 90px, 30px 30px, 30px 30px;
+    }
+    .gmap-road { position: absolute; background: #fff; box-shadow: 0 0 0 1px #d4dde6; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; } ::-webkit-scrollbar-thumb { background: #d0d7de; border-radius: 99px; }
+  </style>
+</helmet>
+
+<div style="display:flex; flex-direction:column; min-height:100vh;">
+
+  <!-- ══ SYSTEM NAV HEADER ══ -->
+  <header style="background:#fff; border-bottom:1px solid #e9edf2; padding:0 28px; height:62px; display:flex; align-items:center; gap:24px; flex-shrink:0; position:sticky; top:0; z-index:20;">
+    <div style="display:flex; align-items:center; gap:9px;">
+      <svg width="30" height="30" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="32" height="32" rx="7" fill="#0050d4"/><polygon points="8,8 24,16 8,24" fill="white"/></svg>
+      <div><div style="font-size:15px; font-weight:900; color:#1a1f23; letter-spacing:-0.5px; line-height:1.1;">target</div><div style="font-size:8.5px; font-weight:600; color:#8c9196; letter-spacing:0.06em;">logistics</div></div>
+    </div>
+    <nav style="display:flex; align-items:center; gap:2px; margin-left:12px;">
+      <div class="hnav active"><span class="material-symbols-outlined" style="font-size:17px;">add_box</span>New Shipment</div>
+      <div class="hnav"><span class="material-symbols-outlined" style="font-size:17px;">inventory_2</span>Shipments</div>
+      <div class="hnav"><span class="material-symbols-outlined" style="font-size:17px;">location_on</span>Address Book</div>
+      <div class="hnav"><span class="material-symbols-outlined" style="font-size:17px;">receipt_long</span>Finance</div>
+    </nav>
+    <div style="margin-left:auto; display:flex; align-items:center; gap:12px;">
+      <button style="display:flex; align-items:center; gap:5px; padding:7px 13px; background:#f0f4f8; color:#575c60; border:1px solid #e9edf2; border-radius:9px; font-size:11.5px; font-weight:700; font-family:'Manrope',sans-serif; cursor:pointer;"><span class="material-symbols-outlined" style="font-size:15px;">upload_file</span>Bulk Import</button>
+      <div style="width:34px; height:34px; background:#ebf0fc; border-radius:50%; display:flex; align-items:center; justify-content:center;"><span style="font-size:14px; font-weight:800; color:#0050d4;">A</span></div>
+    </div>
+  </header>
+
+  <!-- ══ BODY: wizard-step sidebar + main ══ -->
+  <div style="display:flex; flex:1; min-height:0;">
+
+    <!-- ── Wizard steps sidebar ── -->
+    <aside style="width:296px; flex-shrink:0; background:#fff; border-right:1px solid #e9edf2; padding:26px 22px; display:flex; flex-direction:column;">
+      <div style="font-size:11px; font-weight:800; color:#8c9196; text-transform:uppercase; letter-spacing:0.12em; margin-bottom:4px;">Create Shipment</div>
+      <div style="font-size:12px; font-weight:600; color:#8c9196; margin-bottom:22px;">Step {{ currentStep }} of 4 · Est. {{ timeEst }}</div>
+
+      <!-- Step 1 -->
+      <div style="display:flex; gap:13px;">
+        <div style="display:flex; flex-direction:column; align-items:center; flex-shrink:0;">
+          <div style="width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; background:{{ st1bg }}; color:{{ st1color }}; border:{{ st1border }};"><sc-if value="{{ st1check }}" hint-placeholder-val="{{ false }}"><span class="material-symbols-outlined" style="font-size:17px;">check</span></sc-if><sc-if value="{{ st1num }}" hint-placeholder-val="{{ true }}">1</sc-if></div>
+          <div style="width:2px; flex:1; min-height:20px; background:{{ st1line }}; margin:4px 0;"></div>
+        </div>
+        <div style="flex:1; padding-top:4px;">
+          <div onClick="{{ goScreen0 }}" style="font-size:13.5px; font-weight:800; color:{{ st1label }}; cursor:pointer;">Origin &amp; Consignee</div>
+          <div style="font-size:11px; color:#a0a6ad; margin-top:1px;">Shipper &amp; receiver details</div>
+          <sc-if value="{{ st1open }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex; flex-direction:column; gap:3px; margin-top:10px;">
+              <div onClick="{{ goScreen0 }}" style="display:flex; align-items:center; gap:7px; padding:5px 9px; border-radius:7px; cursor:pointer; background:{{ sub0bg }};"><span style="width:6px; height:6px; border-radius:50%; background:{{ sub0dot }};"></span><span style="font-size:11.5px; font-weight:700; color:{{ sub0color }};">Origin (Shipper)</span></div>
+              <div onClick="{{ goScreen1 }}" style="display:flex; align-items:center; gap:7px; padding:5px 9px; border-radius:7px; cursor:pointer; background:{{ sub1bg }};"><span style="width:6px; height:6px; border-radius:50%; background:{{ sub1dot }};"></span><span style="font-size:11.5px; font-weight:700; color:{{ sub1color }};">Consignee (Receiver)</span></div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div style="display:flex; gap:13px;">
+        <div style="display:flex; flex-direction:column; align-items:center; flex-shrink:0;">
+          <div style="width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; background:{{ st2bg }}; color:{{ st2color }}; border:{{ st2border }};"><sc-if value="{{ st2check }}" hint-placeholder-val="{{ false }}"><span class="material-symbols-outlined" style="font-size:17px;">check</span></sc-if><sc-if value="{{ st2num }}" hint-placeholder-val="{{ true }}">2</sc-if></div>
+          <div style="width:2px; flex:1; min-height:20px; background:{{ st2line }}; margin:4px 0;"></div>
+        </div>
+        <div style="flex:1; padding:4px 0 14px;">
+          <div onClick="{{ goScreen2 }}" style="font-size:13.5px; font-weight:800; color:{{ st2label }}; cursor:pointer;">Package Details</div>
+          <div style="font-size:11px; color:#a0a6ad; margin-top:1px;">Dimensions, value, insurance, DGR</div>
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div style="display:flex; gap:13px;">
+        <div style="display:flex; flex-direction:column; align-items:center; flex-shrink:0;">
+          <div style="width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; background:{{ st3bg }}; color:{{ st3color }}; border:{{ st3border }};"><sc-if value="{{ st3check }}" hint-placeholder-val="{{ false }}"><span class="material-symbols-outlined" style="font-size:17px;">check</span></sc-if><sc-if value="{{ st3num }}" hint-placeholder-val="{{ true }}">3</sc-if></div>
+          <div style="width:2px; flex:1; min-height:20px; background:{{ st3line }}; margin:4px 0;"></div>
+        </div>
+        <div style="flex:1; padding-top:4px;">
+          <div onClick="{{ goScreen3 }}" style="font-size:13.5px; font-weight:800; color:{{ st3label }}; cursor:pointer;">Carrier &amp; Customs</div>
+          <div style="font-size:11px; color:#a0a6ad; margin-top:1px;">Rates, service &amp; declarations</div>
+          <sc-if value="{{ st3open }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; flex-direction:column; gap:3px; margin-top:10px;">
+              <div onClick="{{ goScreen3 }}" style="display:flex; align-items:center; gap:7px; padding:5px 9px; border-radius:7px; cursor:pointer; background:{{ sub3bg }};"><span style="width:6px; height:6px; border-radius:50%; background:{{ sub3dot }};"></span><span style="font-size:11.5px; font-weight:700; color:{{ sub3color }};">Carrier &amp; Rates</span></div>
+              <div onClick="{{ goScreen4 }}" style="display:flex; align-items:center; gap:7px; padding:5px 9px; border-radius:7px; cursor:pointer; background:{{ sub4bg }};"><span style="width:6px; height:6px; border-radius:50%; background:{{ sub4dot }};"></span><span style="font-size:11.5px; font-weight:700; color:{{ sub4color }};">Customs &amp; Logistics</span></div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+
+      <!-- Step 4 -->
+      <div style="display:flex; gap:13px;">
+        <div style="display:flex; flex-direction:column; align-items:center; flex-shrink:0;">
+          <div style="width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; background:{{ st4bg }}; color:{{ st4color }}; border:{{ st4border }};">4</div>
+        </div>
+        <div style="flex:1; padding-top:4px;">
+          <div onClick="{{ goScreen5 }}" style="font-size:13.5px; font-weight:800; color:{{ st4label }}; cursor:pointer;">Review &amp; Dispatch</div>
+          <div style="font-size:11px; color:#a0a6ad; margin-top:1px;">Confirm &amp; book shipment</div>
+        </div>
+      </div>
+
+      <div style="margin-top:auto; padding-top:20px;">
+        <div style="display:flex; align-items:center; gap:8px; padding:11px 13px; background:#f8fafc; border:1px solid #e9edf2; border-radius:11px;">
+          <span class="material-symbols-outlined" style="font-size:18px; color:#059669;">verified_user</span>
+          <span style="font-size:11px; font-weight:600; color:#575c60; line-height:1.35;">Progress auto-saved as draft</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ── Main content ── -->
+    <main style="flex:1; min-width:0; display:flex; flex-direction:column;">
+      <!-- breadcrumb -->
+      <div style="padding:14px 32px 0; display:flex; align-items:center; gap:8px;">
+        <span class="material-symbols-outlined" style="font-size:15px; color:#8c9196;">home</span>
+        <span style="font-size:12px; color:#8c9196;">Dashboard</span><span style="font-size:12px; color:#8c9196;">/</span>
+        <span style="font-size:12px; color:#8c9196;">Shipments</span><span style="font-size:12px; color:#8c9196;">/</span>
+        <span style="font-size:12px; font-weight:700; color:#1a1f23;">New Shipment</span>
+      </div>
+
+      <div style="flex:1; overflow-y:auto; padding:18px 32px 60px;">
+
+        <!-- Title + subtabs -->
+        <div style="display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:14px; margin-bottom:8px;">
+          <div>
+            <h1 style="font-size:22px; font-weight:900; color:#1a1f23; letter-spacing:-0.5px;">{{ screenTitle }}</h1>
+            <p style="font-size:12.5px; color:#8c9196; margin-top:3px;">{{ screenSub }}</p>
+          </div>
+        </div>
+        <!-- progress -->
+        <div style="height:4px; background:#e9edf2; border-radius:99px; overflow:hidden; margin:14px 0 20px;"><div style="height:100%; background:#0050d4; border-radius:99px; transition:width 0.3s ease; width:{{ progressPct }};"></div></div>
+
+        <!-- Sub-tabs for multi-screen steps -->
+        <sc-if value="{{ showSubtabs1 }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex; gap:6px; margin-bottom:16px;">
+            <div onClick="{{ goScreen0 }}" class="subtab" style="background:{{ tab0bg }}; color:{{ tab0color }}; border:1.5px solid {{ tab0border }};"><span class="material-symbols-outlined" style="font-size:15px;">flight_takeoff</span>Origin</div>
+            <div onClick="{{ goScreen1 }}" class="subtab" style="background:{{ tab1bg }}; color:{{ tab1color }}; border:1.5px solid {{ tab1border }};"><span class="material-symbols-outlined" style="font-size:15px;">flight_land</span>Consignee</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ showSubtabs3 }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex; gap:6px; margin-bottom:16px;">
+            <div onClick="{{ goScreen3 }}" class="subtab" style="background:{{ tab3bg }}; color:{{ tab3color }}; border:1.5px solid {{ tab3border }};"><span class="material-symbols-outlined" style="font-size:15px;">local_shipping</span>Carrier &amp; Rates</div>
+            <div onClick="{{ goScreen4 }}" class="subtab" style="background:{{ tab4bg }}; color:{{ tab4color }}; border:1.5px solid {{ tab4border }};"><span class="material-symbols-outlined" style="font-size:15px;">event_note</span>Customs</div>
+          </div>
+        </sc-if>
+
+        <!-- ═══ SCREEN 0: ORIGIN ═══ -->
+        <sc-if value="{{ showScreen0 }}" hint-placeholder-val="{{ true }}">
+          <div class="screen-panel" style="display:grid; grid-template-columns:1.1fr 0.9fr; gap:16px; align-items:start;">
+            <div style="background:#fff; border:1px solid #e9edf2; border-radius:16px; padding:22px;">
+              <div style="font-size:14px; font-weight:800; color:#1a1f23; margin-bottom:14px;">Shipper Contact</div>
+              <div class="field-row" style="margin-bottom:14px;">
+                <div class="field half"><div class="field-label">Full Name <span class="req">*</span></div><div class="input-wrap"><span class="material-symbols-outlined input-icon">person</span><input placeholder="Ahmed Al-Mutawa" /></div></div>
+                <div class="field half"><div class="field-label">Company <span class="opt">(Optional)</span></div><div class="input-wrap"><span class="material-symbols-outlined input-icon">business</span><input placeholder="Al-Bahar Logistics" /></div></div>
+                <div class="field half"><div class="field-label">Phone <span class="req">*</span></div><div class="input-wrap"><span class="material-symbols-outlined input-icon">phone</span><select style="max-width:70px; font-size:12px; color:#0050d4; font-weight:700; background:#f0f4f8; border-radius:6px; padding:2px 4px; flex-shrink:0;"><option>+965</option><option>+971</option><option>+966</option></select><input placeholder="5000 0000" style="font-family:monospace;" /></div></div>
+                <div class="field half"><div class="field-label">Email <span class="opt">(Optional)</span></div><div class="input-wrap"><span class="material-symbols-outlined input-icon">mail</span><input placeholder="contact@company.com" /></div></div>
+              </div>
+              <div class="field" style="margin-bottom:12px;">
+                <div class="field-label">Street Address <span class="req">*</span></div>
+                <div class="input-wrap"><span class="material-symbols-outlined input-icon">home</span><input placeholder="Block 1, Street 14, Shuwaikh" /></div>
+              </div>
+              <div class="field-row">
+                <div class="field half"><div class="field-label">City <span class="req">*</span></div><div class="input-wrap"><span class="material-symbols-outlined input-icon">location_city</span><input placeholder="Kuwait City" /></div></div>
+                <div class="field half"><div class="field-label">Country <span class="req">*</span></div><div class="input-wrap"><span class="material-symbols-outlined input-icon">public</span><select><option>🇰🇼 Kuwait</option><option>🇦🇪 UAE</option><option>🇸🇦 Saudi Arabia</option></select></div></div>
+              </div>
+              <div style="display:flex; align-items:center; gap:10px; padding:11px 13px; border:1.5px solid #e9edf2; border-radius:11px; margin-top:14px; cursor:pointer; background:#f8fafc;">
+                <div style="width:17px; height:17px; border:2px solid #0050d4; border-radius:4px; background:#0050d4; display:flex; align-items:center; justify-content:center; flex-shrink:0;"><span class="material-symbols-outlined" style="font-size:12px; color:#fff;">check</span></div>
+                <span style="font-size:11.5px; font-weight:600; color:#1a1f23;">Save shipper to Address Book</span>
+              </div>
+            </div>
+            <!-- Places + map -->
+            <div style="background:#fff; border:1px solid #e9edf2; border-radius:16px; padding:22px;">
+              <div style="display:flex; align-items:center; gap:7px; margin-bottom:12px;">
+                <span class="material-symbols-outlined" style="font-size:18px; color:#0050d4;">travel_explore</span>
+                <div style="font-size:14px; font-weight:800; color:#1a1f23;">Find Location</div>
+              </div>
+              <div style="position:relative; margin-bottom:6px;">
+                <div class="input-wrap"><span class="material-symbols-outlined input-icon" style="color:#0050d4;">search</span><input value="Shuwaikh Industrial, Kuwait" /><span class="material-symbols-outlined" style="font-size:16px; color:#8c9196;">mic</span></div>
+                <!-- Google Places autocomplete dropdown -->
+                <div style="position:absolute; left:0; right:0; top:46px; background:#fff; border:1px solid #e9edf2; border-radius:12px; box-shadow:0 10px 30px rgba(16,24,40,0.12); overflow:hidden; z-index:5;">
+                  <div class="place-sugg" style="background:#f5f8ff;"><span class="material-symbols-outlined" style="font-size:18px; color:#ef4444;">location_on</span><div><div style="font-size:12.5px; font-weight:700; color:#1a1f23;">Shuwaikh Industrial Area</div><div style="font-size:10.5px; color:#8c9196;">Kuwait City, Al Asimah, Kuwait</div></div></div>
+                  <div class="place-sugg"><span class="material-symbols-outlined" style="font-size:18px; color:#8c9196;">location_on</span><div><div style="font-size:12.5px; font-weight:700; color:#1a1f23;">Shuwaikh Port</div><div style="font-size:10.5px; color:#8c9196;">Arabian Gulf St, Kuwait</div></div></div>
+                  <div class="place-sugg"><span class="material-symbols-outlined" style="font-size:18px; color:#8c9196;">location_on</span><div><div style="font-size:12.5px; font-weight:700; color:#1a1f23;">Shuwaikh Education District</div><div style="font-size:10.5px; color:#8c9196;">Jamal Abdul Nasser St, Kuwait</div></div></div>
+                  <div style="display:flex; align-items:center; justify-content:flex-end; gap:5px; padding:6px 12px; border-top:1px solid #f0f4f8;"><span style="font-size:9px; color:#8c9196;">powered by</span><span style="font-size:11px; font-weight:800; color:#4285F4;">G</span><span style="font-size:11px; font-weight:800; color:#EA4335;">o</span><span style="font-size:11px; font-weight:800; color:#FBBC05;">o</span><span style="font-size:11px; font-weight:800; color:#4285F4;">g</span><span style="font-size:11px; font-weight:800; color:#34A853;">l</span><span style="font-size:11px; font-weight:800; color:#EA4335;">e</span></div>
+                </div>
+              </div>
+              <!-- Map with pin drop -->
+              <div class="gmap" style="margin-top:62px;">
+                <div class="gmap-road" style="top:40%; left:0; right:0; height:9px;"></div>
+                <div class="gmap-road" style="top:0; bottom:0; left:58%; width:9px;"></div>
+                <div class="gmap-road" style="top:72%; left:0; right:0; height:5px;"></div>
+                <!-- pin -->
+                <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-100%); display:flex; flex-direction:column; align-items:center;">
+                  <span class="material-symbols-outlined" style="font-size:42px; color:#0050d4; filter:drop-shadow(0 4px 6px rgba(0,80,212,0.4)); font-variation-settings:'FILL' 1;">location_on</span>
+                  <div style="width:10px; height:4px; background:rgba(0,0,0,0.2); border-radius:50%; margin-top:-6px;"></div>
+                </div>
+                <!-- controls -->
+                <div style="position:absolute; top:10px; right:10px; display:flex; flex-direction:column; background:#fff; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.15); overflow:hidden;"><div style="padding:5px 8px; font-size:16px; font-weight:700; color:#575c60; border-bottom:1px solid #eee; cursor:pointer;">+</div><div style="padding:5px 8px; font-size:16px; font-weight:700; color:#575c60; cursor:pointer;">−</div></div>
+                <div style="position:absolute; bottom:10px; left:10px; display:flex; align-items:center; gap:6px; padding:6px 10px; background:rgba(255,255,255,0.95); border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.12);"><span class="material-symbols-outlined" style="font-size:14px; color:#0050d4;">my_location</span><span style="font-size:10.5px; font-weight:700; color:#1a1f23; font-family:monospace;">29.3759° N, 47.9774° E</span></div>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px; margin-top:10px;"><span class="material-symbols-outlined" style="font-size:15px; color:#8c9196;">drag_pan</span><span style="font-size:11px; color:#8c9196;">Drag the pin to fine-tune the exact pickup point.</span></div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ═══ SCREEN 1: CONSIGNEE ═══ -->
+        <sc-if value="{{ showScreen1 }}" hint-placeholder-val="{{ false }}">
+          <div class="screen-panel" style="display:grid; grid-template-columns:1.1fr 0.9fr; gap:16px; align-items:start;">
+            <div style="background:#fff; border:1px solid #e9edf2; border-radius:16px; padding:22px;">
+              <div style="font-size:14px; font-weight:800; color:#1a1f23; margin-bottom:14px;">Consignee Contact</div>
+              <div class="field-row" style="margin-bottom:14px;">
+                <div class="field half"><div class="field-label">Full Name <span class="req">*</span></div><div class="input-wrap"><span class="material-symbols-outlined input-icon">person</span><input placeholder="Sara Al-Rashidi" /></div></div>
+                <div class="field half"><div class="field-label">Company <span class="opt">(Optional)</span></div><div class="input-wrap"><span class="material-symbols-outlined input-icon">business</span><input placeholder="Dubai Imports LLC" /></div></div>
+                <div class="field half"><div class="field-label">Phone <span class="req">*</span></div><div class="input-wrap"><span class="material-symbols-outlined input-icon">phone</span><select style="max-width:70px; font-size:12px; color:#0050d4; font-weight:700; background:#f0f4f8; border-radius:6px; padding:2px 4px; flex-shrink:0;"><option>+971</option><option>+966</option><option>+965</option></select><input placeholder="5x xxx xxxx" style="font-family:monospace;" /></div></div>
+                <div class="field half"><div class="field-label">Email <span class="opt">(Optional)</span></div><div class="input-wrap"><span class="material-symbols-outlined input-icon">mail</span><input placeholder="receiver@company.com" /></div></div>
+              </div>
+              <div class="field" style="margin-bottom:12px;">
+                <div class="field-label">Street Address <span class="req">*</span></div>
+                <div class="input-wrap"><span class="material-symbols-outlined input-icon">home</span><input placeholder="Bay Square, Building 4" /></div>
+              </div>
+              <div class="field-row" style="margin-bottom:12px;">
+                <div class="field half"><div class="field-label">City <span class="req">*</span></div><div class="input-wrap"><span class="material-symbols-outlined input-icon">location_city</span><input placeholder="Dubai" /></div></div>
+                <div class="field half"><div class="field-label">Country <span class="req">*</span></div><div class="input-wrap"><span class="material-symbols-outlined input-icon">public</span><select><option>🇦🇪 UAE</option><option>🇸🇦 Saudi Arabia</option><option>🇶🇦 Qatar</option></select></div></div>
+              </div>
+              <div class="field"><div class="field-label">Delivery Instructions <span class="opt">(Optional)</span></div><div class="input-wrap"><span class="material-symbols-outlined input-icon">door_front</span><input placeholder="Gate 3, ring intercom #12" /></div></div>
+            </div>
+            <div style="background:#fff; border:1px solid #e9edf2; border-radius:16px; padding:22px;">
+              <div style="display:flex; align-items:center; gap:7px; margin-bottom:12px;"><span class="material-symbols-outlined" style="font-size:18px; color:#0050d4;">travel_explore</span><div style="font-size:14px; font-weight:800; color:#1a1f23;">Find Location</div></div>
+              <div style="position:relative; margin-bottom:6px;">
+                <div class="input-wrap"><span class="material-symbols-outlined input-icon" style="color:#0050d4;">search</span><input value="Business Bay, Dubai" /><span class="material-symbols-outlined" style="font-size:16px; color:#8c9196;">mic</span></div>
+                <div style="position:absolute; left:0; right:0; top:46px; background:#fff; border:1px solid #e9edf2; border-radius:12px; box-shadow:0 10px 30px rgba(16,24,40,0.12); overflow:hidden; z-index:5;">
+                  <div class="place-sugg" style="background:#f5f8ff;"><span class="material-symbols-outlined" style="font-size:18px; color:#ef4444;">location_on</span><div><div style="font-size:12.5px; font-weight:700; color:#1a1f23;">Bay Square, Business Bay</div><div style="font-size:10.5px; color:#8c9196;">Dubai, United Arab Emirates</div></div></div>
+                  <div class="place-sugg"><span class="material-symbols-outlined" style="font-size:18px; color:#8c9196;">location_on</span><div><div style="font-size:12.5px; font-weight:700; color:#1a1f23;">Bay Avenue Mall</div><div style="font-size:10.5px; color:#8c9196;">Business Bay, Dubai</div></div></div>
+                  <div class="place-sugg"><span class="material-symbols-outlined" style="font-size:18px; color:#8c9196;">location_on</span><div><div style="font-size:12.5px; font-weight:700; color:#1a1f23;">Business Bay Metro Station</div><div style="font-size:10.5px; color:#8c9196;">Sheikh Zayed Rd, Dubai</div></div></div>
+                  <div style="display:flex; align-items:center; justify-content:flex-end; gap:5px; padding:6px 12px; border-top:1px solid #f0f4f8;"><span style="font-size:9px; color:#8c9196;">powered by</span><span style="font-size:11px; font-weight:800; color:#4285F4;">G</span><span style="font-size:11px; font-weight:800; color:#EA4335;">o</span><span style="font-size:11px; font-weight:800; color:#FBBC05;">o</span><span style="font-size:11px; font-weight:800; color:#4285F4;">g</span><span style="font-size:11px; font-weight:800; color:#34A853;">l</span><span style="font-size:11px; font-weight:800; color:#EA4335;">e</span></div>
+                </div>
+              </div>
+              <div class="gmap" style="margin-top:62px;">
+                <div class="gmap-road" style="top:55%; left:0; right:0; height:9px;"></div>
+                <div class="gmap-road" style="top:0; bottom:0; left:42%; width:9px;"></div>
+                <div class="gmap-road" style="top:22%; left:0; right:0; height:5px;"></div>
+                <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-100%); display:flex; flex-direction:column; align-items:center;"><span class="material-symbols-outlined" style="font-size:42px; color:#0050d4; filter:drop-shadow(0 4px 6px rgba(0,80,212,0.4)); font-variation-settings:'FILL' 1;">location_on</span><div style="width:10px; height:4px; background:rgba(0,0,0,0.2); border-radius:50%; margin-top:-6px;"></div></div>
+                <div style="position:absolute; top:10px; right:10px; display:flex; flex-direction:column; background:#fff; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.15); overflow:hidden;"><div style="padding:5px 8px; font-size:16px; font-weight:700; color:#575c60; border-bottom:1px solid #eee; cursor:pointer;">+</div><div style="padding:5px 8px; font-size:16px; font-weight:700; color:#575c60; cursor:pointer;">−</div></div>
+                <div style="position:absolute; bottom:10px; left:10px; display:flex; align-items:center; gap:6px; padding:6px 10px; background:rgba(255,255,255,0.95); border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.12);"><span class="material-symbols-outlined" style="font-size:14px; color:#0050d4;">my_location</span><span style="font-size:10.5px; font-weight:700; color:#1a1f23; font-family:monospace;">25.1850° N, 55.2650° E</span></div>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px; margin-top:10px;"><span class="material-symbols-outlined" style="font-size:15px; color:#8c9196;">drag_pan</span><span style="font-size:11px; color:#8c9196;">Drag the pin to fine-tune the drop-off point.</span></div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ═══ SCREEN 2: PACKAGE ═══ -->
+        <sc-if value="{{ showScreen2 }}" hint-placeholder-val="{{ false }}">
+          <div class="screen-panel">
+            <div style="background:#fff; border:1px solid #e9edf2; border-radius:16px; padding:24px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:20px;">
+                <div style="font-size:14px; font-weight:800; color:#1a1f23;">Package &amp; Cargo</div>
+                <button style="display:flex; align-items:center; gap:5px; padding:7px 12px; background:#fff; border:1.5px solid #e9edf2; border-radius:9px; font-size:11.5px; font-weight:700; font-family:'Manrope',sans-serif; cursor:pointer; color:#575c60;"><span class="material-symbols-outlined" style="font-size:14px;">bookmark_add</span>Save as Template</button>
+              </div>
+              <div style="margin-bottom:20px;">
+                <div style="font-size:11.5px; font-weight:700; color:#575c60; margin-bottom:10px;">Package Container Type</div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                  <button class="pkg-type-btn active"><span class="material-symbols-outlined" style="font-size:15px;">inventory_2</span>Box</button>
+                  <button class="pkg-type-btn"><span class="material-symbols-outlined" style="font-size:15px;">mail</span>Envelope</button>
+                  <button class="pkg-type-btn"><span class="material-symbols-outlined" style="font-size:15px;">pallet</span>Pallet</button>
+                  <button class="pkg-type-btn"><span class="material-symbols-outlined" style="font-size:15px;">category</span>Bag</button>
+                  <button class="pkg-type-btn"><span class="material-symbols-outlined" style="font-size:15px;">deployed_code</span>Crate</button>
+                </div>
+              </div>
+              <div class="field-row" style="margin-bottom:20px;">
+                <div class="field half"><div class="field-label">Weight <span class="req">*</span></div><div class="input-wrap"><span class="material-symbols-outlined input-icon">scale</span><input placeholder="1.0" type="number" /><span style="font-size:11px; font-weight:700; color:#575c60; background:#f0f4f8; padding:2px 7px; border-radius:6px; flex-shrink:0;">kg</span></div></div>
+                <div class="field half"><div class="field-label">Length <span class="req">*</span></div><div class="input-wrap"><input placeholder="20" type="number" /><span style="font-size:11px; font-weight:700; color:#575c60; background:#f0f4f8; padding:2px 7px; border-radius:6px; flex-shrink:0;">cm</span></div></div>
+                <div class="field half"><div class="field-label">Width <span class="req">*</span></div><div class="input-wrap"><input placeholder="15" type="number" /><span style="font-size:11px; font-weight:700; color:#575c60; background:#f0f4f8; padding:2px 7px; border-radius:6px; flex-shrink:0;">cm</span></div></div>
+                <div class="field half"><div class="field-label">Height <span class="req">*</span></div><div class="input-wrap"><input placeholder="10" type="number" /><span style="font-size:11px; font-weight:700; color:#575c60; background:#f0f4f8; padding:2px 7px; border-radius:6px; flex-shrink:0;">cm</span></div></div>
+                <div class="field half"><div class="field-label">Declared Value <span class="req">*</span></div><div class="input-wrap"><span class="material-symbols-outlined input-icon">payments</span><input placeholder="15.000" type="number" /><span style="font-size:11px; font-weight:700; color:#575c60; background:#f0f4f8; padding:2px 7px; border-radius:6px; flex-shrink:0;">KWD</span></div></div>
+                <div class="field half"><div class="field-label">Contents Description <span class="req">*</span></div><div class="input-wrap"><span class="material-symbols-outlined input-icon">description</span><input placeholder="General merchandise" /></div></div>
+              </div>
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 16px; border:1.5px solid #e9edf2; border-radius:12px; cursor:pointer; background:#f8fafc; margin-bottom:10px;">
+                <div style="display:flex; align-items:center; gap:10px;"><div style="width:18px; height:18px; border:2px solid #e9edf2; border-radius:4px; background:#fff; flex-shrink:0;"></div><div><div style="font-size:12px; font-weight:700; color:#1a1f23;">🛡️ Full Cargo Insurance &amp; Loss Protection</div><div style="font-size:11px; color:#8c9196;">1% of declared value, min KWD 2.500</div></div></div>
+              </div>
+              <div style="padding:14px 16px; border:1.5px solid #fde68a; border-radius:12px; background:#fffbeb; cursor:pointer;">
+                <div style="display:flex; align-items:center; gap:10px;"><div style="width:18px; height:18px; border:2px solid #e9edf2; border-radius:4px; background:#fff; flex-shrink:0;"></div><div><div style="display:flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:#1a1f23;"><span class="material-symbols-outlined" style="font-size:15px; color:#d97706;">warning</span>Contains Dangerous Goods (IATA DGR)</div><div style="font-size:11px; color:#8c9196;">Perfumes, lithium batteries, aerosols, flammable liquids</div></div></div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ═══ SCREEN 3: CARRIER ═══ -->
+        <sc-if value="{{ showScreen3 }}" hint-placeholder-val="{{ false }}">
+          <div class="screen-panel">
+            <div style="background:#fff; border:1px solid #e9edf2; border-radius:16px; padding:24px;">
+              <div style="font-size:14px; font-weight:800; color:#1a1f23; margin-bottom:16px;">Select Carrier &amp; Service</div>
+              <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:24px;">
+                <div class="carrier-card active">
+                  <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+                    <div style="display:flex; align-items:center; gap:12px;"><div style="width:40px; height:40px; background:#fef2f2; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0;"><span class="material-symbols-outlined" style="font-size:22px; color:#D40511;">flight_takeoff</span></div><div><div style="font-size:13px; font-weight:800; color:#1a1f23;">DHL Express Global</div><div style="font-size:10.5px; color:#8c9196;">Worldwide priority express · door-to-door</div></div></div>
+                    <div style="text-align:right;"><div style="font-size:17px; font-weight:900; color:#0050d4;">KWD 18.500</div><div style="font-size:10.5px; color:#8c9196;">Est. 2–3 business days</div></div>
+                  </div>
+                </div>
+                <div class="carrier-card">
+                  <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+                    <div style="display:flex; align-items:center; gap:12px;"><div style="width:40px; height:40px; background:#f5f3ff; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0;"><span class="material-symbols-outlined" style="font-size:22px; color:#4D148C;">flight</span></div><div><div style="font-size:13px; font-weight:800; color:#1a1f23;">FedEx Express Global</div><div style="font-size:10.5px; color:#8c9196;">Global priority air · automated customs</div></div></div>
+                    <div style="text-align:right;"><div style="font-size:17px; font-weight:900; color:#1a1f23;">KWD 21.750</div><div style="font-size:10.5px; color:#8c9196;">Est. 2–4 business days</div></div>
+                  </div>
+                </div>
+                <div class="carrier-card">
+                  <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+                    <div style="display:flex; align-items:center; gap:12px;"><div style="width:40px; height:40px; background:#ecfdf5; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0;"><span class="material-symbols-outlined" style="font-size:22px; color:#059669;">electric_rickshaw</span></div><div><div style="font-size:13px; font-weight:800; color:#1a1f23;">Target Dedicated Fleet</div><div style="font-size:10.5px; color:#8c9196;">Domestic same-day · Kuwait only</div></div></div>
+                    <div style="text-align:right;"><div style="font-size:17px; font-weight:900; color:#1a1f23;">KWD 4.500</div><div style="font-size:10.5px; color:#8c9196;">Same day delivery</div></div>
+                  </div>
+                </div>
+              </div>
+              <div style="font-size:11.5px; font-weight:700; color:#575c60; margin-bottom:12px;">Service Add-ons</div>
+              <div style="display:flex; flex-direction:column; gap:6px;">
+                <div class="addon-row"><div style="display:flex; align-items:center; gap:10px;"><span class="material-symbols-outlined" style="font-size:17px; color:#0050d4;">draw</span><div><div style="font-size:12px; font-weight:700; color:#1a1f23;">Direct Signature Required</div><div style="font-size:10.5px; color:#8c9196;">Delivery only to designated consignee</div></div></div><div style="font-size:12px; font-weight:800; color:#0050d4;">+KWD 1.500</div></div>
+                <div class="addon-row active"><div style="display:flex; align-items:center; gap:10px;"><span class="material-symbols-outlined" style="font-size:17px; color:#0050d4;">receipt_long</span><div><div style="font-size:12px; font-weight:700; color:#1a1f23;">Delivered Duty Paid (DDP)</div><div style="font-size:10.5px; color:#8c9196;">Shipper covers customs &amp; import duties</div></div></div><div style="display:flex; align-items:center; gap:8px;"><div style="width:18px; height:18px; background:#0050d4; border-radius:4px; display:flex; align-items:center; justify-content:center;"><span class="material-symbols-outlined" style="font-size:12px; color:#fff;">check</span></div><div style="font-size:12px; font-weight:800; color:#0050d4;">+KWD 5.000</div></div></div>
+                <div class="addon-row"><div style="display:flex; align-items:center; gap:10px;"><span class="material-symbols-outlined" style="font-size:17px; color:#0050d4;">alarm_on</span><div><div style="font-size:12px; font-weight:700; color:#1a1f23;">Priority Morning by 10:30 AM</div><div style="font-size:10.5px; color:#8c9196;">Earliest time-definite business delivery</div></div></div><div style="font-size:12px; font-weight:800; color:#0050d4;">+KWD 3.000</div></div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ═══ SCREEN 4: CUSTOMS ═══ -->
+        <sc-if value="{{ showScreen4 }}" hint-placeholder-val="{{ false }}">
+          <div class="screen-panel">
+            <div style="background:#fff; border:1px solid #e9edf2; border-radius:16px; padding:24px;">
+              <div style="font-size:14px; font-weight:800; color:#1a1f23; margin-bottom:16px;">Customs &amp; Logistics</div>
+              <div class="field-row" style="margin-bottom:14px;">
+                <div class="field half"><div class="field-label">HS / Commodity Code <span class="opt">(Optional)</span></div><div class="input-wrap"><span class="material-symbols-outlined input-icon">tag</span><input placeholder="8517.12.00" /></div></div>
+                <div class="field half"><div class="field-label">Incoterms</div><div class="input-wrap"><span class="material-symbols-outlined input-icon">gavel</span><select><option>DDP — Delivered Duty Paid</option><option>DAP — Delivered at Place</option><option>EXW — Ex Works</option><option>CIF — Cost, Insurance &amp; Freight</option></select></div></div>
+                <div class="field half"><div class="field-label">Shipment Purpose</div><div class="input-wrap"><span class="material-symbols-outlined input-icon">category</span><select><option>Commercial — General Merchandise</option><option>Commercial — Sample</option><option>Personal — Gift</option><option>Return / Repair</option></select></div></div>
+                <div class="field half"><div class="field-label">Duty Payment</div><div class="input-wrap"><span class="material-symbols-outlined input-icon">payments</span><select><option>Shipper (Prepaid)</option><option>Receiver (Collect)</option><option>Third Party</option></select></div></div>
+              </div>
+              <div class="field" style="margin-bottom:14px;"><div class="field-label">Commercial Invoice Notes <span class="opt">(Optional)</span></div><div class="input-wrap" style="align-items:flex-start;"><textarea placeholder="Country of origin, import license ref..." style="min-height:68px; resize:vertical; line-height:1.5;"></textarea></div></div>
+              <div style="padding:14px 16px; border:1.5px solid #e9edf2; border-radius:12px; background:#f8fafc;"><div style="font-size:11.5px; font-weight:700; color:#1a1f23; margin-bottom:4px;">📋 Paperless Trade (PLT)</div><div style="font-size:11px; color:#575c60;">Electronic invoice submitted directly to customs. Physical documents not required for standard commercial shipments under KWD 2,000.</div></div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ═══ SCREEN 5: REVIEW ═══ -->
+        <sc-if value="{{ showScreen5 }}" hint-placeholder-val="{{ false }}">
+          <div class="screen-panel">
+            <div style="background:#fff; border:1px solid #e9edf2; border-radius:16px; padding:24px;">
+              <div style="display:flex; align-items:center; gap:12px; padding:16px; background:#f5f8ff; border:1.5px solid #c7d7fa; border-radius:14px; margin-bottom:20px; flex-wrap:wrap;">
+                <div style="flex:1; min-width:120px;"><div style="font-size:10px; font-weight:700; color:#8c9196; text-transform:uppercase; letter-spacing:0.06em;">From</div><div style="font-size:14px; font-weight:800; color:#1a1f23;">Kuwait City, KW</div><div style="font-size:11.5px; color:#575c60;">Ahmed Al-Mutawa</div></div>
+                <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;"><span class="material-symbols-outlined" style="font-size:28px; color:#0050d4;">flight_takeoff</span><div style="width:56px; height:2px; background:linear-gradient(to right, #0050d4, #7b9cff);"></div><span class="material-symbols-outlined" style="font-size:28px; color:#0050d4;">flight_land</span></div>
+                <div style="flex:1; min-width:120px; text-align:right;"><div style="font-size:10px; font-weight:700; color:#8c9196; text-transform:uppercase; letter-spacing:0.06em;">To</div><div style="font-size:14px; font-weight:800; color:#1a1f23;">Dubai, AE</div><div style="font-size:11.5px; color:#575c60;">Sara Al-Rashidi</div></div>
+              </div>
+              <div style="display:flex; flex-direction:column; margin-bottom:20px;">
+                <div class="review-row"><span class="review-label">Shipment Type</span><span class="review-val">Standard Package · Box</span></div>
+                <div class="review-row"><span class="review-label">Weight &amp; Dims</span><span class="review-val">1.5 kg · 20×15×10 cm</span></div>
+                <div class="review-row"><span class="review-label">Declared Value</span><span class="review-val">KWD 45.000</span></div>
+                <div class="review-row"><span class="review-label">Carrier</span><span class="review-val">DHL Express Global</span></div>
+                <div class="review-row"><span class="review-label">Service Add-ons</span><span class="review-val">DDP Customs Clearance</span></div>
+                <div class="review-row"><span class="review-label">Incoterms</span><span class="review-val">DDP — Delivered Duty Paid</span></div>
+                <div class="review-row"><span class="review-label">Est. Delivery</span><span class="review-val">2–3 Business Days</span></div>
+              </div>
+              <div style="background:#f5f8ff; border:1.5px solid #c7d7fa; border-radius:14px; padding:16px;">
+                <div style="font-size:11px; font-weight:700; color:#8c9196; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:12px;">Cost Breakdown</div>
+                <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:600; color:#575c60; margin-bottom:6px;"><span>Base Rate (DHL Express)</span><span>KWD 18.500</span></div>
+                <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:600; color:#575c60; margin-bottom:6px;"><span>DDP Surcharge</span><span>KWD 5.000</span></div>
+                <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:600; color:#575c60; margin-bottom:12px;"><span>Fuel Surcharge</span><span>KWD 1.750</span></div>
+                <div style="display:flex; justify-content:space-between; font-size:15px; font-weight:900; color:#1a1f23; padding-top:10px; border-top:2px solid #c7d7fa;"><span>Total</span><span style="color:#0050d4;">KWD 25.250</span></div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- Nav buttons -->
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:20px;">
+          <button onClick="{{ prevScreen }}" style="display:flex; align-items:center; gap:6px; padding:10px 20px; background:#fff; color:#575c60; border:1.5px solid #e9edf2; border-radius:10px; font-size:13px; font-weight:700; font-family:'Manrope',sans-serif; cursor:pointer; opacity:{{ prevOpacity }};"><span class="material-symbols-outlined" style="font-size:16px;">arrow_back</span>Back</button>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <sc-if value="{{ notLast }}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{ nextScreen }}" style="display:flex; align-items:center; gap:6px; padding:10px 24px; background:#0050d4; color:#fff; border:none; border-radius:10px; font-size:13px; font-weight:700; font-family:'Manrope',sans-serif; cursor:pointer; box-shadow:0 4px 12px rgba(0,80,212,0.2);">Continue<span class="material-symbols-outlined" style="font-size:16px;">arrow_forward</span></button>
+            </sc-if>
+            <sc-if value="{{ isLast }}" hint-placeholder-val="{{ false }}">
+              <button style="display:flex; align-items:center; gap:6px; padding:10px 24px; background:#059669; color:#fff; border:none; border-radius:10px; font-size:13px; font-weight:700; font-family:'Manrope',sans-serif; cursor:pointer; box-shadow:0 4px 12px rgba(5,150,105,0.2);"><span class="material-symbols-outlined" style="font-size:16px;">check_circle</span>Confirm &amp; Dispatch</button>
+            </sc-if>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { screen: 0 };
+
+  // screen -> step (1..4)
+  stepOf(screen) { return [1,1,2,3,3,4][screen]; }
+
+  stepNode(stepNum, current) {
+    const done = current > stepNum;
+    const active = current === stepNum;
+    return {
+      bg: done ? '#0050d4' : active ? '#ebf0fc' : '#f0f4f8',
+      color: done ? '#fff' : active ? '#0050d4' : '#a0a6ad',
+      border: active ? '2px solid #0050d4' : 'none',
+      line: done ? '#0050d4' : '#e9edf2',
+      label: (done || active) ? '#1a1f23' : '#a0a6ad',
+      done, active,
+    };
+  }
+
+  subItem(isActive) {
+    return {
+      bg: isActive ? '#ebf0fc' : 'transparent',
+      color: isActive ? '#0050d4' : '#6b7280',
+      dot: isActive ? '#0050d4' : '#c2c7cc',
+    };
+  }
+
+  tab(isActive) {
+    return {
+      bg: isActive ? '#0050d4' : '#fff',
+      color: isActive ? '#fff' : '#575c60',
+      border: isActive ? '#0050d4' : '#e9edf2',
+    };
+  }
+
+  renderVals() {
+    const scr = this.state.screen;
+    const step = this.stepOf(scr);
+    const titles = ['Origin — Shipper','Consignee — Receiver','Package Details','Carrier & Rates','Customs & Logistics','Review & Dispatch'];
+    const subs = [
+      'Who is sending this shipment and from where',
+      'Who receives this shipment and where it goes',
+      'Describe what you are shipping',
+      'Compare rates and choose a service level',
+      'Declarations, duty and customs clearance',
+      'Confirm every detail before booking',
+    ];
+    const times = ['5 min','5 min','3 min','2 min','2 min','1 min'];
+
+    const n1 = this.stepNode(1, step), n2 = this.stepNode(2, step), n3 = this.stepNode(3, step), n4 = this.stepNode(4, step);
+    const s0 = this.subItem(scr === 0), s1 = this.subItem(scr === 1);
+    const s3 = this.subItem(scr === 3), s4 = this.subItem(scr === 4);
+    const t0 = this.tab(scr === 0), t1 = this.tab(scr === 1);
+    const t3 = this.tab(scr === 3), t4 = this.tab(scr === 4);
+
+    return {
+      currentStep: step,
+      timeEst: times[scr],
+      screenTitle: titles[scr],
+      screenSub: subs[scr],
+      progressPct: Math.round(((scr + 1) / 6) * 100) + '%',
+
+      // step nodes
+      st1bg:n1.bg, st1color:n1.color, st1border:n1.border, st1line:n1.line, st1label:n1.label, st1check:n1.done, st1num:!n1.done, st1open:n1.active,
+      st2bg:n2.bg, st2color:n2.color, st2border:n2.border, st2line:n2.line, st2label:n2.label, st2check:n2.done, st2num:!n2.done,
+      st3bg:n3.bg, st3color:n3.color, st3border:n3.border, st3line:n3.line, st3label:n3.label, st3check:n3.done, st3num:!n3.done, st3open:n3.active,
+      st4bg:n4.bg, st4color:n4.color, st4border:n4.border, st4label:n4.label,
+
+      // sub items (sidebar)
+      sub0bg:s0.bg, sub0color:s0.color, sub0dot:s0.dot,
+      sub1bg:s1.bg, sub1color:s1.color, sub1dot:s1.dot,
+      sub3bg:s3.bg, sub3color:s3.color, sub3dot:s3.dot,
+      sub4bg:s4.bg, sub4color:s4.color, sub4dot:s4.dot,
+
+      // sub tabs (main)
+      showSubtabs1: step === 1,
+      showSubtabs3: step === 3,
+      tab0bg:t0.bg, tab0color:t0.color, tab0border:t0.border,
+      tab1bg:t1.bg, tab1color:t1.color, tab1border:t1.border,
+      tab3bg:t3.bg, tab3color:t3.color, tab3border:t3.border,
+      tab4bg:t4.bg, tab4color:t4.color, tab4border:t4.border,
+
+      showScreen0: scr === 0, showScreen1: scr === 1, showScreen2: scr === 2,
+      showScreen3: scr === 3, showScreen4: scr === 4, showScreen5: scr === 5,
+
+      notLast: scr < 5,
+      isLast: scr === 5,
+      prevOpacity: scr === 0 ? '0.35' : '1',
+
+      goScreen0: () => this.setState({ screen: 0 }),
+      goScreen1: () => this.setState({ screen: 1 }),
+      goScreen2: () => this.setState({ screen: 2 }),
+      goScreen3: () => this.setState({ screen: 3 }),
+      goScreen4: () => this.setState({ screen: 4 }),
+      goScreen5: () => this.setState({ screen: 5 }),
+      nextScreen: () => this.setState(s => ({ screen: Math.min(5, s.screen + 1) })),
+      prevScreen: () => this.setState(s => ({ screen: Math.max(0, s.screen - 1) })),
+    };
+  }
+}
+</script>
+</body>
+</html>

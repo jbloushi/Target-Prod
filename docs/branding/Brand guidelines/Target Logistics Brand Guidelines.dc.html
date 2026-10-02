@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Cairo:wght@400;600;700;900&family=Manrope:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Inter', sans-serif; background-color: #f5f6fb; background-image: url('assets/doodle-light.png'); background-size: 300px 300px; color: #0e1430; -webkit-font-smoothing: antialiased; line-height: 1.5; }
+    .pat-light { background-color: #ffffff; background-image: url('assets/doodle-light.png'); background-size: 220px 220px; }
+    .pat-demo { background-color: #ffffff; background-image: url('assets/doodle-light.png'); background-size: 150px 150px; }
+    .pat-dark-tri { background-color: #0019a7; background-image: url('assets/pattern-triangle-cluster.png'); background-size: 260px; }
+    .btn-disabled { background-color: #eef0fa; color: #9aa0bd; border: 1.5px solid #dfe3f0; cursor: not-allowed; background-image: url('assets/doodle-light.png'); background-size: 70px 70px; box-shadow: none; }
+    a { color: #0019a7; text-decoration: none; }
+    a:hover { color: #00136f; }
+    .nav-link { display: flex; align-items: center; gap: 11px; padding: 9px 14px; font-size: 12.5px; font-weight: 600; color: #6b7194; border-radius: 9px; transition: all 0.15s; cursor: pointer; }
+    .nav-link:hover { background: #eef0fa; color: #0019a7; }
+    .eyebrow { font-size: 11px; font-weight: 800; letter-spacing: 0.22em; text-transform: uppercase; color: #0019a7; }
+    .mono { font-family: 'Courier New', monospace; }
+    .card { background: #ffffff; border: 1px solid #e4e7f2; border-radius: 18px; }
+    .label-xs { font-size: 10px; font-weight: 800; color: #9aa0bd; text-transform: uppercase; letter-spacing: 0.1em; }
+    ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-thumb { background: #d3d8ec; border-radius: 99px; }
+  </style>
+</helmet>
+
+<div style="display:flex; min-height:100vh;">
+
+  <!-- ── Sidebar ── -->
+  <nav style="width:224px; flex-shrink:0; position:sticky; top:0; height:100vh; overflow-y:auto; background:#ffffff; border-right:1px solid #e4e7f2; padding:26px 14px; display:flex; flex-direction:column; gap:3px;">
+    <div style="padding:2px 8px 22px; margin-bottom:6px; border-bottom:1px solid #e4e7f2;">
+      <div style="display:flex; align-items:center; gap:9px;">
+        <svg width="30" height="24" viewBox="0 0 48 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">
+          <polygon points="4,5 27,20 4,35" fill="#0019a7"/>
+          <path d="M31 9 L43 20 L31 31" stroke="#0019a7" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div>
+          <div style="font-size:17px; font-weight:800; color:#0019a7; letter-spacing:-0.6px; line-height:0.9;">target</div>
+          <div style="font-size:8px; font-weight:700; color:#6b7194; letter-spacing:0.16em;">logistics</div>
+        </div>
+      </div>
+    </div>
+    <a href="#brand" class="nav-link"><span style="width:14px; text-align:center; font-size:11px;">◆</span>Brand Platform</a>
+    <a href="#logo" class="nav-link"><span style="width:14px; text-align:center; font-size:11px;">▶</span>Logo System</a>
+    <a href="#color" class="nav-link"><span style="width:14px; text-align:center; font-size:11px;">●</span>Color</a>
+    <a href="#type" class="nav-link"><span style="width:14px; text-align:center; font-size:11px;">Aa</span>Typography</a>
+    <a href="#shapes" class="nav-link"><span style="width:14px; text-align:center; font-size:11px;">▲</span>Shape Language</a>
+    <a href="#patterns" class="nav-link"><span style="width:14px; text-align:center; font-size:11px;">▦</span>Patterns</a>
+    <a href="#components" class="nav-link"><span style="width:14px; text-align:center; font-size:11px;">▢</span>Components</a>
+    <a href="#apps" class="nav-link"><span style="width:14px; text-align:center; font-size:11px;">◇</span>Applications</a>
+    <a href="#voice" class="nav-link"><span style="width:14px; text-align:center; font-size:11px;">❝</span>Voice &amp; Taglines</a>
+    <div style="margin-top:auto; padding-top:18px; border-top:1px solid #e4e7f2;">
+      <div style="font-size:10px; font-weight:700; color:#9aa0bd; padding:0 8px;">Target Logistics</div>
+      <div style="font-size:10px; font-weight:600; color:#c2c7dd; padding:2px 8px 0;">Brand Guidelines · 2026</div>
+    </div>
+  </nav>
+
+  <!-- ── Content ── -->
+  <main style="flex:1; min-width:0;">
+
+    <!-- ═══════ HERO ═══════ -->
+    <section id="brand" style="background:#0019a7; color:#fff; padding:60px 56px 54px; position:relative; overflow:hidden;">
+      <div style="position:absolute; top:-30px; right:-20px; opacity:0.09;">
+        <svg width="340" height="340" viewBox="0 0 340 340" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <polygon points="40,30 150,100 40,170" fill="#fff"/>
+          <polygon points="170,120 280,190 170,260" fill="#fff"/>
+          <polygon points="100,180 190,240 100,300" fill="#fff"/>
+        </svg>
+      </div>
+      <div style="position:relative; max-width:760px;">
+        <div style="margin-bottom:38px;">
+          <img src="frontend/public/images/target-logo-white.png" alt="Target Logistics" style="height:52px; width:auto;" />
+        </div>
+        <div style="font-size:11px; font-weight:800; letter-spacing:0.24em; text-transform:uppercase; color:rgba(255,255,255,0.65); margin-bottom:14px;">Brand Guidelines</div>
+        <h1 style="font-size:40px; font-weight:900; letter-spacing:-1.2px; line-height:1.06; margin-bottom:16px; text-wrap:balance;">Moving possibilities for a brighter tomorrow.</h1>
+        <div style="font-family:'Cairo',sans-serif; font-size:23px; font-weight:700; color:rgba(255,255,255,0.92); direction:rtl; margin-bottom:28px;">نحطها على يمناك</div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <div style="display:flex; align-items:center; gap:8px; padding:9px 16px; background:rgba(255,255,255,0.12); border-radius:9999px; font-size:12.5px; font-weight:700;"><span style="width:9px; height:9px; border:2px solid #fff; border-radius:50%;"></span>People</div>
+          <div style="display:flex; align-items:center; gap:8px; padding:9px 16px; background:rgba(255,255,255,0.12); border-radius:9999px; font-size:12.5px; font-weight:700;"><span style="width:0; height:0; border-left:5px solid transparent; border-right:5px solid transparent; border-bottom:9px solid #fff;"></span>Places</div>
+          <div style="display:flex; align-items:center; gap:8px; padding:9px 16px; background:rgba(255,255,255,0.12); border-radius:9999px; font-size:12.5px; font-weight:700;"><span style="font-size:15px; line-height:1;">+</span>Possibilities</div>
+        </div>
+      </div>
+    </section>
+
+    <div style="padding:52px 56px 110px; max-width:940px;">
+
+      <!-- ═══════ LOGO ═══════ -->
+      <section id="logo" style="margin-bottom:72px;">
+        <div class="eyebrow" style="margin-bottom:6px;">01 — Identity</div>
+        <h2 style="font-size:26px; font-weight:900; letter-spacing:-0.6px; margin-bottom:6px;">Logo System</h2>
+        <p style="font-size:14px; color:#6b7194; margin-bottom:28px; max-width:560px;">A clean, modern and confident mark for a global logistics brand. The forward-pointing triangle signals movement, direction and progress.</p>
+
+        <div style="display:grid; grid-template-columns:2fr 1fr; gap:14px; margin-bottom:14px;">
+          <div class="card" style="padding:0; overflow:hidden;">
+            <div style="padding:46px; display:flex; align-items:center; justify-content:center; background:#fff; position:relative;">
+              <div style="position:absolute; inset:18px; border:1px dashed #d3d8ec; border-radius:12px;"></div>
+              <img src="frontend/public/images/target-logo.png" alt="Target Logistics" style="height:66px; width:auto; position:relative;" />
+            </div>
+            <div style="padding:14px 20px; border-top:1px solid #e4e7f2; display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:12px; font-weight:700;">Primary Logo</span>
+              <span class="label-xs">Main brand signature</span>
+            </div>
+          </div>
+          <div class="card" style="padding:0; overflow:hidden;">
+            <div style="padding:30px; display:flex; align-items:center; justify-content:center; gap:16px; background:#fff;">
+              <div style="width:60px; height:60px; background:#0019a7; border-radius:15px; display:flex; align-items:center; justify-content:center; box-shadow:0 8px 22px rgba(0,25,167,0.28);">
+                <img src="frontend/public/images/target-icon-white.png" alt="" style="width:34px; height:auto;" />
+              </div>
+            </div>
+            <div style="padding:14px 20px; border-top:1px solid #e4e7f2; display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:12px; font-weight:700;">App Icon</span>
+              <span class="label-xs">Digital · social</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:14px;">
+          <div class="card" style="overflow:hidden;">
+            <div style="padding:30px; display:flex; align-items:center; justify-content:center; background:#0019a7;">
+              <img src="frontend/public/images/target-logo-white.png" alt="Target Logistics" style="height:30px; width:auto;" />
+            </div>
+            <div style="padding:11px 16px; border-top:1px solid #e4e7f2;"><span class="label-xs">Reversed · Royal Blue</span></div>
+          </div>
+          <div class="card" style="overflow:hidden;">
+            <div style="padding:30px; display:flex; align-items:center; justify-content:center; background:#0e1430;">
+              <img src="frontend/public/images/target-logo-white.png" alt="Target Logistics" style="height:30px; width:auto; opacity:0.95;" />
+            </div>
+            <div style="padding:11px 16px; border-top:1px solid #e4e7f2;"><span class="label-xs">Reversed · Dark</span></div>
+          </div>
+          <div class="card" style="overflow:hidden;">
+            <div style="padding:30px; display:flex; align-items:center; justify-content:center; background:#f5f6fb;">
+              <img src="frontend/public/images/target-logo.png" alt="Target Logistics" style="height:30px; width:auto;" />
+            </div>
+            <div style="padding:11px 16px; border-top:1px solid #e4e7f2;"><span class="label-xs">Primary · Light</span></div>
+          </div>
+        </div>
+
+        <div class="card" style="padding:22px 24px;">
+          <div class="label-xs" style="margin-bottom:14px;">Logo Misuse — Don't</div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <div style="display:flex; align-items:center; gap:8px; padding:11px 15px; background:#fdf3f3; border:1px solid #f6d4d4; border-radius:10px;"><span style="color:#c0202a; font-weight:800;">✕</span><span style="font-size:12px; color:#c0202a; font-weight:600;">Recolor the wordmark</span></div>
+            <div style="display:flex; align-items:center; gap:8px; padding:11px 15px; background:#fdf3f3; border:1px solid #f6d4d4; border-radius:10px;"><span style="color:#c0202a; font-weight:800;">✕</span><span style="font-size:12px; color:#c0202a; font-weight:600;">Stretch or distort</span></div>
+            <div style="display:flex; align-items:center; gap:8px; padding:11px 15px; background:#fdf3f3; border:1px solid #f6d4d4; border-radius:10px;"><span style="color:#c0202a; font-weight:800;">✕</span><span style="font-size:12px; color:#c0202a; font-weight:600;">Rotate the mark</span></div>
+            <div style="display:flex; align-items:center; gap:8px; padding:11px 15px; background:#fdf3f3; border:1px solid #f6d4d4; border-radius:10px;"><span style="color:#c0202a; font-weight:800;">✕</span><span style="font-size:12px; color:#c0202a; font-weight:600;">Low-contrast grounds</span></div>
+            <div style="display:flex; align-items:center; gap:8px; padding:11px 15px; background:#fdf3f3; border:1px solid #f6d4d4; border-radius:10px;"><span style="color:#c0202a; font-weight:800;">✕</span><span style="font-size:12px; color:#c0202a; font-weight:600;">Crowd the clear space</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════ COLOR ═══════ -->
+      <section id="color" style="margin-bottom:72px;">
+        <div class="eyebrow" style="margin-bottom:6px;">02 — Color</div>
+        <h2 style="font-size:26px; font-weight:900; letter-spacing:-0.6px; margin-bottom:6px;">Color Palette</h2>
+        <p style="font-size:14px; color:#6b7194; margin-bottom:28px; max-width:560px;">A focused, confident palette designed for clarity and impact. Royal Blue and White carry the brand everywhere.</p>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px;">
+          <div class="card" style="overflow:hidden;">
+            <div style="background:#0019a7; height:150px; display:flex; align-items:flex-end; padding:18px;"><span style="color:rgba(255,255,255,0.75); font-size:12px; font-weight:700;" class="mono">#0019A7</span></div>
+            <div style="padding:18px 20px;">
+              <div style="font-size:15px; font-weight:800; margin-bottom:6px;">Royal Blue</div>
+              <div style="display:flex; gap:6px; flex-wrap:wrap;"><span style="font-size:11px; font-weight:700; color:#0019a7; background:#eef0fa; padding:3px 9px; border-radius:9999px;">Trust</span><span style="font-size:11px; font-weight:700; color:#0019a7; background:#eef0fa; padding:3px 9px; border-radius:9999px;">Movement</span><span style="font-size:11px; font-weight:700; color:#0019a7; background:#eef0fa; padding:3px 9px; border-radius:9999px;">Progress</span></div>
+            </div>
+          </div>
+          <div class="card" style="overflow:hidden;">
+            <div style="background:#ffffff; height:150px; display:flex; align-items:flex-end; padding:18px; border-bottom:1px solid #e4e7f2;"><span style="color:#9aa0bd; font-size:12px; font-weight:700;" class="mono">#FFFFFF</span></div>
+            <div style="padding:18px 20px;">
+              <div style="font-size:15px; font-weight:800; margin-bottom:6px;">White</div>
+              <div style="display:flex; gap:6px; flex-wrap:wrap;"><span style="font-size:11px; font-weight:700; color:#6b7194; background:#f2f3f9; padding:3px 9px; border-radius:9999px;">Clarity</span><span style="font-size:11px; font-weight:700; color:#6b7194; background:#f2f3f9; padding:3px 9px; border-radius:9999px;">Simplicity</span><span style="font-size:11px; font-weight:700; color:#6b7194; background:#f2f3f9; padding:3px 9px; border-radius:9999px;">Opportunity</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="padding:22px 24px;">
+          <div class="label-xs" style="margin-bottom:16px;">Supporting Neutrals &amp; Tints</div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <div style="flex:1; min-width:84px;"><div style="height:56px; background:#00136f; border-radius:9px;"></div><div style="font-size:10.5px; font-weight:700; margin-top:7px;">Deep Blue</div><div style="font-size:9.5px; color:#9aa0bd;" class="mono">#00136F</div></div>
+            <div style="flex:1; min-width:84px;"><div style="height:56px; background:#eef0fa; border-radius:9px; border:1px solid #e4e7f2;"></div><div style="font-size:10.5px; font-weight:700; margin-top:7px;">Blue Tint</div><div style="font-size:9.5px; color:#9aa0bd;" class="mono">#EEF0FA</div></div>
+            <div style="flex:1; min-width:84px;"><div style="height:56px; background:#0e1430; border-radius:9px;"></div><div style="font-size:10.5px; font-weight:700; margin-top:7px;">Ink</div><div style="font-size:9.5px; color:#9aa0bd;" class="mono">#0E1430</div></div>
+            <div style="flex:1; min-width:84px;"><div style="height:56px; background:#6b7194; border-radius:9px;"></div><div style="font-size:10.5px; font-weight:700; margin-top:7px;">Slate</div><div style="font-size:9.5px; color:#9aa0bd;" class="mono">#6B7194</div></div>
+            <div style="flex:1; min-width:84px;"><div style="height:56px; background:#f5f6fb; border-radius:9px; border:1px solid #e4e7f2;"></div><div style="font-size:10.5px; font-weight:700; margin-top:7px;">Surface</div><div style="font-size:9.5px; color:#9aa0bd;" class="mono">#F5F6FB</div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════ TYPOGRAPHY ═══════ -->
+      <section id="type" style="margin-bottom:72px;">
+        <div class="eyebrow" style="margin-bottom:6px;">03 — Typography</div>
+        <h2 style="font-size:26px; font-weight:900; letter-spacing:-0.6px; margin-bottom:6px;">Typography</h2>
+        <p style="font-size:14px; color:#6b7194; margin-bottom:28px; max-width:560px;">Inter is the typeface across all touchpoints — clean, modern and highly legible. Cairo carries Arabic with matching clarity.</p>
+        <div class="card" style="padding:32px;">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:36px; padding-bottom:28px; border-bottom:1px solid #e4e7f2; margin-bottom:28px;">
+            <div>
+              <div class="label-xs" style="margin-bottom:12px;">Primary — Inter</div>
+              <div style="font-size:64px; font-weight:800; letter-spacing:-2px; line-height:0.9; color:#0019a7;">Aa</div>
+              <div style="font-size:13px; color:#6b7194; margin-top:12px; line-height:1.8;">ABCDEFGHIJKLMNOPQRSTUVWXYZ<br/>abcdefghijklmnopqrstuvwxyz 0123456789</div>
+              <div style="margin-top:10px; font-size:10.5px; color:#9aa0bd;" class="mono">400 · 500 · 600 · 700 · 800 · 900</div>
+            </div>
+            <div>
+              <div class="label-xs" style="margin-bottom:12px;">Arabic — Cairo</div>
+              <div style="font-family:'Cairo',sans-serif; font-size:58px; font-weight:800; line-height:1.1; color:#0019a7; direction:rtl;">أ ب</div>
+              <div style="font-family:'Cairo',sans-serif; font-size:16px; color:#6b7194; margin-top:12px; line-height:1.9; direction:rtl;">خبرة لا تضاهى · نحطها على يمناك</div>
+              <div style="margin-top:10px; font-size:10.5px; color:#9aa0bd;" class="mono">Cairo · 400 · 600 · 700 · 900</div>
+            </div>
+          </div>
+          <div class="label-xs" style="margin-bottom:16px;">Type Scale</div>
+          <div style="display:flex; flex-direction:column;">
+            <div style="display:flex; align-items:baseline; gap:20px; padding:12px 0; border-bottom:1px solid #f2f3f9;"><div style="width:120px; flex-shrink:0; font-size:9.5px; color:#9aa0bd; font-weight:700;">Display · 40/900</div><div style="font-size:38px; font-weight:900; letter-spacing:-1.2px; line-height:1;">Beyond boundaries</div></div>
+            <div style="display:flex; align-items:baseline; gap:20px; padding:12px 0; border-bottom:1px solid #f2f3f9;"><div style="width:120px; flex-shrink:0; font-size:9.5px; color:#9aa0bd; font-weight:700;">H1 · 26/800</div><div style="font-size:26px; font-weight:800; letter-spacing:-0.6px;">Logistics, delivered</div></div>
+            <div style="display:flex; align-items:baseline; gap:20px; padding:12px 0; border-bottom:1px solid #f2f3f9;"><div style="width:120px; flex-shrink:0; font-size:9.5px; color:#9aa0bd; font-weight:700;">H2 · 18/700</div><div style="font-size:18px; font-weight:700;">Moving possibilities</div></div>
+            <div style="display:flex; align-items:baseline; gap:20px; padding:12px 0; border-bottom:1px solid #f2f3f9;"><div style="width:120px; flex-shrink:0; font-size:9.5px; color:#9aa0bd; font-weight:700;">Body · 14/500</div><div style="font-size:14px; font-weight:500; color:#2a2f45;">Expertise that delivers across every lane, every day.</div></div>
+            <div style="display:flex; align-items:baseline; gap:20px; padding:12px 0;"><div style="width:120px; flex-shrink:0; font-size:9.5px; color:#9aa0bd; font-weight:700;">Eyebrow · 11/800</div><div style="font-size:11px; font-weight:800; letter-spacing:0.22em; text-transform:uppercase; color:#0019a7;">People · Places · Possibilities</div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════ SHAPE LANGUAGE ═══════ -->
+      <section id="shapes" style="margin-bottom:72px;">
+        <div class="eyebrow" style="margin-bottom:6px;">04 — Visual Language</div>
+        <h2 style="font-size:26px; font-weight:900; letter-spacing:-0.6px; margin-bottom:6px;">Core Shapes &amp; Meaning</h2>
+        <p style="font-size:14px; color:#6b7194; margin-bottom:28px; max-width:560px;">The visual language is built from simple shapes — inspired by movement, navigation and global connectivity. Each carries a meaning.</p>
+        <div style="display:grid; grid-template-columns:repeat(6,1fr); gap:12px;">
+          <div class="card" style="padding:22px 10px; display:flex; flex-direction:column; align-items:center; text-align:center;"><div style="height:42px; display:flex; align-items:center;"><div style="width:34px; height:34px; border:3px solid #0019a7; border-radius:50%;"></div></div><div style="font-size:12px; font-weight:800; margin-top:10px;">Circle</div><div style="font-size:9.5px; font-weight:700; color:#0019a7; letter-spacing:0.06em; text-transform:uppercase; margin-top:2px;">People</div></div>
+          <div class="card" style="padding:22px 10px; display:flex; flex-direction:column; align-items:center; text-align:center;"><div style="height:42px; display:flex; align-items:center;"><div style="width:0; height:0; border-left:19px solid transparent; border-right:19px solid transparent; border-bottom:33px solid #0019a7;"></div></div><div style="font-size:12px; font-weight:800; margin-top:10px;">Triangle</div><div style="font-size:9.5px; font-weight:700; color:#0019a7; letter-spacing:0.06em; text-transform:uppercase; margin-top:2px;">Direction</div></div>
+          <div class="card" style="padding:22px 10px; display:flex; flex-direction:column; align-items:center; text-align:center;"><div style="height:42px; display:flex; align-items:center;"><div style="width:32px; height:32px; border:3px solid #0019a7; border-radius:4px;"></div></div><div style="font-size:12px; font-weight:800; margin-top:10px;">Square</div><div style="font-size:9.5px; font-weight:700; color:#0019a7; letter-spacing:0.06em; text-transform:uppercase; margin-top:2px;">Places</div></div>
+          <div class="card" style="padding:22px 10px; display:flex; flex-direction:column; align-items:center; text-align:center;"><div style="height:42px; display:flex; align-items:center;"><svg width="42" height="20" viewBox="0 0 48 24" fill="none"><path d="M2 12 Q10 2 18 12 T34 12 T50 12" stroke="#0019a7" stroke-width="3.5" fill="none" stroke-linecap="round"/></svg></div><div style="font-size:12px; font-weight:800; margin-top:10px;">Wave</div><div style="font-size:9.5px; font-weight:700; color:#0019a7; letter-spacing:0.06em; text-transform:uppercase; margin-top:2px;">Movement</div></div>
+          <div class="card" style="padding:22px 10px; display:flex; flex-direction:column; align-items:center; text-align:center;"><div style="height:42px; display:flex; align-items:center;"><svg width="34" height="34" viewBox="0 0 34 34" fill="none"><path d="M6 6 L28 28 M28 6 L6 28" stroke="#0019a7" stroke-width="3.5" stroke-linecap="round"/></svg></div><div style="font-size:12px; font-weight:800; margin-top:10px;">Cross</div><div style="font-size:9.5px; font-weight:700; color:#0019a7; letter-spacing:0.06em; text-transform:uppercase; margin-top:2px;">Connection</div></div>
+          <div class="card" style="padding:22px 10px; display:flex; flex-direction:column; align-items:center; text-align:center;"><div style="height:42px; display:flex; align-items:center;"><svg width="34" height="34" viewBox="0 0 34 34" fill="none"><path d="M17 5 L17 29 M5 17 L29 17" stroke="#0019a7" stroke-width="3.5" stroke-linecap="round"/></svg></div><div style="font-size:12px; font-weight:800; margin-top:10px;">Plus</div><div style="font-size:9.5px; font-weight:700; color:#0019a7; letter-spacing:0.06em; text-transform:uppercase; margin-top:2px;">Possibilities</div></div>
+        </div>
+      </section>
+
+      <!-- ═══════ PATTERNS ═══════ -->
+      <section id="patterns" style="margin-bottom:72px;">
+        <div class="eyebrow" style="margin-bottom:6px;">05 — Patterns</div>
+        <h2 style="font-size:26px; font-weight:900; letter-spacing:-0.6px; margin-bottom:6px;">Brand Patterns</h2>
+        <p style="font-size:14px; color:#6b7194; margin-bottom:28px; max-width:560px;">Two signature patterns extend the identity across packaging, environments and digital surfaces. Use the <strong>Doodle Pattern</strong> on light grounds and the <strong>Triangle Cluster</strong> — a royal-blue field with darker-blue triangles — on dark.</p>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px;">
+          <div class="card" style="overflow:hidden;">
+            <div class="pat-demo" style="height:220px;"></div>
+            <div style="padding:16px 20px; border-top:1px solid #e4e7f2;"><div style="font-size:13px; font-weight:800;">Doodle Pattern — Light</div><div style="font-size:11.5px; color:#6b7194; margin-top:2px;">Memphis scatter of brand shapes, indigo at 12% on white. Default surface texture for light screens, packaging and documents. <span class="mono" style="font-size:10px;">target-pattern.svg</span></div></div>
+          </div>
+          <div class="card" style="overflow:hidden;">
+            <div class="pat-dark-tri" style="height:220px;"></div>
+            <div style="padding:16px 20px; border-top:1px solid #e4e7f2;"><div style="font-size:13px; font-weight:800;">Triangle Cluster — Dark</div><div style="font-size:11.5px; color:#6b7194; margin-top:2px;">Royal-blue field with darker-blue triangles. For dark surfaces, hero panels and vehicle livery.</div></div>
+          </div>
+        </div>
+        <div class="card" style="padding:0; overflow:hidden; display:grid; grid-template-columns:1fr 1fr;">
+          <div class="pat-dark-tri" style="padding:34px; display:flex; align-items:center; justify-content:center;">
+            <img src="frontend/public/images/target-logo-white.png" alt="Target Logistics" style="height:30px; width:auto;" />
+          </div>
+          <div class="pat-light" style="padding:34px; display:flex; align-items:center; justify-content:center;">
+            <img src="frontend/public/images/target-logo.png" alt="Target Logistics" style="height:30px; width:auto;" />
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════ COMPONENTS ═══════ -->
+      <section id="components" style="margin-bottom:72px; font-family:'Manrope',sans-serif;">
+        <div class="eyebrow" style="margin-bottom:6px; font-family:'Inter',sans-serif;">06 — Components</div>
+        <h2 style="font-size:26px; font-weight:900; letter-spacing:-0.6px; margin-bottom:6px; font-family:'Inter',sans-serif;">Component Library</h2>
+        <p style="font-size:14px; color:#6b7194; margin-bottom:16px; max-width:600px; font-family:'Inter',sans-serif;">Catalogued directly from the live shipment wizards. Product UI runs on <strong>Manrope</strong> with an interface blue of <span class="mono" style="color:#0050d4; font-weight:700;">#0050D4</span>, Material Symbols icons, 12px input radii and a <span class="mono" style="font-weight:700;">#E9EDF2</span> border system. Each element below is tagged with its status.</p>
+        <div style="display:flex; gap:8px; margin-bottom:24px;">
+          <span style="display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700; color:#059669; background:#ecfdf5; padding:4px 10px; border-radius:9999px; font-family:'Inter',sans-serif;"><span style="width:7px; height:7px; background:#059669; border-radius:50%;"></span>Keep — canonical</span>
+          <span style="display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700; color:#b45309; background:#fffbeb; padding:4px 10px; border-radius:9999px; font-family:'Inter',sans-serif;"><span style="width:7px; height:7px; background:#d97706; border-radius:50%;"></span>Review — reconcile to brand</span>
+        </div>
+
+        <!-- Buttons -->
+        <div class="card" style="padding:22px 24px; margin-bottom:14px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;"><div class="label-xs" style="font-family:'Inter',sans-serif;">Buttons</div><span style="font-size:10px; font-weight:800; color:#059669; background:#ecfdf5; padding:3px 9px; border-radius:9999px; font-family:'Inter',sans-serif;">KEEP</span></div>
+          <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+            <button style="display:flex; align-items:center; gap:6px; padding:10px 22px; background:#0050d4; color:#fff; border:none; border-radius:10px; font-size:13px; font-weight:700; font-family:'Manrope',sans-serif; cursor:pointer; box-shadow:0 4px 12px rgba(0,80,212,0.2);">Continue<span class="material-symbols-outlined" style="font-size:16px;">arrow_forward</span></button>
+            <button style="display:flex; align-items:center; gap:6px; padding:10px 22px; background:#059669; color:#fff; border:none; border-radius:10px; font-size:13px; font-weight:700; font-family:'Manrope',sans-serif; cursor:pointer; box-shadow:0 4px 12px rgba(5,150,105,0.2);"><span class="material-symbols-outlined" style="font-size:16px;">check_circle</span>Confirm &amp; Dispatch</button>
+            <button style="display:flex; align-items:center; gap:6px; padding:10px 20px; background:#fff; color:#575c60; border:1.5px solid #e9edf2; border-radius:10px; font-size:13px; font-weight:700; font-family:'Manrope',sans-serif; cursor:pointer;"><span class="material-symbols-outlined" style="font-size:16px;">arrow_back</span>Back</button>
+            <button style="display:flex; align-items:center; gap:5px; padding:7px 13px; background:#f0f4f8; color:#575c60; border:1px solid #e9edf2; border-radius:9px; font-size:11.5px; font-weight:700; font-family:'Manrope',sans-serif; cursor:pointer;"><span class="material-symbols-outlined" style="font-size:15px;">upload_file</span>Bulk Import</button>
+          </div>
+          <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-top:12px;">
+            <button class="btn-disabled" style="display:flex; align-items:center; gap:6px; padding:10px 22px; border-radius:10px; font-size:13px; font-weight:700; font-family:'Manrope',sans-serif;">Continue<span class="material-symbols-outlined" style="font-size:16px;">arrow_forward</span></button>
+            <button class="btn-disabled" style="display:flex; align-items:center; gap:6px; padding:10px 22px; border-radius:10px; font-size:13px; font-weight:700; font-family:'Manrope',sans-serif;"><span class="material-symbols-outlined" style="font-size:16px;">lock</span>Confirm &amp; Dispatch</button>
+            <span style="font-size:10px; font-weight:800; color:#b45309; background:#fffbeb; padding:3px 9px; border-radius:9999px; font-family:'Inter',sans-serif;">DISABLED</span>
+          </div>
+          <div style="font-size:11px; color:#9aa0bd; margin-top:14px; font-family:'Inter',sans-serif;">Primary (action) · Success (dispatch) · Secondary (back / cancel) · Tertiary (toolbar). Radius 10px, icon 16px, weight 700. <strong style="color:#6b7194;">Disabled buttons carry the doodle pattern</strong> as a non-color cue that the action is unavailable.</div>
+        </div>
+
+        <!-- Form inputs -->
+        <div class="card" style="padding:22px 24px; margin-bottom:14px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;"><div class="label-xs" style="font-family:'Inter',sans-serif;">Form Inputs</div><span style="font-size:10px; font-weight:800; color:#059669; background:#ecfdf5; padding:3px 9px; border-radius:9999px; font-family:'Inter',sans-serif;">KEEP</span></div>
+          <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:14px;">
+            <div style="display:flex; flex-direction:column; gap:5px;"><div style="font-size:11.5px; font-weight:700; color:#575c60;">Text field <span style="color:#ef4444;">*</span></div><div style="display:flex; align-items:center; gap:8px; padding:9px 12px; border-radius:12px; border:1.5px solid #e9edf2; background:#fff;"><span class="material-symbols-outlined" style="font-size:17px; color:#8c9196;">person</span><span style="font-size:13px; font-weight:600; color:#1a1f23;">Ahmed Al-Mutawa</span></div></div>
+            <div style="display:flex; flex-direction:column; gap:5px;"><div style="font-size:11.5px; font-weight:700; color:#575c60;">Focus state</div><div style="display:flex; align-items:center; gap:8px; padding:9px 12px; border-radius:12px; border:1.5px solid #0050d4; background:#fff; box-shadow:0 0 0 3px rgba(0,80,212,0.08);"><span class="material-symbols-outlined" style="font-size:17px; color:#8c9196;">mail</span><span style="font-size:13px; font-weight:600; color:#1a1f23;">contact@target.com</span></div></div>
+            <div style="display:flex; flex-direction:column; gap:5px;"><div style="font-size:11.5px; font-weight:700; color:#575c60;">With unit suffix</div><div style="display:flex; align-items:center; gap:8px; padding:9px 12px; border-radius:12px; border:1.5px solid #e9edf2; background:#fff;"><span class="material-symbols-outlined" style="font-size:17px; color:#8c9196;">scale</span><span style="font-size:13px; font-weight:600; color:#1a1f23; flex:1;">1.5</span><span style="font-size:11px; font-weight:700; color:#575c60; background:#f0f4f8; padding:2px 7px; border-radius:6px;">kg</span></div></div>
+          </div>
+          <div style="font-size:11px; color:#9aa0bd; margin-top:14px; font-family:'Inter',sans-serif;">Radius 12px · border 1.5px #E9EDF2 · leading Material icon · focus ring rgba(0,80,212,.08). Required marked with red asterisk.</div>
+        </div>
+
+        <!-- Selection controls -->
+        <div class="card" style="padding:22px 24px; margin-bottom:14px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;"><div class="label-xs" style="font-family:'Inter',sans-serif;">Selection Controls</div><span style="font-size:10px; font-weight:800; color:#059669; background:#ecfdf5; padding:3px 9px; border-radius:9999px; font-family:'Inter',sans-serif;">KEEP</span></div>
+          <div style="display:flex; gap:14px; flex-wrap:wrap; align-items:center;">
+            <div style="display:flex; align-items:center; gap:8px;"><div style="width:18px; height:18px; background:#0050d4; border-radius:4px; display:flex; align-items:center; justify-content:center;"><span class="material-symbols-outlined" style="font-size:13px; color:#fff;">check</span></div><span style="font-size:12px; font-weight:600; color:#1a1f23;">Checked</span></div>
+            <div style="display:flex; align-items:center; gap:8px;"><div style="width:18px; height:18px; border:2px solid #e9edf2; border-radius:4px; background:#fff;"></div><span style="font-size:12px; font-weight:600; color:#1a1f23;">Unchecked</span></div>
+            <div style="width:1px; height:26px; background:#e9edf2;"></div>
+            <button style="display:flex; align-items:center; gap:6px; padding:8px 14px; border:1.5px solid #0050d4; border-radius:10px; font-size:12px; font-weight:700; font-family:'Manrope',sans-serif; background:#0050d4; color:#fff; cursor:pointer;"><span class="material-symbols-outlined" style="font-size:15px;">inventory_2</span>Chip active</button>
+            <button style="display:flex; align-items:center; gap:6px; padding:8px 14px; border:1.5px solid #e9edf2; border-radius:10px; font-size:12px; font-weight:700; font-family:'Manrope',sans-serif; background:#fff; color:#575c60; cursor:pointer;"><span class="material-symbols-outlined" style="font-size:15px;">pallet</span>Chip idle</button>
+          </div>
+          <div style="margin-top:14px; display:flex; flex-direction:column; gap:8px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border:1.5px solid #0050d4; border-radius:14px; background:#f5f8ff; box-shadow:0 0 0 3px rgba(0,80,212,0.08);"><div style="display:flex; align-items:center; gap:12px;"><div style="width:40px; height:40px; background:#fef2f2; border-radius:10px; display:flex; align-items:center; justify-content:center;"><span class="material-symbols-outlined" style="font-size:22px; color:#D40511;">flight_takeoff</span></div><div><div style="font-size:13px; font-weight:800; color:#1a1f23;">Selectable Card — active</div><div style="font-size:10.5px; color:#8c9196;">Carrier / option picker</div></div></div><div style="font-size:17px; font-weight:900; color:#0050d4;">KWD 18.500</div></div>
+          </div>
+          <div style="font-size:11px; color:#9aa0bd; margin-top:14px; font-family:'Inter',sans-serif;">Checkbox 18px / 4px radius · chip toggle · selectable card (active = blue border + #F5F8FF fill + focus ring). Used for package type, carrier, add-ons.</div>
+        </div>
+
+        <!-- Status badges -->
+        <div class="card" style="padding:22px 24px; margin-bottom:14px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;"><div class="label-xs" style="font-family:'Inter',sans-serif;">Status Badges</div><span style="font-size:10px; font-weight:800; color:#059669; background:#ecfdf5; padding:3px 9px; border-radius:9999px; font-family:'Inter',sans-serif;">KEEP</span></div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <span style="display:inline-flex; align-items:center; gap:5px; padding:5px 11px; background:#ecfdf5; color:#065f46; border-radius:9999px; font-size:10.5px; font-weight:800; font-family:'Manrope',sans-serif;"><span style="width:6px; height:6px; background:#059669; border-radius:50%;"></span>DISPATCHED</span>
+            <span style="display:inline-flex; align-items:center; gap:5px; padding:5px 11px; background:#fef3c7; color:#78350f; border-radius:9999px; font-size:10.5px; font-weight:800; font-family:'Manrope',sans-serif;"><span style="width:6px; height:6px; background:#d97706; border-radius:50%;"></span>PENDING REVIEW</span>
+            <span style="display:inline-flex; align-items:center; gap:5px; padding:5px 11px; background:#ebf0fc; color:#0050d4; border-radius:9999px; font-size:10.5px; font-weight:800; font-family:'Manrope',sans-serif;"><span style="width:6px; height:6px; background:#0050d4; border-radius:50%;"></span>IN TRANSIT</span>
+            <span style="display:inline-flex; align-items:center; gap:5px; padding:5px 11px; background:#fdf3f3; color:#c0202a; border-radius:9999px; font-size:10.5px; font-weight:800; font-family:'Manrope',sans-serif;"><span style="width:6px; height:6px; background:#c0202a; border-radius:50%;"></span>EXCEPTION</span>
+            <span style="display:inline-flex; align-items:center; gap:5px; padding:5px 11px; background:#ebf0fc; border-radius:9999px; font-size:11px; font-weight:700; color:#0050d4; font-family:'Manrope',sans-serif;"><span class="material-symbols-outlined" style="font-size:14px;">schedule</span>Est. 2 min</span>
+          </div>
+          <div style="font-size:11px; color:#9aa0bd; margin-top:14px; font-family:'Inter',sans-serif;">Pill 9999px radius, 10.5px/800 uppercase, dot + tonal background. Success / Warning / Info / Error semantic set + meta chip.</div>
+        </div>
+
+        <!-- Navigation + maps -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+          <div class="card" style="padding:22px 24px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;"><div class="label-xs" style="font-family:'Inter',sans-serif;">Wizard Step Nav</div><span style="font-size:10px; font-weight:800; color:#059669; background:#ecfdf5; padding:3px 9px; border-radius:9999px; font-family:'Inter',sans-serif;">KEEP</span></div>
+            <div style="display:flex; gap:11px;">
+              <div style="display:flex; flex-direction:column; align-items:center;"><div style="width:30px; height:30px; border-radius:50%; background:#0050d4; color:#fff; display:flex; align-items:center; justify-content:center;"><span class="material-symbols-outlined" style="font-size:17px;">check</span></div><div style="width:2px; flex:1; min-height:14px; background:#0050d4; margin:4px 0;"></div></div>
+              <div style="flex:1;"><div style="font-size:13px; font-weight:800; color:#1a1f23;">Completed</div><div style="font-size:10.5px; color:#a0a6ad;">filled · check mark</div>
+                <div style="display:flex; gap:11px; margin-top:12px;"><div style="width:30px; height:30px; border-radius:50%; background:#ebf0fc; color:#0050d4; border:2px solid #0050d4; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; font-family:'Manrope',sans-serif;">2</div><div style="padding-top:4px;"><div style="font-size:13px; font-weight:800; color:#1a1f23;">Active</div><div style="font-size:10.5px; color:#a0a6ad;">tint + ring</div></div></div>
+                <div style="display:flex; gap:11px; margin-top:12px;"><div style="width:30px; height:30px; border-radius:50%; background:#f0f4f8; color:#a0a6ad; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; font-family:'Manrope',sans-serif;">3</div><div style="padding-top:4px;"><div style="font-size:13px; font-weight:800; color:#a0a6ad;">Upcoming</div><div style="font-size:10.5px; color:#a0a6ad;">muted</div></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="card" style="padding:22px 24px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;"><div class="label-xs" style="font-family:'Inter',sans-serif;">Places &amp; Map Pin</div><span style="font-size:10px; font-weight:800; color:#059669; background:#ecfdf5; padding:3px 9px; border-radius:9999px; font-family:'Inter',sans-serif;">KEEP</span></div>
+            <div style="display:flex; align-items:center; gap:8px; padding:9px 12px; border-radius:12px; border:1.5px solid #e9edf2; background:#fff; margin-bottom:10px;"><span class="material-symbols-outlined" style="font-size:17px; color:#0050d4;">search</span><span style="font-size:12.5px; font-weight:600; color:#1a1f23; flex:1;">Shuwaikh Industrial, Kuwait</span><span class="material-symbols-outlined" style="font-size:16px; color:#8c9196;">mic</span></div>
+            <div style="position:relative; height:110px; border-radius:12px; overflow:hidden; border:1.5px solid #e9edf2; background-color:#e8eef3; background-image:linear-gradient(#dde7ee 2px,transparent 2px),linear-gradient(90deg,#dde7ee 2px,transparent 2px); background-size:46px 46px;">
+              <div style="position:absolute; top:46%; left:0; right:0; height:7px; background:#fff; box-shadow:0 0 0 1px #d4dde6;"></div>
+              <div style="position:absolute; top:0; bottom:0; left:55%; width:7px; background:#fff; box-shadow:0 0 0 1px #d4dde6;"></div>
+              <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-100%);"><span class="material-symbols-outlined" style="font-size:36px; color:#0050d4; filter:drop-shadow(0 4px 6px rgba(0,80,212,0.4)); font-variation-settings:'FILL' 1;">location_on</span></div>
+            </div>
+            <div style="font-size:11px; color:#9aa0bd; margin-top:10px; font-family:'Inter',sans-serif;">Google Places autocomplete + draggable pin. Used on Origin &amp; Consignee screens.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════ APPLICATIONS ═══════ -->
+      <section id="apps" style="margin-bottom:72px;">
+        <div class="eyebrow" style="margin-bottom:6px;">07 — Applications</div>
+        <h2 style="font-size:26px; font-weight:900; letter-spacing:-0.6px; margin-bottom:6px;">Brand in the World</h2>
+        <p style="font-size:14px; color:#6b7194; margin-bottom:28px; max-width:560px;">Bringing the identity to life across real-world logistics touchpoints — from packaging to fleet.</p>
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:14px;">
+          <div class="card" style="overflow:hidden;">
+            <div class="pat-dark-tri" style="height:150px; display:flex; align-items:center; justify-content:center;"><img src="frontend/public/images/target-logo-white.png" alt="" style="height:26px; width:auto;" /></div>
+            <div style="padding:14px 18px;"><div style="font-size:12.5px; font-weight:800;">Fleet &amp; Vehicle Livery</div><div style="font-size:11px; color:#6b7194; margin-top:2px;">Triangle cluster on bodywork</div></div>
+          </div>
+          <div class="card" style="overflow:hidden;">
+            <div class="pat-light" style="height:150px; display:flex; align-items:center; justify-content:center;"><div style="width:72px; height:72px; background:#fff; border-radius:12px; display:flex; align-items:center; justify-content:center; box-shadow:0 6px 18px rgba(14,20,48,0.1);"><img src="frontend/public/images/target-icon.png" alt="" style="width:38px; height:auto;" /></div></div>
+            <div style="padding:14px 18px;"><div style="font-size:12.5px; font-weight:800;">Packaging Surface</div><div style="font-size:11px; color:#6b7194; margin-top:2px;">Doodle pattern, tissue &amp; boxes</div></div>
+          </div>
+          <div class="card" style="overflow:hidden;">
+            <div class="pat-dark-tri" style="height:150px; display:flex; align-items:center; justify-content:center;"><img src="frontend/public/images/target-logo-white.png" alt="" style="height:24px; width:auto;" /></div>
+            <div style="padding:14px 18px;"><div style="font-size:12.5px; font-weight:800;">Facility &amp; Signage</div><div style="font-size:11px; color:#6b7194; margin-top:2px;">Reversed lockup, dark ground</div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════ VOICE ═══════ -->
+      <section id="voice">
+        <div class="eyebrow" style="margin-bottom:6px;">08 — Voice</div>
+        <h2 style="font-size:26px; font-weight:900; letter-spacing:-0.6px; margin-bottom:6px;">Voice &amp; Taglines</h2>
+        <p style="font-size:14px; color:#6b7194; margin-bottom:28px; max-width:560px;">Confident, warm and forward-looking. We speak plainly and we deliver on the promise of possibility.</p>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+          <div class="card" style="padding:30px; background:#0019a7; color:#fff; display:flex; flex-direction:column; justify-content:center;">
+            <div style="font-size:22px; font-weight:900; letter-spacing:-0.5px; line-height:1.15; margin-bottom:10px;">Moving possibilities for a brighter tomorrow.</div>
+            <div style="font-size:12px; font-weight:700; color:rgba(255,255,255,0.65); letter-spacing:0.18em; text-transform:uppercase;">Primary Tagline · EN</div>
+          </div>
+          <div class="card" style="padding:30px; display:flex; flex-direction:column; justify-content:center;">
+            <div style="font-family:'Cairo',sans-serif; font-size:26px; font-weight:900; color:#0019a7; direction:rtl; line-height:1.3; margin-bottom:10px;">نحطها على يمناك</div>
+            <div style="font-size:12px; font-weight:700; color:#9aa0bd; letter-spacing:0.14em; text-transform:uppercase;">Primary Tagline · AR</div>
+          </div>
+          <div class="card" style="padding:24px;"><div style="font-size:17px; font-weight:800; margin-bottom:6px;">Logistics beyond boundaries.</div><div style="font-size:12px; color:#6b7194;">Secondary · reach &amp; scale</div></div>
+          <div class="card" style="padding:24px;"><div style="font-size:17px; font-weight:800; margin-bottom:6px;">Expertise that delivers.</div><div style="font-family:'Cairo',sans-serif; font-size:16px; color:#0019a7; direction:rtl; margin-top:4px;">خبرة لا تضاهى</div><div style="font-size:12px; color:#6b7194; margin-top:6px;">Secondary · capability &amp; trust</div></div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+</x-dc>
+</body>
+</html>

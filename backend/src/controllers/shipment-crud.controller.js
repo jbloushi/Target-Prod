@@ -1294,6 +1294,50 @@ exports.updateShipment = async (req, res) => {
             }
         }
 
+        // Audit Logging for Financial Modifications
+        const oldDeclaredVal = Number(shipment.customsInvoice?.declaredValue || shipment.items?.reduce((s, i) => s + (Number(i.value || i.price || 0) * Number(i.quantity || 1)), 0) || 0);
+        const newDeclaredVal = updates.customsInvoice?.declaredValue !== undefined ? Number(updates.customsInvoice.declaredValue) : (updates.declaredValue !== undefined ? Number(updates.declaredValue) : oldDeclaredVal);
+        const isFinancialChanged = (
+            (updates.price !== undefined && Number(updates.price) !== Number(shipment.price)) ||
+            (updates.costPrice !== undefined && Number(updates.costPrice) !== Number(shipment.costPrice)) ||
+            (newDeclaredVal !== oldDeclaredVal) ||
+            (updates.currency && updates.currency !== shipment.currency) ||
+            (updates.insurance !== undefined && Boolean(updates.insurance) !== Boolean(shipment.insurance)) ||
+            (updates.incoterm && updates.incoterm !== shipment.incoterm)
+        );
+
+        if (isFinancialChanged) {
+            try {
+                await prisma.shipmentAuditLog.create({
+                    data: {
+                        shipmentId: shipment.id,
+                        trackingNumber: shipment.trackingNumber,
+                        actorType: user.role ? user.role.toUpperCase() : 'USER',
+                        actorId: user.id,
+                        actorName: user.name || user.email || 'System User',
+                        action: 'FINANCIAL_DETAILS_MODIFIED',
+                        fieldChanges: {
+                            oldPrice: shipment.price,
+                            newPrice: updates.price !== undefined ? Number(updates.price) : shipment.price,
+                            oldCostPrice: shipment.costPrice,
+                            newCostPrice: updates.costPrice !== undefined ? Number(updates.costPrice) : shipment.costPrice,
+                            oldDeclaredValue: oldDeclaredVal,
+                            newDeclaredValue: newDeclaredVal,
+                            oldCurrency: shipment.currency,
+                            newCurrency: updates.currency || shipment.currency,
+                            oldInsurance: shipment.insurance,
+                            newInsurance: updates.insurance !== undefined ? Boolean(updates.insurance) : shipment.insurance,
+                            oldIncoterm: shipment.incoterm,
+                            newIncoterm: updates.incoterm || shipment.incoterm
+                        },
+                        ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+                    }
+                });
+            } catch (auditErr) {
+                logger.warn(`[Audit Log Warning] Failed to log financial edit: ${auditErr.message}`);
+            }
+        }
+
         // Handle Status Change History
         if (updates.status && updates.status !== shipment.status) {
             const history = Array.isArray(shipment.history) ? shipment.history : [];
