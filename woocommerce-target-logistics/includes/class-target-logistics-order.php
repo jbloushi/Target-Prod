@@ -405,7 +405,7 @@ class Target_Logistics_Order_Manager {
         if ( ! empty( $label_url ) && 0 === strpos( $label_url, 'data:application/pdf;base64,' ) ) {
             $base64_data = substr( $label_url, strlen( 'data:application/pdf;base64,' ) );
             $pdf_binary  = base64_decode( $base64_data );
-            if ( $pdf_binary ) {
+            if ( $pdf_binary && 0 === strpos( $pdf_binary, '%PDF' ) ) {
                 header( 'Content-Type: application/pdf' );
                 header( 'Content-Disposition: inline; filename="label-' . sanitize_file_name( $tracking_number ) . '.pdf"' );
                 header( 'Content-Length: ' . strlen( $pdf_binary ) );
@@ -414,22 +414,50 @@ class Target_Logistics_Order_Manager {
             }
         }
 
-        // 2. If stored label is an external URL, redirect directly
-        if ( ! empty( $label_url ) && preg_match( '#^https?://#i', $label_url ) ) {
-            wp_redirect( $label_url );
-            exit;
-        }
-
-        // 3. Otherwise redirect to Target Logistics API GET /v1/shipments/:number/label
+        // 2. Fetch binary PDF directly from Target Logistics API GET /v1/shipments/:number/label
         $settings = get_option( 'woocommerce_target_logistics_settings', array() );
         $api_key  = isset( $settings['api_key'] ) ? $settings['api_key'] : '';
         $env      = isset( $settings['environment'] ) ? $settings['environment'] : 'production';
         $custom   = isset( $settings['custom_api_url'] ) ? $settings['custom_api_url'] : '';
 
-        $api = new Target_Logistics_API( $api_key, $env, $custom );
-        $api_url = rtrim( $api->get_base_url(), '/' ) . '/v1/shipments/' . rawurlencode( $tracking_number ) . '/label?api_key=' . rawurlencode( $api_key );
+        $api      = new Target_Logistics_API( $api_key, $env, $custom );
+        $api_base = rtrim( $api->get_base_url(), '/' );
+        $api_url  = $api_base . '/v1/shipments/' . rawurlencode( $tracking_number ) . '/label';
 
-        wp_redirect( $api_url );
+        $response = wp_remote_get( $api_url, array(
+            'headers' => array(
+                'x-api-key' => $api_key,
+                'Accept'    => 'application/pdf',
+            ),
+            'timeout' => 20,
+        ) );
+
+        if ( ! is_wp_error( $response ) ) {
+            $code         = wp_remote_retrieve_response_code( $response );
+            $body         = wp_remote_retrieve_body( $response );
+            $content_type = wp_remote_retrieve_header( $response, 'content-type' );
+
+            if ( 200 === $code && ( 0 === strpos( $body, '%PDF' ) || ( is_string( $content_type ) && false !== strpos( $content_type, 'application/pdf' ) ) ) ) {
+                // Cache as data URI in order meta for subsequent fast views
+                $order->update_meta_data( '_target_logistics_label_url', 'data:application/pdf;base64,' . base64_encode( $body ) );
+                $order->save();
+
+                header( 'Content-Type: application/pdf' );
+                header( 'Content-Disposition: inline; filename="label-' . sanitize_file_name( $tracking_number ) . '.pdf"' );
+                header( 'Content-Length: ' . strlen( $body ) );
+                echo $body;
+                exit;
+            }
+        }
+
+        // 3. Fallback: If stored label is an external URL, redirect directly
+        if ( ! empty( $label_url ) && preg_match( '#^https?://#i', $label_url ) ) {
+            wp_redirect( $label_url );
+            exit;
+        }
+
+        // 4. Final fallback redirect to API endpoint with query param key
+        wp_redirect( $api_url . '?api_key=' . rawurlencode( $api_key ) );
         exit;
     }
 

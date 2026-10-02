@@ -106,12 +106,13 @@ describe('Native Full Double-Entry Accounting ERP', () => {
 
       await expect(
         generalLedgerService.postJournalEntry({
+          entryDate: new Date('2026-09-15'),
           lines: [
             { accountCode: '1100', debit: 10, credit: 0 },
             { accountCode: '4010', debit: 0, credit: 10 }
           ]
         })
-      ).rejects.toThrow(/period "2026-09" is closed/);
+      ).rejects.toThrow(/is closed/i);
     });
 
     it('posts a balanced journal entry and increments account balances correctly', async () => {

@@ -78,7 +78,8 @@ function createMinimalCarrierPdf(title, trackingNumber, carrier = 'DHL Express',
 }
 
 function generateCarrierAwbPdf(shipment, carrierName = 'DHL Express') {
-    const isDhl = String(carrierName || '').toLowerCase().includes('dhl') || String(shipment.carrierCode || '').toUpperCase() === 'DGR';
+    const isInternal = String(carrierName || '').toLowerCase().includes('target') || String(shipment.carrierCode || '').toUpperCase() === 'INTERNAL';
+    const isDhl = !isInternal && (String(carrierName || '').toLowerCase().includes('dhl') || String(shipment.carrierCode || '').toUpperCase() === 'DGR');
     const trk = escapePdfText(shipment.carrierShipmentId || shipment.dhlTrackingNumber || shipment.trackingNumber);
     const internalTrk = escapePdfText(shipment.trackingNumber);
     const sender = shipment.origin || shipment.sender || {};
@@ -87,28 +88,36 @@ function generateCarrierAwbPdf(shipment, carrierName = 'DHL Express') {
     const totalWeight = parcels.reduce((sum, p) => sum + (Number(p.weight) || 0), 0) || Number(shipment.weight || 1.0);
     const totalPieces = parcels.reduce((sum, p) => sum + (Number(p.quantity) || 1), 0) || Number(shipment.pieces || 1);
 
-    const senderName = escapePdfText(sender.name || sender.company || sender.contactPerson || 'Shipper on file');
+    const senderName = escapePdfText(sender.name || sender.company || sender.contactPerson || 'Target Logistics Shipper');
     const senderPhone = escapePdfText(sender.phone || 'N/A');
     const senderAddr = escapePdfText(`${sender.city || 'Kuwait City'}, ${sender.countryCode || 'KW'}`);
 
     const receiverName = escapePdfText(receiver.name || receiver.company || receiver.contactPerson || 'Consignee on file');
     const receiverPhone = escapePdfText(receiver.phone || 'N/A');
-    const receiverAddr = escapePdfText(`${receiver.city || 'Destination City'}, ${receiver.countryCode || 'GCC'}`);
+    const receiverAddr = escapePdfText(`${receiver.city || 'Kuwait City'}, ${receiver.countryCode || 'KW'}`);
 
     const originCode = escapePdfText(sender.countryCode || 'KW');
-    const destCode = escapePdfText(receiver.countryCode || 'SA');
+    const destCode = escapePdfText(receiver.countryCode || (isInternal ? 'KW' : 'SA'));
+
+    const bannerColor = isInternal ? '0.75 0.1 0.1 rg' : (isDhl ? '1.0 0.8 0.0 rg' : '0.1 0.2 0.4 rg');
+    const bannerTitle = isInternal ? 'TARGET LOGISTICS' : (isDhl ? 'DHL EXPRESS' : escapePdfText(carrierName.toUpperCase()));
+    const bannerSubtitle = isInternal ? 'DOMESTIC EXPRESS WAYBILL / LABEL' : 'AIR WAYBILL / TRANSPORT LABEL';
+    const serviceTitle = isInternal ? 'Service: TARGET EXPRESS (DOM)  |  Hub: KUWAIT DOMESTIC (KWI)' : (isDhl ? `Service: EXPRESS WORLDWIDE (${escapePdfText(shipment.serviceCode || 'P')})  |  Gateway: KWI-${destCode}` : `Service: EXPRESS PRIORITY  |  Gateway: KWI-${destCode}`);
+    const codText = shipment.codAmount ? `   |   COD Amount: ${Number(shipment.codAmount).toFixed(3)} ${escapePdfText(shipment.codCurrency || 'KWD')}` : '';
 
     const streamLines = [
-        // Top Yellow/Red Carrier Banner
+        // Top Banner
         'q',
-        isDhl ? '1.0 0.8 0.0 rg 40 765 515 50 re f' : '0.9 0.9 0.9 rg 40 765 515 50 re f',
+        `${bannerColor} 40 765 515 50 re f`,
         '0.85 0.1 0.1 RG 3 w 40 815 515 0 re s',
         '0.2 0.2 0.2 RG 1 w 40 765 515 50 re s',
         'Q',
         'BT',
-        `/F1 20 Tf 55 792 Td (${isDhl ? 'DHL EXPRESS' : escapePdfText(carrierName.toUpperCase())}) Tj`,
-        `/F1 11 Tf 220 0 Td (AIR WAYBILL / TRANSPORT LABEL) Tj`,
-        `/F2 9 Tf -220 -15 Td (Service: ${isDhl ? 'EXPRESS WORLDWIDE (P)' : 'EXPRESS PRIORITY PARCEL'}  |  Gateway: KWI-${destCode}) Tj`,
+        isInternal ? '1.0 1.0 1.0 rg' : '0.0 0.0 0.0 rg',
+        `/F1 20 Tf 55 792 Td (${bannerTitle}) Tj`,
+        `/F1 11 Tf 220 0 Td (${bannerSubtitle}) Tj`,
+        `/F2 9 Tf -220 -15 Td (${serviceTitle}) Tj`,
+        '0.0 0.0 0.0 rg',
         'ET',
 
         // AWB Number & Barcode Area Box
@@ -118,7 +127,7 @@ function generateCarrierAwbPdf(shipment, carrierName = 'DHL Express') {
         'Q',
         'BT',
         `/F1 14 Tf 55 728 Td (WAYBILL (AWB): ${trk}) Tj`,
-        `/F2 8 Tf 0 -13 Td (Internal Reference: ${internalTrk}   |   Origin Hub: ${originCode}   |   Destination: ${destCode}) Tj`,
+        `/F2 8 Tf 0 -13 Td (Reference: ${internalTrk}   |   Origin Hub: ${originCode}   |   Destination: ${destCode}) Tj`,
         `/F3 16 Tf 0 -18 Td (|||||  ||||  ||||||  |||||  ||||  ||||||  ||||  |||||) Tj`,
         `/F1 9 Tf 0 -12 Td (*${trk}*) Tj`,
         'ET',
@@ -139,8 +148,8 @@ function generateCarrierAwbPdf(shipment, carrierName = 'DHL Express') {
         `/F2 8 Tf 265 0 Td (Tel: ${receiverPhone}) Tj`,
         `/F2 8 Tf -265 -14 Td (${senderAddr}) Tj`,
         `/F2 8 Tf 265 0 Td (${receiverAddr}) Tj`,
-        `/F2 8 Tf -265 -14 Td (Account: ${escapePdfText(shipment.origin?.shipperAccount || '418002621')}) Tj`,
-        `/F2 8 Tf 265 0 Td (Terms: DAP / Duty Unpaid) Tj`,
+        `/F2 8 Tf -265 -14 Td (Account: ${escapePdfText(shipment.origin?.shipperAccount || 'TARGET-KW')}) Tj`,
+        `/F2 8 Tf 265 0 Td (Terms: ${isInternal ? 'DOMESTIC DELIVERY' : 'DAP / Duty Unpaid'}) Tj`,
         'ET',
 
         // Shipment Details Box
@@ -151,8 +160,8 @@ function generateCarrierAwbPdf(shipment, carrierName = 'DHL Express') {
         'BT',
         `/F1 10 Tf 50 513 Td (SHIPMENT PARTICULARS & MANIFEST SUMMARY:) Tj`,
         `/F2 9 Tf 0 -22 Td (Total Pieces: ${totalPieces} Pcs   |   Gross Weight: ${totalWeight.toFixed(2)} KG   |   Volumetric Weight: Standard) Tj`,
-        `/F2 9 Tf 0 -16 Td (Payment Status: ${escapePdfText(shipment.paymentStatus || 'PAID')}   |   Shipment Date: ${new Date().toISOString().split('T')[0]}) Tj`,
-        `/F2 8 Tf 0 -16 Td (Declared Goods: ${escapePdfText(shipment.items?.[0]?.description || 'Commercial Express Consignment')}) Tj`,
+        `/F2 9 Tf 0 -16 Td (Payment Status: ${escapePdfText(shipment.paymentStatus || 'PAID')}${codText}   |   Date: ${new Date().toISOString().split('T')[0]}) Tj`,
+        `/F2 8 Tf 0 -16 Td (Declared Goods: ${escapePdfText(shipment.items?.[0]?.description || 'E-Commerce Package / Goods')}) Tj`,
         'ET',
 
         // Footer & Legal
@@ -160,8 +169,8 @@ function generateCarrierAwbPdf(shipment, carrierName = 'DHL Express') {
         '0.8 0.8 0.8 RG 0.5 w 40 400 515 0 re s',
         'Q',
         'BT',
-        `/F2 7 Tf 50 385 Td (Official Carrier Air Waybill document generated via Target Logistics Gateway under carrier operating license.) Tj`,
-        `/F2 7 Tf 0 -10 Td (Carrier liability is strictly subject to the Montreal Convention and DHL Express Standard Conditions of Carriage.) Tj`,
+        `/F2 7 Tf 50 385 Td (Official Transport Waybill document generated via Target Logistics Gateway - www.target-kw.com) Tj`,
+        `/F2 7 Tf 0 -10 Td (Carrier liability is strictly subject to Target Logistics Conditions of Carriage.) Tj`,
         'ET'
     ];
 
@@ -261,8 +270,15 @@ function generateCarrierInvoicePdf(shipment, carrierName = 'DHL Express') {
     return buildPdfDocument(streamLines);
 }
 
+function generateCarrierAwbPdfBuffer(shipment, carrierName = 'Target Express') {
+    const dataUrl = generateCarrierAwbPdf(shipment, carrierName);
+    const base64 = dataUrl.split(',')[1];
+    return Buffer.from(base64, 'base64');
+}
+
 module.exports = {
     createMinimalCarrierPdf,
     generateCarrierAwbPdf,
+    generateCarrierAwbPdfBuffer,
     generateCarrierInvoicePdf
 };

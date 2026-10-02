@@ -156,7 +156,7 @@ class ShipmentBookingService {
             );
 
             if (activeAttempt) {
-                const hasRealDocs = Boolean(shipment.labelUrl || shipment.awbUrl);
+                const hasRealDocs = Boolean(shipment.labelUrl || shipment.awbUrl || shipment.status === 'booked');
                 if (activeAttempt.status === 'succeeded' && hasRealDocs) {
                     return { alreadyBooked: true, shipment, attemptId: activeAttempt.attemptId, carrierCode };
                 }
