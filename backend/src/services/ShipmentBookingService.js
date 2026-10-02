@@ -34,9 +34,9 @@ class ShipmentBookingService {
      * @param {string[]} [optionalServiceCodes=[]] - Optional services selected at booking time.
      * @returns {Promise<Object>} { success, shipment, message }
      */
-    async bookShipment(trackingNumber, overrideCarrierCode = null, optionalServiceCodes = [], bookingUserRole = null) {
-        const prep = await this._prepareBooking(trackingNumber, overrideCarrierCode, optionalServiceCodes, bookingUserRole);
-        if (prep.alreadyBooked) {
+    async bookShipment(trackingNumber, overrideCarrierCode = null, optionalServiceCodes = [], bookingUserRole = null, options = {}) {
+        const prep = await this._prepareBooking(trackingNumber, overrideCarrierCode, optionalServiceCodes, bookingUserRole, options);
+        if (prep.alreadyBooked && !options?.force) {
             return { success: true, shipment: prep.shipment, message: 'Shipment already booked.' };
         }
         return await this._executeCarrierBooking(prep);
@@ -104,7 +104,7 @@ class ShipmentBookingService {
      * Validates shipment, policies, credits, and records pending attempt.
      * @private
      */
-    async _prepareBooking(trackingNumber, overrideCarrierCode = null, optionalServiceCodes = [], bookingUserRole = null) {
+    async _prepareBooking(trackingNumber, overrideCarrierCode = null, optionalServiceCodes = [], bookingUserRole = null, options = {}) {
         const shipment = await prisma.shipment.findUnique({
             where: { trackingNumber },
             include: { user: true, organization: true }
@@ -148,19 +148,21 @@ class ShipmentBookingService {
             }
         }
 
-        // Idempotency: Prevent overlapping requests
+        // Idempotency: Prevent overlapping requests unless explicitly forced
         const bookingAttempts = Array.isArray(shipment.bookingAttempts) ? shipment.bookingAttempts : [];
-        const activeAttempt = bookingAttempts.find((a) =>
-            a.status === 'succeeded' || (a.status === 'pending' && new Date() - new Date(a.createdAt) < 60000)
-        );
+        if (!options?.force) {
+            const activeAttempt = bookingAttempts.find((a) =>
+                a.status === 'succeeded' || (a.status === 'pending' && new Date() - new Date(a.createdAt) < 60000)
+            );
 
-        if (activeAttempt) {
-            const hasRealDocs = Boolean(shipment.labelUrl || shipment.awbUrl);
-            if (activeAttempt.status === 'succeeded' && hasRealDocs) {
-                return { alreadyBooked: true, shipment, attemptId: activeAttempt.attemptId, carrierCode };
-            }
-            if (activeAttempt.status === 'pending' && new Date() - new Date(activeAttempt.createdAt) < 60000) {
-                throw new Error('A booking request is currently being processed by the carrier. Please wait.');
+            if (activeAttempt) {
+                const hasRealDocs = Boolean(shipment.labelUrl || shipment.awbUrl);
+                if (activeAttempt.status === 'succeeded' && hasRealDocs) {
+                    return { alreadyBooked: true, shipment, attemptId: activeAttempt.attemptId, carrierCode };
+                }
+                if (activeAttempt.status === 'pending' && new Date() - new Date(activeAttempt.createdAt) < 60000) {
+                    throw new Error('A booking request is currently being processed by the carrier. Please wait.');
+                }
             }
         }
 

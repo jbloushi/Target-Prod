@@ -641,25 +641,34 @@ exports.generateCarrierDocuments = async (req, res) => {
         // 2. If official documents are still missing (e.g. not yet booked or no documents on DHL repo), execute live carrier booking
         if (!awbUrl && !invoiceUrl) {
             try {
-                await ShipmentBookingService.bookShipment(
+                const bookResult = await ShipmentBookingService.bookShipment(
                     trackingNumber,
                     carrierCode,
                     [],
-                    req.user?.role
+                    req.user?.role,
+                    { force: true }
                 );
                 const fresh = await prisma.shipment.findUnique({ where: { trackingNumber } });
-                if (fresh.labelUrl || fresh.invoiceUrl) {
+                const freshLabel = fresh?.labelUrl || fresh?.awbUrl || bookResult?.shipment?.labelUrl || bookResult?.labelUrl;
+                const freshInvoice = fresh?.invoiceUrl || bookResult?.shipment?.invoiceUrl || bookResult?.invoiceUrl;
+                if (freshLabel || freshInvoice) {
                     return res.status(200).json({
                         success: true,
                         data: {
-                            labelUrl: fresh.labelUrl,
-                            awbUrl: fresh.awbUrl || fresh.labelUrl,
-                            invoiceUrl: fresh.invoiceUrl,
-                            documents: fresh.documents || [],
-                            carrierShipmentId: fresh.carrierShipmentId || fresh.dhlTrackingNumber,
-                            shipment: fresh
+                            labelUrl: freshLabel,
+                            awbUrl: fresh?.awbUrl || freshLabel,
+                            invoiceUrl: freshInvoice,
+                            documents: fresh?.documents || bookResult?.shipment?.documents || [],
+                            carrierShipmentId: fresh?.carrierShipmentId || fresh?.dhlTrackingNumber || bookResult?.shipment?.carrierShipmentId,
+                            shipment: fresh || bookResult?.shipment
                         },
                         message: 'Official carrier AWB and Invoice successfully retrieved from carrier API'
+                    });
+                } else if (carrierCode === 'DGR') {
+                    const errorDetail = bookResult?.message || 'DHL booking was processed but no label or invoice image was returned in the carrier response.';
+                    return res.status(400).json({
+                        success: false,
+                        error: `DHL Express document retrieval failed: ${errorDetail}`
                     });
                 }
             } catch (bookErr) {

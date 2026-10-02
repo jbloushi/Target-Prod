@@ -25,8 +25,8 @@ exports.saveDocument = async (trackingNumber, docType, base64Data) => {
         const filename = `${trackingNumber}_${docType}_${randomHash}.pdf`;
         const filepath = path.join(uploadsDir, filename);
 
-        // Strip data:application/pdf;base64, if present
-        const cleanBase64 = base64Data.replace(/^data:application\/pdf;base64,/, '');
+        // Strip data URI prefix (e.g. data:application/pdf;base64, or octet-stream) if present
+        const cleanBase64 = base64Data.replace(/^data:[^;]+;base64,/, '');
 
         // Write to disk
         fs.writeFileSync(filepath, cleanBase64, 'base64');

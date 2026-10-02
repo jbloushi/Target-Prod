@@ -208,9 +208,9 @@ model Shipment {
   dhlTrackingNumber String?
   dhlConfirmed      Boolean     @default(false)
   carrierShipmentId String?
-  labelUrl          String?
-  awbUrl            String?
-  invoiceUrl        String?
+  labelUrl          String?     @db.Text
+  awbUrl            String?     @db.Text
+  invoiceUrl        String?     @db.Text
   
   // Fleet & Delivery Run Fields
   deliveryRunId    String?

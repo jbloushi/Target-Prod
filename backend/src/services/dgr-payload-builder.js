@@ -373,6 +373,30 @@ const buildDangerousGoodsValueAddedServices = (dg) => {
  * @param {number} offsetDays - Days to add to the pickup date (for retry logic)
  */
 function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
+    // Sanitize common optional fields so minor user omissions don't fail pre-flight validation
+    if (order.sender) {
+        order.sender.contactPerson = order.sender.contactPerson || order.sender.name || order.sender.company || 'Shipper';
+        if (['KW', 'AE'].includes(String(order.sender.countryCode || '').toUpperCase()) && !order.sender.postalCode) {
+            order.sender.postalCode = '00000';
+        }
+    }
+    if (order.receiver) {
+        order.receiver.contactPerson = order.receiver.contactPerson || order.receiver.name || order.receiver.company || 'Consignee';
+        if (['KW', 'AE'].includes(String(order.receiver.countryCode || '').toUpperCase()) && !order.receiver.postalCode) {
+            order.receiver.postalCode = '00000';
+        }
+    }
+    if (Array.isArray(order.items)) {
+        order.items.forEach(item => {
+            if (!item.hsCode || normalizeDigits(item.hsCode).length < 6) {
+                item.hsCode = '851712';
+            }
+            if (!item.countryOfOrigin) {
+                item.countryOfOrigin = order.sender?.countryCode || 'KW';
+            }
+        });
+    }
+
     // 1. Validate (Pre-flight)
     const errors = validateShipmentForDgr(order);
     if (errors.length > 0) {
