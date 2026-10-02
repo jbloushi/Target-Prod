@@ -356,16 +356,6 @@ export const TargetLogisticsWizard = ({
     return () => { isMounted = false; };
   }, [user, isStaffOrAdmin]);
 
-  // ── Auto-sync Customs Declared Valuation from Package & Cargo ──
-  useEffect(() => {
-    if (totalDeclaredValue > 0) {
-      setCustoms(prev => ({
-        ...prev,
-        invoiceVal: String(Number(totalDeclaredValue).toFixed(2))
-      }));
-    }
-  }, [totalDeclaredValue]);
-
   const handleSelectOrganization = (orgId) => {
     setSelectedOrgId(orgId);
     if (!orgId) return;
@@ -763,6 +753,16 @@ export const TargetLogisticsWizard = ({
   const totalDeclaredValue = useMemo(() => {
     return (pkg.packagesList || []).reduce((sum, p) => sum + ((parseFloat(p.value) || 0) * (parseInt(p.qty, 10) || 1)), 0);
   }, [pkg.packagesList]);
+
+  // ── Auto-sync Customs Declared Valuation from Package & Cargo ──
+  useEffect(() => {
+    if (totalDeclaredValue > 0) {
+      setCustoms(prev => ({
+        ...prev,
+        invoiceVal: String(Number(totalDeclaredValue).toFixed(2))
+      }));
+    }
+  }, [totalDeclaredValue]);
 
   const insurancePremium = 0; // Removed per spec: insurance is not wired to carrier API or calculated
 
