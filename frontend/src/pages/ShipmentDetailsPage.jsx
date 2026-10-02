@@ -21,6 +21,256 @@ import { dedupeTrackingEvents } from '../utils/dedupeTrackingEvents';
 import StatusBadge from '../components/common/StatusBadge';
 import TradeRouteDisplay from '../components/common/TradeRouteDisplay';
 import ProofOfDeliveryModal from '../components/ProofOfDeliveryModal';
+import { countries } from '../utils/countries';
+import GoogleAddressInput from '../components/GoogleAddressInput';
+import { DG_PRESET_OPTIONS } from '../components/shipment/KineticShipmentWizard';
+import { NON_POSTAL_COUNTRIES } from '../components/shipment/shipmentValidation';
+
+// ── Pure DaisyUI Form Components matching KineticShipmentWizard ──────
+const DaisyInput = ({
+  dataFieldKey,
+  id,
+  label,
+  placeholder,
+  value,
+  onChange,
+  type = 'text',
+  icon,
+  required = false,
+  half = false,
+  error,
+  helperText,
+  disabled = false,
+  className = '',
+  ...rest
+}) => {
+  const isError = Boolean(error);
+  const key = dataFieldKey || id;
+  return (
+    <div
+      data-field-key={key}
+      id={id || (key ? `field-${key}` : undefined)}
+      className={`form-control ${half ? 'w-full md:w-[calc(50%-0.375rem)]' : 'w-full'} ${className}`}
+      {...rest}
+    >
+      {(label || helperText || error) && (
+        <div className="flex justify-between items-baseline mb-1 gap-2">
+          {label && (
+            <label className="text-xs font-bold text-base-content/85 flex items-center gap-1.5 select-none">
+              <span>{label}</span>
+              {required ? (
+                <span className="inline-flex items-center px-1.5 py-0.5 bg-primary/10 text-primary text-[10px] font-black rounded-md tracking-wide">
+                  *
+                </span>
+              ) : (
+                <span className="text-[10px] font-normal text-base-content/40">
+                  (Optional)
+                </span>
+              )}
+            </label>
+          )}
+          {isError ? (
+            <span className="text-[11px] font-semibold text-right text-error animate-in fade-in">
+              {typeof error === 'string' ? error : helperText}
+            </span>
+          ) : helperText ? (
+            <span className="text-[11px] font-medium text-right text-base-content/50">
+              {helperText}
+            </span>
+          ) : null}
+        </div>
+      )}
+      <div className="relative flex items-center">
+        {icon && (
+          <span className={`material-symbols-outlined absolute start-3 text-lg pointer-events-none select-none transition-colors ${
+            isError ? 'text-error' : required && value ? 'text-primary' : 'text-base-content/40'
+          }`}>
+            {icon}
+          </span>
+        )}
+        <input
+          type={type}
+          placeholder={placeholder}
+          value={value ?? ''}
+          onChange={onChange}
+          disabled={disabled}
+          className={`input input-bordered input-sm w-full bg-base-100 text-sm font-medium transition-all ${
+            icon ? 'ps-9' : ''
+          } ${
+            isError
+              ? 'input-error border-error focus:border-error bg-error/5'
+              : required && !value
+              ? 'border-base-300 hover:border-primary/50 focus:border-primary'
+              : 'focus:input-primary'
+          }`}
+        />
+        {required && value && !isError && (
+          <span className="material-symbols-outlined absolute end-2.5 text-success text-base pointer-events-none select-none">
+            check_circle
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const DaisyPhoneInput = ({
+  dataFieldKey,
+  id,
+  label,
+  value,
+  onChange,
+  dialCode = '+965',
+  onDialCodeChange,
+  required = false,
+  half = false,
+  error,
+  helperText,
+  disabled = false,
+  className = '',
+  ...rest
+}) => {
+  const isError = Boolean(error);
+  const key = dataFieldKey || id;
+  return (
+    <div
+      data-field-key={key}
+      id={id || (key ? `field-${key}` : undefined)}
+      className={`form-control ${half ? 'w-full md:w-[calc(50%-0.375rem)]' : 'w-full'} ${className}`}
+      {...rest}
+    >
+      {(label || helperText || error) && (
+        <div className="flex justify-between items-baseline mb-1 gap-2">
+          {label && (
+            <label className="text-xs font-bold text-base-content/85 flex items-center gap-1.5 select-none">
+              <span>{label}</span>
+              {required ? (
+                <span className="inline-flex items-center px-1.5 py-0.5 bg-primary/10 text-primary text-[10px] font-black rounded-md tracking-wide">
+                  *
+                </span>
+              ) : (
+                <span className="text-[10px] font-normal text-base-content/40">
+                  (Optional)
+                </span>
+              )}
+            </label>
+          )}
+          {isError ? (
+            <span className="text-[11px] font-semibold text-right text-error animate-in fade-in">
+              {typeof error === 'string' ? error : helperText}
+            </span>
+          ) : helperText ? (
+            <span className="text-[11px] font-medium text-right text-base-content/50">
+              {helperText}
+            </span>
+          ) : null}
+        </div>
+      )}
+      <div className="flex items-center gap-1.5">
+        <select
+          value={dialCode}
+          onChange={(e) => onDialCodeChange && onDialCodeChange(e.target.value)}
+          disabled={disabled}
+          className="select select-bordered select-sm w-24 bg-base-100 text-xs font-mono font-bold shrink-0 focus:select-primary"
+        >
+          {countries.map((c) => (
+            <option key={c.code} value={c.dialCode}>
+              {c.dialCode} ({c.code})
+            </option>
+          ))}
+        </select>
+        <div className="relative flex-1">
+          <input
+            type="tel"
+            placeholder="e.g. 99123456"
+            value={value ?? ''}
+            onChange={onChange}
+            disabled={disabled}
+            className={`input input-bordered input-sm w-full bg-base-100 text-sm font-medium font-mono transition-all ${
+              isError
+                ? 'input-error border-error focus:border-error bg-error/5'
+                : required && !value
+                ? 'border-base-300 hover:border-primary/50 focus:border-primary'
+                : 'focus:input-primary'
+            }`}
+          />
+          {required && value && !isError && (
+            <span className="material-symbols-outlined absolute end-2.5 top-1/2 -translate-y-1/2 text-success text-base pointer-events-none select-none">
+              check_circle
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Presets exactly from KineticShipmentWizard
+const SENDER_PRESETS = [
+  { label: '🏢 Shuwaikh Logistics Hub', city: 'Shuwaikh Industrial', country: 'Kuwait', countryCode: 'KW', phoneCountryCode: '+965', zip: '70001', addr1: 'Block 1, Street 14, Target Logistics Hub' },
+  { label: '🏪 Airport Cargo Terminal', city: 'Farwaniya', country: 'Kuwait', countryCode: 'KW', phoneCountryCode: '+965', zip: '80000', addr1: 'Cargo City, Kuwait International Airport' },
+  { label: '🏬 Kuwait City Financial Centre', city: 'Kuwait City', country: 'Kuwait', countryCode: 'KW', phoneCountryCode: '+965', zip: '13001', addr1: 'Sharq, Block 3, Al-Hamra Tower Wing' }
+];
+
+const RECEIVER_PRESETS = [
+  { label: '🏙️ Dubai Business Bay', city: 'Dubai', country: 'United Arab Emirates', countryCode: 'AE', phoneCountryCode: '+971', zip: '00000', addr1: 'Bay Square, Building 4' },
+  { label: '🇸🇦 Riyadh Olaya Hub', city: 'Riyadh', country: 'Saudi Arabia', countryCode: 'SA', phoneCountryCode: '+966', zip: '12211', addr1: 'King Fahd Road, Al Olaya District' },
+  { label: '🏬 Abu Dhabi Hub', city: 'Abu Dhabi', country: 'United Arab Emirates', countryCode: 'AE', phoneCountryCode: '+971', zip: '00000', addr1: 'Al Reem Island, Marina Bay 1' }
+];
+
+const PACKAGE_TYPES = ['Box', 'Envelope', 'Pallet', 'Bag', 'Crate', 'Tube'];
+
+const KNOWN_CARRIERS = {
+  DHL: {
+    code: 'DHL',
+    name: 'DHL Express Global',
+    badge: 'Express Air Network',
+    color: '#D40511',
+    icon: 'flight_takeoff',
+    desc: 'Worldwide priority express with customs clearance and door-to-door courier.'
+  },
+  FEDEX: {
+    code: 'FEDEX',
+    name: 'FedEx Express Global',
+    badge: 'Global Priority Air',
+    color: '#4D148C',
+    icon: 'flight',
+    desc: 'Worldwide express priority air linehauls with automated customs and milestone tracking.'
+  },
+  ARAMEX: {
+    code: 'ARAMEX',
+    name: 'Aramex Priority Express',
+    badge: 'MENA & GCC Priority',
+    color: '#E31837',
+    icon: 'local_shipping',
+    desc: 'Comprehensive regional and international courier network across Middle East, GCC, and global lanes.'
+  },
+  SMSA: {
+    code: 'SMSA',
+    name: 'SMSA Express KSA',
+    badge: 'Saudi Domestic & GCC',
+    color: '#F97316',
+    icon: 'local_shipping',
+    desc: 'Kingdom-wide express distribution and GCC cross-border road freight.'
+  },
+  INTERNAL: {
+    code: 'INTERNAL',
+    name: 'Target Dedicated Fleet',
+    badge: 'Domestic Same-Day',
+    color: '#059669',
+    icon: 'electric_rickshaw',
+    desc: 'Target Logistics domestic courier dispatch & same-day local distribution.'
+  }
+};
+
+const DEFAULT_CARRIER_ADDONS = [
+  { serviceCode: 'SA', serviceName: 'Adult (18+) ID Verified Signature', desc: 'Requires physical government ID check upon handover', price: 2.500 },
+  { serviceCode: 'SD', serviceName: 'Direct Signature Required', desc: 'Guarantees delivery only to designated consignee', price: 1.500 },
+  { serviceCode: 'AA', serviceName: 'Saturday / Weekend Priority Delivery', desc: 'Guaranteed weekend delivery schedule in GCC destinations', price: 4.500 },
+  { serviceCode: 'PRIO_AM', serviceName: 'Priority Morning Delivery (by 10:30 AM)', desc: 'Earliest time-definite business delivery commitment', price: 3.000 },
+  { serviceCode: 'DD', serviceName: 'Delivered Duty Paid (DDP Customs Clearance)', desc: 'Shipper covers all destination import customs and VAT duties', price: 5.000 },
+  { serviceCode: 'DG_SUR', serviceName: 'IATA Dangerous Goods Compliance Surcharge', desc: 'UN compliant hazardous materials handling & DGD processing', price: 8.500 }
+];
 
 const getAllowedStatusOptions = (user, shipment) => {
     if (!user || !shipment) return [];
@@ -35,14 +285,14 @@ const getShipmentTypeLabel = (shipmentType) => (
     shipmentType === 'documents' ? 'Document Express' : 'Standard Package'
 );
 
-// Edit Consignment Tabs (Wizard-Style Studio)
+// Edit Consignment Tabs (Exact Match with Kinetic Shipment Wizard)
 const EDIT_TABS = [
-    { key: 'sender', label: 'Shipper & Origin', labelAr: 'الراسل والمصدر', icon: 'flight_takeoff', desc: 'Contact, street & city' },
-    { key: 'receiver', label: 'Consignee & Dest', labelAr: 'المستلم والوجهة', icon: 'flight_land', desc: 'Delivery address & phone' },
-    { key: 'content', label: 'Parcels & Cargo', labelAr: 'الطرود والبضائع', icon: 'inventory_2', desc: 'Weights, dims & DG IATA' },
-    { key: 'carrier', label: 'Carrier & Logistics', labelAr: 'شركة الشحن والخدمة', icon: 'local_shipping', desc: 'Carrier code & dispatch mode' },
-    { key: 'billing', label: 'Billing & Terms', labelAr: 'الفواتير والأسعار', icon: 'receipt_long', desc: 'Pricing, cost & currency' },
-    { key: 'status', label: 'Status & Checkpoints', labelAr: 'الحالة والملاحظات', icon: 'history', desc: 'Consignment tracking state' }
+    { id: 1, key: 'sender', label: 'Sender', labelAr: 'الراسل', icon: 'flight_takeoff', desc: 'Shipper identity & pickup origin' },
+    { id: 2, key: 'receiver', label: 'Receiver', labelAr: 'المستلم', icon: 'flight_land', desc: 'Consignee & destination address' },
+    { id: 3, key: 'pkg', label: 'Package & Cargo', labelAr: 'الطرود والبضائع', icon: 'inventory_2', desc: 'Dimensions, IATA DGR & insurance' },
+    { id: 4, key: 'service', label: 'Carrier & Rates', labelAr: 'شركة الشحن والأسعار', icon: 'local_shipping', desc: 'Carrier network & pickup schedule' },
+    { id: 5, key: 'customs', label: 'Customs & Logistics', labelAr: 'اللوجستيات والجمارك', icon: 'event_note', desc: 'Incoterms & commercial invoice' },
+    { id: 6, key: 'status', label: 'Status & Checkpoints', labelAr: 'الحالة والملاحظات', icon: 'fact_check', desc: 'Milestone tracking state' }
 ];
 
 const parseDateRobust = (raw) => {
@@ -390,21 +640,136 @@ const ShipmentDetailsPage = () => {
         }
     };
 
-    // Open Edit Drawer
+    // Open Edit Studio (Wizard Schema Synchronization)
     const handleOpenEdit = (section = 'sender') => {
         if (!shipment) return;
-        setEditSection(section);
-        const draft = JSON.parse(JSON.stringify(shipment));
-        if (!draft.sender && draft.origin) draft.sender = draft.origin;
-        if (!draft.receiver && draft.destination) draft.receiver = draft.destination;
-        draft.dangerousGoods = {
-            contains: false,
-            ...(draft.dangerousGoods || draft.origin?.dangerousGoods || {})
+        const tabMap = {
+            content: 'pkg',
+            carrier: 'service',
+            billing: 'customs'
         };
+        const targetSection = tabMap[section] || section;
+        setEditSection(targetSection);
+
+        const sOrigin = shipment.origin || shipment.sender || {};
+        const sDest = shipment.destination || shipment.receiver || {};
+        const sDG = shipment.dangerousGoods || sOrigin.dangerousGoods || {};
+        const sCust = shipment.customsInvoice || shipment.customs || {};
+
+        // Parse packages/parcels list
+        const rawParcels = Array.isArray(shipment.parcels) && shipment.parcels.length > 0
+            ? shipment.parcels
+            : (Array.isArray(shipment.packages) && shipment.packages.length > 0 ? shipment.packages : []);
+
+        const packagesList = rawParcels.length > 0
+            ? rawParcels.map((p, idx) => ({
+                id: p.id || p._id || idx + 1,
+                description: p.description || shipment.description || 'General Cargo',
+                qty: String(p.quantity || p.qty || 1),
+                weight: String(p.weight || 1),
+                length: String(p.dimensions?.length || p.length || 20),
+                width: String(p.dimensions?.width || p.width || 15),
+                height: String(p.dimensions?.height || p.height || 10),
+                value: String(p.declaredValue || p.value || 15),
+                currency: p.currency || shipment.currency || 'KWD',
+                hsCode: p.hsCode || p.commodityCode || ''
+            }))
+            : [{
+                id: 1,
+                description: shipment.description || 'General Cargo',
+                qty: String(shipment.totalPieces || 1),
+                weight: String(shipment.weight || 1),
+                length: '20',
+                width: '15',
+                height: '10',
+                value: String(shipment.price || 15),
+                currency: shipment.currency || 'KWD',
+                hsCode: ''
+            }];
+
+        const sCountryObj = countries.find(c => c.code === (sOrigin.countryCode || sOrigin.country)) || { dialCode: '+965' };
+        const dCountryObj = countries.find(c => c.code === (sDest.countryCode || sDest.country)) || { dialCode: '+966' };
+
+        const draft = {
+            sender: {
+                name: sOrigin.contactPerson || sOrigin.name || '',
+                company: sOrigin.company || '',
+                phone: sOrigin.phone || '',
+                phoneCountryCode: sOrigin.phoneCountryCode || sCountryObj.dialCode || '+965',
+                email: sOrigin.email || '',
+                taxId: sOrigin.taxId || sOrigin.vatNumber || sOrigin.crNumber || '',
+                addr1: sOrigin.line1 || sOrigin.address || sOrigin.addr1 || '',
+                addr2: sOrigin.line2 || sOrigin.addr2 || '',
+                area: sOrigin.area || sOrigin.district || '',
+                city: sOrigin.city || '',
+                state: sOrigin.state || sOrigin.governorate || '',
+                country: sOrigin.country || 'Kuwait',
+                countryCode: (sOrigin.countryCode || 'KW').toUpperCase(),
+                zip: sOrigin.postalCode || sOrigin.zipCode || sOrigin.zip || '',
+                formattedAddress: sOrigin.formattedAddress || ''
+            },
+            receiver: {
+                name: sDest.contactPerson || sDest.name || '',
+                company: sDest.company || '',
+                phone: sDest.phone || '',
+                phoneCountryCode: sDest.phoneCountryCode || dCountryObj.dialCode || '+966',
+                email: sDest.email || '',
+                taxId: sDest.taxId || sDest.vatNumber || sDest.civilId || '',
+                addr1: sDest.line1 || sDest.address || sDest.addr1 || '',
+                addr2: sDest.line2 || sDest.addr2 || '',
+                area: sDest.area || sDest.district || '',
+                city: sDest.city || '',
+                state: sDest.state || sDest.governorate || '',
+                country: sDest.country || 'Saudi Arabia',
+                countryCode: (sDest.countryCode || 'SA').toUpperCase(),
+                zip: sDest.postalCode || sDest.zipCode || sDest.zip || '',
+                instructions: sDest.instructions || sDest.deliveryNotes || shipment.specialInstructions || '',
+                formattedAddress: sDest.formattedAddress || ''
+            },
+            pkg: {
+                pkgType: shipment.packagingType || shipment.pkgType || 'Box',
+                insurance: Boolean(shipment.insurance || shipment.isInsured),
+                dangerousGoods: Boolean(sDG.contains || sDG.isDangerous || shipment.isDangerousGoods),
+                unCode: sDG.unCode || sDG.unNumber || '',
+                dgClass: sDG.dgClass || sDG.classDivision || '',
+                dgServiceCode: sDG.dgServiceCode || sDG.serviceCode || '',
+                dgContentId: sDG.dgContentId || sDG.contentId || '',
+                properShippingName: sDG.properShippingName || '',
+                dgMarks: sDG.dgMarks || '',
+                packagesList
+            },
+            service: {
+                carrierCode: shipment.carrierCode || 'INTERNAL',
+                serviceCode: shipment.serviceCode || 'INTERNAL_STD',
+                serviceName: shipment.serviceName || '',
+                quotedPrice: shipment.price || 0,
+                currency: shipment.currency || 'KWD',
+                selectedAddons: Array.isArray(shipment.selectedAddons) ? shipment.selectedAddons : [],
+                pickupType: shipment.pickupRequired || shipment.pickupDate ? 'Schedule Driver Pickup' : 'Drop-off at Target Hub',
+                pickupDate: shipment.pickupDate ? shipment.pickupDate.slice(0, 10) : '',
+                pickupTime: shipment.pickupTime || '9:00 AM – 12:00 PM',
+                instructions: shipment.specialInstructions || shipment.remarks || ''
+            },
+            customs: {
+                incoterms: shipment.incoterm ? (shipment.incoterm.includes('–') ? shipment.incoterm : `${shipment.incoterm} – Standard`) : 'DAP – Delivered at Place',
+                shipmentType: shipment.shipmentType === 'documents' ? 'Commercial' : (shipment.shipmentType || 'Commercial'),
+                invoiceNum: sCust.invoiceNumber || sCust.invoiceNum || '',
+                invoiceVal: String(sCust.invoiceVal || sCust.declaredValue || shipment.price || '150.000'),
+                currency: sCust.currency || shipment.currency || 'KWD',
+                hsCode: sCust.hsCode || '',
+                notes: sCust.notes || sCust.declarationNotes || ''
+            },
+            status: shipment.status || 'pending',
+            statusDescription: '',
+            price: shipment.price ?? '',
+            costPrice: shipment.costPrice ?? '',
+            reference: shipment.reference || shipment.referenceNumber || ''
+        };
+
         setEditDraft(draft);
         setEditDrawerOpen(true);
 
-        if ((section === 'billing' || section === 'sender') && isStaff && clients.length === 0) {
+        if ((targetSection === 'customs' || targetSection === 'sender') && isStaff && clients.length === 0) {
             userService.getClients().then(res => setClients(res.data || [])).catch(() => {});
         }
     };
@@ -414,28 +779,129 @@ const ShipmentDetailsPage = () => {
         if (!editDraft || !shipment) return;
         setIsProcessing(true);
         try {
+            const senderData = {
+                name: editDraft.sender.name,
+                contactPerson: editDraft.sender.name,
+                company: editDraft.sender.company,
+                phone: editDraft.sender.phone,
+                phoneCountryCode: editDraft.sender.phoneCountryCode,
+                email: editDraft.sender.email,
+                taxId: editDraft.sender.taxId,
+                vatNumber: editDraft.sender.taxId,
+                line1: editDraft.sender.addr1,
+                line2: editDraft.sender.addr2,
+                address: editDraft.sender.addr1,
+                addr1: editDraft.sender.addr1,
+                addr2: editDraft.sender.addr2,
+                area: editDraft.sender.area,
+                city: editDraft.sender.city,
+                state: editDraft.sender.state,
+                country: editDraft.sender.country,
+                countryCode: editDraft.sender.countryCode,
+                postalCode: editDraft.sender.zip,
+                zipCode: editDraft.sender.zip,
+                zip: editDraft.sender.zip,
+                formattedAddress: editDraft.sender.formattedAddress
+            };
+
+            const receiverData = {
+                name: editDraft.receiver.name,
+                contactPerson: editDraft.receiver.name,
+                company: editDraft.receiver.company,
+                phone: editDraft.receiver.phone,
+                phoneCountryCode: editDraft.receiver.phoneCountryCode,
+                email: editDraft.receiver.email,
+                taxId: editDraft.receiver.taxId,
+                vatNumber: editDraft.receiver.taxId,
+                line1: editDraft.receiver.addr1,
+                line2: editDraft.receiver.addr2,
+                address: editDraft.receiver.addr1,
+                addr1: editDraft.receiver.addr1,
+                addr2: editDraft.receiver.addr2,
+                area: editDraft.receiver.area,
+                city: editDraft.receiver.city,
+                state: editDraft.receiver.state,
+                country: editDraft.receiver.country,
+                countryCode: editDraft.receiver.countryCode,
+                postalCode: editDraft.receiver.zip,
+                zipCode: editDraft.receiver.zip,
+                zip: editDraft.receiver.zip,
+                instructions: editDraft.receiver.instructions,
+                deliveryNotes: editDraft.receiver.instructions,
+                formattedAddress: editDraft.receiver.formattedAddress
+            };
+
+            const parcels = (editDraft.pkg.packagesList || []).map((p, idx) => ({
+                id: p.id || idx + 1,
+                description: p.description || 'General Cargo',
+                quantity: parseInt(p.qty, 10) || 1,
+                weight: parseFloat(p.weight) || 1,
+                length: parseFloat(p.length) || 20,
+                width: parseFloat(p.width) || 15,
+                height: parseFloat(p.height) || 10,
+                dimensions: {
+                    length: parseFloat(p.length) || 20,
+                    width: parseFloat(p.width) || 15,
+                    height: parseFloat(p.height) || 10
+                },
+                declaredValue: parseFloat(p.value) || 0,
+                price: parseFloat(p.value) || 0,
+                currency: p.currency || editDraft.customs.currency || 'KWD',
+                hsCode: p.hsCode || ''
+            }));
+
+            const dangerousGoods = {
+                contains: Boolean(editDraft.pkg.dangerousGoods),
+                unCode: editDraft.pkg.unCode || '',
+                unNumber: editDraft.pkg.unCode || '',
+                dgClass: editDraft.pkg.dgClass || '',
+                classDivision: editDraft.pkg.dgClass || '',
+                dgServiceCode: editDraft.pkg.dgServiceCode || '',
+                serviceCode: editDraft.pkg.dgServiceCode || '',
+                dgContentId: editDraft.pkg.dgContentId || '',
+                contentId: editDraft.pkg.dgContentId || '',
+                properShippingName: editDraft.pkg.properShippingName || '',
+                dgMarks: editDraft.pkg.dgMarks || ''
+            };
+
+            const customsInvoice = {
+                invoiceNumber: editDraft.customs.invoiceNum,
+                invoiceVal: parseFloat(editDraft.customs.invoiceVal) || 0,
+                declaredValue: parseFloat(editDraft.customs.invoiceVal) || 0,
+                currency: editDraft.customs.currency || 'KWD',
+                hsCode: editDraft.customs.hsCode,
+                notes: editDraft.customs.notes
+            };
+
             const payload = {
-                origin: editDraft.sender || editDraft.origin,
-                destination: editDraft.receiver || editDraft.destination,
-                sender: editDraft.sender || editDraft.origin,
-                receiver: editDraft.receiver || editDraft.destination,
-                parcels: editDraft.parcels,
-                packages: editDraft.parcels,
-                items: editDraft.items,
-                carrierCode: editDraft.carrierCode,
-                serviceCode: editDraft.serviceCode,
-                dangerousGoods: editDraft.dangerousGoods,
-                packagingType: editDraft.packagingType,
-                shipmentType: editDraft.shipmentType,
-                incoterm: editDraft.incoterm,
-                reference: editDraft.reference,
-                remarks: editDraft.remarks || editDraft.specialInstructions,
-                specialInstructions: editDraft.specialInstructions,
-                pickupDate: editDraft.pickupDate,
-                pickupTime: editDraft.pickupTime,
-                pickupRequired: editDraft.pickupRequired,
-                customsInvoice: editDraft.customsInvoice,
-                currency: editDraft.currency
+                origin: senderData,
+                destination: receiverData,
+                sender: senderData,
+                receiver: receiverData,
+                parcels,
+                packages: parcels,
+                items: parcels.map(p => ({
+                    description: p.description,
+                    quantity: p.quantity,
+                    declaredValue: p.declaredValue,
+                    countryOfOrigin: editDraft.sender.countryCode || 'KW',
+                    hsCode: p.hsCode
+                })),
+                packagingType: editDraft.pkg.pkgType || 'Box',
+                insurance: Boolean(editDraft.pkg.insurance),
+                dangerousGoods,
+                carrierCode: editDraft.service.carrierCode || 'INTERNAL',
+                serviceCode: editDraft.service.serviceCode || '',
+                pickupRequired: Boolean(editDraft.service.pickupType?.includes('Pickup')),
+                pickupDate: editDraft.service.pickupDate,
+                pickupTime: editDraft.service.pickupTime,
+                specialInstructions: editDraft.service.instructions,
+                remarks: editDraft.service.instructions,
+                incoterm: editDraft.customs.incoterms ? editDraft.customs.incoterms.split(' – ')[0] : 'DAP',
+                shipmentType: editDraft.customs.shipmentType || 'Commercial',
+                customsInvoice,
+                currency: editDraft.customs.currency || 'KWD',
+                reference: editDraft.reference
             };
 
             if (editDraft.status && editDraft.status !== shipment.status) {
@@ -448,9 +914,6 @@ const ShipmentDetailsPage = () => {
             }
             if (editDraft.costPrice !== undefined && editDraft.costPrice !== '') {
                 payload.costPrice = Number(editDraft.costPrice);
-            }
-            if (editDraft.estimatedDelivery) {
-                payload.estimatedDelivery = editDraft.estimatedDelivery;
             }
 
             await shipmentService.updateShipmentDetails(shipment.trackingNumber, payload);
@@ -2547,29 +3010,39 @@ const ShipmentDetailsPage = () => {
                 }}
             />
 
-            {/* Centered Wide Digital Modal - Consignment Dossier Studio */}
+            {/* Centered Wide Digital Modal - Consignment Dossier Studio (Exact Wizard Parity) */}
             {editDrawerOpen && editDraft && (() => {
                 const currentTabIndex = Math.max(0, EDIT_TABS.findIndex((t) => t.key === editSection));
                 const activeTab = EDIT_TABS[currentTabIndex] || EDIT_TABS[0];
                 const isFirstTab = currentTabIndex === 0;
                 const isLastTab = currentTabIndex === EDIT_TABS.length - 1;
 
-                const parcelsList = Array.isArray(editDraft.parcels) && editDraft.parcels.length > 0
-                    ? editDraft.parcels
-                    : [{ weight: editDraft.weight || 1, length: 10, width: 10, height: 10, description: 'Package 1' }];
+                const packagesList = editDraft.pkg?.packagesList && editDraft.pkg.packagesList.length > 0
+                    ? editDraft.pkg.packagesList
+                    : [{ id: 1, description: 'General Cargo', qty: '1', weight: '1.0', length: '20', width: '15', height: '10', value: '15.00', currency: 'KWD', hsCode: '' }];
 
-                const itemsList = Array.isArray(editDraft.items) && editDraft.items.length > 0
-                    ? editDraft.items
-                    : [{ description: 'General Cargo', quantity: 1, declaredValue: 10, countryOfOrigin: editDraft.sender?.countryCode || 'KW', hsCode: '' }];
-
-                const totalActualWeight = parcelsList.reduce((sum, p) => sum + (parseFloat(p.weight) || 0), 0);
-                const totalVolumetricWeight = parcelsList.reduce((sum, p) => {
-                    const l = parseFloat(p.dimensions?.length || p.length) || 0;
-                    const w = parseFloat(p.dimensions?.width || p.width) || 0;
-                    const h = parseFloat(p.dimensions?.height || p.height) || 0;
+                const totalActualWeight = packagesList.reduce((sum, p) => sum + (parseFloat(p.weight) || 0), 0);
+                const totalVolumetricWeight = packagesList.reduce((sum, p) => {
+                    const l = parseFloat(p.length) || 0;
+                    const w = parseFloat(p.width) || 0;
+                    const h = parseFloat(p.height) || 0;
                     return sum + ((l * w * h) / 5000);
                 }, 0);
-                const totalDeclaredValue = itemsList.reduce((sum, it) => sum + ((parseFloat(it.declaredValue ?? it.price) || 0) * (parseInt(it.quantity, 10) || 1)), 0);
+                const totalDeclaredValue = packagesList.reduce((sum, p) => sum + ((parseFloat(p.value) || 0) * (parseInt(p.qty, 10) || 1)), 0);
+                const declaredVal = parseFloat(editDraft.customs?.invoiceVal || totalDeclaredValue) || 0;
+                const insurancePremium = Math.max(2.5, declaredVal * 0.01).toFixed(3);
+
+                const selectedAddons = editDraft.service?.selectedAddons || [];
+                const toggleAddon = (addon) => {
+                    const exists = selectedAddons.some(a => a.serviceCode === addon.serviceCode);
+                    const updated = exists
+                        ? selectedAddons.filter(a => a.serviceCode !== addon.serviceCode)
+                        : [...selectedAddons, addon];
+                    setEditDraft({
+                        ...editDraft,
+                        service: { ...editDraft.service, selectedAddons: updated }
+                    });
+                };
 
                 return (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
@@ -2580,9 +3053,9 @@ const ShipmentDetailsPage = () => {
                         />
 
                         {/* Modal Container */}
-                        <div className="relative w-full max-w-6xl h-[92vh] max-h-[880px] bg-base-100 rounded-3xl shadow-2xl z-10 flex flex-col overflow-hidden border border-base-200 animate-in zoom-in-95 duration-200 text-base-content">
+                        <div className="relative w-full max-w-6xl h-[92vh] max-h-[900px] bg-base-100 rounded-3xl shadow-2xl z-10 flex flex-col overflow-hidden border border-base-200 animate-in zoom-in-95 duration-200 text-base-content">
                             {/* Modal Header */}
-                            <div className="flex items-center justify-between px-6 py-4 border-b border-base-200 bg-base-100/90 backdrop-blur-sm shrink-0">
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-base-200 bg-base-100/95 backdrop-blur-sm shrink-0">
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shadow-xs shrink-0">
                                         <span className="material-symbols-outlined text-2xl">edit_document</span>
@@ -2595,14 +3068,14 @@ const ShipmentDetailsPage = () => {
                                             <span className="badge badge-primary badge-outline font-mono text-xs font-bold">
                                                 {shipment.trackingNumber}
                                             </span>
-                                            {shipment.carrierCode && (
+                                            {editDraft.service?.carrierCode && (
                                                 <span className="badge badge-ghost font-mono text-xs font-bold uppercase">
-                                                    {shipment.carrierCode}
+                                                    {editDraft.service.carrierCode}
                                                 </span>
                                             )}
                                         </div>
                                         <p className="text-xs text-base-content/60 mt-0.5">
-                                            {isRTL ? 'تعديل كافة بيانات وأقسام البوليصة بدقة وسرعة' : 'Edit all consignment parameters, multi-parcels, routing, and customs'}
+                                            {isRTL ? 'تعديل كافة بيانات وأقسام البوليصة بدقة وتطابق كامل مع معالج الشحنات' : 'Full interactive editing matching the Kinetic Shipment Wizard structure & fields'}
                                         </p>
                                     </div>
                                 </div>
@@ -2622,7 +3095,7 @@ const ShipmentDetailsPage = () => {
                                 <aside className="w-64 sm:w-72 md:w-80 shrink-0 border-e border-base-200 bg-base-200/30 flex flex-col justify-between overflow-y-auto p-4 space-y-4">
                                     <div className="space-y-1.5">
                                         <div className="px-2 py-1 text-[10px] font-black uppercase tracking-wider text-base-content/50">
-                                            {isRTL ? 'أقسام البوليصة' : 'Consignment Sections'}
+                                            {isRTL ? 'خطوات وأقسام المعالج' : 'Wizard Consignment Steps'}
                                         </div>
                                         {EDIT_TABS.map((tab, idx) => {
                                             const isActive = editSection === tab.key;
@@ -2668,13 +3141,13 @@ const ShipmentDetailsPage = () => {
                                                 {isRTL ? 'ملخص البوليصة' : 'Quick Summary'}
                                             </span>
                                             <span className="badge badge-xs badge-neutral font-mono font-bold">
-                                                {editDraft.carrierCode || shipment.carrierCode || 'INTERNAL'}
+                                                {editDraft.service?.carrierCode || 'INTERNAL'}
                                             </span>
                                         </div>
                                         <div className="grid grid-cols-2 gap-2 text-[11px]">
                                             <div className="p-2 bg-base-200/40 rounded-xl">
                                                 <span className="text-[9px] text-base-content/50 block uppercase font-bold">{isRTL ? 'الطرود' : 'Parcels'}</span>
-                                                <span className="font-extrabold text-base-content">{parcelsList.length} Pcs</span>
+                                                <span className="font-extrabold text-base-content">{packagesList.length} Pcs</span>
                                             </div>
                                             <div className="p-2 bg-base-200/40 rounded-xl">
                                                 <span className="text-[9px] text-base-content/50 block uppercase font-bold">{isRTL ? 'الوزن' : 'Weight'}</span>
@@ -2682,11 +3155,11 @@ const ShipmentDetailsPage = () => {
                                             </div>
                                             <div className="p-2 bg-base-200/40 rounded-xl">
                                                 <span className="text-[9px] text-base-content/50 block uppercase font-bold">{isRTL ? 'الشحن' : 'Incoterm'}</span>
-                                                <span className="font-extrabold text-base-content">{editDraft.incoterm || 'DAP'}</span>
+                                                <span className="font-extrabold text-base-content">{editDraft.customs?.incoterms?.split(' – ')[0] || 'DAP'}</span>
                                             </div>
                                             <div className="p-2 bg-base-200/40 rounded-xl">
                                                 <span className="text-[9px] text-base-content/50 block uppercase font-bold">{isRTL ? 'العملة' : 'Currency'}</span>
-                                                <span className="font-extrabold text-base-content">{editDraft.currency || 'KWD'}</span>
+                                                <span className="font-extrabold text-base-content">{editDraft.customs?.currency || 'KWD'}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -2710,477 +3183,998 @@ const ShipmentDetailsPage = () => {
                                             </div>
                                         </div>
                                         <span className="badge badge-sm badge-ghost font-mono text-[10px] font-bold">
-                                            {isRTL ? `قسم ${currentTabIndex + 1} من ${EDIT_TABS.length}` : `Section ${currentTabIndex + 1} of ${EDIT_TABS.length}`}
+                                            {isRTL ? `خطوة ${currentTabIndex + 1} من ${EDIT_TABS.length}` : `Step ${currentTabIndex + 1} of ${EDIT_TABS.length}`}
                                         </span>
                                     </div>
 
                                     {/* Scrollable Form Body */}
                                     <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                                        {/* Shipper & Origin Tab */}
+                                        {/* Step 1: Sender & Shipper Origin */}
                                         {editSection === 'sender' && (
-                                            <div className="space-y-4 text-xs">
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">Shipper Name / Company</span></label>
-                                                        <input
-                                                            type="text"
-                                                            value={editDraft.sender?.company || editDraft.sender?.contactPerson || ''}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, company: e.target.value } })}
-                                                            className="input input-bordered input-sm rounded-xl"
-                                                        />
+                                            <div className="space-y-6">
+                                                {/* Header */}
+                                                <div className="flex items-center gap-3 pb-3 border-b border-base-200">
+                                                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 text-primary">
+                                                        <span className="material-symbols-outlined text-2xl">flight_takeoff</span>
                                                     </div>
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">Contact Person</span></label>
-                                                        <input
-                                                            type="text"
-                                                            value={editDraft.sender?.contactPerson || ''}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, contactPerson: e.target.value } })}
-                                                            className="input input-bordered input-sm rounded-xl"
-                                                        />
+                                                    <div>
+                                                        <h2 className="text-base font-bold text-base-content">
+                                                            {lang === 'ar' ? 'الراسل والمصدر (معلومات الشاحن)' : 'Sender & Shipper Origin'}
+                                                        </h2>
+                                                        <p className="text-xs text-base-content/60">
+                                                            {lang === 'ar' ? 'يرجى تقديم هوية الشاحن وعنوان الاستلام المباشر ومعلومات الاتصال' : 'Provide shipper identity, pickup street address and contact details'}
+                                                        </p>
                                                     </div>
                                                 </div>
 
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">Phone Number</span></label>
-                                                        <input
-                                                            type="text"
-                                                            value={editDraft.sender?.phone || ''}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, phone: e.target.value } })}
-                                                            className="input input-bordered input-sm rounded-xl font-mono"
-                                                        />
-                                                    </div>
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">Email Address</span></label>
-                                                        <input
-                                                            type="email"
-                                                            value={editDraft.sender?.email || ''}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, email: e.target.value } })}
-                                                            className="input input-bordered input-sm rounded-xl font-mono"
-                                                        />
-                                                    </div>
+                                                {/* Quick Location Presets */}
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="text-xs font-bold text-base-content/50">⚡ {lang === 'ar' ? 'عناوين سريعة:' : 'Quick Presets:'}</span>
+                                                    {SENDER_PRESETS.map((preset, pIdx) => (
+                                                        <button
+                                                            key={pIdx}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setEditDraft({
+                                                                    ...editDraft,
+                                                                    sender: {
+                                                                        ...editDraft.sender,
+                                                                        city: preset.city,
+                                                                        country: preset.country,
+                                                                        countryCode: preset.countryCode,
+                                                                        phoneCountryCode: preset.phoneCountryCode,
+                                                                        zip: preset.zip,
+                                                                        addr1: preset.addr1,
+                                                                        formattedAddress: `${preset.addr1}, ${preset.city}, ${preset.country}`
+                                                                    }
+                                                                });
+                                                            }}
+                                                            className="btn btn-xs btn-outline border-base-300 hover:border-primary hover:bg-primary/5 text-base-content/70 hover:text-primary font-medium"
+                                                        >
+                                                            {preset.label}
+                                                        </button>
+                                                    ))}
                                                 </div>
 
-                                                <div className="form-control">
-                                                    <label className="label py-1"><span className="label-text font-bold">Address Line 1 / Street</span></label>
-                                                    <input
-                                                        type="text"
-                                                        value={editDraft.sender?.line1 || editDraft.sender?.address || ''}
-                                                        onChange={(e) => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, line1: e.target.value, address: e.target.value } })}
-                                                        className="input input-bordered input-sm rounded-xl"
+                                                {/* Primary Contact Fields */}
+                                                <div className="flex flex-wrap gap-4">
+                                                    <DaisyInput
+                                                        dataFieldKey="sender_name"
+                                                        label={lang === 'ar' ? 'اسم جهة الاتصال / الشخص' : 'Contact Full Name'}
+                                                        placeholder="e.g. John Doe / Ahmed Al-Mutawa"
+                                                        value={editDraft.sender?.name}
+                                                        onChange={e => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, name: e.target.value } })}
+                                                        icon="person"
+                                                        required
+                                                        half
+                                                    />
+
+                                                    <DaisyInput
+                                                        dataFieldKey="sender_company"
+                                                        label={lang === 'ar' ? 'اسم الشركة / المؤسسة (اختياري)' : 'Company / Entity Name (Optional)'}
+                                                        placeholder="e.g. Al-Bahar Logistics Corp."
+                                                        value={editDraft.sender?.company}
+                                                        onChange={e => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, company: e.target.value } })}
+                                                        icon="business"
+                                                        half
+                                                    />
+
+                                                    <DaisyPhoneInput
+                                                        dataFieldKey="sender_phone"
+                                                        label={lang === 'ar' ? 'رقم الهاتف المباشر' : 'Phone Number'}
+                                                        value={editDraft.sender?.phone}
+                                                        onChange={e => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, phone: e.target.value } })}
+                                                        dialCode={editDraft.sender?.phoneCountryCode || '+965'}
+                                                        onDialCodeChange={c => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, phoneCountryCode: c } })}
+                                                        required
+                                                        half
+                                                    />
+
+                                                    <DaisyInput
+                                                        dataFieldKey="sender_email"
+                                                        label={lang === 'ar' ? 'البريد الإلكتروني (اختياري)' : 'Email Address (Optional)'}
+                                                        placeholder="contact@company.com"
+                                                        value={editDraft.sender?.email}
+                                                        onChange={e => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, email: e.target.value } })}
+                                                        type="email"
+                                                        icon="mail"
+                                                        half
+                                                    />
+
+                                                    <DaisyInput
+                                                        dataFieldKey="sender_taxId"
+                                                        label={lang === 'ar' ? 'الرقم الضريبي / السجل التجاري / البطاقة المدنية (اختياري)' : 'Tax ID / VAT / Customs CR / Civil ID (Optional)'}
+                                                        placeholder={lang === 'ar' ? 'اختياري: الرقم المدني أو الضريبي' : 'Optional: e.g. Civil ID, Tax ID or Commercial CR'}
+                                                        value={editDraft.sender?.taxId}
+                                                        onChange={e => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, taxId: e.target.value } })}
+                                                        icon="badge"
+                                                        helperText={lang === 'ar' ? 'اختياري للشحن الداخلي — يُستخدم للتخليص الجمركي للشحنات الدولية والتجارية' : 'Optional for domestic shipping — used for international commercial customs declarations'}
                                                     />
                                                 </div>
 
-                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">City</span></label>
-                                                        <input
-                                                            type="text"
-                                                            value={editDraft.sender?.city || ''}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, city: e.target.value } })}
-                                                            className="input input-bordered input-sm rounded-xl"
-                                                        />
-                                                    </div>
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">Country Code</span></label>
-                                                        <input
-                                                            type="text"
-                                                            maxLength="2"
-                                                            value={editDraft.sender?.countryCode || 'KW'}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, countryCode: e.target.value.toUpperCase() } })}
-                                                            className="input input-bordered input-sm rounded-xl font-mono uppercase"
-                                                        />
-                                                    </div>
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">Postal / ZIP Code</span></label>
-                                                        <input
-                                                            type="text"
-                                                            value={editDraft.sender?.postalCode || editDraft.sender?.zipCode || ''}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, postalCode: e.target.value, zipCode: e.target.value } })}
-                                                            className="input input-bordered input-sm rounded-xl font-mono"
-                                                        />
-                                                    </div>
+                                                {/* Google Address Autocomplete */}
+                                                <div className="space-y-1.5 pt-2">
+                                                    <label className="text-xs font-bold text-base-content/80 flex items-center gap-1.5">
+                                                        <span className="material-symbols-outlined text-sm text-primary">search</span>
+                                                        {lang === 'ar' ? 'البحث عن العنوان (Google Places)' : 'Search Global Address Registry (Google Places)'}
+                                                    </label>
+                                                    <GoogleAddressInput
+                                                        value={{
+                                                            formattedAddress: editDraft.sender?.formattedAddress,
+                                                            addressLine1: editDraft.sender?.addr1,
+                                                            addressLine2: editDraft.sender?.addr2,
+                                                            city: editDraft.sender?.city,
+                                                            state: editDraft.sender?.state,
+                                                            postalCode: editDraft.sender?.zip,
+                                                            country: editDraft.sender?.country,
+                                                            countryCode: editDraft.sender?.countryCode,
+                                                            area: editDraft.sender?.area
+                                                        }}
+                                                        onChange={(res) => {
+                                                            const countryObj = countries.find(c => c.code === res.countryCode) || countries.find(c => c.name === res.country);
+                                                            const sanitizedCity = String(res.city || '').trim().substring(0, 45);
+                                                            const sanitizedAddr1 = String(res.streetLines?.[0] || res.addressLine1 || res.formattedAddress || '').trim().substring(0, 45);
+                                                            setEditDraft({
+                                                                ...editDraft,
+                                                                sender: {
+                                                                    ...editDraft.sender,
+                                                                    addr1: sanitizedAddr1 || editDraft.sender?.addr1,
+                                                                    addr2: res.addressLine2 ? String(res.addressLine2).substring(0, 45) : editDraft.sender?.addr2,
+                                                                    area: res.area ? String(res.area).substring(0, 45) : editDraft.sender?.area,
+                                                                    city: sanitizedCity || editDraft.sender?.city,
+                                                                    state: res.state ? String(res.state).substring(0, 45) : editDraft.sender?.state,
+                                                                    zip: res.postalCode || (NON_POSTAL_COUNTRIES.includes(res.countryCode) ? '00000' : editDraft.sender?.zip),
+                                                                    country: countryObj?.name || res.country || editDraft.sender?.country,
+                                                                    countryCode: countryObj?.code || res.countryCode || editDraft.sender?.countryCode,
+                                                                    phoneCountryCode: countryObj?.dialCode || editDraft.sender?.phoneCountryCode,
+                                                                    formattedAddress: res.formattedAddress || editDraft.sender?.formattedAddress
+                                                                }
+                                                            });
+                                                        }}
+                                                    />
                                                 </div>
 
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">Tax / VAT ID</span></label>
-                                                        <input
-                                                            type="text"
-                                                            placeholder="e.g. 300123456789003"
-                                                            value={editDraft.sender?.vatNumber || editDraft.sender?.taxId || ''}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, vatNumber: e.target.value, taxId: e.target.value } })}
-                                                            className="input input-bordered input-sm rounded-xl font-mono"
-                                                        />
+                                                {/* Structured Address Details */}
+                                                <div className="flex flex-wrap gap-4 pt-2">
+                                                    <DaisyInput
+                                                        dataFieldKey="sender_addr1"
+                                                        label={lang === 'ar' ? 'العنوان - السطر الأول (الشارع والمبنى)' : 'Street Address Line 1'}
+                                                        placeholder="Building, Street, House No."
+                                                        value={editDraft.sender?.addr1}
+                                                        onChange={e => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, addr1: e.target.value } })}
+                                                        icon="home"
+                                                        required
+                                                    />
+
+                                                    <DaisyInput
+                                                        dataFieldKey="sender_addr2"
+                                                        label={lang === 'ar' ? 'الشقة / الطابق / المكتب (السطر الثاني)' : 'Apartment / Suite / Office / Unit (Line 2)'}
+                                                        placeholder="Flat 4B, 2nd Floor"
+                                                        value={editDraft.sender?.addr2}
+                                                        onChange={e => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, addr2: e.target.value } })}
+                                                        icon="apartment"
+                                                        half
+                                                    />
+
+                                                    <DaisyInput
+                                                        dataFieldKey="sender_area"
+                                                        label={lang === 'ar' ? 'المنطقة / الحي / القطعة' : 'District / Area / Block'}
+                                                        placeholder="e.g. Block 4, Shuwaikh Industrial"
+                                                        value={editDraft.sender?.area}
+                                                        onChange={e => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, area: e.target.value } })}
+                                                        icon="map"
+                                                        half
+                                                    />
+
+                                                    <DaisyInput
+                                                        dataFieldKey="sender_city"
+                                                        label={lang === 'ar' ? 'المدينة' : 'City / Municipality'}
+                                                        placeholder="e.g. Kuwait City / Dubai"
+                                                        value={editDraft.sender?.city}
+                                                        onChange={e => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, city: e.target.value } })}
+                                                        icon="location_city"
+                                                        required
+                                                        half
+                                                    />
+
+                                                    <DaisyInput
+                                                        dataFieldKey="sender_state"
+                                                        label={lang === 'ar' ? 'المحافظة / الإمارة' : 'State / Governorate / Province'}
+                                                        placeholder="e.g. Al Asimah / Capital"
+                                                        value={editDraft.sender?.state}
+                                                        onChange={e => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, state: e.target.value } })}
+                                                        icon="signpost"
+                                                        half
+                                                    />
+
+                                                    {/* Country Selector */}
+                                                    <div className="form-control w-full md:w-[calc(50%-0.375rem)]">
+                                                        <label className="text-xs font-bold text-base-content/80 mb-1">
+                                                            {lang === 'ar' ? 'الدولة / الإقليم' : 'Country / Territory'} <span className="text-error font-black">*</span>
+                                                        </label>
+                                                        <div className="relative">
+                                                            <span className="material-symbols-outlined absolute start-3 top-1/2 -translate-y-1/2 text-base-content/40 text-lg pointer-events-none">
+                                                                public
+                                                            </span>
+                                                            <select
+                                                                value={editDraft.sender?.countryCode || 'KW'}
+                                                                onChange={(e) => {
+                                                                    const code = e.target.value;
+                                                                    const cObj = countries.find(c => c.code === code);
+                                                                    setEditDraft({
+                                                                        ...editDraft,
+                                                                        sender: {
+                                                                            ...editDraft.sender,
+                                                                            country: cObj?.name || editDraft.sender?.country,
+                                                                            countryCode: cObj?.code || 'KW',
+                                                                            phoneCountryCode: cObj?.dialCode || editDraft.sender?.phoneCountryCode || '+965',
+                                                                            zip: NON_POSTAL_COUNTRIES.includes(cObj?.code) ? '00000' : (editDraft.sender?.zip === '00000' ? '' : editDraft.sender?.zip)
+                                                                        }
+                                                                    });
+                                                                }}
+                                                                className="select select-bordered select-sm w-full ps-9 bg-base-100 text-sm font-medium focus:select-primary"
+                                                            >
+                                                                {countries.map(c => (
+                                                                    <option key={c.code} value={c.code}>
+                                                                        {c.flag} {c.name} ({c.code})
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
                                                     </div>
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">Commercial Reg (CR)</span></label>
-                                                        <input
-                                                            type="text"
-                                                            placeholder="e.g. 1010123456"
-                                                            value={editDraft.sender?.crNumber || ''}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, crNumber: e.target.value } })}
-                                                            className="input input-bordered input-sm rounded-xl font-mono"
-                                                        />
-                                                    </div>
+
+                                                    {/* Postal Code */}
+                                                    <DaisyInput
+                                                        dataFieldKey="sender_zip"
+                                                        label={lang === 'ar' ? 'الرمز البريدي' : 'Postal / ZIP Code'}
+                                                        placeholder={NON_POSTAL_COUNTRIES.includes((editDraft.sender?.countryCode || '').toUpperCase()) ? "00000 (Non-Postal Country)" : "e.g. 13001"}
+                                                        value={editDraft.sender?.zip}
+                                                        onChange={e => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, zip: e.target.value } })}
+                                                        icon="markunread_mailbox"
+                                                        required={!NON_POSTAL_COUNTRIES.includes((editDraft.sender?.countryCode || '').toUpperCase())}
+                                                        half
+                                                    />
                                                 </div>
                                             </div>
                                         )}
 
-                                        {/* Consignee & Destination Tab */}
+                                        {/* Step 2: Receiver & Consignee Destination */}
                                         {editSection === 'receiver' && (
-                                            <div className="space-y-4 text-xs">
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">Consignee Name / Company</span></label>
-                                                        <input
-                                                            type="text"
-                                                            value={editDraft.receiver?.company || editDraft.receiver?.contactPerson || ''}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, company: e.target.value } })}
-                                                            className="input input-bordered input-sm rounded-xl"
-                                                        />
+                                            <div className="space-y-6">
+                                                {/* Header */}
+                                                <div className="flex items-center gap-3 pb-3 border-b border-base-200">
+                                                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 text-primary">
+                                                        <span className="material-symbols-outlined text-2xl">flight_land</span>
                                                     </div>
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">Contact Person</span></label>
-                                                        <input
-                                                            type="text"
-                                                            value={editDraft.receiver?.contactPerson || ''}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, contactPerson: e.target.value } })}
-                                                            className="input input-bordered input-sm rounded-xl"
-                                                        />
+                                                    <div>
+                                                        <h2 className="text-base font-bold text-base-content">
+                                                            {lang === 'ar' ? 'المستلم والوجهة (معلومات الشحنة)' : 'Receiver & Consignee Destination'}
+                                                        </h2>
+                                                        <p className="text-xs text-base-content/60">
+                                                            {lang === 'ar' ? 'يرجى تقديم اسم المستلم وعنوان التوصيل ورقم الجوال للتسليم عند الوصول' : 'Provide destination consignee name, delivery address and mobile contact'}
+                                                        </p>
                                                     </div>
                                                 </div>
 
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">Phone Number</span></label>
-                                                        <input
-                                                            type="text"
-                                                            value={editDraft.receiver?.phone || ''}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, phone: e.target.value } })}
-                                                            className="input input-bordered input-sm rounded-xl font-mono"
-                                                        />
-                                                    </div>
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">Email Address</span></label>
-                                                        <input
-                                                            type="email"
-                                                            value={editDraft.receiver?.email || ''}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, email: e.target.value } })}
-                                                            className="input input-bordered input-sm rounded-xl font-mono"
-                                                        />
-                                                    </div>
+                                                {/* Quick Location Presets */}
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="text-xs font-bold text-base-content/50">⚡ {lang === 'ar' ? 'عناوين سريعة:' : 'Quick Presets:'}</span>
+                                                    {RECEIVER_PRESETS.map((preset, pIdx) => (
+                                                        <button
+                                                            key={pIdx}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setEditDraft({
+                                                                    ...editDraft,
+                                                                    receiver: {
+                                                                        ...editDraft.receiver,
+                                                                        city: preset.city,
+                                                                        country: preset.country,
+                                                                        countryCode: preset.countryCode,
+                                                                        phoneCountryCode: preset.phoneCountryCode,
+                                                                        zip: preset.zip,
+                                                                        addr1: preset.addr1,
+                                                                        formattedAddress: `${preset.addr1}, ${preset.city}, ${preset.country}`
+                                                                    }
+                                                                });
+                                                            }}
+                                                            className="btn btn-xs btn-outline border-base-300 hover:border-primary hover:bg-primary/5 text-base-content/70 hover:text-primary font-medium"
+                                                        >
+                                                            {preset.label}
+                                                        </button>
+                                                    ))}
                                                 </div>
 
-                                                <div className="form-control">
-                                                    <label className="label py-1"><span className="label-text font-bold">Delivery Address Line</span></label>
-                                                    <input
-                                                        type="text"
-                                                        value={editDraft.receiver?.line1 || editDraft.receiver?.address || ''}
-                                                        onChange={(e) => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, line1: e.target.value, address: e.target.value } })}
-                                                        className="input input-bordered input-sm rounded-xl"
+                                                {/* Primary Contact Fields */}
+                                                <div className="flex flex-wrap gap-4">
+                                                    <DaisyInput
+                                                        dataFieldKey="receiver_name"
+                                                        label={lang === 'ar' ? 'اسم جهة الاتصال / الشخص' : 'Contact Full Name'}
+                                                        placeholder="e.g. John Doe / Ahmed Al-Mutawa"
+                                                        value={editDraft.receiver?.name}
+                                                        onChange={e => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, name: e.target.value } })}
+                                                        icon="person"
+                                                        required
+                                                        half
+                                                    />
+
+                                                    <DaisyInput
+                                                        dataFieldKey="receiver_company"
+                                                        label={lang === 'ar' ? 'اسم الشركة / المؤسسة (اختياري)' : 'Company / Entity Name (Optional)'}
+                                                        placeholder="e.g. Al-Bahar Logistics Corp."
+                                                        value={editDraft.receiver?.company}
+                                                        onChange={e => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, company: e.target.value } })}
+                                                        icon="business"
+                                                        half
+                                                    />
+
+                                                    <DaisyPhoneInput
+                                                        dataFieldKey="receiver_phone"
+                                                        label={lang === 'ar' ? 'رقم الهاتف المباشر' : 'Phone Number'}
+                                                        value={editDraft.receiver?.phone}
+                                                        onChange={e => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, phone: e.target.value } })}
+                                                        dialCode={editDraft.receiver?.phoneCountryCode || '+966'}
+                                                        onDialCodeChange={c => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, phoneCountryCode: c } })}
+                                                        required
+                                                        half
+                                                    />
+
+                                                    <DaisyInput
+                                                        dataFieldKey="receiver_email"
+                                                        label={lang === 'ar' ? 'البريد الإلكتروني (اختياري)' : 'Email Address (Optional)'}
+                                                        placeholder="contact@company.com"
+                                                        value={editDraft.receiver?.email}
+                                                        onChange={e => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, email: e.target.value } })}
+                                                        type="email"
+                                                        icon="mail"
+                                                        half
+                                                    />
+
+                                                    <DaisyInput
+                                                        dataFieldKey="receiver_taxId"
+                                                        label={lang === 'ar' ? 'الرقم الضريبي / السجل التجاري / البطاقة المدنية (اختياري)' : 'Tax ID / VAT / Customs CR / Civil ID (Optional)'}
+                                                        placeholder={lang === 'ar' ? 'اختياري: الرقم المدني أو الضريبي' : 'Optional: e.g. Civil ID, Tax ID or Commercial CR'}
+                                                        value={editDraft.receiver?.taxId}
+                                                        onChange={e => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, taxId: e.target.value } })}
+                                                        icon="badge"
+                                                        helperText={lang === 'ar' ? 'اختياري للشحن الداخلي — يُستخدم للتخليص الجمركي للشحنات الدولية والتجارية' : 'Optional for domestic shipping — used for international commercial customs declarations'}
                                                     />
                                                 </div>
 
-                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">City</span></label>
-                                                        <input
-                                                            type="text"
-                                                            value={editDraft.receiver?.city || ''}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, city: e.target.value } })}
-                                                            className="input input-bordered input-sm rounded-xl"
-                                                        />
-                                                    </div>
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">Destination Country</span></label>
-                                                        <input
-                                                            type="text"
-                                                            maxLength="2"
-                                                            value={editDraft.receiver?.countryCode || 'SA'}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, countryCode: e.target.value.toUpperCase() } })}
-                                                            className="input input-bordered input-sm rounded-xl font-mono uppercase"
-                                                        />
-                                                    </div>
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">Postal / ZIP Code</span></label>
-                                                        <input
-                                                            type="text"
-                                                            value={editDraft.receiver?.postalCode || editDraft.receiver?.zipCode || ''}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, postalCode: e.target.value, zipCode: e.target.value } })}
-                                                            className="input input-bordered input-sm rounded-xl font-mono"
-                                                        />
-                                                    </div>
+                                                {/* Google Address Autocomplete */}
+                                                <div className="space-y-1.5 pt-2">
+                                                    <label className="text-xs font-bold text-base-content/80 flex items-center gap-1.5">
+                                                        <span className="material-symbols-outlined text-sm text-primary">search</span>
+                                                        {lang === 'ar' ? 'البحث عن العنوان (Google Places)' : 'Search Global Address Registry (Google Places)'}
+                                                    </label>
+                                                    <GoogleAddressInput
+                                                        value={{
+                                                            formattedAddress: editDraft.receiver?.formattedAddress,
+                                                            addressLine1: editDraft.receiver?.addr1,
+                                                            addressLine2: editDraft.receiver?.addr2,
+                                                            city: editDraft.receiver?.city,
+                                                            state: editDraft.receiver?.state,
+                                                            postalCode: editDraft.receiver?.zip,
+                                                            country: editDraft.receiver?.country,
+                                                            countryCode: editDraft.receiver?.countryCode,
+                                                            area: editDraft.receiver?.area
+                                                        }}
+                                                        onChange={(res) => {
+                                                            const countryObj = countries.find(c => c.code === res.countryCode) || countries.find(c => c.name === res.country);
+                                                            const sanitizedCity = String(res.city || '').trim().substring(0, 45);
+                                                            const sanitizedAddr1 = String(res.streetLines?.[0] || res.addressLine1 || res.formattedAddress || '').trim().substring(0, 45);
+                                                            setEditDraft({
+                                                                ...editDraft,
+                                                                receiver: {
+                                                                    ...editDraft.receiver,
+                                                                    addr1: sanitizedAddr1 || editDraft.receiver?.addr1,
+                                                                    addr2: res.addressLine2 ? String(res.addressLine2).substring(0, 45) : editDraft.receiver?.addr2,
+                                                                    area: res.area ? String(res.area).substring(0, 45) : editDraft.receiver?.area,
+                                                                    city: sanitizedCity || editDraft.receiver?.city,
+                                                                    state: res.state ? String(res.state).substring(0, 45) : editDraft.receiver?.state,
+                                                                    zip: res.postalCode || (NON_POSTAL_COUNTRIES.includes(res.countryCode) ? '00000' : editDraft.receiver?.zip),
+                                                                    country: countryObj?.name || res.country || editDraft.receiver?.country,
+                                                                    countryCode: countryObj?.code || res.countryCode || editDraft.receiver?.countryCode,
+                                                                    phoneCountryCode: countryObj?.dialCode || editDraft.receiver?.phoneCountryCode,
+                                                                    formattedAddress: res.formattedAddress || editDraft.receiver?.formattedAddress
+                                                                }
+                                                            });
+                                                        }}
+                                                    />
                                                 </div>
 
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">Tax / VAT / National ID</span></label>
-                                                        <input
-                                                            type="text"
-                                                            placeholder="e.g. 300987654321003"
-                                                            value={editDraft.receiver?.vatNumber || editDraft.receiver?.taxId || ''}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, vatNumber: e.target.value, taxId: e.target.value } })}
-                                                            className="input input-bordered input-sm rounded-xl font-mono"
-                                                        />
-                                                    </div>
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">EORI / CR Number</span></label>
-                                                        <input
-                                                            type="text"
-                                                            placeholder="e.g. GB123456789000 / CR"
-                                                            value={editDraft.receiver?.eoriNumber || editDraft.receiver?.crNumber || ''}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, eoriNumber: e.target.value, crNumber: e.target.value } })}
-                                                            className="input input-bordered input-sm rounded-xl font-mono"
-                                                        />
-                                                    </div>
-                                                </div>
+                                                {/* Structured Address Details */}
+                                                <div className="flex flex-wrap gap-4 pt-2">
+                                                    <DaisyInput
+                                                        dataFieldKey="receiver_addr1"
+                                                        label={lang === 'ar' ? 'العنوان - السطر الأول (الشارع والمبنى)' : 'Street Address Line 1'}
+                                                        placeholder="Building, Street, House No."
+                                                        value={editDraft.receiver?.addr1}
+                                                        onChange={e => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, addr1: e.target.value } })}
+                                                        icon="home"
+                                                        required
+                                                    />
 
-                                                <div className="form-control">
-                                                    <label className="label py-1"><span className="label-text font-bold">Delivery Notes & Courier Instructions</span></label>
-                                                    <textarea
-                                                        rows={2}
-                                                        placeholder="e.g. Call customer before delivery, gate code 1234..."
-                                                        value={editDraft.receiver?.deliveryNotes || editDraft.receiver?.notes || ''}
-                                                        onChange={(e) => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, deliveryNotes: e.target.value, notes: e.target.value } })}
-                                                        className="textarea textarea-bordered rounded-xl text-xs"
+                                                    <DaisyInput
+                                                        dataFieldKey="receiver_addr2"
+                                                        label={lang === 'ar' ? 'الشقة / الطابق / المكتب (السطر الثاني)' : 'Apartment / Suite / Office / Unit (Line 2)'}
+                                                        placeholder="Flat 4B, 2nd Floor"
+                                                        value={editDraft.receiver?.addr2}
+                                                        onChange={e => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, addr2: e.target.value } })}
+                                                        icon="apartment"
+                                                        half
+                                                    />
+
+                                                    <DaisyInput
+                                                        dataFieldKey="receiver_area"
+                                                        label={lang === 'ar' ? 'المنطقة / الحي / القطعة' : 'District / Area / Block'}
+                                                        placeholder="e.g. Block 4, Shuwaikh Industrial"
+                                                        value={editDraft.receiver?.area}
+                                                        onChange={e => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, area: e.target.value } })}
+                                                        icon="map"
+                                                        half
+                                                    />
+
+                                                    <DaisyInput
+                                                        dataFieldKey="receiver_city"
+                                                        label={lang === 'ar' ? 'المدينة' : 'City / Municipality'}
+                                                        placeholder="e.g. Riyadh / Dubai"
+                                                        value={editDraft.receiver?.city}
+                                                        onChange={e => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, city: e.target.value } })}
+                                                        icon="location_city"
+                                                        required
+                                                        half
+                                                    />
+
+                                                    <DaisyInput
+                                                        dataFieldKey="receiver_state"
+                                                        label={lang === 'ar' ? 'المحافظة / الإمارة' : 'State / Governorate / Province'}
+                                                        placeholder="e.g. Riyadh Province / Capital"
+                                                        value={editDraft.receiver?.state}
+                                                        onChange={e => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, state: e.target.value } })}
+                                                        icon="signpost"
+                                                        half
+                                                    />
+
+                                                    {/* Country Selector */}
+                                                    <div className="form-control w-full md:w-[calc(50%-0.375rem)]">
+                                                        <label className="text-xs font-bold text-base-content/80 mb-1">
+                                                            {lang === 'ar' ? 'الدولة / الإقليم' : 'Country / Territory'} <span className="text-error font-black">*</span>
+                                                        </label>
+                                                        <div className="relative">
+                                                            <span className="material-symbols-outlined absolute start-3 top-1/2 -translate-y-1/2 text-base-content/40 text-lg pointer-events-none">
+                                                                public
+                                                            </span>
+                                                            <select
+                                                                value={editDraft.receiver?.countryCode || 'SA'}
+                                                                onChange={(e) => {
+                                                                    const code = e.target.value;
+                                                                    const cObj = countries.find(c => c.code === code);
+                                                                    setEditDraft({
+                                                                        ...editDraft,
+                                                                        receiver: {
+                                                                            ...editDraft.receiver,
+                                                                            country: cObj?.name || editDraft.receiver?.country,
+                                                                            countryCode: cObj?.code || 'SA',
+                                                                            phoneCountryCode: cObj?.dialCode || editDraft.receiver?.phoneCountryCode || '+966',
+                                                                            zip: NON_POSTAL_COUNTRIES.includes(cObj?.code) ? '00000' : (editDraft.receiver?.zip === '00000' ? '' : editDraft.receiver?.zip)
+                                                                        }
+                                                                    });
+                                                                }}
+                                                                className="select select-bordered select-sm w-full ps-9 bg-base-100 text-sm font-medium focus:select-primary"
+                                                            >
+                                                                {countries.map(c => (
+                                                                    <option key={c.code} value={c.code}>
+                                                                        {c.flag} {c.name} ({c.code})
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Postal Code */}
+                                                    <DaisyInput
+                                                        dataFieldKey="receiver_zip"
+                                                        label={lang === 'ar' ? 'الرمز البريدي' : 'Postal / ZIP Code'}
+                                                        placeholder={NON_POSTAL_COUNTRIES.includes((editDraft.receiver?.countryCode || '').toUpperCase()) ? "00000 (Non-Postal Country)" : "e.g. 12211"}
+                                                        value={editDraft.receiver?.zip}
+                                                        onChange={e => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, zip: e.target.value } })}
+                                                        icon="markunread_mailbox"
+                                                        required={!NON_POSTAL_COUNTRIES.includes((editDraft.receiver?.countryCode || '').toUpperCase())}
+                                                        half
+                                                    />
+
+                                                    {/* Delivery Instructions */}
+                                                    <DaisyInput
+                                                        dataFieldKey="receiver_instructions"
+                                                        label={lang === 'ar' ? 'تعليمات تسليم المستلم / رمز البوابة / معالم الموقع' : 'Consignee Delivery Instructions / Gate Code / Landmarks'}
+                                                        placeholder="e.g. Gate 3, Ring intercom #12, leave at reception desk"
+                                                        value={editDraft.receiver?.instructions}
+                                                        onChange={e => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, instructions: e.target.value } })}
+                                                        icon="door_front"
                                                     />
                                                 </div>
                                             </div>
                                         )}
 
-                                        {/* Cargo & Parcels Tab */}
-                                        {editSection === 'content' && (
-                                            <div className="space-y-5 text-xs">
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">Packaging Type</span></label>
-                                                        <select
-                                                            value={editDraft.packagingType || 'Standard'}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, packagingType: e.target.value })}
-                                                            className="select select-bordered select-sm rounded-xl"
-                                                        >
-                                                            <option value="Standard">Standard Package</option>
-                                                            <option value="Document">Document Envelope</option>
-                                                            <option value="Pallet">Express Pallet</option>
-                                                            <option value="Flyer">Target Courier Flyer</option>
-                                                        </select>
+                                        {/* Step 3: Package & Cargo Specifications */}
+                                        {editSection === 'pkg' && (
+                                            <div className="space-y-6">
+                                                {/* Header */}
+                                                <div className="flex items-center gap-3 pb-3 border-b border-base-200">
+                                                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 text-primary">
+                                                        <span className="material-symbols-outlined text-2xl">inventory_2</span>
                                                     </div>
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">Currency</span></label>
-                                                        <select
-                                                            value={editDraft.currency || 'KWD'}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, currency: e.target.value })}
-                                                            className="select select-bordered select-sm rounded-xl font-bold"
-                                                        >
-                                                            <option value="KWD">KWD - Kuwaiti Dinar</option>
-                                                            <option value="SAR">SAR - Saudi Riyal</option>
-                                                            <option value="AED">AED - UAE Dirham</option>
-                                                            <option value="USD">USD - US Dollar</option>
-                                                            <option value="EUR">EUR - Euro</option>
-                                                        </select>
+                                                    <div>
+                                                        <h2 className="text-base font-bold text-base-content">
+                                                            {lang === 'ar' ? 'مواصفات الطرود والبضائع' : 'Package & Cargo Specifications'}
+                                                        </h2>
+                                                        <p className="text-xs text-base-content/60">
+                                                            {lang === 'ar' ? 'إدارة الأبعاد والأوزان وتصنيف المواد الخطرة والتأمين' : 'Manage weight, volumetric dimensions, IATA DGR classification and insurance'}
+                                                        </p>
                                                     </div>
                                                 </div>
 
-                                                {/* Dangerous Goods Section */}
-                                                <div className="p-3.5 bg-warning/5 border border-warning/20 rounded-2xl space-y-3">
-                                                    <label className="label cursor-pointer justify-start gap-3 p-0">
+                                                {/* Package Type Pills */}
+                                                <div className="space-y-2">
+                                                    <label className="text-xs font-bold text-base-content/80 select-none">
+                                                        {lang === 'ar' ? 'نوع الطرد' : 'Package Container Type'}
+                                                    </label>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {PACKAGE_TYPES.map(t => (
+                                                            <button
+                                                                key={t}
+                                                                type="button"
+                                                                onClick={() => setEditDraft({ ...editDraft, pkg: { ...editDraft.pkg, pkgType: t } })}
+                                                                className={`btn btn-sm gap-2 ${
+                                                                    editDraft.pkg?.pkgType === t ? 'btn-primary' : 'btn-outline border-base-200 bg-base-100 text-base-content/80 hover:border-primary/50'
+                                                                }`}
+                                                            >
+                                                                <span className="material-symbols-outlined text-base">
+                                                                    {t === 'Box' ? 'inventory_2' : t === 'Envelope' ? 'mail' : t === 'Pallet' ? 'pallet' : 'category'}
+                                                                </span>
+                                                                {t}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {/* Insurance Protection Toggle */}
+                                                <div
+                                                    onClick={() => setEditDraft({ ...editDraft, pkg: { ...editDraft.pkg, insurance: !editDraft.pkg?.insurance } })}
+                                                    className={`p-4 rounded-xl border cursor-pointer transition-all flex items-center justify-between gap-4 ${
+                                                        editDraft.pkg?.insurance ? 'border-success bg-success/5 shadow-sm' : 'border-base-200 bg-base-200/20 hover:bg-base-200/40'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-3">
                                                         <input
                                                             type="checkbox"
-                                                            checked={Boolean(editDraft.dangerousGoods?.contains)}
-                                                            onChange={(e) => setEditDraft({
-                                                                ...editDraft,
-                                                                dangerousGoods: {
-                                                                    ...editDraft.dangerousGoods,
-                                                                    contains: e.target.checked
-                                                                }
-                                                            })}
-                                                            className="checkbox checkbox-warning checkbox-sm rounded"
+                                                            checked={Boolean(editDraft.pkg?.insurance)}
+                                                            onChange={() => {}}
+                                                            className="checkbox checkbox-success checkbox-sm pointer-events-none"
                                                         />
-                                                        <div className="flex items-center gap-1.5 font-bold text-xs text-warning-content">
-                                                            <span className="material-symbols-outlined text-sm">warning</span>
-                                                            <span>Contains Dangerous Goods (IATA DGR / Perfumes / Lithium Batteries / Flammables)</span>
+                                                        <div>
+                                                            <div className={`text-xs font-bold ${editDraft.pkg?.insurance ? 'text-success-content' : 'text-base-content'}`}>
+                                                                🛡️ {lang === 'ar' ? 'التأمين الشامل على الشحنة ضد الفقدان أو التلف' : 'Insource Full Cargo Insurance & Loss Protection'}
+                                                            </div>
+                                                            <div className="text-[11px] text-base-content/60">
+                                                                {lang === 'ar' ? 'تغطية شاملة ضد الحوادث أو التلف أو الفقدان بنسبة 1% من القيمة المصرحة' : 'Comprehensive coverage against damage, loss, or theft (1% of declared value, min 2.500 KWD)'}
+                                                            </div>
                                                         </div>
-                                                    </label>
+                                                    </div>
+                                                    {editDraft.pkg?.insurance && (
+                                                        <span className="badge badge-success badge-sm font-mono font-bold text-success-content">
+                                                            +KD {insurancePremium}
+                                                        </span>
+                                                    )}
+                                                </div>
 
-                                                    {editDraft.dangerousGoods?.contains && (
-                                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-warning/20">
-                                                            <div className="form-control">
-                                                                <label className="label py-0.5"><span className="label-text text-[10px] font-bold">UN Number</span></label>
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder="e.g. UN 1266"
-                                                                    value={editDraft.dangerousGoods?.unNumber || ''}
-                                                                    onChange={(e) => setEditDraft({
-                                                                        ...editDraft,
-                                                                        dangerousGoods: { ...editDraft.dangerousGoods, unNumber: e.target.value }
-                                                                    })}
-                                                                    className="input input-bordered input-xs rounded-lg font-mono"
-                                                                />
+                                                {/* Dangerous Goods (IATA DGR) Toggle & Presets */}
+                                                <div className={`p-4 rounded-xl border transition-all space-y-4 ${
+                                                    editDraft.pkg?.dangerousGoods ? 'border-warning bg-warning/5 shadow-sm' : 'border-base-200 bg-base-200/20'
+                                                }`}>
+                                                    <div
+                                                        onClick={() => {
+                                                            const next = !editDraft.pkg?.dangerousGoods;
+                                                            setEditDraft({ ...editDraft, pkg: { ...editDraft.pkg, dangerousGoods: next } });
+                                                        }}
+                                                        className="flex items-center justify-between cursor-pointer gap-3"
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={Boolean(editDraft.pkg?.dangerousGoods)}
+                                                                onChange={() => {}}
+                                                                className="checkbox checkbox-warning checkbox-sm pointer-events-none"
+                                                            />
+                                                            <div>
+                                                                <div className="text-xs font-bold text-base-content flex items-center gap-1.5">
+                                                                    <span className="material-symbols-outlined text-warning text-base">warning</span>
+                                                                    {lang === 'ar' ? 'الشحنة تحتوي على مواد خطرة خاضعة للوائح إياتا (IATA DGR)' : 'Contains Dangerous Goods / Hazardous Cargo (IATA Regulated)'}
+                                                                </div>
+                                                                <div className="text-[11px] text-base-content/60">
+                                                                    {lang === 'ar' ? 'عطور، بطاريات ليثيوم، غازات مضغوطة، سوائل كيميائية قابلة للاشتعال' : 'Perfumes, Lithium batteries, aerosols, paints, chemical flammable liquids'}
+                                                                </div>
                                                             </div>
-                                                            <div className="form-control">
-                                                                <label className="label py-0.5"><span className="label-text text-[10px] font-bold">Proper Shipping Name</span></label>
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder="Perfumery products"
-                                                                    value={editDraft.dangerousGoods?.properShippingName || ''}
-                                                                    onChange={(e) => setEditDraft({
-                                                                        ...editDraft,
-                                                                        dangerousGoods: { ...editDraft.dangerousGoods, properShippingName: e.target.value }
-                                                                    })}
-                                                                    className="input input-bordered input-xs rounded-lg"
-                                                                />
+                                                        </div>
+                                                        {editDraft.pkg?.dangerousGoods && (
+                                                            <span className="badge badge-warning badge-sm font-bold text-warning-content">
+                                                                IATA DGR Active
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    {editDraft.pkg?.dangerousGoods && (
+                                                        <div className="pt-3 border-t border-warning/20 space-y-4">
+                                                            <div className="form-control w-full">
+                                                                <label className="text-xs font-bold text-base-content/80 mb-1">
+                                                                    {lang === 'ar' ? 'اختر تصنيف المواد الخطرة الجاهز (IATA Presets)' : 'Select IATA Dangerous Goods Preset'}
+                                                                </label>
+                                                                <select
+                                                                    value={editDraft.pkg?.unCode || 'none'}
+                                                                    onChange={(e) => {
+                                                                        const sel = DG_PRESET_OPTIONS.find(o => o.unCode === e.target.value || o.id === e.target.value);
+                                                                        if (sel) {
+                                                                            setEditDraft({
+                                                                                ...editDraft,
+                                                                                pkg: {
+                                                                                    ...editDraft.pkg,
+                                                                                    unCode: sel.unCode,
+                                                                                    dgClass: sel.dgClass,
+                                                                                    properShippingName: sel.properShippingName,
+                                                                                    packingGroup: sel.packingGroup,
+                                                                                    dgServiceCode: sel.serviceCode,
+                                                                                    dgContentId: sel.contentId,
+                                                                                    dgMarks: sel.marks
+                                                                                }
+                                                                            });
+                                                                        }
+                                                                    }}
+                                                                    className="select select-bordered select-sm w-full bg-base-100 text-xs font-medium focus:select-primary"
+                                                                >
+                                                                    {DG_PRESET_OPTIONS.map(opt => (
+                                                                        <option key={opt.id} value={opt.unCode || opt.id}>
+                                                                            {opt.name}
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
                                                             </div>
-                                                            <div className="form-control">
-                                                                <label className="label py-0.5"><span className="label-text text-[10px] font-bold">Class / Division</span></label>
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder="Class 3 / PG III"
-                                                                    value={editDraft.dangerousGoods?.classDivision || ''}
-                                                                    onChange={(e) => setEditDraft({
-                                                                        ...editDraft,
-                                                                        dangerousGoods: { ...editDraft.dangerousGoods, classDivision: e.target.value }
-                                                                    })}
-                                                                    className="input input-bordered input-xs rounded-lg font-mono"
+
+                                                            <div className="flex flex-wrap gap-4">
+                                                                <DaisyInput
+                                                                    dataFieldKey="pkg_unCode"
+                                                                    label={lang === 'ar' ? 'رمز الأمم المتحدة (UN Code)' : 'UN Identification Code'}
+                                                                    placeholder="e.g. UN1266"
+                                                                    value={editDraft.pkg?.unCode}
+                                                                    onChange={e => setEditDraft({ ...editDraft, pkg: { ...editDraft.pkg, unCode: e.target.value } })}
+                                                                    required
+                                                                    half
+                                                                />
+
+                                                                <DaisyInput
+                                                                    dataFieldKey="pkg_dgClass"
+                                                                    label={lang === 'ar' ? 'فئة الخطورة (Hazard Class)' : 'Hazard Class'}
+                                                                    placeholder="e.g. Class 3 — Flammable Liquid"
+                                                                    value={editDraft.pkg?.dgClass}
+                                                                    onChange={e => setEditDraft({ ...editDraft, pkg: { ...editDraft.pkg, dgClass: e.target.value } })}
+                                                                    required
+                                                                    half
+                                                                />
+
+                                                                <DaisyInput
+                                                                    dataFieldKey="pkg_dgServiceCode"
+                                                                    label={lang === 'ar' ? 'رمز خدمة الناقل (HE, HV, HK, HC)' : 'Carrier DGR Service Code (HE/HV/HK/HC)'}
+                                                                    placeholder="HE"
+                                                                    value={editDraft.pkg?.dgServiceCode}
+                                                                    onChange={e => setEditDraft({ ...editDraft, pkg: { ...editDraft.pkg, dgServiceCode: e.target.value } })}
+                                                                    required
+                                                                    half
+                                                                />
+
+                                                                <DaisyInput
+                                                                    dataFieldKey="pkg_dgContentId"
+                                                                    label={lang === 'ar' ? 'معرف المحتوى (Content ID)' : 'DGR Content ID'}
+                                                                    placeholder="910"
+                                                                    value={editDraft.pkg?.dgContentId}
+                                                                    onChange={e => setEditDraft({ ...editDraft, pkg: { ...editDraft.pkg, dgContentId: e.target.value } })}
+                                                                    required
+                                                                    half
+                                                                />
+
+                                                                <DaisyInput
+                                                                    dataFieldKey="pkg_properShippingName"
+                                                                    label={lang === 'ar' ? 'اسم الشحن المعتمد (Proper Shipping Name)' : 'Proper Shipping Name'}
+                                                                    placeholder="PERFUMERY PRODUCTS WITH FLAMMABLE SOLVENTS"
+                                                                    value={editDraft.pkg?.properShippingName}
+                                                                    onChange={e => setEditDraft({ ...editDraft, pkg: { ...editDraft.pkg, properShippingName: e.target.value } })}
+                                                                    required
+                                                                />
+
+                                                                <DaisyInput
+                                                                    dataFieldKey="pkg_dgMarks"
+                                                                    label={lang === 'ar' ? 'بيان وعلامات المواد الخطرة' : 'DGR Marks / Custom Description'}
+                                                                    placeholder="DANGEROUS GOODS AS PER ASSOCIATED DGD"
+                                                                    value={editDraft.pkg?.dgMarks}
+                                                                    onChange={e => setEditDraft({ ...editDraft, pkg: { ...editDraft.pkg, dgMarks: e.target.value } })}
+                                                                    required
                                                                 />
                                                             </div>
                                                         </div>
                                                     )}
                                                 </div>
 
-                                                {/* Parcels Editor */}
-                                                <div className="space-y-3 pt-2 border-t border-base-200">
-                                                    <div className="flex justify-between items-center flex-wrap gap-2">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="font-extrabold text-xs text-base-content/80 uppercase">
-                                                                {isRTL ? 'بيانات الطرود والأوزان' : 'Parcels & Measured Weights'}
-                                                            </span>
-                                                            <span className="badge badge-sm badge-ghost font-mono text-[10px] font-bold">
-                                                                {parcelsList.length} Pcs • {totalActualWeight.toFixed(2)} KG Actual • {totalVolumetricWeight.toFixed(2)} KG Vol
-                                                            </span>
-                                                        </div>
+                                                {/* Multiple Packages / Parcels Editor */}
+                                                <div className="space-y-4 pt-2">
+                                                    <div className="flex items-center justify-between pb-2 border-b border-base-200">
+                                                        <span className="text-xs font-bold text-base-content">
+                                                            📦 {lang === 'ar' ? 'قائمة الطرود والقطع' : 'Parcels & Packages List'} ({packagesList.length})
+                                                        </span>
                                                         <button
                                                             type="button"
                                                             onClick={() => {
-                                                                const currentParcels = Array.isArray(editDraft.parcels) && editDraft.parcels.length > 0 ? editDraft.parcels : [{ weight: 1, length: 10, width: 10, height: 10, description: 'Package 1' }];
+                                                                const newPkg = {
+                                                                    id: Date.now(),
+                                                                    description: 'General Cargo',
+                                                                    qty: '1',
+                                                                    weight: '1.0',
+                                                                    length: '20',
+                                                                    width: '15',
+                                                                    height: '10',
+                                                                    value: '15.00',
+                                                                    currency: editDraft.customs?.currency || 'KWD',
+                                                                    hsCode: ''
+                                                                };
                                                                 setEditDraft({
                                                                     ...editDraft,
-                                                                    parcels: [...currentParcels, { weight: 1, length: 15, width: 15, height: 15, description: `Package ${currentParcels.length + 1}` }]
+                                                                    pkg: { ...editDraft.pkg, packagesList: [...packagesList, newPkg] }
                                                                 });
                                                             }}
-                                                            className="btn btn-ghost btn-xs text-primary font-bold gap-1"
+                                                            className="btn btn-xs btn-primary gap-1 font-bold"
                                                         >
-                                                            <span className="material-symbols-outlined text-xs">add</span>
-                                                            {isRTL ? 'إضافة طرد' : 'Add Parcel'}
+                                                            <span className="material-symbols-outlined text-sm">add</span>
+                                                            {lang === 'ar' ? 'إضافة طرد إضافي' : 'Add Another Package'}
                                                         </button>
                                                     </div>
 
-                                                    <div className="space-y-2.5">
-                                                        {parcelsList.map((parcel, pIdx) => {
-                                                            const pLen = parcel.dimensions?.length || parcel.length || 10;
-                                                            const pWid = parcel.dimensions?.width || parcel.width || 10;
-                                                            const pHgt = parcel.dimensions?.height || parcel.height || 10;
-                                                            const volKg = ((pLen * pWid * pHgt) / 5000).toFixed(2);
-                                                            return (
-                                                                <div key={pIdx} className="p-3 bg-base-200/50 rounded-2xl space-y-2 border border-base-200">
-                                                                    <div className="flex justify-between items-center">
-                                                                        <div className="flex items-center gap-2">
-                                                                            <span className="font-bold text-xs text-base-content/80">
-                                                                                {isRTL ? `طرد ${pIdx + 1}` : `Parcel #${pIdx + 1}`}
-                                                                            </span>
-                                                                            <span className="text-[10px] text-base-content/50 font-mono">
-                                                                                Vol: {volKg} KG
-                                                                            </span>
-                                                                        </div>
-                                                                        {parcelsList.length > 1 && (
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() => {
-                                                                                    const newParcels = parcelsList.filter((_, idx) => idx !== pIdx);
-                                                                                    setEditDraft({
-                                                                                        ...editDraft,
-                                                                                        parcels: newParcels,
-                                                                                        weight: newParcels.reduce((s, x) => s + (x.weight || 0), 0)
-                                                                                    });
-                                                                                }}
-                                                                                className="btn btn-ghost btn-xs text-error font-bold p-0 h-auto min-h-0"
-                                                                            >
-                                                                                <span className="material-symbols-outlined text-sm">delete</span>
-                                                                            </button>
-                                                                        )}
+                                                    {packagesList.map((item, idx) => {
+                                                        const l = parseFloat(item.length) || 1;
+                                                        const w = parseFloat(item.width) || 1;
+                                                        const h = parseFloat(item.height) || 1;
+                                                        const volWeight = ((l * w * h) / 5000).toFixed(2);
+
+                                                        return (
+                                                            <div key={item.id || idx} className="p-4 rounded-xl border border-base-200 bg-base-200/20 space-y-4">
+                                                                <div className="flex items-center justify-between">
+                                                                    <div className="flex items-center gap-2 font-bold text-xs text-base-content">
+                                                                        <span className="badge badge-sm badge-neutral font-mono font-bold">#{idx + 1}</span>
+                                                                        <span>{item.description || 'Cargo Item'}</span>
                                                                     </div>
-                                                                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                                                                        <div className="form-control">
-                                                                            <label className="label py-0.5"><span className="label-text text-[10px] font-bold">Weight (KG)</span></label>
-                                                                            <input
-                                                                                type="number"
-                                                                                step="0.01"
-                                                                                value={parcel.weight ?? ''}
-                                                                                onChange={(e) => {
-                                                                                    const val = parseFloat(e.target.value) || 0;
-                                                                                    const newP = [...parcelsList];
-                                                                                    newP[pIdx] = { ...newP[pIdx], weight: val };
-                                                                                    setEditDraft({ ...editDraft, parcels: newP, weight: newP.reduce((s, x) => s + (x.weight || 0), 0) });
-                                                                                }}
-                                                                                className="input input-bordered input-xs rounded-lg font-mono"
-                                                                            />
+                                                                    {packagesList.length > 1 && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                const updated = packagesList.filter((_, i) => i !== idx);
+                                                                                setEditDraft({
+                                                                                    ...editDraft,
+                                                                                    pkg: { ...editDraft.pkg, packagesList: updated }
+                                                                                });
+                                                                            }}
+                                                                            className="btn btn-ghost btn-xs text-error hover:bg-error/10 gap-1"
+                                                                        >
+                                                                            <span className="material-symbols-outlined text-sm">delete</span>
+                                                                            {lang === 'ar' ? 'حذف' : 'Remove'}
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+
+                                                                <div className="flex flex-wrap gap-4">
+                                                                    <DaisyInput
+                                                                        dataFieldKey={`pkg_${idx}_description`}
+                                                                        label={lang === 'ar' ? 'وصف المحتوى' : 'Content Description'}
+                                                                        placeholder="e.g. Electronic components, apparel, medical supplies"
+                                                                        value={item.description}
+                                                                        onChange={(e) => {
+                                                                            const updated = packagesList.map((p, i) => i === idx ? { ...p, description: e.target.value } : p);
+                                                                            setEditDraft({ ...editDraft, pkg: { ...editDraft.pkg, packagesList: updated } });
+                                                                        }}
+                                                                        icon="subject"
+                                                                        required
+                                                                    />
+
+                                                                    <DaisyInput
+                                                                        dataFieldKey={`pkg_${idx}_qty`}
+                                                                        label={lang === 'ar' ? 'الكمية (قطع)' : 'Quantity (pieces)'}
+                                                                        placeholder="1"
+                                                                        value={item.qty}
+                                                                        onChange={(e) => {
+                                                                            const updated = packagesList.map((p, i) => i === idx ? { ...p, qty: e.target.value } : p);
+                                                                            setEditDraft({ ...editDraft, pkg: { ...editDraft.pkg, packagesList: updated } });
+                                                                        }}
+                                                                        type="number"
+                                                                        icon="pin"
+                                                                        required
+                                                                        half
+                                                                    />
+
+                                                                    <DaisyInput
+                                                                        dataFieldKey={`pkg_${idx}_weight`}
+                                                                        label={lang === 'ar' ? 'الوزن الفعلي (كجم)' : 'Gross Weight (kg)'}
+                                                                        placeholder="1.0"
+                                                                        value={item.weight}
+                                                                        onChange={(e) => {
+                                                                            const updated = packagesList.map((p, i) => i === idx ? { ...p, weight: e.target.value } : p);
+                                                                            setEditDraft({ ...editDraft, pkg: { ...editDraft.pkg, packagesList: updated } });
+                                                                        }}
+                                                                        type="number"
+                                                                        icon="scale"
+                                                                        required
+                                                                        half
+                                                                    />
+
+                                                                    {/* Dimensions L x W x H */}
+                                                                    <div className="flex gap-2 w-full md:w-[calc(50%-0.375rem)]">
+                                                                        <DaisyInput
+                                                                            dataFieldKey={`pkg_${idx}_length`}
+                                                                            label={lang === 'ar' ? 'الطول (سم)' : 'L (cm)'}
+                                                                            placeholder="20"
+                                                                            value={item.length}
+                                                                            onChange={(e) => {
+                                                                                const updated = packagesList.map((p, i) => i === idx ? { ...p, length: e.target.value } : p);
+                                                                                setEditDraft({ ...editDraft, pkg: { ...editDraft.pkg, packagesList: updated } });
+                                                                            }}
+                                                                            type="number"
+                                                                            required
+                                                                        />
+                                                                        <DaisyInput
+                                                                            dataFieldKey={`pkg_${idx}_width`}
+                                                                            label={lang === 'ar' ? 'العرض (سم)' : 'W (cm)'}
+                                                                            placeholder="15"
+                                                                            value={item.width}
+                                                                            onChange={(e) => {
+                                                                                const updated = packagesList.map((p, i) => i === idx ? { ...p, width: e.target.value } : p);
+                                                                                setEditDraft({ ...editDraft, pkg: { ...editDraft.pkg, packagesList: updated } });
+                                                                            }}
+                                                                            type="number"
+                                                                            required
+                                                                        />
+                                                                        <DaisyInput
+                                                                            dataFieldKey={`pkg_${idx}_height`}
+                                                                            label={lang === 'ar' ? 'الارتفاع (سم)' : 'H (cm)'}
+                                                                            placeholder="10"
+                                                                            value={item.height}
+                                                                            onChange={(e) => {
+                                                                                const updated = packagesList.map((p, i) => i === idx ? { ...p, height: e.target.value } : p);
+                                                                                setEditDraft({ ...editDraft, pkg: { ...editDraft.pkg, packagesList: updated } });
+                                                                            }}
+                                                                            type="number"
+                                                                            required
+                                                                        />
+                                                                    </div>
+
+                                                                    <div className="w-full md:w-[calc(50%-0.375rem)] flex items-end">
+                                                                        <div className="w-full p-2.5 rounded-lg border border-base-200 bg-base-100 flex items-center justify-between text-xs">
+                                                                            <span className="text-base-content/60 font-medium">📐 {lang === 'ar' ? 'الوزن الحجمي التقديري:' : 'Volumetric Weight:'}</span>
+                                                                            <span className="font-mono font-bold text-primary">{volWeight} kg</span>
                                                                         </div>
-                                                                        <div className="form-control">
-                                                                            <label className="label py-0.5"><span className="label-text text-[10px] font-bold">Length (cm)</span></label>
-                                                                            <input
-                                                                                type="number"
-                                                                                value={pLen}
-                                                                                onChange={(e) => {
-                                                                                    const val = parseFloat(e.target.value) || 0;
-                                                                                    const newP = [...parcelsList];
-                                                                                    newP[pIdx] = { ...newP[pIdx], length: val, dimensions: { ...(newP[pIdx].dimensions || {}), length: val } };
-                                                                                    setEditDraft({ ...editDraft, parcels: newP });
-                                                                                }}
-                                                                                className="input input-bordered input-xs rounded-lg font-mono"
-                                                                            />
+                                                                    </div>
+
+                                                                    <DaisyInput
+                                                                        dataFieldKey={`pkg_${idx}_value`}
+                                                                        label={lang === 'ar' ? 'القيمة المصرحة' : 'Declared Value'}
+                                                                        placeholder="0.000"
+                                                                        value={item.value}
+                                                                        onChange={(e) => {
+                                                                            const updated = packagesList.map((p, i) => i === idx ? { ...p, value: e.target.value } : p);
+                                                                            setEditDraft({ ...editDraft, pkg: { ...editDraft.pkg, packagesList: updated } });
+                                                                        }}
+                                                                        type="number"
+                                                                        icon="payments"
+                                                                        half
+                                                                    />
+
+                                                                    <DaisyInput
+                                                                        dataFieldKey={`pkg_${idx}_currency`}
+                                                                        label={lang === 'ar' ? 'العملة' : 'Currency'}
+                                                                        placeholder="e.g. KWD, USD"
+                                                                        value={item.currency || 'KWD'}
+                                                                        onChange={(e) => {
+                                                                            const updated = packagesList.map((p, i) => i === idx ? { ...p, currency: e.target.value.toUpperCase() } : p);
+                                                                            setEditDraft({ ...editDraft, pkg: { ...editDraft.pkg, packagesList: updated } });
+                                                                        }}
+                                                                        icon="paid"
+                                                                        half
+                                                                    />
+
+                                                                    <DaisyInput
+                                                                        dataFieldKey={`pkg_${idx}_hsCode`}
+                                                                        label={lang === 'ar' ? 'رمز التعرفة الجمركية (HS Code)' : 'HS / Tariff Code'}
+                                                                        placeholder="e.g. 8471.30.00"
+                                                                        value={item.hsCode}
+                                                                        onChange={(e) => {
+                                                                            const updated = packagesList.map((p, i) => i === idx ? { ...p, hsCode: e.target.value } : p);
+                                                                            setEditDraft({ ...editDraft, pkg: { ...editDraft.pkg, packagesList: updated } });
+                                                                        }}
+                                                                        icon="qr_code"
+                                                                        half
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Step 4: Carrier Network & Logistics */}
+                                        {editSection === 'service' && (
+                                            <div className="space-y-6">
+                                                {/* Header */}
+                                                <div className="flex items-center gap-3 pb-3 border-b border-base-200">
+                                                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 text-primary">
+                                                        <span className="material-symbols-outlined text-2xl">local_shipping</span>
+                                                    </div>
+                                                    <div>
+                                                        <h2 className="text-base font-bold text-base-content">
+                                                            {lang === 'ar' ? 'اختيار شركة الشحن والأسعار المباشرة' : 'Carrier Network & Logistics'}
+                                                        </h2>
+                                                        <p className="text-xs text-base-content/60">
+                                                            {lang === 'ar' ? 'مقارنة أسعار الشحن والخدمات الإضافية وجدولة استلام الطرد' : 'Select authorized logistics gateway, service codes, and pickup schedule'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Carrier Selection Radio Cards */}
+                                                <div className="space-y-3">
+                                                    <label className="text-xs font-bold text-base-content/80 select-none">
+                                                        {lang === 'ar' ? 'اختر الناقل المناسب' : 'Select Authorized Logistics Gateway'} <span className="text-error font-black">*</span>
+                                                    </label>
+                                                    <div className="grid grid-cols-1 gap-3">
+                                                        {Object.values(KNOWN_CARRIERS).map((carrier) => {
+                                                            const isSelected = (editDraft.service?.carrierCode || 'INTERNAL') === carrier.code;
+                                                            return (
+                                                                <div
+                                                                    key={carrier.code}
+                                                                    onClick={() => {
+                                                                        setEditDraft({
+                                                                            ...editDraft,
+                                                                            service: {
+                                                                                ...editDraft.service,
+                                                                                carrierCode: carrier.code,
+                                                                                carrierName: carrier.name,
+                                                                                serviceCode: carrier.code === 'DHL' ? 'P' : (carrier.code === 'INTERNAL' ? 'INTERNAL_STD' : 'EXPRESS')
+                                                                            }
+                                                                        });
+                                                                    }}
+                                                                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                                                                        isSelected
+                                                                            ? 'border-primary bg-primary/5 shadow-md shadow-primary/10'
+                                                                            : 'border-base-200 bg-base-100 hover:border-base-300'
+                                                                    }`}
+                                                                >
+                                                                    <div className="flex items-center gap-3.5">
+                                                                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                                                                            isSelected ? 'border-primary' : 'border-base-content/30'
+                                                                        }`}>
+                                                                            {isSelected && <div className="w-2.5 h-2.5 rounded-full bg-primary" />}
                                                                         </div>
-                                                                        <div className="form-control">
-                                                                            <label className="label py-0.5"><span className="label-text text-[10px] font-bold">Width (cm)</span></label>
-                                                                            <input
-                                                                                type="number"
-                                                                                value={pWid}
-                                                                                onChange={(e) => {
-                                                                                    const val = parseFloat(e.target.value) || 0;
-                                                                                    const newP = [...parcelsList];
-                                                                                    newP[pIdx] = { ...newP[pIdx], width: val, dimensions: { ...(newP[pIdx].dimensions || {}), width: val } };
-                                                                                    setEditDraft({ ...editDraft, parcels: newP });
-                                                                                }}
-                                                                                className="input input-bordered input-xs rounded-lg font-mono"
-                                                                            />
+
+                                                                        <div className="w-10 h-10 rounded-xl bg-base-200 flex items-center justify-center shrink-0">
+                                                                            <span className="material-symbols-outlined text-xl" style={{ color: carrier.color }}>
+                                                                                {carrier.icon}
+                                                                            </span>
                                                                         </div>
-                                                                        <div className="form-control">
-                                                                            <label className="label py-0.5"><span className="label-text text-[10px] font-bold">Height (cm)</span></label>
-                                                                            <input
-                                                                                type="number"
-                                                                                value={pHgt}
-                                                                                onChange={(e) => {
-                                                                                    const val = parseFloat(e.target.value) || 0;
-                                                                                    const newP = [...parcelsList];
-                                                                                    newP[pIdx] = { ...newP[pIdx], height: val, dimensions: { ...(newP[pIdx].dimensions || {}), height: val } };
-                                                                                    setEditDraft({ ...editDraft, parcels: newP });
-                                                                                }}
-                                                                                className="input input-bordered input-xs rounded-lg font-mono"
-                                                                            />
+
+                                                                        <div>
+                                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                                <span className="font-bold text-sm text-base-content">{carrier.name}</span>
+                                                                                <span className="badge badge-sm badge-outline font-semibold">{carrier.badge}</span>
+                                                                            </div>
+                                                                            <div className="text-xs text-base-content/60 mt-0.5">{carrier.desc}</div>
                                                                         </div>
-                                                                        <div className="form-control col-span-2 sm:col-span-1">
-                                                                            <label className="label py-0.5"><span className="label-text text-[10px] font-bold">Description</span></label>
-                                                                            <input
-                                                                                type="text"
-                                                                                placeholder="Box"
-                                                                                value={parcel.description || ''}
-                                                                                onChange={(e) => {
-                                                                                    const newP = [...parcelsList];
-                                                                                    newP[pIdx] = { ...newP[pIdx], description: e.target.value };
-                                                                                    setEditDraft({ ...editDraft, parcels: newP });
-                                                                                }}
-                                                                                className="input input-bordered input-xs rounded-lg"
-                                                                            />
-                                                                        </div>
+                                                                    </div>
+
+                                                                    <div className="text-right">
+                                                                        <span className="badge badge-neutral font-mono font-bold">{carrier.code}</span>
                                                                     </div>
                                                                 </div>
                                                             );
@@ -3188,341 +4182,299 @@ const ShipmentDetailsPage = () => {
                                                     </div>
                                                 </div>
 
-                                                {/* Declared Goods Items Editor */}
-                                                <div className="space-y-3 pt-2 border-t border-base-200">
-                                                    <div className="flex justify-between items-center flex-wrap gap-2">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="font-extrabold text-xs text-base-content/80 uppercase">
-                                                                {isRTL ? 'البضائع والبيان الجمركي (Customs Goods)' : 'Customs Goods & HS Codes'}
-                                                            </span>
-                                                            <span className="badge badge-sm badge-ghost font-mono text-[10px] font-bold">
-                                                                Total: {totalDeclaredValue.toFixed(2)} {editDraft.currency || 'KWD'}
-                                                            </span>
-                                                        </div>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setEditDraft({
-                                                                    ...editDraft,
-                                                                    items: [...itemsList, { description: 'Merchandise Item', quantity: 1, declaredValue: 10, countryOfOrigin: editDraft.sender?.countryCode || 'KW', hsCode: '' }]
-                                                                });
-                                                            }}
-                                                            className="btn btn-ghost btn-xs text-primary font-bold gap-1"
-                                                        >
-                                                            <span className="material-symbols-outlined text-xs">add</span>
-                                                            {isRTL ? 'إضافة بضاعة' : 'Add Item'}
-                                                        </button>
-                                                    </div>
+                                                {/* Service Code */}
+                                                <div className="flex flex-wrap gap-4 pt-2">
+                                                    <DaisyInput
+                                                        dataFieldKey="service_serviceCode"
+                                                        label={lang === 'ar' ? 'رمز الخدمة (Service Code)' : 'Carrier Service Code'}
+                                                        placeholder="e.g. P, D, DOM, INTERNAL_STD"
+                                                        value={editDraft.service?.serviceCode}
+                                                        onChange={e => setEditDraft({ ...editDraft, service: { ...editDraft.service, serviceCode: e.target.value.toUpperCase() } })}
+                                                        icon="local_shipping"
+                                                        half
+                                                    />
+                                                </div>
 
-                                                    <div className="space-y-2.5">
-                                                        {itemsList.map((item, itIdx) => (
-                                                            <div key={itIdx} className="p-3 bg-base-200/50 rounded-2xl space-y-2 border border-base-200">
-                                                                <div className="flex justify-between items-center">
-                                                                    <span className="font-bold text-xs text-base-content/70">
-                                                                        {isRTL ? `بند ${itIdx + 1}` : `Item #${itIdx + 1}`}
+                                                {/* Value-Added Services & Addons */}
+                                                <div className="space-y-3 pt-2">
+                                                    <label className="text-xs font-bold text-base-content/80 select-none">
+                                                        ✨ {lang === 'ar' ? 'الخدمات الإضافية الاختيارية' : 'Value-Added Services & Priority Add-ons'}
+                                                    </label>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                        {DEFAULT_CARRIER_ADDONS.map(addon => {
+                                                            const isChecked = selectedAddons.some(a => a.serviceCode === addon.serviceCode);
+                                                            return (
+                                                                <div
+                                                                    key={addon.serviceCode}
+                                                                    onClick={() => toggleAddon(addon)}
+                                                                    className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between gap-3 ${
+                                                                        isChecked ? 'border-primary bg-primary/5' : 'border-base-200 bg-base-200/20 hover:bg-base-200/40'
+                                                                    }`}
+                                                                >
+                                                                    <div className="flex items-center gap-2.5">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={isChecked}
+                                                                            onChange={() => {}}
+                                                                            className="checkbox checkbox-primary checkbox-sm pointer-events-none"
+                                                                        />
+                                                                        <div>
+                                                                            <div className="text-xs font-bold text-base-content">{addon.serviceName}</div>
+                                                                            <div className="text-[10px] text-base-content/60">{addon.desc}</div>
+                                                                        </div>
+                                                                    </div>
+                                                                    <span className="badge badge-sm badge-neutral font-mono font-bold shrink-0">
+                                                                        +{Number(addon.price).toFixed(3)} KWD
                                                                     </span>
-                                                                    {itemsList.length > 1 && (
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => {
-                                                                                const newItems = itemsList.filter((_, idx) => idx !== itIdx);
-                                                                                setEditDraft({ ...editDraft, items: newItems });
-                                                                            }}
-                                                                            className="btn btn-ghost btn-xs text-error font-bold p-0 h-auto min-h-0"
-                                                                        >
-                                                                            <span className="material-symbols-outlined text-sm">delete</span>
-                                                                        </button>
-                                                                    )}
                                                                 </div>
-                                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                                    <div className="form-control">
-                                                                        <label className="label py-0.5"><span className="label-text text-[10px] font-bold">Description</span></label>
-                                                                        <input
-                                                                            type="text"
-                                                                            placeholder="e.g. Cotton T-Shirt"
-                                                                            value={item.description || ''}
-                                                                            onChange={(e) => {
-                                                                                const newItems = [...itemsList];
-                                                                                newItems[itIdx] = { ...newItems[itIdx], description: e.target.value };
-                                                                                setEditDraft({ ...editDraft, items: newItems });
-                                                                            }}
-                                                                            className="input input-bordered input-xs rounded-lg"
-                                                                        />
-                                                                    </div>
-                                                                    <div className="form-control">
-                                                                        <label className="label py-0.5"><span className="label-text text-[10px] font-bold">HS Code (Tariff)</span></label>
-                                                                        <input
-                                                                            type="text"
-                                                                            placeholder="e.g. 610910"
-                                                                            value={item.hsCode || item.commodityCode || ''}
-                                                                            onChange={(e) => {
-                                                                                const newItems = [...itemsList];
-                                                                                newItems[itIdx] = { ...newItems[itIdx], hsCode: e.target.value, commodityCode: e.target.value };
-                                                                                setEditDraft({ ...editDraft, items: newItems });
-                                                                            }}
-                                                                            className="input input-bordered input-xs rounded-lg font-mono"
-                                                                        />
-                                                                    </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+
+                                                {/* Courier Pickup Logistics */}
+                                                <div className="p-4 rounded-xl border border-base-200 bg-base-200/20 space-y-4 pt-4">
+                                                    <label className="text-xs font-bold text-base-content/80 select-none flex items-center gap-1.5">
+                                                        <span className="material-symbols-outlined text-base text-primary">event_available</span>
+                                                        {lang === 'ar' ? 'جدولة استلام الطرد' : 'Pickup & Drop-off Logistics'}
+                                                    </label>
+
+                                                    <div className="flex flex-wrap gap-4">
+                                                        <div className="flex items-center gap-4 w-full">
+                                                            <label className="label cursor-pointer gap-2">
+                                                                <input
+                                                                    type="radio"
+                                                                    name="pickupType"
+                                                                    checked={editDraft.service?.pickupType?.includes('Pickup')}
+                                                                    onChange={() => setEditDraft({ ...editDraft, service: { ...editDraft.service, pickupType: 'Schedule Driver Pickup' } })}
+                                                                    className="radio radio-primary radio-sm"
+                                                                />
+                                                                <span className="text-xs font-bold text-base-content">{lang === 'ar' ? 'طلب مندوب استلام' : 'Schedule Driver Pickup'}</span>
+                                                            </label>
+
+                                                            <label className="label cursor-pointer gap-2">
+                                                                <input
+                                                                    type="radio"
+                                                                    name="pickupType"
+                                                                    checked={editDraft.service?.pickupType?.includes('Drop-off')}
+                                                                    onChange={() => setEditDraft({ ...editDraft, service: { ...editDraft.service, pickupType: 'Drop-off at Target Hub' } })}
+                                                                    className="radio radio-primary radio-sm"
+                                                                />
+                                                                <span className="text-xs font-bold text-base-content">{lang === 'ar' ? 'تسليم في فرع تارجت' : 'Drop-off at Target Hub'}</span>
+                                                            </label>
+                                                        </div>
+
+                                                        {editDraft.service?.pickupType?.includes('Pickup') && (
+                                                            <>
+                                                                <DaisyInput
+                                                                    label={lang === 'ar' ? 'تاريخ الاستلام' : 'Pickup Date'}
+                                                                    type="date"
+                                                                    value={editDraft.service?.pickupDate}
+                                                                    onChange={e => setEditDraft({ ...editDraft, service: { ...editDraft.service, pickupDate: e.target.value } })}
+                                                                    half
+                                                                />
+
+                                                                <div className="form-control w-full md:w-[calc(50%-0.375rem)]">
+                                                                    <label className="text-xs font-bold text-base-content/80 mb-1">
+                                                                        {lang === 'ar' ? 'الفترة الزمنية للاستلام' : 'Pickup Time Slot'}
+                                                                    </label>
+                                                                    <select
+                                                                        value={editDraft.service?.pickupTime || '9:00 AM – 12:00 PM'}
+                                                                        onChange={e => setEditDraft({ ...editDraft, service: { ...editDraft.service, pickupTime: e.target.value } })}
+                                                                        className="select select-bordered select-sm w-full bg-base-100 text-xs font-medium focus:select-primary"
+                                                                    >
+                                                                        <option value="9:00 AM – 12:00 PM">9:00 AM – 12:00 PM (Morning Priority)</option>
+                                                                        <option value="12:00 PM – 4:00 PM">12:00 PM – 4:00 PM (Afternoon Window)</option>
+                                                                        <option value="4:00 PM – 8:00 PM">4:00 PM – 8:00 PM (Evening Window)</option>
+                                                                    </select>
                                                                 </div>
-                                                                <div className="grid grid-cols-3 gap-2">
-                                                                    <div className="form-control">
-                                                                        <label className="label py-0.5"><span className="label-text text-[10px] font-bold">Qty</span></label>
-                                                                        <input
-                                                                            type="number"
-                                                                            min="1"
-                                                                            value={item.quantity || 1}
-                                                                            onChange={(e) => {
-                                                                                const newItems = [...itemsList];
-                                                                                newItems[itIdx] = { ...newItems[itIdx], quantity: parseInt(e.target.value, 10) || 1 };
-                                                                                setEditDraft({ ...editDraft, items: newItems });
-                                                                            }}
-                                                                            className="input input-bordered input-xs rounded-lg font-mono"
-                                                                        />
-                                                                    </div>
-                                                                    <div className="form-control">
-                                                                        <label className="label py-0.5"><span className="label-text text-[10px] font-bold">Value ({editDraft.currency || 'KWD'})</span></label>
-                                                                        <input
-                                                                            type="number"
-                                                                            step="0.001"
-                                                                            value={item.declaredValue ?? item.price ?? ''}
-                                                                            onChange={(e) => {
-                                                                                const newItems = [...itemsList];
-                                                                                const val = parseFloat(e.target.value) || 0;
-                                                                                newItems[itIdx] = { ...newItems[itIdx], declaredValue: val, price: val };
-                                                                                setEditDraft({ ...editDraft, items: newItems });
-                                                                            }}
-                                                                            className="input input-bordered input-xs rounded-lg font-mono"
-                                                                        />
-                                                                    </div>
-                                                                    <div className="form-control">
-                                                                        <label className="label py-0.5"><span className="label-text text-[10px] font-bold">Origin (ISO-2)</span></label>
-                                                                        <input
-                                                                            type="text"
-                                                                            maxLength="2"
-                                                                            placeholder="KW"
-                                                                            value={item.countryOfOrigin || item.originCountry || editDraft.sender?.countryCode || 'KW'}
-                                                                            onChange={(e) => {
-                                                                                const newItems = [...itemsList];
-                                                                                newItems[itIdx] = { ...newItems[itIdx], countryOfOrigin: e.target.value.toUpperCase(), originCountry: e.target.value.toUpperCase() };
-                                                                                setEditDraft({ ...editDraft, items: newItems });
-                                                                            }}
-                                                                            className="input input-bordered input-xs rounded-lg font-mono uppercase"
-                                                                        />
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        ))}
+                                                            </>
+                                                        )}
+
+                                                        <DaisyInput
+                                                            label={lang === 'ar' ? 'تعليمات خاصة للسائق' : 'Special Driver Instructions'}
+                                                            placeholder="e.g. Ring warehouse bell, gate 4 loading dock"
+                                                            value={editDraft.service?.instructions}
+                                                            onChange={e => setEditDraft({ ...editDraft, service: { ...editDraft.service, instructions: e.target.value } })}
+                                                            icon="notes"
+                                                        />
                                                     </div>
                                                 </div>
                                             </div>
                                         )}
 
-                                        {/* Carrier & Logistics Tab */}
-                                        {editSection === 'carrier' && (
-                                            <div className="space-y-4 text-xs">
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">Carrier Code</span></label>
-                                                        <select
-                                                            value={editDraft.carrierCode || 'INTERNAL'}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, carrierCode: e.target.value })}
-                                                            className="select select-bordered select-sm rounded-xl font-bold"
-                                                        >
-                                                            <option value="INTERNAL">INTERNAL (Target Domestic Fleet)</option>
-                                                            <option value="DHL">DHL Express Worldwide</option>
-                                                            <option value="FEDEX">FedEx International</option>
-                                                            <option value="ARAMEX">Aramex Global</option>
-                                                            <option value="SMSA">SMSA Express</option>
-                                                        </select>
+                                        {/* Step 5: Customs Compliance & Commercial Invoice */}
+                                        {editSection === 'customs' && (
+                                            <div className="space-y-6">
+                                                {/* Header */}
+                                                <div className="flex items-center gap-3 pb-3 border-b border-base-200">
+                                                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 text-primary">
+                                                        <span className="material-symbols-outlined text-2xl">event_note</span>
                                                     </div>
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">Service Code</span></label>
-                                                        <input
-                                                            type="text"
-                                                            placeholder="e.g. P, D, DOM, EXPRESS"
-                                                            value={editDraft.serviceCode || ''}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, serviceCode: e.target.value.toUpperCase() })}
-                                                            className="input input-bordered input-sm rounded-xl font-mono uppercase"
-                                                        />
+                                                    <div>
+                                                        <h2 className="text-base font-bold text-base-content">
+                                                            {lang === 'ar' ? 'اللوجستيات والجمارك والفواتير التجارية' : 'Customs Compliance & Commercial Invoice'}
+                                                        </h2>
+                                                        <p className="text-xs text-base-content/60">
+                                                            {lang === 'ar' ? 'إدخال شروط التجارة الدولية (Incoterms) والقيمة المصرحة للتخليص الجمركي' : 'Specify international trade terms, declared customs valuation and tariff classification'}
+                                                        </p>
                                                     </div>
                                                 </div>
 
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">Shipment Type</span></label>
+                                                <div className="flex flex-wrap gap-4">
+                                                    {/* Incoterms */}
+                                                    <div className="form-control w-full md:w-[calc(50%-0.375rem)]">
+                                                        <label className="text-xs font-bold text-base-content/80 mb-1">
+                                                            {lang === 'ar' ? 'شروط التجارة الدولية (Incoterms)' : 'Incoterms (Terms of Sale)'}
+                                                        </label>
                                                         <select
-                                                            value={editDraft.shipmentType || 'packages'}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, shipmentType: e.target.value })}
-                                                            className="select select-bordered select-sm rounded-xl"
+                                                            value={editDraft.customs?.incoterms || 'DAP – Delivered at Place'}
+                                                            onChange={e => setEditDraft({ ...editDraft, customs: { ...editDraft.customs, incoterms: e.target.value } })}
+                                                            className="select select-bordered select-sm w-full bg-base-100 text-xs font-medium focus:select-primary"
                                                         >
-                                                            <option value="packages">Packages / Merchandise</option>
-                                                            <option value="documents">Documents / Express Letters</option>
-                                                            <option value="freight">Heavy Cargo / Freight</option>
+                                                            <option value="DAP – Delivered at Place">DAP – Delivered at Place (Standard)</option>
+                                                            <option value="DDP – Delivered Duty Paid">DDP – Delivered Duty Paid (Duties Billed to Shipper)</option>
+                                                            <option value="CIF – Cost, Insurance and Freight">CIF – Cost, Insurance and Freight</option>
+                                                            <option value="EXW – Ex Works">EXW – Ex Works</option>
+                                                            <option value="FOB – Free on Board">FOB – Free on Board</option>
                                                         </select>
                                                     </div>
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">Estimated Delivery Date</span></label>
-                                                        <input
-                                                            type="date"
-                                                            value={editDraft.estimatedDelivery ? editDraft.estimatedDelivery.slice(0, 10) : ''}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, estimatedDelivery: e.target.value })}
-                                                            className="input input-bordered input-sm rounded-xl font-mono"
-                                                        />
+
+                                                    {/* Category */}
+                                                    <div className="form-control w-full md:w-[calc(50%-0.375rem)]">
+                                                        <label className="text-xs font-bold text-base-content/80 mb-1">
+                                                            {lang === 'ar' ? 'تصنيف الشحنة' : 'Shipment Category'}
+                                                        </label>
+                                                        <select
+                                                            value={editDraft.customs?.shipmentType || 'Commercial'}
+                                                            onChange={e => setEditDraft({ ...editDraft, customs: { ...editDraft.customs, shipmentType: e.target.value } })}
+                                                            className="select select-bordered select-sm w-full bg-base-100 text-xs font-medium focus:select-primary"
+                                                        >
+                                                            <option value="Commercial">Commercial Cargo / Merchandise</option>
+                                                            <option value="Personal">Personal Effects / Private Goods</option>
+                                                            <option value="Sample">Commercial Sample / Prototype</option>
+                                                            <option value="Return">Return for Repair / Warranty</option>
+                                                        </select>
                                                     </div>
-                                                </div>
 
-                                                {/* Pickup Scheduling Card */}
-                                                <div className="p-3.5 bg-base-200/50 rounded-2xl border border-base-200 space-y-3">
-                                                    <label className="label cursor-pointer justify-start gap-3 p-0">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={Boolean(editDraft.pickupRequired)}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, pickupRequired: e.target.checked })}
-                                                            className="checkbox checkbox-primary checkbox-sm rounded"
-                                                        />
-                                                        <div className="flex items-center gap-1.5 font-bold text-xs text-base-content">
-                                                            <span className="material-symbols-outlined text-sm text-primary">hail</span>
-                                                            <span>Schedule Warehouse Pickup (طلب استلام من المستودع)</span>
-                                                        </div>
-                                                    </label>
+                                                    <DaisyInput
+                                                        dataFieldKey="customs_invoiceNum"
+                                                        label={lang === 'ar' ? 'رقم الفاتورة التجارية' : 'Commercial Invoice Number'}
+                                                        placeholder="e.g. INV-2026-9042"
+                                                        value={editDraft.customs?.invoiceNum}
+                                                        onChange={e => setEditDraft({ ...editDraft, customs: { ...editDraft.customs, invoiceNum: e.target.value } })}
+                                                        icon="receipt"
+                                                        half
+                                                    />
 
-                                                    {editDraft.pickupRequired && (
-                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-base-200">
-                                                            <div className="form-control">
-                                                                <label className="label py-0.5"><span className="label-text text-[10px] font-bold">Pickup Date</span></label>
-                                                                <input
-                                                                    type="date"
-                                                                    value={editDraft.pickupDate || ''}
-                                                                    onChange={(e) => setEditDraft({ ...editDraft, pickupDate: e.target.value })}
-                                                                    className="input input-bordered input-xs rounded-lg font-mono"
-                                                                />
-                                                            </div>
-                                                            <div className="form-control">
-                                                                <label className="label py-0.5"><span className="label-text text-[10px] font-bold">Pickup Ready Time</span></label>
-                                                                <input
-                                                                    type="time"
-                                                                    value={editDraft.pickupTime || ''}
-                                                                    onChange={(e) => setEditDraft({ ...editDraft, pickupTime: e.target.value })}
-                                                                    className="input input-bordered input-xs rounded-lg font-mono"
-                                                                />
-                                                            </div>
+                                                    <DaisyInput
+                                                        dataFieldKey="customs_invoiceVal"
+                                                        label={lang === 'ar' ? 'القيمة الجمركية المصرحة' : 'Declared Customs Value'}
+                                                        placeholder="150.000"
+                                                        value={editDraft.customs?.invoiceVal}
+                                                        onChange={e => setEditDraft({ ...editDraft, customs: { ...editDraft.customs, invoiceVal: e.target.value } })}
+                                                        type="number"
+                                                        icon="payments"
+                                                        required
+                                                        half
+                                                    />
+
+                                                    {/* Currency Select */}
+                                                    <div className="form-control w-full md:w-[calc(50%-0.375rem)]">
+                                                        <label className="text-xs font-bold text-base-content/80 mb-1">
+                                                            {lang === 'ar' ? 'عملة الفاتورة' : 'Invoice Currency'} <span className="text-error font-black">*</span>
+                                                        </label>
+                                                        <select
+                                                            value={editDraft.customs?.currency || 'KWD'}
+                                                            onChange={e => setEditDraft({ ...editDraft, customs: { ...editDraft.customs, currency: e.target.value } })}
+                                                            className="select select-bordered select-sm w-full bg-base-100 text-xs font-mono font-bold focus:select-primary"
+                                                        >
+                                                            <option value="KWD">KWD – Kuwaiti Dinar</option>
+                                                            <option value="SAR">SAR – Saudi Riyal</option>
+                                                            <option value="AED">AED – UAE Dirham</option>
+                                                            <option value="USD">USD – US Dollar</option>
+                                                            <option value="EUR">EUR – Euro</option>
+                                                        </select>
+                                                    </div>
+
+                                                    <DaisyInput
+                                                        dataFieldKey="customs_hsCode"
+                                                        label={lang === 'ar' ? 'رمز النظام المنسق (HS Tariff Code)' : 'HS Tariff Code'}
+                                                        placeholder="e.g. 3303.00.00 (Perfumes)"
+                                                        value={editDraft.customs?.hsCode}
+                                                        onChange={e => setEditDraft({ ...editDraft, customs: { ...editDraft.customs, hsCode: e.target.value } })}
+                                                        icon="tag"
+                                                        half
+                                                    />
+
+                                                    <DaisyInput
+                                                        dataFieldKey="customs_notes"
+                                                        label={lang === 'ar' ? 'ملاحظات وتصريحات التخليص الجمركي' : 'Customs Declaration Notes'}
+                                                        placeholder="Special customs clearance instructions, duty payment account numbers, or COO details"
+                                                        value={editDraft.customs?.notes}
+                                                        onChange={e => setEditDraft({ ...editDraft, customs: { ...editDraft.customs, notes: e.target.value } })}
+                                                        icon="description"
+                                                    />
+
+                                                    {/* Authorized Internal Overrides */}
+                                                    {(isInternalShipment || canEdit) && (
+                                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-3 border-t border-base-200 w-full">
+                                                            <DaisyInput
+                                                                label={lang === 'ar' ? 'سعر بيع العميل (KWD)' : 'Customer Price (KWD)'}
+                                                                type="number"
+                                                                step="0.001"
+                                                                value={editDraft.price}
+                                                                onChange={e => setEditDraft({ ...editDraft, price: e.target.value })}
+                                                                icon="payments"
+                                                            />
+                                                            <DaisyInput
+                                                                label={lang === 'ar' ? 'تكلفة الشحن الداخلية (KWD)' : 'Internal Cost (KWD)'}
+                                                                type="number"
+                                                                step="0.001"
+                                                                value={editDraft.costPrice}
+                                                                onChange={e => setEditDraft({ ...editDraft, costPrice: e.target.value })}
+                                                                icon="price_change"
+                                                            />
+                                                            <DaisyInput
+                                                                label={lang === 'ar' ? 'الرقم المرجعي للعميل' : 'Customer Reference'}
+                                                                placeholder="e.g. ORD-1002"
+                                                                value={editDraft.reference}
+                                                                onChange={e => setEditDraft({ ...editDraft, reference: e.target.value })}
+                                                                icon="badge"
+                                                            />
                                                         </div>
                                                     )}
                                                 </div>
-
-                                                <div className="form-control">
-                                                    <label className="label py-1"><span className="label-text font-bold">Special Handling & Pickup Instructions</span></label>
-                                                    <textarea
-                                                        rows={2}
-                                                        placeholder="e.g. Fragile glassware, keep upright, call dispatcher upon arrival..."
-                                                        value={editDraft.specialInstructions || editDraft.remarks || ''}
-                                                        onChange={(e) => setEditDraft({ ...editDraft, specialInstructions: e.target.value, remarks: e.target.value })}
-                                                        className="textarea textarea-bordered rounded-xl text-xs"
-                                                    />
-                                                </div>
                                             </div>
                                         )}
 
-                                        {/* Billing & Terms Tab */}
-                                        {editSection === 'billing' && (
-                                            <div className="space-y-4 text-xs">
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">Incoterm</span></label>
-                                                        <select
-                                                            value={editDraft.incoterm || 'DAP'}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, incoterm: e.target.value })}
-                                                            className="select select-bordered select-sm rounded-xl font-bold"
-                                                        >
-                                                            <option value="DAP">DAP (Delivered at Place)</option>
-                                                            <option value="DDP">DDP (Delivered Duty Paid)</option>
-                                                            <option value="FOB">FOB (Free on Board)</option>
-                                                            <option value="EXW">EXW (Ex Works)</option>
-                                                            <option value="CIF">CIF (Cost, Insurance & Freight)</option>
-                                                            <option value="CIP">CIP (Carriage and Insurance Paid)</option>
-                                                        </select>
-                                                    </div>
-                                                    <div className="form-control">
-                                                        <label className="label py-1"><span className="label-text font-bold">Customer Reference / Order ID</span></label>
-                                                        <input
-                                                            type="text"
-                                                            placeholder="e.g. ORD-2026-998"
-                                                            value={editDraft.reference || ''}
-                                                            onChange={(e) => setEditDraft({ ...editDraft, reference: e.target.value })}
-                                                            className="input input-bordered input-sm rounded-xl font-mono"
-                                                        />
-                                                    </div>
-                                                </div>
-
-                                                {/* Commercial Invoice Details */}
-                                                <div className="p-3.5 bg-base-200/50 rounded-2xl border border-base-200 space-y-3">
-                                                    <div className="flex items-center gap-1.5 font-bold text-xs text-base-content">
-                                                        <span className="material-symbols-outlined text-sm text-primary">receipt</span>
-                                                        <span>Commercial Invoice (البيان الجمركي / الفاتورة التجارية)</span>
-                                                    </div>
-                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                                                        <div className="form-control">
-                                                            <label className="label py-0.5"><span className="label-text text-[10px] font-bold">Invoice Number</span></label>
-                                                            <input
-                                                                type="text"
-                                                                placeholder="e.g. INV-100234"
-                                                                value={editDraft.customsInvoice?.invoiceNumber || ''}
-                                                                onChange={(e) => setEditDraft({
-                                                                    ...editDraft,
-                                                                    customsInvoice: { ...editDraft.customsInvoice, invoiceNumber: e.target.value }
-                                                                })}
-                                                                className="input input-bordered input-xs rounded-lg font-mono"
-                                                            />
-                                                        </div>
-                                                        <div className="form-control">
-                                                            <label className="label py-0.5"><span className="label-text text-[10px] font-bold">Invoice Date</span></label>
-                                                            <input
-                                                                type="date"
-                                                                value={editDraft.customsInvoice?.invoiceDate ? editDraft.customsInvoice.invoiceDate.slice(0, 10) : ''}
-                                                                onChange={(e) => setEditDraft({
-                                                                    ...editDraft,
-                                                                    customsInvoice: { ...editDraft.customsInvoice, invoiceDate: e.target.value }
-                                                                })}
-                                                                className="input input-bordered input-xs rounded-lg font-mono"
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {(isInternalShipment || canEdit) && (
-                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-base-200">
-                                                        <div className="form-control">
-                                                            <label className="label py-1"><span className="label-text font-bold">Customer Selling Price ({editDraft.currency || 'KWD'})</span></label>
-                                                            <input
-                                                                type="number"
-                                                                step="0.001"
-                                                                value={editDraft.price ?? ''}
-                                                                onChange={(e) => setEditDraft({ ...editDraft, price: e.target.value })}
-                                                                className="input input-bordered input-sm rounded-xl font-mono"
-                                                            />
-                                                        </div>
-                                                        <div className="form-control">
-                                                            <label className="label py-1"><span className="label-text font-bold">Internal Carrier Cost ({editDraft.currency || 'KWD'})</span></label>
-                                                            <input
-                                                                type="number"
-                                                                step="0.001"
-                                                                value={editDraft.costPrice ?? ''}
-                                                                onChange={(e) => setEditDraft({ ...editDraft, costPrice: e.target.value })}
-                                                                className="input input-bordered input-sm rounded-xl font-mono"
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        {/* Status & Milestones Tab */}
+                                        {/* Step 6: Status & Tracking Checkpoints */}
                                         {editSection === 'status' && (
-                                            <div className="space-y-4 text-xs">
-                                                <div className="alert bg-info/10 text-info-content border border-info/20 rounded-2xl p-3 text-xs">
-                                                    <span className="material-symbols-outlined text-base">info</span>
-                                                    <span>Advancing status updates milestone telemetry and timestamps in the public tracking database.</span>
+                                            <div className="space-y-6">
+                                                {/* Header */}
+                                                <div className="flex items-center gap-3 pb-3 border-b border-base-200">
+                                                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 text-primary">
+                                                        <span className="material-symbols-outlined text-2xl">fact_check</span>
+                                                    </div>
+                                                    <div>
+                                                        <h2 className="text-base font-bold text-base-content">
+                                                            {lang === 'ar' ? 'الحالة والتتبع والملاحظات' : 'Status & Tracking Checkpoints'}
+                                                        </h2>
+                                                        <p className="text-xs text-base-content/60">
+                                                            {lang === 'ar' ? 'تحديث مرحلة التتبع وإدراج ملاحظة تشغيلية في سجل الشحنة العام' : 'Advance consignment tracking milestone and register public audit note'}
+                                                        </p>
+                                                    </div>
                                                 </div>
+
+                                                <div className="alert bg-info/10 text-info-content border border-info/20 rounded-2xl p-4 text-xs flex items-center gap-3">
+                                                    <span className="material-symbols-outlined text-lg text-info">info</span>
+                                                    <span>
+                                                        {lang === 'ar' 
+                                                            ? 'تحديث الحالة يقوم بتسجيل نقطة تتبع جديدة تلقائياً مع توقيت الكويت في قاعدة البيانات.' 
+                                                            : 'Advancing status updates milestone telemetry and timestamps in the public tracking database.'}
+                                                    </span>
+                                                </div>
+
                                                 <div className="form-control">
                                                     <label className="label py-1"><span className="label-text font-bold">Consignment Status</span></label>
                                                     <select
@@ -3537,6 +4489,7 @@ const ShipmentDetailsPage = () => {
                                                         ))}
                                                     </select>
                                                 </div>
+
                                                 <div className="form-control">
                                                     <label className="label py-1"><span className="label-text font-bold">Checkpoint Operational Note</span></label>
                                                     <textarea
