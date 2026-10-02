@@ -149,7 +149,9 @@ const ApiKeyPanel = () => {
   const [show, setShow] = useState(false);
 
   useEffect(() => {
-    setApiKey(user?.apiKey || '');
+    if (user?.apiKey) {
+      setApiKey(user.apiKey);
+    }
   }, [user?.apiKey]);
 
   const generate = async () => {

@@ -54,6 +54,9 @@ export const SettingsPage = () => {
   // API Key State
   const [apiKey, setApiKey] = useState(user?.apiKey || '');
   const [loadingKey, setLoadingKey] = useState(false);
+  const [showKeyModal, setShowKeyModal] = useState(false);
+  const [showPlainKey, setShowPlainKey] = useState(false);
+  const [keyCopied, setKeyCopied] = useState(false);
 
   // Shipper Profile State
   const [shipperProfile, setShipperProfile] = useState({
@@ -116,7 +119,9 @@ export const SettingsPage = () => {
 
   useEffect(() => {
     if (user) {
-      setApiKey(user.apiKey || '');
+      if (user.apiKey) {
+        setApiKey(user.apiKey);
+      }
       setShipperProfile({
         contactPerson: user.name || '',
         company: user.company || '',
@@ -165,7 +170,11 @@ export const SettingsPage = () => {
     try {
       setLoadingKey(true);
       const res = await api.post('/auth/api-key');
-      setApiKey(res.data.apiKey);
+      const freshKey = res.data?.apiKey;
+      setApiKey(freshKey);
+      setShowPlainKey(true);
+      setKeyCopied(false);
+      setShowKeyModal(true);
       enqueueSnackbar(lang === 'ar' ? 'تم إنشاء مفتاح API جديد بنجاح!' : 'New API Key generated successfully!', { variant: 'success' });
       if (refreshUser) await refreshUser();
     } catch (err) {
@@ -602,30 +611,90 @@ export const SettingsPage = () => {
             <div className="space-y-6">
               {/* REST API Key Card */}
               <div className="card bg-base-100 border border-base-200 shadow-sm p-6 sm:p-8 space-y-4">
-                <div>
-                  <h2 className="text-lg font-black text-base-content tracking-tight">
-                    Developer REST API Credentials
-                  </h2>
-                  <p className="text-xs text-base-content/60 mt-0.5">
-                    Programmatic bearer token for B2B e-commerce ERP integration and bulk order injection.
-                  </p>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-black text-base-content tracking-tight">
+                      Developer REST API Credentials
+                    </h2>
+                    <p className="text-xs text-base-content/60 mt-0.5">
+                      Programmatic bearer token for B2B e-commerce ERP integration and bulk order injection.
+                    </p>
+                  </div>
+                  {(user?.apiKeyLast4 || apiKey) && (
+                    <span className="badge badge-success badge-sm font-black tracking-wide text-white self-start sm:self-auto gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
+                      ACTIVE {user?.apiKeyLast4 ? `(...${user.apiKeyLast4})` : ''}
+                    </span>
+                  )}
                 </div>
 
-                <div className="p-4 rounded-xl bg-base-200/50 border border-base-200 space-y-3">
-                  <div className="text-[11px] font-bold text-base-content/60 uppercase">ACTIVE SECRET API KEY</div>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <input
-                      type="text"
-                      readOnly
-                      value={apiKey || 'No API key generated yet'}
-                      className="input input-bordered flex-1 font-mono text-xs bg-base-100"
-                    />
+                {apiKey && (
+                  <div className="alert bg-emerald-500/10 border border-emerald-500/30 text-emerald-950 dark:text-emerald-200 text-xs py-2.5 px-3 rounded-2xl flex items-center justify-between gap-2 shadow-2xs">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-emerald-600 text-base">check_circle</span>
+                      <span className="font-bold">
+                        {lang === 'ar' ? 'تم توليد مفتاح سري جديد! انسخه الآن قبل مغادرة الصفحة.' : 'New secret key generated! Copy it now before navigating away.'}
+                      </span>
+                    </div>
                     <button
                       type="button"
+                      onClick={() => setShowKeyModal(true)}
+                      className="btn btn-xs btn-ghost text-emerald-700 dark:text-emerald-300 font-extrabold underline"
+                    >
+                      {lang === 'ar' ? 'عرض بالكامل' : 'View Dialog'}
+                    </button>
+                  </div>
+                )}
+
+                <div className="p-4 rounded-xl bg-base-200/50 border border-base-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-base-content/60 uppercase">
+                      {apiKey ? 'SECRET API KEY' : (user?.apiKeyLast4 ? 'STORED SECRET API KEY' : 'API KEY STATUS')}
+                    </span>
+                    {apiKey && (
+                      <span className="text-[10px] text-amber-700 dark:text-amber-400 font-bold bg-amber-500/10 px-2 py-0.5 rounded-md">
+                        {showPlainKey ? 'Visible' : 'Masked'}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        readOnly
+                        value={
+                          apiKey
+                            ? (showPlainKey ? apiKey : `${apiKey.slice(0, 10)}••••••••••••••••••••••••${apiKey.slice(-4)}`)
+                            : (user?.apiKeyLast4
+                                ? `••••••••••••••••••••••••••••••••••••••••••••••••${user.apiKeyLast4}`
+                                : 'No API key generated yet')
+                        }
+                        className="input input-bordered w-full font-mono text-xs bg-base-100 pr-10 select-all font-semibold"
+                      />
+                      {apiKey && (
+                        <button
+                          type="button"
+                          onClick={() => setShowPlainKey(!showPlainKey)}
+                          className="btn btn-ghost btn-circle btn-xs absolute right-2 top-1/2 -translate-y-1/2 text-base-content/50 hover:text-base-content"
+                          title={showPlainKey ? 'Hide key' : 'Show key'}
+                        >
+                          <span className="material-symbols-outlined text-sm">
+                            {showPlainKey ? 'visibility_off' : 'visibility'}
+                          </span>
+                        </button>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={!apiKey && !user?.apiKeyLast4}
                       onClick={() => {
                         if (apiKey) {
                           navigator.clipboard.writeText(apiKey);
-                          enqueueSnackbar('API Key copied to clipboard', { variant: 'success' });
+                          enqueueSnackbar(lang === 'ar' ? 'تم نسخ المفتاح إلى الحافظة' : 'API Key copied to clipboard', { variant: 'success' });
+                        } else if (user?.apiKeyLast4) {
+                          enqueueSnackbar(lang === 'ar' ? 'المفتاح مخفي لدواعي الأمان. انقر على تجديد المفتاح إذا فقدته.' : 'Full secret key is hidden for security. Click Roll Key to generate a new secret.', { variant: 'info' });
                         }
                       }}
                       className="btn btn-outline border-base-300 font-bold text-xs gap-1"
@@ -633,6 +702,7 @@ export const SettingsPage = () => {
                       <span className="material-symbols-outlined text-base">content_copy</span>
                       <span>Copy</span>
                     </button>
+
                     <button
                       type="button"
                       onClick={generateNewKey}
@@ -640,14 +710,83 @@ export const SettingsPage = () => {
                       className="btn btn-primary font-bold text-xs gap-1 shadow-md shadow-primary/20"
                     >
                       <span className="material-symbols-outlined text-base">refresh</span>
-                      <span>{loadingKey ? 'Rolling...' : 'Roll Key'}</span>
+                      <span>{loadingKey ? (lang === 'ar' ? 'جاري التوليد...' : 'Generating...') : (apiKey || user?.apiKeyLast4 ? (lang === 'ar' ? 'تجديد المفتاح' : 'Roll Key') : (lang === 'ar' ? 'إنشاء مفتاح' : 'Generate Key'))}</span>
                     </button>
                   </div>
+
                   <div className="text-[11px] text-base-content/60">
-                    Include in authorization header: <code className="bg-base-300 px-1.5 py-0.5 rounded font-mono font-bold text-primary">X-API-Key: {apiKey ? `${apiKey.slice(0, 10)}...` : 'tl_live_...'}</code>
+                    Include in authorization header: <code className="bg-base-300 px-1.5 py-0.5 rounded font-mono font-bold text-primary">X-API-Key: {apiKey ? `${apiKey.slice(0, 10)}...` : (user?.apiKeyLast4 ? `••••••••...${user.apiKeyLast4}` : 'tl_live_...')}</code>
                   </div>
                 </div>
               </div>
+
+              {/* Secret Key Modal */}
+              {showKeyModal && apiKey && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+                  <div className="bg-base-100 rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-base-200 space-y-6">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
+                        <span className="material-symbols-outlined text-2xl">key</span>
+                      </div>
+                      <div>
+                        <h3 className="font-black text-lg text-base-content">
+                          {lang === 'ar' ? 'احفظ مفتاح API السري' : 'Save Your Secret API Key'}
+                        </h3>
+                        <p className="text-xs text-base-content/60">
+                          {lang === 'ar' ? 'تم إنشاء المفتاح بنجاح. لن يتم عرضه مرة أخرى بعد إغلاق هذه النافذة.' : 'Key generated. For your security, this key cannot be viewed again once you leave or close.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="alert alert-warning text-xs py-3 px-4 rounded-2xl flex items-start gap-3">
+                      <span className="material-symbols-outlined text-lg shrink-0 mt-0.5">warning</span>
+                      <span>
+                        {lang === 'ar' 
+                          ? 'يرجى نسخ هذا المفتاح وتخزينه في مكان آمن في إعدادات نظامك (Environment Variables). لن نتمكن من إظهار المفتاح بالكامل لك مرة أخرى.'
+                          : 'Please copy and securely store this key now in your backend environment variables. For security reasons, we cannot show you the full key again.'}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-black uppercase text-base-content/70">
+                        {lang === 'ar' ? 'المفتاح السري (X-API-Key)' : 'Live Secret API Key'}
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          readOnly
+                          value={apiKey}
+                          className="input input-bordered flex-1 font-mono text-xs bg-base-200/60 select-all font-bold"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(apiKey);
+                            setKeyCopied(true);
+                            enqueueSnackbar(lang === 'ar' ? 'تم نسخ المفتاح إلى الحافظة' : 'API key copied to clipboard!', { variant: 'success' });
+                          }}
+                          className={`btn btn-sm ${keyCopied ? 'btn-success text-white' : 'btn-primary'} font-bold text-xs gap-1 shrink-0 rounded-xl px-4`}
+                        >
+                          <span className="material-symbols-outlined text-sm">
+                            {keyCopied ? 'check' : 'content_copy'}
+                          </span>
+                          <span>{keyCopied ? (lang === 'ar' ? 'تم النسخ' : 'Copied!') : (lang === 'ar' ? 'نسخ' : 'Copy')}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setShowKeyModal(false)}
+                        className="btn btn-neutral btn-sm rounded-xl font-bold px-6 text-xs"
+                      >
+                        {lang === 'ar' ? 'تم الحفظ بأمان' : 'Done, I have saved it'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Webhooks Section */}
               <div className="card bg-base-100 border border-base-200 shadow-sm p-6 sm:p-8 space-y-6">

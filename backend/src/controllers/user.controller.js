@@ -465,6 +465,8 @@ exports.getMe = async (req, res) => {
             optionalServiceMarkup: user.agentPolicy?.optionalServiceMarkup || {},
             creditLimit: user.organization?.creditLimit !== undefined ? user.organization.creditLimit : (user.creditLimit || 0)
         };
+        delete mappedUser.password;
+        delete mappedUser.apiKeyHash;
 
         res.status(200).json({
             success: true,
