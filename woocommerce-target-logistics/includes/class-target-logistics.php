@@ -64,6 +64,9 @@ class Target_Logistics {
         // Register Integration in WooCommerce Settings
         add_filter( 'woocommerce_integrations', array( $this, 'add_integration' ) );
 
+        // Register Native Shipping Method for Shipping Zones
+        add_filter( 'woocommerce_shipping_methods', array( $this, 'add_shipping_method' ) );
+
         // Enqueue Admin Scripts & Styles
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_assets' ) );
 
@@ -92,6 +95,17 @@ class Target_Logistics {
     public function add_integration( $integrations ) {
         $integrations[] = 'Target_Logistics_Settings';
         return $integrations;
+    }
+
+    /**
+     * Add Native Shipping Method to WooCommerce
+     *
+     * @param array $methods
+     * @return array
+     */
+    public function add_shipping_method( $methods ) {
+        $methods['target_logistics_shipping'] = 'WC_Target_Logistics_Shipping_Method';
+        return $methods;
     }
 
     /**

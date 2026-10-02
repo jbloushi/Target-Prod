@@ -170,6 +170,27 @@ class Target_Logistics_Order_Manager {
                         <?php esc_html_e( 'This order is ready to be booked with Target Logistics Client API.', 'wc-target-logistics' ); ?>
                     </p>
 
+                    <?php
+                    $shipping_methods = $order->get_shipping_methods();
+                    $selected_shipping_name = '';
+                    $is_target_shipping     = false;
+                    $order_carrier          = isset( $settings['default_carrier_code'] ) ? $settings['default_carrier_code'] : '';
+                    $order_service          = isset( $settings['default_service_code'] ) ? $settings['default_service_code'] : '';
+
+                    foreach ( $shipping_methods as $shipping_item ) {
+                        $selected_shipping_name = $shipping_item->get_name();
+                        if ( false !== strpos( $shipping_item->get_method_id(), 'target_logistics_shipping' ) ) {
+                            $is_target_shipping = true;
+                        }
+                        if ( $shipping_item->get_meta( 'carrier_code' ) ) {
+                            $order_carrier = $shipping_item->get_meta( 'carrier_code' );
+                        }
+                        if ( $shipping_item->get_meta( 'service_code' ) ) {
+                            $order_service = $shipping_item->get_meta( 'service_code' );
+                        }
+                        break;
+                    }
+                    ?>
                     <div class="tl-summary-box">
                         <div class="tl-route-row">
                             <span class="dashicons dashicons-location-alt"></span>
@@ -179,17 +200,27 @@ class Target_Logistics_Order_Manager {
                             <span class="dashicons dashicons-cart"></span>
                             <span><strong><?php esc_html_e( 'Items:', 'wc-target-logistics' ); ?></strong> <?php echo esc_html( $order->get_item_count() ); ?> (<?php echo esc_html( wc_price( $order->get_total(), array( 'currency' => $order->get_currency() ) ) ); ?>)</span>
                         </div>
+                        <?php if ( ! empty( $selected_shipping_name ) ) : ?>
+                            <div class="tl-route-row" style="margin-top: 4px; padding-top: 4px; border-top: 1px dashed #e2e8f0;">
+                                <span class="dashicons dashicons-car"></span>
+                                <span><strong><?php esc_html_e( 'Customer Shipping:', 'wc-target-logistics' ); ?></strong> <?php echo esc_html( $selected_shipping_name ); ?>
+                                <?php if ( $is_target_shipping ) : ?>
+                                    <span class="tl-badge" style="background: #10b981; color: #fff; margin-left: 4px; font-size: 10px; padding: 1px 5px;"><?php esc_html_e( 'Target Logistics', 'wc-target-logistics' ); ?></span>
+                                <?php endif; ?>
+                                </span>
+                            </div>
+                        <?php endif; ?>
                     </div>
 
                     <div class="tl-options-fold">
                         <p>
                             <label for="tl_override_carrier"><strong><?php esc_html_e( 'Carrier Code:', 'wc-target-logistics' ); ?></strong></label>
-                            <input type="text" id="tl_override_carrier" class="widefat" value="<?php echo esc_attr( isset( $settings['default_carrier_code'] ) ? $settings['default_carrier_code'] : 'DGR' ); ?>" placeholder="DGR, DHL, or MANUAL" />
+                            <input type="text" id="tl_override_carrier" class="widefat" value="<?php echo esc_attr( $order_carrier ); ?>" placeholder="<?php esc_attr_e( 'Auto-resolved if blank', 'wc-target-logistics' ); ?>" />
                         </p>
 
                         <p>
                             <label for="tl_override_service"><strong><?php esc_html_e( 'Service Code:', 'wc-target-logistics' ); ?></strong></label>
-                            <input type="text" id="tl_override_service" class="widefat" value="<?php echo esc_attr( isset( $settings['default_service_code'] ) ? $settings['default_service_code'] : 'P' ); ?>" placeholder="P (Express) or blank" />
+                            <input type="text" id="tl_override_service" class="widefat" value="<?php echo esc_attr( $order_service ); ?>" placeholder="<?php esc_attr_e( 'Auto-resolved if blank', 'wc-target-logistics' ); ?>" />
                         </p>
 
                         <p>

@@ -507,6 +507,19 @@ class Target_Logistics_Pickup_Service {
         // Carrier & Service Code
         $carrier_code = ! empty( $overrides['carrier_code'] ) ? trim( $overrides['carrier_code'] ) : ( ! empty( $this->settings['default_carrier_code'] ) ? trim( $this->settings['default_carrier_code'] ) : '' );
         $service_code = ! empty( $overrides['service_code'] ) ? trim( $overrides['service_code'] ) : ( ! empty( $this->settings['default_service_code'] ) ? trim( $this->settings['default_service_code'] ) : '' );
+
+        // If not explicitly set, check if the customer chose a Target Logistics rate with specific carrier/service
+        if ( empty( $carrier_code ) || empty( $service_code ) ) {
+            foreach ( $order->get_shipping_methods() as $shipping_item ) {
+                if ( empty( $carrier_code ) && $shipping_item->get_meta( 'carrier_code' ) ) {
+                    $carrier_code = $shipping_item->get_meta( 'carrier_code' );
+                }
+                if ( empty( $service_code ) && $shipping_item->get_meta( 'service_code' ) ) {
+                    $service_code = $shipping_item->get_meta( 'service_code' );
+                }
+            }
+        }
+
         $incoterm     = ! empty( $this->settings['default_incoterm'] ) ? $this->settings['default_incoterm'] : 'DAP';
         $export_reason= ! empty( $this->settings['export_reason'] ) ? $this->settings['export_reason'] : 'Sale';
 

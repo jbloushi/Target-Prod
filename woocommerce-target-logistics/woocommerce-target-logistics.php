@@ -53,6 +53,7 @@ function wc_target_logistics_init() {
     require_once WC_TARGET_LOGISTICS_PATH . 'includes/class-target-logistics-order.php';
     require_once WC_TARGET_LOGISTICS_PATH . 'includes/class-target-logistics-bulk.php';
     require_once WC_TARGET_LOGISTICS_PATH . 'includes/class-target-logistics-tracking.php';
+    require_once WC_TARGET_LOGISTICS_PATH . 'includes/class-target-logistics-shipping-method.php';
     require_once WC_TARGET_LOGISTICS_PATH . 'includes/class-target-logistics.php';
 
     // Instantiate orchestrator
