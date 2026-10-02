@@ -1194,15 +1194,20 @@ exports.updateShipment = async (req, res) => {
             updates.parcels = updates.packages;
         }
 
-        const allowedFields = [
+        // Allowed direct columns on Prisma Shipment model
+        const allowedPrismaFields = [
             'destination', 'origin', 'items', 'parcels', 'incoterm', 'currency',
-            'serviceCode', 'status', 'allowPublicLocationUpdate', 'carrierCode',
-            'shipmentType', 'packagingType', 'specialInstructions', 'remarks',
-            'customsInvoice', 'pickupDate', 'pickupTime', 'pickupRequired'
+            'serviceCode', 'status', 'carrierCode', 'shipmentType', 'packagingType',
+            'documents', 'pricingSnapshot', 'history', 'currentLocation', 'checkpoints',
+            'estimatedDelivery', 'price', 'costPrice', 'markupAmount'
         ];
         const manualEditableFields = ['price', 'costPrice', 'estimatedDelivery'];
         const updateData = {};
-        let nextOrigin = null;
+        const currentOrigin = shipment.origin && typeof shipment.origin === 'object' ? { ...shipment.origin } : {};
+        let nextOrigin = updates.origin && typeof updates.origin === 'object' 
+            ? { ...currentOrigin, ...updates.origin } 
+            : { ...currentOrigin };
+
         let criticalChangesDetected = hasCriticalChanges(shipment, updates);
         const shipmentIsInternal = isInternalShipment(shipment);
         const shipmentCarrier = String(shipment.carrierCode || '').toUpperCase();
@@ -1219,28 +1224,49 @@ exports.updateShipment = async (req, res) => {
             }
         }
 
-        const currentOrigin = shipment.origin && typeof shipment.origin === 'object' ? shipment.origin : {};
-        if (updates.origin && typeof updates.origin === 'object') {
-            nextOrigin = { ...currentOrigin, ...updates.origin };
-        }
+        // Handle metadata fields stored within origin JSON blob
         if (updates.dangerousGoods !== undefined) {
-            nextOrigin = nextOrigin || { ...currentOrigin };
             nextOrigin.dangerousGoods = updates.dangerousGoods;
         }
         if (updates.insuredValue !== undefined) {
-            nextOrigin = nextOrigin || { ...currentOrigin };
             nextOrigin.insuredValue = updates.insuredValue;
         }
-        if (updates.optionalServiceCodes !== undefined) {
-            nextOrigin = nextOrigin || { ...currentOrigin };
-            nextOrigin.optionalServiceCodes = updates.optionalServiceCodes;
+        if (updates.optionalServiceCodes !== undefined || updates.valueAddedServices !== undefined) {
+            nextOrigin.optionalServiceCodes = updates.optionalServiceCodes || updates.valueAddedServices;
+        }
+        if (updates.specialInstructions !== undefined) {
+            nextOrigin.specialInstructions = updates.specialInstructions;
+        }
+        if (updates.remarks !== undefined) {
+            nextOrigin.remarks = updates.remarks;
+        }
+        if (updates.pickupDate !== undefined) nextOrigin.pickupDate = updates.pickupDate;
+        if (updates.pickupTime !== undefined) nextOrigin.pickupTime = updates.pickupTime;
+        if (updates.pickupRequired !== undefined) nextOrigin.pickupRequired = updates.pickupRequired;
+        if (updates.allowPublicLocationUpdate !== undefined) nextOrigin.allowPublicLocationUpdate = Boolean(updates.allowPublicLocationUpdate);
+        if (updates.allowPublicInfoUpdate !== undefined) nextOrigin.allowPublicInfoUpdate = Boolean(updates.allowPublicInfoUpdate);
+
+        // Handle customsInvoice stored in documents and origin
+        if (updates.customsInvoice && typeof updates.customsInvoice === 'object') {
+            nextOrigin.customsInvoice = updates.customsInvoice;
+            const currentDocs = (shipment.documents && typeof shipment.documents === 'object' && !Array.isArray(shipment.documents)) 
+                ? { ...shipment.documents } 
+                : {};
+            updateData.documents = {
+                ...currentDocs,
+                invoiceNumber: updates.customsInvoice.invoiceNumber || updates.customsInvoice.invoiceNum || currentDocs.invoiceNumber || '',
+                declaredValue: Number(updates.customsInvoice.declaredValue || updates.customsInvoice.invoiceVal || currentDocs.declaredValue || 0),
+                currency: updates.customsInvoice.currency || updates.currency || currentDocs.currency || 'KWD',
+                countryOfOrigin: updates.customsInvoice.countryOfOrigin || updates.customsInvoice.origin || currentDocs.countryOfOrigin || 'Kuwait',
+                notes: updates.customsInvoice.notes || currentDocs.notes || ''
+            };
         }
 
         logger.info(`[shipment.update] ${trackingNumber} payload keys: ${Object.keys(updates || {}).join(', ')}`);
 
-        // Filter updates
+        // Filter valid updates for Prisma
         Object.keys(updates).forEach(key => {
-            if (allowedFields.includes(key)) updateData[key] = updates[key];
+            if (allowedPrismaFields.includes(key)) updateData[key] = updates[key];
             if (manualEditableFields.includes(key)) {
                 if (!canManageManualFields) return;
                 if (key === 'estimatedDelivery') {
@@ -1251,9 +1277,8 @@ exports.updateShipment = async (req, res) => {
             }
         });
 
-        if (nextOrigin) {
-            updateData.origin = nextOrigin;
-        }
+        // Always commit the updated origin blob
+        updateData.origin = nextOrigin;
 
         if (canManageManualFields && updates.price !== undefined) {
             const price = Number(updates.price);
@@ -1367,90 +1392,107 @@ exports.updateShipment = async (req, res) => {
                 const carrier = CarrierFactory.getAdapter(mergedState.carrierCode, { isTest, environment });
                 const quotes = await carrier.getRates({ ...mergedState, isTest, environment });
                 
-                const selectedService = quotes.find(q => q.serviceCode === (updates.serviceCode || shipment.serviceCode)) || quotes[0];
+                const selectedService = (quotes && quotes.length > 0)
+                    ? (quotes.find(q => q.serviceCode === (updates.serviceCode || shipment.serviceCode)) || quotes[0])
+                    : null;
                 
-                // Fetch user for fresh markup resolution
-                const targetUser = await prisma.user.findUnique({
-                    where: { id: shipment.userId },
-                    include: { organization: true }
-                });
+                if (selectedService) {
+                    // Fetch user for fresh markup resolution
+                    const targetUser = shipment.userId ? await prisma.user.findUnique({
+                        where: { id: shipment.userId },
+                        include: { organization: true }
+                    }) : null;
 
-                const { markup, source } = PricingService.resolveMarkup(targetUser, targetUser.organization, shipment.carrierCode);
-                const snapshot = PricingService.createSnapshot(selectedService.totalPrice, markup, selectedService.currency, source);
-                const selectedOptionalCodes = new Set(
-                    (updates.optionalServiceCodes ?? currentOrigin.optionalServiceCodes ?? [])
-                        .map(code => String(code))
-                        .filter(Boolean)
-                );
-                const optionalServices = (selectedService.optionalServices || [])
-                    .filter(service => selectedOptionalCodes.has(service.serviceCode))
-                    .map(service => {
-                        const carrierAmount = Number(PricingService.normalizeAmount(service.totalPrice || 0).toFixed(3));
-                        const currency = service.currency || selectedService.currency || shipment.currency || 'KWD';
-                        const { markup: optionalMarkup, source: optionalMarkupSource } =
-                            PricingService.resolveOptionalServiceMarkup(targetUser, targetUser.organization, mergedState.carrierCode || shipment.carrierCode, service.serviceCode);
+                    const { markup, source } = PricingService.resolveMarkup(targetUser, targetUser?.organization, shipment.carrierCode);
+                    const snapshot = PricingService.createSnapshot(selectedService.totalPrice, markup, selectedService.currency, source);
+                    const selectedOptionalCodes = new Set(
+                        (updates.optionalServiceCodes ?? currentOrigin.optionalServiceCodes ?? [])
+                            .map(code => String(code))
+                            .filter(Boolean)
+                    );
+                    const optionalServices = (selectedService.optionalServices || [])
+                        .filter(service => selectedOptionalCodes.has(service.serviceCode))
+                        .map(service => {
+                            const carrierAmount = Number(PricingService.normalizeAmount(service.totalPrice || 0).toFixed(3));
+                            const currency = service.currency || selectedService.currency || shipment.currency || 'KWD';
+                            const { markup: optionalMarkup, source: optionalMarkupSource } =
+                                PricingService.resolveOptionalServiceMarkup(targetUser, targetUser?.organization, mergedState.carrierCode || shipment.carrierCode, service.serviceCode);
 
-                        if (!optionalMarkup) {
+                            if (!optionalMarkup) {
+                                return {
+                                    serviceCode: service.serviceCode,
+                                    serviceName: service.serviceName,
+                                    totalPrice: carrierAmount,
+                                    carrierAmount,
+                                    markupAmount: 0,
+                                    currency
+                                };
+                            }
+
+                            const optionalCalc = PricingService.calculateFinalPrice(carrierAmount, optionalMarkup, currency);
                             return {
                                 serviceCode: service.serviceCode,
                                 serviceName: service.serviceName,
-                                totalPrice: carrierAmount,
+                                totalPrice: Number(optionalCalc.finalPrice.toFixed(3)),
                                 carrierAmount,
-                                markupAmount: 0,
+                                markupAmount: Number(optionalCalc.markupAmount.toFixed(3)),
+                                markupPolicySource: optionalMarkupSource,
                                 currency
                             };
-                        }
+                        });
+                    const optionalServicesTotal = optionalServices.reduce((sum, service) => sum + Number(service.totalPrice || 0), 0);
+                    const estimatedShipmentCost = Number(snapshot.totalPrice || 0);
+                    snapshot.optionalServices = optionalServices;
+                    snapshot.optionalServicesTotal = Number(optionalServicesTotal.toFixed(3));
+                    snapshot.estimatedShipmentCost = Number(estimatedShipmentCost.toFixed(3));
+                    snapshot.totalPrice = Number((estimatedShipmentCost + optionalServicesTotal).toFixed(3));
+                    snapshot.declaredCurrency = updates.currency || shipment.currency || selectedService.currency || 'KWD';
+                    snapshot.insuredValue = updates.insuredValue ?? currentOrigin.insuredValue ?? null;
+                    snapshot.isTest = isTest;
+                    snapshot.environment = environment;
 
-                        const optionalCalc = PricingService.calculateFinalPrice(carrierAmount, optionalMarkup, currency);
-                        return {
-                            serviceCode: service.serviceCode,
-                            serviceName: service.serviceName,
-                            totalPrice: Number(optionalCalc.finalPrice.toFixed(3)),
-                            carrierAmount,
-                            markupAmount: Number(optionalCalc.markupAmount.toFixed(3)),
-                            markupPolicySource: optionalMarkupSource,
-                            currency
-                        };
-                    });
-                const optionalServicesTotal = optionalServices.reduce((sum, service) => sum + Number(service.totalPrice || 0), 0);
-                const estimatedShipmentCost = Number(snapshot.totalPrice || 0);
-                snapshot.optionalServices = optionalServices;
-                snapshot.optionalServicesTotal = Number(optionalServicesTotal.toFixed(3));
-                snapshot.estimatedShipmentCost = Number(estimatedShipmentCost.toFixed(3));
-                snapshot.totalPrice = Number((estimatedShipmentCost + optionalServicesTotal).toFixed(3));
-                snapshot.declaredCurrency = updates.currency || shipment.currency || selectedService.currency || 'KWD';
-                snapshot.insuredValue = updates.insuredValue ?? currentOrigin.insuredValue ?? null;
-                snapshot.isTest = isTest;
-                snapshot.environment = environment;
-
-                const oldPrice = shipment.price || 0;
-                const newPrice = snapshot.totalPrice;
-                
-                updateData.price = newPrice;
-                updateData.pricingSnapshot = snapshot;
-                updateData.costPrice = snapshot.carrierRate;
-                updateData.markupAmount = snapshot.markup;
-                updateData.remainingBalance = Number(Math.max(0, (newPrice - Number(shipment.totalPaid || 0))).toFixed(4));
-
-                // Ledger Adjustment
-                if (shipment.organizationId && oldPrice !== newPrice) {
-                    const financeLedgerService = require('../services/financeLedger.service');
-                    const diff = parseFloat((newPrice - oldPrice).toFixed(3));
+                    const oldPrice = shipment.price || 0;
+                    const newPrice = snapshot.totalPrice;
                     
-                    await financeLedgerService.createLedgerEntry(shipment.organizationId, {
-                        sourceRepo: 'Shipment',
-                        sourceId: shipment.id,
-                        amount: Math.abs(diff),
-                        entryType: diff > 0 ? 'DEBIT' : 'CREDIT',
-                        category: 'ADJUSTMENT',
-                        description: `Price adjustment due to shipment update: ${oldPrice} -> ${newPrice}`,
-                        reference: trackingNumber,
-                        createdBy: user.id
-                    });
+                    updateData.price = newPrice;
+                    updateData.pricingSnapshot = snapshot;
+                    updateData.costPrice = snapshot.carrierRate;
+                    updateData.markupAmount = snapshot.markup;
+                    updateData.remainingBalance = Number(Math.max(0, (newPrice - Number(shipment.totalPaid || 0))).toFixed(4));
+
+                    // Ledger Adjustment
+                    if (shipment.organizationId && oldPrice !== newPrice) {
+                        const financeLedgerService = require('../services/financeLedger.service');
+                        const diff = parseFloat((newPrice - oldPrice).toFixed(3));
+                        
+                        await financeLedgerService.createLedgerEntry(shipment.organizationId, {
+                            sourceRepo: 'Shipment',
+                            sourceId: shipment.id,
+                            amount: Math.abs(diff),
+                            entryType: diff > 0 ? 'DEBIT' : 'CREDIT',
+                            category: 'ADJUSTMENT',
+                            description: `Price adjustment due to shipment update: ${oldPrice} -> ${newPrice}`,
+                            reference: trackingNumber,
+                            createdBy: user.id
+                        });
+                    }
+                } else {
+                    logger.warn(`No carrier quotes returned during re-rating for ${trackingNumber}. Retaining current pricing.`);
+                    if (updates.price !== undefined) {
+                        updateData.price = Number(updates.price);
+                    }
                 }
             } catch (pricingError) {
                 logger.error('Automatic re-rating failed:', pricingError);
-                return res.status(400).json({ success: false, error: 'Re-rating failed with new details.' });
+                const isDraftShipment = shipment.status?.toLowerCase() === 'draft' || updates.status?.toLowerCase() === 'draft' || updates.isDraft === true;
+                if (isDraftShipment) {
+                    logger.warn(`Draft shipment ${trackingNumber} update continuing without carrier re-rating.`);
+                    if (updates.price !== undefined) {
+                        updateData.price = Number(updates.price);
+                    }
+                } else {
+                    return res.status(400).json({ success: false, error: 'Re-rating failed with new details.' });
+                }
             }
         }
 
@@ -1487,7 +1529,7 @@ exports.updateShipment = async (req, res) => {
         });
     } catch (error) {
         logger.error('Error updating shipment:', error);
-        res.status(500).json({ success: false, error: 'Server error' });
+        res.status(500).json({ success: false, error: error.message || 'Server error' });
     }
 };
 

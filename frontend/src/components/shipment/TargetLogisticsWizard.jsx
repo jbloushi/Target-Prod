@@ -34,8 +34,8 @@ export const TargetLogisticsWizard = ({
   const navigate = useNavigate();
   const { user } = useAuth();
   const { isRTL, lang } = useLanguage();
-  const { enqueueSnackbar } = useSnackbar();
   const wizardContainerRef = useRef(null);
+  const formScrollRef = useRef(null);
 
   const containerTypes = useMemo(() => getContainerTypes(), []);
 
@@ -43,6 +43,12 @@ export const TargetLogisticsWizard = ({
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
+
+  // Reset scroll to top of form container whenever step changes (Next/Previous)
+  useEffect(() => {
+    formScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [step]);
 
   // ── Staff Organization & Client Selection ("Acting On Behalf Of") ──
   const isStaffOrAdmin = useMemo(() => {
@@ -233,17 +239,28 @@ export const TargetLogisticsWizard = ({
   }, [mode, shipment, containerTypes]);
 
   const initialService = useMemo(() => {
+    const assignedCarrier = user?.agentPolicy?.shippingAccess?.carrierCode 
+      || user?.carrierConfig?.preferredCarrier 
+      || user?.organization?.allowedCarriers?.defaultCarrier 
+      || 'DGR';
+    const assignedService = user?.agentPolicy?.shippingAccess?.serviceCode 
+      || user?.carrierConfig?.serviceCode 
+      || user?.organization?.allowedCarriers?.defaultServiceCode 
+      || 'P';
+
     if (mode === 'edit' && shipment) {
       const activeAddons = (shipment.valueAddedServices || shipment.origin?.optionalServiceCodes || []).map(code => ({
         serviceCode: code,
         name: code === 'DDP' ? 'Delivered Duty Paid (DDP)' : (code === 'SIG' ? 'Direct Signature Required' : code),
         rate: code === 'DDP' ? 5.0 : (code === 'SIG' ? 1.5 : 3.0)
       }));
+      const carrier = shipment.carrierCode || assignedCarrier;
+      const sCode = shipment.serviceCode || assignedService;
       return {
-        carrierCode: shipment.carrierCode || 'DGR',
-        carrierId: shipment.carrierCode || 'DGR',
-        serviceCode: shipment.serviceCode || 'P',
-        serviceName: shipment.carrierCode === 'INTERNAL' ? 'Target Dedicated Fleet' : 'DHL Express Global',
+        carrierCode: carrier,
+        carrierId: carrier,
+        serviceCode: sCode,
+        serviceName: sCode === 'Y' ? 'DHL Express 12:00' : (carrier === 'INTERNAL' ? 'Target Dedicated Fleet' : 'DHL Express Global'),
         quotedPrice: shipment.price || 18.5,
         currency: shipment.currency || 'KWD',
         selectedAddons: activeAddons,
@@ -254,10 +271,10 @@ export const TargetLogisticsWizard = ({
       };
     }
     return {
-      carrierCode: 'DGR',
-      carrierId: 'DGR',
-      serviceCode: 'P',
-      serviceName: 'DHL Express Global',
+      carrierCode: assignedCarrier,
+      carrierId: assignedCarrier,
+      serviceCode: assignedService,
+      serviceName: assignedService === 'Y' ? 'DHL Express 12:00' : (assignedCarrier === 'INTERNAL' ? 'Target Dedicated Fleet' : 'DHL Express Global'),
       quotedPrice: 18.5,
       currency: 'KWD',
       selectedAddons: [],
@@ -266,7 +283,7 @@ export const TargetLogisticsWizard = ({
       pickupTime: '9:00 AM – 12:00 PM',
       instructions: ''
     };
-  }, [mode, shipment]);
+  }, [mode, shipment, user]);
 
   const initialCustoms = useMemo(() => {
     if (mode === 'edit' && shipment) {
@@ -378,6 +395,17 @@ export const TargetLogisticsWizard = ({
       if (cl.organizationId) {
         setSelectedOrgId(cl.organizationId);
       }
+      const clientCarrier = cl.agentPolicy?.shippingAccess?.carrierCode || cl.carrierConfig?.preferredCarrier || cl.organization?.allowedCarriers?.defaultCarrier;
+      const clientService = cl.agentPolicy?.shippingAccess?.serviceCode || cl.carrierConfig?.serviceCode || cl.organization?.allowedCarriers?.defaultServiceCode;
+      if (clientCarrier || clientService) {
+        setService(prev => ({
+          ...prev,
+          carrierCode: clientCarrier || prev.carrierCode,
+          carrierId: clientCarrier || prev.carrierId,
+          serviceCode: clientService || prev.serviceCode,
+          serviceName: clientService === 'Y' ? 'DHL Express 12:00' : (clientCarrier === 'INTERNAL' ? 'Target Dedicated Fleet' : 'DHL Express Global')
+        }));
+      }
     }
   };
 
@@ -401,6 +429,17 @@ export const TargetLogisticsWizard = ({
         phoneCountryCode: countryObj?.dialCode || prev.phoneCountryCode,
         taxId: org.taxNumber || org.vatNumber || org.taxId || prev.taxId
       }));
+      const orgCarrier = org.allowedCarriers?.defaultCarrier;
+      const orgService = org.allowedCarriers?.defaultServiceCode;
+      if (orgCarrier || orgService) {
+        setService(prev => ({
+          ...prev,
+          carrierCode: orgCarrier || prev.carrierCode,
+          carrierId: orgCarrier || prev.carrierId,
+          serviceCode: orgService || prev.serviceCode,
+          serviceName: orgService === 'Y' ? 'DHL Express 12:00' : (orgCarrier === 'INTERNAL' ? 'Target Dedicated Fleet' : 'DHL Express Global')
+        }));
+      }
     }
   };
 
@@ -592,9 +631,28 @@ export const TargetLogisticsWizard = ({
   const handleNextStep = () => {
     if (!validateStep(step)) {
       enqueueSnackbar(
-        isRTL ? 'يرجى إكمال الحقول الإلزامية المطلوبة للمتابعة' : 'Please complete the required fields to proceed',
+        isRTL ? 'يرجى إكمال الحقول الإلزامية المطلوبة والمميزة باللون الأحمر للمتابعة' : 'Please complete the highlighted required fields to proceed',
         { variant: 'warning' }
       );
+
+      // Auto-expand address sections if error is inside structured address details
+      if (step === 1) setSenderAddressExpanded(true);
+      if (step === 2) setReceiverAddressExpanded(true);
+
+      // Smooth scroll directly to the first element with an error and highlight/focus it
+      setTimeout(() => {
+        const errorEl = formScrollRef.current?.querySelector('[data-error="true"], .border-red-400, .border-red-500, input.border-red-400, [data-field-error]')
+          || document.querySelector('[data-error="true"], .border-red-400, .border-red-500');
+        if (errorEl) {
+          errorEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          const inputEl = (['INPUT', 'SELECT', 'TEXTAREA'].includes(errorEl.tagName))
+            ? errorEl
+            : errorEl.querySelector('input, select, textarea');
+          if (inputEl && typeof inputEl.focus === 'function') {
+            inputEl.focus();
+          }
+        }
+      }, 100);
       return;
     }
     setErrors({});
@@ -780,15 +838,15 @@ export const TargetLogisticsWizard = ({
     return (pkg.packagesList || []).reduce((sum, p) => sum + ((parseFloat(p.value) || 0) * (parseInt(p.qty, 10) || 1)), 0);
   }, [pkg.packagesList]);
 
-  // ── Auto-sync Customs Declared Valuation from Package & Cargo ──
+  // ── Auto-sync Customs Declared Valuation & Currency & Country of Origin from Package & Sender ──
   useEffect(() => {
-    if (totalDeclaredValue > 0) {
-      setCustoms(prev => ({
-        ...prev,
-        invoiceVal: String(Number(totalDeclaredValue).toFixed(2))
-      }));
-    }
-  }, [totalDeclaredValue]);
+    setCustoms(prev => ({
+      ...prev,
+      invoiceVal: totalDeclaredValue > 0 ? String(Number(totalDeclaredValue).toFixed(3)) : prev.invoiceVal,
+      currency: prev.currency || service.currency || 'KWD',
+      origin: prev.origin || sender.country || 'Kuwait'
+    }));
+  }, [totalDeclaredValue, service.currency, sender.country]);
 
   const insurancePremium = 0; // Removed per spec: insurance is not wired to carrier API or calculated
 
@@ -863,15 +921,20 @@ export const TargetLogisticsWizard = ({
         description: p.description || pkg.description || 'General Cargo'
       }));
 
+      const originCountryCode = countries.find(c => c.name?.toLowerCase() === customs.origin?.toLowerCase() || c.code === customs.origin)?.code || sender.countryCode || 'KW';
       const finalItems = (pkg.packagesList || []).map(p => ({
         description: p.description || pkg.description || 'General Cargo',
         quantity: Number(p.qty) || 1,
         price: Number(p.value) || 0,
         value: Number(p.value) || 0,
-        currency: p.currency || 'KWD',
-        hsCode: p.hsCode || customs.hsCode || '',
-        countryOfOrigin: customs.origin || 'KW'
+        currency: customs.currency || p.currency || service.currency || 'KWD',
+        hsCode: p.hsCode || customs.hsCode || '851712',
+        countryOfOrigin: originCountryCode
       }));
+
+      const isDgActive = Boolean(pkg.dangerousGoods && pkg.unCode && pkg.unCode.trim() !== '');
+      const cleanUnCode = (pkg.unCode || '').trim();
+      const cleanDgNum = cleanUnCode.replace(/^UN|^ID/i, '').trim();
 
       const payload = {
         organizationId: selectedOrgId || undefined,
@@ -922,26 +985,26 @@ export const TargetLogisticsWizard = ({
         items: finalItems,
         packagingType: pkg.pkgType || 'Box',
         shipmentType: pkg.pkgType === 'Envelope' ? 'documents' : 'package',
-        carrierCode: service.carrierCode,
-        serviceCode: service.serviceCode,
+        carrierCode: service.carrierCode || 'DGR',
+        serviceCode: service.serviceCode || 'P',
         currency: service.currency || 'KWD',
         price: finalCost,
         incoterm: customs.incoterms.split(' ')[0] || 'DAP',
         insurance: false,
         dangerousGoods: {
-          contains: Boolean(pkg.dangerousGoods && (pkg.unCode || pkg.dgClass)),
-          code: (pkg.unCode || '').replace(/^UN|^ID/i, ''),
-          unCode: pkg.unCode || '',
-          class: pkg.dgClass || '',
-          properShippingName: pkg.properShippingName || '',
-          packingGroup: pkg.packingGroup || 'II',
-          serviceCode: pkg.dgServiceCode || '',
-          contentId: pkg.dgContentId || '',
-          customDescription: pkg.dgMarks || pkg.properShippingName || ''
+          contains: isDgActive,
+          code: cleanDgNum,
+          unCode: cleanUnCode,
+          class: isDgActive ? (pkg.dgClass || 'Class 9') : '',
+          properShippingName: isDgActive ? (pkg.properShippingName || 'Dangerous Goods') : '',
+          packingGroup: isDgActive ? (pkg.packingGroup || 'II') : '',
+          serviceCode: isDgActive ? (pkg.dgServiceCode || (cleanDgNum === '1266' ? 'HE' : 'HV')) : '',
+          contentId: isDgActive ? (pkg.dgContentId || (cleanDgNum === '1266' ? '910' : '967')) : '',
+          customDescription: isDgActive ? (pkg.dgMarks || pkg.properShippingName || '') : ''
         },
         valueAddedServices: (service.selectedAddons || []).map(a => a.serviceCode),
         customsInvoice: {
-          invoiceNumber: customs.invoiceNum || '',
+          invoiceNumber: customs.invoiceNum || (mode === 'create' ? `INV-${Date.now().toString().slice(-6)}` : ''),
           declaredValue: Number(customs.invoiceVal || totalDeclaredValue || 0),
           currency: customs.currency || service.currency || 'KWD',
           countryOfOrigin: customs.origin || sender.country || 'Kuwait',
@@ -978,14 +1041,14 @@ export const TargetLogisticsWizard = ({
       }
 
       const resultObject = res?.shipment || res?.data || (typeof res === 'object' && res ? res : { trackingNumber: createdTrackingNumber });
-      if (resultObject && !resultObject.trackingNumber && createdTrackingNumber) {
-        resultObject.trackingNumber = createdTrackingNumber;
+      const trackingNum = createdTrackingNumber || resultObject?.trackingNumber || shipment?.trackingNumber;
+      if (trackingNum && resultObject && !resultObject.trackingNumber) {
+        resultObject.trackingNumber = trackingNum;
       }
 
       if (saveSenderToBook) handleSaveAddressToBook(sender, 'Sender');
       if (saveReceiverToBook) handleSaveAddressToBook(receiver, 'Receiver');
 
-      const trackingNum = createdTrackingNumber || resultObject?.trackingNumber;
       if (onComplete) {
         onComplete(resultObject);
       } else if (trackingNum) {
@@ -1203,7 +1266,7 @@ export const TargetLogisticsWizard = ({
           </div>
 
           {/* Scrollable Form Body */}
-          <div className="flex-1 overflow-y-auto px-6 sm:px-8 pb-6">
+          <div ref={formScrollRef} className="flex-1 overflow-y-auto px-6 sm:px-8 pb-6">
             
             {/* ═══ STEP 1: ORIGIN (SHIPPER) ═══ */}
             {step === 1 && (
@@ -1225,31 +1288,31 @@ export const TargetLogisticsWizard = ({
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
-                      {/* Swapped Label: Labeled Client / User (using organizations data as requested) */}
+                      {/* Client / User Selection */}
                       <select
-                        value={selectedOrgId}
-                        onChange={(e) => handleSelectOrganization(e.target.value)}
+                        value={selectedClientId}
+                        onChange={(e) => handleSelectClient(e.target.value)}
                         className="flex-1 sm:flex-initial text-xs font-bold text-[#0050d4] bg-white border border-[#c7d7fa] rounded-xl px-3 py-2 outline-none cursor-pointer min-w-[200px]"
                       >
                         <option value="">{isRTL ? '— حساب العميل / المستخدم —' : '— Client / User —'}</option>
-                        {organizations.map(org => (
-                          <option key={org.id || org._id} value={org.id || org._id}>
-                            👤 {org.name || org.email}
+                        {clients.map(cl => (
+                          <option key={cl.id || cl._id} value={cl.id || cl._id}>
+                            👤 {cl.name} {cl.company ? `(${cl.company})` : (cl.email ? `(${cl.email})` : '')}
                           </option>
                         ))}
                       </select>
 
-                      {/* Swapped Label: Labeled Organization (using clients data as requested) */}
-                      {clients.length > 0 && (
+                      {/* Organization Selection (Optional) */}
+                      {organizations.length > 0 && (
                         <select
-                          value={selectedClientId}
-                          onChange={(e) => handleSelectClient(e.target.value)}
+                          value={selectedOrgId}
+                          onChange={(e) => handleSelectOrganization(e.target.value)}
                           className="flex-1 sm:flex-initial text-xs font-bold text-[#1a1f23] bg-white border border-[#e9edf2] rounded-xl px-3 py-2 outline-none cursor-pointer min-w-[170px]"
                         >
                           <option value="">{isRTL ? '— منظمة الشحن (اختياري) —' : '— Organization (Optional) —'}</option>
-                          {clients.map(cl => (
-                            <option key={cl.id || cl._id} value={cl.id || cl._id}>
-                              🏢 {cl.organization?.name || cl.name || cl.company || cl.email}
+                          {organizations.map(org => (
+                            <option key={org.id || org._id} value={org.id || org._id}>
+                              🏢 {org.name || org.displayName || org.code}
                             </option>
                           ))}
                         </select>
@@ -2635,20 +2698,35 @@ export const TargetLogisticsWizard = ({
                         {isRTL ? 'اختر تصنيف البضاعة الخطرة الجاهز (IATA Presets):' : 'Select IATA Dangerous Goods Preset Category:'}
                       </label>
                       <select
-                        value={pkg.unCode || 'none'}
+                        value={DG_PRESET_OPTIONS.find(o => o.unCode === pkg.unCode && (!o.contentId || o.contentId === pkg.dgContentId))?.id || (pkg.unCode ? '' : 'none')}
                         onChange={(e) => {
-                          const sel = DG_PRESET_OPTIONS.find(o => o.unCode === e.target.value || o.id === e.target.value);
+                          const sel = DG_PRESET_OPTIONS.find(o => o.id === e.target.value);
                           if (sel) {
-                            setPkg(prev => ({
-                              ...prev,
-                              unCode: sel.unCode,
-                              dgClass: sel.dgClass,
-                              properShippingName: sel.properShippingName,
-                              packingGroup: sel.packingGroup,
-                              dgServiceCode: sel.serviceCode,
-                              dgContentId: sel.contentId,
-                              dgMarks: sel.marks
-                            }));
+                            if (sel.id === 'none') {
+                              setPkg(prev => ({
+                                ...prev,
+                                dangerousGoods: false,
+                                unCode: '',
+                                dgClass: '',
+                                properShippingName: '',
+                                packingGroup: '',
+                                dgServiceCode: '',
+                                dgContentId: '',
+                                dgMarks: ''
+                              }));
+                            } else {
+                              setPkg(prev => ({
+                                ...prev,
+                                dangerousGoods: true,
+                                unCode: sel.unCode,
+                                dgClass: sel.dgClass,
+                                properShippingName: sel.properShippingName,
+                                packingGroup: sel.packingGroup,
+                                dgServiceCode: sel.serviceCode,
+                                dgContentId: sel.contentId,
+                                dgMarks: sel.marks
+                              }));
+                            }
                             setErrors(prev => {
                               const next = { ...prev };
                               delete next.pkg_unCode;
@@ -2661,7 +2739,7 @@ export const TargetLogisticsWizard = ({
                         className="w-full p-2 border-[1.5px] border-amber-300 rounded-xl text-xs font-semibold bg-white text-amber-950 outline-none focus:border-amber-600 cursor-pointer"
                       >
                         {DG_PRESET_OPTIONS.map(opt => (
-                          <option key={opt.id} value={opt.unCode || opt.id}>
+                          <option key={opt.id} value={opt.id}>
                             {opt.name}
                           </option>
                         ))}
@@ -3446,10 +3524,10 @@ export const TargetLogisticsWizard = ({
               ) : (
                 <button
                   type="button"
-                  disabled={submitting || (mode === 'create' && !agreedToPolicy)}
+                  disabled={submitting || !agreedToPolicy}
                   onClick={() => handleSubmit(false)}
                   className={`flex items-center gap-1.5 px-6 py-2 rounded-xl text-xs font-bold shadow-lg transition-all ${
-                    mode === 'create' && !agreedToPolicy
+                    !agreedToPolicy
                       ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
                       : 'bg-[#0050d4] text-white shadow-[#0050d4]/25 hover:bg-[#0040b0]'
                   }`}
@@ -3461,8 +3539,8 @@ export const TargetLogisticsWizard = ({
                   )}
                   <span>
                     {mode === 'edit' 
-                      ? (isRTL ? 'حفظ التعديلات' : 'Save Changes') 
-                      : (isRTL ? 'تأكيد وإصدار البوليصة' : 'Confirm & Dispatch')}
+                      ? (isRTL ? 'تأكيد وحفظ التعديلات' : 'Save Changes & Update') 
+                      : (isRTL ? 'إتمام الحجز وإصدار الشحنة' : 'Complete Booking & Dispatch')}
                   </span>
                 </button>
               )}

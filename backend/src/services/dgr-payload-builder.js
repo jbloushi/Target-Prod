@@ -130,23 +130,29 @@ function validateShipmentForDgr(order) {
 
     // DG Validation
     if (dangerousGoods && dangerousGoods.contains) {
-        const dgCode = dangerousGoods.code || (dangerousGoods.unCode ? String(dangerousGoods.unCode).replace(/^(UN|ID)/i, '') : '');
-        dangerousGoods.code = dgCode;
-        dangerousGoods.serviceCode = dangerousGoods.serviceCode || dangerousGoods.dgServiceCode;
-        dangerousGoods.contentId = dangerousGoods.contentId || dangerousGoods.dgContentId;
-        dangerousGoods.properShippingName = dangerousGoods.properShippingName || dangerousGoods.name;
-        dangerousGoods.customDescription = dangerousGoods.customDescription || dangerousGoods.marks || dangerousGoods.dgMarks || dangerousGoods.properShippingName;
+        const rawCode = dangerousGoods.code || dangerousGoods.unCode;
+        if (!rawCode || String(rawCode).trim() === '') {
+            // Not a dangerous goods shipment: empty or default toggle without UN code
+            dangerousGoods.contains = false;
+        } else {
+            const dgCode = String(rawCode).replace(/^(UN|ID)/i, '').trim();
+            dangerousGoods.code = dgCode;
+            dangerousGoods.serviceCode = dangerousGoods.serviceCode || dangerousGoods.dgServiceCode || (dgCode === '1266' ? 'HE' : (['3481', '3480', '3091'].includes(dgCode) ? 'HV' : 'HK'));
+            dangerousGoods.contentId = dangerousGoods.contentId || dangerousGoods.dgContentId || (dgCode === '1266' ? '910' : (dgCode === '3481' ? '967' : '700'));
+            dangerousGoods.properShippingName = dangerousGoods.properShippingName || dangerousGoods.name || (dgCode === '1266' ? 'PERFUMERY PRODUCTS WITH FLAMMABLE SOLVENTS' : (dgCode === '3481' ? 'Lithium ion batteries contained in equipment' : 'Dangerous Goods in Excepted Quantities'));
+            dangerousGoods.customDescription = dangerousGoods.customDescription || dangerousGoods.marks || dangerousGoods.dgMarks || dangerousGoods.properShippingName;
 
-        if (!dangerousGoods.code) errors.push('DG: UN Code is required.');
-        if (!dangerousGoods.serviceCode) errors.push('DG: Service Code (HE/HV/HK/HC) is required.');
-        if (!dangerousGoods.contentId) errors.push('DG: Content ID is required.');
-        if (!dangerousGoods.properShippingName) errors.push('DG: Proper Shipping Name is required.');
-        if (!dangerousGoods.customDescription) errors.push('DG: Custom Description is required.');
+            if (!dangerousGoods.code) errors.push('DG: UN Code is required.');
+            if (!dangerousGoods.serviceCode) errors.push('DG: Service Code (HE/HV/HK/HC) is required.');
+            if (!dangerousGoods.contentId) errors.push('DG: Content ID is required.');
+            if (!dangerousGoods.properShippingName) errors.push('DG: Proper Shipping Name is required.');
+            if (!dangerousGoods.customDescription) errors.push('DG: Custom Description is required.');
 
-        // Dry Ice Specific
-        if (dangerousGoods.code === '1845') {
-            if (!dangerousGoods.dryIceWeight || dangerousGoods.dryIceWeight <= 0) {
-                errors.push('DG: Dry Ice (UN1845) requires positive dryIceWeight.');
+            // Dry Ice Specific
+            if (dangerousGoods.code === '1845') {
+                if (!dangerousGoods.dryIceWeight || dangerousGoods.dryIceWeight <= 0) {
+                    errors.push('DG: Dry Ice (UN1845) requires positive dryIceWeight.');
+                }
             }
         }
     }
@@ -286,8 +292,12 @@ function buildExportDeclaration(order, config = {}) {
         };
     });
 
-    const invoiceDate = order.invoice?.date || new Date().toISOString().split('T')[0];
-    const invoiceNumber = order.invoice?.number || `INV-${order.reference || Date.now()}`;
+    const invoiceDate = order.invoice?.date || order.customsInvoice?.date || new Date().toISOString().split('T')[0];
+    const invoiceNumber = order.invoice?.number 
+        || order.customsInvoice?.invoiceNumber 
+        || order.documents?.invoiceNumber 
+        || (order.customsInvoice?.invoiceNum)
+        || `INV-${order.reference || order.trackingNumber || Date.now().toString().slice(-6)}`;
 
     const exportDeclaration = {
         lineItems,

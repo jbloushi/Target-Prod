@@ -166,6 +166,10 @@ const assertRequestedAccessAllowed = (assignedAccess, requested = {}) => {
     }
 
     if (assignedAccess.serviceCode && requestedService && requestedService !== assignedAccess.serviceCode) {
+        // If carrier matches (e.g. DHL / DGR) and requested is standard express service 'P', allow if mode is not strictly locked
+        if (assignedAccess.carrierCode === (requestedCarrier || assignedAccess.carrierCode) && requestedService === 'P' && assignedAccess.mode !== 'carrier_strict') {
+            return;
+        }
         const err = new Error(`This account is assigned to ${assignedAccess.serviceName}. Requested service ${requestedService} is not allowed.`);
         err.statusCode = 403;
         throw err;
@@ -173,11 +177,12 @@ const assertRequestedAccessAllowed = (assignedAccess, requested = {}) => {
 };
 
 const shouldEnforceAssignedAccess = (actor, targetUser) => {
-    const role = actor?.role;
+    const role = String(actor?.role || '').toLowerCase();
     if (!role) return true;
 
-    if (['admin', 'manager', 'accounting', 'staff'].includes(role)) {
-        return Boolean(targetUser && targetUser.id !== actor.id);
+    // Platform administrators and staff have full booking authority across carriers and services
+    if (['admin', 'superadmin', 'manager', 'accounting', 'staff', 'operator', 'dispatcher'].includes(role)) {
+        return false;
     }
 
     return true;
