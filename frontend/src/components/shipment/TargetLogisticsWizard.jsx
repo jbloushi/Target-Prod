@@ -268,6 +268,185 @@ export const TargetLogisticsWizard = ({
   const [service, setService] = useState(initialService);
   const [customs, setCustoms] = useState(initialCustoms);
 
+  // ── Address Book Fetching ──
+  useEffect(() => {
+    let isMounted = true;
+    const fetchAddressBook = async () => {
+      try {
+        if (user?.addresses && Array.isArray(user.addresses) && user.addresses.length > 0) {
+          if (isMounted) setUserAddresses(user.addresses);
+        } else {
+          const res = await userService.getMe();
+          const addrs = res?.data?.addresses || res?.addresses || [];
+          if (Array.isArray(addrs) && isMounted) {
+            setUserAddresses(addrs);
+          }
+        }
+      } catch (err) {
+        console.debug('Failed to fetch address book:', err.message);
+      }
+    };
+    fetchAddressBook();
+    return () => { isMounted = false; };
+  }, [user]);
+
+  // ── Quick Location Presets ──
+  const senderPresets = useMemo(() => [
+    { label: '🏢 Shuwaikh Logistics Hub', city: 'Shuwaikh Industrial', country: 'Kuwait', countryCode: 'KW', phoneCountryCode: '+965', zip: '70001', addr1: 'Block 1, Street 14, Target Logistics Hub', area: 'Shuwaikh Industrial', state: 'Al Asimah' },
+    { label: '✈️ Airport Cargo Terminal', city: 'Farwaniya', country: 'Kuwait', countryCode: 'KW', phoneCountryCode: '+965', zip: '80000', addr1: 'Cargo City, Kuwait International Airport', area: 'Farwaniya', state: 'Farwaniya' },
+    { label: '🏙️ Kuwait City Financial Centre', city: 'Kuwait City', country: 'Kuwait', countryCode: 'KW', phoneCountryCode: '+965', zip: '13001', addr1: 'Sharq, Block 3, Al-Hamra Tower Wing', area: 'Sharq', state: 'Al Asimah' }
+  ], []);
+
+  const receiverPresets = useMemo(() => [
+    { label: '🇦🇪 Dubai Business Bay', city: 'Dubai', country: 'United Arab Emirates', countryCode: 'AE', phoneCountryCode: '+971', zip: '00000', addr1: 'Bay Square, Building 4', area: 'Business Bay', state: 'Dubai' },
+    { label: '🇸🇦 Riyadh Olaya Hub', city: 'Riyadh', country: 'Saudi Arabia', countryCode: 'SA', phoneCountryCode: '+966', zip: '12211', addr1: 'King Fahd Road, Al Olaya District', area: 'Al Olaya', state: 'Riyadh Region' },
+    { label: '🇦🇪 Abu Dhabi Hub', city: 'Abu Dhabi', country: 'United Arab Emirates', countryCode: 'AE', phoneCountryCode: '+971', zip: '00000', addr1: 'Al Reem Island, Marina Bay 1', area: 'Al Reem Island', state: 'Abu Dhabi' }
+  ], []);
+
+  const handleSelectSenderAddress = (addrId) => {
+    if (!addrId) return;
+    const a = userAddresses.find(item => (item.id || item._id || String(item)) === addrId);
+    if (!a) return;
+    const countryObj = countries.find(c => c.code === a.countryCode) || countries.find(c => c.name?.toLowerCase() === a.country?.toLowerCase());
+    setSender(prev => ({
+      ...prev,
+      name: a.contactPerson || a.name || prev.name,
+      company: a.company || prev.company,
+      phone: a.phone || prev.phone,
+      phoneCountryCode: countryObj?.dialCode || a.phoneCountryCode || prev.phoneCountryCode,
+      email: a.email || prev.email,
+      taxId: a.taxId || prev.taxId,
+      addr1: a.addressLine1 || a.streetLines?.[0] || a.line1 || a.address || a.addr1 || prev.addr1,
+      addr2: a.addressLine2 || a.streetLines?.[1] || a.line2 || a.addr2 || '',
+      area: a.area || prev.area,
+      city: a.city || prev.city,
+      state: a.state || prev.state,
+      zip: a.postalCode || a.zip || (NON_POSTAL_COUNTRIES.includes(a.countryCode) ? '00000' : prev.zip),
+      country: countryObj?.name || a.country || prev.country,
+      countryCode: countryObj?.code || a.countryCode || prev.countryCode,
+      formattedAddress: a.formattedAddress || `${a.addressLine1 || a.addr1 || ''}, ${a.city || ''}`,
+      latitude: a.latitude || prev.latitude,
+      longitude: a.longitude || prev.longitude
+    }));
+    setErrors(prev => {
+      const next = { ...prev };
+      delete next.sender_name;
+      delete next.sender_phone;
+      delete next.sender_addr1;
+      delete next.sender_city;
+      delete next.sender_country;
+      delete next.sender_zip;
+      return next;
+    });
+  };
+
+  const handleSelectReceiverAddress = (addrId) => {
+    if (!addrId) return;
+    const a = userAddresses.find(item => (item.id || item._id || String(item)) === addrId);
+    if (!a) return;
+    const countryObj = countries.find(c => c.code === a.countryCode) || countries.find(c => c.name?.toLowerCase() === a.country?.toLowerCase());
+    setReceiver(prev => ({
+      ...prev,
+      name: a.contactPerson || a.name || prev.name,
+      company: a.company || prev.company,
+      phone: a.phone || prev.phone,
+      phoneCountryCode: countryObj?.dialCode || a.phoneCountryCode || prev.phoneCountryCode,
+      email: a.email || prev.email,
+      taxId: a.taxId || prev.taxId,
+      addr1: a.addressLine1 || a.streetLines?.[0] || a.line1 || a.address || a.addr1 || prev.addr1,
+      addr2: a.addressLine2 || a.streetLines?.[1] || a.line2 || a.addr2 || '',
+      area: a.area || prev.area,
+      city: a.city || prev.city,
+      state: a.state || prev.state,
+      zip: a.postalCode || a.zip || (NON_POSTAL_COUNTRIES.includes(a.countryCode) ? '00000' : prev.zip),
+      country: countryObj?.name || a.country || prev.country,
+      countryCode: countryObj?.code || a.countryCode || prev.countryCode,
+      instructions: a.instructions || prev.instructions,
+      formattedAddress: a.formattedAddress || `${a.addressLine1 || a.addr1 || ''}, ${a.city || ''}`,
+      latitude: a.latitude || prev.latitude,
+      longitude: a.longitude || prev.longitude
+    }));
+    setErrors(prev => {
+      const next = { ...prev };
+      delete next.receiver_name;
+      delete next.receiver_phone;
+      delete next.receiver_addr1;
+      delete next.receiver_city;
+      delete next.receiver_country;
+      delete next.receiver_zip;
+      return next;
+    });
+  };
+
+  const handleSaveAddressToBook = async (addrData, type = 'Location') => {
+    if (!addrData.name || !addrData.addr1) return;
+    try {
+      const newAddr = {
+        id: 'addr-' + Date.now(),
+        label: `${addrData.company || addrData.name} (${addrData.city || 'GCC'})`,
+        contactPerson: addrData.name,
+        company: addrData.company || '',
+        phone: addrData.phone || '',
+        phoneCountryCode: addrData.phoneCountryCode || '+965',
+        email: addrData.email || '',
+        taxId: addrData.taxId || '',
+        addressLine1: addrData.addr1,
+        addressLine2: addrData.addr2 || '',
+        city: addrData.city,
+        state: addrData.state || '',
+        postalCode: addrData.zip || '00000',
+        country: addrData.country || 'Kuwait',
+        countryCode: addrData.countryCode || 'KW',
+        area: addrData.area || '',
+        latitude: addrData.latitude,
+        longitude: addrData.longitude,
+        formattedAddress: addrData.formattedAddress || `${addrData.addr1}, ${addrData.city}`
+      };
+      const updatedUserAddrs = [...userAddresses, newAddr];
+      setUserAddresses(updatedUserAddrs);
+      await userService.updateMe({ addresses: updatedUserAddrs });
+    } catch (e) {
+      console.debug('Failed to save address to address book:', e.message);
+    }
+  };
+
+  const validateStep = (currentStep) => {
+    const errs = {};
+    if (currentStep === 1) {
+      if (!sender.name?.trim()) errs.sender_name = isRTL ? 'اسم الشاحن مطلوب' : 'Shipper full name is required';
+      if (!sender.phone?.trim()) errs.sender_phone = isRTL ? 'رقم الهاتف مطلوب' : 'Shipper phone is required';
+      if (!sender.addr1?.trim()) errs.sender_addr1 = isRTL ? 'عنوان الشارع مطلوب' : 'Street address is required';
+      if (!sender.city?.trim()) errs.sender_city = isRTL ? 'المدينة مطلوبة' : 'City is required';
+      if (!sender.countryCode?.trim()) errs.sender_country = isRTL ? 'الدولة مطلوبة' : 'Country is required';
+      if (!NON_POSTAL_COUNTRIES.includes((sender.countryCode || '').toUpperCase()) && !sender.zip?.trim()) {
+        errs.sender_zip = isRTL ? 'الرمز البريدي مطلوب' : 'Postal code is required';
+      }
+    } else if (currentStep === 2) {
+      if (!receiver.name?.trim()) errs.receiver_name = isRTL ? 'اسم المستلم مطلوب' : 'Consignee full name is required';
+      if (!receiver.phone?.trim()) errs.receiver_phone = isRTL ? 'هاتف المستلم مطلوب' : 'Consignee phone is required';
+      if (!receiver.addr1?.trim()) errs.receiver_addr1 = isRTL ? 'عنوان التسليم مطلوب' : 'Delivery street address is required';
+      if (!receiver.city?.trim()) errs.receiver_city = isRTL ? 'المدينة مطلوبة' : 'City is required';
+      if (!receiver.countryCode?.trim()) errs.receiver_country = isRTL ? 'الدولة مطلوبة' : 'Country is required';
+      if (!NON_POSTAL_COUNTRIES.includes((receiver.countryCode || '').toUpperCase()) && !receiver.zip?.trim()) {
+        errs.receiver_zip = isRTL ? 'الرمز البريدي مطلوب' : 'Postal code is required';
+      }
+    }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const handleNextStep = () => {
+    if (!validateStep(step)) {
+      enqueueSnackbar(
+        isRTL ? 'يرجى إكمال الحقول الإلزامية المطلوبة للمتابعة' : 'Please complete the required fields to proceed',
+        { variant: 'warning' }
+      );
+      return;
+    }
+    setErrors({});
+    setStep(s => Math.min(6, s + 1));
+  };
+
   // ── Recalculate package fields when container type is selected ──
   const handleSelectContainerType = (typeId) => {
     const config = getContainerTypeById(typeId);
@@ -458,6 +637,7 @@ export const TargetLogisticsWizard = ({
           countryCode: sender.countryCode,
           city: sender.city,
           state: sender.state,
+          area: sender.area || '',
           postalCode: sender.zip,
           streetLines: [sender.addr1, sender.addr2].filter(Boolean),
           formattedAddress: sender.formattedAddress || `${sender.addr1}, ${sender.city}`,
@@ -477,6 +657,7 @@ export const TargetLogisticsWizard = ({
           countryCode: receiver.countryCode,
           city: receiver.city,
           state: receiver.state,
+          area: receiver.area || '',
           postalCode: receiver.zip,
           streetLines: [receiver.addr1, receiver.addr2].filter(Boolean),
           instructions: receiver.instructions,
@@ -542,6 +723,9 @@ export const TargetLogisticsWizard = ({
       if (resultObject && !resultObject.trackingNumber && createdTrackingNumber) {
         resultObject.trackingNumber = createdTrackingNumber;
       }
+
+      if (saveSenderToBook) handleSaveAddressToBook(sender, 'Sender');
+      if (saveReceiverToBook) handleSaveAddressToBook(receiver, 'Receiver');
 
       if (onComplete) onComplete(resultObject);
       if (onClose) onClose();
@@ -761,30 +945,117 @@ export const TargetLogisticsWizard = ({
             {step === 1 && (
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
                 <div className="lg:col-span-7 bg-white border border-[#e9edf2] rounded-2xl p-5 space-y-4">
-                  <div className="text-xs font-black text-[#1a1f23] uppercase tracking-wider">
-                    {isRTL ? 'معلومات جهة الاتصال للشاحن' : 'Shipper Contact & Identity'}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#f0f4f8]">
+                    <div>
+                      <div className="text-xs font-black text-[#1a1f23] uppercase tracking-wider">
+                        {isRTL ? 'معلومات جهة الاتصال للشاحن' : 'Shipper Contact & Identity'}
+                      </div>
+                      <div className="text-[11px] text-[#8c9196]">
+                        {isRTL ? 'بيانات الشاحن وموقع استلام الشحنة' : 'Shipper entity and pickup location details'}
+                      </div>
+                    </div>
+                    {/* Saved Address Book Selector */}
+                    {userAddresses.length > 0 && (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="material-symbols-outlined text-sm text-[#0050d4]">menu_book</span>
+                        <select
+                          onChange={(e) => handleSelectSenderAddress(e.target.value)}
+                          defaultValue=""
+                          className="text-[11px] font-bold text-[#0050d4] bg-[#ebf0fc] border border-[#c7d7fa] rounded-lg px-2 py-1 outline-none cursor-pointer max-w-[190px] truncate"
+                        >
+                          <option value="">{isRTL ? '📖 اختر من دفتر العناوين...' : '📖 Address Book...'}</option>
+                          {userAddresses.map((a, idx) => (
+                            <option key={a.id || a._id || idx} value={a.id || a._id || idx}>
+                              {a.label || a.contactPerson || a.name || `Address ${idx + 1}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
 
+                  {/* Validation Error Banner */}
+                  {Object.keys(errors).filter(k => k.startsWith('sender_')).length > 0 && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs flex items-start gap-2 animate-in fade-in">
+                      <span className="material-symbols-outlined text-base text-red-600 shrink-0 mt-0.5">error</span>
+                      <div>
+                        <div className="font-bold">
+                          {isRTL ? 'يرجى استكمال الحقول الإلزامية التالية للمتابعة:' : 'Please complete the following required fields:'}
+                        </div>
+                        <ul className="list-disc list-inside text-[11px] mt-1 space-y-0.5 opacity-90">
+                          {Object.keys(errors).filter(k => k.startsWith('sender_')).map(k => (
+                            <li key={k}>{errors[k]}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Quick Presets */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] font-black text-[#8c9196] uppercase flex items-center gap-1">
+                      <span>⚡</span> {isRTL ? 'عناوين سريعة:' : 'Quick Presets:'}
+                    </span>
+                    {senderPresets.map((preset, pIdx) => (
+                      <button
+                        key={pIdx}
+                        type="button"
+                        onClick={() => {
+                          setSender(prev => ({
+                            ...prev,
+                            addr1: preset.addr1,
+                            area: preset.area,
+                            city: preset.city,
+                            state: preset.state,
+                            country: preset.country,
+                            countryCode: preset.countryCode,
+                            phoneCountryCode: preset.phoneCountryCode,
+                            zip: preset.zip,
+                            formattedAddress: `${preset.addr1}, ${preset.city}, ${preset.country}`
+                          }));
+                          setErrors(prev => {
+                            const next = { ...prev };
+                            delete next.sender_addr1;
+                            delete next.sender_city;
+                            delete next.sender_country;
+                            delete next.sender_zip;
+                            return next;
+                          });
+                        }}
+                        className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-[#e9edf2] bg-[#f8fafc] text-[#575c60] hover:border-[#0050d4] hover:text-[#0050d4] hover:bg-[#ebf0fc] transition-all"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Primary Contact Details */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                        {isRTL ? 'اسم الشاحن / المسؤول' : 'Full Name'} <span className="text-red-500">*</span>
+                        {isRTL ? 'اسم الشاحن / جهة الاتصال' : 'Contact Full Name'} <span className="text-red-500">*</span>
                       </label>
-                      <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] focus-within:ring-2 focus-within:ring-[#0050d4]/10 transition-all">
+                      <div className={`flex items-center gap-2 p-2 border-[1.5px] rounded-xl transition-all ${
+                        errors.sender_name ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus-within:border-[#0050d4]'
+                      }`}>
                         <span className="material-symbols-outlined text-[17px] text-[#8c9196]">person</span>
                         <input
                           type="text"
                           value={sender.name}
-                          onChange={(e) => setSender({ ...sender, name: e.target.value })}
+                          onChange={(e) => {
+                            setSender({ ...sender, name: e.target.value });
+                            if (errors.sender_name) setErrors(prev => { const n = { ...prev }; delete n.sender_name; return n; });
+                          }}
                           placeholder="Ahmed Al-Mutawa"
                           className="w-full text-xs font-semibold outline-none bg-transparent"
                         />
                       </div>
+                      {errors.sender_name && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.sender_name}</span>}
                     </div>
 
                     <div>
                       <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                        {isRTL ? 'اسم الشركة' : 'Company'} <span className="text-[#8c9196] text-[10px] font-normal">(Optional)</span>
+                        {isRTL ? 'اسم الشركة / المؤسسة' : 'Company / Entity'} <span className="text-[#8c9196] text-[10px] font-normal">(Optional)</span>
                       </label>
                       <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
                         <span className="material-symbols-outlined text-[17px] text-[#8c9196]">business</span>
@@ -800,33 +1071,40 @@ export const TargetLogisticsWizard = ({
 
                     <div>
                       <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                        {isRTL ? 'رقم الهاتف' : 'Phone Number'} <span className="text-red-500">*</span>
+                        {isRTL ? 'رقم الهاتف المباشر' : 'Phone Number'} <span className="text-red-500">*</span>
                       </label>
-                      <div className="flex items-center gap-1.5 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
+                      <div className={`flex items-center gap-1.5 p-2 border-[1.5px] rounded-xl transition-all ${
+                        errors.sender_phone ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus-within:border-[#0050d4]'
+                      }`}>
                         <span className="material-symbols-outlined text-[17px] text-[#8c9196]">phone</span>
                         <select 
                           value={sender.phoneCountryCode}
                           onChange={(e) => setSender({ ...sender, phoneCountryCode: e.target.value })}
-                          className="text-[11px] font-bold text-[#0050d4] bg-[#f0f4f8] rounded-md px-1.5 py-0.5 outline-none cursor-pointer"
+                          className="text-[11px] font-bold text-[#0050d4] bg-[#f0f4f8] rounded-md px-1.5 py-0.5 outline-none cursor-pointer max-w-[100px]"
                         >
-                          <option value="+965">+965 KW</option>
-                          <option value="+971">+971 AE</option>
-                          <option value="+966">+966 SA</option>
-                          <option value="+974">+974 QA</option>
+                          {countries.map(c => (
+                            <option key={c.code} value={c.dialCode}>
+                              {c.flag} {c.dialCode} ({c.code})
+                            </option>
+                          ))}
                         </select>
                         <input
                           type="tel"
                           value={sender.phone}
-                          onChange={(e) => setSender({ ...sender, phone: e.target.value })}
+                          onChange={(e) => {
+                            setSender({ ...sender, phone: e.target.value });
+                            if (errors.sender_phone) setErrors(prev => { const n = { ...prev }; delete n.sender_phone; return n; });
+                          }}
                           placeholder="69095959"
                           className="w-full text-xs font-semibold font-mono outline-none bg-transparent"
                         />
                       </div>
+                      {errors.sender_phone && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.sender_phone}</span>}
                     </div>
 
                     <div>
                       <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                        {isRTL ? 'البريد الإلكتروني' : 'Email'} <span className="text-[#8c9196] text-[10px] font-normal">(Optional)</span>
+                        {isRTL ? 'البريد الإلكتروني' : 'Email Address'} <span className="text-[#8c9196] text-[10px] font-normal">(Optional)</span>
                       </label>
                       <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
                         <span className="material-symbols-outlined text-[17px] text-[#8c9196]">mail</span>
@@ -839,54 +1117,168 @@ export const TargetLogisticsWizard = ({
                         />
                       </div>
                     </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                        {isRTL ? 'الرقم الضريبي / السجل التجاري / البطاقة المدنية' : 'Tax ID / VAT / Customs CR / Civil ID'} <span className="text-[#8c9196] text-[10px] font-normal">(Optional)</span>
+                      </label>
+                      <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
+                        <span className="material-symbols-outlined text-[17px] text-[#8c9196]">badge</span>
+                        <input
+                          type="text"
+                          value={sender.taxId}
+                          onChange={(e) => setSender({ ...sender, taxId: e.target.value })}
+                          placeholder={isRTL ? 'اختياري: الرقم المدني أو الضريبي للشاحن' : 'e.g. Civil ID, Tax ID or Commercial Registration'}
+                          className="w-full text-xs font-semibold outline-none bg-transparent"
+                        />
+                      </div>
+                    </div>
                   </div>
 
+                  {/* Section Divider */}
+                  <div className="pt-2 border-t border-[#f0f4f8]">
+                    <div className="text-[11px] font-black text-[#575c60] uppercase tracking-wider mb-2">
+                      {isRTL ? 'العنوان التفصيلي للشاحن' : 'Structured Address Details'}
+                    </div>
+                  </div>
+
+                  {/* Address Line 1 */}
                   <div>
                     <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                      {isRTL ? 'عنوان الشارع والمنطقة' : 'Street Address'} <span className="text-red-500">*</span>
+                      {isRTL ? 'عنوان الشارع والمبنى (السطر 1)' : 'Street Address (Line 1)'} <span className="text-red-500">*</span>
                     </label>
-                    <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
+                    <div className={`flex items-center gap-2 p-2 border-[1.5px] rounded-xl transition-all ${
+                      errors.sender_addr1 ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus-within:border-[#0050d4]'
+                    }`}>
                       <span className="material-symbols-outlined text-[17px] text-[#8c9196]">home</span>
                       <input
                         type="text"
                         value={sender.addr1}
-                        onChange={(e) => setSender({ ...sender, addr1: e.target.value })}
+                        onChange={(e) => {
+                          setSender({ ...sender, addr1: e.target.value });
+                          if (errors.sender_addr1) setErrors(prev => { const n = { ...prev }; delete n.sender_addr1; return n; });
+                        }}
                         placeholder="Block 1, Street 14, Shuwaikh Industrial"
                         className="w-full text-xs font-semibold outline-none bg-transparent"
                       />
                     </div>
+                    {errors.sender_addr1 && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.sender_addr1}</span>}
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {/* Address Line 2 & Area */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">{isRTL ? 'المدينة' : 'City'} *</label>
+                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                        {isRTL ? 'الشقة / الطابق / المكتب (السطر 2)' : 'Apartment / Suite / Office / Unit (Line 2)'}
+                      </label>
+                      <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
+                        <span className="material-symbols-outlined text-[17px] text-[#8c9196]">apartment</span>
+                        <input
+                          type="text"
+                          value={sender.addr2 || ''}
+                          onChange={(e) => setSender({ ...sender, addr2: e.target.value })}
+                          placeholder="Floor 2, Office 12"
+                          className="w-full text-xs font-semibold outline-none bg-transparent"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                        {isRTL ? 'المنطقة / الحي / القطعة' : 'District / Area / Block'}
+                      </label>
+                      <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
+                        <span className="material-symbols-outlined text-[17px] text-[#8c9196]">map</span>
+                        <input
+                          type="text"
+                          value={sender.area || ''}
+                          onChange={(e) => setSender({ ...sender, area: e.target.value })}
+                          placeholder="Block 4, Shuwaikh Industrial"
+                          className="w-full text-xs font-semibold outline-none bg-transparent"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* City, State, Country, Postal Code */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div>
+                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                        {isRTL ? 'المدينة' : 'City / Municipality'} <span className="text-red-500">*</span>
+                      </label>
                       <input
                         type="text"
                         value={sender.city}
-                        onChange={(e) => setSender({ ...sender, city: e.target.value })}
+                        onChange={(e) => {
+                          setSender({ ...sender, city: e.target.value });
+                          if (errors.sender_city) setErrors(prev => { const n = { ...prev }; delete n.sender_city; return n; });
+                        }}
+                        placeholder="Kuwait City"
+                        className={`w-full p-2 border-[1.5px] rounded-xl text-xs font-semibold outline-none transition-all ${
+                          errors.sender_city ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus:border-[#0050d4]'
+                        }`}
+                      />
+                      {errors.sender_city && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.sender_city}</span>}
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                        {isRTL ? 'المحافظة / الإمارة' : 'State / Governorate'}
+                      </label>
+                      <input
+                        type="text"
+                        value={sender.state || ''}
+                        onChange={(e) => setSender({ ...sender, state: e.target.value })}
+                        placeholder="Al Asimah"
                         className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold outline-none focus:border-[#0050d4]"
                       />
                     </div>
+
                     <div>
-                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">{isRTL ? 'الدولة' : 'Country'} *</label>
+                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                        {isRTL ? 'الدولة / الإقليم' : 'Country / Territory'} <span className="text-red-500">*</span>
+                      </label>
                       <select
                         value={sender.countryCode}
-                        onChange={(e) => setSender({ ...sender, countryCode: e.target.value, country: e.target.value === 'KW' ? 'Kuwait' : 'United Arab Emirates' })}
+                        onChange={(e) => {
+                          const code = e.target.value;
+                          const cObj = countries.find(c => c.code === code);
+                          setSender(prev => ({
+                            ...prev,
+                            countryCode: code,
+                            country: cObj?.name || prev.country,
+                            phoneCountryCode: cObj?.dialCode || prev.phoneCountryCode,
+                            zip: NON_POSTAL_COUNTRIES.includes(code) ? '00000' : (prev.zip === '00000' ? '' : prev.zip)
+                          }));
+                          if (errors.sender_country) setErrors(prev => { const n = { ...prev }; delete n.sender_country; return n; });
+                        }}
                         className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold outline-none focus:border-[#0050d4] bg-white cursor-pointer"
                       >
-                        <option value="KW">🇰🇼 Kuwait</option>
-                        <option value="AE">🇦🇪 UAE</option>
-                        <option value="SA">🇸🇦 Saudi Arabia</option>
+                        {countries.map(c => (
+                          <option key={c.code} value={c.code}>
+                            {c.flag} {c.name} ({c.code})
+                          </option>
+                        ))}
                       </select>
                     </div>
+
                     <div>
-                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">{isRTL ? 'الرمز البريدي' : 'Postal Code'}</label>
+                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                        {isRTL ? 'الرمز البريدي' : 'Postal / ZIP Code'} {!NON_POSTAL_COUNTRIES.includes((sender.countryCode || '').toUpperCase()) && <span className="text-red-500">*</span>}
+                      </label>
                       <input
                         type="text"
                         value={sender.zip}
-                        onChange={(e) => setSender({ ...sender, zip: e.target.value })}
-                        className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold outline-none focus:border-[#0050d4]"
+                        onChange={(e) => {
+                          setSender({ ...sender, zip: e.target.value });
+                          if (errors.sender_zip) setErrors(prev => { const n = { ...prev }; delete n.sender_zip; return n; });
+                        }}
+                        placeholder={NON_POSTAL_COUNTRIES.includes((sender.countryCode || '').toUpperCase()) ? "00000 (Optional)" : "13001"}
+                        className={`w-full p-2 border-[1.5px] rounded-xl text-xs font-semibold outline-none transition-all ${
+                          errors.sender_zip ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus:border-[#0050d4]'
+                        }`}
                       />
+                      {errors.sender_zip && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.sender_zip}</span>}
                     </div>
                   </div>
 
@@ -899,7 +1291,7 @@ export const TargetLogisticsWizard = ({
                       className="checkbox checkbox-primary checkbox-xs rounded"
                     />
                     <span className="text-[11px] font-semibold text-[#1a1f23]">
-                      {isRTL ? 'حفظ عنوان الشاحن في دفتر العناوين' : 'Save shipper to Address Book'}
+                      {isRTL ? 'حفظ عنوان الشاحن في دفتر العناوين للاستخدام المستقبلي' : 'Save shipper to Address Book for future consignments'}
                     </span>
                   </label>
                 </div>
@@ -909,25 +1301,54 @@ export const TargetLogisticsWizard = ({
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5 text-xs font-black text-[#1a1f23]">
                       <span className="material-symbols-outlined text-[17px] text-[#0050d4]">travel_explore</span>
-                      <span>{isRTL ? 'تحديد الموقع بالخريطة' : 'Find Location & Coordinates'}</span>
+                      <span>{isRTL ? 'تحديد الموقع بالخريطة والبحث الذكي' : 'Google Address Search & GPS Pin'}</span>
                     </div>
                   </div>
 
-                  {/* Google Address Autocomplete */}
+                  {/* Google Address Autocomplete connected properly with value and onChange */}
                   <GoogleAddressInput
+                    label={isRTL ? 'ابحث عبر خرائط جوجل (Google Places)' : 'Search Global Address (Google Places)'}
                     placeholder={isRTL ? 'ابحث عن العنوان عبر خرائط جوجل...' : 'Search address with Google Maps...'}
-                    defaultValue={sender.formattedAddress || sender.addr1}
-                    onSelectAddress={(addr) => {
+                    value={{
+                      formattedAddress: sender.formattedAddress || (sender.addr1 ? `${sender.addr1}, ${sender.city || ''}, ${sender.country || ''}` : ''),
+                      addressLine1: sender.addr1,
+                      addressLine2: sender.addr2,
+                      city: sender.city,
+                      state: sender.state,
+                      postalCode: sender.zip,
+                      country: sender.country,
+                      countryCode: sender.countryCode,
+                      area: sender.area,
+                      latitude: sender.latitude,
+                      longitude: sender.longitude
+                    }}
+                    onChange={(res) => {
+                      const countryObj = countries.find(c => c.code === res.countryCode) || countries.find(c => c.name?.toLowerCase() === res.country?.toLowerCase());
+                      const sanitizedCity = String(res.city || '').trim().substring(0, 45);
+                      const sanitizedAddr1 = String(res.streetLines?.[0] || res.addressLine1 || res.formattedAddress || '').trim().substring(0, 45);
                       setSender(prev => ({
                         ...prev,
-                        addr1: addr.address || addr.streetLines?.[0] || prev.addr1,
-                        city: addr.city || prev.city,
-                        country: addr.country || prev.country,
-                        countryCode: addr.countryCode || prev.countryCode,
-                        formattedAddress: addr.formattedAddress || prev.formattedAddress,
-                        latitude: addr.lat || prev.latitude,
-                        longitude: addr.lng || prev.longitude
+                        addr1: sanitizedAddr1 || prev.addr1,
+                        addr2: res.addressLine2 ? String(res.addressLine2).substring(0, 45) : prev.addr2,
+                        area: res.area ? String(res.area).substring(0, 45) : prev.area,
+                        city: sanitizedCity || prev.city,
+                        state: res.state ? String(res.state).substring(0, 45) : prev.state,
+                        zip: res.postalCode || (NON_POSTAL_COUNTRIES.includes(res.countryCode) ? '00000' : prev.zip),
+                        country: countryObj?.name || res.country || prev.country,
+                        countryCode: countryObj?.code || res.countryCode || prev.countryCode,
+                        phoneCountryCode: countryObj?.dialCode || prev.phoneCountryCode,
+                        latitude: res.latitude !== undefined && res.latitude !== null ? Number(res.latitude) : prev.latitude,
+                        longitude: res.longitude !== undefined && res.longitude !== null ? Number(res.longitude) : prev.longitude,
+                        formattedAddress: res.formattedAddress || prev.formattedAddress
                       }));
+                      setErrors(prev => {
+                        const next = { ...prev };
+                        delete next.sender_addr1;
+                        delete next.sender_city;
+                        delete next.sender_country;
+                        delete next.sender_zip;
+                        return next;
+                      });
                     }}
                   />
 
@@ -957,30 +1378,117 @@ export const TargetLogisticsWizard = ({
             {step === 2 && (
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
                 <div className="lg:col-span-7 bg-white border border-[#e9edf2] rounded-2xl p-5 space-y-4">
-                  <div className="text-xs font-black text-[#1a1f23] uppercase tracking-wider">
-                    {isRTL ? 'معلومات المستلم وبيانات الاستيراد' : 'Consignee & Import Details'}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#f0f4f8]">
+                    <div>
+                      <div className="text-xs font-black text-[#1a1f23] uppercase tracking-wider">
+                        {isRTL ? 'معلومات المستلم وبيانات الاستيراد' : 'Consignee & Import Details'}
+                      </div>
+                      <div className="text-[11px] text-[#8c9196]">
+                        {isRTL ? 'بيانات جهة الاستلام وعنوان التسليم النهائي' : 'Receiver contact, delivery address and customs clearance ID'}
+                      </div>
+                    </div>
+                    {/* Saved Address Book Selector */}
+                    {userAddresses.length > 0 && (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="material-symbols-outlined text-sm text-[#0050d4]">menu_book</span>
+                        <select
+                          onChange={(e) => handleSelectReceiverAddress(e.target.value)}
+                          defaultValue=""
+                          className="text-[11px] font-bold text-[#0050d4] bg-[#ebf0fc] border border-[#c7d7fa] rounded-lg px-2 py-1 outline-none cursor-pointer max-w-[190px] truncate"
+                        >
+                          <option value="">{isRTL ? '📖 اختر من دفتر العناوين...' : '📖 Address Book...'}</option>
+                          {userAddresses.map((a, idx) => (
+                            <option key={a.id || a._id || idx} value={a.id || a._id || idx}>
+                              {a.label || a.contactPerson || a.name || `Address ${idx + 1}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
 
+                  {/* Validation Error Banner */}
+                  {Object.keys(errors).filter(k => k.startsWith('receiver_')).length > 0 && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs flex items-start gap-2 animate-in fade-in">
+                      <span className="material-symbols-outlined text-base text-red-600 shrink-0 mt-0.5">error</span>
+                      <div>
+                        <div className="font-bold">
+                          {isRTL ? 'يرجى استكمال الحقول الإلزامية التالية للمتابعة:' : 'Please complete the following required fields:'}
+                        </div>
+                        <ul className="list-disc list-inside text-[11px] mt-1 space-y-0.5 opacity-90">
+                          {Object.keys(errors).filter(k => k.startsWith('receiver_')).map(k => (
+                            <li key={k}>{errors[k]}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Quick Presets */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] font-black text-[#8c9196] uppercase flex items-center gap-1">
+                      <span>⚡</span> {isRTL ? 'عناوين سريعة:' : 'Quick Presets:'}
+                    </span>
+                    {receiverPresets.map((preset, pIdx) => (
+                      <button
+                        key={pIdx}
+                        type="button"
+                        onClick={() => {
+                          setReceiver(prev => ({
+                            ...prev,
+                            addr1: preset.addr1,
+                            area: preset.area,
+                            city: preset.city,
+                            state: preset.state,
+                            country: preset.country,
+                            countryCode: preset.countryCode,
+                            phoneCountryCode: preset.phoneCountryCode,
+                            zip: preset.zip,
+                            formattedAddress: `${preset.addr1}, ${preset.city}, ${preset.country}`
+                          }));
+                          setErrors(prev => {
+                            const next = { ...prev };
+                            delete next.receiver_addr1;
+                            delete next.receiver_city;
+                            delete next.receiver_country;
+                            delete next.receiver_zip;
+                            return next;
+                          });
+                        }}
+                        className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-[#e9edf2] bg-[#f8fafc] text-[#575c60] hover:border-[#0050d4] hover:text-[#0050d4] hover:bg-[#ebf0fc] transition-all"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Primary Contact Details */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                        {isRTL ? 'اسم المستلم' : 'Contact Full Name'} <span className="text-red-500">*</span>
+                        {isRTL ? 'اسم المستلم / جهة الاتصال' : 'Contact Full Name'} <span className="text-red-500">*</span>
                       </label>
-                      <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
+                      <div className={`flex items-center gap-2 p-2 border-[1.5px] rounded-xl transition-all ${
+                        errors.receiver_name ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus-within:border-[#0050d4]'
+                      }`}>
                         <span className="material-symbols-outlined text-[17px] text-[#8c9196]">person</span>
                         <input
                           type="text"
                           value={receiver.name}
-                          onChange={(e) => setReceiver({ ...receiver, name: e.target.value })}
+                          onChange={(e) => {
+                            setReceiver({ ...receiver, name: e.target.value });
+                            if (errors.receiver_name) setErrors(prev => { const n = { ...prev }; delete n.receiver_name; return n; });
+                          }}
                           placeholder="Sara Al-Rashidi"
                           className="w-full text-xs font-semibold outline-none bg-transparent"
                         />
                       </div>
+                      {errors.receiver_name && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.receiver_name}</span>}
                     </div>
 
                     <div>
                       <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                        {isRTL ? 'شركة المستلم' : 'Company'} <span className="text-[#8c9196] text-[10px] font-normal">(Optional)</span>
+                        {isRTL ? 'شركة المستلم / المؤسسة' : 'Company / Entity'} <span className="text-[#8c9196] text-[10px] font-normal">(Optional)</span>
                       </label>
                       <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
                         <span className="material-symbols-outlined text-[17px] text-[#8c9196]">business</span>
@@ -996,33 +1504,56 @@ export const TargetLogisticsWizard = ({
 
                     <div>
                       <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                        {isRTL ? 'هاتف المستلم' : 'Phone'} <span className="text-red-500">*</span>
+                        {isRTL ? 'هاتف المستلم المباشر' : 'Phone Number'} <span className="text-red-500">*</span>
                       </label>
-                      <div className="flex items-center gap-1.5 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
+                      <div className={`flex items-center gap-1.5 p-2 border-[1.5px] rounded-xl transition-all ${
+                        errors.receiver_phone ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus-within:border-[#0050d4]'
+                      }`}>
                         <span className="material-symbols-outlined text-[17px] text-[#8c9196]">phone</span>
                         <select 
                           value={receiver.phoneCountryCode}
                           onChange={(e) => setReceiver({ ...receiver, phoneCountryCode: e.target.value })}
-                          className="text-[11px] font-bold text-[#0050d4] bg-[#f0f4f8] rounded-md px-1.5 py-0.5 outline-none cursor-pointer"
+                          className="text-[11px] font-bold text-[#0050d4] bg-[#f0f4f8] rounded-md px-1.5 py-0.5 outline-none cursor-pointer max-w-[100px]"
                         >
-                          <option value="+971">+971 AE</option>
-                          <option value="+965">+965 KW</option>
-                          <option value="+966">+966 SA</option>
-                          <option value="+974">+974 QA</option>
+                          {countries.map(c => (
+                            <option key={c.code} value={c.dialCode}>
+                              {c.flag} {c.dialCode} ({c.code})
+                            </option>
+                          ))}
                         </select>
                         <input
                           type="tel"
                           value={receiver.phone}
-                          onChange={(e) => setReceiver({ ...receiver, phone: e.target.value })}
+                          onChange={(e) => {
+                            setReceiver({ ...receiver, phone: e.target.value });
+                            if (errors.receiver_phone) setErrors(prev => { const n = { ...prev }; delete n.receiver_phone; return n; });
+                          }}
                           placeholder="501234567"
                           className="w-full text-xs font-semibold font-mono outline-none bg-transparent"
                         />
                       </div>
+                      {errors.receiver_phone && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.receiver_phone}</span>}
                     </div>
 
                     <div>
                       <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                        {isRTL ? 'الرقم المدني / السجل التجاري / الضريبي' : 'Civil ID / CR / Tax ID'} <span className="text-[#8c9196] text-[10px] font-normal">(Customs)</span>
+                        {isRTL ? 'البريد الإلكتروني' : 'Email Address'} <span className="text-[#8c9196] text-[10px] font-normal">(Optional)</span>
+                      </label>
+                      <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
+                        <span className="material-symbols-outlined text-[17px] text-[#8c9196]">mail</span>
+                        <input
+                          type="email"
+                          value={receiver.email}
+                          onChange={(e) => setReceiver({ ...receiver, email: e.target.value })}
+                          placeholder="consignee@company.com"
+                          className="w-full text-xs font-semibold outline-none bg-transparent"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                        {isRTL ? 'الرقم المدني / السجل التجاري / الضريبي' : 'Civil ID / CR / Tax ID (Customs)'}
                       </label>
                       <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all bg-amber-50/40">
                         <span className="material-symbols-outlined text-[17px] text-amber-600">badge</span>
@@ -1030,100 +1561,265 @@ export const TargetLogisticsWizard = ({
                           type="text"
                           value={receiver.taxId}
                           onChange={(e) => setReceiver({ ...receiver, taxId: e.target.value })}
-                          placeholder="784-1990-1234567-1"
+                          placeholder="784-1990-1234567-1 (Required for GCC / International clearance)"
                           className="w-full text-xs font-semibold outline-none bg-transparent"
                         />
                       </div>
                     </div>
                   </div>
 
+                  {/* Section Divider */}
+                  <div className="pt-2 border-t border-[#f0f4f8]">
+                    <div className="text-[11px] font-black text-[#575c60] uppercase tracking-wider mb-2">
+                      {isRTL ? 'العنوان التفصيلي للتسليم' : 'Structured Delivery Address Details'}
+                    </div>
+                  </div>
+
+                  {/* Address Line 1 */}
                   <div>
                     <label className="text-[11px] font-bold text-[#575c60] block mb-1">
-                      {isRTL ? 'عنوان التسليم' : 'Street Address'} <span className="text-red-500">*</span>
+                      {isRTL ? 'عنوان التسليم والشارع (السطر 1)' : 'Street Address (Line 1)'} <span className="text-red-500">*</span>
                     </label>
-                    <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
+                    <div className={`flex items-center gap-2 p-2 border-[1.5px] rounded-xl transition-all ${
+                      errors.receiver_addr1 ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus-within:border-[#0050d4]'
+                    }`}>
                       <span className="material-symbols-outlined text-[17px] text-[#8c9196]">home</span>
                       <input
                         type="text"
                         value={receiver.addr1}
-                        onChange={(e) => setReceiver({ ...receiver, addr1: e.target.value })}
+                        onChange={(e) => {
+                          setReceiver({ ...receiver, addr1: e.target.value });
+                          if (errors.receiver_addr1) setErrors(prev => { const n = { ...prev }; delete n.receiver_addr1; return n; });
+                        }}
                         placeholder="Bay Square, Building 4, Business Bay"
+                        className="w-full text-xs font-semibold outline-none bg-transparent"
+                      />
+                    </div>
+                    {errors.receiver_addr1 && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.receiver_addr1}</span>}
+                  </div>
+
+                  {/* Address Line 2 & Area */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                        {isRTL ? 'الشقة / الطابق / المكتب (السطر 2)' : 'Apartment / Suite / Office / Unit (Line 2)'}
+                      </label>
+                      <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
+                        <span className="material-symbols-outlined text-[17px] text-[#8c9196]">apartment</span>
+                        <input
+                          type="text"
+                          value={receiver.addr2 || ''}
+                          onChange={(e) => setReceiver({ ...receiver, addr2: e.target.value })}
+                          placeholder="Suite 302, 3rd Floor"
+                          className="w-full text-xs font-semibold outline-none bg-transparent"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                        {isRTL ? 'المنطقة / الحي / القطعة' : 'District / Area / Block'}
+                      </label>
+                      <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
+                        <span className="material-symbols-outlined text-[17px] text-[#8c9196]">map</span>
+                        <input
+                          type="text"
+                          value={receiver.area || ''}
+                          onChange={(e) => setReceiver({ ...receiver, area: e.target.value })}
+                          placeholder="Business Bay"
+                          className="w-full text-xs font-semibold outline-none bg-transparent"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* City, State, Country, Postal Code */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div>
+                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                        {isRTL ? 'المدينة' : 'City / Municipality'} <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={receiver.city}
+                        onChange={(e) => {
+                          setReceiver({ ...receiver, city: e.target.value });
+                          if (errors.receiver_city) setErrors(prev => { const n = { ...prev }; delete n.receiver_city; return n; });
+                        }}
+                        placeholder="Dubai"
+                        className={`w-full p-2 border-[1.5px] rounded-xl text-xs font-semibold outline-none transition-all ${
+                          errors.receiver_city ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus:border-[#0050d4]'
+                        }`}
+                      />
+                      {errors.receiver_city && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.receiver_city}</span>}
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                        {isRTL ? 'المحافظة / الإمارة' : 'State / Governorate'}
+                      </label>
+                      <input
+                        type="text"
+                        value={receiver.state || ''}
+                        onChange={(e) => setReceiver({ ...receiver, state: e.target.value })}
+                        placeholder="Dubai"
+                        className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold outline-none focus:border-[#0050d4]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                        {isRTL ? 'الدولة / الإقليم' : 'Country / Territory'} <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={receiver.countryCode}
+                        onChange={(e) => {
+                          const code = e.target.value;
+                          const cObj = countries.find(c => c.code === code);
+                          setReceiver(prev => ({
+                            ...prev,
+                            countryCode: code,
+                            country: cObj?.name || prev.country,
+                            phoneCountryCode: cObj?.dialCode || prev.phoneCountryCode,
+                            zip: NON_POSTAL_COUNTRIES.includes(code) ? '00000' : (prev.zip === '00000' ? '' : prev.zip)
+                          }));
+                          if (errors.receiver_country) setErrors(prev => { const n = { ...prev }; delete n.receiver_country; return n; });
+                        }}
+                        className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold outline-none focus:border-[#0050d4] bg-white cursor-pointer"
+                      >
+                        {countries.map(c => (
+                          <option key={c.code} value={c.code}>
+                            {c.flag} {c.name} ({c.code})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                        {isRTL ? 'الرمز البريدي' : 'Postal / ZIP Code'} {!NON_POSTAL_COUNTRIES.includes((receiver.countryCode || '').toUpperCase()) && <span className="text-red-500">*</span>}
+                      </label>
+                      <input
+                        type="text"
+                        value={receiver.zip}
+                        onChange={(e) => {
+                          setReceiver({ ...receiver, zip: e.target.value });
+                          if (errors.receiver_zip) setErrors(prev => { const n = { ...prev }; delete n.receiver_zip; return n; });
+                        }}
+                        placeholder={NON_POSTAL_COUNTRIES.includes((receiver.countryCode || '').toUpperCase()) ? "00000 (Optional)" : "00000"}
+                        className={`w-full p-2 border-[1.5px] rounded-xl text-xs font-semibold outline-none transition-all ${
+                          errors.receiver_zip ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus:border-[#0050d4]'
+                        }`}
+                      />
+                      {errors.receiver_zip && <span className="text-[10px] text-red-500 font-semibold mt-0.5 block">{errors.receiver_zip}</span>}
+                    </div>
+                  </div>
+
+                  {/* Delivery Instructions */}
+                  <div>
+                    <label className="text-[11px] font-bold text-[#575c60] block mb-1">
+                      {isRTL ? 'تعليمات تسليم المستلم / رمز البوابة / معالم الموقع' : 'Consignee Delivery Instructions / Gate Code / Landmarks'}
+                    </label>
+                    <div className="flex items-center gap-2 p-2 border-[1.5px] border-[#e9edf2] rounded-xl focus-within:border-[#0050d4] transition-all">
+                      <span className="material-symbols-outlined text-[17px] text-[#8c9196]">door_front</span>
+                      <input
+                        type="text"
+                        value={receiver.instructions}
+                        onChange={(e) => setReceiver({ ...receiver, instructions: e.target.value })}
+                        placeholder="e.g. Gate 3, Ring intercom #12, leave at reception desk"
                         className="w-full text-xs font-semibold outline-none bg-transparent"
                       />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">{isRTL ? 'المدينة' : 'City'} *</label>
-                      <input
-                        type="text"
-                        value={receiver.city}
-                        onChange={(e) => setReceiver({ ...receiver, city: e.target.value })}
-                        className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold outline-none focus:border-[#0050d4]"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">{isRTL ? 'الدولة' : 'Country'} *</label>
-                      <select
-                        value={receiver.countryCode}
-                        onChange={(e) => setReceiver({ ...receiver, countryCode: e.target.value, country: e.target.value === 'AE' ? 'United Arab Emirates' : 'Kuwait' })}
-                        className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold outline-none focus:border-[#0050d4] bg-white cursor-pointer"
-                      >
-                        <option value="AE">🇦🇪 UAE</option>
-                        <option value="KW">🇰🇼 Kuwait</option>
-                        <option value="SA">🇸🇦 Saudi Arabia</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-[11px] font-bold text-[#575c60] block mb-1">{isRTL ? 'تعليمات التسليم' : 'Delivery Note'}</label>
-                      <input
-                        type="text"
-                        value={receiver.instructions}
-                        onChange={(e) => setReceiver({ ...receiver, instructions: e.target.value })}
-                        placeholder="Gate 3, ring intercom"
-                        className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold outline-none focus:border-[#0050d4]"
-                      />
-                    </div>
-                  </div>
+                  {/* Save to Address Book */}
+                  <label className="flex items-center gap-2.5 p-2.5 bg-[#f8fafc] border border-[#e9edf2] rounded-xl cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={saveReceiverToBook}
+                      onChange={(e) => setSaveReceiverToBook(e.target.checked)}
+                      className="checkbox checkbox-primary checkbox-xs rounded"
+                    />
+                    <span className="text-[11px] font-semibold text-[#1a1f23]">
+                      {isRTL ? 'حفظ عنوان المستلم في دفتر العناوين للاستخدام المستقبلي' : 'Save consignee to Address Book for future shipments'}
+                    </span>
+                  </label>
                 </div>
 
                 {/* Right: Google Places & Map Coordinates Card */}
                 <div className="lg:col-span-5 bg-white border border-[#e9edf2] rounded-2xl p-5 space-y-3">
-                  <div className="flex items-center gap-1.5 text-xs font-black text-[#1a1f23]">
-                    <span className="material-symbols-outlined text-[17px] text-[#0050d4]">pin_drop</span>
-                    <span>{isRTL ? 'تحديد عنوان التسليم' : 'Consignee Drop-off Location'}</span>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs font-black text-[#1a1f23]">
+                      <span className="material-symbols-outlined text-[17px] text-[#0050d4]">pin_drop</span>
+                      <span>{isRTL ? 'تحديد عنوان التسليم بالخريطة' : 'Consignee Drop-off Location & GPS Pin'}</span>
+                    </div>
                   </div>
 
+                  {/* Google Address Autocomplete connected properly with value and onChange */}
                   <GoogleAddressInput
+                    label={isRTL ? 'ابحث عبر خرائط جوجل (Google Places)' : 'Search Global Address (Google Places)'}
                     placeholder={isRTL ? 'ابحث عن وجهة التسليم...' : 'Search drop-off point with Google Maps...'}
-                    defaultValue={receiver.formattedAddress || receiver.addr1}
-                    onSelectAddress={(addr) => {
+                    value={{
+                      formattedAddress: receiver.formattedAddress || (receiver.addr1 ? `${receiver.addr1}, ${receiver.city || ''}, ${receiver.country || ''}` : ''),
+                      addressLine1: receiver.addr1,
+                      addressLine2: receiver.addr2,
+                      city: receiver.city,
+                      state: receiver.state,
+                      postalCode: receiver.zip,
+                      country: receiver.country,
+                      countryCode: receiver.countryCode,
+                      area: receiver.area,
+                      latitude: receiver.latitude,
+                      longitude: receiver.longitude
+                    }}
+                    onChange={(res) => {
+                      const countryObj = countries.find(c => c.code === res.countryCode) || countries.find(c => c.name?.toLowerCase() === res.country?.toLowerCase());
+                      const sanitizedCity = String(res.city || '').trim().substring(0, 45);
+                      const sanitizedAddr1 = String(res.streetLines?.[0] || res.addressLine1 || res.formattedAddress || '').trim().substring(0, 45);
                       setReceiver(prev => ({
                         ...prev,
-                        addr1: addr.address || addr.streetLines?.[0] || prev.addr1,
-                        city: addr.city || prev.city,
-                        country: addr.country || prev.country,
-                        countryCode: addr.countryCode || prev.countryCode,
-                        formattedAddress: addr.formattedAddress || prev.formattedAddress,
-                        latitude: addr.lat || prev.latitude,
-                        longitude: addr.lng || prev.longitude
+                        addr1: sanitizedAddr1 || prev.addr1,
+                        addr2: res.addressLine2 ? String(res.addressLine2).substring(0, 45) : prev.addr2,
+                        area: res.area ? String(res.area).substring(0, 45) : prev.area,
+                        city: sanitizedCity || prev.city,
+                        state: res.state ? String(res.state).substring(0, 45) : prev.state,
+                        zip: res.postalCode || (NON_POSTAL_COUNTRIES.includes(res.countryCode) ? '00000' : prev.zip),
+                        country: countryObj?.name || res.country || prev.country,
+                        countryCode: countryObj?.code || res.countryCode || prev.countryCode,
+                        phoneCountryCode: countryObj?.dialCode || prev.phoneCountryCode,
+                        latitude: res.latitude !== undefined && res.latitude !== null ? Number(res.latitude) : prev.latitude,
+                        longitude: res.longitude !== undefined && res.longitude !== null ? Number(res.longitude) : prev.longitude,
+                        formattedAddress: res.formattedAddress || prev.formattedAddress
                       }));
+                      setErrors(prev => {
+                        const next = { ...prev };
+                        delete next.receiver_addr1;
+                        delete next.receiver_city;
+                        delete next.receiver_country;
+                        delete next.receiver_zip;
+                        return next;
+                      });
                     }}
                   />
 
+                  {/* Schematic Map Preview with Pin Drop */}
                   <div className="relative h-44 rounded-xl overflow-hidden border border-[#e9edf2] bg-[#e8eef3] flex items-center justify-center">
                     <div className="absolute inset-0 opacity-40 bg-[radial-gradient(#0050d4_1px,transparent_1px)] [background-size:16px_16px]" />
                     <div className="absolute top-1/2 left-0 right-0 h-2 bg-white/80 shadow-xs" />
                     <div className="absolute left-1/2 top-0 bottom-0 w-2 bg-white/80 shadow-xs" />
+                    {/* Pin Marker */}
                     <div className="relative flex flex-col items-center z-10 animate-bounce">
                       <span className="material-symbols-outlined text-4xl text-[#0050d4] drop-shadow-md">flag</span>
                     </div>
+                    {/* Coordinates Overlay */}
                     <div className="absolute bottom-2 left-2 flex items-center gap-1.5 px-2.5 py-1 bg-white/95 rounded-lg shadow-xs text-[10.5px] font-mono font-bold text-[#1a1f23]">
                       <span className="material-symbols-outlined text-xs text-[#0050d4]">my_location</span>
                       <span>{Number(receiver.latitude || 25.1850).toFixed(4)}° N, {Number(receiver.longitude || 55.2650).toFixed(4)}° E</span>
                     </div>
                   </div>
+                  <p className="text-[10px] text-[#8c9196] text-center">
+                    {isRTL ? 'يتم حفظ الإحداثيات الجغرافية بدقة لتسهيل وصول المندوب' : 'Precise GPS coordinates captured for driver navigation'}
+                  </p>
                 </div>
               </div>
             )}
@@ -1657,7 +2353,7 @@ export const TargetLogisticsWizard = ({
               {step < 6 ? (
                 <button
                   type="button"
-                  onClick={() => setStep(s => Math.min(6, s + 1))}
+                  onClick={handleNextStep}
                   className="flex items-center gap-1.5 px-5 py-2 bg-[#0050d4] text-white rounded-xl text-xs font-bold shadow-md shadow-[#0050d4]/20 hover:bg-[#0040b0] transition-colors"
                 >
                   <span>{isRTL ? 'المتابعة' : 'Continue'}</span>

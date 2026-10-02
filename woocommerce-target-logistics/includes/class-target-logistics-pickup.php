@@ -387,9 +387,31 @@ class Target_Logistics_Pickup_Service {
         $rec_phone = $order->get_billing_phone();
         $rec_email = $order->get_billing_email();
 
-        $rec_country = $order->get_shipping_country() ?: $order->get_billing_country() ?: 'KW';
+        // Country dialing codes mapping for GCC & common countries
+        $country_calling_codes = array(
+            'KW' => '+965',
+            'AE' => '+971',
+            'SA' => '+966',
+            'QA' => '+974',
+            'BH' => '+973',
+            'OM' => '+968',
+            'EG' => '+20',
+            'JO' => '+962',
+            'LB' => '+961',
+            'IQ' => '+964',
+            'US' => '+1',
+            'CA' => '+1',
+            'GB' => '+44',
+        );
+
+        $rec_country = strtoupper( $order->get_shipping_country() ?: $order->get_billing_country() ?: 'KW' );
         $rec_city    = $order->get_shipping_city() ?: $order->get_billing_city() ?: 'Kuwait City';
-        $rec_postal  = $order->get_shipping_postcode() ?: $order->get_billing_postcode() ?: '00000';
+        $rec_postal  = trim( $order->get_shipping_postcode() ?: $order->get_billing_postcode() ?: '' );
+
+        // Fallback for non-postal countries (DHL requires postal code for some schemas)
+        if ( empty( $rec_postal ) ) {
+            $rec_postal = ( 'KW' === $rec_country ) ? '13001' : '00000';
+        }
 
         $rec_street1 = $order->get_shipping_address_1() ?: $order->get_billing_address_1();
         $rec_street2 = $order->get_shipping_address_2() ?: $order->get_billing_address_2();
@@ -403,34 +425,45 @@ class Target_Logistics_Pickup_Service {
             return new WP_Error( 'missing_receiver_phone', __( 'Order is missing receiver phone number. Please add phone before booking.', 'wc-target-logistics' ) );
         }
 
+        // Clean phone digits
         $clean_phone = preg_replace( '/[^0-9]/', '', $rec_phone );
+        $phone_country_code = isset( $country_calling_codes[ $rec_country ] ) ? $country_calling_codes[ $rec_country ] : '+965';
+
+        // Check if customer typed phone with international prefix like +965 or 00965
+        if ( strpos( $rec_phone, '+' ) === 0 ) {
+            if ( preg_match( '/^(\+\d{1,4})(\d+)$/', $rec_phone, $matches ) ) {
+                $phone_country_code = $matches[1];
+                $clean_phone        = $matches[2];
+            }
+        } elseif ( strpos( $rec_phone, '00' ) === 0 ) {
+            $stripped = substr( $rec_phone, 2 );
+            if ( preg_match( '/^(\d{1,4})(\d{6,})$/', $stripped, $matches ) ) {
+                $phone_country_code = '+' . $matches[1];
+                $clean_phone        = $matches[2];
+            }
+        }
 
         $receiver = array(
-            'contactPerson'    => $rec_name,
+            'contactPerson'    => substr( $rec_name, 0, 70 ),
             'phone'            => $clean_phone,
-            'phoneCountryCode' => '+965', // fallback
+            'phoneCountryCode' => $phone_country_code,
             'email'            => $rec_email ?: 'customer@example.com',
-            'countryCode'      => strtoupper( $rec_country ),
-            'city'             => $rec_city,
+            'countryCode'      => $rec_country,
+            'city'             => substr( $rec_city, 0, 45 ),
             'postalCode'       => $rec_postal,
             'streetLines'      => $receiver_street_lines,
         );
-
-        // Normalize receiver phone country code if phone starts with country prefix
-        if ( strpos( $rec_phone, '+' ) === 0 ) {
-            // E.g. +96512345678 or +971...
-            if ( preg_match( '/^(\+\d{1,4})(\d+)$/', $rec_phone, $matches ) ) {
-                $receiver['phoneCountryCode'] = $matches[1];
-                $receiver['phone']            = $matches[2];
-            }
-        }
 
         // Build Items and Parcels
         $items   = array();
         $parcels = array();
 
-        $currency = $order->get_currency() ?: 'KWD';
-        $default_hs = ! empty( $this->settings['default_hs_code'] ) ? trim( $this->settings['default_hs_code'] ) : '610910';
+        $currency       = $order->get_currency() ?: 'KWD';
+        $default_hs     = ! empty( $this->settings['default_hs_code'] ) ? preg_replace( '/\D/', '', $this->settings['default_hs_code'] ) : '610910';
+        if ( strlen( $default_hs ) < 6 ) {
+            $default_hs = '610910';
+        }
+
         $default_weight = ! empty( $this->settings['default_weight'] ) ? floatval( $this->settings['default_weight'] ) : 1.0;
         $default_l      = ! empty( $this->settings['default_length'] ) ? floatval( $this->settings['default_length'] ) : 30.0;
         $default_w      = ! empty( $this->settings['default_width'] ) ? floatval( $this->settings['default_width'] ) : 20.0;
@@ -443,16 +476,22 @@ class Target_Logistics_Pickup_Service {
             $product  = $item->get_product();
             $qty      = max( 1, (int) $item->get_quantity() );
             $subtotal = floatval( $item->get_total() );
+
+            // Calculate item unit price (value)
             $unit_val = $qty > 0 ? round( $subtotal / $qty, 3 ) : 1.0;
             if ( $unit_val <= 0 ) {
-                $unit_val = 1.0;
+                if ( $product && $product->get_regular_price() > 0 ) {
+                    $unit_val = round( floatval( $product->get_regular_price() ), 3 );
+                } else {
+                    $unit_val = 1.0;
+                }
             }
 
+            // Weight calculation & conversion to kg
             $weight = $default_weight;
             if ( $product && $product->has_weight() ) {
                 $w = floatval( $product->get_weight() );
                 if ( $w > 0 ) {
-                    // Convert to kg if store uses different unit
                     $weight_unit = get_option( 'woocommerce_weight_unit' );
                     if ( 'g' === $weight_unit ) {
                         $weight = $w / 1000.0;
@@ -466,23 +505,64 @@ class Target_Logistics_Pickup_Service {
                 }
             }
 
-            $line_weight = $weight * $qty;
+            $line_weight   = $weight * $qty;
             $total_weight += $line_weight;
 
+            // Product HS Code detection (checks common WooCommerce custom fields)
+            $item_hs = $default_hs;
+            if ( $product ) {
+                $custom_hs = $product->get_meta( '_hs_code' )
+                    ?: $product->get_meta( 'hs_code' )
+                    ?: $product->get_meta( 'hscode' )
+                    ?: $product->get_meta( '_tariff_code' )
+                    ?: $product->get_meta( 'tariff_code' );
+
+                $custom_hs_clean = preg_replace( '/\D/', '', (string) $custom_hs );
+                if ( strlen( $custom_hs_clean ) >= 6 ) {
+                    $item_hs = $custom_hs_clean;
+                }
+            }
+
+            // Product Country of Origin detection
+            $item_origin = $sender_country;
+            if ( $product ) {
+                $custom_origin = $product->get_meta( '_country_of_origin' )
+                    ?: $product->get_meta( 'country_of_origin' )
+                    ?: $product->get_meta( '_origin_country' );
+
+                if ( ! empty( $custom_origin ) && strlen( trim( $custom_origin ) ) === 2 ) {
+                    $item_origin = strtoupper( trim( $custom_origin ) );
+                }
+            }
+
+            // SKU
+            $sku = ( $product && $product->get_sku() ) ? substr( $product->get_sku(), 0, 30 ) : '';
+
+            // Clean item description (max 250 characters as required by DHL API)
+            $clean_desc = wp_strip_all_tags( $item->get_name() );
+            $clean_desc = preg_replace( '/[\r\n\t]+/', ' ', $clean_desc );
+            $clean_desc = trim( substr( $clean_desc, 0, 200 ) );
+            if ( empty( $clean_desc ) ) {
+                $clean_desc = 'Commercial Goods';
+            }
+
             $items[] = array(
-                'description'     => substr( $item->get_name(), 0, 100 ),
+                'description'     => $clean_desc,
                 'quantity'        => $qty,
                 'unitValue'       => $unit_val,
+                'value'           => $unit_val, // For dual schema compatibility
+                'declaredValue'   => $unit_val,
                 'currency'        => $currency,
-                'countryOfOrigin' => $sender_country,
-                'hsCode'          => $default_hs,
-                'weight'          => round( $line_weight, 2 ),
+                'countryOfOrigin' => $item_origin,
+                'hsCode'          => $item_hs,
+                'weight'          => round( max( 0.05, $weight ), 3 ), // Item net weight in kg
+                'sku'             => $sku,
             );
 
             if ( 'per_item' === $strategy ) {
                 for ( $i = 0; $i < $qty; $i++ ) {
                     $parcels[] = array(
-                        'weight'      => round( max( 0.1, $weight ), 2 ),
+                        'weight'      => round( max( 0.1, $weight ), 3 ),
                         'length'      => (int) $default_l,
                         'width'       => (int) $default_w,
                         'height'      => (int) $default_h,
