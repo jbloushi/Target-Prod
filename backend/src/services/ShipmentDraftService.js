@@ -133,7 +133,12 @@ class ShipmentDraftService {
             carrierCode
         );
         const estimatedDelivery = data.estimatedDelivery || new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-        const requestedStatus = cleanData.status || (isInternalShipment ? 'draft' : 'pending');
+        const hasCreditAccount = Number(targetUser.creditLimit || 0) > 0 ||
+                                 Number(targetUser.organization?.creditLimit || 0) > 0 ||
+                                 targetUser.organization?.type === 'CREDIT' ||
+                                 targetUser.paymentMethod === 'CREDIT';
+        const defaultInitialStatus = isInternalShipment ? 'draft' : (hasCreditAccount ? 'ready_for_pickup' : 'pending');
+        const requestedStatus = cleanData.status || defaultInitialStatus;
         const isOteShipment = carrierCode === 'OTE' || carrierCode === 'LOGESTECHS';
         const codAmount = isOteShipment ? OTE_DEFAULT_COD_AMOUNT : null;
         const codCurrency = isOteShipment ? OTE_DEFAULT_COD_CURRENCY : null;
@@ -198,7 +203,9 @@ class ShipmentDraftService {
                 history: [
                     {
                         status: requestedStatus,
-                        description: isInternalShipment ? 'Shipment Created' : 'Shipment draft created',
+                        description: requestedStatus === 'ready_for_pickup'
+                            ? 'Shipment created and scheduled for courier pickup'
+                            : (isInternalShipment ? 'Shipment Created' : 'Shipment draft created'),
                         source: 'platform',
                         timestamp: new Date(),
                         location: cleanData.origin

@@ -4,7 +4,7 @@
  */
 
 const SHIPMENT_STATUSES = [
-    'draft', 'pending', 'booked', 'ready_for_pickup', 'picked_up',
+    'draft', 'pending', 'pending_approval', 'booked', 'ready_for_pickup', 'picked_up',
     'received_at_hub', 'verified',
     'in_transit', 'out_for_delivery', 'delivered', 
     'rto_in_transit', 'returned',
@@ -14,6 +14,7 @@ const SHIPMENT_STATUSES = [
 const INTERNAL_SHIPMENT_STATUSES = [
     'draft',
     'pending',
+    'pending_approval',
     'booked',
     'ready_for_pickup',
     'picked_up',
@@ -31,6 +32,7 @@ const INTERNAL_SHIPMENT_STATUSES = [
 const STATUS_LABELS = {
     draft: 'Draft',
     pending: 'Pending Review',
+    pending_approval: 'Pending Approval',
     booked: 'Booked',
     ready_for_pickup: 'Ready for Pickup',
     picked_up: 'Picked Up',

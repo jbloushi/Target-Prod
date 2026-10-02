@@ -367,6 +367,65 @@ const buildDangerousGoodsValueAddedServices = (dg) => {
 };
 
 /**
+ * Builds registration numbers for Customs clearance (VAT, Tax ID, EORI, CR)
+ * @param {Object} party 
+ * @param {string} defaultCountry 
+ * @returns {Array} registrationNumbers
+ */
+function buildRegistrationNumbers(party, defaultCountry) {
+    if (!party) return [];
+    const regs = [];
+    const country = party.countryCode || defaultCountry;
+
+    // VAT Number
+    if (party.vatNumber) {
+        regs.push({
+            typeCode: 'VAT',
+            number: String(party.vatNumber).trim(),
+            issuerCountryCode: normalizeCountryCode(country, defaultCountry)
+        });
+    }
+
+    // Standard Tax ID (if distinct from VAT)
+    if (party.taxId && party.taxId !== party.vatNumber) {
+        regs.push({
+            typeCode: 'SDT',
+            number: String(party.taxId).trim(),
+            issuerCountryCode: normalizeCountryCode(country, defaultCountry)
+        });
+    }
+
+    // EORI Number (European & UK Customs)
+    if (party.eoriNumber) {
+        regs.push({
+            typeCode: 'EOR',
+            number: String(party.eoriNumber).trim(),
+            issuerCountryCode: normalizeCountryCode(country, defaultCountry)
+        });
+    }
+
+    // Commercial Registration (CR) Number (GCC / Kuwait)
+    if (party.crNumber || party.commercialRegistration) {
+        regs.push({
+            typeCode: 'CNP',
+            number: String(party.crNumber || party.commercialRegistration).trim(),
+            issuerCountryCode: normalizeCountryCode(country, defaultCountry)
+        });
+    }
+
+    // Explicit registration numbers array on party if provided
+    if (Array.isArray(party.registrationNumbers)) {
+        party.registrationNumbers.forEach(r => {
+            if (r?.number && !regs.some(existing => existing.number === r.number)) {
+                regs.push(r);
+            }
+        });
+    }
+
+    return regs;
+}
+
+/**
  * Builds the full DGR Shipment Payload.
  * @param {Object} order - Normalized order/shipment data
  * @param {Object} config - Configuration options (account numbers etc)
@@ -388,11 +447,11 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
     }
     if (Array.isArray(order.items)) {
         order.items.forEach(item => {
-            if (!item.hsCode || normalizeDigits(item.hsCode).length < 6) {
-                item.hsCode = '851712';
+            if (item.hsCode) {
+                item.hsCode = normalizeDigits(item.hsCode);
             }
-            if (!item.countryOfOrigin) {
-                item.countryOfOrigin = order.sender?.countryCode || 'KW';
+            if (!item.countryOfOrigin && order.sender?.countryCode) {
+                item.countryOfOrigin = order.sender.countryCode;
             }
         });
     }
@@ -562,7 +621,7 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
                     email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sender.email || '') ? sender.email : 'noreply@target-logistics.com'
                 },
                 typeCode: sender.traderType || 'business',
-                registrationNumbers: []
+                registrationNumbers: buildRegistrationNumbers(sender, senderCountryCode)
             },
             receiverDetails: {
                 postalAddress: {
@@ -580,7 +639,7 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
                     email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(receiver.email || '') ? receiver.email : 'noreply@target-logistics.com'
                 },
                 typeCode: receiver.traderType || 'business',
-                registrationNumbers: []
+                registrationNumbers: buildRegistrationNumbers(receiver, receiverCountryCode)
             }
         },
 

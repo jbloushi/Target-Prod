@@ -315,13 +315,27 @@ exports.getBookingOptions = async (req, res) => {
 exports.bookWithCarrier = async (req, res) => {
     try {
         const { trackingNumber } = req.params;
-        const { carrierCode, optionalServiceCodes = [] } = req.body;
+        const { carrierCode, optionalServiceCodes = [], items, parcels, origin, destination } = req.body;
 
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
         if (!canAccessShipment(req, shipment)) {
             return res.status(403).json({ success: false, error: 'Permission denied' });
+        }
+
+        // If staff provided updated items, parcels, origin, or destination, persist them prior to carrier dispatch
+        const preBookingUpdates = {};
+        if (items && Array.isArray(items)) preBookingUpdates.items = items;
+        if (parcels && Array.isArray(parcels)) preBookingUpdates.parcels = parcels;
+        if (origin && typeof origin === 'object') preBookingUpdates.origin = { ...(shipment.origin || {}), ...origin };
+        if (destination && typeof destination === 'object') preBookingUpdates.destination = { ...(shipment.destination || {}), ...destination };
+
+        if (Object.keys(preBookingUpdates).length > 0) {
+            await prisma.shipment.update({
+                where: { trackingNumber },
+                data: preBookingUpdates
+            });
         }
 
         const isSync = req.query.async === 'false' || req.body?.async === false;

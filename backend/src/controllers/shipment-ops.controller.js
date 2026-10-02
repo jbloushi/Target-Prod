@@ -223,28 +223,36 @@ exports.pickupShipment = async (req, res) => {
         if (shipment.status === 'picked_up' || shipment.status === 'in_transit') {
             return res.status(200).json({ success: true, data: shipment, message: 'Shipment already picked up' });
         }
-        if (!['pending', 'draft', 'booked', 'ready_for_pickup'].includes(shipment.status)) {
+        if (!['pending', 'draft', 'booked', 'ready_for_pickup', 'pending_approval'].includes(shipment.status)) {
             return res.status(400).json({ success: false, error: `Shipment cannot be picked up (Current status: ${shipment.status})` });
         }
+
+        const isAwaitingCarrierBooking = !shipment.dhlConfirmed &&
+                                         !shipment.dhlTrackingNumber &&
+                                         shipment.carrierCode !== 'INTERNAL';
+        const nextStatus = isAwaitingCarrierBooking ? 'pending_approval' : 'picked_up';
+        const description = isAwaitingCarrierBooking
+            ? `Shipment collected from client by driver ${user.name || ''}; awaiting hub verification & carrier approval`.trim()
+            : `Shipment picked up by driver ${user.name || ''}`.trim();
 
         const history = Array.isArray(shipment.history) ? shipment.history : [];
         const newHistory = { 
             location: shipment.currentLocation, 
-            status: 'picked_up', 
-            description: 'Shipment picked up by driver', 
+            status: nextStatus, 
+            description, 
             timestamp: new Date() 
         };
 
         const updated = await prisma.shipment.update({
             where: { id: shipment.id },
             data: {
-                status: 'picked_up',
+                status: nextStatus,
                 history: [...history, newHistory]
             }
         });
 
-        logger.info(`Shipment ${trackingNumber} picked up by driver ${user.name}`);
-        res.status(200).json({ success: true, data: updated, message: 'Shipment picked up successfully' });
+        logger.info(`Shipment ${trackingNumber} picked up by driver ${user.name} -> ${nextStatus}`);
+        res.status(200).json({ success: true, data: updated, message: `Shipment picked up successfully (${nextStatus})` });
     } catch (error) {
         logger.error('Error in pickupShipment:', error);
         res.status(500).json({ success: false, error: 'Failed to update shipment status' });
@@ -262,7 +270,7 @@ exports.processWarehouseScan = async (req, res) => {
         if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
         if (!['admin', 'staff'].includes(user.role)) return res.status(403).json({ success: false, error: 'Only Staff or Admin can process warehouse scans.' });
 
-        const allowedStatuses = ['picked_up', 'booked', 'ready_for_pickup', 'received_at_hub', 'verified', 'in_transit'];
+        const allowedStatuses = ['picked_up', 'booked', 'ready_for_pickup', 'pending_approval', 'received_at_hub', 'verified', 'in_transit'];
         if (!allowedStatuses.includes(shipment.status)) {
             return res.status(400).json({ success: false, error: `Shipment status is ${shipment.status}. Must be in inbound/intake status to process.` });
         }

@@ -1116,6 +1116,84 @@ const ShipmentDetailsPage = () => {
                     </div>
                 </div>
 
+                {/* Credit Account & Driver Pickup Operational Banners */}
+                {effectiveStatus === 'pending_approval' && (
+                    <div className="alert bg-purple-500/10 border border-purple-500/30 text-purple-950 dark:text-purple-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center text-purple-600 shrink-0">
+                                <span className="material-symbols-outlined text-xl">fact_check</span>
+                            </div>
+                            <div>
+                                <h4 className="font-extrabold text-sm text-purple-900 dark:text-purple-100">
+                                    {isRTL ? 'بانتظار مراجعة واعتماد الموظف' : 'Awaiting Staff Customs & Dimension Approval'}
+                                </h4>
+                                <p className="text-xs text-purple-800/80 dark:text-purple-300/80">
+                                    {isRTL 
+                                        ? 'تم استلام الشحنة من العميل عبر السائق. يرجى مراجعة الأبعاد والأوزان الفعلية، ورموز النظام المنسق (HS Code)، والأرقام الضريبية قبل الحجز مع الناقل.'
+                                        : 'Consignment collected from client. Please verify actual package weight/dimensions, commercial goods descriptions, HS codes, and tax IDs before approving with DHL.'}
+                                </p>
+                            </div>
+                        </div>
+                        {isStaff && (
+                            <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                                <button
+                                    type="button"
+                                    onClick={() => handleOpenEdit('content')}
+                                    className="btn btn-sm btn-outline border-purple-500/40 text-purple-800 dark:text-purple-200 hover:bg-purple-500/10 rounded-xl font-bold text-xs flex-1 sm:flex-none"
+                                >
+                                    <span className="material-symbols-outlined text-xs">edit_note</span>
+                                    {isRTL ? 'مراجعة وتعديل البيانات' : 'Review & Edit'}
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={isGeneratingCarrierDocs || isProcessing}
+                                    onClick={() => handleGenerateCarrierDocs('awb')}
+                                    className="btn btn-sm bg-purple-600 hover:bg-purple-700 text-white border-none rounded-xl font-extrabold text-xs shadow-sm flex-1 sm:flex-none"
+                                >
+                                    <span className="material-symbols-outlined text-xs">
+                                        {isGeneratingCarrierDocs ? 'hourglass_top' : 'verified'}
+                                    </span>
+                                    {isGeneratingCarrierDocs
+                                        ? (isRTL ? 'جاري الحجز...' : 'Booking...')
+                                        : (isRTL ? 'اعتماد وحجز الناقل الدولي' : 'Approve & Book Carrier')}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {effectiveStatus === 'ready_for_pickup' && (
+                    <div className="alert bg-amber-500/10 border border-amber-500/30 text-amber-950 dark:text-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-600 shrink-0">
+                                <span className="material-symbols-outlined text-xl">hail</span>
+                            </div>
+                            <div>
+                                <h4 className="font-extrabold text-sm text-amber-900 dark:text-amber-100">
+                                    {isRTL ? 'جاهز للاستلام من العميل' : 'Ready for Driver Pickup'}
+                                </h4>
+                                <p className="text-xs text-amber-800/80 dark:text-amber-300/80">
+                                    {isRTL 
+                                        ? 'تم إنشاء الشحنة بنجاح على الحساب الآجل وهي بانتظار استلام السائق من موقع العميل لنقلها إلى مركز الفرز.'
+                                        : 'Consignment created on credit terms and awaiting driver dispatch/collection from customer site to Target sorting hub.'}
+                                </p>
+                            </div>
+                        </div>
+                        {isStaff && (
+                            <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                                <button
+                                    type="button"
+                                    onClick={() => handleOpenEdit('content')}
+                                    className="btn btn-sm btn-outline border-amber-500/40 text-amber-800 dark:text-amber-200 hover:bg-amber-500/10 rounded-xl font-bold text-xs flex-1 sm:flex-none"
+                                >
+                                    <span className="material-symbols-outlined text-xs">edit_note</span>
+                                    {isRTL ? 'تعديل البيانات' : 'Edit'}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {/* Route Visual Connector & Progress Line */}
                 <div className="p-4 bg-base-200/50 rounded-2xl border border-base-200 space-y-3">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -2557,6 +2635,28 @@ const ShipmentDetailsPage = () => {
                                                     />
                                                 </div>
                                             </div>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div className="form-control">
+                                                    <label className="label py-1"><span className="label-text font-bold">Tax / VAT ID</span></label>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="e.g. 300123456789003"
+                                                        value={editDraft.sender?.vatNumber || editDraft.sender?.taxId || ''}
+                                                        onChange={(e) => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, vatNumber: e.target.value, taxId: e.target.value } })}
+                                                        className="input input-bordered input-sm rounded-xl font-mono"
+                                                    />
+                                                </div>
+                                                <div className="form-control">
+                                                    <label className="label py-1"><span className="label-text font-bold">Commercial Reg (CR)</span></label>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="e.g. 1010123456"
+                                                        value={editDraft.sender?.crNumber || ''}
+                                                        onChange={(e) => setEditDraft({ ...editDraft, sender: { ...editDraft.sender, crNumber: e.target.value } })}
+                                                        className="input input-bordered input-sm rounded-xl font-mono"
+                                                    />
+                                                </div>
+                                            </div>
                                         </div>
                                     )}
 
@@ -2621,12 +2721,34 @@ const ShipmentDetailsPage = () => {
                                                     />
                                                 </div>
                                             </div>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div className="form-control">
+                                                    <label className="label py-1"><span className="label-text font-bold">Tax / VAT / National ID</span></label>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="e.g. 300987654321003"
+                                                        value={editDraft.receiver?.vatNumber || editDraft.receiver?.taxId || ''}
+                                                        onChange={(e) => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, vatNumber: e.target.value, taxId: e.target.value } })}
+                                                        className="input input-bordered input-sm rounded-xl font-mono"
+                                                    />
+                                                </div>
+                                                <div className="form-control">
+                                                    <label className="label py-1"><span className="label-text font-bold">EORI / CR Number</span></label>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="e.g. GB123456789000 / CR"
+                                                        value={editDraft.receiver?.eoriNumber || editDraft.receiver?.crNumber || ''}
+                                                        onChange={(e) => setEditDraft({ ...editDraft, receiver: { ...editDraft.receiver, eoriNumber: e.target.value, crNumber: e.target.value } })}
+                                                        className="input input-bordered input-sm rounded-xl font-mono"
+                                                    />
+                                                </div>
+                                            </div>
                                         </div>
                                     )}
 
                                     {/* Cargo & Goods Tab */}
                                     {editSection === 'content' && (
-                                        <div className="space-y-3 text-xs">
+                                        <div className="space-y-4 text-xs">
                                             <div className="grid grid-cols-2 gap-2">
                                                 <div className="form-control">
                                                     <label className="label py-1"><span className="label-text font-bold">Packaging Type</span></label>
@@ -2666,6 +2788,234 @@ const ShipmentDetailsPage = () => {
                                                     />
                                                     <span className="label-text font-bold text-xs">Contains Dangerous Goods (DGR / Perfumes / Lithium Batteries)</span>
                                                 </label>
+                                            </div>
+
+                                            {/* Parcels Editor */}
+                                            <div className="space-y-2 pt-2 border-t border-base-200">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="font-extrabold text-xs text-base-content/80 uppercase">
+                                                        {isRTL ? 'بيانات الطرود والأوزان' : 'Parcels & Measured Weights'}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const currentParcels = Array.isArray(editDraft.parcels) && editDraft.parcels.length > 0 ? editDraft.parcels : [{ weight: 1, length: 10, width: 10, height: 10, description: 'Package' }];
+                                                            setEditDraft({
+                                                                ...editDraft,
+                                                                parcels: [...currentParcels, { weight: 1, length: 15, width: 15, height: 15, description: `Package ${currentParcels.length + 1}` }]
+                                                            });
+                                                        }}
+                                                        className="btn btn-ghost btn-xs text-primary font-bold gap-1"
+                                                    >
+                                                        <span className="material-symbols-outlined text-xs">add</span>
+                                                        {isRTL ? 'إضافة طرد' : 'Add Parcel'}
+                                                    </button>
+                                                </div>
+                                                {(Array.isArray(editDraft.parcels) && editDraft.parcels.length > 0 ? editDraft.parcels : [{ weight: editDraft.weight || 1, length: 10, width: 10, height: 10, description: 'Package 1' }]).map((parcel, pIdx) => {
+                                                    const pLen = parcel.dimensions?.length || parcel.length || 10;
+                                                    const pWid = parcel.dimensions?.width || parcel.width || 10;
+                                                    const pHgt = parcel.dimensions?.height || parcel.height || 10;
+                                                    return (
+                                                        <div key={pIdx} className="p-2.5 bg-base-200/50 rounded-xl space-y-2 border border-base-200">
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="font-bold text-[11px] text-base-content/70">
+                                                                    {isRTL ? `طرد ${pIdx + 1}` : `Parcel #${pIdx + 1}`}
+                                                                </span>
+                                                                {(editDraft.parcels || []).length > 1 && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            const newParcels = (editDraft.parcels || []).filter((_, idx) => idx !== pIdx);
+                                                                            setEditDraft({ ...editDraft, parcels: newParcels });
+                                                                        }}
+                                                                        className="btn btn-ghost btn-xs text-error font-bold p-0 h-auto min-h-0"
+                                                                    >
+                                                                        <span className="material-symbols-outlined text-xs">delete</span>
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                            <div className="grid grid-cols-4 gap-2">
+                                                                <div className="form-control">
+                                                                    <label className="label py-0.5"><span className="label-text text-[10px] font-bold">Weight (KG)</span></label>
+                                                                    <input
+                                                                        type="number"
+                                                                        step="0.01"
+                                                                        value={parcel.weight || ''}
+                                                                        onChange={(e) => {
+                                                                            const val = parseFloat(e.target.value) || 0;
+                                                                            const newP = [...(editDraft.parcels || [{ weight: 1 }])];
+                                                                            newP[pIdx] = { ...newP[pIdx], weight: val };
+                                                                            setEditDraft({ ...editDraft, parcels: newP, weight: newP.reduce((s, x) => s + (x.weight || 0), 0) });
+                                                                        }}
+                                                                        className="input input-bordered input-xs rounded-lg font-mono"
+                                                                    />
+                                                                </div>
+                                                                <div className="form-control">
+                                                                    <label className="label py-0.5"><span className="label-text text-[10px] font-bold">Length (cm)</span></label>
+                                                                    <input
+                                                                        type="number"
+                                                                        value={pLen}
+                                                                        onChange={(e) => {
+                                                                            const val = parseFloat(e.target.value) || 0;
+                                                                            const newP = [...(editDraft.parcels || [{}])];
+                                                                            newP[pIdx] = { ...newP[pIdx], length: val, dimensions: { ...(newP[pIdx].dimensions || {}), length: val } };
+                                                                            setEditDraft({ ...editDraft, parcels: newP });
+                                                                        }}
+                                                                        className="input input-bordered input-xs rounded-lg font-mono"
+                                                                    />
+                                                                </div>
+                                                                <div className="form-control">
+                                                                    <label className="label py-0.5"><span className="label-text text-[10px] font-bold">Width (cm)</span></label>
+                                                                    <input
+                                                                        type="number"
+                                                                        value={pWid}
+                                                                        onChange={(e) => {
+                                                                            const val = parseFloat(e.target.value) || 0;
+                                                                            const newP = [...(editDraft.parcels || [{}])];
+                                                                            newP[pIdx] = { ...newP[pIdx], width: val, dimensions: { ...(newP[pIdx].dimensions || {}), width: val } };
+                                                                            setEditDraft({ ...editDraft, parcels: newP });
+                                                                        }}
+                                                                        className="input input-bordered input-xs rounded-lg font-mono"
+                                                                    />
+                                                                </div>
+                                                                <div className="form-control">
+                                                                    <label className="label py-0.5"><span className="label-text text-[10px] font-bold">Height (cm)</span></label>
+                                                                    <input
+                                                                        type="number"
+                                                                        value={pHgt}
+                                                                        onChange={(e) => {
+                                                                            const val = parseFloat(e.target.value) || 0;
+                                                                            const newP = [...(editDraft.parcels || [{}])];
+                                                                            newP[pIdx] = { ...newP[pIdx], height: val, dimensions: { ...(newP[pIdx].dimensions || {}), height: val } };
+                                                                            setEditDraft({ ...editDraft, parcels: newP });
+                                                                        }}
+                                                                        className="input input-bordered input-xs rounded-lg font-mono"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+
+                                            {/* Declared Goods Items Editor */}
+                                            <div className="space-y-2 pt-2 border-t border-base-200">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="font-extrabold text-xs text-base-content/80 uppercase">
+                                                        {isRTL ? 'البضائع والبيان الجمركي (Customs Goods)' : 'Customs Goods & HS Codes'}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const currentItems = Array.isArray(editDraft.items) && editDraft.items.length > 0 ? editDraft.items : [];
+                                                            setEditDraft({
+                                                                ...editDraft,
+                                                                items: [...currentItems, { description: 'Merchandise Item', quantity: 1, declaredValue: 10, countryOfOrigin: editDraft.sender?.countryCode || 'KW', hsCode: '' }]
+                                                            });
+                                                        }}
+                                                        className="btn btn-ghost btn-xs text-primary font-bold gap-1"
+                                                    >
+                                                        <span className="material-symbols-outlined text-xs">add</span>
+                                                        {isRTL ? 'إضافة بضاعة' : 'Add Item'}
+                                                    </button>
+                                                </div>
+                                                {(Array.isArray(editDraft.items) && editDraft.items.length > 0 ? editDraft.items : [{ description: 'General Cargo', quantity: 1, declaredValue: 10, countryOfOrigin: 'KW', hsCode: '' }]).map((item, itIdx) => (
+                                                    <div key={itIdx} className="p-2.5 bg-base-200/50 rounded-xl space-y-2 border border-base-200">
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="font-bold text-[11px] text-base-content/70">
+                                                                {isRTL ? `بند ${itIdx + 1}` : `Item #${itIdx + 1}`}
+                                                            </span>
+                                                            {(editDraft.items || []).length > 1 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        const newItems = (editDraft.items || []).filter((_, idx) => idx !== itIdx);
+                                                                        setEditDraft({ ...editDraft, items: newItems });
+                                                                    }}
+                                                                    className="btn btn-ghost btn-xs text-error font-bold p-0 h-auto min-h-0"
+                                                                >
+                                                                    <span className="material-symbols-outlined text-xs">delete</span>
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <div className="form-control">
+                                                                <label className="label py-0.5"><span className="label-text text-[10px] font-bold">Description</span></label>
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="e.g. Cotton T-Shirt"
+                                                                    value={item.description || ''}
+                                                                    onChange={(e) => {
+                                                                        const newItems = [...(editDraft.items || [{}])];
+                                                                        newItems[itIdx] = { ...newItems[itIdx], description: e.target.value };
+                                                                        setEditDraft({ ...editDraft, items: newItems });
+                                                                    }}
+                                                                    className="input input-bordered input-xs rounded-lg"
+                                                                />
+                                                            </div>
+                                                            <div className="form-control">
+                                                                <label className="label py-0.5"><span className="label-text text-[10px] font-bold">HS Code (Tariff)</span></label>
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="e.g. 610910"
+                                                                    value={item.hsCode || item.commodityCode || ''}
+                                                                    onChange={(e) => {
+                                                                        const newItems = [...(editDraft.items || [{}])];
+                                                                        newItems[itIdx] = { ...newItems[itIdx], hsCode: e.target.value, commodityCode: e.target.value };
+                                                                        setEditDraft({ ...editDraft, items: newItems });
+                                                                    }}
+                                                                    className="input input-bordered input-xs rounded-lg font-mono"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                        <div className="grid grid-cols-3 gap-2">
+                                                            <div className="form-control">
+                                                                <label className="label py-0.5"><span className="label-text text-[10px] font-bold">Qty</span></label>
+                                                                <input
+                                                                    type="number"
+                                                                    min="1"
+                                                                    value={item.quantity || 1}
+                                                                    onChange={(e) => {
+                                                                        const newItems = [...(editDraft.items || [{}])];
+                                                                        newItems[itIdx] = { ...newItems[itIdx], quantity: parseInt(e.target.value, 10) || 1 };
+                                                                        setEditDraft({ ...editDraft, items: newItems });
+                                                                    }}
+                                                                    className="input input-bordered input-xs rounded-lg font-mono"
+                                                                />
+                                                            </div>
+                                                            <div className="form-control">
+                                                                <label className="label py-0.5"><span className="label-text text-[10px] font-bold">Value ({editDraft.currency || 'KWD'})</span></label>
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.001"
+                                                                    value={item.declaredValue ?? item.price ?? ''}
+                                                                    onChange={(e) => {
+                                                                        const newItems = [...(editDraft.items || [{}])];
+                                                                        const val = parseFloat(e.target.value) || 0;
+                                                                        newItems[itIdx] = { ...newItems[itIdx], declaredValue: val, price: val };
+                                                                        setEditDraft({ ...editDraft, items: newItems });
+                                                                    }}
+                                                                    className="input input-bordered input-xs rounded-lg font-mono"
+                                                                />
+                                                            </div>
+                                                            <div className="form-control">
+                                                                <label className="label py-0.5"><span className="label-text text-[10px] font-bold">Origin (ISO-2)</span></label>
+                                                                <input
+                                                                    type="text"
+                                                                    maxLength="2"
+                                                                    placeholder="KW"
+                                                                    value={item.countryOfOrigin || item.originCountry || editDraft.sender?.countryCode || 'KW'}
+                                                                    onChange={(e) => {
+                                                                        const newItems = [...(editDraft.items || [{}])];
+                                                                        newItems[itIdx] = { ...newItems[itIdx], countryOfOrigin: e.target.value.toUpperCase(), originCountry: e.target.value.toUpperCase() };
+                                                                        setEditDraft({ ...editDraft, items: newItems });
+                                                                    }}
+                                                                    className="input input-bordered input-xs rounded-lg font-mono uppercase"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
                                             </div>
                                         </div>
                                     )}

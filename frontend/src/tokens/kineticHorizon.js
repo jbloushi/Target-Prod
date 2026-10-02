@@ -82,6 +82,14 @@ export const STATUS_CONFIG = {
     border: '#fde68a',
     icon: 'pending'
   },
+  pending_approval: {
+    label: 'Pending Approval',
+    color: '#701a75',
+    dotColor: '#c026d3',
+    bg: '#fae8ff',
+    border: '#f5d0fe',
+    icon: 'verified_user'
+  },
   ready_for_pickup: {
     label: 'Ready for Pickup',
     color: '#082f49',

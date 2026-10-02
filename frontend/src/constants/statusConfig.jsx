@@ -5,7 +5,7 @@
  */
 
 export const STATUS_ORDER = [
-    'draft', 'pending', 'booked', 'ready_for_pickup', 'picked_up',
+    'draft', 'pending', 'pending_approval', 'booked', 'ready_for_pickup', 'picked_up',
     'received_at_hub', 'verified',
     'in_transit', 'out_for_delivery', 'delivered', 'cancelled'
 ];
@@ -13,6 +13,7 @@ export const STATUS_ORDER = [
 export const STATUS_LABELS = {
     draft: 'Draft',
     pending: 'Pending Review',
+    pending_approval: 'Pending Approval',
     booked: 'Booked',
     ready_for_pickup: 'Ready for Pickup',
     picked_up: 'Picked Up',
@@ -28,6 +29,7 @@ export const STATUS_LABELS = {
 export const INTERNAL_SHIPMENT_STATUSES = [
     'draft',
     'pending',
+    'pending_approval',
     'booked',
     'ready_for_pickup',
     'picked_up',

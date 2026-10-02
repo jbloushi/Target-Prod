@@ -109,6 +109,37 @@ exports.createShipment = async (req, res) => {
             });
         }
 
+        const hasCreditAccount = Number(apiUser.creditLimit || 0) > 0 ||
+                                 Number(apiUser.organization?.creditLimit || 0) > 0 ||
+                                 apiUser.organization?.type === 'CREDIT' ||
+                                 apiUser.paymentMethod === 'CREDIT';
+
+        // Credit shipments (or when autoBook is not explicitly requested) enter the pickup & approval lifecycle
+        if (hasCreditAccount && req.body.autoBook !== true) {
+            const shipment = await ShipmentDraftService.createDraft({
+                ...shipmentData,
+                carrierCode: resolvedCarrierCode,
+                serviceCode: resolvedServiceCode,
+                status: 'ready_for_pickup'
+            }, apiUser);
+
+            return res.status(201).json({
+                success: true,
+                data: {
+                    trackingNumber: shipment.trackingNumber,
+                    carrier: shipment.carrierCode,
+                    serviceCode: shipment.serviceCode,
+                    status: shipment.status,
+                    price: shipment.price,
+                    currency: shipment.currency,
+                    codAmount: shipment.codAmount || null,
+                    codCurrency: shipment.codCurrency || null,
+                    codStatus: shipment.codStatus || null
+                },
+                message: 'Shipment created successfully and scheduled for courier pickup'
+            });
+        }
+
         // 1. Normalize
         const normalized = normalizeShipment(shipmentData);
         normalized.serviceCode = resolvedServiceCode;

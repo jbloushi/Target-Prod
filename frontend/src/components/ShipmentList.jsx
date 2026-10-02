@@ -153,11 +153,12 @@ const toRowShape = (s) => {
 
 const FILTER_STATUSES = {
   all: undefined,
-  exceptions: 'exception,failed,cancelled,returned',
-  active: 'picked_up,received_at_hub,verified,in_transit',
+  pendingApproval: 'pending_approval',
+  readyForPickup: 'ready_for_pickup',
+  active: 'picked_up,received_at_hub,verified,in_transit,booked',
   outForDelivery: 'out_for_delivery',
   delivered: 'delivered,completed',
-  readyForPickup: 'booked,created,ready_for_pickup,pending,draft,updated',
+  exceptions: 'exception,failed,cancelled,returned',
 };
 
 export const ShipmentList = ({ 
@@ -225,11 +226,12 @@ export const ShipmentList = ({
 
     return [
       { key: 'all', label: t('filter_all', 'All'), count: stats.total || 0, badgeStyle: 'bg-blue-100 text-blue-950 border-blue-300', badgeLabel: 'ALL', border: 'border-primary' },
-      { key: 'exceptions', label: t('filter_exceptions', 'Triage / Holds'), count: stats.exceptions || 0, badgeStyle: 'bg-rose-100 text-rose-950 border-rose-300', badgeLabel: 'EXCEPTIONS', border: 'border-error', isTriage: true },
+      { key: 'pendingApproval', label: t('filter_pending_approval', 'Pending Approval'), count: stats.pendingApproval || 0, badgeStyle: 'bg-purple-100 text-purple-950 border-purple-300', badgeLabel: 'APPROVAL', border: 'border-purple-400' },
+      { key: 'readyForPickup', label: t('filter_ready_for_pickup', 'Ready for Pickup'), count: readyPickupCount, badgeStyle: 'bg-slate-100 text-slate-900 border-slate-300', badgeLabel: 'READY PICKUP', border: 'border-base-300' },
       { key: 'active', label: t('filter_in_transit', 'In Transit'), count: activeTransitCount, badgeStyle: 'bg-sky-100 text-sky-950 border-sky-300', badgeLabel: 'ACTIVE', border: 'border-info' },
       { key: 'outForDelivery', label: t('filter_out_for_delivery', 'Out for Delivery'), count: stats.outForDelivery || 0, badgeStyle: 'bg-amber-100 text-amber-950 border-amber-300', badgeLabel: 'OUT FOR DELIVERY', border: 'border-warning' },
       { key: 'delivered', label: t('filter_delivered', 'Delivered'), count: stats.delivered || 0, badgeStyle: 'bg-emerald-100 text-emerald-950 border-emerald-300', badgeLabel: 'DELIVERED', border: 'border-success' },
-      { key: 'readyForPickup', label: t('filter_ready_for_pickup', 'Ready for Pickup'), count: readyPickupCount, badgeStyle: 'bg-slate-100 text-slate-900 border-slate-300', badgeLabel: 'READY PICKUP', border: 'border-base-300' },
+      { key: 'exceptions', label: t('filter_exceptions', 'Triage / Holds'), count: stats.exceptions || 0, badgeStyle: 'bg-rose-100 text-rose-950 border-rose-300', badgeLabel: 'EXCEPTIONS', border: 'border-error', isTriage: true },
     ];
   }, [stats, t]);
 
