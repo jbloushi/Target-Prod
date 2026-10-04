@@ -16,7 +16,7 @@
   "variable": [
     {
       "key": "base_url",
-      "value": "https://3pl-api.mawthook.io/api",
+      "value": "https://api.target-kw.com/api",
       "description": "Production API base URL"
     },
     {

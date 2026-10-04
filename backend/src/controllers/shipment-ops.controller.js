@@ -666,7 +666,7 @@ exports.confirmDeliveryWithPod = async (req, res) => {
 
         const newHistoryEntry = {
             location: shipment.currentLocation || shipment.destination,
-            status: 'DELIVERED',
+            status: 'delivered',
             description: `Delivered to ${podData.recipientName} (${podData.recipientRelationship}) by ${podData.driverName}`,
             source: 'driver_pod',
             timestamp: new Date(),
@@ -674,7 +674,7 @@ exports.confirmDeliveryWithPod = async (req, res) => {
         };
 
         const updateData = {
-            status: 'DELIVERED',
+            status: 'delivered',
             history: [...history, newHistoryEntry],
             documents: {
                 ...existingDocs,
@@ -728,5 +728,4 @@ exports.triggerCarrierSync = async (req, res) => {
         res.status(500).json({ success: false, error: 'Failed to trigger carrier sync batch' });
     }
 };
-
 
