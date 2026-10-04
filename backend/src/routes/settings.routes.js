@@ -16,19 +16,19 @@ router.get('/rate-cards/sample-template', settingsController.downloadSampleTempl
 // View specific rate card matrix details
 router.get('/rate-cards/:id', settingsController.getRateCardDetails);
 
-// Upload new rate card from Excel (Superadmin / Managers)
+// Upload new rate card from Excel (Superadmin only)
 router.post(
     '/rate-cards/upload',
     authController.protect,
-    authorize('MANAGE_USERS'),
+    authorize('MANAGE_SYSTEM_SETTINGS'),
     settingsController.uploadRateCard
 );
 
-// Delete custom rate card (Superadmin / Managers)
+// Delete custom rate card (Superadmin only)
 router.delete(
     '/rate-cards/:id',
     authController.protect,
-    authorize('MANAGE_USERS'),
+    authorize('MANAGE_SYSTEM_SETTINGS'),
     settingsController.deleteRateCard
 );
 
@@ -36,15 +36,15 @@ router.delete(
 router.patch(
     '/system',
     authController.protect,
-    authorize('MANAGE_USERS'),
+    authorize('MANAGE_SYSTEM_SETTINGS'),
     settingsController.updateSystemSettings
 );
 
-// Superadmin & Staff test carrier connection
+// Superadmin-only carrier connection test
 router.post(
     '/system/test-carrier',
     authController.protect,
-    authorize('MANAGE_USERS'),
+    authorize('MANAGE_SYSTEM_SETTINGS'),
     settingsController.testCarrierConnection
 );
 

@@ -42,7 +42,9 @@ Manual flow:
 | Environment | Base URL |
 | --- | --- |
 | Local | `http://localhost:8899/api` |
-| Production | `https://3pl-api.mawthook.io/api` |
+| Production | `https://api.target-kw.com/api` |
+
+The production API is hosted at `https://api.target-kw.com`; REST endpoints use the `/api` base path shown above.
 
 All `/v1` paths below are relative to the base URL.
 
@@ -130,7 +132,7 @@ The following route was verified live:
 - Returned service: `P`
 
 ```bash
-curl -X POST https://3pl-api.mawthook.io/api/v1/quotes \
+curl -X POST https://api.target-kw.com/api/v1/quotes \
   -H "Content-Type: application/json" \
   -H "x-api-key: YOUR_API_KEY" \
   -d '{
@@ -222,7 +224,7 @@ The following route was verified live:
 - `serviceCode: P`
 
 ```bash
-curl -X POST https://3pl-api.mawthook.io/api/v1/shipments \
+curl -X POST https://api.target-kw.com/api/v1/shipments \
   -H "Content-Type: application/json" \
   -H "x-api-key: YOUR_API_KEY" \
   -d '{
@@ -291,7 +293,7 @@ Live-verified response:
 This was also verified live with the same client API path after switching the API user to manual mode:
 
 ```bash
-curl -X POST https://3pl-api.mawthook.io/api/v1/shipments \
+curl -X POST https://api.target-kw.com/api/v1/shipments \
   -H "Content-Type: application/json" \
   -H "x-api-key: YOUR_API_KEY" \
   -d '{

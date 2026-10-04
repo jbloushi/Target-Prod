@@ -20,7 +20,7 @@ describe('Driver Proof of Delivery (POD)', () => {
         jest.clearAllMocks();
     });
 
-    it('records proof of delivery, updates status to DELIVERED, and stores signature and recipient info', async () => {
+    it('records proof of delivery, updates to the canonical delivered status, and stores signature and recipient info', async () => {
         const mockShipment = {
             id: 'ship-pod-1',
             trackingNumber: 'TRK-POD-100',
@@ -37,7 +37,7 @@ describe('Driver Proof of Delivery (POD)', () => {
         prisma.shipment.findUnique.mockResolvedValue(mockShipment);
         prisma.shipment.update.mockResolvedValue({
             ...mockShipment,
-            status: 'DELIVERED',
+            status: 'delivered',
             codStatus: 'COLLECTED'
         });
 
@@ -61,7 +61,7 @@ describe('Driver Proof of Delivery (POD)', () => {
         expect(prisma.shipment.update).toHaveBeenCalledWith(expect.objectContaining({
             where: { id: 'ship-pod-1' },
             data: expect.objectContaining({
-                status: 'DELIVERED',
+                status: 'delivered',
                 codStatus: 'COLLECTED',
                 documents: expect.objectContaining({
                     pod: expect.objectContaining({

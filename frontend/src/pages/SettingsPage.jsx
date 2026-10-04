@@ -18,33 +18,43 @@ const ROLE_DISPLAY_NAMES = {
   client: 'Direct Shipper',
 };
 
-const getTabs = (lang, isOps) => [
+const SUPERADMIN_TAB_IDS = new Set(['fleet', 'ratecards', 'phenix', 'whatsapp', 'notifications', 'routing']);
+
+export const getTabs = (lang, isSuperadmin) => [
   { id: 'profile', label: lang === 'ar' ? 'ملف الشاحن' : 'Shipper Profile', icon: 'person' },
   { id: 'addresses', label: lang === 'ar' ? 'سجل العناوين' : 'Address Presets', icon: 'location_on' },
   { id: 'api', label: lang === 'ar' ? 'واجهة API والويب هوك' : 'API & Webhooks', icon: 'key' },
-  ...(isOps ? [{ id: 'fleet', label: lang === 'ar' ? 'الأسطول والاشتراكات (Paywall)' : 'Fleet & Paywall Controls', icon: 'local_shipping' }] : []),
-  ...(isOps ? [{ id: 'ratecards', label: lang === 'ar' ? 'بطاقات الأسعار (Rate Cards)' : 'Rate Cards & Tariffs', icon: 'table_chart' }] : []),
-  { id: 'phenix', label: lang === 'ar' ? 'مزامنة فينيكس ERP' : 'Phenix ERP Sync', icon: 'sync_alt' },
-  { id: 'whatsapp', label: lang === 'ar' ? 'إشعارات واتساب وميتا' : 'Meta WhatsApp Alerts', icon: 'chat' },
-  { id: 'notifications', label: lang === 'ar' ? 'قنوات الإشعار' : 'Event Triggers', icon: 'notifications' },
-  { id: 'routing', label: lang === 'ar' ? 'مسارات وبوابات النقل' : 'Carrier Gateways', icon: 'hub' },
+  ...(isSuperadmin ? [
+    { id: 'fleet', label: lang === 'ar' ? 'الأسطول والاشتراكات (Paywall)' : 'Fleet & Paywall Controls', icon: 'local_shipping' },
+    { id: 'ratecards', label: lang === 'ar' ? 'بطاقات الأسعار (Rate Cards)' : 'Rate Cards & Tariffs', icon: 'table_chart' },
+    { id: 'phenix', label: lang === 'ar' ? 'مزامنة فينيكس ERP' : 'Phenix ERP Sync', icon: 'sync_alt' },
+    { id: 'whatsapp', label: lang === 'ar' ? 'إشعارات واتساب وميتا' : 'Meta WhatsApp Alerts', icon: 'chat' },
+    { id: 'notifications', label: lang === 'ar' ? 'قنوات الإشعار' : 'Event Triggers', icon: 'notifications' },
+    { id: 'routing', label: lang === 'ar' ? 'مسارات وبوابات النقل' : 'Carrier Gateways', icon: 'hub' },
+  ] : []),
   { id: 'security', label: lang === 'ar' ? 'الأمان وكلمة المرور' : 'Security & Password', icon: 'lock' },
 ];
 
 export const SettingsPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { t, lang, isRTL } = useLanguage();
-  const { user, refreshUser, isStaff, isAdmin } = useAuth();
+  const { user, refreshUser } = useAuth();
+  const isSuperadmin = user?.role === 'admin';
   const { enqueueSnackbar } = useSnackbar();
   const initialTab = searchParams.get('tab') || 'profile';
   const [activeTab, setActiveTab] = useState(initialTab);
 
   useEffect(() => {
     const tab = searchParams.get('tab');
+    if (tab && SUPERADMIN_TAB_IDS.has(tab) && !isSuperadmin) {
+      setActiveTab('profile');
+      setSearchParams({ tab: 'profile' }, { replace: true });
+      return;
+    }
     if (tab && tab !== activeTab) {
       setActiveTab(tab);
     }
-  }, [searchParams]);
+  }, [searchParams, activeTab, isSuperadmin, setSearchParams]);
 
   const handleTabChange = (tabId) => {
     setActiveTab(tabId);
@@ -163,8 +173,8 @@ export const SettingsPage = () => {
         console.debug('Error loading system settings:', err.message);
       }
     };
-    loadSettings();
-  }, [isStaff, isAdmin]);
+    if (isSuperadmin) loadSettings();
+  }, [isSuperadmin]);
 
   const generateNewKey = async () => {
     try {
@@ -407,7 +417,7 @@ export const SettingsPage = () => {
         {/* Navigation Menu */}
         <div className="md:col-span-3 card bg-base-100 border border-base-200 shadow-sm p-3">
           <ul className="menu menu-sm w-full gap-1 p-0">
-            {getTabs(lang, isStaff || isAdmin).map((tab) => {
+            {getTabs(lang, isSuperadmin).map((tab) => {
               const isActive = activeTab === tab.id;
               return (
                 <li key={tab.id}>
@@ -961,7 +971,7 @@ export const SettingsPage = () => {
           )}
 
           {/* TAB: Fleet Operations & Paywall Controls */}
-          {activeTab === 'fleet' && (
+          {isSuperadmin && activeTab === 'fleet' && (
             <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden animate-fade-in">
               <div className="card-body p-6 sm:p-8 space-y-6">
                 <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-base-200">
@@ -1161,10 +1171,10 @@ export const SettingsPage = () => {
           )}
 
           {/* TAB: Carrier Contract Rate Cards & Matrices */}
-          {activeTab === 'ratecards' && <RateCardsManager />}
+          {isSuperadmin && activeTab === 'ratecards' && <RateCardsManager />}
 
           {/* TAB: Phenix ERP Sync & Auto-Pull */}
-          {activeTab === 'phenix' && (
+          {isSuperadmin && activeTab === 'phenix' && (
             <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
               <div className="card-body p-6 sm:p-8 space-y-6">
                 <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-base-200">
@@ -1337,7 +1347,7 @@ export const SettingsPage = () => {
           )}
 
           {/* TAB 4: WhatsApp & Meta Cloud API */}
-          {activeTab === 'whatsapp' && (
+          {isSuperadmin && activeTab === 'whatsapp' && (
             <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
               <div className="card-body p-6 sm:p-8 space-y-6">
                 <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-base-200">
@@ -1433,7 +1443,7 @@ export const SettingsPage = () => {
           )}
 
           {/* TAB 5: Notification Triggers */}
-          {activeTab === 'notifications' && (
+          {isSuperadmin && activeTab === 'notifications' && (
             <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
               <div className="card-body p-6 sm:p-8 space-y-6">
                 <div>
@@ -1503,7 +1513,7 @@ export const SettingsPage = () => {
           )}
 
           {/* TAB 6: Carrier Gateways */}
-          {activeTab === 'routing' && (
+          {isSuperadmin && activeTab === 'routing' && (
             <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
               <div className="card-body p-6 sm:p-8 space-y-6">
                 <div>
