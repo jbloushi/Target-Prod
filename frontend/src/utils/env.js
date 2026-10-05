@@ -9,7 +9,7 @@ export const getApiBaseUrl = () => (
   getClientEnv('VITE_API_URL')
   || getClientEnv('REACT_APP_API_URL')
   || '/api'
-);
+).replace(/\/+$/, '');
 
 export const getGoogleMapsApiKey = () => (
   getClientEnv('VITE_GOOGLE_MAPS_API_KEY')
