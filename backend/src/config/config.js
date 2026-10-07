@@ -116,6 +116,7 @@ module.exports = {
     password: process.env.TRYTON_PASSWORD || 'admin',
     shadowMode: process.env.TRYTON_SHADOW_MODE !== 'false'
   },
+  primaryBackend: process.env.PRIMARY_BACKEND || 'LEGACY_MYSQL',
 };
 
 function safeJsonParse(value, fallback) {

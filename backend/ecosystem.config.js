@@ -36,17 +36,19 @@ module.exports = {
                 DB_HOST: 'localhost',
                 DB_PORT: 3306,
                 DB_NAME: 'target_logistics',
+                PRIMARY_BACKEND: process.env.PRIMARY_BACKEND || 'TRYTON',
             },
 
             // Environment variables - Development
             env_development: {
                 NODE_ENV: 'development',
                 PORT: 8899,
+                PRIMARY_BACKEND: process.env.PRIMARY_BACKEND || 'LEGACY_MYSQL',
             },
 
-            // Advanced options
+            // Advanced options for zero-downtime rolling reload
             kill_timeout: 5000, // Time to wait for graceful shutdown
-            wait_ready: false,
+            wait_ready: true,
             listen_timeout: 10000,
             
             // Log management - keep logs manageable
