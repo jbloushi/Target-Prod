@@ -6,7 +6,7 @@ const path = require('path');
 const { prisma, closeDB } = require('../src/config/database');
 const { syncCarrierTrackingHistory, resolveCarrierTrackingNumber } = require('../src/controllers/shipment.helpers');
 
-const days = Math.max(1, Number(process.argv[2] || 90));
+const days = Math.max(1, Number(process.argv[2] || 60));
 const output = process.argv[3] || path.join(process.cwd(), `carrier-status-audit-${new Date().toISOString().slice(0, 10)}.json`);
 const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
@@ -27,10 +27,7 @@ const classify = (internal, carrier, hasDeliveredEvent) => {
 async function main() {
     const shipments = await prisma.shipment.findMany({
         where: {
-            OR: [
-                { createdAt: { gte: cutoff } },
-                { status: 'delivered' }
-            ],
+            createdAt: { gte: cutoff },
             NOT: { status: 'cancelled' }
         },
         orderBy: { updatedAt: 'asc' }
