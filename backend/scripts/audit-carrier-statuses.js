@@ -4,7 +4,9 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const { prisma, closeDB } = require('../src/config/database');
-const { syncCarrierTrackingHistory, resolveCarrierTrackingNumber } = require('../src/controllers/shipment.helpers');
+const CarrierFactory = require('../src/services/CarrierFactory');
+const { resolveCarrierTrackingNumber } = require('../src/controllers/shipment.helpers');
+const { normalizeStatus } = require('../src/constants/statusConstants');
 
 const days = Math.max(1, Number(process.argv[2] || 60));
 const output = process.argv[3] || path.join(process.cwd(), `carrier-status-audit-${new Date().toISOString().slice(0, 10)}.json`);
@@ -15,12 +17,25 @@ const latestEvent = (history) => (Array.isArray(history) ? history : [])
     .filter((event) => event && event.timestamp)
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0] || null;
 
-const classify = (internal, carrier, hasDeliveredEvent) => {
-    if (internal === 'delivered' && carrier !== 'delivered') return 'DELIVERED_NOT_CONFIRMED';
-    if (internal !== 'delivered' && carrier === 'delivered') return 'CARRIER_DELIVERED_NOT_INTERNAL';
-    if (internal === 'exception' && carrier !== 'exception' && carrier) return 'EXCEPTION_CLEARED_BY_CARRIER';
-    if (internal !== carrier && carrier) return 'STATUS_MISMATCH';
-    if (internal === 'delivered' && !hasDeliveredEvent) return 'DELIVERED_WITHOUT_INTERNAL_SCAN';
+const classify = ({ internal, carrier, carrierTimestamp, internalTimestamp, carrierDescription }) => {
+    if (!carrier) return 'CARRIER_STATUS_UNAVAILABLE';
+    const carrierTime = carrierTimestamp ? new Date(carrierTimestamp).getTime() : 0;
+    const internalTime = internalTimestamp ? new Date(internalTimestamp).getTime() : 0;
+    const carrierIsNewer = carrierTime > 0 && (!internalTime || carrierTime > internalTime);
+    const text = String(carrierDescription || '').toLowerCase();
+
+    if (internal === carrier) return 'MATCH';
+    if (carrier === 'delivered' && internal !== 'delivered') {
+        return carrierIsNewer ? 'SYNC_LAG_CARRIER_NEWER' : 'CARRIER_DATA_OLDER_THAN_INTERNAL';
+    }
+    if (internal === 'delivered' && carrier !== 'delivered') {
+        return carrierIsNewer ? 'REAL_STATUS_MISMATCH' : 'CARRIER_DATA_OLDER_THAN_INTERNAL';
+    }
+    if (internal === 'exception' && carrier !== 'exception') {
+        return carrierIsNewer ? 'EXCEPTION_CLEARED_CARRIER_NEWER' : 'CARRIER_DATA_OLDER_THAN_INTERNAL';
+    }
+    if (text.includes('returned to shipper') && carrier === 'in_transit') return 'NORMAL_PROVIDER_MAPPING';
+    if (internal !== carrier) return carrierIsNewer ? 'REAL_STATUS_MISMATCH' : 'CARRIER_DATA_OLDER_THAN_INTERNAL';
     return 'MATCH';
 };
 
@@ -45,6 +60,7 @@ async function main() {
             internalStatus: normalize(shipment.status),
             internalLatestEvent: internalLatest?.description || null,
             internalLatestTimestamp: internalLatest?.timestamp || null,
+            internalUpdatedAt: shipment.updatedAt || null,
             checkedAt: new Date().toISOString(),
             carrierStatus: null,
             carrierLatestEvent: null,
@@ -61,17 +77,25 @@ async function main() {
         }
 
         try {
-            const updates = await syncCarrierTrackingHistory(shipment);
-            const carrierHistory = updates?.history || [];
-            const carrierLatest = latestEvent(carrierHistory);
-            row.carrierStatus = normalize(updates?.status || carrierLatest?.status);
-            row.carrierLatestEvent = carrierLatest?.description || null;
+            const isTest = shipment.pricingSnapshot?.isTest === true || shipment.pricingSnapshot?.environment === 'test';
+            const environment = isTest ? 'test' : (shipment.pricingSnapshot?.environment || 'production');
+            const adapter = CarrierFactory.getAdapter(carrierCode, { isTest, environment });
+            const tracking = await adapter.getTracking(carrierTrackingNumber, shipment);
+            const carrierEvents = Array.isArray(tracking?.events) ? tracking.events : [];
+            const carrierLatest = latestEvent(carrierEvents);
+            row.carrierStatus = normalizeStatus(carrierLatest?.statusCode || carrierLatest?.status || carrierLatest?.description || tracking?.status);
+            row.carrierLatestEvent = carrierLatest?.description || tracking?.description || null;
             row.carrierLatestTimestamp = carrierLatest?.timestamp || null;
-            const hasDeliveredEvent = carrierHistory.some((event) => normalize(event.status || event.description) === 'delivered');
-            row.mismatch = classify(row.internalStatus, row.carrierStatus, hasDeliveredEvent);
-            row.recommendedAction = row.mismatch === 'DELIVERED_NOT_CONFIRMED' ? `Review; candidate correction to ${row.carrierStatus}`
-                : row.mismatch === 'CARRIER_DELIVERED_NOT_INTERNAL' ? 'Review; candidate correction to delivered'
-                    : row.mismatch === 'EXCEPTION_CLEARED_BY_CARRIER' ? `Review; candidate correction to ${row.carrierStatus}` : null;
+            const internalReferenceTimestamp = internalLatest?.timestamp || shipment.updatedAt;
+            row.mismatch = classify({
+                internal: row.internalStatus,
+                carrier: row.carrierStatus,
+                carrierTimestamp: row.carrierLatestTimestamp,
+                internalTimestamp: internalReferenceTimestamp,
+                carrierDescription: row.carrierLatestEvent
+            });
+            row.recommendedAction = ['SYNC_LAG_CARRIER_NEWER', 'EXCEPTION_CLEARED_CARRIER_NEWER', 'REAL_STATUS_MISMATCH'].includes(row.mismatch)
+                ? `Review candidate correction to ${row.carrierStatus}` : null;
         } catch (error) {
             row.mismatch = 'PROVIDER_ERROR';
             row.error = error.message;
