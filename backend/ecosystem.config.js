@@ -36,7 +36,7 @@ module.exports = {
                 DB_HOST: 'localhost',
                 DB_PORT: 3306,
                 DB_NAME: 'target_logistics',
-                PRIMARY_BACKEND: process.env.PRIMARY_BACKEND || 'TRYTON',
+                PRIMARY_BACKEND: process.env.PRIMARY_BACKEND || 'LEGACY_MYSQL',
             },
 
             // Environment variables - Development

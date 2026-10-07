@@ -283,10 +283,14 @@ class TrytonClient {
         const journals = await this.modelCall('account.journal', 'search', [['code', '=', journalCode]], 0, 1, null);
         const journalId = journals?.[0] || (isPayment ? 2 : 1);
 
-        // Account IDs in Kuwait COA: 4 = Trade Debtors (AR), 11 = Freight Revenue, 3 = NBK Operating (Bank/Cash)
-        const arId = 4;
-        const revId = 11;
-        const cashId = 3;
+        // Resolve Accounts dynamically from Kuwait Chart of Accounts (COA)
+        const arAccounts = await this.modelCall('account.account', 'search', [['code', '=', '1100']], 0, 1, null);
+        const revAccounts = await this.modelCall('account.account', 'search', [['code', '=', '4010']], 0, 1, null);
+        const cashAccounts = await this.modelCall('account.account', 'search', [['code', '=', '1010']], 0, 1, null);
+
+        const arId = arAccounts?.[0] || 4;
+        const revId = revAccounts?.[0] || 11;
+        const cashId = cashAccounts?.[0] || 3;
 
         let linesToCreate = [];
         if (isPayment) {

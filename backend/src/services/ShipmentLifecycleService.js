@@ -230,25 +230,7 @@ class ShipmentLifecycleService {
         }
 
         const finalShipment = repricedShipment || receipt.updated || shipment;
-
-        // Outbound WhatsApp Milestone Notification for Certified Scale Verification
-        try {
-            const whatsappService = require('./whatsappIntegration.service');
-            const targetPhone = finalShipment.origin?.phone || finalShipment.senderPhone || finalShipment.user?.phone;
-            if (targetPhone) {
-                whatsappService.sendNotification({
-                    shipment: finalShipment,
-                    recipientRole: 'sender',
-                    recipientPhone: targetPhone,
-                    recipientName: finalShipment.origin?.contactPerson || finalShipment.user?.name || 'Shipper',
-                    templateName: 'shipment_confirmation_2',
-                    eventType: 'shipment_verified'
-                }).catch(err => {
-                    const logger = require('../utils/logger');
-                    logger.debug(`[ShipmentLifecycleService] WhatsApp notification skipped/async: ${err.message}`);
-                });
-            }
-        } catch (_) {}
+        triggerVerifiedNotification(finalShipment);
 
         return {
             ...receipt,

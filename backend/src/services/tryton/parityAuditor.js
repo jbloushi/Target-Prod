@@ -117,7 +117,16 @@ class ParityAuditor {
                 trytonPrice = Number(res.price);
             }
         } catch (e) {
-            logger.debug(`[ParityAuditor] Rate card RPC fallback to simulated parity: ${e.message}`);
+            logger.warn(`[ParityAuditor] Rate card RPC error: ${e.message}`);
+            return {
+                weight,
+                country,
+                expressPrice: Number(expressPrice.toFixed(3)),
+                trytonPrice: null,
+                deltaKwd: null,
+                isParity: false,
+                error: e.message
+            };
         }
 
         const deltaKwd = Math.abs(expressPrice - trytonPrice);
@@ -153,17 +162,48 @@ class ParityAuditor {
                 0,
                 1,
                 null,
-                ['id', 'name', 'credit_limit_amount']
+                ['id', 'name']
             );
 
             if (trytonParties && trytonParties.length > 0) {
-                matched++;
-                details.push({
-                    name: org.name,
-                    mysqlBalance: Number(org.balance),
-                    trytonPartyId: trytonParties[0].id,
-                    status: 'ALIGNED'
-                });
+                const partyId = trytonParties[0].id;
+                // Query posted move lines for party to compute net AR balance (Debits - Credits)
+                const lines = await trytonClient.modelCall(
+                    'account.move.line',
+                    'search_read',
+                    [['party', '=', partyId], ['move.state', '=', 'posted']],
+                    0,
+                    500,
+                    null,
+                    ['debit', 'credit']
+                );
+
+                const trytonBalance = lines ? lines.reduce((acc, l) => 
+                    acc + (parseFloat(l.debit?.decimal ?? l.debit ?? 0) - parseFloat(l.credit?.decimal ?? l.credit ?? 0)), 0
+                ) : 0;
+
+                const diff = Math.abs(Number(org.balance) - trytonBalance);
+                const isAligned = diff <= 0.001;
+
+                if (isAligned) {
+                    matched++;
+                    details.push({
+                        name: org.name,
+                        mysqlBalance: Number(Number(org.balance).toFixed(3)),
+                        trytonBalance: Number(trytonBalance.toFixed(3)),
+                        diff: Number(diff.toFixed(3)),
+                        status: 'ALIGNED'
+                    });
+                } else {
+                    driftCount++;
+                    details.push({
+                        name: org.name,
+                        mysqlBalance: Number(Number(org.balance).toFixed(3)),
+                        trytonBalance: Number(trytonBalance.toFixed(3)),
+                        diff: Number(diff.toFixed(3)),
+                        status: 'BALANCE_DRIFT'
+                    });
+                }
             } else {
                 driftCount++;
                 details.push({

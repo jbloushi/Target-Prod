@@ -6,6 +6,7 @@ const { syncCarrierTrackingHistory } = require('../controllers/shipment.helpers'
 const whatsappService = require('./whatsappIntegration.service');
 const financeLedgerService = require('./financeLedger.service');
 const SlaTrackerService = require('./slaTracker.service');
+const { jobQueue } = require('./queue');
 
 /**
  * Phenix ERP Synchronization Service
@@ -329,7 +330,6 @@ async function syncPhenixFinancialRecord({ shipment, v, orgId, defaultUserId }) 
 
             // Mirror freight charge to Tryton General Ledger
             try {
-                const { jobQueue } = require('./queue/jobQueue');
                 jobQueue.enqueue('tryton_dual_write', {
                     action: 'MIRROR_FINANCIAL_ENTRY',
                     partyName: v.merchantName || v.senderName || 'Phenix Merchant',
@@ -338,8 +338,12 @@ async function syncPhenixFinancialRecord({ shipment, v, orgId, defaultUserId }) 
                     description: `Consignment Freight Charge (Phenix Bill #${v.billId} - ${shipment.trackingNumber})`,
                     reference: v.receiptNo || v.billId,
                     source: 'PHENIX_CHARGE'
-                }, { maxRetries: 3, backoffMs: 5000 }).catch(() => {});
-            } catch (_) {}
+                }, { maxRetries: 3, backoffMs: 5000 }).catch(err => {
+                    logger.warn(`[PhenixSync] Tryton freight charge dual-write enqueue failed: ${err.message}`);
+                });
+            } catch (err) {
+                logger.warn(`[PhenixSync] Dual-write queue dispatch error: ${err.message}`);
+            }
         }
 
         // 2. If Paid at counter / KNET, record Payment & Credit Ledger Entry
@@ -407,7 +411,6 @@ async function syncPhenixFinancialRecord({ shipment, v, orgId, defaultUserId }) 
 
                 // Mirror payment receipt to Tryton General Ledger
                 try {
-                    const { jobQueue } = require('./queue/jobQueue');
                     jobQueue.enqueue('tryton_dual_write', {
                         action: 'MIRROR_FINANCIAL_ENTRY',
                         partyName: v.merchantName || v.senderName || 'Phenix Merchant',
@@ -416,8 +419,12 @@ async function syncPhenixFinancialRecord({ shipment, v, orgId, defaultUserId }) 
                         description: `Payment Receipt (${v.paymentMethod || 'CASH'} - Phenix #${v.receiptNo || v.billId})`,
                         reference: paymentRef,
                         source: 'PAYMENT'
-                    }, { maxRetries: 3, backoffMs: 5000 }).catch(() => {});
-                } catch (_) {}
+                    }, { maxRetries: 3, backoffMs: 5000 }).catch(err => {
+                        logger.warn(`[PhenixSync] Tryton payment dual-write enqueue failed: ${err.message}`);
+                    });
+                } catch (err) {
+                    logger.warn(`[PhenixSync] Dual-write queue payment dispatch error: ${err.message}`);
+                }
             }
 
             // Update shipment paid state
@@ -945,7 +952,6 @@ class PhenixSyncService {
 
                     // Tryton ERP Shadow Dual-Writing Ingestion
                     try {
-                        const { jobQueue } = require('./queue/jobQueue');
                         jobQueue.enqueue('tryton_dual_write', {
                             action: 'CREATE_SHIPMENT',
                             shipmentId: shipment.id,
