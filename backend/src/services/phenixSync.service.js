@@ -326,6 +326,20 @@ async function syncPhenixFinancialRecord({ shipment, v, orgId, defaultUserId }) 
                     isPaid
                 }
             });
+
+            // Mirror freight charge to Tryton General Ledger
+            try {
+                const { jobQueue } = require('./queue/jobQueue');
+                jobQueue.enqueue('tryton_dual_write', {
+                    action: 'MIRROR_FINANCIAL_ENTRY',
+                    partyName: v.merchantName || v.senderName || 'Phenix Merchant',
+                    amount: v.totalAmount,
+                    entryType: 'DEBIT',
+                    description: `Consignment Freight Charge (Phenix Bill #${v.billId} - ${shipment.trackingNumber})`,
+                    reference: v.receiptNo || v.billId,
+                    source: 'PHENIX_CHARGE'
+                }, { maxRetries: 3, backoffMs: 5000 }).catch(() => {});
+            } catch (_) {}
         }
 
         // 2. If Paid at counter / KNET, record Payment & Credit Ledger Entry
@@ -390,6 +404,20 @@ async function syncPhenixFinancialRecord({ shipment, v, orgId, defaultUserId }) 
                         shipmentId: shipment.id
                     }
                 });
+
+                // Mirror payment receipt to Tryton General Ledger
+                try {
+                    const { jobQueue } = require('./queue/jobQueue');
+                    jobQueue.enqueue('tryton_dual_write', {
+                        action: 'MIRROR_FINANCIAL_ENTRY',
+                        partyName: v.merchantName || v.senderName || 'Phenix Merchant',
+                        amount: v.totalAmount,
+                        entryType: 'CREDIT',
+                        description: `Payment Receipt (${v.paymentMethod || 'CASH'} - Phenix #${v.receiptNo || v.billId})`,
+                        reference: paymentRef,
+                        source: 'PAYMENT'
+                    }, { maxRetries: 3, backoffMs: 5000 }).catch(() => {});
+                } catch (_) {}
             }
 
             // Update shipment paid state
@@ -914,6 +942,21 @@ class PhenixSyncService {
                     wasCreated = true;
                     summary.createdCount++;
                     logger.info(`[PhenixSync] Created new shipment ${trackingNumber} for Merchant "${v.merchantName}" (ID: ${v.merchantId}) -> Dest: ${v.destCountryName} (AWB: ${v.carrierTracking}) [Date: ${consignmentDate.toISOString()}]`);
+
+                    // Tryton ERP Shadow Dual-Writing Ingestion
+                    try {
+                        const { jobQueue } = require('./queue/jobQueue');
+                        jobQueue.enqueue('tryton_dual_write', {
+                            action: 'CREATE_SHIPMENT',
+                            shipmentId: shipment.id,
+                            trackingNumber: shipment.trackingNumber,
+                            source: 'PHENIX_SYNC'
+                        }, { maxRetries: 3, backoffMs: 5000 }).catch(err => {
+                            logger.warn(`[PhenixSync] Tryton dual-write enqueue failed for ${shipment.trackingNumber}: ${err.message}`);
+                        });
+                    } catch (queueErr) {
+                        logger.warn(`[PhenixSync] Dual-write queue error: ${queueErr.message}`);
+                    }
                 } else {
                     // Update existing record with any missing Phenix metadata & link org if unassigned
                     const currentDocs = (existing.documents && typeof existing.documents === 'object') ? existing.documents : {};

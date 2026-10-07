@@ -176,7 +176,11 @@ class TrytonClient {
     async mirrorShipment(prismaShipment) {
         if (!this.enabled || !prismaShipment) return null;
 
-        const customerId = await this.mirrorParty(prismaShipment.user || prismaShipment.sender);
+        const partyCandidate = prismaShipment.user || prismaShipment.sender ||
+            (prismaShipment.origin ? { name: prismaShipment.origin.companyName || prismaShipment.origin.contactPerson } : null) ||
+            (prismaShipment.customer ? { name: prismaShipment.customer.merchant || prismaShipment.customer.name } : null) ||
+            { name: 'Direct Customer' };
+        const customerId = await this.mirrorParty(partyCandidate);
         
         // Ensure customer has delivery address
         const addresses = await this.modelCall('party.address', 'search', [['party', '=', customerId]], 0, 1, null);
@@ -212,6 +216,9 @@ class TrytonClient {
             carrier_code: prismaShipment.carrierCode || 'DGR',
             carrier_waybill: prismaShipment.trackingNumber
         };
+        if (prismaShipment.price != null && Number(prismaShipment.price) > 0) {
+            shipmentValues.draft_selling_price = Number(Number(prismaShipment.price).toFixed(3));
+        }
 
         const newShipmentIds = await this.modelCall('stock.shipment.out', 'create', [shipmentValues]);
         const trytonShipmentId = newShipmentIds[0];
@@ -239,6 +246,82 @@ class TrytonClient {
 
         logger.info(`[TrytonClient] Mirrored shipment ${prismaShipment.trackingNumber} -> Tryton ID ${trytonShipmentId}`);
         return { trytonShipmentId };
+    }
+
+    /**
+     * Mirrors double-entry financial moves (Freight charges, customer payments) to Tryton General Ledger.
+     */
+    async mirrorFinancialMove({ partyName, amount, entryType, description, reference, source }) {
+        if (!this.enabled || !amount || amount <= 0) return null;
+
+        const partyId = await this.mirrorParty({ name: partyName || 'Cash / Retail Client' });
+        const numAmount = Number(amount).toFixed(3);
+
+        const now = new Date();
+        const dateObj = {
+            __class__: 'date',
+            year: now.getFullYear(),
+            month: now.getMonth() + 1,
+            day: now.getDate()
+        };
+
+        // Find open period matching date
+        const periods = await this.modelCall('account.period', 'search', [
+            ['start_date', '<=', dateObj],
+            ['end_date', '>=', dateObj],
+            ['state', '=', 'open']
+        ], 0, 1, null);
+        const periodId = periods?.[0];
+        if (!periodId) {
+            logger.warn('[TrytonClient] No open account.period found for financial move mirroring');
+            return null;
+        }
+
+        // Journals: REV (ID 1) for charges, CASH (ID 2) for payments
+        const isPayment = entryType === 'CREDIT' || source === 'PAYMENT';
+        const journalCode = isPayment ? 'CASH' : 'REV';
+        const journals = await this.modelCall('account.journal', 'search', [['code', '=', journalCode]], 0, 1, null);
+        const journalId = journals?.[0] || (isPayment ? 2 : 1);
+
+        // Account IDs in Kuwait COA: 4 = Trade Debtors (AR), 11 = Freight Revenue, 3 = NBK Operating (Bank/Cash)
+        const arId = 4;
+        const revId = 11;
+        const cashId = 3;
+
+        let linesToCreate = [];
+        if (isPayment) {
+            // Payment Receipt: Dr Cash/Bank (no party), Cr Accounts Receivable (partyId)
+            linesToCreate = [
+                { account: cashId, debit: { __class__: 'Decimal', decimal: numAmount }, credit: { __class__: 'Decimal', decimal: '0.000' }, description: description || `Payment receipt ${reference || ''}` },
+                { account: arId, debit: { __class__: 'Decimal', decimal: '0.000' }, credit: { __class__: 'Decimal', decimal: numAmount }, party: partyId, description: description || `Payment receipt ${reference || ''}` }
+            ];
+        } else {
+            // Freight Charge: Dr Accounts Receivable (partyId), Cr Freight Revenue (no party)
+            linesToCreate = [
+                { account: arId, debit: { __class__: 'Decimal', decimal: numAmount }, credit: { __class__: 'Decimal', decimal: '0.000' }, party: partyId, description: description || `Freight charge ${reference || ''}` },
+                { account: revId, debit: { __class__: 'Decimal', decimal: '0.000' }, credit: { __class__: 'Decimal', decimal: numAmount }, description: description || `Freight charge ${reference || ''}` }
+            ];
+        }
+
+        const moveIds = await this.modelCall('account.move', 'create', [{
+            company: 1,
+            period: periodId,
+            journal: journalId,
+            date: dateObj,
+            description: description || `Phenix Sync: ${reference || 'Move'}`,
+            lines: [['create', linesToCreate]]
+        }]);
+
+        if (moveIds && moveIds.length > 0) {
+            try {
+                await this.modelCall('account.move', 'post', [moveIds[0]]);
+            } catch (e) {
+                logger.warn(`[TrytonClient] Move post warning: ${e.message}`);
+            }
+            logger.info(`[TrytonClient] Mirrored financial move ${moveIds[0]} (${numAmount} KWD)`);
+            return { moveId: moveIds[0] };
+        }
+        return null;
     }
 
     /**

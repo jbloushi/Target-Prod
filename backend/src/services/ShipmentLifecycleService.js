@@ -166,7 +166,29 @@ class ShipmentLifecycleService {
 
     async completeReview(shipment, actor, command = {}) {
         const receipt = await this.receiveAtOffice(shipment, actor, { ...command, action: 'verify' });
+
+        const triggerVerifiedNotification = (finalShipment) => {
+            try {
+                const whatsappService = require('./whatsappIntegration.service');
+                const targetPhone = finalShipment.origin?.phone || finalShipment.senderPhone || finalShipment.user?.phone;
+                if (targetPhone) {
+                    whatsappService.sendNotification({
+                        shipment: finalShipment,
+                        recipientRole: 'sender',
+                        recipientPhone: targetPhone,
+                        recipientName: finalShipment.origin?.contactPerson || finalShipment.user?.name || 'Shipper',
+                        templateName: 'shipment_confirmation_2',
+                        eventType: 'shipment_verified'
+                    }).catch(err => {
+                        const logger = require('../utils/logger');
+                        logger.debug(`[ShipmentLifecycleService] WhatsApp notification skipped/async: ${err.message}`);
+                    });
+                }
+            } catch (_) {}
+        };
+
         if (String(shipment.carrierCode || '').toUpperCase() === 'INTERNAL') {
+            triggerVerifiedNotification(receipt.updated || shipment);
             return { ...receipt, reviewCompleted: true };
         }
 
@@ -207,9 +229,30 @@ class ShipmentLifecycleService {
             });
         }
 
+        const finalShipment = repricedShipment || receipt.updated || shipment;
+
+        // Outbound WhatsApp Milestone Notification for Certified Scale Verification
+        try {
+            const whatsappService = require('./whatsappIntegration.service');
+            const targetPhone = finalShipment.origin?.phone || finalShipment.senderPhone || finalShipment.user?.phone;
+            if (targetPhone) {
+                whatsappService.sendNotification({
+                    shipment: finalShipment,
+                    recipientRole: 'sender',
+                    recipientPhone: targetPhone,
+                    recipientName: finalShipment.origin?.contactPerson || finalShipment.user?.name || 'Shipper',
+                    templateName: 'shipment_confirmation_2',
+                    eventType: 'shipment_verified'
+                }).catch(err => {
+                    const logger = require('../utils/logger');
+                    logger.debug(`[ShipmentLifecycleService] WhatsApp notification skipped/async: ${err.message}`);
+                });
+            }
+        } catch (_) {}
+
         return {
             ...receipt,
-            updated: repricedShipment || receipt.updated,
+            updated: finalShipment,
             reviewCompleted: true,
             previousPrice,
             currentPrice

@@ -74,6 +74,8 @@ function initWorkers() {
                 if (shipment) {
                     return await trytonClient.mirrorShipment(shipment);
                 }
+            } else if (payload.action === 'MIRROR_FINANCIAL_ENTRY') {
+                return await trytonClient.mirrorFinancialMove(payload);
             } else if (payload.action === 'WAREHOUSE_SCAN') {
                 return await trytonClient.mirrorWarehouseScan(payload.trackingNumber, payload.scanData);
             } else if (payload.action === 'SYNC_PARTY') {
