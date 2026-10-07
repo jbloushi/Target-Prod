@@ -13,3 +13,4 @@ node_modules/
 backend/run_query.js
 backend/data/salla_tokens.json
 backend/src/constants/rateCards/dgr_test.json
+.scratch/
