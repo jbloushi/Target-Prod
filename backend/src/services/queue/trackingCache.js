@@ -9,6 +9,7 @@ try {
 }
 
 const DEFAULT_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const DELIVERED_RECHECK_WINDOW_MS = 24 * 60 * 60 * 1000;
 const trackingSyncCache = new Map(); // trackingNumber -> lastSyncTimestamp (ms)
 const trackingSyncInFlight = new Set(); // trackingNumbers currently syncing
 
@@ -26,8 +27,20 @@ function isTrackingSyncDue(shipment, ttlMs) {
         : (parseInt(process.env.TRACKING_CACHE_TTL_MS, 10) || DEFAULT_TTL_MS);
 
     const status = String(shipment.status || '').toLowerCase();
-    // Terminal statuses and draft shipments are not due for carrier tracking
-    if (['draft', 'delivered', 'cancelled', 'returned', 'rejected'].includes(status)) {
+    // Delivered shipments get one final 24-hour reconciliation window. This
+    // protects against a premature delivered status while keeping genuinely
+    // old terminal shipments out of the carrier polling path.
+    if (status === 'delivered') {
+        const updatedAt = shipment.updatedAt ? new Date(shipment.updatedAt).getTime() : 0;
+        const withinRecheckWindow = !updatedAt || (Date.now() - updatedAt) <= DELIVERED_RECHECK_WINDOW_MS;
+        if (!withinRecheckWindow) return false;
+
+        const lastSync = trackingSyncCache.get(shipment.trackingNumber);
+        return !lastSync || (Date.now() - lastSync) > effectiveTtl;
+    }
+
+    // Other terminal statuses and draft shipments are not due for carrier tracking
+    if (['draft', 'cancelled', 'returned', 'rejected'].includes(status)) {
         return false;
     }
 

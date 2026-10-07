@@ -98,11 +98,15 @@ function normalizeStatus(raw) {
     if (OTE_STATUS_MAP[s]) return OTE_STATUS_MAP[s];
     if (DHL_STATUS_MAP[s] != null) return DHL_STATUS_MAP[s];
 
+    if (s.includes('held_for_pickup') || s.includes('held for pickup')) return 'exception';
+
     // Semantic matching for carrier descriptions and freeform statuses (Aramex, FedEx, DHL, OTE, etc.)
     if (s.includes('exception') || s.includes('hold') || s.includes('held') || s.includes('delay') || s.includes('undeliver') || s.includes('failed') || s.includes('incomplete') || s.includes('damage') || s.includes('clearance_delay')) return 'exception';
     if (s.includes('out_for_delivery') || s.includes('for_delivery') || s.includes('with_courier') || s.includes('with_driver') || s === 'od') return 'out_for_delivery';
     if (s.includes('delivered') || s.includes('consignee') || s === 'dlv' || s.includes('pod') || s === 'delivered_to_recipient') return 'delivered';
     if (s.includes('rto') || s.includes('returned')) return 'returned';
+    // Informational carrier updates must not replace the shipment milestone.
+    if (isInformationalCarrierText(s)) return null;
     if (s.includes('received_at_hub') || s.includes('arrived') || s === 'af' || s.includes('sorting_hub') || s.includes('facility')) return 'received_at_hub';
     if (s.includes('picked') || s.includes('collected') || s === 'pu') return 'picked_up';
     if (s.includes('transit') || s.includes('flight') || s.includes('depart') || s === 'sh' || s.includes('custom')) return 'in_transit';
@@ -111,6 +115,61 @@ function normalizeStatus(raw) {
 
     return 'in_transit'; // safe fallback for unknown carrier codes
 }
+
+const isInformationalCarrierText = (value = '') => {
+    const text = String(value).toLowerCase().replace(/_/g, ' ');
+    return text.includes('payment received')
+        || text.includes('payment is received')
+        || text.includes('charges paid')
+        || text.includes('customs update')
+        || text.includes('delivery instructions');
+};
+
+const getCarrierEventClassification = (event = {}) => {
+    const rawStatus = event.statusCode || event.status || null;
+    const rawDescription = event.description || '';
+    const raw = `${rawStatus || ''} ${rawDescription}`.trim();
+    const descriptionStatus = normalizeStatus(rawDescription);
+    const normalized = descriptionStatus === 'delivered'
+        || descriptionStatus === 'returned'
+        ? descriptionStatus
+        : normalizeStatus(raw);
+    const text = raw.toLowerCase();
+    const flags = [];
+
+    if (isInformationalCarrierText(text)) flags.push(text.includes('payment') || text.includes('charges') ? 'payment_confirmed' : 'carrier_information');
+    if (text.includes('hold') || text.includes('held') || text.includes('clearance delay') || text.includes('payment required')) flags.push('operational_hold');
+    if (text.includes('held for pickup')) flags.push('pickup_ready');
+
+    return {
+        rawStatus,
+        rawDescription,
+        normalizedStatus: normalized,
+        flags: [...new Set(flags)]
+    };
+};
+
+const selectEffectiveCarrierStatus = (events = [], fallbackStatus = null) => {
+    const sorted = [...events].filter(Boolean).sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
+    let effective = null;
+    const flags = new Set();
+    let latestMeaningfulEvent = null;
+
+    for (const event of sorted) {
+        const classification = getCarrierEventClassification(event);
+        classification.flags.forEach((flag) => flags.add(flag));
+        if (classification.normalizedStatus) {
+            effective = classification.normalizedStatus;
+            latestMeaningfulEvent = { ...event, ...classification };
+        }
+    }
+
+    return {
+        normalizedStatus: effective || (fallbackStatus ? normalizeStatus(fallbackStatus) : null),
+        latestMeaningfulEvent,
+        flags: [...flags]
+    };
+};
 
 const PIPELINE_STATUSES = [
     'draft', 'pending', 'booked', 'ready_for_pickup', 'picked_up',
@@ -155,6 +214,9 @@ module.exports = {
     OTE_STATUS_MAP,
     LEGACY_STATUS_MAP,
     normalizeStatus,
+    isInformationalCarrierText,
+    getCarrierEventClassification,
+    selectEffectiveCarrierStatus,
     getStatusIndex,
     isStatusAhead,
 };

@@ -6,7 +6,7 @@ const path = require('path');
 const { prisma, closeDB } = require('../src/config/database');
 const CarrierFactory = require('../src/services/CarrierFactory');
 const { resolveCarrierTrackingNumber } = require('../src/controllers/shipment.helpers');
-const { normalizeStatus } = require('../src/constants/statusConstants');
+const { normalizeStatus, selectEffectiveCarrierStatus } = require('../src/constants/statusConstants');
 
 const days = Math.max(1, Number(process.argv[2] || 60));
 const output = process.argv[3] || path.join(process.cwd(), `carrier-status-audit-${new Date().toISOString().slice(0, 10)}.json`);
@@ -63,6 +63,8 @@ async function main() {
             internalUpdatedAt: shipment.updatedAt || null,
             checkedAt: new Date().toISOString(),
             carrierStatus: null,
+            rawCarrierStatus: null,
+            carrierFlags: [],
             carrierLatestEvent: null,
             carrierLatestTimestamp: null,
             mismatch: 'NOT_CHECKED',
@@ -82,9 +84,12 @@ async function main() {
             const adapter = CarrierFactory.getAdapter(carrierCode, { isTest, environment });
             const tracking = await adapter.getTracking(carrierTrackingNumber, shipment);
             const carrierEvents = Array.isArray(tracking?.events) ? tracking.events : [];
-            const carrierLatest = latestEvent(carrierEvents);
-            row.carrierStatus = normalizeStatus(carrierLatest?.statusCode || carrierLatest?.status || carrierLatest?.description || tracking?.status);
-            row.carrierLatestEvent = carrierLatest?.description || tracking?.description || null;
+            const effectiveCarrier = selectEffectiveCarrierStatus(carrierEvents, tracking?.status);
+            const carrierLatest = effectiveCarrier.latestMeaningfulEvent || latestEvent(carrierEvents);
+            row.rawCarrierStatus = carrierLatest?.rawStatus || tracking?.status || null;
+            row.carrierFlags = effectiveCarrier.flags;
+            row.carrierStatus = effectiveCarrier.normalizedStatus;
+            row.carrierLatestEvent = carrierLatest?.rawDescription || carrierLatest?.description || tracking?.description || null;
             row.carrierLatestTimestamp = carrierLatest?.timestamp || null;
             const internalReferenceTimestamp = internalLatest?.timestamp || shipment.updatedAt;
             row.mismatch = classify({
