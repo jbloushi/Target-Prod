@@ -59,6 +59,32 @@ function initWorkers() {
         }
     });
 
+    // 5. Tryton ERP Shadow Dual-Writing Worker
+    jobQueue.registerWorker('tryton_dual_write', async (payload, context) => {
+        logger.info(`[jobWorker] Processing tryton_dual_write (${payload.action}) for ${payload.trackingNumber || payload.shipmentId} (Job ${context.jobId})`);
+        const trytonClient = require('../tryton/trytonClient');
+        const { prisma } = require('../../config/database');
+
+        try {
+            if (payload.action === 'CREATE_SHIPMENT') {
+                const shipment = await prisma.shipment.findUnique({
+                    where: { id: payload.shipmentId },
+                    include: { user: true }
+                });
+                if (shipment) {
+                    return await trytonClient.mirrorShipment(shipment);
+                }
+            } else if (payload.action === 'WAREHOUSE_SCAN') {
+                return await trytonClient.mirrorWarehouseScan(payload.trackingNumber, payload.scanData);
+            } else if (payload.action === 'SYNC_PARTY') {
+                return await trytonClient.mirrorParty(payload.party);
+            }
+        } catch (err) {
+            logger.error(`[jobWorker] Tryton dual-write failed for ${payload.trackingNumber || payload.shipmentId}: ${err.message}`);
+            throw err; // Allow jobQueue retry with backoff
+        }
+    });
+
     return jobQueue;
 }
 
