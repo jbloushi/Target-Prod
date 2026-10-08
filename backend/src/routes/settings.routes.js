@@ -8,6 +8,7 @@ const geminiController = require('../controllers/geminiClassification.controller
 // Public/Authenticated reading of system settings (e.g. carrier display names)
 router.get('/system', settingsController.getSystemSettings);
 router.get('/gemini/classifications', authController.protect, authorize('MANAGE_CARRIER_CLASSIFICATIONS'), geminiController.getDashboard);
+router.patch('/gemini/classifications', authController.protect, authorize('MANAGE_CARRIER_CLASSIFICATIONS'), geminiController.updateClassification);
 router.patch('/gemini/classifications/:id', authController.protect, authorize('MANAGE_CARRIER_CLASSIFICATIONS'), geminiController.updateClassification);
 
 // Available rate cards for carrier assignment
