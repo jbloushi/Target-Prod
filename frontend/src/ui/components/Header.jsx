@@ -302,7 +302,7 @@ const Header = () => {
                                                 </Link>
                                             )}
 
-                                            {user?.role === 'admin' && (
+                                            {['admin', 'manager', 'accounting', 'staff'].includes(user?.role) && (
                                                 <Link
                                                     to="/admin/gemini-classifications"
                                                     className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"

@@ -138,7 +138,7 @@ const AppRoutes = () => {
           } />
 
           <Route path="admin/gemini-classifications" element={
-            <ProtectedRoute allowedRoles={['admin']}>
+            <ProtectedRoute allowedRoles={['admin', 'manager', 'accounting', 'staff']}>
               <AdminGeminiClassificationsPage />
             </ProtectedRoute>
           } />
