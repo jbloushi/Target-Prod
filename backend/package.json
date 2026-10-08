@@ -20,6 +20,7 @@
     "verify:tracking": "node scripts/verify-carrier-scraping.js",
     "sync:carriers": "node scripts/sync-all-carriers.js",
     "audit:carrier-statuses": "node scripts/audit-carrier-statuses.js",
+    "classify:carrier-backlog": "node scripts/classify-carrier-backlog.js",
     "dispatch:whatsapp": "node scripts/dispatch-pending-whatsapp.js",
     "phenix:inspect": "node scripts/inspect-phenix.js",
     "phenix:sync": "node scripts/sync-phenix-cli.js",
