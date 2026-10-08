@@ -302,6 +302,19 @@ const Header = () => {
                                                 </Link>
                                             )}
 
+                                            {user?.role === 'admin' && (
+                                                <Link
+                                                    to="/admin/gemini-classifications"
+                                                    className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
+                                                >
+                                                    <span className="material-symbols-outlined text-base text-primary">psychology</span>
+                                                    <div>
+                                                        <p>{isRTL ? 'تصنيفات تتبع Gemini' : 'Gemini Carrier Classifications'}</p>
+                                                        <p className="text-[10px] text-base-content/50 font-normal">{isRTL ? 'مراجعة وتطبيع أحداث الناقل' : 'Review & normalize carrier events'}</p>
+                                                    </div>
+                                                </Link>
+                                            )}
+
                                             {isAdminOrOwnerOrAcct && (
                                                 <Link
                                                     to="/admin/phenix-audit"

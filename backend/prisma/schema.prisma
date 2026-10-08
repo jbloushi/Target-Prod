@@ -564,6 +564,9 @@ model GeminiClassificationLog {
   promptVersion      String?
   responsePayload    Json?
   errorMessage       String?  @db.Text
+  reviewedBy         String?
+  reviewedAt         DateTime?
+  reviewNote         String?  @db.Text
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 

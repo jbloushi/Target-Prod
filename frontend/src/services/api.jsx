@@ -1404,6 +1404,10 @@ export const settingsService = {
     const response = await api.get('settings/gemini/classifications');
     return response.data;
   },
+  updateGeminiClassification: async (id, payload) => {
+    const response = await api.patch(`settings/gemini/classifications/${id}`, payload);
+    return response.data;
+  },
   getSystemSettings: async () => {
     try {
       const response = await api.get('settings/system');
