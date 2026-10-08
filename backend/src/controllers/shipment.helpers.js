@@ -7,6 +7,7 @@ const CarrierFactory = require('../services/CarrierFactory');
 const SlaTrackerService = require('../services/slaTracker.service');
 const logger = require('../utils/logger');
 const { normalizeStatus, isStatusAhead } = require('../constants/statusConstants');
+const { getCarrierEventClassification } = require('../constants/statusConstants');
 
 const DEFAULT_MARKUP = { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 };
 
@@ -436,6 +437,24 @@ const syncCarrierTrackingHistory = async (shipment) => {
         }
 
         const currentHistory = compactedOriginalHistory;
+        const latestKnownCarrierTimestamp = currentHistory
+            .filter((entry) => String(entry.source || '').toLowerCase() === 'carrier' && entry.timestamp)
+            .reduce((latest, entry) => Math.max(latest, new Date(entry.timestamp).getTime()), 0);
+        if (process.env.GEMINI_CLASSIFICATION_ENABLED === 'true') {
+            const { classifyNewEvent } = require('../services/geminiClassification.service');
+            const ambiguousNewEvents = events.filter((event) => {
+                const eventTime = new Date(event.timestamp || 0).getTime();
+                const classification = getCarrierEventClassification(event);
+                return eventTime > latestKnownCarrierTimestamp && !classification.normalizedStatus;
+            });
+            await Promise.all(ambiguousNewEvents.map((event) => classifyNewEvent({
+                provider: carrierCode,
+                trackingNumber,
+                rawStatus: event.statusCode || event.status || null,
+                description: event.description || '',
+                timestamp: event.timestamp || null
+            })));
+        }
         const existingByKey = new Map(
             currentHistory.map((entry) => [buildHistoryKey(entry), entry])
         );

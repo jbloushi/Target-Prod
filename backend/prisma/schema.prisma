@@ -548,6 +548,29 @@ model CarrierLog {
   @@index([organizationId, createdAt], map: "CarrierLog_org_created_idx")
 }
 
+model GeminiClassificationLog {
+  id                 String   @id @default(uuid())
+  eventFingerprint   String   @unique
+  provider           String
+  trackingNumber     String?
+  rawStatus          String?  @db.VarChar(255)
+  rawDescription     String   @db.Text
+  normalizedStatus   String?
+  operationalFlags   Json?
+  confidence         Float?
+  decision           String   @default("pending") // classified | manual_review | error | skipped
+  source             String   @default("gemini")
+  model              String?
+  promptVersion      String?
+  responsePayload    Json?
+  errorMessage       String?  @db.Text
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([provider, decision, createdAt], map: "GeminiLog_provider_decision_created_idx")
+  @@index([trackingNumber], map: "GeminiLog_tracking_idx")
+}
+
 model SystemAuditLog {
   id               String       @id @default(uuid())
   userId           String?

@@ -15,6 +15,7 @@ const AddressBookPage = lazy(() => import('../pages/AddressBookPage'));
 const AdminUsersPage = lazy(() => import('../pages/AdminUsersPage'));
 const AdminOrganizationsPage = lazy(() => import('../pages/AdminOrganizationsPage'));
 const AdminWhatsAppLogsPage = lazy(() => import('../pages/AdminWhatsAppLogsPage'));
+const AdminGeminiClassificationsPage = lazy(() => import('../pages/AdminGeminiClassificationsPage'));
 const PhenixAuditLogsPage = lazy(() => import('../pages/PhenixAuditLogsPage'));
 const PublicLocationPage = lazy(() => import('../pages/PublicLocationPage'));
 const PublicTrackingLandingPage = lazy(() => import('../pages/PublicTrackingLandingPage'));
@@ -133,6 +134,12 @@ const AppRoutes = () => {
           <Route path="admin/whatsapp-logs" element={
             <ProtectedRoute allowedRoles={['admin', 'manager', 'accounting', 'staff']}>
               <AdminWhatsAppLogsPage />
+            </ProtectedRoute>
+          } />
+
+          <Route path="admin/gemini-classifications" element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminGeminiClassificationsPage />
             </ProtectedRoute>
           } />
 

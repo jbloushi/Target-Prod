@@ -1400,6 +1400,10 @@ export const organizationService = {
 };
 
 export const settingsService = {
+  getGeminiClassifications: async () => {
+    const response = await api.get('settings/gemini/classifications');
+    return response.data;
+  },
   getSystemSettings: async () => {
     try {
       const response = await api.get('settings/system');

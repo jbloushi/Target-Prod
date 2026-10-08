@@ -1,0 +1,23 @@
+CREATE TABLE `GeminiClassificationLog` (
+  `id` VARCHAR(191) NOT NULL,
+  `eventFingerprint` VARCHAR(191) NOT NULL,
+  `provider` VARCHAR(191) NOT NULL,
+  `trackingNumber` VARCHAR(191) NULL,
+  `rawStatus` VARCHAR(255) NULL,
+  `rawDescription` TEXT NOT NULL,
+  `normalizedStatus` VARCHAR(191) NULL,
+  `operationalFlags` JSON NULL,
+  `confidence` DOUBLE NULL,
+  `decision` VARCHAR(191) NOT NULL DEFAULT 'pending',
+  `source` VARCHAR(191) NOT NULL DEFAULT 'gemini',
+  `model` VARCHAR(191) NULL,
+  `promptVersion` VARCHAR(191) NULL,
+  `responsePayload` JSON NULL,
+  `errorMessage` TEXT NULL,
+  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updatedAt` DATETIME(3) NOT NULL,
+  UNIQUE INDEX `GeminiClassificationLog_eventFingerprint_key`(`eventFingerprint`),
+  INDEX `GeminiLog_provider_decision_created_idx`(`provider`, `decision`, `createdAt`),
+  INDEX `GeminiLog_tracking_idx`(`trackingNumber`),
+  PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
