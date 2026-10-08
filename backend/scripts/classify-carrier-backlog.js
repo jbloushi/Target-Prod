@@ -3,11 +3,11 @@
 require('dotenv').config();
 const { prisma, closeDB } = require('../src/config/database');
 const { getCarrierEventClassification } = require('../src/constants/statusConstants');
-const { classifyNewEvent } = require('../src/services/geminiClassification.service');
+const { classifyEventBatch } = require('../src/services/geminiClassification.service');
 
 const days = Math.max(1, Number(process.argv[2] || 60));
 const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-const concurrency = Math.max(1, Number(process.env.GEMINI_BACKLOG_CONCURRENCY || 2));
+const batchSize = Math.max(1, Number(process.env.GEMINI_BACKLOG_BATCH_SIZE || 25));
 
 async function main() {
     if (process.env.GEMINI_CLASSIFICATION_ENABLED !== 'true' || !process.env.GEMINI_API_KEY) {
@@ -39,18 +39,20 @@ async function main() {
         }
     }
 
-    const summary = { shipments: shipments.length, ambiguousEvents: work.length, classified: 0, manualReview: 0, skipped: 0, errors: 0 };
-    for (let i = 0; i < work.length; i += concurrency) {
-        const batch = work.slice(i, i + concurrency);
-        const results = await Promise.all(batch.map((event) => classifyNewEvent(event).catch((error) => ({ decision: 'error', errorMessage: error.message }))));
+    const unique = [...new Map(work.map((event) => [require('../src/services/geminiClassification.service').fingerprintEvent(event), event])).values()];
+    const summary = { shipments: shipments.length, ambiguousEvents: work.length, uniqueEvents: unique.length, batches: 0, classified: 0, manualReview: 0, skipped: 0, errors: 0 };
+    for (let i = 0; i < unique.length; i += batchSize) {
+        const batch = unique.slice(i, i + batchSize);
+        const results = await classifyEventBatch(batch);
+        summary.batches++;
         for (const result of results) {
             if (result.decision === 'classified') summary.classified++;
             else if (result.decision === 'manual_review') summary.manualReview++;
             else if (result.decision === 'skipped' || result.reused) summary.skipped++;
             else summary.errors++;
         }
-        if ((i + batch.length) % 50 === 0 || i + batch.length === work.length) {
-            console.log(JSON.stringify({ progress: i + batch.length, total: work.length, ...summary }));
+        if ((i + batch.length) % (batchSize * 4) === 0 || i + batch.length === unique.length) {
+            console.log(JSON.stringify({ progress: i + batch.length, total: unique.length, ...summary }));
         }
     }
     console.log(JSON.stringify({ ...summary, readOnly: true, lookbackDays: days }, null, 2));
