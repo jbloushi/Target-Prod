@@ -44,7 +44,9 @@ const classifyEventBatch = async (events = []) => {
     if (!events.length) return [];
     const fingerprints = events.map((event) => fingerprintEvent(event));
     const existing = await prisma.geminiClassificationLog.findMany({ where: { eventFingerprint: { in: fingerprints } } });
-    const existingByFingerprint = new Map(existing.map((row) => [row.eventFingerprint, row]));
+    // Successful/manual-review records are immutable for deduplication; failed
+    // records are eligible for retry after configuration/API issues are fixed.
+    const existingByFingerprint = new Map(existing.filter((row) => row.decision !== 'error').map((row) => [row.eventFingerprint, row]));
     const pending = events.filter((event) => !existingByFingerprint.has(fingerprintEvent(event)));
     const results = events.map((event) => existingByFingerprint.get(fingerprintEvent(event))).filter(Boolean);
     if (!pending.length) return results;
@@ -67,11 +69,11 @@ const classifyEventBatch = async (events = []) => {
             const item = byId.get(id) || {};
             const normalizedStatus = ALLOWED_STATUSES.has(item.normalizedStatus) ? item.normalizedStatus : null;
             const confidence = Number.isFinite(Number(item.confidence)) ? Math.max(0, Math.min(1, Number(item.confidence))) : null;
-            return prisma.geminiClassificationLog.create({ data: { eventFingerprint: id, provider: event.provider, trackingNumber: event.trackingNumber, rawStatus: event.rawStatus, rawDescription: event.description, normalizedStatus, operationalFlags: Array.isArray(item.operationalFlags) ? item.operationalFlags : [], confidence, decision: normalizedStatus && confidence !== null && confidence >= 0.8 ? 'classified' : 'manual_review', source: 'gemini', model: MODEL, promptVersion: PROMPT_VERSION, responsePayload: payload } });
+            return prisma.geminiClassificationLog.upsert({ where: { eventFingerprint: id }, update: { normalizedStatus, operationalFlags: Array.isArray(item.operationalFlags) ? item.operationalFlags : [], confidence, decision: normalizedStatus && confidence !== null && confidence >= 0.8 ? 'classified' : 'manual_review', model: MODEL, promptVersion: PROMPT_VERSION, responsePayload: payload, errorMessage: null }, create: { eventFingerprint: id, provider: event.provider, trackingNumber: event.trackingNumber, rawStatus: event.rawStatus, rawDescription: event.description, normalizedStatus, operationalFlags: Array.isArray(item.operationalFlags) ? item.operationalFlags : [], confidence, decision: normalizedStatus && confidence !== null && confidence >= 0.8 ? 'classified' : 'manual_review', source: 'gemini', model: MODEL, promptVersion: PROMPT_VERSION, responsePayload: payload } });
         }));
         return [...results, ...created];
     } catch (error) {
-        await Promise.all(pending.map((event) => prisma.geminiClassificationLog.create({ data: { eventFingerprint: fingerprintEvent(event), provider: event.provider, trackingNumber: event.trackingNumber, rawStatus: event.rawStatus, rawDescription: event.description, decision: 'error', source: 'gemini', model: MODEL, promptVersion: PROMPT_VERSION, errorMessage: error.message } })));
+        await Promise.all(pending.map((event) => prisma.geminiClassificationLog.upsert({ where: { eventFingerprint: fingerprintEvent(event) }, update: { decision: 'error', errorMessage: error.message, model: MODEL, promptVersion: PROMPT_VERSION }, create: { eventFingerprint: fingerprintEvent(event), provider: event.provider, trackingNumber: event.trackingNumber, rawStatus: event.rawStatus, rawDescription: event.description, decision: 'error', source: 'gemini', model: MODEL, promptVersion: PROMPT_VERSION, errorMessage: error.message } })));
         return results;
     }
 };
