@@ -16,7 +16,7 @@ async function main() {
 
     const shipments = await prisma.shipment.findMany({
         where: { createdAt: { gte: cutoff }, NOT: { status: 'cancelled' } },
-        select: { trackingNumber: true, carrierCode: true, carrier: true, history: true }
+        select: { trackingNumber: true, carrierCode: true, history: true }
     });
     const work = [];
     for (const shipment of shipments) {
