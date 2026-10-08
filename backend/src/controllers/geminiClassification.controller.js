@@ -16,7 +16,8 @@ exports.getDashboard = async (req, res) => {
         if (new Date(log.createdAt) > new Date(group.lastSeen)) group.lastSeen = log.createdAt;
         groups.set(key, group);
     }
-    res.json({ success: true, data: { total, byDecision, mappings: [...groups.values()], auditLogs, enabled: process.env.GEMINI_CLASSIFICATION_ENABLED === 'true' } });
+    const canViewAudit = ['admin', 'accounting'].includes(String(req.user?.role || '').toLowerCase());
+    res.json({ success: true, data: { total, byDecision, mappings: [...groups.values()], auditLogs: canViewAudit ? auditLogs : [], enabled: process.env.GEMINI_CLASSIFICATION_ENABLED === 'true' } });
 };
 
 exports.updateClassification = async (req, res) => {
