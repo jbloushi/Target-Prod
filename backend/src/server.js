@@ -214,6 +214,7 @@ const shipmentPublicRoutes = require('./routes/shipment-public.routes');
 const settingsRoutes = require('./routes/settings.routes');
 const whatsappRoutes = require('./routes/whatsapp.routes');
 const fleetRoutes = require('./routes/fleet.routes');
+const releaseInfo = require('./utils/releaseInfo');
 
 // Standard API Route Mounting
 app.use('/api', whatsappRoutes);
@@ -250,6 +251,7 @@ app.use('/shipments', shipmentRoutes);
 
 // Health check endpoint
 app.get('/health', async (req, res) => {
+  res.set('X-Target-Release', releaseInfo.commit);
   const isInternal = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1';
   try {
     await prisma.$queryRaw`SELECT 1`;
@@ -262,6 +264,14 @@ app.get('/health', async (req, res) => {
     res.status(503).json({ status: 'degraded' }); // Never expose error detail
   }
 });
+
+// Public, non-sensitive release identity for production/source version comparison.
+const sendReleaseInfo = (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.status(200).json(releaseInfo);
+};
+app.get('/version', sendReleaseInfo);
+app.get('/api/version', sendReleaseInfo);
 
 
 // Root route

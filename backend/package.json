@@ -19,6 +19,8 @@
     "admin:ensure": "node scripts/ensure-admin.js",
     "verify:tracking": "node scripts/verify-carrier-scraping.js",
     "sync:carriers": "node scripts/sync-all-carriers.js",
+    "audit:carrier-shipments": "node scripts/audit-carrier-shipments.js",
+    "audit:aramex-destinations": "node scripts/audit-carrier-shipments.js --carrier=ARAMEX",
     "dispatch:whatsapp": "node scripts/dispatch-pending-whatsapp.js",
     "dispatch:whatsapp:missing": "node scripts/dispatch-missing-whatsapp.js",
     "phenix:inspect": "node scripts/inspect-phenix.js",
