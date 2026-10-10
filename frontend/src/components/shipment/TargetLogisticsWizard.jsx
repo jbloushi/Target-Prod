@@ -34,6 +34,7 @@ export const TargetLogisticsWizard = ({
   const navigate = useNavigate();
   const { user } = useAuth();
   const { isRTL, lang } = useLanguage();
+  const { enqueueSnackbar } = useSnackbar();
   const wizardContainerRef = useRef(null);
   const formScrollRef = useRef(null);
 

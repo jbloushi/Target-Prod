@@ -94,6 +94,10 @@ const normalizeCarrierCode = (carrierCode) => {
  * Factory class to get the appropriate carrier adapter
  */
 class CarrierFactory {
+    static normalizeCarrierCode(carrierCode) {
+        return normalizeCarrierCode(carrierCode);
+    }
+
     /**
      * List of carriers that have active implementations.
      */
