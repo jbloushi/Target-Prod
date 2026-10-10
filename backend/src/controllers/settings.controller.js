@@ -20,7 +20,7 @@ exports.getSystemSettings = async (req, res) => {
                 role = u?.role;
             } catch (_) {}
         }
-        const isSuperAdmin = role === 'admin' || role === 'manager';
+        const isSuperAdmin = role === 'admin';
 
         const sanitized = {
             carrierBranding: rawSettings.carrierBranding,
@@ -30,7 +30,7 @@ exports.getSystemSettings = async (req, res) => {
                 enabled: rawSettings.whatsapp?.enabled || false,
                 provider: rawSettings.whatsapp?.provider || 'META'
             },
-            fleet: rawSettings.fleet || {
+            fleet: isSuperAdmin ? (rawSettings.fleet || {
                 enabled: true,
                 mode: 'internal_only',
                 paywallActive: false,
@@ -38,7 +38,7 @@ exports.getSystemSettings = async (req, res) => {
                 requireSignaturePod: true,
                 autoAssignZone: true,
                 codAutoReconciliation: true
-            }
+            }) : undefined
         };
 
         if (isSuperAdmin) {
@@ -250,5 +250,4 @@ exports.deleteRateCard = async (req, res) => {
         return res.status(400).json({ success: false, error: err.message || 'Failed to delete rate card' });
     }
 };
-
 

@@ -13,4 +13,11 @@ describe('frontend RBAC capabilities', () => {
     expect(hasCapability('client', CAPABILITIES.VIEW_ALL_SHIPMENTS)).toBe(false);
     expect(hasCapability('client', CAPABILITIES.MANAGE_CARRIERS)).toBe(false);
   });
+
+  it('reserves system settings management for the superadmin role', () => {
+    expect(hasCapability('admin', CAPABILITIES.MANAGE_SYSTEM_SETTINGS)).toBe(true);
+    expect(hasCapability('manager', CAPABILITIES.MANAGE_SYSTEM_SETTINGS)).toBe(false);
+    expect(hasCapability('staff', CAPABILITIES.MANAGE_SYSTEM_SETTINGS)).toBe(false);
+    expect(hasCapability('client', CAPABILITIES.MANAGE_SYSTEM_SETTINGS)).toBe(false);
+  });
 });
