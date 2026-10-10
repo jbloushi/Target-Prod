@@ -234,11 +234,7 @@ const AppRoutes = () => {
             </ProtectedRoute>
           } />
 
-          <Route path="api-docs" element={
-            <ProtectedRoute allowedRoles={['admin', 'staff', 'client', 'manager', 'accounting', 'org_manager', 'org_agent']}>
-              <ApiDocsPage />
-            </ProtectedRoute>
-          } />
+          <Route path="api-docs" element={<ApiDocsPage />} />
 
           <Route path="forgot-password" element={<InConstructionPage title="Password Reset" description="Password recovery is coming soon." />} />
 

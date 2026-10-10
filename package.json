@@ -11,7 +11,8 @@
     "deploy:prepare": "npm run deploy:prepare --prefix backend && npm run build",
     "verify:tracking": "npm run verify:tracking --prefix backend --",
     "sync:carriers": "npm run sync:carriers --prefix backend --",
-    "dispatch:whatsapp": "npm run dispatch:whatsapp --prefix backend"
+    "dispatch:whatsapp": "npm run dispatch:whatsapp --prefix backend",
+    "dispatch:whatsapp:missing": "npm run dispatch:whatsapp:missing --prefix backend"
   },
   "dependencies": {
     "playwright": "^1.58.2"

@@ -106,6 +106,17 @@ module.exports = {
   rateLimitGlobalMax: parseInt(process.env.RATE_LIMIT_GLOBAL_MAX, 10) || 3000,
   rateLimitAuthMax: parseInt(process.env.RATE_LIMIT_AUTH_MAX, 10) || 200,
   maxUploadSize: parseInt(process.env.MAX_UPLOAD_SIZE, 10) || 10485760, // 10MB default
+
+  // Tryton ERP Integration & Shadow Dual-Writing
+  tryton: {
+    enabled: process.env.TRYTON_ENABLED !== 'false',
+    url: process.env.TRYTON_URL || 'http://127.0.0.1:8000',
+    database: process.env.TRYTON_DATABASE || 'target_prod',
+    username: process.env.TRYTON_USERNAME || 'admin',
+    password: process.env.TRYTON_PASSWORD || 'admin',
+    shadowMode: process.env.TRYTON_SHADOW_MODE !== 'false'
+  },
+  primaryBackend: process.env.PRIMARY_BACKEND || 'LEGACY_MYSQL',
 };
 
 function safeJsonParse(value, fallback) {
