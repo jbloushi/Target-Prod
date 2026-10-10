@@ -314,7 +314,7 @@ export const ApiDocsPage = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
               <div className="p-3 bg-base-200/50 rounded-lg">
                 <span className="font-bold text-base-content block">Production Base URL</span>
-                <code className="text-primary font-mono text-[11px]">https://3pl-api.mawthook.io/api</code>
+                <code className="text-primary font-mono text-[11px]">https://api.target-kw.com/api</code>
               </div>
               <div className="p-3 bg-base-200/50 rounded-lg">
                 <span className="font-bold text-base-content block">Rate Limiting</span>

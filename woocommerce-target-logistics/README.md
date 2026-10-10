@@ -68,7 +68,7 @@ woocommerce-target-logistics/
 ## ⚙️ Configuration Guide
 
 ### 1. Client API Connection
-- **Environment**: Choose **Production** (`https://3pl-api.mawthook.io/api`), **Local Development** (`http://localhost:8899/api`), or **Custom Base URL**.
+- **Environment**: Choose **Production** (`https://api.target-kw.com/api`), **Local Development** (`http://localhost:8899/api`), or **Custom Base URL**.
 - **API Key (`x-api-key`)**: Enter the API key generated in your Target Logistics platform settings.
 - **Test Connection**: Click the **Test API Connection** button to verify network connectivity and key validity immediately.
 
