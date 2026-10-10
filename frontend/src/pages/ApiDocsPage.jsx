@@ -1,8 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { useSnackbar } from 'notistack';
-import { useAuth } from '../context/AuthContext';
+import React, { useState } from 'react';
 import { useLanguage } from '../context/LanguageContext';
-import api from '../services/api';
 import PageHeader from '../components/common/PageHeader';
 
 const METHOD_BADGES = {
@@ -140,107 +137,7 @@ const SectionHeader = ({ id, title, subtitle }) => (
   </div>
 );
 
-const ApiKeyPanel = () => {
-  const { user } = useAuth();
-  const { enqueueSnackbar } = useSnackbar();
-  const { lang } = useLanguage();
-  const [apiKey, setApiKey] = useState(user?.apiKey || '');
-  const [loading, setLoading] = useState(false);
-  const [show, setShow] = useState(false);
-
-  useEffect(() => {
-    if (user?.apiKey) {
-      setApiKey(user.apiKey);
-    }
-  }, [user?.apiKey]);
-
-  const generate = async () => {
-    setLoading(true);
-    try {
-      const res = await api.post('/auth/api-key');
-      setApiKey(res.data.apiKey);
-      enqueueSnackbar(lang === 'ar' ? 'تم إنشاء مفتاح API جديد!' : 'New API key generated!', { variant: 'success' });
-    } catch {
-      enqueueSnackbar(lang === 'ar' ? 'فشل إنشاء المفتاح' : 'Failed to generate key', { variant: 'error' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const copy = () => {
-    if (!apiKey) return;
-    navigator.clipboard.writeText(apiKey);
-    enqueueSnackbar(lang === 'ar' ? 'تم نسخ مفتاح API!' : 'API key copied!', { variant: 'success' });
-  };
-
-  const masked = apiKey
-    ? show ? apiKey : `${apiKey.substring(0, 8)}...`
-    : (user?.apiKeyLast4
-        ? `Stored key ending with ....${user.apiKeyLast4}`
-        : 'No key generated yet - click Roll Key');
-
-  return (
-    <div className="card bg-base-100 border border-base-200 shadow-sm p-6 space-y-4">
-      <div className="flex items-center gap-2">
-        <span className="material-symbols-outlined text-primary text-xl">key</span>
-        <h4 className="font-black text-sm text-base-content uppercase tracking-wider">
-          {lang === 'ar' ? 'مفتاح API الخاص بحسابك' : 'Your Live API Secret Key'}
-        </h4>
-      </div>
-
-      <div className="alert alert-warning text-xs py-2.5 px-3">
-        <span className="material-symbols-outlined text-base">warning</span>
-        <span>Never expose this key in client-side JavaScript. Store strictly in backend environment variables.</span>
-      </div>
-
-      <div className="flex flex-col sm:flex-row gap-2">
-        <div className="relative flex-1">
-          <input
-            type="text"
-            readOnly
-            value={masked}
-            className="input input-bordered w-full font-mono text-xs pr-10 bg-base-200/50"
-          />
-          <button
-            type="button"
-            onClick={() => setShow(!show)}
-            disabled={!apiKey}
-            className="btn btn-ghost btn-circle btn-xs absolute right-2 top-1/2 -translate-y-1/2 text-base-content/50"
-          >
-            <span className="material-symbols-outlined text-sm">{show ? 'visibility_off' : 'visibility'}</span>
-          </button>
-        </div>
-
-        <button
-          type="button"
-          onClick={copy}
-          disabled={!apiKey}
-          className="btn btn-outline border-base-300 btn-sm font-bold text-xs gap-1"
-        >
-          <span className="material-symbols-outlined text-sm">content_copy</span>
-          <span>Copy</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={generate}
-          disabled={loading}
-          className="btn btn-primary btn-sm font-bold text-xs gap-1 shadow-md shadow-primary/20"
-        >
-          <span className="material-symbols-outlined text-sm">refresh</span>
-          <span>{loading ? 'Rolling...' : 'Roll Key'}</span>
-        </button>
-      </div>
-
-      <p className="text-[11px] text-base-content/50">
-        Transmit as <code className="bg-base-200 px-1 py-0.5 rounded font-mono font-bold">x-api-key: [YOUR_KEY]</code> header in every HTTP request.
-      </p>
-    </div>
-  );
-};
-
 const SECTIONS = [
-  { id: 'auth', label: 'Authentication', labelAr: 'المصادقة' },
   { id: 'shipments', label: 'Shipments', labelAr: 'الشحنات' },
   { id: 'quotes', label: 'Quotes', labelAr: 'عروض الأسعار' },
   { id: 'addresses', label: 'Address Book', labelAr: 'دفتر العناوين' },
@@ -260,8 +157,8 @@ export const ApiDocsPage = () => {
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 font-sans">
       <PageHeader
-        title={lang === 'ar' ? 'واجهة برمجة التطبيقات للمطورين' : 'Developer REST API & Integrations'}
-        subtitle="Complete technical reference for programmatic consignment dispatch, live carrier telemetry, and customs manifests."
+        title={lang === 'ar' ? 'توثيق واجهة برمجة التطبيقات' : 'API Documentation'}
+        subtitle="Developer reference for rates, shipment creation, tracking, pickups, and integrations."
       >
         <a
           href="/postman_collection.json"
@@ -298,31 +195,6 @@ export const ApiDocsPage = () => {
 
         {/* Right Content */}
         <div className="lg:col-span-9 space-y-6">
-          <ApiKeyPanel />
-
-          {/* Section: Authentication */}
-          <SectionHeader
-            id="auth"
-            title={lang === 'ar' ? 'المصادقة وحدود الطلبات' : 'Authentication & Rate Limits'}
-            subtitle="Secure x-api-key HTTP header authorization."
-          />
-          <div className="card bg-base-100 border border-base-200 shadow-sm p-5 space-y-3 text-xs leading-relaxed">
-            <p className="text-base-content/70">
-              All REST endpoints require an active API key transmitted as an HTTP header:
-            </p>
-            <CodeBlock>x-api-key: usr_9a823f...live_8834</CodeBlock>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-              <div className="p-3 bg-base-200/50 rounded-lg">
-                <span className="font-bold text-base-content block">Production Base URL</span>
-                <code className="text-primary font-mono text-[11px]">https://api.target-kw.com/api</code>
-              </div>
-              <div className="p-3 bg-base-200/50 rounded-lg">
-                <span className="font-bold text-base-content block">Rate Limiting</span>
-                <span className="text-base-content/70 text-[11px]">30 requests/minute per key (HTTP 429 upon excess)</span>
-              </div>
-            </div>
-          </div>
-
           {/* Section: Shipments */}
           <SectionHeader id="shipments" title={lang === 'ar' ? 'إدارة الشحنات' : 'Shipment Operations'} />
           <EndpointCard

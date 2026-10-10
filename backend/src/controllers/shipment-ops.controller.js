@@ -12,6 +12,7 @@ const { SHIPMENT_STATUSES, MANUAL_SHIPMENT_STATUSES } = require('../constants/st
 const { canUpdateShipmentStatus, isManualShipment } = require('./shipment.helpers');
 const { canAccessShipment } = require('../middleware/authorize.middleware');
 const chatwootNotificationService = require('../services/chatwootNotificationService');
+const ShipmentLifecycleService = require('../services/ShipmentLifecycleService');
 
 exports.updateShipmentStatus = async (req, res) => {
     try {
@@ -220,42 +221,16 @@ exports.pickupShipment = async (req, res) => {
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
         if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
 
-        if (shipment.status === 'picked_up' || shipment.status === 'in_transit') {
-            return res.status(200).json({ success: true, data: shipment, message: 'Shipment already picked up' });
-        }
-        if (!['pending', 'draft', 'booked', 'ready_for_pickup', 'pending_approval'].includes(shipment.status)) {
-            return res.status(400).json({ success: false, error: `Shipment cannot be picked up (Current status: ${shipment.status})` });
+        const result = await ShipmentLifecycleService.recordPickup(shipment, user);
+        if (result.alreadyPickedUp) {
+            return res.status(200).json({ success: true, data: result.updated, message: 'Shipment already picked up' });
         }
 
-        const isAwaitingCarrierBooking = !shipment.dhlConfirmed &&
-                                         !shipment.dhlTrackingNumber &&
-                                         shipment.carrierCode !== 'INTERNAL';
-        const nextStatus = isAwaitingCarrierBooking ? 'pending_approval' : 'picked_up';
-        const description = isAwaitingCarrierBooking
-            ? `Shipment collected from client by driver ${user.name || ''}; awaiting hub verification & carrier approval`.trim()
-            : `Shipment picked up by driver ${user.name || ''}`.trim();
-
-        const history = Array.isArray(shipment.history) ? shipment.history : [];
-        const newHistory = { 
-            location: shipment.currentLocation, 
-            status: nextStatus, 
-            description, 
-            timestamp: new Date() 
-        };
-
-        const updated = await prisma.shipment.update({
-            where: { id: shipment.id },
-            data: {
-                status: nextStatus,
-                history: [...history, newHistory]
-            }
-        });
-
-        logger.info(`Shipment ${trackingNumber} picked up by driver ${user.name} -> ${nextStatus}`);
-        res.status(200).json({ success: true, data: updated, message: `Shipment picked up successfully (${nextStatus})` });
+        logger.info(`Shipment ${trackingNumber} picked up by driver ${user.name} -> ${result.nextStatus}`);
+        res.status(200).json({ success: true, data: result.updated, message: `Shipment picked up successfully (${result.nextStatus})` });
     } catch (error) {
         logger.error('Error in pickupShipment:', error);
-        res.status(500).json({ success: false, error: 'Failed to update shipment status' });
+        res.status(error.statusCode || 500).json({ success: false, error: error.statusCode ? error.message : 'Failed to update shipment status' });
     }
 };
 
@@ -270,81 +245,35 @@ exports.processWarehouseScan = async (req, res) => {
         if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
         if (!['admin', 'staff'].includes(user.role)) return res.status(403).json({ success: false, error: 'Only Staff or Admin can process warehouse scans.' });
 
-        const allowedStatuses = ['picked_up', 'booked', 'ready_for_pickup', 'pending_approval', 'received_at_hub', 'verified', 'in_transit'];
-        if (!allowedStatuses.includes(shipment.status)) {
-            return res.status(400).json({ success: false, error: `Shipment status is ${shipment.status}. Must be in inbound/intake status to process.` });
-        }
+        const reviewCommand = {
+            weight,
+            dimensions,
+            action: req.body.action,
+            reason: req.body.reason || req.body.notes || 'Operational review completed',
+            requestId: req.headers?.['x-request-id'] || null,
+            ipAddress: req.ip || req.headers?.['x-forwarded-for'] || null
+        };
+        const result = req.body.action === 'verify'
+            ? await ShipmentLifecycleService.completeReview(shipment, user, reviewCommand)
+            : await ShipmentLifecycleService.receiveAtOffice(shipment, user, reviewCommand);
 
-        const nextStatus = req.body.action === 'receive' ? 'received_at_hub' : (req.body.action === 'verify' ? 'verified' : 'in_transit');
-        const updateData = { status: nextStatus };
-
-        let discrepancyDetected = false;
-        let weightDifference = 0;
-
-        if (weight || dimensions) {
-            const currentWeight = Array.isArray(shipment.parcels) && shipment.parcels.length > 0
-                ? shipment.parcels.reduce((acc, p) => acc + (Number(p.weight) || 0), 0)
-                : (Array.isArray(shipment.items) ? shipment.items.reduce((acc, i) => acc + (Number(i.weight) || 0), 0) : 0);
-            
-            const newWeight = Number(weight);
-
-            if (newWeight && Math.abs(currentWeight - newWeight) > 0.05) {
-                discrepancyDetected = true;
-                weightDifference = Number((newWeight - currentWeight).toFixed(3));
-
-                const parcels = Array.isArray(shipment.parcels) ? shipment.parcels : [];
-                const items = Array.isArray(shipment.items) ? shipment.items : [];
-
-                if (parcels.length > 0) {
-                    parcels[0].weight = newWeight;
-                    if (dimensions) parcels[0].dimensions = dimensions;
-                    updateData.parcels = parcels;
-                }
-                if (items.length > 0) {
-                    items[0].weight = newWeight;
-                    updateData.items = items;
-                }
-                logger.warn(`Warehouse Scan updated weight for ${trackingNumber}: declared ${currentWeight}kg -> actual ${newWeight}kg (diff: ${weightDifference}kg)`);
-            }
-        }
-
-        const history = Array.isArray(shipment.history) ? shipment.history : [];
-        const description = discrepancyDetected
-            ? `Hub intake verified by ${user.name}: Weight discrepancy of ${weightDifference > 0 ? '+' : ''}${weightDifference} kg recorded on certified scale.`
-            : `Processed at Warehouse Hub facility (${nextStatus}) by ${user.name}`;
-
-        updateData.history = [
-            ...history,
-            { 
-                location: shipment.currentLocation, 
-                status: nextStatus, 
-                description, 
-                timestamp: new Date() 
-            }
-        ];
-
-        const updated = await prisma.shipment.update({
-            where: { id: shipment.id },
-            data: updateData
-        });
-
-        logger.info(`Shipment ${trackingNumber} processed at warehouse by ${user.name} -> ${nextStatus}`);
+        logger.info(`Shipment ${trackingNumber} processed at warehouse by ${user.name} -> ${result.nextStatus}`);
         
-        const eventType = chatwootNotificationService.mapStatusToNotificationEvent(nextStatus, description);
+        const eventType = chatwootNotificationService.mapStatusToNotificationEvent(result.nextStatus, result.description);
         if (eventType) {
-            chatwootNotificationService.triggerShipmentNotification(eventType, updated);
+            chatwootNotificationService.triggerShipmentNotification(eventType, result.updated);
         }
 
         res.status(200).json({ 
             success: true, 
-            data: updated, 
-            discrepancyDetected,
-            weightDifference,
-            message: `Shipment processed at warehouse as ${nextStatus}` 
+            data: result.updated, 
+            discrepancyDetected: result.discrepancyDetected,
+            weightDifference: result.weightDifference,
+            message: `Shipment processed at warehouse as ${result.nextStatus}`
         });
     } catch (error) {
         logger.error('Error in processWarehouseScan:', error);
-        res.status(500).json({ success: false, error: 'Failed to process warehouse scan' });
+        res.status(error.statusCode || 500).json({ success: false, error: error.statusCode ? error.message : 'Failed to process warehouse scan' });
     }
 };
 

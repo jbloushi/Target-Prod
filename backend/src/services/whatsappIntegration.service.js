@@ -376,7 +376,7 @@ class WhatsAppIntegrationService {
     /**
      * Send automatic or manual shipment event notification via WhatsApp
      */
-    async sendNotification({ shipment, recipientRole, recipientPhone, recipientCountryCode, recipientName, eventType, templateName, customMessage, force = false, existingLogId = null }) {
+    async sendNotification({ shipment, recipientRole, recipientPhone, recipientCountryCode, recipientName, eventType, templateName, customMessage, force = false, existingLogId = null, bypassAgeGuard = false }) {
         const settings = getSystemSettings()?.whatsapp || {};
         const phone = resolveRecipientPhone(recipientPhone, recipientCountryCode || '965');
 
@@ -395,7 +395,7 @@ class WhatsAppIntegrationService {
         if (!force) {
             // Check shipment age: do not notify for historical shipments older than 36 hours
             const shipmentDateRaw = shipment?.documents?.rawDate || shipment?.createdAt;
-            if (shipmentDateRaw) {
+            if (shipmentDateRaw && !bypassAgeGuard) {
                 let sDate = new Date(shipmentDateRaw);
                 if (typeof shipmentDateRaw === 'string' && /^\d{1,2}\/\d{1,2}\/\d{4}/.test(shipmentDateRaw)) {
                     const m = shipmentDateRaw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);

@@ -4,7 +4,7 @@
  */
 const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
-const ShipmentDraftService = require('../services/ShipmentDraftService');
+const ShipmentLifecycleService = require('../services/ShipmentLifecycleService');
 const { handleControllerError } = require('../utils/controllerError');
 const { hasCapability, isPlatformRole } = require('../middleware/rbac.policy');
 const { canAccessShipment, scopeShipmentWhere } = require('../middleware/authorize.middleware');
@@ -661,7 +661,7 @@ exports.getTriageShipments = async (req, res) => {
  */
 exports.createShipment = async (req, res) => {
     try {
-        const shipment = await ShipmentDraftService.createDraft(req.body, req.user);
+        const shipment = await ShipmentLifecycleService.submitShipment(req.body, req.user);
         logger.info(`Shipment ${shipment.trackingNumber} created (Draft).`);
         if (req.body.notifyCustomer !== false && !req.body.isHistorical) {
             chatwootNotificationService.triggerShipmentNotification('shipment_created', shipment);
@@ -1642,7 +1642,7 @@ exports.bulkImportShipments = async (req, res) => {
                     autoDispatch: autoDispatch === true
                 };
 
-                const createdShipment = await ShipmentDraftService.createDraft(payload, user);
+                const createdShipment = await ShipmentLifecycleService.submitShipment(payload, user);
                 results.created.push({
                     rowIndex,
                     trackingNumber: createdShipment.trackingNumber,

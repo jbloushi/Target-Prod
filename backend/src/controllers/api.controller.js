@@ -3,7 +3,7 @@ const fs = require('fs');
 const CarrierFactory = require('../services/CarrierFactory');
 const CarrierRateService = require('../services/CarrierRateService');
 const PricingService = require('../services/pricing.service');
-const ShipmentDraftService = require('../services/ShipmentDraftService');
+const ShipmentLifecycleService = require('../services/ShipmentLifecycleService');
 const { prisma } = require('../config/database');
 const { normalizeShipment } = require('../utils/shipmentNormalizer');
 const { hasCriticalChanges } = require('./shipment.helpers');
@@ -66,7 +66,7 @@ exports.createShipment = async (req, res) => {
         const requestedCarrier = carrierCode ? normalizeCarrier(carrierCode) : null;
 
         if (assignedAccess.carrierCode === 'INTERNAL' || requestedCarrier === 'INTERNAL' || isExplicitDomestic || serviceCode === 'DOM') {
-            const shipment = await ShipmentDraftService.createDraft({
+            const shipment = await ShipmentLifecycleService.submitShipment({
                 ...shipmentData,
                 carrierCode: 'INTERNAL',
                 serviceCode: assignedAccess.carrierCode === 'INTERNAL' ? (serviceCode || null) : 'DOM',
@@ -113,7 +113,7 @@ exports.createShipment = async (req, res) => {
             : { supportsExternalApi: true };
 
         if (carrierCapabilities.supportsExternalApi === false) {
-            const shipment = await ShipmentDraftService.createDraft({
+            const shipment = await ShipmentLifecycleService.submitShipment({
                 ...shipmentData,
                 carrierCode: resolvedCarrierCode,
                 serviceCode: resolvedServiceCode
@@ -150,7 +150,7 @@ exports.createShipment = async (req, res) => {
 
         // Credit shipments (or when autoBook is not explicitly requested) enter the pickup & approval lifecycle
         if (hasCreditAccount && req.body.autoBook !== true) {
-            const shipment = await ShipmentDraftService.createDraft({
+            const shipment = await ShipmentLifecycleService.submitShipment({
                 ...shipmentData,
                 carrierCode: resolvedCarrierCode,
                 serviceCode: resolvedServiceCode,

@@ -37,7 +37,7 @@ class ShipmentBookingService {
     async bookShipment(trackingNumber, overrideCarrierCode = null, optionalServiceCodes = [], bookingUserRole = null, options = {}) {
         const prep = await this._prepareBooking(trackingNumber, overrideCarrierCode, optionalServiceCodes, bookingUserRole, options);
         if (prep.alreadyBooked && !options?.force) {
-            return { success: true, shipment: prep.shipment, message: 'Shipment already booked.' };
+            return { success: true, outcome: 'booked', shipment: prep.shipment, message: 'Shipment already booked.' };
         }
         return await this._executeCarrierBooking(prep);
     }
@@ -49,7 +49,7 @@ class ShipmentBookingService {
     async bookShipmentAsync(trackingNumber, overrideCarrierCode = null, optionalServiceCodes = [], bookingUserRole = null) {
         const prep = await this._prepareBooking(trackingNumber, overrideCarrierCode, optionalServiceCodes, bookingUserRole);
         if (prep.alreadyBooked) {
-            return { success: true, status: 'succeeded', jobId: prep.attemptId, shipment: prep.shipment, message: 'Shipment already booked.' };
+            return { success: true, outcome: 'booked', status: 'succeeded', jobId: prep.attemptId, shipment: prep.shipment, message: 'Shipment already booked.' };
         }
 
         const jobQueue = require('./queue/jobQueue');
@@ -67,6 +67,7 @@ class ShipmentBookingService {
 
         return {
             success: true,
+            outcome: 'accepted',
             status: 'processing',
             jobId: prep.attemptId,
             trackingNumber,
@@ -163,13 +164,33 @@ class ShipmentBookingService {
                 if (activeAttempt.status === 'pending' && new Date() - new Date(activeAttempt.createdAt) < 60000) {
                     throw new Error('A booking request is currently being processed by the carrier. Please wait.');
                 }
+                if (activeAttempt.status === 'pending') {
+                    const reconciliation = await this.reconcileBookingAttempt(
+                        trackingNumber,
+                        activeAttempt.attemptId,
+                        carrierCode
+                    );
+                    if (reconciliation.outcome === 'booked') {
+                        return {
+                            alreadyBooked: true,
+                            shipment: reconciliation.shipment,
+                            attemptId: activeAttempt.attemptId,
+                            carrierCode
+                        };
+                    }
+                    const error = new Error('Previous carrier booking outcome is uncertain and requires reconciliation before retrying.');
+                    error.statusCode = 409;
+                    error.bookingOutcome = 'reconciliation_required';
+                    throw error;
+                }
             }
         }
 
         const attemptId = crypto.randomUUID();
+        const acceptedAt = new Date();
         const updatedAttempts = [
             ...bookingAttempts,
-            { attemptId, status: 'pending', createdAt: new Date() }
+            { attemptId, status: 'pending', outcome: 'accepted', createdAt: acceptedAt, acceptedAt }
         ];
 
         await prisma.shipment.update({
@@ -226,6 +247,7 @@ class ShipmentBookingService {
             }
         } catch (error) {
             await this.handleBookingFailure(shipment.id, attemptId, error.message);
+            error.bookingOutcome = 'failed';
             throw error;
         }
 
@@ -237,6 +259,7 @@ class ShipmentBookingService {
             if (attemptIndex === -1) throw new Error('Critical Error: Booking attempt context lost.');
 
             freshAttempts[attemptIndex].status = 'succeeded';
+            freshAttempts[attemptIndex].outcome = 'booked';
             const carrierTrackingNumber = this.normalizeCarrierIdentifier(carrierResult.trackingNumber, shipment.trackingNumber);
             const carrierShipmentId = this.normalizeCarrierIdentifier(carrierResult.carrierShipmentId, carrierTrackingNumber);
 
@@ -410,6 +433,7 @@ class ShipmentBookingService {
 
             return {
                 success: true,
+                outcome: 'booked',
                 shipment: finalizedShipment,
                 carrierResult,
                 labelUrl: finalizedShipment.labelUrl || carrierResult.labelUrl,
@@ -419,8 +443,10 @@ class ShipmentBookingService {
 
         } catch (commitError) {
             logger.error('Commit Failure After Carrier Success:', commitError);
-            await this.handleBookingFailure(shipment.id, attemptId, `Commit Failed: ${commitError.message}`);
-            throw new Error(`Critical: Carrier booked shipment, locally updated failed. Manual intervention required.`);
+            await this.handleBookingFailure(shipment.id, attemptId, `Commit Failed: ${commitError.message}`, 'reconciliation_required');
+            const reconciliationError = new Error('Critical: Carrier booked shipment, locally updated failed. Manual intervention required.');
+            reconciliationError.bookingOutcome = 'reconciliation_required';
+            throw reconciliationError;
         }
     }
 
@@ -455,6 +481,81 @@ class ShipmentBookingService {
         } catch (recoveryError) {
             throw fallbackError;
         }
+    }
+
+    /**
+     * Safely resolves an old pending attempt before another carrier create call.
+     * A missing provider lookup is deliberately treated as uncertain, never as
+     * permission to create a duplicate shipment.
+     */
+    async reconcileBookingAttempt(trackingNumber, attemptId, carrierCode = null) {
+        const shipment = await prisma.shipment.findUnique({
+            where: { trackingNumber },
+            include: { user: true, organization: true }
+        });
+        if (!shipment) throw new Error('Shipment record not found');
+
+        const attempts = Array.isArray(shipment.bookingAttempts) ? shipment.bookingAttempts : [];
+        const attempt = attempts.find((candidate) => candidate.attemptId === attemptId);
+        if (!attempt) throw new Error('Booking attempt not found');
+
+        const adapter = CarrierFactory.getAdapter(
+            String(carrierCode || shipment.carrierCode || 'DGR').toUpperCase(),
+            { isTest: shipment.pricingSnapshot?.isTest === true }
+        );
+        let providerResult = null;
+        try {
+            if (typeof adapter?.getStatus === 'function') {
+                providerResult = await adapter.getStatus({
+                    barcode: shipment.dhlTrackingNumber || shipment.carrierShipmentId || shipment.trackingNumber
+                });
+            }
+        } catch (error) {
+            logger.warn(`Booking reconciliation lookup failed for ${trackingNumber}: ${error.message}`);
+        }
+
+        const normalized = providerResult && typeof adapter?._normalizeShipmentResponse === 'function'
+            ? adapter._normalizeShipmentResponse(providerResult)
+            : providerResult;
+        const providerTrackingNumber = normalized?.trackingNumber || normalized?.dhlTrackingNumber;
+        const providerShipmentId = normalized?.carrierShipmentId || normalized?.id || providerTrackingNumber;
+
+        if (providerTrackingNumber || providerShipmentId) {
+            const attemptIndex = attempts.findIndex((candidate) => candidate.attemptId === attemptId);
+            attempts[attemptIndex] = {
+                ...attempt,
+                status: 'succeeded',
+                outcome: 'booked',
+                carrierShipmentId: providerShipmentId,
+                updatedAt: new Date(),
+                reconciledAt: new Date()
+            };
+            const updated = await prisma.shipment.update({
+                where: { id: shipment.id },
+                data: {
+                    status: 'booked',
+                    dhlConfirmed: true,
+                    dhlTrackingNumber: providerTrackingNumber || shipment.dhlTrackingNumber,
+                    carrierShipmentId: providerShipmentId,
+                    bookingAttempts: attempts
+                }
+            });
+            return { outcome: 'booked', reconciled: true, shipment: updated };
+        }
+
+        const attemptIndex = attempts.findIndex((candidate) => candidate.attemptId === attemptId);
+        attempts[attemptIndex] = {
+            ...attempt,
+            status: 'failed',
+            outcome: 'reconciliation_required',
+            error: 'Carrier outcome could not be confirmed',
+            updatedAt: new Date()
+        };
+        await prisma.shipment.update({
+            where: { id: shipment.id },
+            data: { bookingAttempts: attempts }
+        });
+        return { outcome: 'reconciliation_required', reconciled: false, shipment };
     }
 
     /**
@@ -552,7 +653,7 @@ class ShipmentBookingService {
     /**
      * Updates attempt record upon failure.
      */
-    async handleBookingFailure(shipmentId, attemptId, reason) {
+    async handleBookingFailure(shipmentId, attemptId, reason, outcome = 'failed') {
         try {
             const shipment = await prisma.shipment.findUnique({ where: { id: shipmentId } });
             const attempts = Array.isArray(shipment.bookingAttempts) ? shipment.bookingAttempts : [];
@@ -560,6 +661,7 @@ class ShipmentBookingService {
             
             if (index !== -1) {
                 attempts[index].status = 'failed';
+                attempts[index].outcome = outcome;
                 attempts[index].error = reason;
                 attempts[index].updatedAt = new Date();
                 

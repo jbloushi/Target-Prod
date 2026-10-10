@@ -1,4 +1,11 @@
-require('dotenv').config();
+const path = require('path');
+const dotenv = require('dotenv');
+// Ensure local .env takes precedence if foreign postgres url is in environment
+if (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('postgres')) {
+  dotenv.config({ path: path.resolve(__dirname, '../../.env'), override: true });
+} else {
+  dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+}
 const { PrismaClient } = require('@prisma/client');
 const logger = require('../utils/logger');
 
