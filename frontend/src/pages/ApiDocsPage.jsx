@@ -195,6 +195,31 @@ export const ApiDocsPage = () => {
 
         {/* Right Content */}
         <div className="lg:col-span-9 space-y-6">
+          <ApiKeyPanel />
+
+          {/* Section: Authentication */}
+          <SectionHeader
+            id="auth"
+            title={lang === 'ar' ? 'المصادقة وحدود الطلبات' : 'Authentication & Rate Limits'}
+            subtitle="Secure x-api-key HTTP header authorization."
+          />
+          <div className="card bg-base-100 border border-base-200 shadow-sm p-5 space-y-3 text-xs leading-relaxed">
+            <p className="text-base-content/70">
+              All REST endpoints require an active API key transmitted as an HTTP header:
+            </p>
+            <CodeBlock>x-api-key: usr_9a823f...live_8834</CodeBlock>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+              <div className="p-3 bg-base-200/50 rounded-lg">
+                <span className="font-bold text-base-content block">Production Base URL</span>
+                <code className="text-primary font-mono text-[11px]">https://api.target-kw.com/api</code>
+              </div>
+              <div className="p-3 bg-base-200/50 rounded-lg">
+                <span className="font-bold text-base-content block">Rate Limiting</span>
+                <span className="text-base-content/70 text-[11px]">30 requests/minute per key (HTTP 429 upon excess)</span>
+              </div>
+            </div>
+          </div>
+
           {/* Section: Shipments */}
           <SectionHeader id="shipments" title={lang === 'ar' ? 'إدارة الشحنات' : 'Shipment Operations'} />
           <EndpointCard
