@@ -1,7 +1,7 @@
 const logger = require('../utils/logger');
 const { getSystemSettings, updateSystemSettings } = require('./systemSettings.service');
 const phenixSyncService = require('./phenixSync.service');
-const { acquireLease, releaseLease, AUTO_SYNC_LOCK_KEY } = require('./phenixImportRun.service');
+const { acquireLease, renewLease, releaseLease, AUTO_SYNC_LOCK_KEY } = require('./phenixImportRun.service');
 
 class PhenixSyncCronService {
     constructor() {
@@ -78,6 +78,12 @@ class PhenixSyncCronService {
 
         this.isSyncing = true;
         this.lastRunTimestamp = now;
+        const leaseRenewTimer = setInterval(() => {
+            renewLease(lease).catch(err => {
+                logger.warn(`[PhenixSyncCron] Failed to renew distributed lease: ${err.message}`);
+            });
+        }, 10 * 60 * 1000);
+        if (typeof leaseRenewTimer.unref === 'function') leaseRenewTimer.unref();
 
         logger.info(`[PhenixSyncCron] Auto-pull trigger started (Carrier: ${settings.carrier || 'ALL'}, Window: ${settings.daysBack || 3} days)...`);
         try {
@@ -117,6 +123,7 @@ class PhenixSyncCronService {
                 }
             });
         } finally {
+            clearInterval(leaseRenewTimer);
             this.isSyncing = false;
             await releaseLease(lease).catch(err => {
                 logger.warn(`[PhenixSyncCron] Failed to release distributed lease: ${err.message}`);

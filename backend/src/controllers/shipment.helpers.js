@@ -5,6 +5,8 @@
  */
 const CarrierFactory = require('../services/CarrierFactory');
 const SlaTrackerService = require('../services/slaTracker.service');
+const { prisma } = require('../config/database');
+const { createHash } = require('crypto');
 const logger = require('../utils/logger');
 const { normalizeStatus, isStatusAhead } = require('../constants/statusConstants');
 
@@ -393,6 +395,59 @@ const compactHistory = (history = []) => {
         .map(({ __timestamp, __minuteBucket, __location, ...event }) => event);
 };
 
+const buildTrackingSyncMeta = ({ status, provider, carrierCode, eventCount = 0, error = null }) => ({
+    lastAttemptAt: new Date().toISOString(),
+    status,
+    provider: provider || carrierCode || 'unknown',
+    carrierCode: carrierCode || 'unknown',
+    eventCount,
+    error: error || null
+});
+
+const buildTrackingSyncDocuments = (shipment, updates) => ({
+    ...(shipment?.documents && typeof shipment.documents === 'object' ? shipment.documents : {}),
+    trackingSync: updates?.trackingSyncMeta || null
+});
+
+const persistTrackingEvents = async (shipment, tracking, normalizedEvents, provider) => {
+    if (!shipment?.id || !prisma.shipmentTrackingEvent || !Array.isArray(normalizedEvents)) return;
+
+    for (const event of normalizedEvents) {
+        const eventKey = createHash('sha256').update(JSON.stringify({
+            provider,
+            status: event.statusCode || event.status || null,
+            description: event.description || null,
+            timestamp: event.timestamp || null,
+            location: event.location || null
+        })).digest('hex');
+        const eventTimestamp = event.timestamp ? new Date(event.timestamp) : null;
+
+        await prisma.shipmentTrackingEvent.upsert({
+            where: { shipmentId_eventKey: { shipmentId: shipment.id, eventKey } },
+            create: {
+                shipmentId: shipment.id,
+                provider,
+                carrierCode: String(shipment.carrierCode || 'DGR').toUpperCase(),
+                source: 'carrier',
+                eventKey,
+                rawStatus: event.statusCode || event.status || null,
+                normalizedStatus: normalizeStatus(event.statusCode || event.status || event.description),
+                description: event.description || null,
+                eventTimestamp: eventTimestamp && !Number.isNaN(eventTimestamp.getTime()) ? eventTimestamp : null,
+                location: event.location || null,
+                rawPayload: event
+            },
+            update: {
+                rawStatus: event.statusCode || event.status || null,
+                normalizedStatus: normalizeStatus(event.statusCode || event.status || event.description),
+                description: event.description || null,
+                location: event.location || null,
+                rawPayload: event
+            }
+        });
+    }
+};
+
 /**
  * Fetches latest tracking from carrier and returns updated history/status.
  * Note: Persistence (Prisma update) must be handled by the caller.
@@ -402,13 +457,15 @@ const syncCarrierTrackingHistory = async (shipment) => {
     const compactedOriginalHistory = compactHistory(originalHistory);
     const trackingNumber = resolveCarrierTrackingNumber(shipment);
     if (!trackingNumber) {
-        if (compactedOriginalHistory.length !== originalHistory.length) {
-            return {
-                history: compactedOriginalHistory,
-                status: shipment.status
-            };
-        }
-        return null;
+        return {
+            history: compactedOriginalHistory,
+            status: shipment.status,
+            trackingSyncMeta: buildTrackingSyncMeta({
+                status: 'ERROR',
+                carrierCode: shipment?.carrierCode,
+                error: 'No carrier tracking number configured'
+            })
+        };
     }
 
     const carrierCode = (shipment?.carrierCode || shipment?.carrier || 'DGR').toUpperCase();
@@ -419,20 +476,33 @@ const syncCarrierTrackingHistory = async (shipment) => {
         carrier = CarrierFactory.getAdapter(carrierCode, { isTest, environment });
     } catch (error) {
         logger.warn(`Carrier adapter not available for ${carrierCode}: ${error.message}`);
-        return null;
+        return {
+            history: compactedOriginalHistory,
+            status: shipment.status,
+            trackingSyncMeta: buildTrackingSyncMeta({
+                status: 'ERROR',
+                carrierCode,
+                error: `Carrier adapter unavailable: ${error.message}`
+            })
+        };
     }
 
     try {
         const tracking = await carrier.getTracking(trackingNumber);
         const events = tracking?.events || [];
+        const provider = tracking?.provider || tracking?.source || carrierCode;
         if (events.length === 0) {
-            if (compactedOriginalHistory.length !== originalHistory.length) {
-                return {
-                    history: compactedOriginalHistory,
-                    status: shipment.status
-                };
-            }
-            return null;
+            return {
+                history: compactedOriginalHistory,
+                status: shipment.status,
+                trackingSyncMeta: buildTrackingSyncMeta({
+                    status: tracking?.syncStatus || 'EMPTY',
+                    provider,
+                    carrierCode,
+                    eventCount: 0,
+                    error: tracking?.error || null
+                })
+            };
         }
 
         const currentHistory = compactedOriginalHistory;
@@ -450,6 +520,12 @@ const syncCarrierTrackingHistory = async (shipment) => {
         let currentStatus = shipment.status;
 
         const sortedEvents = [...events].sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
+
+        try {
+            await persistTrackingEvents(shipment, tracking, sortedEvents, provider);
+        } catch (persistError) {
+            logger.warn(`Failed to persist normalized tracking events for ${shipment.trackingNumber}: ${persistError.message}`);
+        }
 
         sortedEvents.forEach((event) => {
             const rawStatus = event.statusCode || event.status || event.description || tracking?.status || 'transit';
@@ -564,20 +640,51 @@ const syncCarrierTrackingHistory = async (shipment) => {
             return {
                 history: compactedHistory,
                 status: currentStatus,
+                trackingSyncMeta: buildTrackingSyncMeta({
+                    status: tracking?.syncStatus || 'SUCCESS',
+                    provider,
+                    carrierCode,
+                    eventCount: sortedEvents.length
+                }),
                 estimatedDelivery: resolvedEstDelivery || undefined,
                 actualWeight: tracking?.carrierWeight > 0 ? tracking.carrierWeight : undefined,
                 totalPieces: tracking?.carrierPieces > 0 ? tracking.carrierPieces : undefined
             };
         }
         
-        return null;
+        return {
+            history: compactedHistory,
+            status: currentStatus,
+            trackingSyncMeta: buildTrackingSyncMeta({
+                status: tracking?.syncStatus || 'SUCCESS',
+                provider,
+                carrierCode,
+                eventCount: sortedEvents.length
+            })
+        };
     } catch (error) {
         if (error?.code === 'TRACKING_PENDING') {
             logger.info(`Carrier tracking pending at provider for ${shipment.trackingNumber}: ${error.message}`);
-            return null;
+            return {
+                history: compactedOriginalHistory,
+                status: shipment.status,
+                trackingSyncMeta: buildTrackingSyncMeta({
+                    status: 'PENDING',
+                    carrierCode,
+                    error: error.message
+                })
+            };
         }
         logger.warn(`Failed to sync carrier tracking for ${shipment.trackingNumber}: ${error.message}`);
-        return null;
+        return {
+            history: compactedOriginalHistory,
+            status: shipment.status,
+            trackingSyncMeta: buildTrackingSyncMeta({
+                status: 'ERROR',
+                carrierCode,
+                error: error.message
+            })
+        };
     }
 };
 
@@ -851,6 +958,8 @@ module.exports = {
     resolveCarrierTrackingNumber,
     compactHistory,
     syncCarrierTrackingHistory,
+    persistTrackingEvents,
+    buildTrackingSyncDocuments,
     calculateEstimatedDelivery,
     hasCriticalChanges,
     isInternalShipment,

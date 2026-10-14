@@ -34,7 +34,7 @@ function initWorkers() {
     // 4. Carrier Tracking Sync Worker
     jobQueue.registerWorker('tracking_sync', async (payload, context) => {
         logger.info(`[jobWorker] Processing tracking_sync for ${payload.trackingNumber} (Job ${context.jobId})`);
-        const { syncCarrierTrackingHistory } = require('../../controllers/shipment.helpers');
+        const { syncCarrierTrackingHistory, buildTrackingSyncDocuments } = require('../../controllers/shipment.helpers');
         const { prisma } = require('../../config/database');
 
         const shipment = await prisma.shipment.findUnique({
@@ -52,7 +52,8 @@ function initWorkers() {
                 where: { id: shipment.id },
                 data: {
                     history: updates.history,
-                    status: updates.status
+                    status: updates.status,
+                    documents: buildTrackingSyncDocuments(shipment, updates)
                 }
             });
             logger.info(`[jobWorker] Tracking sync completed for ${payload.trackingNumber}, status: ${updates.status}`);

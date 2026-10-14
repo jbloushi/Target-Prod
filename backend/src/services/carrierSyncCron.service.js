@@ -1,6 +1,6 @@
 const logger = require('../utils/logger');
 const { prisma } = require('../config/database');
-const { syncCarrierTrackingHistory, resolveCarrierTrackingNumber, autoHealAllResolvedExceptions } = require('../controllers/shipment.helpers');
+const { syncCarrierTrackingHistory, buildTrackingSyncDocuments, resolveCarrierTrackingNumber, autoHealAllResolvedExceptions } = require('../controllers/shipment.helpers');
 const { markTrackingSynced } = require('./queue/trackingCache');
 const chatwootNotificationService = require('./chatwootNotificationService');
 
@@ -162,11 +162,13 @@ class CarrierSyncCronService {
                         if (updates && (
                             updates.status !== shipment.status || 
                             updates.history?.length !== shipment.history?.length ||
+                            updates.trackingSyncMeta ||
                             (updates.estimatedDelivery && (!shipment.estimatedDelivery || new Date(shipment.estimatedDelivery).getTime() !== new Date(updates.estimatedDelivery).getTime()))
                         )) {
                             const dataToUpdate = {
                                 history: updates.history,
-                                status: updates.status
+                                status: updates.status,
+                                documents: buildTrackingSyncDocuments(shipment, updates)
                             };
                             if (updates.estimatedDelivery) {
                                 dataToUpdate.estimatedDelivery = updates.estimatedDelivery;

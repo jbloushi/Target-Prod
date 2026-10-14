@@ -237,6 +237,7 @@ model Shipment {
   journalLines      JournalEntryLine[]
   billLines         BillLine[]
   phenixImportItems PhenixImportItem[]
+  trackingEvents    ShipmentTrackingEvent[]
   auditLogs         ShipmentAuditLog[]
 
   @@index([deliveryRunId, stopSequence], map: "Shipment_deliveryRun_idx")
@@ -248,6 +249,29 @@ model Shipment {
   @@index([carrierCode, serviceCode], map: "Shipment_carrier_service_idx")
   @@index([createdAt], map: "Shipment_createdAt_idx")
   @@index([updatedAt], map: "Shipment_updatedAt_idx")
+}
+
+model ShipmentTrackingEvent {
+  id               String   @id @default(uuid())
+  shipmentId       String
+  shipment         Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  provider         String
+  carrierCode      String
+  source           String   @default("carrier")
+  eventKey         String
+  rawStatus        String?
+  normalizedStatus String?
+  description      String?  @db.Text
+  eventTimestamp   DateTime?
+  receivedAt       DateTime @default(now())
+  location         Json?
+  rawPayload       Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([shipmentId, eventKey], map: "ShipmentTrackingEvent_shipment_event_key_uq")
+  @@index([shipmentId, eventTimestamp], map: "ShipmentTrackingEvent_shipment_timestamp_idx")
+  @@index([provider, receivedAt], map: "ShipmentTrackingEvent_provider_received_idx")
 }
 
 model PhenixImportRun {

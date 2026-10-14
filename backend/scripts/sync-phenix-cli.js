@@ -1,6 +1,7 @@
 require('dotenv').config();
 const phenixSyncService = require('../src/services/phenixSync.service');
 const { prisma } = require('../src/config/database');
+const { acquireLease, renewLease, releaseLease, AUTO_SYNC_LOCK_KEY } = require('../src/services/phenixImportRun.service');
 
 async function runCliSync() {
     const daysBack = parseInt(process.argv[2], 10) || 45;
@@ -13,7 +14,15 @@ async function runCliSync() {
     console.log(`📅 Days Window: ${daysBack} days | Carrier: ${carrier} | WhatsApp: ${sendWhatsApp ? 'ENABLED' : 'DISABLED (Historical Safe)'}`);
     console.log('===============================================================\n');
 
+    let lease = null;
+    let renewTimer = null;
     try {
+        lease = await acquireLease(AUTO_SYNC_LOCK_KEY);
+        if (!lease.acquired) {
+            throw new Error('Another Phenix import is already running. Check phenix:import-report before retrying.');
+        }
+        renewTimer = setInterval(() => renewLease(lease).catch(() => {}), 10 * 60 * 1000);
+        if (typeof renewTimer.unref === 'function') renewTimer.unref();
         const result = await phenixSyncService.syncPhenixShipments({
             daysBack,
             carrier,
@@ -44,6 +53,8 @@ async function runCliSync() {
     } catch (err) {
         console.error('❌ Sync error:', err.message);
     } finally {
+        if (renewTimer) clearInterval(renewTimer);
+        await releaseLease(lease).catch(() => {});
         await prisma.$disconnect();
     }
 }

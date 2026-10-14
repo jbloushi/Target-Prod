@@ -3,7 +3,7 @@ const { randomUUID } = require('crypto');
 const { prisma } = require('../config/database');
 
 const AUTO_SYNC_LOCK_KEY = 'phenix-auto-sync';
-const DEFAULT_LEASE_MS = 30 * 60 * 1000;
+const DEFAULT_LEASE_MS = 2 * 60 * 60 * 1000;
 const PROCESS_OWNER = `${os.hostname()}:${process.pid}:${randomUUID()}`;
 
 function ownerId() {
@@ -45,8 +45,34 @@ async function releaseLease(lease) {
     });
 }
 
+async function renewLease(lease, ttlMs = DEFAULT_LEASE_MS) {
+    if (!lease?.lockKey || !lease?.owner || !prisma.phenixImportLease) return false;
+    const result = await prisma.phenixImportLease.updateMany({
+        where: { lockKey: lease.lockKey, ownerId: lease.owner },
+        data: { lockedUntil: new Date(Date.now() + ttlMs) }
+    });
+    return result.count === 1;
+}
+
+async function recoverStaleRuns(maxAgeMs = 2 * 60 * 60 * 1000) {
+    if (!prisma.phenixImportRun) return 0;
+    const result = await prisma.phenixImportRun.updateMany({
+        where: {
+            status: 'RUNNING',
+            startedAt: { lt: new Date(Date.now() - maxAgeMs) }
+        },
+        data: {
+            status: 'TIMED_OUT',
+            finishedAt: new Date(),
+            errorMessage: 'Import exceeded the maximum runtime and was marked timed out.'
+        }
+    });
+    return result.count;
+}
+
 async function createRun({ from, to, carrierFilter, triggeredBy }) {
     if (!prisma.phenixImportRun) return null;
+    await recoverStaleRuns();
     return prisma.phenixImportRun.create({
         data: {
             windowFrom: new Date(Date.UTC(from.year, from.month - 1, from.day)),
@@ -101,7 +127,9 @@ async function finishRun(runId, summary, status = 'SUCCESS', errorMessage = null
 module.exports = {
     AUTO_SYNC_LOCK_KEY,
     acquireLease,
+    renewLease,
     releaseLease,
+    recoverStaleRuns,
     createRun,
     recordItem,
     finishRun

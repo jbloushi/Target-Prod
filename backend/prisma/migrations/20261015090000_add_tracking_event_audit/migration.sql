@@ -1,0 +1,22 @@
+CREATE TABLE `ShipmentTrackingEvent` (
+  `id` VARCHAR(191) NOT NULL,
+  `shipmentId` VARCHAR(191) NOT NULL,
+  `provider` VARCHAR(191) NOT NULL,
+  `carrierCode` VARCHAR(191) NOT NULL,
+  `source` VARCHAR(191) NOT NULL DEFAULT 'carrier',
+  `eventKey` VARCHAR(191) NOT NULL,
+  `rawStatus` VARCHAR(191) NULL,
+  `normalizedStatus` VARCHAR(191) NULL,
+  `description` TEXT NULL,
+  `eventTimestamp` DATETIME(3) NULL,
+  `receivedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `location` JSON NULL,
+  `rawPayload` JSON NULL,
+  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updatedAt` DATETIME(3) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `ShipmentTrackingEvent_shipment_event_key_uq` (`shipmentId`, `eventKey`),
+  INDEX `ShipmentTrackingEvent_shipment_timestamp_idx` (`shipmentId`, `eventTimestamp`),
+  INDEX `ShipmentTrackingEvent_provider_received_idx` (`provider`, `receivedAt`),
+  CONSTRAINT `ShipmentTrackingEvent_shipmentId_fkey` FOREIGN KEY (`shipmentId`) REFERENCES `Shipment` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

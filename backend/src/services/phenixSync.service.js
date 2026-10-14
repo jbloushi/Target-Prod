@@ -3,7 +3,7 @@ const logger = require('../utils/logger');
 const { createHash } = require('crypto');
 const config = require('../config/config');
 const { prisma } = require('../config/database');
-const { syncCarrierTrackingHistory } = require('../controllers/shipment.helpers');
+const { syncCarrierTrackingHistory, buildTrackingSyncDocuments } = require('../controllers/shipment.helpers');
 const whatsappService = require('./whatsappIntegration.service');
 const financeLedgerService = require('./financeLedger.service');
 const SlaTrackerService = require('./slaTracker.service');
@@ -1206,24 +1206,31 @@ class PhenixSyncService {
         // returned summary truthful and prevents detached work from being lost on restart.
         if (shipmentsToSyncCarrier.length > 0) {
             logger.info(`[PhenixSync] Starting carrier checkpoints sync for ${shipmentsToSyncCarrier.length} shipments...`);
-            for (const s of shipmentsToSyncCarrier) {
-                try {
-                    const carrierUpdates = await syncCarrierTrackingHistory(s);
-                    if (carrierUpdates) {
-                        await prisma.shipment.update({
-                            where: { id: s.id },
-                            data: {
-                                history: carrierUpdates.history,
-                                status: carrierUpdates.status
-                            }
-                        });
+            const concurrency = Math.max(1, Math.min(8, parseInt(process.env.PHENIX_CARRIER_SYNC_CONCURRENCY, 10) || 4));
+            let nextCarrierIndex = 0;
+            const syncWorker = async () => {
+                while (nextCarrierIndex < shipmentsToSyncCarrier.length) {
+                    const s = shipmentsToSyncCarrier[nextCarrierIndex++];
+                    try {
+                        const carrierUpdates = await syncCarrierTrackingHistory(s);
+                        if (carrierUpdates) {
+                            await prisma.shipment.update({
+                                where: { id: s.id },
+                                data: {
+                                    history: carrierUpdates.history,
+                                    status: carrierUpdates.status,
+                                    documents: buildTrackingSyncDocuments(s, carrierUpdates)
+                                }
+                            });
+                        }
+                        summary.carrierSyncedCount++;
+                    } catch (err) {
+                        summary.errors.push({ carrierTracking: s.dhlTrackingNumber || s.trackingNumber, error: `Carrier sync failed: ${err.message}` });
+                        logger.warn(`[PhenixSync] Carrier sync failed for ${s.trackingNumber}: ${err.message}`);
                     }
-                    summary.carrierSyncedCount++;
-                } catch (err) {
-                    summary.errors.push({ carrierTracking: s.dhlTrackingNumber || s.trackingNumber, error: `Carrier sync failed: ${err.message}` });
-                    logger.warn(`[PhenixSync] Carrier sync failed for ${s.trackingNumber}: ${err.message}`);
                 }
-            }
+            };
+            await Promise.all(Array.from({ length: Math.min(concurrency, shipmentsToSyncCarrier.length) }, () => syncWorker()));
             logger.info(`[PhenixSync] Finished carrier checkpoints sync`);
         }
 

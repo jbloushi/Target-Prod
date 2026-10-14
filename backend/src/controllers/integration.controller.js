@@ -3,8 +3,8 @@ const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
 const config = require('../config/config');
 const chatwootNotificationService = require('../services/chatwootNotificationService');
-const { compactHistory } = require('./shipment.helpers');
-const { normalizeStatus } = require('../constants/statusConstants');
+const { compactHistory, persistTrackingEvents } = require('./shipment.helpers');
+const { normalizeStatus, isStatusAhead } = require('../constants/statusConstants');
 
 // Chatwoot message statuses that map to our log statuses
 const CHATWOOT_STATUS_MAP = {
@@ -655,6 +655,7 @@ exports.handleTrackingMoreWebhook = async (req, res) => {
 
             // Deduplicate and sort chronologically
             parsedEvents.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+            await persistTrackingEvents(shipment, { events: parsedEvents }, parsedEvents, 'trackingmore');
 
             // Merge with existing history
             const existingHistory = Array.isArray(shipment.history) ? shipment.history : [];
@@ -662,11 +663,27 @@ exports.handleTrackingMoreWebhook = async (req, res) => {
 
             // Determine latest status
             const latestEvent = parsedEvents[parsedEvents.length - 1];
-            const newStatus = latestEvent?.status || shipment.status;
+            const candidateStatus = latestEvent?.status || shipment.status;
+            const newStatus = candidateStatus === 'exception'
+                ? (shipment.status === 'delivered' ? shipment.status : 'exception')
+                : (isStatusAhead(shipment.status, candidateStatus) || candidateStatus === 'delivered'
+                    ? candidateStatus
+                    : shipment.status);
 
             const updateData = {
                 history: mergedHistory,
-                status: newStatus
+                status: newStatus,
+                documents: {
+                    ...(shipment.documents && typeof shipment.documents === 'object' ? shipment.documents : {}),
+                    trackingSync: {
+                        lastAttemptAt: new Date().toISOString(),
+                        status: 'SUCCESS',
+                        provider: 'trackingmore',
+                        carrierCode: shipment.carrierCode || 'FEDEX',
+                        eventCount: parsedEvents.length,
+                        error: null
+                    }
+                }
             };
 
             const carrierWeight = parseFloat(item.weight_kg || item.weight || 0);

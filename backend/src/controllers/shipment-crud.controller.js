@@ -10,7 +10,7 @@ const { hasCapability, isPlatformRole } = require('../middleware/rbac.policy');
 const { canAccessShipment, scopeShipmentWhere } = require('../middleware/authorize.middleware');
 const { INTERNAL_SHIPMENT_STATUSES, SHIPMENT_STATUSES, normalizeStatus } = require('../constants/statusConstants');
 const { DELETABLE_SHIPMENT_STATUSES, buildShipmentDeleteBlockedMessage, hasCarrierBooking, canDeleteShipment } = require('../utils/shipmentDeletionPolicy');
-const { syncCarrierTrackingHistory, hasCriticalChanges, canUpdateShipmentStatus, isInternalShipment, buildDisplayHistory, autoHealAllResolvedExceptions, autoHealResolvedShipment, getResolvedExceptionStatus, autoSyncAllExceptions } = require('./shipment.helpers');
+const { syncCarrierTrackingHistory, buildTrackingSyncDocuments, hasCriticalChanges, canUpdateShipmentStatus, isInternalShipment, buildDisplayHistory, autoHealAllResolvedExceptions, autoHealResolvedShipment, getResolvedExceptionStatus, autoSyncAllExceptions } = require('./shipment.helpers');
 const chatwootNotificationService = require('../services/chatwootNotificationService');
 const WebhookDispatcher = require('../services/WebhookDispatcher');
 const { isTrackingSyncDue, markTrackingSynced, triggerBackgroundTrackingSync } = require('../services/queue/trackingCache');
@@ -786,7 +786,8 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
             if (updates) {
                 const dataToUpdate = {
                     history: updates.history,
-                    status: updates.status
+                    status: updates.status,
+                    documents: buildTrackingSyncDocuments(shipment, updates)
                 };
                 if (updates.actualWeight || updates.totalPieces) {
                     dataToUpdate.pricingSnapshot = {

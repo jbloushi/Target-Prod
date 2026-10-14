@@ -5,7 +5,7 @@
 const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
 const CarrierFactory = require('../services/CarrierFactory');
-const { syncCarrierTrackingHistory, compactHistory, buildDisplayHistory, resolveCarrierTrackingNumber } = require('./shipment.helpers');
+const { syncCarrierTrackingHistory, buildTrackingSyncDocuments, compactHistory, buildDisplayHistory, resolveCarrierTrackingNumber } = require('./shipment.helpers');
 const { normalizeStatus } = require('../constants/statusConstants');
 const { canAccessShipment } = require('../middleware/authorize.middleware');
 const { isTrackingSyncDue, markTrackingSynced, triggerBackgroundTrackingSync } = require('../services/queue/trackingCache');
@@ -50,7 +50,8 @@ exports.getPublicShipment = async (req, res) => {
                 if (updates) {
                     const dataToUpdate = {
                         history: updates.history,
-                        status: updates.status
+                        status: updates.status,
+                        documents: buildTrackingSyncDocuments(shipment, updates)
                     };
                     if (updates.actualWeight || updates.totalPieces) {
                         dataToUpdate.pricingSnapshot = {

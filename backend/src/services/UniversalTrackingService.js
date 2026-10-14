@@ -29,9 +29,15 @@ class UniversalTrackingService {
             .replace(/^ARM-/i, '')
             .replace(/^FED-/i, '')
             .trim();
+        const withMeta = (result, provider, error = null) => ({
+            ...(result || { status: 'in_transit', events: [] }),
+            provider,
+            syncStatus: error ? 'ERROR' : (result?.events?.length ? 'SUCCESS' : 'EMPTY'),
+            error: error || result?.error || null
+        });
 
         if (!cleanTracking) {
-            return { status: 'pending', events: [] };
+            return withMeta({ status: 'pending', events: [] }, 'universal');
         }
 
         // 1. DHL / DGR: Official DHL Express API
@@ -39,10 +45,10 @@ class UniversalTrackingService {
             try {
                 const DgrAdapter = require('../adapters/DgrAdapter');
                 const dhlAdapter = new DgrAdapter();
-                return await dhlAdapter.getTracking(cleanTracking);
+                return withMeta(await dhlAdapter.getTracking(cleanTracking), 'dhl_api');
             } catch (dhlErr) {
                 logger.warn(`[UniversalTracking] DHL API tracking error for ${cleanTracking}: ${dhlErr.message}`);
-                return { status: 'in_transit', events: [] };
+                return withMeta(null, 'dhl_api', dhlErr.message);
             }
         }
 
@@ -51,12 +57,12 @@ class UniversalTrackingService {
             try {
                 const scraped = await freeScraper.scrapeAramex(cleanTracking);
                 if (scraped && scraped.events && scraped.events.length > 0) {
-                    return scraped;
+                    return withMeta(scraped, 'aramex_public_scraper');
                 }
-                return await this._scrapeAramexPublic(cleanTracking);
+                return withMeta(await this._scrapeAramexPublic(cleanTracking), 'aramex_public_scraper');
             } catch (aramexErr) {
                 logger.warn(`[UniversalTracking] Aramex scraper error for ${cleanTracking}: ${aramexErr.message}`);
-                return { status: 'in_transit', events: [] };
+                return withMeta(null, 'aramex_public_scraper', aramexErr.message);
             }
         }
 
@@ -68,7 +74,7 @@ class UniversalTrackingService {
                     const tmResult = await this._fetchTrackingMore('fedex', cleanTracking, tmKey);
                     if (tmResult && tmResult.events && tmResult.events.length > 0) {
                         logger.info(`[UniversalTracking] TrackingMore returned ${tmResult.events.length} checkpoints for FedEx AWB #${cleanTracking}`);
-                        return tmResult;
+                        return withMeta(tmResult, 'trackingmore');
                     }
                 } catch (tmErr) {
                     logger.warn(`[UniversalTracking] TrackingMore FedEx query for ${cleanTracking}: ${tmErr.message}`);
@@ -79,18 +85,18 @@ class UniversalTrackingService {
             try {
                 const scraped = await freeScraper.scrapeFedex(cleanTracking);
                 if (scraped && scraped.events && scraped.events.length > 0) {
-                    return scraped;
+                    return withMeta(scraped, 'fedex_public_scraper');
                 }
-                return await this._scrapeFedexPublic(cleanTracking);
+                return withMeta(await this._scrapeFedexPublic(cleanTracking), 'fedex_public_scraper');
             } catch (fedexErr) {
                 logger.warn(`[UniversalTracking] FedEx scraper fallback error for ${cleanTracking}: ${fedexErr.message}`);
             }
 
-            return { status: 'in_transit', events: [] };
+            return withMeta(null, 'fedex_public_scraper');
         }
 
         // 4. Generic Carrier Fallback
-        return this._genericCarrierFallback(normalizedCarrier, cleanTracking);
+        return withMeta(this._genericCarrierFallback(normalizedCarrier, cleanTracking), 'generic_fallback');
     }
 
     /**
