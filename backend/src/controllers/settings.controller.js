@@ -26,6 +26,7 @@ exports.getSystemSettings = async (req, res) => {
             carrierBranding: rawSettings.carrierBranding,
             weightDiscrepancy: rawSettings.weightDiscrepancy,
             carrierEnvironments: isSuperAdmin ? rawSettings.carrierEnvironments : undefined,
+            phenixSync: isSuperAdmin ? rawSettings.phenixSync : undefined,
             whatsapp: {
                 enabled: rawSettings.whatsapp?.enabled || false,
                 provider: rawSettings.whatsapp?.provider || 'META'

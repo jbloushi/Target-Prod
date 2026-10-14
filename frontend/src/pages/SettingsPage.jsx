@@ -348,7 +348,7 @@ export const SettingsPage = () => {
   const handleSaveSystemSettings = async () => {
     setSavingSettings(true);
     try {
-      await settingsService.updateSettings(systemSettings);
+      await settingsService.updateSystemSettings(systemSettings);
       enqueueSnackbar(lang === 'ar' ? 'تم حفظ إعدادات النظام بنجاح!' : 'System settings saved successfully!', { variant: 'success' });
     } catch (err) {
       enqueueSnackbar(lang === 'ar' ? 'فشل في حفظ الإعدادات' : 'Failed to save settings', { variant: 'error' });
@@ -367,6 +367,21 @@ export const SettingsPage = () => {
       enqueueSnackbar(lang === 'ar' ? 'تم تحديث إعدادات الأسطول والاشتراكات بنجاح!' : 'Fleet & Paywall settings updated successfully!', { variant: 'success' });
     } catch (err) {
       enqueueSnackbar(err.message || 'Failed updating fleet settings', { variant: 'error' });
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleUpdatePhenixSettings = async (updates) => {
+    setSavingSettings(true);
+    try {
+      const currentPhenix = systemSettings?.phenixSync || {};
+      const nextPhenix = { ...currentPhenix, ...updates };
+      const res = await settingsService.updateSystemSettings({ phenixSync: nextPhenix });
+      setSystemSettings(res.data || res);
+      enqueueSnackbar('Phenix ERP settings updated successfully', { variant: 'success' });
+    } catch (err) {
+      enqueueSnackbar('Failed to update Phenix ERP settings: ' + (err.message || 'Unknown error'), { variant: 'error' });
     } finally {
       setSavingSettings(false);
     }
@@ -1191,7 +1206,8 @@ export const SettingsPage = () => {
                     onClick={async () => {
                       try {
                         setSavingSettings(true);
-                        await settingsService.updateSystemSettings({ phenixSync: systemSettings?.phenixSync });
+                        const res = await settingsService.updateSystemSettings({ phenixSync: systemSettings?.phenixSync });
+                        setSystemSettings(res.data || res);
                         enqueueSnackbar('Phenix ERP settings saved successfully', { variant: 'success' });
                       } catch (err) {
                         enqueueSnackbar('Failed to update Phenix ERP settings: ' + err.message, { variant: 'error' });
@@ -1233,10 +1249,8 @@ export const SettingsPage = () => {
                     <input
                       type="checkbox"
                       checked={Boolean(systemSettings?.phenixSync?.autoSyncEnabled)}
-                      onChange={(e) => setSystemSettings({
-                        ...systemSettings,
-                        phenixSync: { ...(systemSettings?.phenixSync || {}), autoSyncEnabled: e.target.checked }
-                      })}
+                      onChange={(e) => handleUpdatePhenixSettings({ autoSyncEnabled: e.target.checked })}
+                      disabled={savingSettings}
                       className="toggle toggle-success toggle-md"
                     />
                   </div>
