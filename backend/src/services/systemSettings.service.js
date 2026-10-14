@@ -2,7 +2,9 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('../utils/logger');
 
-const SETTINGS_FILE_PATH = path.resolve(process.cwd(), 'data', 'system_settings.json');
+// Resolve relative to the backend installation, not the PM2/current working
+// directory. PM2 cluster workers must read and write the same settings file.
+const SETTINGS_FILE_PATH = process.env.SYSTEM_SETTINGS_FILE || path.resolve(__dirname, '../../data/system_settings.json');
 
 const DEFAULT_SETTINGS = {
     carrierBranding: {

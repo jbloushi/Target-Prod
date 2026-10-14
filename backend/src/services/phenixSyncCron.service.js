@@ -1,6 +1,7 @@
 const logger = require('../utils/logger');
 const { getSystemSettings, updateSystemSettings } = require('./systemSettings.service');
 const phenixSyncService = require('./phenixSync.service');
+const { acquireLease, releaseLease, AUTO_SYNC_LOCK_KEY } = require('./phenixImportRun.service');
 
 class PhenixSyncCronService {
     constructor() {
@@ -69,6 +70,12 @@ class PhenixSyncCronService {
             return;
         }
 
+        const lease = await acquireLease(AUTO_SYNC_LOCK_KEY);
+        if (!lease.acquired) {
+            logger.info('[PhenixSyncCron] Another worker owns the distributed auto-sync lease; skipping this tick');
+            return;
+        }
+
         this.isSyncing = true;
         this.lastRunTimestamp = now;
 
@@ -85,7 +92,7 @@ class PhenixSyncCronService {
                 phenixSync: {
                     ...settings,
                     lastAutoSyncAt: new Date().toISOString(),
-                    lastAutoSyncStatus: 'SUCCESS',
+                    lastAutoSyncStatus: summary.errors?.length ? 'PARTIAL' : 'SUCCESS',
                     lastAutoSyncSummary: {
                         matchedCount: summary.matchedCount,
                         completeCount: summary.completeCount,
@@ -98,7 +105,7 @@ class PhenixSyncCronService {
                 }
             });
 
-            logger.info(`[PhenixSyncCron] Auto-pull completed successfully: Created ${summary.createdCount}, Updated ${summary.updatedCount}, Live Carriers Synced: ${summary.carrierSyncedCount}`);
+            logger.info(`[PhenixSyncCron] Auto-pull completed with status ${summary.errors?.length ? 'PARTIAL' : 'SUCCESS'}: Created ${summary.createdCount}, Updated ${summary.updatedCount}, Live Carriers Synced: ${summary.carrierSyncedCount}, Errors: ${summary.errors?.length || 0}`);
         } catch (err) {
             logger.error(`[PhenixSyncCron] Auto-pull execution failed: ${err.message}`);
             updateSystemSettings({
@@ -111,6 +118,9 @@ class PhenixSyncCronService {
             });
         } finally {
             this.isSyncing = false;
+            await releaseLease(lease).catch(err => {
+                logger.warn(`[PhenixSyncCron] Failed to release distributed lease: ${err.message}`);
+            });
         }
     }
 }

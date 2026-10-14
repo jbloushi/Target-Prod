@@ -554,7 +554,7 @@ exports.previewPhenixShipments = async (req, res) => {
 exports.syncPhenixShipments = async (req, res) => {
     try {
         const phenixSyncService = require('../services/phenixSync.service');
-        const { carrier = 'DHL', daysBack = 3, sendWhatsApp = false } = req.body || {};
+        const { carrier = 'DHL', daysBack = 3, sendWhatsApp = false, onlyComplete = true } = req.body || {};
 
         const userId = req.user?.id || null;
         const organizationId = req.user?.organizationId || null;
@@ -563,6 +563,7 @@ exports.syncPhenixShipments = async (req, res) => {
             carrier,
             daysBack: parseInt(daysBack, 10) || 3,
             sendWhatsApp: Boolean(sendWhatsApp),
+            onlyComplete: onlyComplete !== false,
             triggeredBy: req.user?.email || 'manual',
             userId,
             organizationId

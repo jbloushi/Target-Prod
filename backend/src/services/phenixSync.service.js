@@ -1,5 +1,6 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
+const { createHash } = require('crypto');
 const config = require('../config/config');
 const { prisma } = require('../config/database');
 const { syncCarrierTrackingHistory } = require('../controllers/shipment.helpers');
@@ -7,6 +8,9 @@ const whatsappService = require('./whatsappIntegration.service');
 const financeLedgerService = require('./financeLedger.service');
 const SlaTrackerService = require('./slaTracker.service');
 const { jobQueue } = require('./queue');
+const phenixImportRunService = require('./phenixImportRun.service');
+
+const MAX_PHENIX_DAYS_BACK = 62;
 
 /**
  * Phenix ERP Synchronization Service
@@ -232,6 +236,46 @@ function resolveCountry(rawCountry, phone) {
         if (cleanPhone.startsWith('1'))   return { code: 'US', name: 'United States' };
     }
     return { code: 'KW', name: 'Kuwait' };
+}
+
+function countryFromPhone(phone) {
+    if (!phone) return null;
+    const cleanPhone = String(phone).replace(/\D/g, '');
+    if (cleanPhone.startsWith('966')) return COUNTRY_MAP.SA;
+    if (cleanPhone.startsWith('974')) return COUNTRY_MAP.QA;
+    if (cleanPhone.startsWith('971')) return COUNTRY_MAP.AE;
+    if (cleanPhone.startsWith('973')) return COUNTRY_MAP.BH;
+    if (cleanPhone.startsWith('968')) return COUNTRY_MAP.OM;
+    if (cleanPhone.startsWith('965')) return COUNTRY_MAP.KW;
+    if (cleanPhone.startsWith('962')) return { code: 'JO', name: 'Jordan' };
+    if (cleanPhone.startsWith('961')) return { code: 'LB', name: 'Lebanon' };
+    if (cleanPhone.startsWith('20')) return { code: 'EG', name: 'Egypt' };
+    if (cleanPhone.startsWith('44')) return { code: 'GB', name: 'United Kingdom' };
+    if (cleanPhone.startsWith('33')) return { code: 'FR', name: 'France' };
+    if (cleanPhone.startsWith('49')) return { code: 'DE', name: 'Germany' };
+    if (cleanPhone.startsWith('1')) return { code: 'US', name: 'United States' };
+    return null;
+}
+
+function destinationSignals(rawCountry, phone) {
+    const rawKey = String(rawCountry || '').trim().toUpperCase();
+    const source = rawKey && (COUNTRY_MAP[rawKey] || /^[A-Z]{2}$/.test(rawKey))
+        ? resolveCountry(rawCountry, null)
+        : null;
+    const phoneCountry = countryFromPhone(phone);
+    const resolved = source || phoneCountry || { code: 'KW', name: 'Kuwait' };
+    return {
+        resolved,
+        sourceCountry: source,
+        phoneCountry,
+        hasSignal: Boolean(source || phoneCountry),
+        conflict: Boolean(source && phoneCountry && source.code !== phoneCountry.code)
+    };
+}
+
+function sourceKeyForRow(row, v) {
+    const natural = v.billId || `${v.carrierTracking}|${v.receiptNo}`;
+    return createHash('sha256').update(`phenix:${natural}`).digest('hex');
 }
 
 /**
@@ -589,8 +633,9 @@ function validatePhenixRow(row) {
     const receiverPhone = normalizePhenixPhone(rawReceiverPhone);
 
     // Destination Country
-    const rawCountry = row.Mcolor || '';
-    const destCountry = resolveCountry(rawCountry, receiverPhone || rawReceiverPhone);
+    const rawCountry = String(row.Mcolor || '').trim();
+    const destination = destinationSignals(rawCountry, receiverPhone || rawReceiverPhone);
+    const destCountry = destination.resolved;
 
     // Financials
     const totalAmount = parseFloat(row.Total || row.payment || 0) || 0;
@@ -601,6 +646,7 @@ function validatePhenixRow(row) {
     if (!carrierTracking) missing.push('Carrier AWB');
     if (!receiverName) missing.push('Receiver Name');
     if (!receiverPhone) missing.push('Receiver Phone');
+    if (!destination.hasSignal) missing.push('Destination Country');
 
     const isComplete = missing.length === 0;
 
@@ -623,6 +669,10 @@ function validatePhenixRow(row) {
         rawReceiverPhone,
         destCountryCode: destCountry.code,
         destCountryName: destCountry.name,
+        rawCountry,
+        phoneCountryCode: destination.phoneCountry?.code || null,
+        phoneCountryName: destination.phoneCountry?.name || null,
+        destinationConflict: destination.conflict,
         totalAmount,
         paymentMethod,
         date: row.Date
@@ -638,6 +688,9 @@ class PhenixSyncService {
 
         const timeZone = opts.timeZone || 'Asia/Kuwait';
         const daysBack = Math.max(1, parseInt(opts.daysBack, 10) || config.phenix?.syncDaysBack || 3);
+        if (daysBack > MAX_PHENIX_DAYS_BACK) {
+            throw new Error(`Phenix import window cannot exceed ${MAX_PHENIX_DAYS_BACK} days; run smaller dated windows for historical backfills.`);
+        }
 
         const today = dateParts(opts.date || new Date(), timeZone);
         const from = addDays(today, -(daysBack - 1));
@@ -828,11 +881,20 @@ class PhenixSyncService {
             results: []
         };
 
+        const importRun = await phenixImportRunService.createRun({
+            from,
+            to,
+            carrierFilter: targetCarrier,
+            triggeredBy: opts.triggeredBy || 'system'
+        });
+        const importRunId = importRun?.id || null;
+
         const shipmentsToSyncCarrier = [];
         const notificationsToSend = [];
 
         for (const row of rows) {
             const v = validatePhenixRow(row);
+            const sourceKey = sourceKeyForRow(row, v);
 
             // Filter by carrier
             if (targetCarrier !== 'ALL') {
@@ -852,6 +914,19 @@ class PhenixSyncService {
                     receiptNo: v.receiptNo,
                     carrierTracking: v.carrierTracking,
                     error: `Incomplete consignment data. Missing: ${v.missingFields.join(', ')}`
+                });
+                await phenixImportRunService.recordItem(importRunId, {
+                    sourceKey,
+                    billId: v.billId,
+                    receiptNo: v.receiptNo,
+                    carrierTracking: v.carrierTracking,
+                    derivedCarrier: v.derivedCarrier,
+                    rawDestination: v.rawCountry,
+                    resolvedDestination: v.destCountryCode,
+                    phoneCountry: v.phoneCountryCode,
+                    status: 'SKIPPED_INCOMPLETE',
+                    errorMessage: `Missing: ${v.missingFields.join(', ')}`,
+                    rawRow: row
                 });
                 continue;
             }
@@ -873,6 +948,7 @@ class PhenixSyncService {
                 let existing = await prisma.shipment.findFirst({
                     where: {
                         OR: [
+                            { phenixSourceKey: sourceKey },
                             { trackingNumber },
                             { dhlTrackingNumber: v.carrierTracking },
                             { trackingNumber: v.carrierTracking }
@@ -897,6 +973,7 @@ class PhenixSyncService {
                     shipment = await prisma.shipment.create({
                         data: {
                             trackingNumber,
+                            phenixSourceKey: sourceKey,
                             carrierCode: v.derivedCarrier,
                             serviceCode: v.derivedCarrier === 'DGR' ? 'P' : 'STD',
                             shipmentType: 'package',
@@ -938,6 +1015,11 @@ class PhenixSyncService {
                                 paymentMethod: v.paymentMethod,
                                 destCountry: v.destCountryName,
                                 destCountryCode: v.destCountryCode,
+                                destinationSignals: {
+                                    rawCountry: v.rawCountry,
+                                    phoneCountryCode: v.phoneCountryCode,
+                                    conflict: v.destinationConflict
+                                },
                                 costCenter: v.costCenter,
                                 source: 'PHENIX_ERP',
                                 rawDate: v.date,
@@ -977,6 +1059,11 @@ class PhenixSyncService {
                         destCountry: v.destCountryName,
                         destCountryCode: v.destCountryCode,
                         costCenter: v.costCenter,
+                        destinationSignals: {
+                            rawCountry: v.rawCountry,
+                            phoneCountryCode: v.phoneCountryCode,
+                            conflict: v.destinationConflict
+                        },
                         rawDate: v.date || currentDocs.rawDate,
                         lastSyncedAt: new Date().toISOString()
                     };
@@ -984,6 +1071,7 @@ class PhenixSyncService {
                     shipment = await prisma.shipment.update({
                         where: { id: existing.id },
                         data: {
+                            phenixSourceKey: existing.phenixSourceKey || sourceKey,
                             createdAt: consignmentDate,
                             estimatedDelivery: existing.estimatedDelivery || estimatedDelivery,
                             dhlTrackingNumber: v.carrierTracking || existing.dhlTrackingNumber,
@@ -1077,6 +1165,20 @@ class PhenixSyncService {
                     publicTrackingUrl: `https://target-kw.com/track/${shipment.trackingNumber}`
                 });
 
+                await phenixImportRunService.recordItem(importRunId, {
+                    sourceKey,
+                    billId: v.billId,
+                    receiptNo: v.receiptNo,
+                    carrierTracking: v.carrierTracking,
+                    derivedCarrier: v.derivedCarrier,
+                    rawDestination: v.rawCountry,
+                    resolvedDestination: v.destCountryCode,
+                    phoneCountry: v.phoneCountryCode,
+                    status: wasCreated ? 'CREATED' : 'UPDATED',
+                    shipmentId: shipment.id,
+                    rawRow: row
+                });
+
             } catch (itemErr) {
                 logger.error(`[PhenixSync] Error processing bill #${v.billId}: ${itemErr.message}`);
                 summary.errors.push({
@@ -1084,38 +1186,51 @@ class PhenixSyncService {
                     carrierTracking: v.carrierTracking,
                     error: itemErr.message
                 });
+                await phenixImportRunService.recordItem(importRunId, {
+                    sourceKey,
+                    billId: v.billId,
+                    receiptNo: v.receiptNo,
+                    carrierTracking: v.carrierTracking,
+                    derivedCarrier: v.derivedCarrier,
+                    rawDestination: v.rawCountry,
+                    resolvedDestination: v.destCountryCode,
+                    phoneCountry: v.phoneCountryCode,
+                    status: 'FAILED',
+                    errorMessage: itemErr.message,
+                    rawRow: row
+                });
             }
         }
 
-        // Trigger background carrier checkpoints & WhatsApp dispatches asynchronously
+        // Complete post-import work before marking the run finished. This keeps the
+        // returned summary truthful and prevents detached work from being lost on restart.
         if (shipmentsToSyncCarrier.length > 0) {
-            setImmediate(async () => {
-                logger.info(`[PhenixSync Background] Starting carrier checkpoints sync for ${shipmentsToSyncCarrier.length} shipments...`);
-                for (const s of shipmentsToSyncCarrier) {
-                    try {
-                        const carrierUpdates = await syncCarrierTrackingHistory(s);
-                        if (carrierUpdates) {
-                            await prisma.shipment.update({
-                                where: { id: s.id },
-                                data: {
-                                    history: carrierUpdates.history,
-                                    status: carrierUpdates.status
-                                }
-                            });
-                        }
-                    } catch (err) {
-                        logger.warn(`[PhenixSync Background] Carrier sync failed for ${s.trackingNumber}: ${err.message}`);
+            logger.info(`[PhenixSync] Starting carrier checkpoints sync for ${shipmentsToSyncCarrier.length} shipments...`);
+            for (const s of shipmentsToSyncCarrier) {
+                try {
+                    const carrierUpdates = await syncCarrierTrackingHistory(s);
+                    if (carrierUpdates) {
+                        await prisma.shipment.update({
+                            where: { id: s.id },
+                            data: {
+                                history: carrierUpdates.history,
+                                status: carrierUpdates.status
+                            }
+                        });
                     }
+                    summary.carrierSyncedCount++;
+                } catch (err) {
+                    summary.errors.push({ carrierTracking: s.dhlTrackingNumber || s.trackingNumber, error: `Carrier sync failed: ${err.message}` });
+                    logger.warn(`[PhenixSync] Carrier sync failed for ${s.trackingNumber}: ${err.message}`);
                 }
-                logger.info(`[PhenixSync Background] Finished carrier checkpoints sync`);
-            });
+            }
+            logger.info(`[PhenixSync] Finished carrier checkpoints sync`);
         }
 
         if (notificationsToSend.length > 0) {
-            setImmediate(async () => {
-                logger.info(`[PhenixSync Background] Starting WhatsApp notification queue for ${notificationsToSend.length} recipients...`);
-                for (const item of notificationsToSend) {
-                    try {
+            logger.info(`[PhenixSync] Starting WhatsApp notification dispatch for ${notificationsToSend.length} recipients...`);
+            for (const item of notificationsToSend) {
+                try {
                         const isSender = item.recipientRole === 'sender';
                         const roleGroup = isSender ? ['sender', 'shipper', 'merchant'] : ['receiver', 'customer', 'consignee'];
 
@@ -1155,6 +1270,7 @@ class PhenixSyncService {
                                         sentAt: microSent.sentAt ? new Date(microSent.sentAt) : new Date()
                                     }
                                 });
+                                summary.whatsAppSentCount++;
                                 continue;
                             }
                         }
@@ -1167,16 +1283,27 @@ class PhenixSyncService {
                             templateName: 'shipment_confirmation_2',
                             eventType: 'shipment_created'
                         });
-                    } catch (err) {
-                        logger.warn(`[PhenixSync Background] WhatsApp dispatch failed for ${item.shipment.trackingNumber} to ${item.recipientRole}: ${err.message}`);
-                    }
+                        summary.whatsAppSentCount++;
+                } catch (err) {
+                    summary.errors.push({ billId: item.v.billId, carrierTracking: item.v.carrierTracking, error: `WhatsApp dispatch failed: ${err.message}` });
+                    logger.warn(`[PhenixSync] WhatsApp dispatch failed for ${item.shipment.trackingNumber} to ${item.recipientRole}: ${err.message}`);
                 }
-            });
+            }
         }
 
-        logger.info(`[PhenixSync] Sync completed: Matched=${summary.matchedCount}, FullData=${summary.completeCount}, SkippedIncomplete=${summary.skippedIncompleteCount}, Created=${summary.createdCount}, Updated=${summary.updatedCount}`);
+        await phenixImportRunService.finishRun(
+            importRunId,
+            summary,
+            summary.errors.length > 0 ? 'PARTIAL' : 'SUCCESS'
+        );
+        logger.info(`[PhenixSync] Sync completed: Matched=${summary.matchedCount}, FullData=${summary.completeCount}, SkippedIncomplete=${summary.skippedIncompleteCount}, Created=${summary.createdCount}, Updated=${summary.updatedCount}, Errors=${summary.errors.length}`);
         return summary;
     }
 }
 
-module.exports = new PhenixSyncService();
+const phenixSyncService = new PhenixSyncService();
+phenixSyncService.MAX_PHENIX_DAYS_BACK = MAX_PHENIX_DAYS_BACK;
+phenixSyncService.resolveDestinationSignals = destinationSignals;
+phenixSyncService.sourceKeyForRow = sourceKeyForRow;
+
+module.exports = phenixSyncService;
