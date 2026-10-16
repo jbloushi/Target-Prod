@@ -19,9 +19,6 @@ async function runSafeCatchup() {
   // 2. Fetch all MySQL shipments
   console.log('2. Querying live MySQL shipments...');
   const mysqlShipments = await prisma.shipment.findMany({
-    where: {
-      trackingNumber: { not: null }
-    },
     include: { user: true },
     orderBy: { createdAt: 'desc' }
   });
