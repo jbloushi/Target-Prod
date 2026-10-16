@@ -7,12 +7,18 @@ const STATUS_PARITY_MAP = {
     'draft': ['draft'],
     'created': ['client_submitted', 'draft'],
     'pending': ['client_submitted', 'draft'],
+    'pending_approval': ['client_submitted', 'driver_picked_up', 'draft'],
     'ready_for_pickup': ['client_submitted', 'draft'],
     'picked_up': ['driver_picked_up', 'client_submitted'],
+    'received_at_hub': ['received_at_hub', 'client_submitted', 'driver_picked_up'],
+    'verified': ['verified', 'received_at_hub', 'carrier_booked'],
     'booked': ['carrier_booked', 'verified'],
     'in_transit': ['carrier_booked', 'verified'],
     'out_for_delivery': ['carrier_booked', 'verified'],
     'delivered': ['done', 'carrier_booked'],
+    'exception': ['carrier_booked', 'client_submitted', 'verified'],
+    'failed': ['carrier_booked', 'client_submitted', 'cancelled'],
+    'returned': ['done', 'carrier_booked', 'cancelled'],
     'cancelled': ['cancelled', 'draft']
 };
 
