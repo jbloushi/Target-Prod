@@ -74,6 +74,18 @@ class ShipmentLifecycleService {
             }
         });
 
+        try {
+            const jobQueue = require('./queue/jobQueue');
+            jobQueue.enqueue('tryton_dual_write', {
+                action: 'UPDATE_STATUS',
+                trackingNumber: shipment.trackingNumber,
+                status: nextStatus
+            }, { maxRetries: 3, backoffMs: 5000 }).catch(err => {
+                const logger = require('../utils/logger');
+                logger.warn(`[ShipmentLifecycleService] Tryton pickup status enqueue failed: ${err.message}`);
+            });
+        } catch (_) {}
+
         return { updated, alreadyPickedUp: false, nextStatus };
     }
 

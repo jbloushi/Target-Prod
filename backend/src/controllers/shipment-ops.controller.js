@@ -52,6 +52,15 @@ exports.updateShipmentStatus = async (req, res) => {
             }
         });
 
+        try {
+            const jobQueue = require('../services/queue/jobQueue');
+            jobQueue.enqueue('tryton_dual_write', {
+                action: 'UPDATE_STATUS',
+                trackingNumber: updated.trackingNumber,
+                status
+            }).catch(() => {});
+        } catch (_) {}
+
         logger.info(`Shipment ${trackingNumber} status updated to ${status}`);
         const eventType = chatwootNotificationService.mapStatusToNotificationEvent(status, description);
         if (eventType) {

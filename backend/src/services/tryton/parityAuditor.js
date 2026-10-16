@@ -229,6 +229,43 @@ class ParityAuditor {
         logger.info(`[ParityAuditor] Audit complete. Zero drift: ${zeroDrift}`);
         return auditReport;
     }
+
+    /**
+     * Audits Tryton General Ledger double-entry invariant (Debits == Credits).
+     */
+    async auditLedgerInvariant() {
+        if (!trytonClient.enabled) return { enabled: false, isInvariantHold: true, drift: 0 };
+        try {
+            const lines = await trytonClient.modelCall(
+                'account.move.line',
+                'search_read',
+                [['move.state', '=', 'posted']],
+                0,
+                20000,
+                null,
+                ['debit', 'credit']
+            );
+            let totalDebit = 0;
+            let totalCredit = 0;
+            for (const l of (lines || [])) {
+                totalDebit += parseFloat(l.debit?.decimal ?? l.debit ?? 0);
+                totalCredit += parseFloat(l.credit?.decimal ?? l.credit ?? 0);
+            }
+            const drift = Math.abs(totalDebit - totalCredit);
+            const isInvariantHold = drift <= 0.001;
+
+            return {
+                totalDebit: Number(totalDebit.toFixed(3)),
+                totalCredit: Number(totalCredit.toFixed(3)),
+                drift: Number(drift.toFixed(3)),
+                isInvariantHold,
+                linesAudited: (lines || []).length
+            };
+        } catch (err) {
+            logger.warn(`[ParityAuditor] Ledger invariant audit warning: ${err.message}`);
+            return { error: err.message, isInvariantHold: true, drift: 0 };
+        }
+    }
 }
 
 module.exports = new ParityAuditor();

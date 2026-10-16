@@ -35,7 +35,9 @@
     "phenix:reconcile": "node scripts/reconcile-phenix-records.js",
     "phenix:audit-ote": "node scripts/audit-phenix-ote.js",
     "phenix:carriers": "node scripts/lookup-all-phenix-carriers.js",
-    "finance:audit": "node scripts/verify-finance-and-whatsapp.js"
+    "finance:audit": "node scripts/verify-finance-and-whatsapp.js",
+    "tryton:reconcile": "node scripts/catchup-tryton-parity.js",
+    "tryton:inspect": "node scripts/inspect-missing-shipments.js"
   },
   "keywords": [],
   "author": "",

@@ -1355,6 +1355,47 @@ exports.triggerEomStatements = async (req, res) => {
     }
 };
 
+/**
+ * Manually trigger Tryton ERP Shadow Parity Reconciliation batch
+ */
+exports.triggerTrytonParityReconcile = async (req, res) => {
+    try {
+        const trytonShadowCronService = require('../services/trytonShadowCron.service');
+        const report = await trytonShadowCronService.runReconciliation();
+        res.status(200).json({ success: true, data: report, message: 'Tryton shadow parity reconciliation completed' });
+    } catch (error) {
+        return handleControllerError(res, error, 'Trigger Tryton reconciliation');
+    }
+};
+
+/**
+ * Get current Tryton ERP Shadow Parity Status & Audit Metrics
+ */
+exports.getTrytonParityStatus = async (req, res) => {
+    try {
+        const trytonShadowCronService = require('../services/trytonShadowCron.service');
+        const auditor = require('../services/tryton/parityAuditor');
+        const status = trytonShadowCronService.getStatus();
+        
+        let liveMetrics = null;
+        if (req.query.live === 'true') {
+            const [shipments, ledger] = await Promise.all([
+                auditor.auditShipmentParity(50),
+                auditor.auditLedgerInvariant()
+            ]);
+            liveMetrics = { shipments, ledger };
+        }
+
+        res.status(200).json({
+            success: true,
+            status,
+            liveMetrics
+        });
+    } catch (error) {
+        return handleControllerError(res, error, 'Get Tryton parity status');
+    }
+};
+
 // ==========================================
 // Double-Entry General Ledger & Chart of Accounts
 // ==========================================

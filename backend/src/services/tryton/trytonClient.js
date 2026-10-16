@@ -178,6 +178,7 @@ class TrytonClient {
 
         const partyCandidate = prismaShipment.user || prismaShipment.sender ||
             (prismaShipment.origin ? { name: prismaShipment.origin.companyName || prismaShipment.origin.contactPerson } : null) ||
+            (prismaShipment.organization ? { name: prismaShipment.organization.name } : null) ||
             (prismaShipment.customer ? { name: prismaShipment.customer.merchant || prismaShipment.customer.name } : null) ||
             { name: 'Direct Customer' };
         const customerId = await this.mirrorParty(partyCandidate);
@@ -378,6 +379,77 @@ class TrytonClient {
 
         logger.info(`[TrytonClient] Mirrored warehouse scan for ${trackingNumber} on Tryton ID ${shipmentId}`);
         return { success: true, trytonShipmentId: shipmentId };
+    }
+
+    /**
+     * Synchronizes shipment operational status transitions to Tryton workflow state.
+     */
+    async updateShipmentStatus(trackingNumber, newStatus) {
+        if (!this.enabled || !trackingNumber || !newStatus) return null;
+
+        let found = await this.modelCall('stock.shipment.out', 'search_read', [['carrier_waybill', '=', trackingNumber]], 0, 1, null, ['id', 'state']);
+        
+        // Auto-heal: If shipment is missing in Tryton ERP, attempt auto-mirroring from Prisma
+        if (!found || found.length === 0) {
+            try {
+                const { prisma } = require('../../config/database');
+                const s = await prisma.shipment.findUnique({
+                    where: { trackingNumber },
+                    include: { user: true, organization: true }
+                });
+                if (s) {
+                    const mirrored = await this.mirrorShipment(s);
+                    if (mirrored && mirrored.trytonShipmentId) {
+                        found = [{ id: mirrored.trytonShipmentId, state: 'client_submitted' }];
+                    }
+                }
+            } catch (healErr) {
+                logger.debug(`[TrytonClient] Auto-mirror on status update skipped: ${healErr.message}`);
+            }
+        }
+
+        if (!found || found.length === 0) {
+            logger.debug(`[TrytonClient] Shipment ${trackingNumber} not found for status sync`);
+            return null;
+        }
+
+        const tr = found[0];
+        const status = String(newStatus).toLowerCase().trim();
+
+        // Advance workflow states to match operational reality
+        if (['booked', 'in_transit', 'out_for_delivery', 'delivered'].includes(status)) {
+            if (tr.state === 'draft') {
+                try { await this.modelCall('stock.shipment.out', 'submit', [tr.id]); } catch (e) {}
+            }
+            if (tr.state === 'client_submitted' || tr.state === 'driver_picked_up') {
+                try { await this.modelCall('stock.shipment.out', 'receive_at_hub', [tr.id]); } catch (e) {}
+                try { await this.modelCall('stock.shipment.out', 'verify', [tr.id]); } catch (e) {}
+                try { await this.modelCall('stock.shipment.out', 'book_carrier', [tr.id]); } catch (e) {}
+            } else if (tr.state === 'received_at_hub') {
+                try { await this.modelCall('stock.shipment.out', 'verify', [tr.id]); } catch (e) {}
+                try { await this.modelCall('stock.shipment.out', 'book_carrier', [tr.id]); } catch (e) {}
+            } else if (tr.state === 'verified') {
+                try { await this.modelCall('stock.shipment.out', 'book_carrier', [tr.id]); } catch (e) {}
+            }
+
+            if (status === 'delivered') {
+                try { await this.modelCall('stock.shipment.out', 'done', [tr.id]); } catch (e) {}
+            }
+        } else if (status === 'picked_up' && tr.state === 'client_submitted') {
+            try { await this.modelCall('stock.shipment.out', 'pickup', [tr.id]); } catch (e) {}
+        } else if (['received_at_hub', 'verified'].includes(status)) {
+            if (tr.state === 'client_submitted' || tr.state === 'driver_picked_up') {
+                try { await this.modelCall('stock.shipment.out', 'receive_at_hub', [tr.id]); } catch (e) {}
+            }
+            if (status === 'verified') {
+                try { await this.modelCall('stock.shipment.out', 'verify', [tr.id]); } catch (e) {}
+            }
+        } else if (status === 'cancelled' && tr.state !== 'cancelled') {
+            try { await this.modelCall('stock.shipment.out', 'cancel', [tr.id]); } catch (e) {}
+        }
+
+        logger.info(`[TrytonClient] Synchronized status for ${trackingNumber} -> ${status} (Tryton ID: ${tr.id})`);
+        return { success: true, trackingNumber, status };
     }
 }
 

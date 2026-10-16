@@ -82,6 +82,7 @@ async function runSafeCatchup() {
   // 5. Run Parity Verification
   console.log('5. Running Parity Audit Verification...');
   const audit = await auditor.auditShipmentParity(100);
+  const ledgerAudit = await auditor.auditLedgerInvariant();
   const trytonTotal = await trytonClient.modelCall('stock.shipment.out', 'search_count', []);
   const mysqlTotal = await prisma.shipment.count();
 
@@ -94,6 +95,9 @@ async function runSafeCatchup() {
   console.log('• Recent 100 Match Rate     : ' + audit.matchRate + '%');
   console.log('• Status Mismatches         : ' + audit.mismatched);
   console.log('• Missing In Tryton         : ' + audit.missing);
+  console.log('• Ledger Total Debits       : ' + (ledgerAudit?.totalDebit ?? '0.000') + ' KWD');
+  console.log('• Ledger Total Credits      : ' + (ledgerAudit?.totalCredit ?? '0.000') + ' KWD');
+  console.log('• Ledger Invariant Drift    : ' + (ledgerAudit?.drift ?? '0.000') + ' KWD (' + (ledgerAudit?.isInvariantHold ? 'PERFECT INVARIANT' : 'DRIFT DETECTED') + ')');
   console.log('================================================================\n');
 
   await closeDB().catch(() => {});

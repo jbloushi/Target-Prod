@@ -50,6 +50,10 @@ router.get('/organizations/:orgId/statement', authorizeAny('VIEW_FINANCE', 'VIEW
 router.post('/organizations/:orgId/send-statement', authorizeAny('MANAGE_PAYMENTS', 'VIEW_INVOICES'), financeController.sendStatementNotification);
 router.post('/cron/eom-statements', authorize('MANAGE_PAYMENTS'), financeController.triggerEomStatements);
 
+// Tryton ERP Headless Shadow Parity Monitor & Reconciliation
+router.post('/cron/tryton-reconcile', authorize('MANAGE_PAYMENTS'), financeController.triggerTrytonParityReconcile);
+router.get('/tryton-parity', authorize('VIEW_FINANCE'), financeController.getTrytonParityStatus);
+
 // --- Core Double-Entry General Ledger & Accounts ---
 router.get('/gl/accounts', authorize('VIEW_FINANCE'), financeController.listAccounts);
 router.post('/gl/accounts', authorize('MANAGE_PAYMENTS'), requireIdempotency, financeController.createAccount);

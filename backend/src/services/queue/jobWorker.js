@@ -57,6 +57,15 @@ function initWorkers() {
                 }
             });
             logger.info(`[jobWorker] Tracking sync completed for ${payload.trackingNumber}, status: ${updates.status}`);
+
+            // Enqueue real-time status update to Tryton ERP shadow
+            try {
+                jobQueue.enqueue('tryton_dual_write', {
+                    action: 'UPDATE_STATUS',
+                    trackingNumber: shipment.trackingNumber,
+                    status: updates.status
+                }).catch(() => {});
+            } catch (_) {}
         }
     });
 
@@ -68,13 +77,14 @@ function initWorkers() {
 
         try {
             if (payload.action === 'CREATE_SHIPMENT') {
-                const shipment = await prisma.shipment.findUnique({
-                    where: { id: payload.shipmentId },
-                    include: { user: true }
-                });
+                const shipment = payload.shipmentId
+                    ? await prisma.shipment.findUnique({ where: { id: payload.shipmentId }, include: { user: true, organization: true } })
+                    : (payload.trackingNumber ? await prisma.shipment.findUnique({ where: { trackingNumber: payload.trackingNumber }, include: { user: true, organization: true } }) : null);
                 if (shipment) {
                     return await trytonClient.mirrorShipment(shipment);
                 }
+            } else if (payload.action === 'UPDATE_STATUS') {
+                return await trytonClient.updateShipmentStatus(payload.trackingNumber, payload.status);
             } else if (payload.action === 'MIRROR_FINANCIAL_ENTRY') {
                 return await trytonClient.mirrorFinancialMove(payload);
             } else if (payload.action === 'WAREHOUSE_SCAN') {

@@ -330,6 +330,12 @@ const startServer = async () => {
     const sallaSyncCronService = require('./services/sallaSyncCron.service');
     sallaSyncCronService.start();
 
+    // Start background Tryton ERP shadow parity reconciliation cron
+    const trytonShadowCronService = require('./services/trytonShadowCron.service');
+    if (process.env.TRYTON_SHADOW_CRON_ENABLED !== 'false') {
+      trytonShadowCronService.start();
+    }
+
     // Start Express server
     const serverInstance = app.listen(port, () => {
       logger.info(`Server running in ${process.env.NODE_ENV} mode on port ${port}`);
@@ -361,6 +367,7 @@ const startServer = async () => {
           eomStatementCronService.stop();
           phenixSyncCronService.stop();
           sallaSyncCronService.stop();
+          trytonShadowCronService.stop();
           const { jobQueue } = require('./services/queue');
           jobQueue.stop();
           const { closeDB } = require('./config/database');
