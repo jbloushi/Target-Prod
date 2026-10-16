@@ -26,10 +26,51 @@ describe('DHL Zone Pricing and Contract Rate Cards (5535 - Amani)', () => {
             expect(RateCardService.resolveZone('DGR', 'BR')).toBe(8); // Brazil (Rest of World)
             expect(RateCardService.resolveZone('DGR', 'CN')).toBe(9); // China
             expect(RateCardService.resolveZone('DGR', 'HK')).toBe(9); // Hong Kong
+            expect(RateCardService.resolveZone('DGR', 'KW')).toBe(10); // Kuwait (Domestic / Zone 10)
+            expect(RateCardService.resolveZone('DGR', 'KUWAIT')).toBe(10); // Kuwait Name Match
         });
 
         it('resolves unmapped international countries to Zone 8 default', () => {
             expect(RateCardService.resolveZone('DGR', 'UNKNOWN_LAND')).toBe(8);
+        });
+
+        it('calculates flat 3 KD for Zone 10 (Kuwait) across all weights for 5535_AMANI', () => {
+            const r05 = RateCardService.calculateRate({
+                rateCardId: '5535_AMANI',
+                countryCode: 'KW',
+                weight: 0.5
+            });
+            expect(r05.zone).toBe(10);
+            expect(r05.rate).toBe(3.0);
+            expect(r05.totalPrice).toBe(3.0);
+
+            const r15 = RateCardService.calculateRate({
+                rateCardId: '5535_AMANI',
+                countryCode: 'KW',
+                weight: 15.0
+            });
+            expect(r15.zone).toBe(10);
+            expect(r15.rate).toBe(3.0);
+            expect(r15.totalPrice).toBe(3.0);
+
+            const r30 = RateCardService.calculateRate({
+                rateCardId: '5535_AMANI',
+                countryCode: 'KW',
+                weight: 30.0
+            });
+            expect(r30.zone).toBe(10);
+            expect(r30.rate).toBe(3.0);
+            expect(r30.totalPrice).toBe(3.0);
+
+            const r50 = RateCardService.calculateRate({
+                rateCardId: '5535_AMANI',
+                countryCode: 'KW',
+                weight: 50.0
+            });
+            expect(r50.zone).toBe(10);
+            expect(r50.rate).toBe(3.0);
+            expect(r50.totalPrice).toBe(3.0);
+            expect(r50.excessPerKgRate).toBe(0);
         });
     });
 

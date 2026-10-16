@@ -32,10 +32,25 @@ const normalizeCityForCarrier = (city, countryCode) => {
     let c = (city || '').toString().trim();
     if (countryCode === 'KW') {
         const upper = c.toUpperCase();
-        if (upper === 'KUWAIT CITY' || upper === 'CITY' || !upper) return 'KUWAIT';
+        if (upper === 'KUWAIT CITY' || upper === 'CITY' || !upper || upper === 'KUWAIT') return 'Kuwait City';
     }
     // DHL OpenAPI schema cityName max length is 45 chars
     return c.substring(0, 45).trim();
+};
+
+const normalizePostalCodeForCarrier = (postalCode, countryCode, city) => {
+    let p = String(postalCode || '').trim();
+    if (countryCode === 'KW') {
+        if (!p || p === '00000' || p === '0' || !/^\d{5}$/.test(p)) {
+            const upperCity = String(city || '').toUpperCase();
+            if (upperCity.includes('SALMIYA')) return '22001';
+            if (upperCity.includes('HAWALLY')) return '32001';
+            if (upperCity.includes('FARWANIYA')) return '85000';
+            if (upperCity.includes('AHMADI')) return '61001';
+            return '13001';
+        }
+    }
+    return p;
 };
 
 /**
@@ -457,13 +472,17 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
     // Sanitize common optional fields so minor user omissions don't fail pre-flight validation
     if (order.sender) {
         order.sender.contactPerson = order.sender.contactPerson || order.sender.name || order.sender.company || 'Shipper';
-        if (['KW', 'AE'].includes(String(order.sender.countryCode || '').toUpperCase()) && !order.sender.postalCode) {
+        if (String(order.sender.countryCode || '').toUpperCase() === 'KW') {
+            order.sender.postalCode = normalizePostalCodeForCarrier(order.sender.postalCode, 'KW', order.sender.city);
+        } else if (String(order.sender.countryCode || '').toUpperCase() === 'AE' && !order.sender.postalCode) {
             order.sender.postalCode = '00000';
         }
     }
     if (order.receiver) {
         order.receiver.contactPerson = order.receiver.contactPerson || order.receiver.name || order.receiver.company || 'Consignee';
-        if (['KW', 'AE'].includes(String(order.receiver.countryCode || '').toUpperCase()) && !order.receiver.postalCode) {
+        if (String(order.receiver.countryCode || '').toUpperCase() === 'KW') {
+            order.receiver.postalCode = normalizePostalCodeForCarrier(order.receiver.postalCode, 'KW', order.receiver.city);
+        } else if (String(order.receiver.countryCode || '').toUpperCase() === 'AE' && !order.receiver.postalCode) {
             order.receiver.postalCode = '00000';
         }
     }
@@ -629,7 +648,7 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
         customerDetails: {
             shipperDetails: {
                 postalAddress: {
-                    postalCode: sender.postalCode,
+                    postalCode: normalizePostalCodeForCarrier(sender.postalCode, senderCountryCode, sender.city),
                     cityName: normalizeCityForCarrier(sender.city, senderCountryCode),
                     countryCode: senderCountryCode,
                     addressLine1: shipperAddress.line1,
@@ -647,7 +666,7 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
             },
             receiverDetails: {
                 postalAddress: {
-                    postalCode: receiver.postalCode,
+                    postalCode: normalizePostalCodeForCarrier(receiver.postalCode, receiverCountryCode, receiver.city),
                     cityName: normalizeCityForCarrier(receiver.city, receiverCountryCode),
                     countryCode: receiverCountryCode,
                     addressLine1: receiverAddress.line1,

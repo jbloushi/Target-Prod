@@ -1,8 +1,9 @@
 {
   "version": "2025",
   "carrierCode": "DGR",
-  "totalZones": 9,
+  "totalZones": 10,
   "codeToZone": {
+    "KW": 10,
     "BH": 1,
     "OM": 8,
     "QA": 1,
@@ -235,6 +236,7 @@
     "HK": 9
   },
   "nameToZone": {
+    "KUWAIT": 10,
     "BAHRAIN": 1,
     "OMAN": 1,
     "QATAR": 1,

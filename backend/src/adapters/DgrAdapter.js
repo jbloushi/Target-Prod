@@ -188,19 +188,23 @@ class DgrAdapter extends CarrierAdapter {
         const countryCode = String(party.countryCode || '').trim().toUpperCase();
         let cityName = String(party.city || '').trim();
 
-        // Specific alias for Kuwait: DHL uses "KUWAIT" for rate lookups when city is "Kuwait City" or empty
-        if (countryCode === 'KW' && (!cityName || cityName.toUpperCase() === 'KUWAIT CITY' || cityName.toUpperCase() === 'CITY')) {
-            cityName = 'KUWAIT';
+        // Specific alias for Kuwait: DHL uses standard Kuwait City and valid postal code (default 13001)
+        if (countryCode === 'KW' && (!cityName || cityName.toUpperCase() === 'KUWAIT CITY' || cityName.toUpperCase() === 'CITY' || cityName.toUpperCase() === 'KUWAIT')) {
+            cityName = 'Kuwait City';
         }
 
         const { addressLine1, addressLine2, addressLine3 } = this.splitAddress(
             (party.streetLines || []).filter(Boolean).join(', ') || party.formattedAddress || cityName || 'Main Street'
         );
 
-        // Always pass postalCode as a string (defaulting to "" or "00000" for KW) to satisfy DHL's OpenAPI required property schema
         let postal = String(party.postalCode || '').trim();
-        if (countryCode === 'KW' && !postal) {
-            postal = '00000';
+        if (countryCode === 'KW' && (!postal || postal === '00000' || postal === '0' || !/^\d{5}$/.test(postal))) {
+            const upperCity = String(cityName || '').toUpperCase();
+            if (upperCity.includes('SALMIYA')) postal = '22001';
+            else if (upperCity.includes('HAWALLY')) postal = '32001';
+            else if (upperCity.includes('FARWANIYA')) postal = '85000';
+            else if (upperCity.includes('AHMADI')) postal = '61001';
+            else postal = '13001';
         }
 
         // Clamp cityName to DHL's maximum of 45 characters

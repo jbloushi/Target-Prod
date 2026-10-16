@@ -463,7 +463,7 @@ class RateCardService {
             }
             const rateAt30 = Number(bracket30.rates[String(zone)]);
             excessWeight = Number((billable - maxBracket).toFixed(3));
-            excessPerKgRate = Number(card.over30KgPerKgRate?.[String(zone)] || 4.0);
+            excessPerKgRate = Number(card.over30KgPerKgRate?.[String(zone)] !== undefined ? card.over30KgPerKgRate[String(zone)] : 4.0);
 
             // Weight over 30kg is calculated per excess kg (or fractional kg rounded to 0.5)
             // User requested flat per-kg calculated
