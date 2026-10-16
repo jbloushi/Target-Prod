@@ -217,7 +217,10 @@ class TrytonClient {
             carrier_waybill: prismaShipment.trackingNumber
         };
         if (prismaShipment.price != null && Number(prismaShipment.price) > 0) {
-            shipmentValues.draft_selling_price = Number(Number(prismaShipment.price).toFixed(3));
+            shipmentValues.draft_selling_price = {
+                __class__: 'Decimal',
+                decimal: Number(prismaShipment.price).toFixed(3)
+            };
         }
 
         const newShipmentIds = await this.modelCall('stock.shipment.out', 'create', [shipmentValues]);
