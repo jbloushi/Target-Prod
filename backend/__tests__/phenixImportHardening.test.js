@@ -23,4 +23,46 @@ describe('Phenix import hardening', () => {
         expect(first).toBe(second);
         expect(first).toMatch(/^[a-f0-9]{64}$/);
     });
+
+    test('extracts weightKg (Mat_Amount), costPrice (bill_detailCustomField_11), markupAmount, customsFee, and operational fields', () => {
+        const validated = phenixSyncService.validatePhenixRow({
+            bill_id: '46663',
+            Receipt_no: '656009',
+            bill_detailCustomField_1: '5864966450',
+            Cost_Center: 'DHL - Oct',
+            Client: 'Maram',
+            client_id: '362',
+            billCustomField_1: '96594440199',
+            bill_detailCustomField_3: 'naser rashed',
+            bill_detailCustomField_4: '971502789486',
+            Mcolor: 'UAE',
+            Mat_Amount: 12,
+            Sale_price: 3.933,
+            Total: 47.2,
+            payment: 47.2,
+            bill_detailCustomField_11: 37.856,
+            bill_detailCustomField_12: 4,
+            Payment_method: 'نقداً',
+            Type: 'مبيعات الشحن',
+            Item: 'شحن اكسبرس',
+            Employee: 'الاستقبال',
+            User: 'Mustafa',
+            Branch: 'الفرع الرئيسي',
+            Date: '15/10/2026'
+        });
+
+        expect(validated.isComplete).toBe(true);
+        expect(validated.weightKg).toBe(12);
+        expect(validated.unitPrice).toBe(3.933);
+        expect(validated.totalAmount).toBe(47.2);
+        expect(validated.paidAmount).toBe(47.2);
+        expect(validated.costPrice).toBe(37.856);
+        expect(validated.customsFee).toBe(4);
+        expect(validated.markupAmount).toBe(9.344);
+        expect(validated.billType).toBe('مبيعات الشحن');
+        expect(validated.itemDescription).toBe('شحن اكسبرس');
+        expect(validated.employee).toBe('الاستقبال');
+        expect(validated.phenixUser).toBe('Mustafa');
+        expect(validated.branch).toBe('الفرع الرئيسي');
+    });
 });

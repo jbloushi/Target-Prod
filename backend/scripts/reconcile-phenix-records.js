@@ -94,8 +94,14 @@ async function reconcilePhenixRecords() {
         const actualDate = parsePhenixDate(rawPhenixDate);
 
         const rawAmount = s.price ? Number(s.price) : (matchedRow ? (parseFloat(matchedRow.Total || matchedRow.payment || 0) || 0) : 0);
+        const weightKg = matchedRow ? (parseFloat(matchedRow.Mat_Amount || 0) || 0) : (docs.weightKg || 0);
+        const unitPrice = matchedRow ? (parseFloat(matchedRow.Sale_price || matchedRow.Price || 0) || 0) : (docs.unitPrice || 0);
+        const costPrice = s.costPrice ? Number(s.costPrice) : (matchedRow ? (parseFloat(matchedRow.bill_detailCustomField_11 || 0) || 0) : (docs.costPrice || 0));
+        const customsFee = matchedRow ? (parseFloat(matchedRow.bill_detailCustomField_12 || matchedRow.Extra || 0) || 0) : (docs.customsFee || 0);
+        const markupAmount = (rawAmount > 0 && costPrice > 0) ? Number((rawAmount - costPrice).toFixed(4)) : (s.markupAmount ? Number(s.markupAmount) : null);
         const paymentMethod = matchedRow ? String(matchedRow.Payment_method || '').trim() : (docs.paymentMethod || '');
-        const isPaid = s.paid || (paymentMethod && !paymentMethod.includes('آجل'));
+        const paidAmount = matchedRow ? (parseFloat(matchedRow.payment || 0) || 0) : (docs.paidAmount || 0);
+        const isPaid = s.paid || Boolean(paymentMethod && !paymentMethod.includes('آجل'));
 
         // 1. Determine True Real-World Booking Date
         // Earliest between Phenix invoice Date and Carrier initial history checkpoint (e.g. Aramex / DHL initial scan / pickup)
@@ -115,18 +121,41 @@ async function reconcilePhenixRecords() {
 
         const effectiveDate = trueBookingDate || actualDate || new Date(s.createdAt);
 
-        // Update Shipment createdAt & documents.rawDate if live Phenix date exists
-        if (effectiveDate) {
+        // Update Shipment createdAt, costPrice, markupAmount, parcels, pricingSnapshot & documents if live Phenix data exists
+        if (effectiveDate || matchedRow) {
             const currentCreatedTime = new Date(s.createdAt).getTime();
             const actualTime = effectiveDate.getTime();
             const needsDateUpdate = Math.abs(currentCreatedTime - actualTime) > 60000;
-            const needsDocsUpdate = rawPhenixDate && docs.rawDate !== rawPhenixDate;
+            const needsDocsUpdate = (rawPhenixDate && docs.rawDate !== rawPhenixDate)
+                || (weightKg > 0 && !docs.weightKg)
+                || (costPrice > 0 && !s.costPrice);
+            const hasExistingParcels = Array.isArray(s.parcels) && s.parcels.length > 0;
+            const phenixParcels = (!hasExistingParcels && weightKg > 0) ? [{
+                weight: weightKg,
+                quantity: 1,
+                description: (matchedRow && matchedRow.Item) ? String(matchedRow.Item).trim() : 'General Cargo',
+                dimensions: { length: 20, width: 15, height: 10, unit: 'cm' }
+            }] : undefined;
+            const phenixPricingSnapshot = (!s.pricingSnapshot && (rawAmount > 0 || costPrice > 0 || weightKg > 0)) ? {
+                totalPrice: rawAmount,
+                costPrice,
+                markupAmount,
+                chargeableWeight: weightKg,
+                unitPrice,
+                customsFee,
+                currency: s.currency || 'KWD',
+                source: 'PHENIX_ERP'
+            } : undefined;
 
-            if (needsDateUpdate || needsDocsUpdate) {
+            if (needsDateUpdate || needsDocsUpdate || phenixParcels || phenixPricingSnapshot) {
                 await prisma.shipment.update({
                     where: { id: s.id },
                     data: {
                         createdAt: effectiveDate,
+                        costPrice: s.costPrice || (costPrice > 0 ? costPrice : undefined),
+                        markupAmount: (s.markupAmount !== null && s.markupAmount !== undefined) ? s.markupAmount : (markupAmount !== null ? markupAmount : undefined),
+                        parcels: phenixParcels || undefined,
+                        pricingSnapshot: phenixPricingSnapshot || undefined,
                         documents: {
                             ...docs,
                             rawDate: rawPhenixDate || docs.rawDate,
@@ -134,6 +163,18 @@ async function reconcilePhenixRecords() {
                             phenixBillId: docs.phenixBillId || (matchedRow ? matchedRow.bill_id : undefined),
                             phenixReceiptNo: docs.phenixReceiptNo || (matchedRow ? matchedRow.Receipt_no : undefined),
                             paymentMethod: docs.paymentMethod || paymentMethod || undefined,
+                            paidAmount: paidAmount || docs.paidAmount,
+                            weightKg: weightKg || docs.weightKg,
+                            unitPrice: unitPrice || docs.unitPrice,
+                            costPrice: costPrice || docs.costPrice,
+                            customsFee: customsFee || docs.customsFee,
+                            markupAmount: markupAmount !== null ? markupAmount : docs.markupAmount,
+                            billType: (matchedRow && matchedRow.Type) ? String(matchedRow.Type).trim() : docs.billType,
+                            itemDescription: (matchedRow && matchedRow.Item) ? String(matchedRow.Item).trim() : docs.itemDescription,
+                            employee: (matchedRow && matchedRow.Employee) ? String(matchedRow.Employee).trim() : docs.employee,
+                            phenixUser: (matchedRow && matchedRow.User) ? String(matchedRow.User).trim() : docs.phenixUser,
+                            branch: (matchedRow && matchedRow.Branch) ? String(matchedRow.Branch).trim() : docs.branch,
+                            note: (matchedRow && matchedRow.Note) ? String(matchedRow.Note).trim() : docs.note,
                             source: 'PHENIX_ERP'
                         }
                     }
@@ -145,41 +186,44 @@ async function reconcilePhenixRecords() {
         const dayKey = effectiveDate.toISOString().slice(0, 10);
         dateDistribution[dayKey] = (dateDistribution[dayKey] || 0) + 1;
 
-        // 2. Reconcile Double-Entry Ledger, Invoices, and Payments
-        if (s.organizationId && rawAmount > 0) {
+        // 2. Reconcile Double-Entry Ledger, Invoices, Payments, and Platform Carrier Payable
+        if ((s.organizationId && rawAmount > 0) || costPrice > 0) {
             try {
                 // Ensure Debit Ledger Entry exists & matches date
-                let ledgerEntry = await prisma.organizationLedger.findFirst({
-                    where: {
-                        sourceRepo: 'Shipment',
-                        sourceId: s.id,
-                        category: 'SHIPMENT_CHARGE'
-                    }
-                });
+                let ledgerEntry = null;
+                if (s.organizationId && rawAmount > 0) {
+                    ledgerEntry = await prisma.organizationLedger.findFirst({
+                        where: {
+                            sourceRepo: 'Shipment',
+                            sourceId: s.id,
+                            category: 'SHIPMENT_CHARGE'
+                        }
+                    });
 
-                if (!ledgerEntry) {
-                    ledgerEntry = await financeLedgerService.createLedgerEntry(s.organizationId, {
-                        amount: rawAmount,
-                        currency: s.currency || 'KWD',
-                        entryType: 'DEBIT',
-                        category: 'SHIPMENT_CHARGE',
-                        description: `Consignment Freight Charge (${s.trackingNumber})`,
-                        reference: phenixReceiptNo || phenixBillId || s.trackingNumber,
-                        sourceRepo: 'Shipment',
-                        sourceId: s.id,
-                        createdBy: defaultAdmin.id,
-                        createdAt: effectiveDate
-                    });
-                    financeReconciled++;
-                } else if (actualDate && Math.abs(new Date(ledgerEntry.createdAt).getTime() - actualDate.getTime()) > 60000) {
-                    await prisma.organizationLedger.update({
-                        where: { id: ledgerEntry.id },
-                        data: { createdAt: actualDate }
-                    });
+                    if (!ledgerEntry) {
+                        ledgerEntry = await financeLedgerService.createLedgerEntry(s.organizationId, {
+                            amount: rawAmount,
+                            currency: s.currency || 'KWD',
+                            entryType: 'DEBIT',
+                            category: 'SHIPMENT_CHARGE',
+                            description: `Consignment Freight Charge (${s.trackingNumber})`,
+                            reference: phenixReceiptNo || phenixBillId || s.trackingNumber,
+                            sourceRepo: 'Shipment',
+                            sourceId: s.id,
+                            createdBy: defaultAdmin.id,
+                            createdAt: effectiveDate
+                        });
+                        financeReconciled++;
+                    } else if (actualDate && Math.abs(new Date(ledgerEntry.createdAt).getTime() - actualDate.getTime()) > 60000) {
+                        await prisma.organizationLedger.update({
+                            where: { id: ledgerEntry.id },
+                            data: { createdAt: actualDate }
+                        });
+                    }
                 }
 
                 // If Paid, ensure Payment & Allocation exist & match date
-                if (isPaid && (phenixReceiptNo || phenixBillId)) {
+                if (s.organizationId && rawAmount > 0 && isPaid && (phenixReceiptNo || phenixBillId)) {
                     const refCode = phenixReceiptNo || phenixBillId;
                     const paymentRef = `PHENIX-${refCode}`;
                     let payment = await prisma.payment.findFirst({
@@ -242,7 +286,7 @@ async function reconcilePhenixRecords() {
                 }
 
                 // Ensure Official Invoice exists & matches date
-                if (phenixReceiptNo || phenixBillId) {
+                if (s.organizationId && rawAmount > 0 && (phenixReceiptNo || phenixBillId)) {
                     const refCode = phenixReceiptNo || phenixBillId;
                     const invoiceNumber = `INV-PH-${refCode}`;
                     let invoice = await prisma.invoice.findUnique({
@@ -298,6 +342,29 @@ async function reconcilePhenixRecords() {
                                 paidAt: isPaid ? actualDate : null
                             }
                         });
+                    }
+                }
+
+                // Ensure Platform Carrier Payable exists if costPrice > 0
+                if (costPrice > 0) {
+                    const existingPayable = await prisma.organizationLedger.findFirst({
+                        where: {
+                            sourceRepo: 'Shipment',
+                            sourceId: s.id,
+                            category: 'CARRIER_PAYABLE'
+                        }
+                    });
+                    if (!existingPayable) {
+                        await financeLedgerService.recordCarrierPayable({
+                            organizationId: null,
+                            shipmentId: s.id,
+                            carrierCode: s.carrierCode || 'DGR',
+                            costPrice,
+                            currency: s.currency || 'KWD',
+                            trackingNumber: s.trackingNumber,
+                            createdBy: defaultAdmin.id
+                        });
+                        financeReconciled++;
                     }
                 }
             } catch (finErr) {

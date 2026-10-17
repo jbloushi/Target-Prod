@@ -342,6 +342,7 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                                                 <th>Sender (Origin)</th>
                                                 <th>Carrier / AWB</th>
                                                 <th>Recipient & Destination</th>
+                                                <th>Weight & Financials</th>
                                                 <th>Status</th>
                                                 <th>Carrier Sync</th>
                                                 <th>Action</th>
@@ -382,6 +383,22 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                                                         <div className="text-[10px] text-base-content/60 flex items-center gap-1">
                                                             <span className="badge badge-xs badge-ghost font-mono">{row.destCountryCode || 'KW'}</span>
                                                             <span className="font-mono">{row.receiverPhone}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td>
+                                                        <div className="font-mono font-bold text-xs">
+                                                            {row.totalAmount > 0 ? `${Number(row.totalAmount).toFixed(3)} KWD` : '-'}
+                                                            {row.weightKg > 0 && (
+                                                                <span className="ml-1 badge badge-ghost badge-xs font-mono">{row.weightKg} kg</span>
+                                                            )}
+                                                        </div>
+                                                        <div className="text-[10px] text-base-content/60 font-mono flex items-center gap-1">
+                                                            {row.costPrice > 0 && <span>Cost: {Number(row.costPrice).toFixed(3)}</span>}
+                                                            {row.paymentMethod && (
+                                                                <span className={`badge badge-xs font-bold ${row.paymentMethod.includes('آجل') ? 'badge-warning' : 'badge-success'}`}>
+                                                                    {row.paymentMethod}
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     </td>
                                                     <td>
@@ -431,7 +448,8 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                                             <th>Carrier / AWB</th>
                                             <th>Recipient (Consignee)</th>
                                             <th>Destination</th>
-                                            <th>Price</th>
+                                            <th>Weight</th>
+                                            <th>Sell / Cost (KWD)</th>
                                             <th>Data Quality</th>
                                             <th>Target DB</th>
                                         </tr>
@@ -470,8 +488,21 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                                                 </td>
                                                 <td>
                                                     <span className="font-mono font-bold text-xs">
-                                                        {item.totalAmount > 0 ? `${item.totalAmount.toFixed(3)} KWD` : '-'}
+                                                        {item.weightKg > 0 ? `${item.weightKg} kg` : '-'}
                                                     </span>
+                                                </td>
+                                                <td>
+                                                    <div className="font-mono font-bold text-xs">
+                                                        {item.totalAmount > 0 ? `${item.totalAmount.toFixed(3)} KWD` : '-'}
+                                                    </div>
+                                                    <div className="text-[10px] text-base-content/60 font-mono flex items-center gap-1">
+                                                        {item.costPrice > 0 && <span>Cost: {item.costPrice.toFixed(3)}</span>}
+                                                        {item.paymentMethod && (
+                                                            <span className={`badge badge-xs font-bold ${item.paymentMethod.includes('آجل') ? 'badge-warning' : 'badge-success'}`}>
+                                                                {item.paymentMethod}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td>
                                                     {item.isComplete ? (

@@ -324,7 +324,9 @@ async function resolveOrCreateMerchantOrg(merchantName, senderPhone, merchantId)
  * for synced Phenix consignments into Target-Prod's Finance subsystem.
  */
 async function syncPhenixFinancialRecord({ shipment, v, orgId, defaultUserId }) {
-    if (!v.totalAmount || v.totalAmount <= 0) {
+    const hasSellPrice = Boolean(v.totalAmount && v.totalAmount > 0);
+    const hasCostPrice = Boolean(v.costPrice && v.costPrice > 0);
+    if (!hasSellPrice && !hasCostPrice) {
         return;
     }
 
@@ -341,196 +343,224 @@ async function syncPhenixFinancialRecord({ shipment, v, orgId, defaultUserId }) 
             (v.paidAmount >= v.totalAmount && v.totalAmount > 0)
         );
 
-        // 1. Ensure Debit Ledger Entry exists (Freight Charge)
-        let chargeEntry = await prisma.organizationLedger.findFirst({
-            where: {
-                sourceRepo: 'Shipment',
-                sourceId: shipment.id,
-                category: 'SHIPMENT_CHARGE'
-            }
-        });
-
-        if (!chargeEntry) {
-            chargeEntry = await financeLedgerService.createLedgerEntry(orgId, {
-                amount: v.totalAmount,
-                currency: 'KWD',
-                entryType: 'DEBIT',
-                category: 'SHIPMENT_CHARGE',
-                description: `Consignment Freight Charge (Phenix Bill #${v.billId} - ${shipment.trackingNumber})`,
-                reference: v.receiptNo || v.billId,
-                sourceRepo: 'Shipment',
-                sourceId: shipment.id,
-                createdBy: defaultUserId,
-                createdAt: billDate,
-                metadata: {
-                    phenixBillId: v.billId,
-                    phenixReceiptNo: v.receiptNo,
-                    merchantId: v.merchantId,
-                    merchantName: v.merchantName,
-                    paymentMethod: v.paymentMethod,
-                    isPaid
-                }
-            });
-
-            // Mirror freight charge to Tryton General Ledger
-            try {
-                jobQueue.enqueue('tryton_dual_write', {
-                    action: 'MIRROR_FINANCIAL_ENTRY',
-                    partyName: v.merchantName || v.senderName || 'Phenix Merchant',
-                    amount: v.totalAmount,
-                    entryType: 'DEBIT',
-                    description: `Consignment Freight Charge (Phenix Bill #${v.billId} - ${shipment.trackingNumber})`,
-                    reference: v.receiptNo || v.billId,
-                    source: 'PHENIX_CHARGE'
-                }, { maxRetries: 3, backoffMs: 5000 }).catch(err => {
-                    logger.warn(`[PhenixSync] Tryton freight charge dual-write enqueue failed: ${err.message}`);
-                });
-            } catch (err) {
-                logger.warn(`[PhenixSync] Dual-write queue dispatch error: ${err.message}`);
-            }
-        }
-
-        // 2. If Paid at counter / KNET, record Payment & Credit Ledger Entry
-        if (isPaid) {
-            const paymentRef = `PHENIX-${v.receiptNo || v.billId}`;
-            let payment = await prisma.payment.findFirst({
+        if (hasSellPrice) {
+            // 1. Ensure Debit Ledger Entry exists (Freight Charge)
+            let chargeEntry = await prisma.organizationLedger.findFirst({
                 where: {
-                    reference: paymentRef
+                    sourceRepo: 'Shipment',
+                    sourceId: shipment.id,
+                    category: 'SHIPMENT_CHARGE'
                 }
             });
 
-            if (!payment) {
-                payment = await prisma.payment.create({
-                    data: {
-                        organizationId: orgId,
-                        amount: v.totalAmount,
-                        currency: 'KWD',
-                        status: 'APPLIED',
-                        method: v.paymentMethod || 'CASH',
-                        reference: paymentRef,
-                        notes: `Automated payment receipt from Phenix ERP Bill #${v.billId} (${v.paymentMethod || 'Cash'})`,
-                        createdById: defaultUserId,
-                        postedAt: billDate,
-                        createdAt: billDate,
-                        metadata: {
-                            phenixBillId: v.billId,
-                            phenixReceiptNo: v.receiptNo,
-                            shipmentId: shipment.id
-                        }
-                    }
-                });
-
-                // Link payment allocation to shipment
-                await prisma.paymentAllocation.create({
-                    data: {
-                        organizationId: orgId,
-                        paymentId: payment.id,
-                        shipmentId: shipment.id,
-                        amount: v.totalAmount,
-                        currency: 'KWD',
-                        status: 'ACTIVE',
-                        createdBy: defaultUserId,
-                        createdAt: billDate
-                    }
-                });
-
-                // Create Credit Ledger entry for the payment
-                await financeLedgerService.createLedgerEntry(orgId, {
+            if (!chargeEntry) {
+                chargeEntry = await financeLedgerService.createLedgerEntry(orgId, {
                     amount: v.totalAmount,
                     currency: 'KWD',
-                    entryType: 'CREDIT',
-                    category: 'PAYMENT',
-                    description: `Payment Receipt (${v.paymentMethod || 'CASH'} - Phenix #${v.receiptNo || v.billId})`,
-                    reference: paymentRef,
-                    sourceRepo: 'Payment',
-                    sourceId: payment.id,
+                    entryType: 'DEBIT',
+                    category: 'SHIPMENT_CHARGE',
+                    description: `Consignment Freight Charge (Phenix Bill #${v.billId} - ${shipment.trackingNumber})`,
+                    reference: v.receiptNo || v.billId,
+                    sourceRepo: 'Shipment',
+                    sourceId: shipment.id,
                     createdBy: defaultUserId,
                     createdAt: billDate,
                     metadata: {
                         phenixBillId: v.billId,
-                        paymentId: payment.id,
-                        shipmentId: shipment.id
+                        phenixReceiptNo: v.receiptNo,
+                        merchantId: v.merchantId,
+                        merchantName: v.merchantName,
+                        paymentMethod: v.paymentMethod,
+                        weightKg: v.weightKg,
+                        costPrice: v.costPrice,
+                        customsFee: v.customsFee,
+                        isPaid
                     }
                 });
 
-                // Mirror payment receipt to Tryton General Ledger
+                // Mirror freight charge to Tryton General Ledger
                 try {
                     jobQueue.enqueue('tryton_dual_write', {
                         action: 'MIRROR_FINANCIAL_ENTRY',
                         partyName: v.merchantName || v.senderName || 'Phenix Merchant',
                         amount: v.totalAmount,
-                        entryType: 'CREDIT',
-                        description: `Payment Receipt (${v.paymentMethod || 'CASH'} - Phenix #${v.receiptNo || v.billId})`,
-                        reference: paymentRef,
-                        source: 'PAYMENT'
+                        entryType: 'DEBIT',
+                        description: `Consignment Freight Charge (Phenix Bill #${v.billId} - ${shipment.trackingNumber})`,
+                        reference: v.receiptNo || v.billId,
+                        source: 'PHENIX_CHARGE'
                     }, { maxRetries: 3, backoffMs: 5000 }).catch(err => {
-                        logger.warn(`[PhenixSync] Tryton payment dual-write enqueue failed: ${err.message}`);
+                        logger.warn(`[PhenixSync] Tryton freight charge dual-write enqueue failed: ${err.message}`);
                     });
                 } catch (err) {
-                    logger.warn(`[PhenixSync] Dual-write queue payment dispatch error: ${err.message}`);
+                    logger.warn(`[PhenixSync] Dual-write queue dispatch error: ${err.message}`);
                 }
             }
 
-            // Update shipment paid state
-            await prisma.shipment.update({
-                where: { id: shipment.id },
-                data: {
-                    paid: true,
-                    totalPaid: v.totalAmount,
-                    remainingBalance: 0
-                }
-            });
-        } else {
-            // Unpaid / On Account (آجل)
-            await prisma.shipment.update({
-                where: { id: shipment.id },
-                data: {
-                    paid: false,
-                    totalPaid: 0,
-                    remainingBalance: v.totalAmount
-                }
-            });
-        }
+            // 2. If Paid at counter / KNET, record Payment & Credit Ledger Entry
+            if (isPaid) {
+                const paymentRef = `PHENIX-${v.receiptNo || v.billId}`;
+                let payment = await prisma.payment.findFirst({
+                    where: {
+                        reference: paymentRef
+                    }
+                });
 
-        // 3. Auto-generate / link official Invoice in Finance Module
-        const invoiceNumber = `INV-PH-${v.receiptNo || v.billId}`;
-        let invoice = await prisma.invoice.findUnique({
-            where: { invoiceNumber }
-        });
-
-        if (!invoice && chargeEntry) {
-            invoice = await prisma.invoice.create({
-                data: {
-                    invoiceNumber,
-                    organizationId: orgId,
-                    periodStart: billDate,
-                    periodEnd: billDate,
-                    subtotal: v.totalAmount,
-                    vat: 0,
-                    total: v.totalAmount,
-                    currency: 'KWD',
-                    status: isPaid ? 'paid' : 'issued',
-                    paidAt: isPaid ? billDate : null,
-                    notes: `Phenix ERP Official Tax Invoice (Bill #${v.billId}, Receipt #${v.receiptNo}) - Method: ${v.paymentMethod || 'Standard'}`,
-                    createdById: defaultUserId,
-                    createdAt: billDate,
-                    lines: {
-                        create: {
-                            shipmentId: shipment.id,
-                            ledgerEntryId: chargeEntry.id,
-                            trackingNumber: shipment.trackingNumber,
-                            shipmentDate: billDate,
+                if (!payment) {
+                    payment = await prisma.payment.create({
+                        data: {
+                            organizationId: orgId,
                             amount: v.totalAmount,
                             currency: 'KWD',
-                            paid: isPaid,
-                            totalPaid: isPaid ? v.totalAmount : 0,
-                            remainingBalance: isPaid ? 0 : v.totalAmount,
+                            status: 'APPLIED',
+                            method: v.paymentMethod || 'CASH',
+                            reference: paymentRef,
+                            notes: `Automated payment receipt from Phenix ERP Bill #${v.billId} (${v.paymentMethod || 'Cash'})`,
+                            createdById: defaultUserId,
+                            postedAt: billDate,
+                            createdAt: billDate,
+                            metadata: {
+                                phenixBillId: v.billId,
+                                phenixReceiptNo: v.receiptNo,
+                                shipmentId: shipment.id
+                            }
+                        }
+                    });
+
+                    // Link payment allocation to shipment
+                    await prisma.paymentAllocation.create({
+                        data: {
+                            organizationId: orgId,
+                            paymentId: payment.id,
+                            shipmentId: shipment.id,
+                            amount: v.totalAmount,
+                            currency: 'KWD',
+                            status: 'ACTIVE',
+                            createdBy: defaultUserId,
                             createdAt: billDate
                         }
+                    });
+
+                    // Create Credit Ledger entry for the payment
+                    await financeLedgerService.createLedgerEntry(orgId, {
+                        amount: v.totalAmount,
+                        currency: 'KWD',
+                        entryType: 'CREDIT',
+                        category: 'PAYMENT',
+                        description: `Payment Receipt (${v.paymentMethod || 'CASH'} - Phenix #${v.receiptNo || v.billId})`,
+                        reference: paymentRef,
+                        sourceRepo: 'Payment',
+                        sourceId: payment.id,
+                        createdBy: defaultUserId,
+                        createdAt: billDate,
+                        metadata: {
+                            phenixBillId: v.billId,
+                            paymentId: payment.id,
+                            shipmentId: shipment.id
+                        }
+                    });
+
+                    // Mirror payment receipt to Tryton General Ledger
+                    try {
+                        jobQueue.enqueue('tryton_dual_write', {
+                            action: 'MIRROR_FINANCIAL_ENTRY',
+                            partyName: v.merchantName || v.senderName || 'Phenix Merchant',
+                            amount: v.totalAmount,
+                            entryType: 'CREDIT',
+                            description: `Payment Receipt (${v.paymentMethod || 'CASH'} - Phenix #${v.receiptNo || v.billId})`,
+                            reference: paymentRef,
+                            source: 'PAYMENT'
+                        }, { maxRetries: 3, backoffMs: 5000 }).catch(err => {
+                            logger.warn(`[PhenixSync] Tryton payment dual-write enqueue failed: ${err.message}`);
+                        });
+                    } catch (err) {
+                        logger.warn(`[PhenixSync] Dual-write queue payment dispatch error: ${err.message}`);
                     }
                 }
+
+                // Update shipment paid state
+                await prisma.shipment.update({
+                    where: { id: shipment.id },
+                    data: {
+                        paid: true,
+                        totalPaid: v.totalAmount,
+                        remainingBalance: 0
+                    }
+                });
+            } else {
+                // Unpaid / On Account (آجل)
+                await prisma.shipment.update({
+                    where: { id: shipment.id },
+                    data: {
+                        paid: false,
+                        totalPaid: 0,
+                        remainingBalance: v.totalAmount
+                    }
+                });
+            }
+
+            // 3. Auto-generate / link official Invoice in Finance Module
+            const invoiceNumber = `INV-PH-${v.receiptNo || v.billId}`;
+            let invoice = await prisma.invoice.findUnique({
+                where: { invoiceNumber }
             });
-            logger.info(`[PhenixSync] Generated official Invoice ${invoiceNumber} (${isPaid ? 'PAID' : 'ISSUED'}) for Merchant "${v.merchantName}" [Date: ${billDate.toISOString()}]`);
+
+            if (!invoice && chargeEntry) {
+                invoice = await prisma.invoice.create({
+                    data: {
+                        invoiceNumber,
+                        organizationId: orgId,
+                        periodStart: billDate,
+                        periodEnd: billDate,
+                        subtotal: v.totalAmount,
+                        vat: 0,
+                        total: v.totalAmount,
+                        currency: 'KWD',
+                        status: isPaid ? 'paid' : 'issued',
+                        paidAt: isPaid ? billDate : null,
+                        notes: `Phenix ERP Official Tax Invoice (Bill #${v.billId}, Receipt #${v.receiptNo}) - Method: ${v.paymentMethod || 'Standard'}`,
+                        createdById: defaultUserId,
+                        createdAt: billDate,
+                        lines: {
+                            create: {
+                                shipmentId: shipment.id,
+                                ledgerEntryId: chargeEntry.id,
+                                trackingNumber: shipment.trackingNumber,
+                                shipmentDate: billDate,
+                                amount: v.totalAmount,
+                                currency: 'KWD',
+                                paid: isPaid,
+                                totalPaid: isPaid ? v.totalAmount : 0,
+                                remainingBalance: isPaid ? 0 : v.totalAmount,
+                                createdAt: billDate
+                            }
+                        }
+                    }
+                });
+                logger.info(`[PhenixSync] Generated official Invoice ${invoiceNumber} (${isPaid ? 'PAID' : 'ISSUED'}) for Merchant "${v.merchantName}" [Date: ${billDate.toISOString()}]`);
+            }
+        }
+
+        // 4. Record Platform-Level Carrier Wholesale Payable (COGS / Carrier AP) from bill_detailCustomField_11
+        if (hasCostPrice) {
+            const existingPayable = await prisma.organizationLedger.findFirst({
+                where: {
+                    sourceRepo: 'Shipment',
+                    sourceId: shipment.id,
+                    category: 'CARRIER_PAYABLE'
+                }
+            });
+
+            if (!existingPayable) {
+                await financeLedgerService.recordCarrierPayable({
+                    organizationId: null,
+                    shipmentId: shipment.id,
+                    carrierCode: shipment.carrierCode || v.derivedCarrier || 'DGR',
+                    costPrice: v.costPrice,
+                    currency: 'KWD',
+                    trackingNumber: shipment.trackingNumber,
+                    createdBy: defaultUserId
+                });
+            }
         }
     } catch (finErr) {
         logger.warn(`[PhenixSync] Financial sync error for shipment ${shipment.trackingNumber}: ${finErr.message}`);
@@ -637,9 +667,25 @@ function validatePhenixRow(row) {
     const destination = destinationSignals(rawCountry, receiverPhone || rawReceiverPhone);
     const destCountry = destination.resolved;
 
-    // Financials
+    // Weight & Financials
+    const weightKg = parseFloat(row.Mat_Amount || 0) || 0;
+    const unitPrice = parseFloat(row.Sale_price || row.Price || 0) || 0;
     const totalAmount = parseFloat(row.Total || row.payment || 0) || 0;
+    const paidAmount = parseFloat(row.payment || 0) || 0;
+    const costPrice = parseFloat(row.bill_detailCustomField_11 || 0) || 0;
+    const customsFee = parseFloat(row.bill_detailCustomField_12 || row.Extra || 0) || 0;
+    const markupAmount = (totalAmount > 0 && costPrice > 0)
+        ? Number((totalAmount - costPrice).toFixed(4))
+        : null;
     const paymentMethod = String(row.Payment_method || '').trim();
+
+    // Operational metadata
+    const billType = String(row.Type || '').trim();
+    const itemDescription = String(row.Item || '').trim();
+    const employee = String(row.Employee || '').trim();
+    const phenixUser = String(row.User || '').trim();
+    const branch = String(row.Branch || '').trim();
+    const note = String(row.Note || '').trim();
 
     const missing = [];
     if (!billId) missing.push('Bill ID');
@@ -673,8 +719,20 @@ function validatePhenixRow(row) {
         phoneCountryCode: destination.phoneCountry?.code || null,
         phoneCountryName: destination.phoneCountry?.name || null,
         destinationConflict: destination.conflict,
+        weightKg,
+        unitPrice,
         totalAmount,
+        paidAmount,
+        costPrice,
+        customsFee,
+        markupAmount,
         paymentMethod,
+        billType,
+        itemDescription,
+        employee,
+        phenixUser,
+        branch,
+        note,
         date: row.Date
     };
 }
@@ -793,8 +851,17 @@ class PhenixSyncService {
                 destCountryName: v.destCountryName,
                 receiverName: v.receiverName || '-',
                 receiverPhone: v.receiverPhone || (v.rawReceiverPhone ? `Invalid: ${v.rawReceiverPhone}` : 'Missing Phone'),
+                weightKg: v.weightKg,
+                unitPrice: v.unitPrice,
                 totalAmount: v.totalAmount,
+                paidAmount: v.paidAmount,
+                costPrice: v.costPrice,
+                customsFee: v.customsFee,
+                markupAmount: v.markupAmount,
                 paymentMethod: v.paymentMethod,
+                billType: v.billType,
+                itemDescription: v.itemDescription,
+                employee: v.employee,
                 date: v.date,
                 isComplete: v.isComplete,
                 missingFields: v.missingFields,
@@ -968,6 +1035,24 @@ class PhenixSyncService {
                     serviceCode: v.derivedCarrier === 'DGR' ? 'P' : 'STD'
                 });
 
+                const phenixParcels = v.weightKg > 0 ? [{
+                    weight: v.weightKg,
+                    quantity: 1,
+                    description: v.itemDescription || 'General Cargo',
+                    dimensions: { length: 20, width: 15, height: 10, unit: 'cm' }
+                }] : undefined;
+
+                const phenixPricingSnapshot = (v.totalAmount > 0 || v.costPrice > 0 || v.weightKg > 0) ? {
+                    totalPrice: v.totalAmount,
+                    costPrice: v.costPrice,
+                    markupAmount: v.markupAmount,
+                    chargeableWeight: v.weightKg,
+                    unitPrice: v.unitPrice,
+                    customsFee: v.customsFee,
+                    currency: 'KWD',
+                    source: 'PHENIX_ERP'
+                } : undefined;
+
                 if (!existing) {
                     // Create new shipment with proper Merchant (Origin) & Consignee (Destination)
                     shipment = await prisma.shipment.create({
@@ -982,9 +1067,13 @@ class PhenixSyncService {
                             userId: defaultUser.id,
                             organizationId: assignedOrgId,
                             price: v.totalAmount > 0 ? v.totalAmount : null,
+                            costPrice: v.costPrice > 0 ? v.costPrice : null,
+                            markupAmount: v.markupAmount !== null ? v.markupAmount : null,
                             currency: 'KWD',
                             createdAt: consignmentDate,
                             estimatedDelivery,
+                            parcels: phenixParcels,
+                            pricingSnapshot: phenixPricingSnapshot,
                             origin: {
                                 city: 'Kuwait City',
                                 countryCode: 'KW',
@@ -1013,6 +1102,18 @@ class PhenixSyncService {
                                 merchantName: v.merchantName,
                                 senderName: v.senderName,
                                 paymentMethod: v.paymentMethod,
+                                paidAmount: v.paidAmount,
+                                weightKg: v.weightKg,
+                                unitPrice: v.unitPrice,
+                                costPrice: v.costPrice,
+                                customsFee: v.customsFee,
+                                markupAmount: v.markupAmount,
+                                billType: v.billType,
+                                itemDescription: v.itemDescription,
+                                employee: v.employee,
+                                phenixUser: v.phenixUser,
+                                branch: v.branch,
+                                note: v.note,
                                 destCountry: v.destCountryName,
                                 destCountryCode: v.destCountryCode,
                                 destinationSignals: {
@@ -1030,7 +1131,7 @@ class PhenixSyncService {
 
                     wasCreated = true;
                     summary.createdCount++;
-                    logger.info(`[PhenixSync] Created new shipment ${trackingNumber} for Merchant "${v.merchantName}" (ID: ${v.merchantId}) -> Dest: ${v.destCountryName} (AWB: ${v.carrierTracking}) [Date: ${consignmentDate.toISOString()}]`);
+                    logger.info(`[PhenixSync] Created new shipment ${trackingNumber} for Merchant "${v.merchantName}" (ID: ${v.merchantId}) -> Dest: ${v.destCountryName} (AWB: ${v.carrierTracking}, Weight: ${v.weightKg}kg, Sell: ${v.totalAmount} KWD, Cost: ${v.costPrice} KWD) [Date: ${consignmentDate.toISOString()}]`);
 
                     // Tryton ERP Shadow Dual-Writing Ingestion
                     try {
@@ -1056,6 +1157,18 @@ class PhenixSyncService {
                         merchantName: v.merchantName,
                         senderName: v.senderName,
                         paymentMethod: v.paymentMethod,
+                        paidAmount: v.paidAmount,
+                        weightKg: v.weightKg || currentDocs.weightKg,
+                        unitPrice: v.unitPrice || currentDocs.unitPrice,
+                        costPrice: v.costPrice || currentDocs.costPrice,
+                        customsFee: v.customsFee || currentDocs.customsFee,
+                        markupAmount: v.markupAmount !== null ? v.markupAmount : currentDocs.markupAmount,
+                        billType: v.billType || currentDocs.billType,
+                        itemDescription: v.itemDescription || currentDocs.itemDescription,
+                        employee: v.employee || currentDocs.employee,
+                        phenixUser: v.phenixUser || currentDocs.phenixUser,
+                        branch: v.branch || currentDocs.branch,
+                        note: v.note || currentDocs.note,
                         destCountry: v.destCountryName,
                         destCountryCode: v.destCountryCode,
                         costCenter: v.costCenter,
@@ -1068,6 +1181,8 @@ class PhenixSyncService {
                         lastSyncedAt: new Date().toISOString()
                     };
 
+                    const hasExistingParcels = Array.isArray(existing.parcels) && existing.parcels.length > 0;
+
                     shipment = await prisma.shipment.update({
                         where: { id: existing.id },
                         data: {
@@ -1077,6 +1192,12 @@ class PhenixSyncService {
                             dhlTrackingNumber: v.carrierTracking || existing.dhlTrackingNumber,
                             organizationId: existing.organizationId || assignedOrgId,
                             price: existing.price || (v.totalAmount > 0 ? v.totalAmount : undefined),
+                            costPrice: existing.costPrice || (v.costPrice > 0 ? v.costPrice : undefined),
+                            markupAmount: (existing.markupAmount !== null && existing.markupAmount !== undefined)
+                                ? existing.markupAmount
+                                : (v.markupAmount !== null ? v.markupAmount : undefined),
+                            parcels: hasExistingParcels ? existing.parcels : phenixParcels,
+                            pricingSnapshot: existing.pricingSnapshot || phenixPricingSnapshot,
                             customer: {
                                 name: v.receiverName || existing.customer?.name,
                                 phone: v.receiverPhone || existing.customer?.phone,
@@ -1107,7 +1228,7 @@ class PhenixSyncService {
                     logger.info(`[PhenixSync] Updated existing shipment ${shipment.trackingNumber} with Phenix metadata [Date: ${consignmentDate.toISOString()}]`);
                 }
 
-                // 2. Post financial transactions (Double-Entry Ledger, Invoice, Payment Receipt)
+                // 2. Post financial transactions (Double-Entry Ledger, Invoice, Payment Receipt, Carrier Payable)
                 await syncPhenixFinancialRecord({
                     shipment,
                     v,
@@ -1156,8 +1277,18 @@ class PhenixSyncService {
                     receiptNo: v.receiptNo,
                     carrierTracking: v.carrierTracking,
                     carrierCode: shipment.carrierCode,
+                    merchantName: v.merchantName,
+                    merchantId: v.merchantId,
+                    senderName: v.senderName,
+                    senderPhone: v.senderPhone,
+                    destCountryCode: v.destCountryCode,
                     receiverName: v.receiverName,
                     receiverPhone: v.receiverPhone,
+                    weightKg: v.weightKg,
+                    totalAmount: v.totalAmount,
+                    costPrice: v.costPrice,
+                    markupAmount: v.markupAmount,
+                    paymentMethod: v.paymentMethod,
                     status: shipment.status,
                     action: wasCreated ? 'CREATED' : 'UPDATED',
                     carrierSynced: false,
@@ -1312,5 +1443,6 @@ const phenixSyncService = new PhenixSyncService();
 phenixSyncService.MAX_PHENIX_DAYS_BACK = MAX_PHENIX_DAYS_BACK;
 phenixSyncService.resolveDestinationSignals = destinationSignals;
 phenixSyncService.sourceKeyForRow = sourceKeyForRow;
+phenixSyncService.validatePhenixRow = validatePhenixRow;
 
 module.exports = phenixSyncService;
