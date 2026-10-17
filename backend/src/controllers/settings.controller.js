@@ -66,6 +66,12 @@ exports.updateSystemSettings = async (req, res) => {
     try {
         const updates = req.body;
         const updated = updateSystemSettings(updates);
+        if (updates?.phenixSync?.autoSyncEnabled) {
+            const phenixSyncCron = require('../services/phenixSyncCron.service');
+            setImmediate(() => {
+                phenixSyncCron.checkAndRun({ force: true }).catch(() => {});
+            });
+        }
         res.status(200).json({
             success: true,
             data: updated,

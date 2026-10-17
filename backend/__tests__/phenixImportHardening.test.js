@@ -65,4 +65,34 @@ describe('Phenix import hardening', () => {
         expect(validated.phenixUser).toBe('Mustafa');
         expect(validated.branch).toBe('الفرع الرئيسي');
     });
+
+    test('acquireLease reclaims legacy oversized 2-hour lease or dead-PID lease after PM2 reload', async () => {
+        const os = require('os');
+        const { prisma } = require('../src/config/database');
+        const { acquireLease } = require('../src/services/phenixImportRun.service');
+
+        const createSpy = jest.spyOn(prisma.phenixImportLease, 'create').mockRejectedValueOnce(new Error('Unique constraint failed'));
+        const findSpy = jest.spyOn(prisma.phenixImportLease, 'findUnique').mockResolvedValueOnce({
+            lockKey: 'phenix-auto-sync',
+            ownerId: `${os.hostname()}:99999999:dead-worker`,
+            lockedUntil: new Date(Date.now() + 2 * 60 * 60 * 1000)
+        });
+        const updateSpy = jest.spyOn(prisma.phenixImportLease, 'updateMany').mockResolvedValueOnce({ count: 1 });
+
+        const lease = await acquireLease('phenix-auto-sync');
+        expect(lease.acquired).toBe(true);
+        expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({
+                lockKey: 'phenix-auto-sync',
+                OR: expect.arrayContaining([
+                    { ownerId: `${os.hostname()}:99999999:dead-worker` }
+                ])
+            })
+        }));
+
+        createSpy.mockRestore();
+        findSpy.mockRestore();
+        updateSpy.mockRestore();
+    });
 });
+

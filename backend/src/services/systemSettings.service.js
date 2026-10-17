@@ -54,7 +54,7 @@ const DEFAULT_SETTINGS = {
         metaAppSecret: process.env.WHATSAPP_META_APP_SECRET || ''
     },
     phenixSync: {
-        autoSyncEnabled: false,
+        autoSyncEnabled: true,
         intervalMinutes: 15,
         carrier: 'ALL',
         daysBack: 3,

@@ -281,12 +281,17 @@ function sourceKeyForRow(row, v) {
 /**
  * Resolve or auto-create Merchant Organization in database
  */
-async function resolveOrCreateMerchantOrg(merchantName, senderPhone, merchantId) {
+async function resolveOrCreateMerchantOrg(merchantName, senderPhone, merchantId, orgCache = null) {
     if (!merchantName || merchantName.toLowerCase() === 'target logistics' || merchantName.toLowerCase() === 'target') {
         return null;
     }
 
     const trimmedName = merchantName.trim();
+    const cacheKey = trimmedName.toLowerCase();
+    if (orgCache && orgCache.has(cacheKey)) {
+        return orgCache.get(cacheKey);
+    }
+
     try {
         let org = await prisma.organization.findFirst({
             where: {
@@ -308,11 +313,14 @@ async function resolveOrCreateMerchantOrg(merchantName, senderPhone, merchantId)
             logger.info(`[PhenixSync] Created new Organization "${trimmedName}" (ID: ${org.id}) for merchant`);
         }
 
+        if (orgCache && org) orgCache.set(cacheKey, org);
         return org;
     } catch (err) {
         logger.warn(`[PhenixSync] Merchant organization lookup/create failed for "${trimmedName}": ${err.message}`);
         try {
-            return await prisma.organization.findFirst({ where: { name: trimmedName } });
+            const fallbackOrg = await prisma.organization.findFirst({ where: { name: trimmedName } });
+            if (orgCache && fallbackOrg) orgCache.set(cacheKey, fallbackOrg);
+            return fallbackOrg;
         } catch {
             return null;
         }
@@ -848,9 +856,38 @@ class PhenixSyncService {
         let completeCount = 0;
         let incompleteCount = 0;
 
-        for (const row of rows) {
+        // Batch-preload existing shipments in 1 query instead of N sequential findFirst calls
+        const allAwbs = [];
+        const allTrkAwbs = [];
+        const validatedRows = rows.map((row) => {
             const v = validatePhenixRow(row);
+            if (v.carrierTracking) {
+                allAwbs.push(v.carrierTracking);
+                allTrkAwbs.push(`TRK-${v.carrierTracking}`);
+            }
+            return { row, v };
+        });
 
+        const existingByLookup = new Map();
+        if (allAwbs.length > 0 && typeof prisma.shipment?.findMany === 'function') {
+            try {
+                const existingBatch = await prisma.shipment.findMany({
+                    where: {
+                        OR: [
+                            { dhlTrackingNumber: { in: allAwbs } },
+                            { trackingNumber: { in: [...allAwbs, ...allTrkAwbs] } }
+                        ]
+                    },
+                    select: { id: true, trackingNumber: true, dhlTrackingNumber: true, status: true, carrierCode: true }
+                });
+                for (const s of existingBatch) {
+                    if (s.trackingNumber) existingByLookup.set(s.trackingNumber, s);
+                    if (s.dhlTrackingNumber) existingByLookup.set(s.dhlTrackingNumber, s);
+                }
+            } catch (_) {}
+        }
+
+        for (const { row, v } of validatedRows) {
             // Filter by carrier
             if (targetCarrier !== 'ALL') {
                 if ((targetCarrier === 'DHL' || targetCarrier === 'DGR') && v.derivedCarrier !== 'DGR') continue;
@@ -870,19 +907,12 @@ class PhenixSyncService {
                 continue;
             }
 
-            // Check if already in DB
+            // Check if already in DB via preloaded Map
             let existing = null;
             if (v.carrierTracking) {
-                existing = await prisma.shipment.findFirst({
-                    where: {
-                        OR: [
-                            { dhlTrackingNumber: v.carrierTracking },
-                            { trackingNumber: `TRK-${v.carrierTracking}` },
-                            { trackingNumber: v.carrierTracking }
-                        ]
-                    },
-                    select: { id: true, trackingNumber: true, status: true, carrierCode: true }
-                });
+                existing = existingByLookup.get(v.carrierTracking)
+                    || existingByLookup.get(`TRK-${v.carrierTracking}`)
+                    || null;
             }
 
             previewList.push({
@@ -1004,13 +1034,53 @@ class PhenixSyncService {
         });
         const importRunId = importRun?.id || null;
 
+        const orgCache = new Map();
         const shipmentsToSyncCarrier = [];
         const notificationsToSend = [];
+        const resultIndexByShipmentId = new Map();
 
-        for (const row of rows) {
+        // Batch-preload existing shipments in 1 query to avoid N+1 round-trips
+        const batchSourceKeys = [];
+        const batchTrackingNumbers = [];
+        const batchCarrierTrackings = [];
+        const preparedRows = rows.map((row) => {
             const v = validatePhenixRow(row);
             const sourceKey = sourceKeyForRow(row, v);
+            if (v.isComplete) {
+                const baseTracking = v.carrierTracking || v.receiptNo;
+                const trackingNumber = baseTracking.startsWith('TRK-') || baseTracking.startsWith('DGR-')
+                    ? baseTracking
+                    : `TRK-${baseTracking}`;
+                batchSourceKeys.push(sourceKey);
+                batchTrackingNumbers.push(trackingNumber);
+                if (v.carrierTracking) {
+                    batchCarrierTrackings.push(v.carrierTracking);
+                }
+            }
+            return { row, v, sourceKey };
+        });
 
+        const existingMap = new Map();
+        if (batchSourceKeys.length > 0 && typeof prisma.shipment?.findMany === 'function') {
+            try {
+                const existingRecords = await prisma.shipment.findMany({
+                    where: {
+                        OR: [
+                            { phenixSourceKey: { in: batchSourceKeys } },
+                            { trackingNumber: { in: [...batchTrackingNumbers, ...batchCarrierTrackings] } },
+                            ...(batchCarrierTrackings.length > 0 ? [{ dhlTrackingNumber: { in: batchCarrierTrackings } }] : [])
+                        ]
+                    }
+                });
+                for (const rec of existingRecords) {
+                    if (rec.phenixSourceKey) existingMap.set(`src:${rec.phenixSourceKey}`, rec);
+                    if (rec.trackingNumber) existingMap.set(`trk:${rec.trackingNumber}`, rec);
+                    if (rec.dhlTrackingNumber) existingMap.set(`awb:${rec.dhlTrackingNumber}`, rec);
+                }
+            } catch (_) {}
+        }
+
+        for (const { row, v, sourceKey } of preparedRows) {
             // Filter by carrier
             if (targetCarrier !== 'ALL') {
                 if ((targetCarrier === 'DHL' || targetCarrier === 'DGR') && v.derivedCarrier !== 'DGR') continue;
@@ -1055,21 +1125,29 @@ class PhenixSyncService {
                     ? baseTracking 
                     : `TRK-${baseTracking}`;
 
-                // Resolve or auto-create Merchant Store Organization
-                const merchantOrg = await resolveOrCreateMerchantOrg(v.merchantName, v.senderPhone, v.merchantId);
+                // Resolve or auto-create Merchant Store Organization (cached per run)
+                const merchantOrg = await resolveOrCreateMerchantOrg(v.merchantName, v.senderPhone, v.merchantId, orgCache);
                 const assignedOrgId = merchantOrg?.id || defaultUser.organizationId || null;
 
-                // 1. Check if shipment already exists
-                let existing = await prisma.shipment.findFirst({
-                    where: {
-                        OR: [
-                            { phenixSourceKey: sourceKey },
-                            { trackingNumber },
-                            { dhlTrackingNumber: v.carrierTracking },
-                            { trackingNumber: v.carrierTracking }
-                        ]
-                    }
-                });
+                // 1. Check if shipment already exists (using preloaded Map, fallback to findFirst)
+                let existing = existingMap.get(`src:${sourceKey}`)
+                    || existingMap.get(`trk:${trackingNumber}`)
+                    || (v.carrierTracking ? existingMap.get(`awb:${v.carrierTracking}`) : null)
+                    || (v.carrierTracking ? existingMap.get(`trk:${v.carrierTracking}`) : null)
+                    || null;
+
+                if (!existing && existingMap.size === 0) {
+                    existing = await prisma.shipment.findFirst({
+                        where: {
+                            OR: [
+                                { phenixSourceKey: sourceKey },
+                                { trackingNumber },
+                                { dhlTrackingNumber: v.carrierTracking },
+                                { trackingNumber: v.carrierTracking }
+                            ]
+                        }
+                    });
+                }
 
                 let shipment = null;
                 let wasCreated = false;
@@ -1100,6 +1178,8 @@ class PhenixSyncService {
                     currency: 'KWD',
                     source: 'PHENIX_ERP'
                 } : undefined;
+
+                let needsFinancialSync = true;
 
                 if (!existing) {
                     // Create new shipment with proper Merchant (Origin) & Consignee (Destination)
@@ -1172,6 +1252,7 @@ class PhenixSyncService {
                                 costCenter: v.costCenter,
                                 source: 'PHENIX_ERP',
                                 rawDate: v.date,
+                                financialSyncComplete: true,
                                 ingestedAt: new Date().toISOString()
                             }
                         }
@@ -1179,6 +1260,9 @@ class PhenixSyncService {
 
                     wasCreated = true;
                     summary.createdCount++;
+                    existingMap.set(`src:${sourceKey}`, shipment);
+                    existingMap.set(`trk:${shipment.trackingNumber}`, shipment);
+                    if (v.carrierTracking) existingMap.set(`awb:${v.carrierTracking}`, shipment);
                     logger.info(`[PhenixSync] Created new shipment ${trackingNumber} for Merchant "${v.merchantName}" (ID: ${v.merchantId}) -> Dest: ${v.destCountryName} (AWB: ${v.carrierTracking}, Weight: ${v.weightKg}kg, Sell: ${v.totalAmount} KWD, Cost: ${v.costPrice} KWD) [Date: ${consignmentDate.toISOString()}]`);
 
                     // Tryton ERP Shadow Dual-Writing Ingestion
@@ -1195,104 +1279,126 @@ class PhenixSyncService {
                         logger.warn(`[PhenixSync] Dual-write queue error: ${queueErr.message}`);
                     }
                 } else {
-                    // Update existing record with any missing Phenix metadata & link org if unassigned
                     const currentDocs = (existing.documents && typeof existing.documents === 'object') ? existing.documents : {};
-                    const updatedDocs = {
-                        ...currentDocs,
-                        phenixBillId: v.billId,
-                        phenixReceiptNo: v.receiptNo,
-                        phenixClientId: v.merchantId,
-                        merchantName: v.merchantName,
-                        senderName: v.senderName,
-                        paymentMethod: v.paymentMethod,
-                        paidAmount: v.paidAmount,
-                        weightKg: v.weightKg || currentDocs.weightKg,
-                        unitPrice: v.unitPrice || currentDocs.unitPrice,
-                        costPrice: v.costPrice || currentDocs.costPrice,
-                        customsFee: v.customsFee || currentDocs.customsFee,
-                        markupAmount: v.markupAmount !== null ? v.markupAmount : currentDocs.markupAmount,
-                        billType: v.billType || currentDocs.billType,
-                        itemDescription: v.itemDescription || currentDocs.itemDescription,
-                        employee: v.employee || currentDocs.employee,
-                        phenixUser: v.phenixUser || currentDocs.phenixUser,
-                        branch: v.branch || currentDocs.branch,
-                        note: v.note || currentDocs.note,
-                        destCountry: v.destCountryName,
-                        destCountryCode: v.destCountryCode,
-                        costCenter: v.costCenter,
-                        destinationSignals: {
-                            rawCountry: v.rawCountry,
-                            phoneCountryCode: v.phoneCountryCode,
-                            conflict: v.destinationConflict
-                        },
-                        rawDate: v.date || currentDocs.rawDate,
-                        lastSyncedAt: new Date().toISOString()
-                    };
+                    const isAlreadySyncedUnchanged = Boolean(
+                        existing.phenixSourceKey === sourceKey &&
+                        currentDocs.phenixBillId === v.billId &&
+                        currentDocs.financialSyncComplete === true &&
+                        Number(existing.price || 0) === Number(v.totalAmount || 0) &&
+                        Number(existing.costPrice || 0) === Number(v.costPrice || 0) &&
+                        existing.organizationId
+                    );
 
-                    const hasExistingParcels = Array.isArray(existing.parcels) && existing.parcels.length > 0;
+                    if (isAlreadySyncedUnchanged) {
+                        shipment = existing;
+                        needsFinancialSync = false;
+                        summary.updatedCount++;
+                    } else {
+                        // Update existing record with any missing Phenix metadata & link org if unassigned
+                        const updatedDocs = {
+                            ...currentDocs,
+                            phenixBillId: v.billId,
+                            phenixReceiptNo: v.receiptNo,
+                            phenixClientId: v.merchantId,
+                            merchantName: v.merchantName,
+                            senderName: v.senderName,
+                            paymentMethod: v.paymentMethod,
+                            paidAmount: v.paidAmount,
+                            weightKg: v.weightKg || currentDocs.weightKg,
+                            unitPrice: v.unitPrice || currentDocs.unitPrice,
+                            costPrice: v.costPrice || currentDocs.costPrice,
+                            customsFee: v.customsFee || currentDocs.customsFee,
+                            markupAmount: v.markupAmount !== null ? v.markupAmount : currentDocs.markupAmount,
+                            billType: v.billType || currentDocs.billType,
+                            itemDescription: v.itemDescription || currentDocs.itemDescription,
+                            employee: v.employee || currentDocs.employee,
+                            phenixUser: v.phenixUser || currentDocs.phenixUser,
+                            branch: v.branch || currentDocs.branch,
+                            note: v.note || currentDocs.note,
+                            destCountry: v.destCountryName,
+                            destCountryCode: v.destCountryCode,
+                            costCenter: v.costCenter,
+                            destinationSignals: {
+                                rawCountry: v.rawCountry,
+                                phoneCountryCode: v.phoneCountryCode,
+                                conflict: v.destinationConflict
+                            },
+                            rawDate: v.date || currentDocs.rawDate,
+                            financialSyncComplete: true,
+                            lastSyncedAt: new Date().toISOString()
+                        };
 
-                    shipment = await prisma.shipment.update({
-                        where: { id: existing.id },
-                        data: {
-                            phenixSourceKey: existing.phenixSourceKey || sourceKey,
-                            createdAt: consignmentDate,
-                            estimatedDelivery: existing.estimatedDelivery || estimatedDelivery,
-                            dhlTrackingNumber: v.carrierTracking || existing.dhlTrackingNumber,
-                            organizationId: existing.organizationId || assignedOrgId,
-                            price: existing.price || (v.totalAmount > 0 ? v.totalAmount : undefined),
-                            costPrice: existing.costPrice || (v.costPrice > 0 ? v.costPrice : undefined),
-                            markupAmount: (existing.markupAmount !== null && existing.markupAmount !== undefined)
-                                ? existing.markupAmount
-                                : (v.markupAmount !== null ? v.markupAmount : undefined),
-                            parcels: hasExistingParcels ? existing.parcels : phenixParcels,
-                            pricingSnapshot: existing.pricingSnapshot || phenixPricingSnapshot,
-                            customer: {
-                                name: v.receiverName || existing.customer?.name,
-                                phone: v.receiverPhone || existing.customer?.phone,
-                                merchant: v.merchantName,
-                                merchantId: v.merchantId
-                            },
-                            origin: {
-                                ...(typeof existing.origin === 'object' ? existing.origin : {}),
-                                contactPerson: v.senderName || existing.origin?.contactPerson,
-                                companyName: v.merchantName,
-                                merchantId: v.merchantId,
-                                phone: v.senderPhone || existing.origin?.phone,
-                                city: 'Kuwait City',
-                                countryCode: 'KW'
-                            },
-                            destination: {
-                                ...(typeof existing.destination === 'object' ? existing.destination : {}),
-                                contactPerson: v.receiverName || existing.destination?.contactPerson,
-                                phone: v.receiverPhone || existing.destination?.phone,
-                                city: v.destCountryName || existing.destination?.city,
-                                countryCode: v.destCountryCode || existing.destination?.countryCode
-                            },
-                            documents: updatedDocs
-                        }
-                    });
+                        const hasExistingParcels = Array.isArray(existing.parcels) && existing.parcels.length > 0;
 
-                    summary.updatedCount++;
-                    logger.info(`[PhenixSync] Updated existing shipment ${shipment.trackingNumber} with Phenix metadata [Date: ${consignmentDate.toISOString()}]`);
+                        shipment = await prisma.shipment.update({
+                            where: { id: existing.id },
+                            data: {
+                                phenixSourceKey: existing.phenixSourceKey || sourceKey,
+                                createdAt: consignmentDate,
+                                estimatedDelivery: existing.estimatedDelivery || estimatedDelivery,
+                                dhlTrackingNumber: v.carrierTracking || existing.dhlTrackingNumber,
+                                organizationId: existing.organizationId || assignedOrgId,
+                                price: existing.price || (v.totalAmount > 0 ? v.totalAmount : undefined),
+                                costPrice: existing.costPrice || (v.costPrice > 0 ? v.costPrice : undefined),
+                                markupAmount: (existing.markupAmount !== null && existing.markupAmount !== undefined)
+                                    ? existing.markupAmount
+                                    : (v.markupAmount !== null ? v.markupAmount : undefined),
+                                parcels: hasExistingParcels ? existing.parcels : phenixParcels,
+                                pricingSnapshot: existing.pricingSnapshot || phenixPricingSnapshot,
+                                customer: {
+                                    name: v.receiverName || existing.customer?.name,
+                                    phone: v.receiverPhone || existing.customer?.phone,
+                                    merchant: v.merchantName,
+                                    merchantId: v.merchantId
+                                },
+                                origin: {
+                                    ...(typeof existing.origin === 'object' ? existing.origin : {}),
+                                    contactPerson: v.senderName || existing.origin?.contactPerson,
+                                    companyName: v.merchantName,
+                                    merchantId: v.merchantId,
+                                    phone: v.senderPhone || existing.origin?.phone,
+                                    city: 'Kuwait City',
+                                    countryCode: 'KW'
+                                },
+                                destination: {
+                                    ...(typeof existing.destination === 'object' ? existing.destination : {}),
+                                    contactPerson: v.receiverName || existing.destination?.contactPerson,
+                                    phone: v.receiverPhone || existing.destination?.phone,
+                                    city: v.destCountryName || existing.destination?.city,
+                                    countryCode: v.destCountryCode || existing.destination?.countryCode
+                                },
+                                documents: updatedDocs
+                            }
+                        });
+
+                        summary.updatedCount++;
+                        logger.info(`[PhenixSync] Updated existing shipment ${shipment.trackingNumber} with Phenix metadata [Date: ${consignmentDate.toISOString()}]`);
+                    }
                 }
 
                 // 2. Post financial transactions (Double-Entry Ledger, Invoice, Payment Receipt, Carrier Payable)
-                await syncPhenixFinancialRecord({
-                    shipment,
-                    v,
-                    orgId: shipment.organizationId || assignedOrgId,
-                    defaultUserId: defaultUser.id
-                });
+                if (needsFinancialSync) {
+                    await syncPhenixFinancialRecord({
+                        shipment,
+                        v,
+                        orgId: shipment.organizationId || assignedOrgId,
+                        defaultUserId: defaultUser.id
+                    });
+                }
+
+                const existingHistory = Array.isArray(shipment.history) ? shipment.history : [];
+                const isTerminal = ['delivered', 'completed', 'cancelled', 'returned'].includes(String(shipment.status || '').toLowerCase());
 
                 if (v.carrierTracking && v.derivedCarrier !== 'INTERNAL' && v.derivedCarrier !== 'MANUAL') {
                     const isWithin7Days = (Date.now() - new Date(consignmentDate).getTime()) <= 7 * 24 * 60 * 60 * 1000;
-                    if (isWithin7Days) {
+                    // Only queue initial carrier scraping during Phenix import for newly created shipments
+                    // or shipments with empty tracking history (ongoing active shipments are polled by carrierSyncCron)
+                    if (isWithin7Days && !isTerminal && (wasCreated || existingHistory.length === 0)) {
                         shipmentsToSyncCarrier.push(shipment);
                     }
                 }
 
-                if (sendWhatsApp) {
-                    const isTerminal = ['delivered', 'completed', 'cancelled', 'returned'].includes(String(shipment.status || '').toLowerCase());
+                if (sendWhatsApp && (wasCreated || needsFinancialSync)) {
                     const isEligible = !isTerminal && isDateEligibleForNotification(v.date, opts.daysBack || 2);
                     if (isEligible) {
                         if (v.receiverPhone) {
@@ -1319,6 +1425,8 @@ class PhenixSyncService {
                     }
                 }
 
+                const resultIndex = summary.results.length;
+                resultIndexByShipmentId.set(shipment.id, resultIndex);
                 summary.results.push({
                     trackingNumber: shipment.trackingNumber,
                     billId: v.billId,
@@ -1339,24 +1447,26 @@ class PhenixSyncService {
                     paymentMethod: v.paymentMethod,
                     status: shipment.status,
                     action: wasCreated ? 'CREATED' : 'UPDATED',
-                    carrierSynced: false,
+                    carrierSynced: existingHistory.length > 0,
                     whatsAppSent: false,
                     publicTrackingUrl: `https://target-kw.com/track/${shipment.trackingNumber}`
                 });
 
-                await phenixImportRunService.recordItem(importRunId, {
-                    sourceKey,
-                    billId: v.billId,
-                    receiptNo: v.receiptNo,
-                    carrierTracking: v.carrierTracking,
-                    derivedCarrier: v.derivedCarrier,
-                    rawDestination: v.rawCountry,
-                    resolvedDestination: v.destCountryCode,
-                    phoneCountry: v.phoneCountryCode,
-                    status: wasCreated ? 'CREATED' : 'UPDATED',
-                    shipmentId: shipment.id,
-                    rawRow: row
-                });
+                if (wasCreated || needsFinancialSync) {
+                    await phenixImportRunService.recordItem(importRunId, {
+                        sourceKey,
+                        billId: v.billId,
+                        receiptNo: v.receiptNo,
+                        carrierTracking: v.carrierTracking,
+                        derivedCarrier: v.derivedCarrier,
+                        rawDestination: v.rawCountry,
+                        resolvedDestination: v.destCountryCode,
+                        phoneCountry: v.phoneCountryCode,
+                        status: wasCreated ? 'CREATED' : 'UPDATED',
+                        shipmentId: shipment.id,
+                        rawRow: row
+                    });
+                }
 
             } catch (itemErr) {
                 logger.error(`[PhenixSync] Error processing bill #${v.billId}: ${itemErr.message}`);
@@ -1381,8 +1491,12 @@ class PhenixSyncService {
             }
         }
 
-        // Complete post-import work before marking the run finished. This keeps the
-        // returned summary truthful and prevents detached work from being lost on restart.
+        // Execute post-import carrier checkpoint seeding & WhatsApp notifications within a strict
+        // inline time budget (20s) so Nginx/Axios HTTP requests never time out, while continuing
+        // any remaining items asynchronously in the background.
+        const inlineDeadline = Date.now() + 20000;
+        const deferredCarrierShipments = [];
+
         if (shipmentsToSyncCarrier.length > 0) {
             logger.info(`[PhenixSync] Starting carrier checkpoints sync for ${shipmentsToSyncCarrier.length} shipments...`);
             const concurrency = Math.max(1, Math.min(8, parseInt(process.env.PHENIX_CARRIER_SYNC_CONCURRENCY, 10) || 4));
@@ -1390,6 +1504,41 @@ class PhenixSyncService {
             const syncWorker = async () => {
                 while (nextCarrierIndex < shipmentsToSyncCarrier.length) {
                     const s = shipmentsToSyncCarrier[nextCarrierIndex++];
+                    if (Date.now() > inlineDeadline) {
+                        deferredCarrierShipments.push(s);
+                        continue;
+                    }
+                    try {
+                        const carrierUpdates = await syncCarrierTrackingHistory(s);
+                        if (carrierUpdates) {
+                            await prisma.shipment.update({
+                                where: { id: s.id },
+                                data: {
+                                    history: carrierUpdates.history,
+                                    status: carrierUpdates.status,
+                                    documents: buildTrackingSyncDocuments(s, carrierUpdates)
+                                }
+                            });
+                            const rIdx = resultIndexByShipmentId.get(s.id);
+                            if (rIdx !== undefined && summary.results[rIdx]) {
+                                summary.results[rIdx].carrierSynced = true;
+                                summary.results[rIdx].status = carrierUpdates.status || summary.results[rIdx].status;
+                            }
+                        }
+                        summary.carrierSyncedCount++;
+                    } catch (err) {
+                        summary.errors.push({ carrierTracking: s.dhlTrackingNumber || s.trackingNumber, error: `Carrier sync failed: ${err.message}` });
+                        logger.warn(`[PhenixSync] Carrier sync failed for ${s.trackingNumber}: ${err.message}`);
+                    }
+                }
+            };
+            await Promise.all(Array.from({ length: Math.min(concurrency, shipmentsToSyncCarrier.length) }, () => syncWorker()));
+            logger.info(`[PhenixSync] Finished inline carrier checkpoints sync (synced=${summary.carrierSyncedCount}, deferred=${deferredCarrierShipments.length})`);
+        }
+
+        if (deferredCarrierShipments.length > 0) {
+            setImmediate(async () => {
+                for (const s of deferredCarrierShipments) {
                     try {
                         const carrierUpdates = await syncCarrierTrackingHistory(s);
                         if (carrierUpdates) {
@@ -1402,21 +1551,17 @@ class PhenixSyncService {
                                 }
                             });
                         }
-                        summary.carrierSyncedCount++;
                     } catch (err) {
-                        summary.errors.push({ carrierTracking: s.dhlTrackingNumber || s.trackingNumber, error: `Carrier sync failed: ${err.message}` });
-                        logger.warn(`[PhenixSync] Carrier sync failed for ${s.trackingNumber}: ${err.message}`);
+                        logger.warn(`[PhenixSync Background] Deferred carrier sync failed for ${s.trackingNumber}: ${err.message}`);
                     }
                 }
-            };
-            await Promise.all(Array.from({ length: Math.min(concurrency, shipmentsToSyncCarrier.length) }, () => syncWorker()));
-            logger.info(`[PhenixSync] Finished carrier checkpoints sync`);
+            });
         }
 
         if (notificationsToSend.length > 0) {
-            logger.info(`[PhenixSync] Starting WhatsApp notification dispatch for ${notificationsToSend.length} recipients...`);
-            for (const item of notificationsToSend) {
-                try {
+            const dispatchWhatsAppBatch = async (items, isBackground = false) => {
+                for (const item of items) {
+                    try {
                         const isSender = item.recipientRole === 'sender';
                         const roleGroup = isSender ? ['sender', 'shipper', 'merchant'] : ['receiver', 'customer', 'consignee'];
 
@@ -1432,7 +1577,6 @@ class PhenixSyncService {
                             continue;
                         }
 
-                        // Check if microservice (msg.target-kw.com) already sent it via its autosend cron
                         const billId = item.v.billId;
                         const microRole = isSender ? 'sender' : 'receiver';
                         if (billId) {
@@ -1456,7 +1600,7 @@ class PhenixSyncService {
                                         sentAt: microSent.sentAt ? new Date(microSent.sentAt) : new Date()
                                     }
                                 });
-                                summary.whatsAppSentCount++;
+                                if (!isBackground) summary.whatsAppSentCount++;
                                 continue;
                             }
                         }
@@ -1469,11 +1613,24 @@ class PhenixSyncService {
                             templateName: 'shipment_confirmation_2',
                             eventType: 'shipment_created'
                         });
-                        summary.whatsAppSentCount++;
-                } catch (err) {
-                    summary.errors.push({ billId: item.v.billId, carrierTracking: item.v.carrierTracking, error: `WhatsApp dispatch failed: ${err.message}` });
-                    logger.warn(`[PhenixSync] WhatsApp dispatch failed for ${item.shipment.trackingNumber} to ${item.recipientRole}: ${err.message}`);
+                        if (!isBackground) summary.whatsAppSentCount++;
+                    } catch (err) {
+                        if (!isBackground) {
+                            summary.errors.push({ billId: item.v.billId, carrierTracking: item.v.carrierTracking, error: `WhatsApp dispatch failed: ${err.message}` });
+                        }
+                        logger.warn(`[PhenixSync] WhatsApp dispatch failed for ${item.shipment.trackingNumber} to ${item.recipientRole}: ${err.message}`);
+                    }
                 }
+            };
+
+            if (Date.now() > inlineDeadline || notificationsToSend.length > 10) {
+                logger.info(`[PhenixSync] Dispatching ${notificationsToSend.length} WhatsApp notifications asynchronously in background...`);
+                setImmediate(() => {
+                    dispatchWhatsAppBatch(notificationsToSend, true).catch(() => {});
+                });
+            } else {
+                logger.info(`[PhenixSync] Starting inline WhatsApp notification dispatch for ${notificationsToSend.length} recipients...`);
+                await dispatchWhatsAppBatch(notificationsToSend, false);
             }
         }
 

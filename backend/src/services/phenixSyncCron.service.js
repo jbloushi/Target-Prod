@@ -54,19 +54,22 @@ class PhenixSyncCronService {
     /**
      * Check settings and execute sync if due
      */
-    async checkAndRun() {
+    async checkAndRun(options = {}) {
+        const { force = false } = options;
         if (this.isSyncing) return;
 
         const settings = getSystemSettings()?.phenixSync || {};
-        if (!settings.autoSyncEnabled) {
+        if (!settings.autoSyncEnabled && !force) {
             return;
         }
 
         const intervalMinutes = Math.max(1, parseInt(settings.intervalMinutes, 10) || 15);
         const intervalMs = intervalMinutes * 60 * 1000;
         const now = Date.now();
+        const sharedLastRun = settings.lastAutoSyncAt ? new Date(settings.lastAutoSyncAt).getTime() : 0;
+        const effectiveLastRun = Math.max(this.lastRunTimestamp, Number.isFinite(sharedLastRun) ? sharedLastRun : 0);
 
-        if (now - this.lastRunTimestamp < intervalMs) {
+        if (!force && effectiveLastRun > 0 && (now - effectiveLastRun < intervalMs)) {
             return;
         }
 
@@ -82,7 +85,7 @@ class PhenixSyncCronService {
             renewLease(lease).catch(err => {
                 logger.warn(`[PhenixSyncCron] Failed to renew distributed lease: ${err.message}`);
             });
-        }, 10 * 60 * 1000);
+        }, 60 * 1000);
         if (typeof leaseRenewTimer.unref === 'function') leaseRenewTimer.unref();
 
         logger.info(`[PhenixSyncCron] Auto-pull trigger started (Carrier: ${settings.carrier || 'ALL'}, Window: ${settings.daysBack || 3} days)...`);
