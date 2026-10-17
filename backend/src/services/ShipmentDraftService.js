@@ -158,12 +158,34 @@ class ShipmentDraftService {
             carrierCode
         );
         const estimatedDelivery = data.estimatedDelivery || new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+        const org = targetUser.organization;
+        const orgId = cleanData.organizationId || targetUser.organizationId || null;
+        const draftPrice = Number(snapshot?.totalPrice || 0);
+
+        const creditLimit = Number(org?.creditLimit ?? targetUser.creditLimit ?? 0);
+        const outstandingBalance = Math.max(0, Number(org?.balance || 0));
+        const unappliedCash = Number(org?.unappliedBalance || 0);
+        const availableCredit = Number((creditLimit - outstandingBalance + unappliedCash).toFixed(3));
+        const isPrepaid = creditLimit === 0 || (org?.creditLimit == null && targetUser.creditLimit == null);
+        const hasSufficientCredit = isPrepaid
+            ? (unappliedCash >= draftPrice && availableCredit >= draftPrice)
+            : (availableCredit >= draftPrice);
+
         const hasCreditAccount = Number(targetUser.creditLimit || 0) > 0 ||
                                  Number(targetUser.organization?.creditLimit || 0) > 0 ||
                                  targetUser.organization?.type === 'CREDIT' ||
                                  targetUser.paymentMethod === 'CREDIT';
-        const defaultInitialStatus = isInternalShipment ? 'draft' : (hasCreditAccount ? 'ready_for_pickup' : 'pending');
+        const defaultInitialStatus = isInternalShipment
+            ? 'draft'
+            : (hasCreditAccount && hasSufficientCredit ? 'ready_for_pickup' : 'pending');
         const requestedStatus = cleanData.status || defaultInitialStatus;
+
+        // Block bookings that exceed available credit for non-bypass roles (F4)
+        if (!isPlatformStaff && orgId && (requestedStatus === 'ready_for_pickup' || requestedStatus === 'booked' || cleanData.status === 'ready_for_pickup')) {
+            if (draftPrice > 0 && !hasSufficientCredit) {
+                throw new Error('Insufficient available credit to finalize booking.');
+            }
+        }
         const isOteShipment = carrierCode === 'OTE' || carrierCode === 'LOGESTECHS';
         const codAmount = isOteShipment ? OTE_DEFAULT_COD_AMOUNT : null;
         const codCurrency = isOteShipment ? OTE_DEFAULT_COD_CURRENCY : null;
@@ -253,32 +275,6 @@ class ShipmentDraftService {
         });
 
         logger.debug(`ShipmentDraftService: Draft created with Tracking ${trackingNumber}, Org: ${targetUser.organizationId}`);
-
-        // 5. Accounting: Record Initial Snapshot (0-amount audit trail)
-        if (shipment.organizationId && snapshot.totalPrice > 0) {
-            try {
-                const financeLedgerService = require('./financeLedger.service');
-                await financeLedgerService.createLedgerEntry(shipment.organizationId, {
-                    sourceRepo: 'Shipment',
-                    sourceId: shipment.id,
-                    amount: 0,
-                    currency: shipment.currency || snapshot.billingCurrency || snapshot.currency || 'KWD',
-                    entryType: 'DEBIT',
-                    category: 'SHIPMENT_CHARGE',
-                    description: `Initial Pre-booking Snapshot: ${trackingNumber} (Price: ${snapshot.totalPrice})`,
-                    reference: trackingNumber,
-                    createdBy: user.id,
-                    metadata: {
-                        event: 'DRAFT_CREATION',
-                        price: snapshot.totalPrice.toString(),
-                        currency: shipment.currency || snapshot.billingCurrency || snapshot.currency || 'KWD'
-                    }
-                });
-            } catch (ledgeError) {
-                logger.error('Failed to create initial ledger entry for draft:', ledgeError);
-                // We don't throw here to avoid failing the whole draft creation for an audit log
-            }
-        }
 
         return shipment;
     }

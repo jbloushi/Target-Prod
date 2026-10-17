@@ -201,25 +201,32 @@ class CarrierReconciliationService {
                     tx
                 );
 
-                // Keep shipment.costPrice synchronized with actual carrier billed cost
+                // Keep shipment.costPrice synchronized with actual carrier billed cost and recalculate markupAmount
                 try {
-                    const existingShipment = await tx.shipment.findUnique({
-                        where: { id: adj.shipmentId },
-                        select: { costPrice: true, pricingSnapshot: true, trackingNumber: true }
-                    });
-                    if (existingShipment) {
-                        const baseCost = Number(existingShipment.costPrice ?? existingShipment.pricingSnapshot?.carrierRate ?? 0);
-                        const updatedCost = Math.max(0, Number((baseCost + delta).toFixed(3)));
-                        await tx.shipment.update({
+                    if (tx?.shipment?.findUnique) {
+                        const existingShipment = await tx.shipment.findUnique({
                             where: { id: adj.shipmentId },
-                            data: { costPrice: updatedCost }
+                            select: { price: true, costPrice: true, pricingSnapshot: true, trackingNumber: true }
                         });
+                        if (existingShipment) {
+                            const baseCost = Number(existingShipment.costPrice ?? existingShipment.pricingSnapshot?.carrierRate ?? 0);
+                            const updatedCost = Math.max(0, Number((baseCost + delta).toFixed(3)));
+                            const sellPrice = Number(existingShipment.price ?? existingShipment.pricingSnapshot?.totalPrice ?? 0);
+                            const updatedMarkup = Math.max(0, Number((sellPrice - updatedCost).toFixed(3)));
+                            await tx.shipment.update({
+                                where: { id: adj.shipmentId },
+                                data: {
+                                    costPrice: updatedCost,
+                                    markupAmount: updatedMarkup
+                                }
+                            });
+                        }
                     }
                 } catch (costErr) {
-                    logger.warn(`[CarrierReconciliation] Could not update shipment costPrice for ${adj.shipmentId}: ${costErr.message}`);
+                    logger.warn(`[CarrierReconciliation] Could not update shipment costPrice/markupAmount for ${adj.shipmentId}: ${costErr.message}`);
                 }
 
-                // Post balanced Double-Entry General Ledger variance (Account 5010 COGS vs Account 2020 Carrier AP)
+                // Post balanced Double-Entry General Ledger variance (Account 5010 COGS vs Account 2010 Carrier AP)
                 try {
                     const generalLedgerService = require('./generalLedger.service');
                     if (typeof generalLedgerService.postJournalEntry === 'function') {
@@ -234,13 +241,15 @@ class CarrierReconciliationService {
                             lines: [
                                 {
                                     accountCode: '5010', // Carrier Cost of Goods Sold (COGS)
+                                    organizationId: null,
                                     debit: delta > 0 ? absDelta : 0,
                                     credit: delta < 0 ? absDelta : 0,
                                     currency,
                                     memo: description
                                 },
                                 {
-                                    accountCode: '2020', // Carrier Accounts Payable
+                                    accountCode: '2010', // Carrier Accounts Payable
+                                    organizationId: null,
                                     debit: delta < 0 ? absDelta : 0,
                                     credit: delta > 0 ? absDelta : 0,
                                     currency,

@@ -15,7 +15,10 @@ describe('finance controller', () => {
     const financeLedgerService = {
         createLedgerEntry: jest.fn(),
         getShipmentAccounting: jest.fn(),
-        allocatePayment: jest.fn()
+        allocatePayment: jest.fn(),
+        settleMerchantCod: jest.fn(),
+        requestDriverCodRemittance: jest.fn(),
+        confirmDriverCodRemittance: jest.fn()
     };
 
     beforeEach(() => {
@@ -152,4 +155,93 @@ describe('finance controller', () => {
             })
         }));
     });
+
+    describe('settleMerchantCod', () => {
+        it('rejects missing organizationId', async () => {
+            const controller = require('../src/controllers/finance.controller');
+            const req = {
+                user: { id: 'admin-1', role: 'admin' },
+                body: { grossCodAmount: 100.0 }
+            };
+            const res = createMockRes();
+
+            await controller.settleMerchantCod(req, res);
+
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+                success: false,
+                error: 'organizationId is required'
+            }));
+        });
+
+        it('rejects invalid or non-positive grossCodAmount', async () => {
+            const controller = require('../src/controllers/finance.controller');
+            const req = {
+                user: { id: 'admin-1', role: 'admin' },
+                body: { organizationId: 'org-1', grossCodAmount: 0 }
+            };
+            const res = createMockRes();
+
+            await controller.settleMerchantCod(req, res);
+
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+                success: false,
+                error: 'grossCodAmount must be a positive number'
+            }));
+        });
+
+        it('successfully settles merchant COD payout and returns 200', async () => {
+            const controller = require('../src/controllers/finance.controller');
+            const req = {
+                user: { id: 'finance-1', role: 'accounting' },
+                body: {
+                    organizationId: 'org-merchant-5',
+                    shipmentIds: ['ship-1', 'ship-2'],
+                    grossCodAmount: 250.0,
+                    freightDeductions: 40.0,
+                    handlingFee: 10.0,
+                    netPayout: 200.0,
+                    reference: 'SETTL-TEST-001'
+                }
+            };
+            const res = createMockRes();
+
+            financeLedgerService.settleMerchantCod.mockResolvedValue({
+                success: true,
+                status: 'SETTLED',
+                organizationId: 'org-merchant-5',
+                grossCodAmount: 250.0,
+                freightDeductions: 40.0,
+                handlingFee: 10.0,
+                netPayout: 200.0,
+                currency: 'KWD',
+                reference: 'SETTL-TEST-001'
+            });
+
+            await controller.settleMerchantCod(req, res);
+
+            expect(financeLedgerService.settleMerchantCod).toHaveBeenCalledWith(expect.objectContaining({
+                organizationId: 'org-merchant-5',
+                shipmentIds: ['ship-1', 'ship-2'],
+                grossCodAmount: 250.0,
+                freightDeductions: 40.0,
+                handlingFee: 10.0,
+                netPayout: 200.0,
+                reference: 'SETTL-TEST-001',
+                settledById: 'finance-1'
+            }));
+            expect(res.status).toHaveBeenCalledWith(200);
+            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+                success: true,
+                message: 'Merchant COD settlement processed successfully'
+            }));
+        });
+
+        it('exports initiateDriverCodHandover as alias of requestDriverCodRemittance', () => {
+            const controller = require('../src/controllers/finance.controller');
+            expect(controller.initiateDriverCodHandover).toBe(controller.requestDriverCodRemittance);
+        });
+    });
 });
+

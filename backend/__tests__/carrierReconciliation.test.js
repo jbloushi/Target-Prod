@@ -134,7 +134,7 @@ describe('CarrierReconciliationService', () => {
 
         expect(result.count).toBe(1);
         expect(financeLedgerService.createLedgerEntry).toHaveBeenCalledWith(
-            'org-1',
+            null,
             expect.objectContaining({
                 sourceRepo: 'Shipment',
                 sourceId: 'ship-1',
@@ -146,6 +146,126 @@ describe('CarrierReconciliationService', () => {
             }),
             tx
         );
+    });
+
+    it('updates shipment costPrice and recomputes markupAmount upon adjustment (F9)', async () => {
+        const mockTx = {
+            shipment: {
+                findUnique: jest.fn().mockResolvedValue({
+                    id: 'ship-10',
+                    price: 25.0,
+                    costPrice: 10.0,
+                    pricingSnapshot: { carrierRate: 10.0, totalPrice: 25.0 }
+                }),
+                update: jest.fn().mockResolvedValue({ id: 'ship-10', costPrice: 12.5, markupAmount: 12.5 })
+            }
+        };
+        prisma.$transaction.mockImplementation(async (cb) => cb(mockTx));
+        financeLedgerService.createLedgerEntry.mockResolvedValue({ id: 'adj-led-10' });
+
+        const adjustments = [
+            {
+                shipmentId: 'ship-10',
+                organizationId: 'org-1',
+                deltaAmount: 2.5,
+                currency: 'KWD',
+                reason: 'Fuel surcharge discrepancy'
+            }
+        ];
+
+        const result = await carrierReconciliationService.postAdjustments(adjustments, 'user-admin');
+
+        expect(result.count).toBe(1);
+        expect(mockTx.shipment.update).toHaveBeenCalledWith({
+            where: { id: 'ship-10' },
+            data: {
+                costPrice: 12.5,
+                markupAmount: 12.5
+            }
+        });
+    });
+
+    it('handles negative delta adjustments (carrier rebates) reducing costPrice and increasing markup', async () => {
+        const mockTx = {
+            shipment: {
+                findUnique: jest.fn().mockResolvedValue({
+                    id: 'ship-rebate',
+                    price: 20.0,
+                    costPrice: 10.0,
+                    pricingSnapshot: { carrierRate: 10.0, totalPrice: 20.0 }
+                }),
+                update: jest.fn().mockResolvedValue({ id: 'ship-rebate', costPrice: 8.0, markupAmount: 12.0 })
+            }
+        };
+        prisma.$transaction.mockImplementation(async (cb) => cb(mockTx));
+        financeLedgerService.createLedgerEntry.mockResolvedValue({ id: 'adj-led-rebate' });
+
+        const adjustments = [
+            {
+                shipmentId: 'ship-rebate',
+                organizationId: 'org-1',
+                deltaAmount: -2.0,
+                currency: 'KWD',
+                reason: 'Volume rebate'
+            }
+        ];
+
+        const result = await carrierReconciliationService.postAdjustments(adjustments, 'user-admin');
+
+        expect(result.count).toBe(1);
+        expect(financeLedgerService.createLedgerEntry).toHaveBeenCalledWith(
+            null,
+            expect.objectContaining({
+                entryType: 'DEBIT',
+                amount: 2.0,
+                category: 'CARRIER_PAYABLE'
+            }),
+            mockTx
+        );
+        expect(mockTx.shipment.update).toHaveBeenCalledWith({
+            where: { id: 'ship-rebate' },
+            data: {
+                costPrice: 8.0,
+                markupAmount: 12.0
+            }
+        });
+    });
+
+    it('caps markupAmount at zero when updated cost exceeds selling price', async () => {
+        const mockTx = {
+            shipment: {
+                findUnique: jest.fn().mockResolvedValue({
+                    id: 'ship-loss',
+                    price: 15.0,
+                    costPrice: 14.0,
+                    pricingSnapshot: { carrierRate: 14.0, totalPrice: 15.0 }
+                }),
+                update: jest.fn().mockResolvedValue({ id: 'ship-loss', costPrice: 18.0, markupAmount: 0.0 })
+            }
+        };
+        prisma.$transaction.mockImplementation(async (cb) => cb(mockTx));
+        financeLedgerService.createLedgerEntry.mockResolvedValue({ id: 'adj-led-loss' });
+
+        const adjustments = [
+            {
+                shipmentId: 'ship-loss',
+                organizationId: 'org-1',
+                deltaAmount: 4.0,
+                currency: 'KWD',
+                reason: 'Oversize penalty'
+            }
+        ];
+
+        const result = await carrierReconciliationService.postAdjustments(adjustments, 'user-admin');
+
+        expect(result.count).toBe(1);
+        expect(mockTx.shipment.update).toHaveBeenCalledWith({
+            where: { id: 'ship-loss' },
+            data: {
+                costPrice: 18.0,
+                markupAmount: 0.0
+            }
+        });
     });
 });
 

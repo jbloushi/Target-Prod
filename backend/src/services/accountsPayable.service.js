@@ -436,13 +436,15 @@ const reconcileCarrierInvoice = async ({ vendorId, csvLines = [] }) => {
       where: {
         OR: [
           { trackingNumber: tracking },
-          { carrierTrackingNumber: tracking }
+          { dhlTrackingNumber: tracking },
+          { carrierShipmentId: tracking }
         ]
       },
       select: {
         id: true,
         trackingNumber: true,
-        carrierTrackingNumber: true,
+        dhlTrackingNumber: true,
+        carrierShipmentId: true,
         carrierCode: true,
         costPrice: true,
         pricingSnapshot: true,
@@ -478,7 +480,9 @@ const reconcileCarrierInvoice = async ({ vendorId, csvLines = [] }) => {
     results.push({
       shipmentId: shipment.id,
       trackingNumber: shipment.trackingNumber,
-      carrierTrackingNumber: shipment.carrierTrackingNumber,
+      carrierTrackingNumber: shipment.dhlTrackingNumber || shipment.carrierShipmentId || shipment.trackingNumber,
+      dhlTrackingNumber: shipment.dhlTrackingNumber,
+      carrierShipmentId: shipment.carrierShipmentId,
       carrierCode: shipment.carrierCode,
       status: isMatched ? 'MATCHED' : 'DISCREPANCY',
       billedAmount: toApiAmount(billedAmount),

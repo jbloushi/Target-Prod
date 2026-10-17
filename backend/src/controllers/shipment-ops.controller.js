@@ -643,6 +643,25 @@ exports.confirmDeliveryWithPod = async (req, res) => {
             data: updateData
         });
 
+        // Auto-post driver COD collection GL entry (Dr 1020 / Cr 2100) if cash collected (F13)
+        if (podData.codCollected > 0) {
+            try {
+                const generalLedgerService = require('../services/generalLedger.service');
+                await generalLedgerService.postDriverCodCollectionEntry({
+                    shipmentId: updated.id,
+                    trackingNumber: updated.trackingNumber,
+                    organizationId: updated.organizationId,
+                    codAmount: podData.codCollected,
+                    currency: updated.currency || 'KWD',
+                    driverId: podData.driverId,
+                    createdById: req.user?.id
+                });
+                logger.info(`[POD] GL COD collection posted for shipment ${updated.trackingNumber} amount ${podData.codCollected}`);
+            } catch (glErr) {
+                logger.warn(`[POD] GL COD collection skipped for ${updated.trackingNumber}:`, glErr.message);
+            }
+        }
+
         logger.info(`[POD] Shipment ${trackingNumber} marked as DELIVERED with POD signature by ${req.user?.name || 'Driver'}`);
         chatwootNotificationService.triggerShipmentNotification('delivered', updated);
 

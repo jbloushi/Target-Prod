@@ -21,6 +21,98 @@ const FinanceReports = ({ ledger = [], shipments = [], organizations = [] }) => 
     const [postingAdjustments, setPostingAdjustments] = useState(false);
     const [adjustSuccessMessage, setAdjustSuccessMessage] = useState('');
 
+    // Merchant COD Escrow State
+    const [isMerchantPayoutModalOpen, setIsMerchantPayoutModalOpen] = useState(false);
+    const [payoutForm, setPayoutForm] = useState({
+        organizationId: '',
+        grossCodAmount: '',
+        freightDeductions: '0.000',
+        handlingFee: '0.000',
+        netPayout: '',
+        currency: 'KWD',
+        reference: ''
+    });
+    const [payoutLoading, setPayoutLoading] = useState(false);
+    const [payoutSuccessMsg, setPayoutSuccessMsg] = useState('');
+
+    const merchantEscrowReports = React.useMemo(() => {
+        const map = {};
+        (ledger || []).forEach(entry => {
+            if (!entry.organizationId) return;
+            const orgId = entry.organizationId;
+            if (!map[orgId]) {
+                const org = (organizations || []).find(o => o.id === orgId);
+                map[orgId] = {
+                    organizationId: orgId,
+                    name: org?.name || entry.organization?.name || orgId,
+                    currency: entry.currency || 'KWD',
+                    escrowBalance: 0
+                };
+            }
+            const amt = parseFloat(entry.amount || 0);
+            if (entry.category === 'COD_COLLECTED_ESCROW') {
+                map[orgId].escrowBalance += (entry.entryType === 'CREDIT' ? amt : -amt);
+            } else if (entry.category === 'COD_SETTLEMENT_PAYOUT') {
+                map[orgId].escrowBalance -= (entry.entryType === 'DEBIT' ? amt : -amt);
+            }
+        });
+        return Object.values(map).filter(m => m.escrowBalance > 0);
+    }, [ledger, organizations]);
+
+    const totalEscrowHeld = React.useMemo(() => {
+        return merchantEscrowReports.reduce((sum, m) => sum + Math.max(0, m.escrowBalance), 0);
+    }, [merchantEscrowReports]);
+
+    const openPayoutModal = (orgId = null) => {
+        const target = orgId ? merchantEscrowReports.find(m => m.organizationId === orgId) : merchantEscrowReports[0];
+        const targetOrgId = target?.organizationId || (organizations[0]?.id || '');
+        const gross = target ? target.escrowBalance.toFixed(3) : '0.000';
+        const fee = (parseFloat(gross) * 0.05).toFixed(3);
+        const net = Math.max(0, parseFloat(gross) - parseFloat(fee)).toFixed(3);
+
+        setPayoutForm({
+            organizationId: targetOrgId,
+            grossCodAmount: gross,
+            freightDeductions: '0.000',
+            handlingFee: fee,
+            netPayout: net,
+            currency: target?.currency || 'KWD',
+            reference: `SETTL-${Date.now().toString(36).toUpperCase()}`
+        });
+        setPayoutSuccessMsg('');
+        setIsMerchantPayoutModalOpen(true);
+    };
+
+    const handlePayoutSubmit = async () => {
+        const gross = parseFloat(payoutForm.grossCodAmount);
+        if (!payoutForm.organizationId || isNaN(gross) || gross <= 0) {
+            alert(lang === 'ar' ? 'يرجى اختيار العميل وتحديد المبلغ الإجمالي' : 'Please select organization and valid gross amount');
+            return;
+        }
+
+        setPayoutLoading(true);
+        try {
+            await financeService.settleMerchantCod({
+                organizationId: payoutForm.organizationId,
+                grossCodAmount: gross,
+                freightDeductions: parseFloat(payoutForm.freightDeductions || 0),
+                handlingFee: parseFloat(payoutForm.handlingFee || 0),
+                netPayout: parseFloat(payoutForm.netPayout || (gross - parseFloat(payoutForm.freightDeductions || 0) - parseFloat(payoutForm.handlingFee || 0))),
+                bankAccountGlCode: '1010',
+                reference: payoutForm.reference,
+                currency: payoutForm.currency
+            });
+            setPayoutSuccessMsg(lang === 'ar' ? 'تمت تسوية وسداد مستحقات التاجر وترحيل القيد بنجاح!' : 'Merchant payout settled and posted successfully!');
+            setIsMerchantPayoutModalOpen(false);
+            loadCodSummary();
+        } catch (err) {
+            console.error('Merchant settlement error:', err);
+            alert(err.response?.data?.error || err.message || 'Failed to settle merchant COD payout');
+        } finally {
+            setPayoutLoading(false);
+        }
+    };
+
     const fmt = (val) => parseFloat(val || 0).toFixed(3);
 
     const parseCsvRows = (text) => {
@@ -339,6 +431,246 @@ const FinanceReports = ({ ledger = [], shipments = [], organizations = [] }) => 
                             )}
                         </tbody>
                     </table>
+                </div>
+
+                {/* Merchant COD Escrow Balance & Clearing Section */}
+                <div className="border-t border-base-200 pt-5 space-y-4">
+                    <div className="flex justify-between items-center flex-wrap gap-2">
+                        <div>
+                            <h4 className="text-sm font-extrabold text-base-content">
+                                {lang === 'ar' ? 'أمانات التحصيل النقدي للمتاجر (Merchant COD Escrow)' : 'Merchant COD Escrow Balances & Settlement'}
+                            </h4>
+                            <p className="text-xs text-base-content/60">
+                                {lang === 'ar' ? 'متابعة وتسوية مستحقات المتاجر بعد استلام النقدية في الخزينة.' : 'Clear and payout collected COD funds to merchants after hub vault handover.'}
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => openPayoutModal()}
+                            disabled={merchantEscrowReports.length === 0}
+                            className="btn btn-sm btn-primary text-white font-bold gap-1 shadow-xs"
+                        >
+                            <span className="material-symbols-outlined text-[16px]">price_check</span>
+                            {lang === 'ar' ? 'تسوية وسداد مستحقات تاجر' : 'Settle Merchant Payout'}
+                        </button>
+                    </div>
+
+                    {payoutSuccessMsg && (
+                        <div className="alert alert-success text-xs py-2">
+                            <span>{payoutSuccessMsg}</span>
+                        </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 space-y-1">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-primary">{lang === 'ar' ? 'إجمالي أمانات المتاجر المحتجزة' : 'Total Merchant Escrow Held'}</div>
+                            <div className="text-xl font-black text-primary font-mono">{fmt(totalEscrowHeld)} <span className="text-xs font-sans text-base-content/60">{curSymbol}</span></div>
+                        </div>
+                        <div className="bg-base-200/50 border border-base-200 rounded-xl p-4 space-y-1">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-base-content/60">{lang === 'ar' ? 'عدد المتاجر الدائنة' : 'Creditor Merchants Count'}</div>
+                            <div className="text-xl font-black text-base-content font-mono">{merchantEscrowReports.length}</div>
+                        </div>
+                    </div>
+
+                    <div className="overflow-x-auto border border-base-200 rounded-xl">
+                        <table className="table table-sm w-full text-xs">
+                            <thead className="bg-base-200/60 text-xs">
+                                <tr>
+                                    <th>{lang === 'ar' ? 'اسم المتجر / العميل' : 'Merchant / Organization'}</th>
+                                    <th>{lang === 'ar' ? 'الرصيد الدائن المحتجز' : 'Escrow Balance'}</th>
+                                    <th>{lang === 'ar' ? 'العملة' : 'Currency'}</th>
+                                    <th className="text-end">{lang === 'ar' ? 'الإجراء' : 'Action'}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {merchantEscrowReports.length > 0 ? (
+                                    merchantEscrowReports.map((m) => (
+                                        <tr key={m.organizationId} className="hover:bg-base-200/40">
+                                            <td className="font-bold text-base-content">{m.name}</td>
+                                            <td className="font-mono font-bold text-success">{fmt(m.escrowBalance)}</td>
+                                            <td className="font-mono text-xs">{m.currency}</td>
+                                            <td className="text-end">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openPayoutModal(m.organizationId)}
+                                                    className="btn btn-xs btn-primary text-white font-bold gap-1"
+                                                >
+                                                    <span className="material-symbols-outlined text-[13px]">payments</span>
+                                                    {lang === 'ar' ? 'تسوية وسداد' : 'Settle Payout'}
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan={4} className="text-center py-6 text-base-content/50">
+                                            {lang === 'ar' ? 'لا توجد مبالغ أمانات معلقة للمتاجر' : 'No pending merchant escrow balances'}
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* Merchant Payout Settlement Modal */}
+                <div className={`modal modal-bottom sm:modal-middle ${isMerchantPayoutModalOpen ? 'modal-open' : ''} z-50`}>
+                    <div className="modal-box max-w-lg bg-base-100 border border-base-200 shadow-2xl p-6 text-base-content">
+                        <div className="flex items-center justify-between pb-3 border-b border-base-200">
+                            <div className="flex items-center gap-2">
+                                <span className="material-symbols-outlined text-primary text-xl">price_check</span>
+                                <h3 className="font-black text-lg text-base-content">
+                                    {lang === 'ar' ? 'تسوية وسداد أمانات الدفع عند الاستلام (COD)' : 'Settle Merchant COD Escrow Payout'}
+                                </h3>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsMerchantPayoutModalOpen(false)}
+                                className="btn btn-sm btn-circle btn-ghost text-base-content/60"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <div className="py-4 space-y-3.5 text-xs">
+                            <p className="text-base-content/60">
+                                {lang === 'ar'
+                                    ? 'تسوية أمانات المتجر المحصلة نقداً، وخصم أجور الشحن وعمولة المنصة، وتحويل صافي المبلغ عبر البنك.'
+                                    : 'Net gross collected COD escrow against unpaid freight charges, platform commission, and release net wire payout.'}
+                            </p>
+
+                            <div>
+                                <label className="font-bold text-base-content/70 block mb-1">
+                                    {lang === 'ar' ? 'المتجر / العميل *' : 'Merchant / Organization *'}
+                                </label>
+                                <select
+                                    value={payoutForm.organizationId}
+                                    onChange={(e) => openPayoutModal(e.target.value)}
+                                    className="select select-sm select-bordered w-full font-semibold"
+                                >
+                                    <option value="">{lang === 'ar' ? '— اختر المتجر —' : '— Select Merchant —'}</option>
+                                    {(organizations || []).map(org => (
+                                        <option key={org.id} value={org.id}>{org.name || org.id}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="font-bold text-base-content/70 block mb-1">
+                                        {lang === 'ar' ? 'إجمالي التحصيل المحتجز *' : 'Gross COD Escrow *'}
+                                    </label>
+                                    <input
+                                        type="number"
+                                        step="0.001"
+                                        value={payoutForm.grossCodAmount}
+                                        onChange={(e) => {
+                                            const g = parseFloat(e.target.value || 0);
+                                            const f = parseFloat(payoutForm.freightDeductions || 0);
+                                            const h = parseFloat(payoutForm.handlingFee || 0);
+                                            setPayoutForm(prev => ({
+                                                ...prev,
+                                                grossCodAmount: e.target.value,
+                                                netPayout: Math.max(0, g - f - h).toFixed(3)
+                                            }));
+                                        }}
+                                        className="input input-sm input-bordered w-full font-mono font-bold"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="font-bold text-base-content/70 block mb-1">
+                                        {lang === 'ar' ? 'خصم أجور شحن غير مسددة' : 'Freight Deductions'}
+                                    </label>
+                                    <input
+                                        type="number"
+                                        step="0.001"
+                                        value={payoutForm.freightDeductions}
+                                        onChange={(e) => {
+                                            const g = parseFloat(payoutForm.grossCodAmount || 0);
+                                            const f = parseFloat(e.target.value || 0);
+                                            const h = parseFloat(payoutForm.handlingFee || 0);
+                                            setPayoutForm(prev => ({
+                                                ...prev,
+                                                freightDeductions: e.target.value,
+                                                netPayout: Math.max(0, g - f - h).toFixed(3)
+                                            }));
+                                        }}
+                                        className="input input-sm input-bordered w-full font-mono font-bold"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="font-bold text-base-content/70 block mb-1">
+                                        {lang === 'ar' ? 'رسوم خدمة التحصيل (عمولة)' : 'COD Handling Fee'}
+                                    </label>
+                                    <input
+                                        type="number"
+                                        step="0.001"
+                                        value={payoutForm.handlingFee}
+                                        onChange={(e) => {
+                                            const g = parseFloat(payoutForm.grossCodAmount || 0);
+                                            const f = parseFloat(payoutForm.freightDeductions || 0);
+                                            const h = parseFloat(e.target.value || 0);
+                                            setPayoutForm(prev => ({
+                                                ...prev,
+                                                handlingFee: e.target.value,
+                                                netPayout: Math.max(0, g - f - h).toFixed(3)
+                                            }));
+                                        }}
+                                        className="input input-sm input-bordered w-full font-mono font-bold"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="font-bold text-base-content/70 block mb-1">
+                                        {lang === 'ar' ? 'صافي الحوالة البنكية *' : 'Net Bank Payout *'}
+                                    </label>
+                                    <input
+                                        type="number"
+                                        step="0.001"
+                                        value={payoutForm.netPayout}
+                                        readOnly
+                                        className="input input-sm input-bordered w-full font-mono font-black text-success bg-base-200/50"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="font-bold text-base-content/70 block mb-1">
+                                    {lang === 'ar' ? 'مرجع التحويل البنكي' : 'Payout Reference'}
+                                </label>
+                                <input
+                                    type="text"
+                                    value={payoutForm.reference}
+                                    onChange={(e) => setPayoutForm(prev => ({ ...prev, reference: e.target.value }))}
+                                    className="input input-sm input-bordered w-full font-mono"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="modal-action pt-3 border-t border-base-200">
+                            <button
+                                type="button"
+                                onClick={() => setIsMerchantPayoutModalOpen(false)}
+                                className="btn btn-sm btn-ghost"
+                            >
+                                {t('cancel', 'Cancel')}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handlePayoutSubmit}
+                                disabled={payoutLoading}
+                                className="btn btn-sm btn-primary text-white font-bold gap-1.5"
+                            >
+                                {payoutLoading && <span className="loading loading-spinner loading-xs"></span>}
+                                {lang === 'ar' ? 'تأكيد التسوية وسداد الحوالة' : 'Confirm Payout Settlement'}
+                            </button>
+                        </div>
+                    </div>
+                    <form method="dialog" className="modal-backdrop">
+                        <button type="button" onClick={() => setIsMerchantPayoutModalOpen(false)}>close</button>
+                    </form>
                 </div>
             </div>
         );

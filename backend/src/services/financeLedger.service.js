@@ -71,14 +71,14 @@ const getShipmentChargeAmount = (shipment) => {
     if (snap?.totalPrice !== undefined && snap?.totalPrice !== null && !isNaN(Number(snap.totalPrice)) && Number(snap.totalPrice) > 0) {
         return normalizeAmount(snap.totalPrice);
     }
-    if (shipment.remainingBalance !== undefined && shipment.remainingBalance !== null && Number(shipment.remainingBalance) > 0) {
-        return normalizeAmount(shipment.remainingBalance);
-    }
     if (shipment.price !== undefined && shipment.price !== null && !isNaN(Number(shipment.price)) && Number(shipment.price) > 0) {
         return normalizeAmount(shipment.price);
     }
     if (shipment.codAmount !== undefined && shipment.codAmount !== null && Number(shipment.codAmount) > 0) {
         return normalizeAmount(shipment.codAmount);
+    }
+    if (shipment.remainingBalance !== undefined && shipment.remainingBalance !== null && Number(shipment.remainingBalance) > 0) {
+        return normalizeAmount(shipment.remainingBalance);
     }
     return new Decimal(0);
 };
@@ -194,67 +194,105 @@ const createLedgerEntry = async (organizationId, entry, externalTx = null) => {
     const ledgerCurrency = normalizeCurrencyCode(
         entry.currency || entry.metadata?.currency || entry.metadata?.billingCurrency || entry.metadata?.declaredCurrency
     );
-    const transactionAmount = signedAmount(entry.entryType, amount);
+    const isCarrierPayable = entry.category === 'CARRIER_PAYABLE';
+    const transactionAmount = isCarrierPayable
+        ? normalizeAmount(amount).times(entry.entryType === 'DEBIT' ? -1 : 1)
+        : signedAmount(entry.entryType, amount);
 
     const execute = async (tx) => {
-        // Acquire exclusive row-level lock on parent Organization to serialize concurrent running balance updates (DB-03)
-        if (organizationId && typeof tx.$queryRawUnsafe === 'function') {
-            try {
-                await tx.$queryRawUnsafe('SELECT id FROM Organization WHERE id = ? FOR UPDATE', organizationId);
-            } catch (_) {
-                // Fallback safely if running against a mock client or SQLite/in-memory test stub
-            }
-        }
-
-        const isCarrierPayable = entry.category === 'CARRIER_PAYABLE';
-        const lastEntry = await tx.organizationLedger.findFirst({
-            where: {
-                organizationId: organizationId || null,
-                currency: ledgerCurrency,
-                category: isCarrierPayable ? 'CARRIER_PAYABLE' : { not: 'CARRIER_PAYABLE' }
-            },
-            orderBy: { createdAt: 'desc' }
-        });
-        const balanceAfter = normalizeAmount(lastEntry?.balanceAfter || 0).plus(transactionAmount);
-
-        if (organizationId && !isCarrierPayable) {
-            const org = await tx.organization.findUnique({
-                where: { id: organizationId },
-                select: { currency: true }
-            });
-            if (normalizeCurrencyCode(org?.currency) === ledgerCurrency) {
-                await tx.organization.update({
-                    where: { id: organizationId },
-                    data: {
-                        balance: {
-                            increment: toApiAmount(transactionAmount)
-                        }
-                    }
-                });
-            }
-        }
-
-        return await tx.organizationLedger.create({
-            data: {
-                organizationId: organizationId || null,
-                amount: toApiAmount(amount),
-                currency: ledgerCurrency,
-                entryType: entry.entryType,
-                category: entry.category,
-                description: entry.description,
-                reference: entry.reference,
-                sourceRepo: entry.sourceRepo,
-                sourceId: entry.sourceId,
-                parentEntryId: entry.parentEntryId,
-                balanceAfter: toApiAmount(balanceAfter),
-                createdBy: entry.createdBy,
-                createdAt: entry.createdAt ? new Date(entry.createdAt) : undefined,
-                metadata: {
-                    ...(entry.metadata || {}),
-                    currency: ledgerCurrency
+        let hasCarrierLock = false;
+        try {
+            // Acquire exclusive row-level lock on parent Organization to serialize concurrent running balance updates (DB-03)
+            if (organizationId && typeof tx.$queryRawUnsafe === 'function') {
+                try {
+                    await tx.$queryRawUnsafe('SELECT id FROM Organization WHERE id = ? FOR UPDATE', organizationId);
+                } catch (_) {
+                    // Fallback safely if running against a mock client or SQLite/in-memory test stub
                 }
             }
-        });
+
+            // Advisory locking for platform-level entries (organizationId: null / CARRIER_PAYABLE) (F1)
+            if ((!organizationId || isCarrierPayable) && typeof tx.$queryRawUnsafe === 'function') {
+                try {
+                    await tx.$queryRawUnsafe("SELECT GET_LOCK('carrier_payable_ledger_lock', 10)");
+                    hasCarrierLock = true;
+                } catch (_) {
+                    // Gracefully handled in mock environments
+                }
+            }
+
+            // Idempotency check: check if record with (sourceRepo, sourceId, category) already exists (F2)
+            if (entry.sourceRepo && entry.sourceId && entry.category) {
+                const existing = await tx.organizationLedger.findFirst({
+                    where: {
+                        sourceRepo: entry.sourceRepo,
+                        sourceId: entry.sourceId,
+                        category: entry.category
+                    }
+                });
+                if (existing && (existing.id || existing.sourceId === entry.sourceId || existing.category === entry.category)) {
+                    logger.info(`[financeLedger] Idempotency: entry for ${entry.sourceRepo}:${entry.sourceId} (${entry.category}) already exists. Returning existing.`);
+                    return existing;
+                }
+            }
+
+            const lastEntry = await tx.organizationLedger.findFirst({
+                where: {
+                    organizationId: organizationId || null,
+                    currency: ledgerCurrency,
+                    category: isCarrierPayable ? 'CARRIER_PAYABLE' : { not: 'CARRIER_PAYABLE' }
+                },
+                orderBy: { createdAt: 'desc' }
+            });
+            const balanceAfter = normalizeAmount(lastEntry?.balanceAfter || 0).plus(transactionAmount);
+
+            if (organizationId && !isCarrierPayable) {
+                const org = await tx.organization.findUnique({
+                    where: { id: organizationId },
+                    select: { currency: true }
+                });
+                if (normalizeCurrencyCode(org?.currency) === ledgerCurrency) {
+                    await tx.organization.update({
+                        where: { id: organizationId },
+                        data: {
+                            balance: {
+                                increment: toApiAmount(transactionAmount)
+                            }
+                        }
+                    });
+                }
+            }
+
+            return await tx.organizationLedger.create({
+                data: {
+                    organizationId: organizationId || null,
+                    amount: toApiAmount(amount),
+                    currency: ledgerCurrency,
+                    entryType: entry.entryType,
+                    category: entry.category,
+                    description: entry.description,
+                    reference: entry.reference,
+                    sourceRepo: entry.sourceRepo,
+                    sourceId: entry.sourceId,
+                    parentEntryId: entry.parentEntryId,
+                    balanceAfter: toApiAmount(balanceAfter),
+                    createdBy: entry.createdBy,
+                    createdAt: entry.createdAt ? new Date(entry.createdAt) : undefined,
+                    metadata: {
+                        ...(entry.metadata || {}),
+                        currency: ledgerCurrency
+                    }
+                }
+            });
+        } finally {
+            if (hasCarrierLock && typeof tx.$queryRawUnsafe === 'function') {
+                try {
+                    await tx.$queryRawUnsafe("SELECT RELEASE_LOCK('carrier_payable_ledger_lock')");
+                } catch (_) {
+                    // Gracefully handled in mock environments
+                }
+            }
+        }
     };
 
     return externalTx ? execute(externalTx) : executeTransactionWithRetry(execute);
@@ -568,7 +606,7 @@ const getOrganizationOverview = async (organizationId, creditLimit = 0, currency
         balance,
         balancesByCurrency: { ...balancesByCurrency, [baseCurrency]: balancesByCurrency[baseCurrency] ?? balance },
         creditLimit: toApiAmount(limit),
-        availableCredit: toApiAmount(limit.minus(bal)),
+        availableCredit: toApiAmount(limit.minus(Decimal.max(0, bal)).plus(normalizeAmount(unappliedCash))),
         unappliedCash,
         unappliedCashByCurrency: { ...unappliedCashByCurrency, [baseCurrency]: unappliedCashByCurrency[baseCurrency] ?? unappliedCash },
         totalUnpaid: aging.totalUnpaid,
@@ -693,7 +731,13 @@ const assertAllocationCurrencies = async ({ tx, organizationId, paymentId, shipm
 
     if (!payment) throw makeClientError('Payment not found', 404);
     if (!shipment) throw makeClientError('Shipment not found', 404);
-    if ((payment.organizationId || null) !== (organizationId || null) || (shipment.organizationId || null) !== (organizationId || null)) {
+    if (payment.organizationId && organizationId && payment.organizationId !== organizationId) {
+        throw makeClientError('Payment and shipment must belong to the same organization', 403);
+    }
+    if (shipment.organizationId && organizationId && shipment.organizationId !== organizationId) {
+        throw makeClientError('Payment and shipment must belong to the same organization', 403);
+    }
+    if (payment.organizationId && shipment.organizationId && payment.organizationId !== shipment.organizationId) {
         throw makeClientError('Payment and shipment must belong to the same organization', 403);
     }
 
@@ -884,56 +928,81 @@ const reverseLedgerEntry = async (entryId, reversedBy, reason) => {
     return reversalEntry;
 };
 
-const allocatePaymentsFifo = async ({ organizationId, createdBy }) => {
-    const payments = await prisma.payment.findMany({
-        where: {
-            organizationId: organizationId || null,
-            status: { in: ['UNAPPLIED', 'PARTIALLY_APPLIED'] }
-        },
-        orderBy: { postedAt: 'asc' }
-    });
-
-    const shipments = await prisma.shipment.findMany({
-        where: {
-            organizationId: organizationId || null,
-            paid: false,
-            status: { not: 'draft' }
-        },
-        orderBy: { createdAt: 'asc' }
-    });
-
-    const results = [];
-    for (const payment of payments) {
-        const paymentCurrency = normalizeCurrencyCode(payment.currency);
-        const allocatedAmount = await getAllocationTotal({ paymentId: payment.id, currency: paymentCurrency });
-        let remainingInPayment = normalizeAmount(payment.amount).minus(allocatedAmount);
-
-        if (remainingInPayment.lte(0.001)) continue;
-
-        for (const shipment of shipments) {
-            if (remainingInPayment.lte(0.001)) break;
-            if (getShipmentCurrency(shipment) !== paymentCurrency) continue;
-
-            const shipmentAccounting = await getShipmentAccounting(shipment.id);
-            if (!shipmentAccounting || shipmentAccounting.remainingBalance <= 0.001) continue;
-
-            const amountToApply = Decimal.min(remainingInPayment, new Decimal(shipmentAccounting.remainingBalance));
-
-            const allocation = await allocatePayment({
-                organizationId,
-                paymentId: payment.id,
-                shipmentId: shipment.id,
-                amount: amountToApply,
-                createdBy,
-                isFifo: true
-            });
-
-            results.push(allocation);
-            remainingInPayment = remainingInPayment.minus(amountToApply);
+const allocatePaymentsFifo = async ({ organizationId, createdBy }, externalTx = null) => {
+    const execute = async (tx) => {
+        // Row lock parent Organization if specified
+        if (organizationId && typeof tx.$queryRawUnsafe === 'function') {
+            try {
+                await tx.$queryRawUnsafe('SELECT id FROM Organization WHERE id = ? FOR UPDATE', organizationId);
+            } catch (_) {}
         }
-    }
 
-    return results;
+        const payments = await tx.payment.findMany({
+            where: {
+                organizationId: organizationId || null,
+                status: { in: ['UNAPPLIED', 'PARTIALLY_APPLIED'] }
+            },
+            orderBy: { postedAt: 'asc' }
+        });
+
+        const shipments = await tx.shipment.findMany({
+            where: {
+                organizationId: organizationId || null,
+                paid: false,
+                status: { not: 'draft' }
+            },
+            orderBy: { createdAt: 'asc' }
+        });
+
+        // Row locks on Payment and Shipment records to prevent concurrent races (F5)
+        if (typeof tx.$queryRawUnsafe === 'function') {
+            for (const p of payments) {
+                try {
+                    await tx.$queryRawUnsafe('SELECT id FROM `Payment` WHERE id = ? FOR UPDATE', p.id);
+                } catch (_) {}
+            }
+            for (const s of shipments) {
+                try {
+                    await tx.$queryRawUnsafe('SELECT id FROM `Shipment` WHERE id = ? FOR UPDATE', s.id);
+                } catch (_) {}
+            }
+        }
+
+        const results = [];
+        for (const payment of payments) {
+            const paymentCurrency = normalizeCurrencyCode(payment.currency);
+            const allocatedAmount = await getAllocationTotal({ paymentId: payment.id, currency: paymentCurrency }, tx);
+            let remainingInPayment = normalizeAmount(payment.amount).minus(allocatedAmount);
+
+            if (remainingInPayment.lte(0.001)) continue;
+
+            for (const shipment of shipments) {
+                if (remainingInPayment.lte(0.001)) break;
+                if (getShipmentCurrency(shipment) !== paymentCurrency) continue;
+
+                const shipmentAccounting = await getShipmentAccounting(shipment.id, tx);
+                if (!shipmentAccounting || shipmentAccounting.remainingBalance <= 0.001) continue;
+
+                const amountToApply = Decimal.min(remainingInPayment, new Decimal(shipmentAccounting.remainingBalance));
+
+                const allocation = await allocatePayment({
+                    organizationId,
+                    paymentId: payment.id,
+                    shipmentId: shipment.id,
+                    amount: amountToApply,
+                    createdBy,
+                    isFifo: true
+                }, tx);
+
+                results.push(allocation);
+                remainingInPayment = remainingInPayment.minus(amountToApply);
+            }
+        }
+
+        return results;
+    };
+
+    return externalTx ? execute(externalTx) : executeTransactionWithRetry(execute);
 };
 
 /**
@@ -942,6 +1011,21 @@ const allocatePaymentsFifo = async ({ organizationId, createdBy }) => {
 const recordCarrierPayable = async ({ organizationId, shipmentId, carrierCode, costPrice, currency, trackingNumber, createdBy }, externalTx = null) => {
     const cost = normalizeAmount(costPrice);
     if (cost.lte(0)) return null;
+
+    const client = externalTx || prisma;
+    if (typeof client.organizationLedger?.findFirst === 'function') {
+        const existing = await client.organizationLedger.findFirst({
+            where: {
+                sourceRepo: 'Shipment',
+                sourceId: shipmentId,
+                category: 'CARRIER_PAYABLE'
+            }
+        });
+        if (existing && (existing.id || existing.sourceId === shipmentId || existing.category === 'CARRIER_PAYABLE')) {
+            logger.info(`[financeLedger] Idempotency: CARRIER_PAYABLE entry for Shipment:${shipmentId} already exists. Returning existing.`);
+            return existing;
+        }
+    }
 
     const payableCurrency = normalizeCurrencyCode(currency);
     return await createLedgerEntry(
@@ -1434,6 +1518,151 @@ const confirmDriverCodRemittance = async ({ driverId, amount, currency, shipment
     });
 };
 
+/**
+ * Calculates net available credit for any customer organization (prepaid or postpaid).
+ * Formula: availableCredit = creditLimit - outstandingBalance + unappliedCash
+ */
+const getAvailableCredit = async (organizationId, txClient = prisma) => {
+    if (!organizationId) return 0;
+    const org = await txClient.organization.findUnique({
+        where: { id: organizationId },
+        select: { creditLimit: true, balance: true, unappliedBalance: true }
+    });
+    if (!org) return 0;
+
+    const creditLimit = Number(org.creditLimit || 0);
+    const balance = Number(org.balance || 0);
+    const unappliedCash = Number(org.unappliedBalance || 0);
+
+    const outstandingDebt = Math.max(0, balance);
+    const availableCredit = creditLimit - outstandingDebt + unappliedCash;
+
+    return Number(availableCredit.toFixed(3));
+};
+
+/**
+ * Step 3 of COD Fiduciary Lifecycle: Merchant COD Settlement Payout (F15)
+ * Releases merchant COD escrow, netting gross COD against unpaid freight AR and handling fees,
+ * wire paying the net amount to the merchant.
+ * Sub-Ledger: Debit Merchant Org Ledger ('COD_SETTLEMENT_PAYOUT')
+ * Double-Entry GL: Dr 2100 (Merchant Escrow), Cr 1100 (Freight AR), Cr 4040 (Handling Fee), Cr 1010 (Bank Payout)
+ */
+const settleMerchantCod = async ({
+    organizationId,
+    shipmentIds = [],
+    grossCodAmount,
+    freightDeductions = 0,
+    handlingFee = 0,
+    netPayout,
+    bankAccountGlCode = '1010',
+    reference,
+    currency = BASE_CURRENCY,
+    settledById
+}, externalTx = null) => {
+    const gross = normalizeAmount(grossCodAmount);
+    if (gross.lte(0)) {
+        throw makeClientError('grossCodAmount must be a positive number', 400);
+    }
+    const freight = normalizeAmount(freightDeductions || 0);
+    const fee = normalizeAmount(handlingFee || 0);
+    const calculatedNet = gross.minus(freight).minus(fee);
+    const payout = netPayout !== undefined ? normalizeAmount(netPayout) : calculatedNet;
+
+    if (payout.lt(0)) {
+        throw makeClientError('Net payout cannot be negative', 400);
+    }
+
+    let org = null;
+    if (typeof prisma.organization?.findUnique === 'function') {
+        org = await prisma.organization.findUnique({
+            where: { id: organizationId },
+            select: { id: true, name: true, currency: true }
+        });
+    }
+
+    const settlementCurrency = normalizeCurrencyCode(currency || org?.currency || BASE_CURRENCY);
+    const settlementRef = reference || `SETTL-${organizationId.slice(0, 6).toUpperCase()}-${Date.now()}`;
+
+    const execute = async (tx) => {
+        // Update shipments codStatus to SETTLED if shipmentIds provided
+        if (Array.isArray(shipmentIds) && shipmentIds.length > 0 && typeof tx.shipment?.updateMany === 'function') {
+            await tx.shipment.updateMany({
+                where: {
+                    id: { in: shipmentIds },
+                    organizationId
+                },
+                data: {
+                    codStatus: 'SETTLED'
+                }
+            });
+        }
+
+        // Sub-ledger debit entry on merchant ledger (category: 'COD_SETTLEMENT_PAYOUT')
+        const ledgerEntry = await createLedgerEntry(
+            organizationId,
+            {
+                amount: toApiAmount(gross),
+                currency: settlementCurrency,
+                entryType: 'DEBIT',
+                category: 'COD_SETTLEMENT_PAYOUT',
+                description: `Merchant COD settlement payout: Gross ${toApiAmount(gross)}, Freight ${toApiAmount(freight)}, Fee ${toApiAmount(fee)}, Net ${toApiAmount(payout)} ${settlementCurrency} (Ref: ${settlementRef})`,
+                reference: settlementRef,
+                createdBy: settledById,
+                sourceRepo: 'Organization',
+                sourceId: organizationId,
+                metadata: {
+                    organizationId,
+                    shipmentIds,
+                    grossCodAmount: toApiAmount(gross),
+                    freightDeductions: toApiAmount(freight),
+                    handlingFee: toApiAmount(fee),
+                    netPayout: toApiAmount(payout),
+                    bankAccountGlCode,
+                    reference: settlementRef,
+                    settledById
+                }
+            },
+            tx
+        );
+
+        // Call generalLedgerService.postMerchantSettlementEntry
+        let journalEntry = null;
+        try {
+            const generalLedgerService = require('./generalLedger.service');
+            journalEntry = await generalLedgerService.postMerchantSettlementEntry({
+                organizationId,
+                grossCodAmount: toApiAmount(gross),
+                freightDeductions: toApiAmount(freight),
+                handlingFee: toApiAmount(fee),
+                netPayout: toApiAmount(payout),
+                currency: settlementCurrency,
+                bankAccountGlCode,
+                reference: settlementRef,
+                createdById: settledById
+            }, tx);
+        } catch (glError) {
+            logger.warn(`[financeLedger] GL merchant COD settlement warning: ${glError.message}`);
+        }
+
+        return {
+            success: true,
+            status: 'SETTLED',
+            ledgerEntry,
+            journalEntry,
+            organizationId,
+            grossCodAmount: toApiAmount(gross),
+            freightDeductions: toApiAmount(freight),
+            handlingFee: toApiAmount(fee),
+            netPayout: toApiAmount(payout),
+            currency: settlementCurrency,
+            reference: settlementRef,
+            shipmentIds
+        };
+    };
+
+    return externalTx ? await execute(externalTx) : await prisma.$transaction(execute);
+};
+
 module.exports = {
     normalizeAmount,
     normalizeCurrencyCode,
@@ -1446,8 +1675,11 @@ module.exports = {
     getDriverCashClearing,
     remitDriverCodCash,
     requestDriverCodRemittance,
+    initiateDriverCodHandover: requestDriverCodRemittance,
     confirmDriverCodRemittance,
+    settleMerchantCod,
     getAccountCredit,
+    getAvailableCredit,
     getAllocationTotal,
     getUnappliedCash,
     getUnappliedCashByCurrency,

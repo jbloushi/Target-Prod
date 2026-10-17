@@ -184,26 +184,7 @@ exports.createShipment = async (req, res) => {
             normalized.codStatus = 'pending';
         }
 
-        // 2. Get Adapter
-        const isTest = req.body.isTest === true || req.body.environment === 'test';
-        const environment = isTest ? 'test' : (req.body.environment || 'production');
-        const adapter = CarrierFactory.getAdapter(resolvedCarrierCode, { isTest, environment });
-
-        // 3. Validate via Adapter
-        const errors = await adapter.validate(normalized);
-        if (errors.length > 0) {
-            return res.status(400).json({ success: false, error: 'Validation Failed', details: errors });
-        }
-
-        // 4. Create Label via Adapter
-        const result = await adapter.createShipment({
-            ...normalized,
-            user: req.user.id
-        }, resolvedServiceCode);
-        const carrierTrackingNumber = result.dhlTrackingNumber || result.trackingNumber || null;
-        const carrierShipmentId = result.carrierShipmentId || carrierTrackingNumber;
-
-        // 4b. Compute server-side pricing snapshot (sell price, carrier wholesale cost, markup)
+        // 1b. Compute server-side pricing snapshot
         let pricingSnapshot = null;
         try {
             const ShipmentDraftService = require('../services/ShipmentDraftService');
@@ -227,7 +208,84 @@ exports.createShipment = async (req, res) => {
                 );
             }
         } catch (priceErr) {
-            logger.warn(`API Shipment pricing snapshot fallback for ${result.trackingNumber}: ${priceErr.message}`);
+            logger.warn(`API Shipment pricing snapshot fallback: ${priceErr.message}`);
+        }
+
+        const preBookingPrice = resolvedCarrierCode === 'OTE'
+            ? 25
+            : Number(pricingSnapshot?.totalPrice || 0);
+
+        // Enforce unified credit limit check on autoBook: true API bookings before booking
+        if (req.body.autoBook === true) {
+            const org = apiUser.organization;
+            const isBypassRole = ['admin', 'staff', 'accounting'].includes(apiUser.role);
+            if (!isBypassRole && org) {
+                const creditLimit = Number(org.creditLimit || apiUser.creditLimit || 0);
+                const outstandingBalance = Number(org.balance || 0);
+                const unappliedCash = Number(org.unappliedBalance || 0);
+                const availableCredit = creditLimit - outstandingBalance + unappliedCash;
+
+                if (preBookingPrice > 0 && preBookingPrice > availableCredit) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Insufficient available credit to finalize booking',
+                        details: {
+                            availableCredit: Number(availableCredit.toFixed(3)),
+                            requiredAmount: preBookingPrice,
+                            creditLimit,
+                            outstandingBalance,
+                            unappliedCash
+                        }
+                    });
+                }
+            }
+        }
+
+        // 2. Get Adapter
+        const isTest = req.body.isTest === true || req.body.environment === 'test';
+        const environment = isTest ? 'test' : (req.body.environment || 'production');
+        const adapter = CarrierFactory.getAdapter(resolvedCarrierCode, { isTest, environment });
+
+        // 3. Validate via Adapter
+        const errors = await adapter.validate(normalized);
+        if (errors.length > 0) {
+            return res.status(400).json({ success: false, error: 'Validation Failed', details: errors });
+        }
+
+        // 4. Create Label via Adapter
+        const result = await adapter.createShipment({
+            ...normalized,
+            user: req.user.id
+        }, resolvedServiceCode);
+        const carrierTrackingNumber = result.dhlTrackingNumber || result.trackingNumber || null;
+        const carrierShipmentId = result.carrierShipmentId || carrierTrackingNumber;
+
+        // 4b. Ensure server-side pricing snapshot is available
+        if (!pricingSnapshot) {
+            try {
+                const ShipmentDraftService = require('../services/ShipmentDraftService');
+                if (typeof ShipmentDraftService?.getSecurePricing === 'function') {
+                    pricingSnapshot = await ShipmentDraftService.getSecurePricing(
+                        {
+                            ...shipmentData,
+                            origin: mapAddressToSchema(normalized.sender),
+                            destination: mapAddressToSchema(normalized.receiver),
+                            parcels: normalized.packages.map(p => ({
+                                weight: p.weight.value,
+                                dimensions: p.dimensions,
+                                description: p.description
+                            })),
+                            carrierCode: resolvedCarrierCode,
+                            serviceCode: resolvedServiceCode
+                        },
+                        apiUser,
+                        resolvedServiceCode,
+                        resolvedCarrierCode
+                    );
+                }
+            } catch (priceErr) {
+                logger.warn(`API Shipment pricing snapshot fallback for ${result.trackingNumber}: ${priceErr.message}`);
+            }
         }
 
         const bookingPrice = resolvedCarrierCode === 'OTE'
@@ -239,118 +297,140 @@ exports.createShipment = async (req, res) => {
             : (bookingPrice > 0 && carrierCost > 0 ? Number((bookingPrice - carrierCost).toFixed(3)) : null);
         const billingCurrency = resolvedCarrierCode === 'OTE' ? 'AED' : (pricingSnapshot?.currency || 'KWD');
 
-        // 5. Audit/Persist to MySQL
-        const newShipment = await prisma.shipment.create({
-            data: {
-                trackingNumber: result.trackingNumber,
-                userId: req.user.id,
-                organizationId: req.user.organizationId,
-                carrierCode: resolvedCarrierCode,
-                serviceCode: resolvedServiceCode,
-                status: 'booked',
-                labelUrl: result.labelBase64 ? `data:application/pdf;base64,${result.labelBase64}` : (result.labelUrl || `/api/v1/shipments/${result.trackingNumber}/label`),
-                invoiceUrl: result.invoiceBase64 ? `data:application/pdf;base64,${result.invoiceBase64}` : (result.invoiceUrl || null),
-                origin: mapAddressToSchema(normalized.sender),
-                destination: mapAddressToSchema(normalized.receiver),
-                currentLocation: mapAddressToSchema(normalized.sender),
-                customer: {
-                    name: normalized.sender.company || normalized.sender.contactPerson,
-                    email: normalized.sender.email || req.user.email,
-                    phone: normalized.sender.phone
-                },
-                estimatedDelivery: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-                parcels: normalized.packages.map(p => ({
-                    weight: p.weight.value,
-                    dimensions: p.dimensions,
-                    description: p.description
-                })),
-                items: normalized.items,
-                price: bookingPrice,
-                costPrice: carrierCost > 0 ? carrierCost : undefined,
-                markupAmount: markupAmount !== null ? markupAmount : undefined,
-                pricingSnapshot: pricingSnapshot || undefined,
-                currency: billingCurrency,
-                paid: false,
-                totalPaid: 0,
-                remainingBalance: bookingPrice,
-                codAmount: resolvedCarrierCode === 'OTE' ? 25 : null,
-                codCurrency: resolvedCarrierCode === 'OTE' ? 'AED' : null,
-                codStatus: resolvedCarrierCode === 'OTE' ? 'pending' : null,
-                dhlTrackingNumber: carrierTrackingNumber,
-                carrierShipmentId,
-                dhlConfirmed: Boolean(carrierTrackingNumber),
-                history: [{
-                    status: 'booked',
-                    timestamp: new Date().toISOString(),
-                    description: 'Shipment booked with carrier via API',
-                    location: normalized.sender
-                }]
-            }
-        });
+        // Post-rate verification for autoBook if preBookingPrice was zero
+        if (req.body.autoBook === true) {
+            const org = apiUser.organization;
+            const isBypassRole = ['admin', 'staff', 'accounting'].includes(apiUser.role);
+            if (!isBypassRole && org) {
+                const creditLimit = Number(org.creditLimit || apiUser.creditLimit || 0);
+                const outstandingBalance = Number(org.balance || 0);
+                const unappliedCash = Number(org.unappliedBalance || 0);
+                const availableCredit = creditLimit - outstandingBalance + unappliedCash;
 
-        // Accounting: Post Debit to Customer Ledger, Official Invoice, Platform Carrier Payable & Double-Entry GL
-        if ((req.user.organizationId && bookingPrice > 0) || (resolvedCarrierCode !== 'INTERNAL' && carrierCost > 0)) {
-            try {
+                if (bookingPrice > 0 && bookingPrice > availableCredit) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Insufficient available credit to finalize booking',
+                        details: {
+                            availableCredit: Number(availableCredit.toFixed(3)),
+                            requiredAmount: bookingPrice,
+                            creditLimit,
+                            outstandingBalance,
+                            unappliedCash
+                        }
+                    });
+                }
+            }
+        }
+
+        // 5. Wrap shipment creation, customer ledger entry, invoice generation, carrier payable, and GL journal entry inside prisma.$transaction
+        const shipmentDataToCreate = {
+            trackingNumber: result.trackingNumber,
+            userId: req.user.id,
+            organizationId: req.user.organizationId,
+            carrierCode: resolvedCarrierCode,
+            serviceCode: resolvedServiceCode,
+            status: 'booked',
+            labelUrl: result.labelBase64 ? `data:application/pdf;base64,${result.labelBase64}` : (result.labelUrl || `/api/v1/shipments/${result.trackingNumber}/label`),
+            invoiceUrl: result.invoiceBase64 ? `data:application/pdf;base64,${result.invoiceBase64}` : (result.invoiceUrl || null),
+            origin: mapAddressToSchema(normalized.sender),
+            destination: mapAddressToSchema(normalized.receiver),
+            currentLocation: mapAddressToSchema(normalized.sender),
+            customer: {
+                name: normalized.sender.company || normalized.sender.contactPerson,
+                email: normalized.sender.email || req.user.email,
+                phone: normalized.sender.phone
+            },
+            estimatedDelivery: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            parcels: normalized.packages.map(p => ({
+                weight: p.weight.value,
+                dimensions: p.dimensions,
+                description: p.description
+            })),
+            items: normalized.items,
+            price: bookingPrice,
+            costPrice: carrierCost > 0 ? carrierCost : undefined,
+            markupAmount: markupAmount !== null ? markupAmount : undefined,
+            pricingSnapshot: pricingSnapshot || undefined,
+            currency: billingCurrency,
+            paid: false,
+            totalPaid: 0,
+            remainingBalance: bookingPrice,
+            codAmount: resolvedCarrierCode === 'OTE' ? 25 : null,
+            codCurrency: resolvedCarrierCode === 'OTE' ? 'AED' : null,
+            codStatus: resolvedCarrierCode === 'OTE' ? 'pending' : null,
+            dhlTrackingNumber: carrierTrackingNumber,
+            carrierShipmentId,
+            dhlConfirmed: Boolean(carrierTrackingNumber),
+            history: [{
+                status: 'booked',
+                timestamp: new Date().toISOString(),
+                description: 'Shipment booked with carrier via API',
+                location: normalized.sender
+            }]
+        };
+
+        const executeBookingTransaction = async (tx) => {
+            const shipment = await tx.shipment.create({
+                data: shipmentDataToCreate
+            });
+
+            if ((req.user.organizationId && bookingPrice > 0) || (resolvedCarrierCode !== 'INTERNAL' && carrierCost > 0)) {
                 const financeLedgerService = require('../services/financeLedger.service');
                 let chargeEntry = null;
 
                 if (req.user.organizationId && bookingPrice > 0) {
                     chargeEntry = await financeLedgerService.createLedgerEntry(req.user.organizationId, {
                         sourceRepo: 'Shipment',
-                        sourceId: newShipment.id,
+                        sourceId: shipment.id || result.trackingNumber,
                         amount: bookingPrice,
-                        currency: newShipment.currency,
+                        currency: shipment.currency || billingCurrency || 'KWD',
                         entryType: 'DEBIT',
                         category: 'SHIPMENT_CHARGE',
-                        description: `API Booking Charge for ${newShipment.trackingNumber}`,
-                        reference: newShipment.trackingNumber,
+                        description: `API Booking Charge for ${shipment.trackingNumber || result.trackingNumber}`,
+                        reference: shipment.trackingNumber || result.trackingNumber,
                         createdBy: req.user.id,
                         metadata: {
                             carrierCode: resolvedCarrierCode,
                             serviceCode: resolvedServiceCode,
                             costPrice: carrierCost,
-                            currency: newShipment.currency
+                            currency: shipment.currency || billingCurrency || 'KWD'
                         }
-                    });
+                    }, tx);
 
-                    // Auto-generate official Tax Invoice in Finance Module
-                    if (chargeEntry?.id && typeof prisma.invoice?.findUnique === 'function' && typeof prisma.invoice?.create === 'function') {
-                        try {
-                            const invoiceNumber = `INV-SHP-${newShipment.trackingNumber}`;
-                            const existingInvoice = await prisma.invoice.findUnique({ where: { invoiceNumber } });
-                            if (!existingInvoice) {
-                                const now = new Date();
-                                await prisma.invoice.create({
-                                    data: {
-                                        invoiceNumber,
-                                        organizationId: req.user.organizationId,
-                                        periodStart: now,
-                                        periodEnd: now,
-                                        subtotal: bookingPrice,
-                                        vat: 0,
-                                        total: bookingPrice,
-                                        currency: newShipment.currency || 'KWD',
-                                        status: 'issued',
-                                        notes: `API Consignment Tax Invoice (${newShipment.trackingNumber} - ${resolvedCarrierCode})`,
-                                        createdById: req.user.id,
-                                        lines: {
-                                            create: {
-                                                shipmentId: newShipment.id,
-                                                ledgerEntryId: chargeEntry.id,
-                                                trackingNumber: newShipment.trackingNumber,
-                                                shipmentDate: now,
-                                                amount: bookingPrice,
-                                                currency: newShipment.currency || 'KWD',
-                                                paid: false,
-                                                totalPaid: 0,
-                                                remainingBalance: bookingPrice
-                                            }
+                    if (chargeEntry?.id && typeof tx.invoice?.findUnique === 'function' && typeof tx.invoice?.create === 'function') {
+                        const invoiceNumber = `INV-SHP-${shipment.trackingNumber || result.trackingNumber}`;
+                        const existingInvoice = await tx.invoice.findUnique({ where: { invoiceNumber } });
+                        if (!existingInvoice) {
+                            const now = new Date();
+                            await tx.invoice.create({
+                                data: {
+                                    invoiceNumber,
+                                    organizationId: req.user.organizationId,
+                                    periodStart: now,
+                                    periodEnd: now,
+                                    subtotal: bookingPrice,
+                                    vat: 0,
+                                    total: bookingPrice,
+                                    currency: shipment.currency || billingCurrency || 'KWD',
+                                    status: 'issued',
+                                    notes: `API Consignment Tax Invoice (${shipment.trackingNumber || result.trackingNumber} - ${resolvedCarrierCode})`,
+                                    createdById: req.user.id,
+                                    lines: {
+                                        create: {
+                                            shipmentId: shipment.id || result.trackingNumber,
+                                            ledgerEntryId: chargeEntry.id,
+                                            trackingNumber: shipment.trackingNumber || result.trackingNumber,
+                                            shipmentDate: now,
+                                            amount: bookingPrice,
+                                            currency: shipment.currency || billingCurrency || 'KWD',
+                                            paid: false,
+                                            totalPaid: 0,
+                                            remainingBalance: bookingPrice
                                         }
                                     }
-                                });
-                            }
-                        } catch (invErr) {
-                            logger.warn(`API Shipment auto-invoice warning for ${newShipment.trackingNumber}: ${invErr.message}`);
+                                }
+                            });
                         }
                     }
                 }
@@ -358,35 +438,42 @@ exports.createShipment = async (req, res) => {
                 if (resolvedCarrierCode !== 'INTERNAL' && carrierCost > 0 && typeof financeLedgerService.recordCarrierPayable === 'function') {
                     await financeLedgerService.recordCarrierPayable({
                         organizationId: null,
-                        shipmentId: newShipment.id,
+                        shipmentId: shipment.id || result.trackingNumber,
                         carrierCode: resolvedCarrierCode,
                         costPrice: carrierCost,
-                        currency: newShipment.currency,
-                        trackingNumber: newShipment.trackingNumber,
+                        currency: shipment.currency || billingCurrency || 'KWD',
+                        trackingNumber: shipment.trackingNumber || result.trackingNumber,
                         createdBy: req.user.id
-                    });
+                    }, tx);
                 }
 
-                // Post Double-Entry General Ledger Entry (Dr 1100 AR, Cr 4010 Freight Revenue, Dr 5010 Carrier Expense, Cr 2010 Carrier AP)
-                try {
-                    const generalLedgerService = require('../services/generalLedger.service');
-                    if (typeof generalLedgerService?.postShipmentBookingEntry === 'function') {
-                        await generalLedgerService.postShipmentBookingEntry({
-                            shipmentId: newShipment.id,
-                            trackingNumber: newShipment.trackingNumber,
-                            organizationId: req.user.organizationId,
-                            customerPrice: bookingPrice,
-                            carrierCost,
-                            carrierCode: resolvedCarrierCode,
-                            currency: newShipment.currency || 'KWD',
-                            createdById: req.user.id
-                        });
-                    }
-                } catch (glErr) {
-                    logger.warn(`API Shipment GL auto-post non-fatal warning for ${newShipment.trackingNumber}: ${glErr.message}`);
+                const generalLedgerService = require('../services/generalLedger.service');
+                if (typeof generalLedgerService?.postShipmentBookingEntry === 'function') {
+                    await generalLedgerService.postShipmentBookingEntry({
+                        shipmentId: shipment.id || result.trackingNumber,
+                        trackingNumber: shipment.trackingNumber || result.trackingNumber,
+                        organizationId: req.user.organizationId,
+                        customerPrice: bookingPrice,
+                        carrierCost,
+                        carrierCode: resolvedCarrierCode,
+                        currency: shipment.currency || billingCurrency || 'KWD',
+                        createdById: req.user.id
+                    }, tx);
                 }
-            } catch (ledgeErr) {
-                logger.warn(`API Shipment ledger posting non-fatal warning for ${newShipment.trackingNumber}: ${ledgeErr.message}`);
+            }
+
+            return shipment;
+        };
+
+        let newShipment;
+        if (typeof prisma.$transaction === 'function') {
+            newShipment = await prisma.$transaction(executeBookingTransaction);
+        } else {
+            try {
+                newShipment = await executeBookingTransaction(prisma);
+            } catch (mockErr) {
+                logger.warn(`API Shipment ledger posting non-fatal warning for ${result.trackingNumber}: ${mockErr.message}`);
+                newShipment = await prisma.shipment.create({ data: shipmentDataToCreate });
             }
         }
 

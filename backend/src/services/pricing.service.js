@@ -311,6 +311,16 @@ class PricingService {
      * @returns {Object} Secure PricingSnapshot object.
      * @business_rule Includes a SHA-256 'rateHash' to detect any manual database modifications to pricing after creation.
      */
+    /**
+     * Creates an immutable, tamper-evident pricing snapshot for a shipment record.
+     * @param {number} carrierRate - Wholesale rate from carrier.
+     * @param {Object|number} markupInput - Markup config or raw percentage.
+     * @param {string} [currency='KWD'] 
+     * @param {string} [policySource='org_default']
+     * @param {Object} [extraMeta={}]
+     * @returns {Object} Secure PricingSnapshot object.
+     * @business_rule Includes an HMAC-SHA256 'rateHash' to detect any manual database modifications to pricing after creation.
+     */
     static createSnapshot(carrierRate, markupInput, currency = 'KWD', policySource = 'org_default', extraMeta = {}) {
         const carrierDecimal = new Decimal(carrierRate || 0);
         const mConfig = typeof markupInput === 'number' ? { type: 'PERCENTAGE', percentageValue: markupInput } : markupInput;
@@ -318,12 +328,19 @@ class PricingService {
         const { finalPrice, markupAmount } = this.calculateFinalPrice(carrierRate, mConfig, currency);
 
         const sMarkup = new Decimal(markupAmount);
-        const sFinal = new Decimal(finalPrice);
+        let sFinal = new Decimal(finalPrice);
+        const optServicesDec = new Decimal(extraMeta?.optionalServicesTotal || 0);
+        if (optServicesDec.greaterThan(0)) {
+            sFinal = sFinal.plus(optServicesDec);
+        }
 
-        // Tamper detection hash: binds rates to currency
+        const secret = process.env.PRICING_HMAC_SECRET || 'target-logistics-pricing-hmac-secret-2026';
+
+        // Tamper detection HMAC hash: binds rates, markup, optional services, and total to currency
+        const payload = `${carrierDecimal.toFixed(3)}|${sMarkup.toFixed(3)}|${optServicesDec.toFixed(3)}|${sFinal.toFixed(3)}|${currency}`;
         const rateHash = crypto
-            .createHash('sha256')
-            .update(`${carrierDecimal.toFixed(3)}-${sMarkup.toFixed(3)}-${sFinal.toFixed(3)}-${currency}`)
+            .createHmac('sha256', secret)
+            .update(payload)
             .digest('hex');
 
         const snapshot = {
@@ -334,8 +351,12 @@ class PricingService {
             rateHash: rateHash,
             policySource: policySource,
             expiresAt: new Date(Date.now() + 86400000), // Valid for 24h
-            rulesVersion: 'v1'
+            rulesVersion: 'v2'
         };
+
+        if (optServicesDec.greaterThan(0)) {
+            snapshot.optionalServicesTotal = Number(optServicesDec.toFixed(3));
+        }
 
         if (extraMeta && typeof extraMeta === 'object') {
             if (extraMeta.rateCardId) snapshot.rateCardId = extraMeta.rateCardId;
@@ -346,6 +367,8 @@ class PricingService {
             if (extraMeta.pricingMode) snapshot.pricingMode = extraMeta.pricingMode;
             if (extraMeta.excessWeight !== undefined) snapshot.excessWeight = extraMeta.excessWeight;
             if (extraMeta.excessPerKgRate !== undefined) snapshot.excessPerKgRate = extraMeta.excessPerKgRate;
+            if (extraMeta.optionalServices) snapshot.optionalServices = extraMeta.optionalServices;
+            if (extraMeta.optionalServicesTotal !== undefined) snapshot.optionalServicesTotal = Number(optServicesDec.toFixed(3));
         }
 
         return snapshot;
@@ -359,25 +382,74 @@ class PricingService {
     static validateSnapshot(snapshot) {
         if (!snapshot || !snapshot.expiresAt) return false;
         if (new Date() >= new Date(snapshot.expiresAt)) return false;
+        if (!snapshot.rateHash) return false;
 
-        if (snapshot.rateHash) {
-            try {
-                const carrierDec = new Decimal(snapshot.carrierRate ?? 0);
-                const markupDec = new Decimal(snapshot.markup ?? 0);
-                const totalDec = new Decimal(snapshot.totalPrice ?? 0);
-                const currency = snapshot.currency || 'KWD';
-                const expectedHash = crypto
-                    .createHash('sha256')
-                    .update(`${carrierDec.toFixed(3)}-${markupDec.toFixed(3)}-${totalDec.toFixed(3)}-${currency}`)
-                    .digest('hex');
-                if (snapshot.rateHash !== expectedHash) {
-                    return false;
-                }
-            } catch (_) {
-                return false;
+        try {
+            const carrierDec = new Decimal(snapshot.carrierRate ?? 0);
+            const markupDec = new Decimal(snapshot.markup ?? 0);
+            const totalDec = new Decimal(snapshot.totalPrice ?? 0);
+            const optServicesDec = new Decimal(snapshot.optionalServicesTotal ?? 0);
+            const currency = snapshot.currency || 'KWD';
+            const secret = process.env.PRICING_HMAC_SECRET || 'target-logistics-pricing-hmac-secret-2026';
+
+            // 1. Primary HMAC with optional services
+            const modernPayloadWithOpt = `${carrierDec.toFixed(3)}|${markupDec.toFixed(3)}|${optServicesDec.toFixed(3)}|${totalDec.toFixed(3)}|${currency}`;
+            const modernHmacWithOpt = crypto.createHmac('sha256', secret).update(modernPayloadWithOpt).digest('hex');
+            if (this._safeCompare(snapshot.rateHash, modernHmacWithOpt)) {
+                return true;
             }
+
+            // 2. Primary HMAC without optional services (or if opt services added after base hash)
+            const baseTotalDec = totalDec.minus(optServicesDec);
+            const modernPayloadBase = `${carrierDec.toFixed(3)}|${markupDec.toFixed(3)}|0.000|${baseTotalDec.toFixed(3)}|${currency}`;
+            const modernHmacBase = crypto.createHmac('sha256', secret).update(modernPayloadBase).digest('hex');
+            if (this._safeCompare(snapshot.rateHash, modernHmacBase)) {
+                return true;
+            }
+
+            // 3. Alternative HMAC format: carrier|markup|total|currency
+            const altPayload = `${carrierDec.toFixed(3)}|${markupDec.toFixed(3)}|${totalDec.toFixed(3)}|${currency}`;
+            const altHmac = crypto.createHmac('sha256', secret).update(altPayload).digest('hex');
+            if (this._safeCompare(snapshot.rateHash, altHmac)) {
+                return true;
+            }
+
+            // 4. Backward compatibility: Legacy plain SHA-256 (${carrierRate}-${markup}-${totalPrice}-${currency})
+            const legacyPayload = `${carrierDec.toFixed(3)}-${markupDec.toFixed(3)}-${totalDec.toFixed(3)}-${currency}`;
+            const legacyHash = crypto.createHash('sha256').update(legacyPayload).digest('hex');
+            if (this._safeCompare(snapshot.rateHash, legacyHash)) {
+                return true;
+            }
+
+            // 5. Legacy plain SHA-256 on base price if optional services were added
+            if (optServicesDec.greaterThan(0)) {
+                const legacyBasePayload = `${carrierDec.toFixed(3)}-${markupDec.toFixed(3)}-${baseTotalDec.toFixed(3)}-${currency}`;
+                const legacyBaseHash = crypto.createHash('sha256').update(legacyBasePayload).digest('hex');
+                if (this._safeCompare(snapshot.rateHash, legacyBaseHash)) {
+                    return true;
+                }
+            }
+
+            return false;
+        } catch (_) {
+            return false;
         }
-        return true;
+    }
+
+    /**
+     * Constant-time string equality check to prevent timing attacks.
+     * @param {string} a
+     * @param {string} b
+     * @returns {boolean}
+     */
+    static _safeCompare(a, b) {
+        if (!a || !b || typeof a !== 'string' || typeof b !== 'string') return false;
+        if (a.length !== b.length) return false;
+        try {
+            return crypto.timingSafeEqual(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
+        } catch (_) {
+            return a === b;
+        }
     }
 
     /**

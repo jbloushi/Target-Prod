@@ -1196,12 +1196,15 @@ exports.updateShipment = async (req, res) => {
         }
 
         // Allowed direct columns on Prisma Shipment model
-        const allowedPrismaFields = [
+        const baseAllowedFields = [
             'destination', 'origin', 'items', 'parcels', 'incoterm', 'currency',
             'serviceCode', 'status', 'carrierCode', 'shipmentType', 'packagingType',
-            'documents', 'pricingSnapshot', 'history', 'currentLocation', 'checkpoints',
-            'estimatedDelivery', 'price', 'costPrice', 'markupAmount'
+            'documents', 'history', 'currentLocation', 'checkpoints', 'estimatedDelivery'
         ];
+        const staffPricingFields = ['pricingSnapshot', 'price', 'costPrice', 'markupAmount'];
+        const allowedPrismaFields = isAdminOrStaff
+            ? [...baseAllowedFields, ...staffPricingFields]
+            : baseAllowedFields;
         const manualEditableFields = ['price', 'costPrice', 'estimatedDelivery'];
         const updateData = {};
         const currentOrigin = shipment.origin && typeof shipment.origin === 'object' ? { ...shipment.origin } : {};
@@ -1267,7 +1270,6 @@ exports.updateShipment = async (req, res) => {
 
         // Filter valid updates for Prisma
         Object.keys(updates).forEach(key => {
-            if (allowedPrismaFields.includes(key)) updateData[key] = updates[key];
             if (manualEditableFields.includes(key)) {
                 if (!canManageManualFields) return;
                 if (key === 'estimatedDelivery') {
@@ -1275,6 +1277,8 @@ exports.updateShipment = async (req, res) => {
                 } else if (updates[key] !== '' && updates[key] != null) {
                     updateData[key] = Number(updates[key]);
                 }
+            } else if (allowedPrismaFields.includes(key)) {
+                updateData[key] = updates[key];
             }
         });
 
@@ -1479,7 +1483,7 @@ exports.updateShipment = async (req, res) => {
                     }
                 } else {
                     logger.warn(`No carrier quotes returned during re-rating for ${trackingNumber}. Retaining current pricing.`);
-                    if (updates.price !== undefined) {
+                    if (isAdminOrStaff && updates.price !== undefined) {
                         updateData.price = Number(updates.price);
                     }
                 }
@@ -1488,7 +1492,7 @@ exports.updateShipment = async (req, res) => {
                 const isDraftShipment = shipment.status?.toLowerCase() === 'draft' || updates.status?.toLowerCase() === 'draft' || updates.isDraft === true;
                 if (isDraftShipment) {
                     logger.warn(`Draft shipment ${trackingNumber} update continuing without carrier re-rating.`);
-                    if (updates.price !== undefined) {
+                    if (isAdminOrStaff && updates.price !== undefined) {
                         updateData.price = Number(updates.price);
                     }
                 } else {

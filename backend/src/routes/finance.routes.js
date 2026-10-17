@@ -35,7 +35,9 @@ router.get('/reports/sla-performance', authorize('VIEW_FINANCE'), financeControl
 router.get('/cod/driver-summary', authorizeAny('VIEW_FINANCE', 'DRIVER_OPS'), financeController.getDriverCodSummary);
 router.post('/cod/remit', authorize('MANAGE_PAYMENTS'), requireIdempotency, financeController.remitDriverCod);
 router.post('/cod/request-remittance', requireIdempotency, financeController.requestDriverCodRemittance);
+router.post('/cod/initiate-handover', requireIdempotency, financeController.requestDriverCodRemittance);
 router.post('/cod/confirm-remittance', authorize('MANAGE_PAYMENTS'), requireIdempotency, financeController.confirmDriverCodRemittance);
+router.post('/cod/settle-merchant', authorize('MANAGE_PAYMENTS'), requireIdempotency, financeController.settleMerchantCod);
 
 // Carrier Invoice CSV Reconciliation
 router.post('/reconciliation/carrier-invoice', authorize('VIEW_FINANCE'), financeController.reconcileCarrierInvoice);

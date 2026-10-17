@@ -129,25 +129,41 @@ class ShipmentBookingService {
 
         const price = shipment.pricingSnapshot?.totalPrice ?? shipment.price ?? 0;
 
-        // Financial Gate: Credit Check against net available credit (creditLimit - currentDebt)
-        const isBypassRole = ['admin', 'staff', 'accounting'].includes(bookingUserRole);
-        if (!isBypassRole && organizationId && organization?.creditLimit != null && Number(organization.creditLimit) > 0) {
-            const currentDebt = Math.max(
-                0,
-                Number(organization.balance || 0) - Number(organization.unappliedBalance || 0)
-            );
-            const availableCredit = Number(organization.creditLimit) - currentDebt;
-            if (price > 0 && price > availableCredit) {
+        // Financial Gate: Credit Check against net available credit: creditLimit - outstandingBalance + unappliedCash (F4)
+        const isBypassRole = ['admin', 'staff', 'accounting'].includes(String(bookingUserRole || payingUser?.role || '').toLowerCase());
+        if (!isBypassRole && organizationId) {
+            let org = organization;
+            if (!org || org.balance === undefined || org.unappliedBalance === undefined || org.creditLimit === undefined) {
+                org = await prisma.organization.findUnique({
+                    where: { id: organizationId },
+                    select: { id: true, creditLimit: true, balance: true, unappliedBalance: true }
+                });
+            }
+
+            const creditLimit = Number(org?.creditLimit || 0);
+            const outstandingBalance = Math.max(0, Number(org?.balance || 0));
+            const unappliedCash = Number(org?.unappliedBalance || 0);
+            const availableCredit = Number((creditLimit - outstandingBalance + unappliedCash).toFixed(3));
+            const isPrepaid = org?.creditLimit == null || Number(org.creditLimit) === 0;
+
+            const hasSufficientCredit = isPrepaid
+                ? (unappliedCash >= price && availableCredit >= price)
+                : (availableCredit >= price);
+
+            if (price > 0 && !hasSufficientCredit) {
                 await prisma.shipment.update({
                     where: { id: shipment.id },
                     data: {
                         financeHold: {
                             status: true,
-                            reason: 'Shipment price exceeds organization available credit limit',
+                            reason: isPrepaid
+                                ? 'Insufficient prepaid unapplied balance to book shipment'
+                                : 'Shipment price exceeds organization available credit limit',
                             checkedAt: new Date(),
                             availableCredit,
-                            creditLimit: Number(organization.creditLimit),
-                            currentBalance: Number(organization.balance || 0),
+                            creditLimit,
+                            currentBalance: Number(org?.balance || 0),
+                            unappliedBalance: unappliedCash,
                             requiredAmount: price
                         }
                     }

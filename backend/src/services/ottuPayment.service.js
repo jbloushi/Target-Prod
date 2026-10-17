@@ -4,6 +4,7 @@ const config = require('../config/config');
 const { getSystemSettings } = require('./systemSettings.service');
 const chatwootNotificationService = require('./chatwootNotificationService');
 const financeLedgerService = require('./financeLedger.service');
+const generalLedgerService = require('./generalLedger.service');
 const logger = require('../utils/logger');
 
 class OttuPaymentService {
@@ -156,8 +157,28 @@ class OttuPaymentService {
 
         const settledAmount = amount > 0 ? amount : Number(shipment.remainingBalance || shipment.price || 0);
 
+        // Deduplication on payment reference: check if already processed
+        if (reference) {
+            const existingPayment = await prisma.payment.findFirst({
+                where: { reference: String(reference) }
+            });
+            if (existingPayment) {
+                logger.info(`[Ottu Webhook] Idempotent hit: Payment ${reference} already processed.`);
+                return { success: true, alreadyPaid: true, alreadyProcessed: true, trackingNumber: orderNo, paymentId: existingPayment.id };
+            }
+        }
+
         // Perform transactional database update
         const result = await prisma.$transaction(async (tx) => {
+            if (reference) {
+                const existingInTx = await tx.payment.findFirst({
+                    where: { reference: String(reference) }
+                });
+                if (existingInTx) {
+                    return { payment: existingInTx, updatedShipment: shipment, alreadyProcessed: true };
+                }
+            }
+
             // 1. Create Payment record
             const payment = await tx.payment.create({
                 data: {
@@ -218,8 +239,28 @@ class OttuPaymentService {
                 }
             });
 
+            // 5. Post Payment Receipt to General Ledger (Dr 1010 Bank / Cr 1100 AR)
+            try {
+                if (typeof generalLedgerService?.postPaymentReceiptEntry === 'function') {
+                    await generalLedgerService.postPaymentReceiptEntry({
+                        paymentId: payment.id,
+                        reference: String(reference),
+                        organizationId: shipment.organizationId || null,
+                        amount: settledAmount,
+                        currency,
+                        createdById: shipment.userId || null
+                    }, tx);
+                }
+            } catch (glErr) {
+                logger.warn(`[Ottu Webhook] GL payment receipt non-fatal warning for ${orderNo}: ${glErr.message}`);
+            }
+
             return { payment, updatedShipment };
         });
+
+        if (result.alreadyProcessed) {
+            return { success: true, alreadyPaid: true, alreadyProcessed: true, trackingNumber: orderNo, paymentId: result.payment.id };
+        }
 
         // 5. Trigger WhatsApp Payment Confirmed notification to customer
         try {

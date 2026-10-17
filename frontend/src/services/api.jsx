@@ -900,6 +900,26 @@ export const financeService = {
     }
   },
 
+  reconcileDriverCod: async (payload) => {
+    try {
+      const response = await api.post('finance/cod/confirm-remittance', payload);
+      return response.data;
+    } catch (error) {
+      console.error('Error reconciling driver COD remittance:', error);
+      throw error;
+    }
+  },
+
+  settleMerchantCod: async (payload) => {
+    try {
+      const response = await api.post('finance/cod/settle-merchant', payload);
+      return response.data;
+    } catch (error) {
+      console.error('Error settling merchant COD:', error);
+      throw error;
+    }
+  },
+
   reconcileCarrierInvoice: async (payload) => {
     try {
       const response = await api.post('finance/reconciliation/carrier-invoice', payload);

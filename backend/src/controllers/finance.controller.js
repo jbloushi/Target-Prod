@@ -911,6 +911,77 @@ exports.confirmDriverCodRemittance = async (req, res) => {
 };
 
 /**
+ * Step 3: Settle merchant COD escrow payout
+ * Netting gross COD escrow (2100) against unpaid freight AR (1100), COD handling fee (4040), and net bank wire payout (1010)
+ */
+exports.settleMerchantCod = async (req, res) => {
+    try {
+        const {
+            organizationId,
+            shipmentIds,
+            grossCodAmount,
+            freightDeductions = 0,
+            handlingFee = 0,
+            netPayout,
+            bankAccountGlCode = '1010',
+            reference,
+            currency
+        } = req.body || {};
+
+        if (!organizationId) {
+            return res.status(400).json({ success: false, error: 'organizationId is required' });
+        }
+        if (req.user && !assertFinanceOrgAccess(req, res, organizationId)) return;
+
+        const gross = Number(grossCodAmount !== undefined ? grossCodAmount : 0);
+        if (isNaN(gross) || gross <= 0) {
+            return res.status(400).json({ success: false, error: 'grossCodAmount must be a positive number' });
+        }
+
+        const result = await financeLedgerService.settleMerchantCod({
+            organizationId,
+            shipmentIds: Array.isArray(shipmentIds) ? shipmentIds : [],
+            grossCodAmount: gross,
+            freightDeductions: freightDeductions !== undefined ? Number(freightDeductions) : 0,
+            handlingFee: handlingFee !== undefined ? Number(handlingFee) : 0,
+            netPayout: netPayout !== undefined ? Number(netPayout) : undefined,
+            bankAccountGlCode: bankAccountGlCode || '1010',
+            reference,
+            currency,
+            settledById: req.user?.id
+        });
+
+        await recordFinancialAuditLog({
+            userId: req.user?.id,
+            action: 'SETTLE_MERCHANT_COD',
+            resource: 'MerchantCodSettlement',
+            resourceId: result.journalEntry?.id || result.ledgerEntry?.id || organizationId,
+            details: {
+                organizationId,
+                grossCodAmount: result.grossCodAmount,
+                freightDeductions: result.freightDeductions,
+                handlingFee: result.handlingFee,
+                netPayout: result.netPayout,
+                currency: result.currency,
+                reference: result.reference,
+                shipmentIds: result.shipmentIds
+            },
+            req
+        });
+
+        res.status(200).json({
+            success: true,
+            data: result,
+            message: 'Merchant COD settlement processed successfully'
+        });
+    } catch (error) {
+        return handleControllerError(res, error, 'Merchant COD settlement');
+    }
+};
+
+exports.initiateDriverCodHandover = exports.requestDriverCodRemittance;
+
+/**
  * Reconcile parsed carrier invoice records against internal shipments & carrier payables
  */
 exports.reconcileCarrierInvoice = async (req, res) => {

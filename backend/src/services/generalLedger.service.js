@@ -69,6 +69,31 @@ const postJournalEntry = async (entryData, txClient = prisma) => {
     lines = []
   } = entryData;
 
+  // Idempotency: Deduplicate on (sourceType, sourceId)
+  if (sourceType && sourceId) {
+    const client = txClient || prisma;
+    const existing = await (client.journalEntry?.findFirst
+      ? client.journalEntry.findFirst({
+          where: {
+            sourceType,
+            sourceId: String(sourceId)
+          },
+          include: {
+            lines: {
+              include: {
+                account: true
+              }
+            }
+          }
+        })
+      : null);
+
+    if (existing) {
+      logger.info(`[GL] Idempotency match: Reusing existing Journal Entry ${existing.entryNumber} for ${sourceType}:${sourceId}`);
+      return existing;
+    }
+  }
+
   if (!lines || lines.length < 2) {
     const error = new Error('Journal Entry must contain at least two balancing lines (Double-Entry).');
     error.statusCode = 400;
@@ -122,11 +147,17 @@ const postJournalEntry = async (entryData, txClient = prisma) => {
     sumBaseDebit = sumBaseDebit.plus(baseDebit);
     sumBaseCredit = sumBaseCredit.plus(baseCredit);
 
+    let lineOrgId = line.organizationId || null;
+    // Corporate Accounts: Carrier AP (2010) and Cash/Bank (1010) belong to Target Logistics corporate, not client merchants
+    if (account.code === '2010' || account.code === '1010' || line.accountCode === '2010' || line.accountCode === '1010') {
+      lineOrgId = null;
+    }
+
     resolvedLines.push({
       accountId: account.id,
       accountCode: account.code,
       accountType: account.type,
-      organizationId: line.organizationId || null,
+      organizationId: lineOrgId,
       shipmentId: line.shipmentId || null,
       debit,
       credit,
@@ -783,7 +814,7 @@ const postShipmentBookingEntry = async ({
     });
     lines.push({
       accountCode: '2010', // Carrier Accounts Payable
-      organizationId,
+      organizationId: null, // Carrier liabilities belong to Target Logistics corporate, not client merchant
       shipmentId,
       debit: 0,
       credit: costPrice,
@@ -836,7 +867,7 @@ const postPaymentReceiptEntry = async ({
     lines: [
       {
         accountCode: bankAccountGlCode,
-        organizationId,
+        organizationId: null, // Corporate bank/cash asset, not client merchant
         debit: decAmount,
         credit: 0,
         currency,
@@ -849,6 +880,52 @@ const postPaymentReceiptEntry = async ({
         credit: decAmount,
         currency,
         memo: `AR reduction for payment ${reference || paymentId}`
+      }
+    ]
+  }, txClient);
+};
+
+/**
+ * Operational Auto-Posting: Driver COD Collection on Delivery (ePOD)
+ * Dr 1020 Cash in Transit - Drivers COD
+ * Cr 2100 Merchant COD Escrow Payable
+ */
+const postDriverCodCollectionEntry = async ({
+  shipmentId,
+  trackingNumber,
+  organizationId,
+  codAmount,
+  currency = BASE_CURRENCY,
+  driverId,
+  createdById
+}, txClient = prisma) => {
+  const decAmount = roundDec(codAmount);
+  if (decAmount.lte(0)) return null;
+
+  return await postJournalEntry({
+    entryNumber: `JE-COD-COL-${Date.now().toString().slice(-6)}`,
+    date: new Date(),
+    reference: `EPOD-COD-${trackingNumber || shipmentId}`,
+    sourceType: 'COD_COLLECTION',
+    sourceId: shipmentId || (trackingNumber ? `ship-${trackingNumber}` : `COD-${Date.now()}`),
+    notes: `Driver COD cash collection on delivery for AWB ${trackingNumber || shipmentId || 'N/A'}${driverId ? ` by driver ${driverId}` : ''}`,
+    createdById,
+    approvedById: createdById,
+    lines: [
+      {
+        accountCode: '1020', // Cash in Transit - Drivers COD
+        debit: decAmount,
+        credit: 0,
+        currency,
+        memo: `Driver cash collection for ${trackingNumber || shipmentId}`
+      },
+      {
+        accountCode: '2100', // Merchant COD Escrow Payable
+        organizationId: organizationId || null,
+        debit: 0,
+        credit: decAmount,
+        currency,
+        memo: `Merchant COD escrow liability for ${trackingNumber || shipmentId}`
       }
     ]
   }, txClient);
@@ -958,7 +1035,7 @@ const postMerchantSettlementEntry = async ({
   if (payout.gt(0)) {
     lines.push({
       accountCode: bankAccountGlCode,
-      organizationId,
+      organizationId: null, // Corporate bank account
       debit: 0,
       credit: payout,
       currency,
@@ -993,6 +1070,7 @@ module.exports = {
   reopenAccountingPeriod,
   postShipmentBookingEntry,
   postPaymentReceiptEntry,
+  postDriverCodCollectionEntry,
   postDriverCodRemittanceEntry,
   postMerchantSettlementEntry,
   getOrCreateOpenPeriod,

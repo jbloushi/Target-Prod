@@ -496,8 +496,8 @@ exports.processPublicPayment = async (req, res) => {
         const { trackingNumber } = req.params;
         const { paymentMethod = 'KNET', customerName, customerEmail, customerPhone, reference } = req.body || {};
 
-        // Production Security Gate (SEC-01): Prevent unauthenticated direct settlement without gateway/staff verification
-        if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_PUBLIC_CHECKOUT !== 'true') {
+        // Security Gate (SEC-01): Prevent unauthenticated direct settlement without gateway/staff verification
+        if (process.env.ALLOW_DEMO_PUBLIC_CHECKOUT !== 'true') {
             let isAuthorized = false;
             const authHeader = req.headers.authorization;
             if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -554,6 +554,15 @@ exports.processPublicPayment = async (req, res) => {
         const normalizedMethod = String(paymentMethod || 'KNET').toUpperCase();
 
         const result = await prisma.$transaction(async (tx) => {
+            // Deduplication: check if Payment with reference already exists
+            const existingPayment = await tx.payment.findFirst({
+                where: { reference: paymentReference }
+            });
+            if (existingPayment) {
+                logger.info(`[Public Payment] Idempotent hit: Payment reference ${paymentReference} already processed.`);
+                return { payment: existingPayment, updatedShipment: shipment, alreadySettled: true };
+            }
+
             // 1. Create Payment record
             const payment = await tx.payment.create({
                 data: {
@@ -665,6 +674,21 @@ exports.processPublicPayment = async (req, res) => {
             return { payment, updatedShipment };
         });
 
+        if (result.alreadySettled) {
+            return res.status(200).json({
+                success: true,
+                message: 'Payment already processed for this reference.',
+                alreadySettled: true,
+                data: {
+                    paymentId: result.payment.id,
+                    reference: result.payment.reference,
+                    amount: result.payment.amount,
+                    currency: result.payment.currency,
+                    paid: true
+                }
+            });
+        }
+
         // 4. Trigger WhatsApp Payment Confirmation notification
         try {
             chatwootNotificationService.triggerShipmentNotification('payment_confirmed', result.updatedShipment, { force: true });
@@ -735,23 +759,27 @@ exports.createOttuSession = async (req, res) => {
 exports.handleOttuWebhook = async (req, res) => {
     try {
         const webhookSecret = process.env.OTTU_WEBHOOK_SECRET;
-        if (webhookSecret) {
-            const providedSig = req.headers['x-ottu-signature'] || req.headers['x-webhook-secret'] || req.body?.signature || req.query?.secret;
-            if (!providedSig) {
-                logger.warn('[Ottu Webhook] Rejected request: missing webhook signature/secret');
-                return res.status(401).json({ success: false, error: 'Unauthorized webhook request' });
-            }
-            const crypto = require('crypto');
-            const sigBuf = Buffer.from(String(providedSig));
-            const secretBuf = Buffer.from(String(webhookSecret));
-            const hmacHex = crypto.createHmac('sha256', webhookSecret).update(JSON.stringify(req.body || {})).digest('hex');
-            const hmacBuf = Buffer.from(hmacHex);
-            const isDirectMatch = sigBuf.length === secretBuf.length && crypto.timingSafeEqual(sigBuf, secretBuf);
-            const isHmacMatch = sigBuf.length === hmacBuf.length && crypto.timingSafeEqual(sigBuf, hmacBuf);
-            if (!isDirectMatch && !isHmacMatch) {
-                logger.warn('[Ottu Webhook] Rejected request: invalid webhook signature');
-                return res.status(401).json({ success: false, error: 'Invalid webhook signature' });
-            }
+        if (!webhookSecret) {
+            logger.warn('[Ottu Webhook] Rejected request: OTTU_WEBHOOK_SECRET is not configured on server');
+            return res.status(401).json({ success: false, error: 'Unauthorized: webhook secret is not configured' });
+        }
+
+        const providedSig = req.headers['x-ottu-signature'] || req.headers['x-webhook-secret'] || req.body?.signature;
+        if (!providedSig) {
+            logger.warn('[Ottu Webhook] Rejected request: missing webhook signature');
+            return res.status(401).json({ success: false, error: 'Unauthorized webhook request' });
+        }
+
+        const crypto = require('crypto');
+        const sigBuf = Buffer.from(String(providedSig));
+        const secretBuf = Buffer.from(String(webhookSecret));
+        const hmacHex = crypto.createHmac('sha256', webhookSecret).update(JSON.stringify(req.body || {})).digest('hex');
+        const hmacBuf = Buffer.from(hmacHex);
+        const isDirectMatch = sigBuf.length === secretBuf.length && crypto.timingSafeEqual(sigBuf, secretBuf);
+        const isHmacMatch = sigBuf.length === hmacBuf.length && crypto.timingSafeEqual(sigBuf, hmacBuf);
+        if (!isDirectMatch && !isHmacMatch) {
+            logger.warn('[Ottu Webhook] Rejected request: invalid webhook signature');
+            return res.status(401).json({ success: false, error: 'Invalid webhook signature' });
         }
 
         const ottuService = require('../services/ottuPayment.service');

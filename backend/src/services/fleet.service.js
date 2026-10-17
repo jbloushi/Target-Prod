@@ -5,7 +5,7 @@
 const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
 const chatwootNotificationService = require('./chatwootNotificationService');
-const { postJournalEntry } = require('./generalLedger.service');
+const { postJournalEntry, postDriverCodCollectionEntry } = require('./generalLedger.service');
 
 // Standard Kuwait Governorate Zone Map
 const KUWAIT_GOVERNORATES = {
@@ -294,6 +294,24 @@ async function completeDeliveryStop({
         }
     });
 
+    // Auto-post driver COD collection GL entry (Dr 1020 / Cr 2100) if cash collected (F13)
+    if (codAmt > 0) {
+        try {
+            await postDriverCodCollectionEntry({
+                shipmentId: updatedShipment.id,
+                trackingNumber: updatedShipment.trackingNumber,
+                organizationId: updatedShipment.organizationId,
+                codAmount: codAmt,
+                currency: updatedShipment.currency || 'KWD',
+                driverId: driverId || updatedShipment.assignedDriverId,
+                createdById: driverId
+            });
+            logger.info(`GL COD collection entry posted for shipment ${updatedShipment.trackingNumber} amount ${codAmt}`);
+        } catch (glErr) {
+            logger.warn(`GL COD collection entry skipped for ${updatedShipment.trackingNumber}:`, glErr.message);
+        }
+    }
+
     // Update the Delivery Run counters
     if (shipment.deliveryRunId) {
         const run = await prisma.deliveryRun.findUnique({
@@ -400,7 +418,9 @@ async function recordDeliveryException({
 /**
  * Cashier reconciles Driver COD money bag into the Main Cash Vault (General Ledger)
  */
-async function settleDeliveryRunCod(runId, cashierUser) {
+async function settleDeliveryRunCod(runIdOrObj, maybeCashierUser) {
+    const runId = typeof runIdOrObj === 'object' && runIdOrObj !== null ? runIdOrObj.runId : runIdOrObj;
+    const cashierUser = typeof runIdOrObj === 'object' && runIdOrObj !== null ? (runIdOrObj.cashierUser || maybeCashierUser) : maybeCashierUser;
     const run = await prisma.deliveryRun.findUnique({
         where: { id: runId },
         include: {
@@ -433,7 +453,7 @@ async function settleDeliveryRunCod(runId, cashierUser) {
                 createdById: cashierUser?.id,
                 lines: [
                     {
-                        accountCode: '1010', // Main Cash Vault / Safe
+                        accountCode: '1030', // Hub Vault Safe
                         debit: collectedAmt,
                         credit: 0,
                         memo: `Cash received from Driver ${run.driver?.name || ''} - Run ${run.runNumber}`
