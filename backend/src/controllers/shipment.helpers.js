@@ -225,7 +225,7 @@ const buildDisplayHistory = (events = [], options = {}) => {
     const originReplayStatuses = new Set(['pickup', 'arrived_facility', 'processed', 'departed_facility', 'customs_update', 'hold']);
     const hasRealCarrierEvents = (Array.isArray(events) ? events : []).some(e => {
         const desc = (e?.description || '').toLowerCase();
-        return !desc.includes('manifested under') && !desc.includes('operations gateway') && !desc.includes('synchronized from phenix') && !desc.includes('phenix erp');
+        return !desc.includes('manifested under') && !desc.includes('operations gateway') && !desc.includes('synchronized from phenix') && !desc.includes('phenix erp') && !desc.includes('shipment recorded in aramex tracking system');
     });
 
     const prepared = (Array.isArray(events) ? events : [])
@@ -236,6 +236,7 @@ const buildDisplayHistory = (events = [], options = {}) => {
             const loc = (typeof event.location === 'string' ? event.location : (event.location?.formattedAddress || event.location?.city || '')).toLowerCase();
             if (desc.includes('synchronized from phenix') || desc.includes('phenix erp')) return false;
             if (desc.includes('manifested under') || loc.includes('operations gateway')) return false;
+            if (desc.includes('shipment recorded in aramex tracking system')) return false;
             return true;
         })
         .map((event) => {
@@ -372,7 +373,7 @@ const compactHistory = (history = []) => {
         if (!e) return false;
         const desc = (e?.description || '').toLowerCase();
         const loc = (typeof e?.location === 'string' ? e.location : (e?.location?.formattedAddress || e?.location?.city || '')).toLowerCase();
-        if (desc.includes('manifested under') || loc.includes('operations gateway') || desc.includes('synchronized from phenix') || desc.includes('phenix erp')) return false;
+        if (desc.includes('manifested under') || loc.includes('operations gateway') || desc.includes('synchronized from phenix') || desc.includes('phenix erp') || desc.includes('shipment recorded in aramex tracking system')) return false;
         return true;
     });
 
@@ -542,7 +543,38 @@ const persistTrackingEvents = async (arg1, arg2, arg3, arg4) => {
     });
 
     if (typeof client.$transaction === 'function' && upsertOps.length > 1) {
-        await client.$transaction(upsertOps);
+        try {
+            await client.$transaction(upsertOps);
+        } catch (_) {
+            // If batch transaction hits a secondary unique-key race, apply sequentially ignoring duplicates
+            for (const { event, eventKey, validTimestamp } of uniqueEvents) {
+                const createData = {
+                    shipmentId,
+                    provider: String(provider || 'carrier'),
+                    carrierCode: String(carrierCode || 'DGR').toUpperCase(),
+                    source: event.source || 'carrier',
+                    eventKey,
+                    rawStatus: event.statusCode || event.status || null,
+                    normalizedStatus: normalizeStatus(event.statusCode || event.status || event.description),
+                    description: event.description || null,
+                    eventTimestamp: validTimestamp,
+                    location: event.location || null,
+                    rawPayload: event.rawPayload || event
+                };
+                await client.shipmentTrackingEvent.upsert({
+                    where: { shipmentId_eventKey: { shipmentId, eventKey } },
+                    create: createData,
+                    update: {
+                        rawStatus: createData.rawStatus,
+                        normalizedStatus: createData.normalizedStatus,
+                        description: createData.description,
+                        eventTimestamp: createData.eventTimestamp,
+                        location: createData.location,
+                        rawPayload: createData.rawPayload
+                    }
+                }).catch(() => {});
+            }
+        }
     } else {
         for (const op of upsertOps) {
             await op;

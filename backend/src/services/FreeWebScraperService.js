@@ -172,17 +172,13 @@ class FreeWebScraperService {
                 };
             }
 
-            // Check if page explicitly indicated not found
+            // Check if page explicitly indicated not found — return empty events so history is not polluted
+            // and cross-carrier fallback (e.g. 10-digit DHL waybills starting with 38) can run
             if (html.includes('No results found with current selection') || html.includes('track-shipment-list')) {
-                logger.info(`[FreeWebScraper] Aramex public page loaded (AWB #${cleanAwb} registered or pending dispatch)`);
+                logger.info(`[FreeWebScraper] Aramex returned no tracking events for AWB #${cleanAwb}`);
                 return {
-                    status: 'booked',
-                    events: [{
-                        timestamp: new Date().toISOString(),
-                        location: 'Aramex Network',
-                        description: 'Shipment recorded in Aramex tracking system',
-                        statusCode: 'booked'
-                    }]
+                    status: 'in_transit',
+                    events: []
                 };
             }
 
