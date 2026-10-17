@@ -170,6 +170,8 @@ const EXCEPTION_KEYWORDS = [
     'closed for holiday', 'customs hold', 'awaiting consignee', 'missed delivery',
     'not signed', 'unable to sign', 'unable to obtain signature', 'no signature',
     'delivery attempted', 'attempted delivery', 'notice left', 'consignee moved',
+    'consignee has moved', 'moved from the address', 'further consignee information',
+    'delivery attempt could not', 'could not be completed',
     'payment pending', 'requested hold', 'hold requested', 'hold at location',
     'later delivery', 'customs delay'
 ];

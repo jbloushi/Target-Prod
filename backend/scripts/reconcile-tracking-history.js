@@ -160,10 +160,34 @@ async function reconcileTrackingHistory(options = {}) {
                 if (rawHistory.length === 0) continue;
 
                 // 1. Repair individual checkpoint statuses in history
+                const isAramexShipment = String(shipment.carrierCode || '').toUpperCase() === 'ARAMEX'
+                    || /^(?:TRK-)?38\d{9}$/i.test(String(shipment.trackingNumber || ''));
                 let checkpointStatusChanged = false;
                 const repairedHistory = rawHistory.map((evt) => {
                     if (!evt || typeof evt !== 'object') return evt;
                     if (evt.type === 'comment' || evt.type === 'note' || evt.source === 'staff') return evt;
+
+                    // Aramex's 7th progress point ('Delivered') previously had stale pre-delivery banner text
+                    // (e.g. "Delivered - One of our Aramex delivery champion has contacted..." or "Delivered - Shipment trip planned...")
+                    // concatenated onto it by FreeWebScraperService._parseAramexHtmlEvents.
+                    const rawDesc = String(evt.description || '')
+                        .replace(/&#39;|&#x27;/gi, "'")
+                        .replace(/&amp;/gi, '&')
+                        .trim();
+                    if (isAramexShipment && /^Delivered\s*-\s*/i.test(rawDesc)) {
+                        const suffix = rawDesc.replace(/^Delivered\s*-\s*/i, '').trim();
+                        const suffixNorm = normalizeStatus(suffix);
+                        const isGenuineDeliverySuffix = suffixNorm === 'delivered' && !isNegativeOrExceptionPhrase(suffix);
+                        const cleanDesc = isGenuineDeliverySuffix
+                            ? `Delivered - ${suffix}`
+                            : 'Delivered - The shipment has been delivered';
+                        if (evt.status !== 'delivered' || evt.description !== cleanDesc) {
+                            checkpointStatusChanged = true;
+                            return { ...evt, status: 'delivered', description: cleanDesc };
+                        }
+                        return evt;
+                    }
+
                     const trueStatus = evaluateHistoryCheckpointStatus(evt);
                     const oldStatus = typeof evt.status === 'string' ? evt.status : '';
                     if (oldStatus === 'delivered' && trueStatus !== 'delivered') {
@@ -217,6 +241,12 @@ async function reconcileTrackingHistory(options = {}) {
                         if (!silent) {
                             console.log(`  [CLEAR RESOLVED HOLD]  ${shipment.trackingNumber}: exception -> ${nextStatus}`);
                         }
+                    }
+                } else if (currentStatus !== 'exception' && currentStatus !== 'delivered' && currentStatus !== 'cancelled' && latestEvtStatus === 'exception') {
+                    nextStatus = 'exception';
+                    summary.falseDeliveredHealed += 1;
+                    if (!silent) {
+                        console.log(`  [MARK EXCEPTION]       ${shipment.trackingNumber}: ${shipment.status} -> exception (latest: "${latestEvt?.description || ''}")`);
                     }
                 }
 

@@ -170,4 +170,91 @@ describe('reconcile-tracking-history script', () => {
         expect(prisma.shipment.update).not.toHaveBeenCalled();
         expect(prisma.shipmentTrackingEvent.upsert).not.toHaveBeenCalled();
     });
+
+    test('cleans polluted Aramex 7th progress point ("Delivered - One of our Aramex delivery champion...") and promotes to delivered, while marking newly observed DHL exception phrases', async () => {
+        expect(evaluateHistoryCheckpointStatus({
+            status: 'in_transit',
+            description: 'Delivery attempt could not be completed'
+        })).toBe('exception');
+
+        expect(evaluateHistoryCheckpointStatus({
+            status: 'in_transit',
+            description: 'Further consignee information needed'
+        })).toBe('exception');
+
+        expect(evaluateHistoryCheckpointStatus({
+            status: 'in_transit',
+            description: 'Consignee has moved from the address provided'
+        })).toBe('exception');
+
+        prisma.shipment.findMany
+            .mockResolvedValueOnce([
+                {
+                    id: 'ship-amx-1',
+                    trackingNumber: 'TRK-38290078886',
+                    carrierCode: 'ARAMEX',
+                    status: 'out_for_delivery',
+                    documents: {},
+                    history: [
+                        {
+                            status: 'out_for_delivery',
+                            description: 'Out for delivery',
+                            timestamp: '2026-09-17T01:13:00.000Z',
+                            location: 'Riffa, Bahrain'
+                        },
+                        {
+                            status: 'out_for_delivery',
+                            description: 'Delivered - One of our Aramex delivery champion has contacted the customer and they have responded',
+                            timestamp: '2026-09-17T09:13:00.000Z',
+                            location: 'Riffa, Bahrain'
+                        }
+                    ]
+                },
+                {
+                    id: 'ship-dhl-exc',
+                    trackingNumber: 'TRK-5734223353',
+                    carrierCode: 'DGR',
+                    status: 'in_transit',
+                    documents: {},
+                    history: [
+                        {
+                            status: 'in_transit',
+                            description: 'Delivery attempt could not be completed',
+                            timestamp: '2026-10-16T14:00:00.000Z',
+                            location: 'Dubai'
+                        }
+                    ]
+                }
+            ])
+            .mockResolvedValueOnce([]);
+
+        const summary = await reconcileTrackingHistory({
+            dryRun: false,
+            silent: true
+        });
+
+        expect(summary.missingDeliveredPromoted).toBe(1);
+        expect(summary.falseDeliveredHealed).toBe(1);
+
+        expect(prisma.shipment.update).toHaveBeenNthCalledWith(1, expect.objectContaining({
+            where: { id: 'ship-amx-1' },
+            data: expect.objectContaining({
+                status: 'delivered',
+                history: expect.arrayContaining([
+                    expect.objectContaining({
+                        status: 'delivered',
+                        description: 'Delivered - The shipment has been delivered'
+                    })
+                ])
+            })
+        }));
+
+        expect(prisma.shipment.update).toHaveBeenNthCalledWith(2, expect.objectContaining({
+            where: { id: 'ship-dhl-exc' },
+            data: expect.objectContaining({
+                status: 'exception'
+            })
+        }));
+    });
 });
+

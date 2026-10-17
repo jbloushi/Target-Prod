@@ -223,7 +223,12 @@ class FreeWebScraperService {
 
         const descpMatch = html.match(/class=["']shipment-update-descp["']>([^<]+)</i);
         if (descpMatch) {
-            latestUpdateText = descpMatch[1].trim();
+            latestUpdateText = descpMatch[1]
+                .replace(/&#39;|&#x27;/gi, "'")
+                .replace(/&amp;/gi, '&')
+                .replace(/&quot;/gi, '"')
+                .replace(/\s+/g, ' ')
+                .trim();
         }
 
         const dateMatch = html.match(/class=["']shipment-update-datetime["']>([^<]+)</i);
@@ -250,31 +255,50 @@ class FreeWebScraperService {
             'in transit': 'in_transit',
             'arrived at destination': 'in_transit',
             'out for delivery': 'out_for_delivery',
+            'held for pickup': 'exception',
+            'returned': 'returned',
             'delivered': 'delivered'
         };
 
         while ((match = pointRegex.exec(html)) !== null) {
             const classes = match[1];
             const stageName = match[2].trim();
+            const stageLower = stageName.toLowerCase();
             const isDone = classes.includes('done');
             const isCurrent = classes.includes('current');
 
             if (isDone || isCurrent) {
-                const normalizedStatus = stageMap[stageName.toLowerCase()] || 'in_transit';
+                const normalizedStatus = stageMap[stageLower] || normalizeStatus(stageName) || 'in_transit';
                 if (isCurrent || normalizedStatus === 'delivered') {
                     highestStatus = normalizedStatus;
                 }
 
                 // Progressive checkpoint timestamps
                 const eventTime = new Date(baseTime - (7 - pointIndex) * 3600000 * 4).toISOString();
-                let loc = (stageName.toLowerCase() === 'created' || stageName.toLowerCase() === 'collected') 
+                let loc = (stageLower === 'created' || stageLower === 'collected') 
                     ? originLocation 
-                    : ((stageName.toLowerCase() === 'delivered' || stageName.toLowerCase() === 'out for delivery') ? destLocation : 'Aramex Hub');
+                    : ((stageLower === 'delivered' || stageLower === 'out for delivery' || stageLower === 'held for pickup') ? destLocation : 'Aramex Hub');
+
+                let description = stageName;
+                if (latestUpdateText && isCurrent) {
+                    if (stageLower === 'delivered') {
+                        // Aramex's 'Latest Update' banner often retains the last customer notification
+                        // (e.g. "One of our Aramex delivery champion has contacted the customer..." or an earlier reschedule note)
+                        // even after the progress bar reaches 'Delivered'. Only append latestUpdateText if it is a delivery remark.
+                        const updateNorm = normalizeStatus(latestUpdateText);
+                        const isGenuineDeliveryText = updateNorm === 'delivered' && !isNegativeOrExceptionPhrase(latestUpdateText);
+                        description = isGenuineDeliveryText
+                            ? `Delivered - ${latestUpdateText}`
+                            : 'Delivered - The shipment has been delivered';
+                    } else {
+                        description = `${stageName} - ${latestUpdateText}`;
+                    }
+                }
 
                 events.push({
-                    timestamp: (isCurrent && stageName.toLowerCase() === 'delivered') ? latestUpdateDate : eventTime,
+                    timestamp: (isCurrent && stageLower === 'delivered') ? latestUpdateDate : eventTime,
                     location: loc,
-                    description: `${stageName}${latestUpdateText && isCurrent ? ` - ${latestUpdateText}` : ''}`,
+                    description,
                     statusCode: normalizedStatus
                 });
                 pointIndex++;
