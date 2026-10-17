@@ -301,7 +301,7 @@ async function reconcileTrackingHistory(options = {}) {
         }
         const liveRes = await carrierSyncCronService.runSyncBatch({
             limit: limit || 500,
-            maxDays: 365,
+            force: true,
             carrier: carrier || undefined
         });
         summary.liveActiveScanned = liveRes.scanned || 0;

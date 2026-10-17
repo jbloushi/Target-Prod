@@ -89,6 +89,9 @@ router.post('/manifest', shipmentController.generateCarrierManifest);
 // Automated Carrier Cron Sync Trigger (Admin / Staff)
 router.post('/cron/sync-carriers', authorize('MANAGE_SHIPMENTS'), shipmentController.triggerCarrierSync);
 
+// Export Undelivered Shipments Tracking & Aging Log (Admin / Manager / Accounting CSV)
+router.get('/export/undelivered-log', authorize('VIEW_ALL_SHIPMENTS'), shipmentController.exportUndeliveredShipmentsLog);
+
 
 
 // Get shipments near a location

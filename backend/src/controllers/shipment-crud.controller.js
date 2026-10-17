@@ -10,7 +10,7 @@ const { hasCapability, isPlatformRole } = require('../middleware/rbac.policy');
 const { canAccessShipment, scopeShipmentWhere } = require('../middleware/authorize.middleware');
 const { INTERNAL_SHIPMENT_STATUSES, SHIPMENT_STATUSES, normalizeStatus, isNegativeOrExceptionPhrase } = require('../constants/statusConstants');
 const { DELETABLE_SHIPMENT_STATUSES, buildShipmentDeleteBlockedMessage, hasCarrierBooking, canDeleteShipment } = require('../utils/shipmentDeletionPolicy');
-const { syncCarrierTrackingHistory, buildTrackingSyncDocuments, hasCriticalChanges, canUpdateShipmentStatus, isInternalShipment, buildDisplayHistory, autoHealAllResolvedExceptions, autoHealResolvedShipment, getResolvedExceptionStatus, autoSyncAllExceptions } = require('./shipment.helpers');
+const { syncCarrierTrackingHistory, buildTrackingSyncDocuments, hasCriticalChanges, canUpdateShipmentStatus, isInternalShipment, buildDisplayHistory, autoHealAllResolvedExceptions, autoHealResolvedShipment, getResolvedExceptionStatus, autoSyncAllExceptions, resolveCarrierTrackingNumber, getShipmentPollingTier } = require('./shipment.helpers');
 const chatwootNotificationService = require('../services/chatwootNotificationService');
 const WebhookDispatcher = require('../services/WebhookDispatcher');
 const { isTrackingSyncDue, markTrackingSynced, triggerBackgroundTrackingSync } = require('../services/queue/trackingCache');
@@ -1713,3 +1713,153 @@ exports.bulkImportShipments = async (req, res) => {
         return res.status(500).json({ success: false, error: 'Bulk import failed: ' + error.message });
     }
 };
+
+/**
+ * Export CSV log of undelivered shipments with aging, tracking status, and polling tiers
+ * @route GET /api/shipments/export/undelivered-log
+ */
+exports.exportUndeliveredShipmentsLog = async (req, res) => {
+    try {
+        const { organizationId, carrier, carrierCode, status, tier } = req.query;
+        const where = {};
+
+        if (isPlatformRole(req.user?.role)) {
+            if (organizationId && organizationId !== 'all') {
+                where.organizationId = organizationId === 'none' ? null : organizationId;
+            }
+        } else {
+            scopeShipmentWhere(req, where);
+        }
+
+        const terminalStatuses = ['delivered', 'cancelled', 'returned'];
+        if (status && status !== 'all') {
+            const normalizedStatus = String(status).toLowerCase().trim();
+            if (!terminalStatuses.includes(normalizedStatus)) {
+                where.status = normalizedStatus;
+            } else {
+                where.status = { notIn: terminalStatuses };
+            }
+        } else {
+            where.status = { notIn: terminalStatuses };
+        }
+
+        // Apply Carrier Code Filter if provided
+        const rawCarrier = String(carrier || carrierCode || '').trim().toUpperCase();
+        if (rawCarrier && rawCarrier !== 'ALL') {
+            if (['DHL', 'DGR'].includes(rawCarrier)) {
+                where.carrierCode = { in: ['DHL', 'DGR'] };
+            } else if (['ARAMEX', 'ARM'].includes(rawCarrier)) {
+                where.carrierCode = { in: ['ARAMEX', 'ARM'] };
+            } else if (['FEDEX', 'FDX'].includes(rawCarrier)) {
+                where.carrierCode = { in: ['FEDEX', 'FDX'] };
+            } else if (['INTERNAL', 'MAN', 'MANUAL'].includes(rawCarrier)) {
+                where.carrierCode = { in: ['INTERNAL', 'MAN', 'MANUAL'] };
+            } else {
+                where.carrierCode = rawCarrier;
+            }
+        }
+
+        const shipments = await prisma.shipment.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+            include: {
+                organization: {
+                    select: { name: true }
+                }
+            }
+        });
+
+        const now = new Date();
+        const rows = [];
+
+        // Helper to escape CSV values
+        const escapeCsv = (val) => {
+            if (val == null) return '""';
+            const str = String(val).replace(/"/g, '""');
+            return `"${str}"`;
+        };
+
+        const headers = [
+            'Tracking Number',
+            'Carrier AWB',
+            'Carrier Code',
+            'Status',
+            'Created Date',
+            'Days in Transit',
+            'Polling Tier',
+            'Next Check Due',
+            'Last Checked At',
+            'Days Since Check',
+            'Latest Event',
+            'Event Date',
+            'Origin',
+            'Destination',
+            'Consignee',
+            'Phone',
+            'Organization'
+        ];
+
+        for (const s of shipments) {
+            const created = s.createdAt ? new Date(s.createdAt) : now;
+            const updated = s.updatedAt ? new Date(s.updatedAt) : created;
+            const daysInTransit = Math.max(0, Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)));
+            const daysSinceCheck = ((now.getTime() - updated.getTime()) / (1000 * 60 * 60 * 24)).toFixed(1);
+
+            const tierInfo = getShipmentPollingTier(s, now);
+
+            // Optional tier filter in query
+            if (tier && tier !== 'all') {
+                const requestedTier = String(tier).toLowerCase().trim();
+                const matchedTier = tierInfo.tier.toLowerCase();
+                if (!matchedTier.includes(requestedTier) && !tierInfo.label.toLowerCase().includes(requestedTier)) {
+                    continue;
+                }
+            }
+
+            const carrierAwb = resolveCarrierTrackingNumber(s) || '';
+            const history = Array.isArray(s.history) ? s.history : [];
+            const latestEventObj = history.length > 0 ? history[history.length - 1] : null;
+            const latestEventDesc = latestEventObj ? (latestEventObj.description || latestEventObj.status || '') : '';
+            const latestEventTime = latestEventObj?.timestamp ? new Date(latestEventObj.timestamp).toISOString() : '';
+
+            const originObj = typeof s.origin === 'object' && s.origin !== null ? s.origin : {};
+            const destObj = typeof s.destination === 'object' && s.destination !== null ? s.destination : {};
+
+            const originStr = [originObj.city, originObj.country].filter(Boolean).join(', ') || originObj.address || '';
+            const destStr = [destObj.city, destObj.country].filter(Boolean).join(', ') || destObj.address || '';
+            const consignee = destObj.contactName || destObj.name || s.consigneeName || '';
+            const phone = destObj.phone || s.consigneePhone || '';
+            const orgName = s.organization?.name || 'Target Logistics';
+
+            rows.push([
+                escapeCsv(s.trackingNumber),
+                escapeCsv(carrierAwb),
+                escapeCsv(s.carrierCode || s.carrier || 'N/A'),
+                escapeCsv(s.status),
+                escapeCsv(created.toISOString().slice(0, 10)),
+                daysInTransit,
+                escapeCsv(tierInfo.label),
+                escapeCsv(tierInfo.nextCheckDue ? tierInfo.nextCheckDue.toISOString() : ''),
+                escapeCsv(s.updatedAt ? updated.toISOString() : 'Never'),
+                daysSinceCheck,
+                escapeCsv(latestEventDesc),
+                escapeCsv(latestEventTime),
+                escapeCsv(originStr),
+                escapeCsv(destStr),
+                escapeCsv(consignee),
+                escapeCsv(phone),
+                escapeCsv(orgName)
+            ].join(','));
+        }
+
+        const csvContent = [headers.join(','), ...rows].join('\r\n');
+        const filename = `undelivered-shipments-log-${now.toISOString().slice(0, 10)}.csv`;
+
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.status(200).send('\uFEFF' + csvContent);
+    } catch (error) {
+        return handleControllerError(res, error, 'Export undelivered shipments log');
+    }
+};
+

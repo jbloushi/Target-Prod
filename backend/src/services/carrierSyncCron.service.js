@@ -104,23 +104,76 @@ class CarrierSyncCronService {
                 'picked_up', 'in_transit', 'out_for_delivery', 'received_at_hub',
                 'verified', 'exception', 'failed'
             ];
-            const maxAgeDays = parseInt(options.maxDays || process.env.CARRIER_CRON_MAX_AGE_DAYS, 10) || 180;
-            const cutoffDate = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000);
 
             const whereClause = {
-                status: { in: activeStatuses },
-                createdAt: { gte: cutoffDate }
+                status: { in: activeStatuses }
             };
 
+            // Only apply maxDays cutoff if explicitly provided (by default, non-terminal shipments are checked indefinitely)
+            if (options.maxDays) {
+                const maxAgeDays = parseInt(options.maxDays, 10);
+                if (!Number.isNaN(maxAgeDays) && maxAgeDays > 0) {
+                    whereClause.createdAt = { gte: new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000) };
+                }
+            }
+
+            const andConditions = [];
+
             if (carrierFilter) {
-                whereClause.AND = [
-                    {
-                        OR: [
-                            { carrier: carrierFilter },
-                            { carrierCode: carrierFilter }
-                        ]
-                    }
-                ];
+                andConditions.push({
+                    OR: [
+                        { carrier: carrierFilter },
+                        { carrierCode: carrierFilter }
+                    ]
+                });
+            }
+
+            // Tiered Polling Frequency:
+            // 1. Urgent (out_for_delivery): checked every 1 hour
+            // 2. Fresh (created <= 3 hours ago): checked after 30 minutes
+            // 3. Tier 1 (<= 14 days old): checked every 2 hours
+            // 4. Tier 2 (15 to 45 days old): checked every 18 hours
+            // 5. Tier 3 (> 45 days old): checked every 15 days indefinitely (no cutoff)
+            const applyTiers = !options.force && !options.ignoreTiers;
+            if (applyTiers) {
+                const now = Date.now();
+                const oneHourAgo = new Date(now - 1 * 60 * 60 * 1000);
+                const thirtyMinutesAgo = new Date(now - 30 * 60 * 1000);
+                const twoHoursAgo = new Date(now - 2 * 60 * 60 * 1000);
+                const eighteenHoursAgo = new Date(now - 18 * 60 * 60 * 1000);
+                const fourteenDaysAgo = new Date(now - 14 * 24 * 60 * 60 * 1000);
+                const fortyFiveDaysAgo = new Date(now - 45 * 24 * 60 * 60 * 1000);
+                const fifteenDaysAgo = new Date(now - 15 * 24 * 60 * 60 * 1000);
+                const threeHoursAgo = new Date(now - 3 * 60 * 60 * 1000);
+
+                andConditions.push({
+                    OR: [
+                        {
+                            status: 'out_for_delivery',
+                            updatedAt: { lte: oneHourAgo }
+                        },
+                        {
+                            createdAt: { gte: threeHoursAgo },
+                            updatedAt: { lte: thirtyMinutesAgo }
+                        },
+                        {
+                            createdAt: { gte: fourteenDaysAgo },
+                            updatedAt: { lte: twoHoursAgo }
+                        },
+                        {
+                            createdAt: { gte: fortyFiveDaysAgo, lt: fourteenDaysAgo },
+                            updatedAt: { lte: eighteenHoursAgo }
+                        },
+                        {
+                            createdAt: { lt: fortyFiveDaysAgo },
+                            updatedAt: { lte: fifteenDaysAgo }
+                        }
+                    ]
+                });
+            }
+
+            if (andConditions.length > 0) {
+                whereClause.AND = andConditions;
             }
 
             const rawCandidates = await prisma.shipment.findMany({
@@ -272,5 +325,59 @@ class CarrierSyncCronService {
     }
 }
 
+/**
+ * Resolves the tracking polling tier and frequency for a shipment
+ * @param {Object} shipment
+ * @param {Date} [now]
+ * @returns {{ tier: string, label: string, intervalHours: number, intervalDays?: number, nextCheckDue: Date, isDue: boolean }}
+ */
+function getShipmentPollingTier(shipment, now = new Date()) {
+    const status = String(shipment?.status || '').toLowerCase();
+    const createdTime = shipment?.createdAt ? new Date(shipment.createdAt).getTime() : now.getTime();
+    const updatedTime = shipment?.updatedAt ? new Date(shipment.updatedAt).getTime() : createdTime;
+    const ageDays = (now.getTime() - createdTime) / (1000 * 60 * 60 * 24);
+
+    let tier = 'Tier 1';
+    let label = 'Tier 1 (2h)';
+    let intervalHours = 2;
+    let intervalDays = null;
+
+    if (status === 'out_for_delivery') {
+        tier = 'Urgent';
+        label = 'Urgent (1h)';
+        intervalHours = 1;
+    } else if (ageDays <= 14) {
+        tier = 'Tier 1';
+        label = 'Tier 1 (2h)';
+        intervalHours = 2;
+    } else if (ageDays <= 45) {
+        tier = 'Tier 2';
+        label = 'Tier 2 (18h)';
+        intervalHours = 18;
+    } else {
+        tier = 'Tier 3';
+        label = 'Tier 3 (15d)';
+        intervalHours = 360;
+        intervalDays = 15;
+    }
+
+    const intervalMs = intervalHours * 60 * 60 * 1000;
+    const nextCheckDue = new Date(updatedTime + intervalMs);
+    const isDue = now.getTime() >= nextCheckDue.getTime();
+
+    return {
+        tier,
+        label,
+        intervalHours,
+        intervalDays,
+        nextCheckDue,
+        isDue
+    };
+}
+
 const carrierSyncCronService = new CarrierSyncCronService();
+carrierSyncCronService.getShipmentPollingTier = getShipmentPollingTier;
+carrierSyncCronService.CarrierSyncCronService = CarrierSyncCronService;
+
 module.exports = carrierSyncCronService;
+

@@ -1190,6 +1190,56 @@ function calculateDistance(coord1, coord2) {
     return R * c;
 }
 
+/**
+ * Resolves the tracking polling tier and frequency for a shipment
+ * @param {Object} shipment
+ * @param {Date} [now]
+ * @returns {{ tier: string, label: string, intervalHours: number, intervalDays?: number, nextCheckDue: Date, isDue: boolean }}
+ */
+function getShipmentPollingTier(shipment, now = new Date()) {
+    const status = String(shipment?.status || '').toLowerCase();
+    const createdTime = shipment?.createdAt ? new Date(shipment.createdAt).getTime() : now.getTime();
+    const updatedTime = shipment?.updatedAt ? new Date(shipment.updatedAt).getTime() : createdTime;
+    const ageDays = (now.getTime() - createdTime) / (1000 * 60 * 60 * 24);
+
+    let tier = 'Tier 1';
+    let label = 'Tier 1 (2h)';
+    let intervalHours = 2;
+    let intervalDays = null;
+
+    if (status === 'out_for_delivery') {
+        tier = 'Urgent';
+        label = 'Urgent (1h)';
+        intervalHours = 1;
+    } else if (ageDays <= 14) {
+        tier = 'Tier 1';
+        label = 'Tier 1 (2h)';
+        intervalHours = 2;
+    } else if (ageDays <= 45) {
+        tier = 'Tier 2';
+        label = 'Tier 2 (18h)';
+        intervalHours = 18;
+    } else {
+        tier = 'Tier 3';
+        label = 'Tier 3 (15d)';
+        intervalHours = 360;
+        intervalDays = 15;
+    }
+
+    const intervalMs = intervalHours * 60 * 60 * 1000;
+    const nextCheckDue = new Date(updatedTime + intervalMs);
+    const isDue = now.getTime() >= nextCheckDue.getTime();
+
+    return {
+        tier,
+        label,
+        intervalHours,
+        intervalDays,
+        nextCheckDue,
+        isDue
+    };
+}
+
 module.exports = {
     DEFAULT_MARKUP,
     hasMarkupShape,
@@ -1206,6 +1256,7 @@ module.exports = {
     calculateEstimatedDelivery,
     parseCoordinates,
     calculateDistance,
+    getShipmentPollingTier,
     hasCriticalChanges,
     isInternalShipment,
     getAllowedStatusUpdates,

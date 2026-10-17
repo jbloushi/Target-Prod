@@ -32,6 +32,7 @@ module.exports = {
   getTriageShipments: crud.getTriageShipments,
   getShipmentAuditLogs: crud.getShipmentAuditLogs,
   bulkImportShipments: crud.bulkImportShipments,
+  exportUndeliveredShipmentsLog: crud.exportUndeliveredShipmentsLog,
 
   // Booking
   getQuotes: booking.getQuotes,
