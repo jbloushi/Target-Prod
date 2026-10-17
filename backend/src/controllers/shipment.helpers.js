@@ -677,8 +677,15 @@ const syncCarrierTrackingHistory = async (shipment) => {
             }
         });
 
-        // Check if any event in newHistory or sortedEvents reports delivered
-        const anyDelivered = newHistory.some((e) => normalizeStatus(e.status || e.description) === 'delivered');
+        // Check if any event in newHistory or sortedEvents reports genuinely delivered
+        const anyDelivered = newHistory.some((e) => {
+            if (!e) return false;
+            if (isNegativeOrExceptionPhrase(e.description) || isNegativeOrExceptionPhrase(e.status)) return false;
+            const descNorm = e.description ? normalizeStatus(e.description) : null;
+            if (descNorm === 'delivered') return true;
+            const statusNorm = e.status ? normalizeStatus(e.status) : null;
+            return statusNorm === 'delivered' && (!descNorm || descNorm === 'delivered');
+        });
 
         // Most recent chronological event
         const latestEvent = sortedEvents[sortedEvents.length - 1];
@@ -892,10 +899,16 @@ function evaluateRealtimeExceptionStatus(shipment) {
     const rawHistory = Array.isArray(shipment.history) ? shipment.history : [];
     if (rawHistory.length === 0) return null;
 
-    // 1. Any delivered milestone conclusively resolves any past exception
+    // 1. Any genuine delivered milestone conclusively resolves any past exception
     const hasDelivered = rawHistory.some((e) => {
-        const s = normalizeStatus(e.status || e.description || e.statusCode);
-        return s === 'delivered';
+        if (!e) return false;
+        if (isNegativeOrExceptionPhrase(e.description) || isNegativeOrExceptionPhrase(e.status)) return false;
+        const descNorm = e.description ? normalizeStatus(e.description) : null;
+        if (descNorm === 'delivered') return true;
+        const codeNorm = (e.statusCode || e.code) ? normalizeStatus(e.statusCode || e.code) : null;
+        if (codeNorm === 'delivered' && (!descNorm || descNorm !== 'exception')) return true;
+        const statusNorm = e.status ? normalizeStatus(e.status) : null;
+        return statusNorm === 'delivered' && (!descNorm || descNorm === 'delivered');
     });
     if (hasDelivered) {
         return currentStatus !== 'delivered' ? 'delivered' : null;
@@ -1004,7 +1017,7 @@ async function autoSyncAllExceptions(prismaClient, options = {}) {
 
     const activeStatuses = [
         'exception', 'failed', 'cancelled', 'returned',
-        'booked', 'ready_for_pickup', 'picked_up',
+        'created', 'pending', 'updated', 'booked', 'ready_for_pickup', 'picked_up',
         'received_at_hub', 'verified', 'in_transit', 'out_for_delivery'
     ];
 

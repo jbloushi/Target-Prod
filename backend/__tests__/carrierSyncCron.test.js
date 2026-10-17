@@ -217,4 +217,45 @@ describe('CarrierSyncCronService', () => {
         expect(carrierSyncCronService.cronTimer).not.toBeNull();
         carrierSyncCronService.stop();
     });
+
+    test('runSyncBatch touches updatedAt when syncCarrierTrackingHistory throws an error to prevent queue starvation', async () => {
+        const mockShipment = {
+            id: 'ship-err-1',
+            trackingNumber: 'TRK-ERR-1',
+            carrierCode: 'DHL',
+            status: 'in_transit',
+            history: []
+        };
+
+        prisma.shipment.findMany.mockResolvedValueOnce([mockShipment]);
+
+        const { syncCarrierTrackingHistory } = require('../src/controllers/shipment.helpers');
+        syncCarrierTrackingHistory.mockRejectedValueOnce(new Error('Scraper timeout'));
+        prisma.shipment.update.mockResolvedValueOnce({ id: 'ship-err-1' });
+
+        const result = await carrierSyncCronService.runSyncBatch({ limit: 5 });
+
+        expect(result.errors).toBe(1);
+        expect(prisma.shipment.update).toHaveBeenCalledWith({
+            where: { id: 'ship-err-1' },
+            data: { updatedAt: expect.any(Date) }
+        });
+    });
+
+    test('runSyncBatch queries all non-terminal statuses including ready_for_pickup, updated, failed, and exception across 30-day window', async () => {
+        prisma.shipment.findMany.mockResolvedValueOnce([]);
+
+        await carrierSyncCronService.runSyncBatch({ limit: 10 });
+
+        const queryCall = prisma.shipment.findMany.mock.calls[0][0];
+        const statusFilter = queryCall.where.status.in;
+        expect(statusFilter).toEqual(expect.arrayContaining([
+            'created', 'pending', 'updated', 'booked', 'ready_for_pickup',
+            'picked_up', 'in_transit', 'out_for_delivery', 'received_at_hub',
+            'verified', 'exception', 'failed'
+        ]));
+        const cutoffMs = Date.now() - queryCall.where.createdAt.gte.getTime();
+        const cutoffDays = Math.round(cutoffMs / (24 * 60 * 60 * 1000));
+        expect(cutoffDays).toBe(30);
+    });
 });

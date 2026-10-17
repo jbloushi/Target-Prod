@@ -567,7 +567,10 @@ exports.getTriageShipments = async (req, res) => {
         const now = Date.now();
         const items = activeTriageShipments.map(s => {
             const rawHist = Array.isArray(s.history) ? s.history : [];
-            const lastEvent = rawHist[rawHist.length - 1] || {};
+            const sortedHist = [...rawHist]
+                .filter(e => e && e.timestamp)
+                .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+            const lastEvent = sortedHist[0] || rawHist[rawHist.length - 1] || {};
             const destObj = typeof s.destination === 'object' && s.destination ? s.destination : {};
             const origObj = typeof s.origin === 'object' && s.origin ? s.origin : {};
             
@@ -866,10 +869,23 @@ exports.getAllShipments = async (req, res) => {
         const where = {};
 
         // 1. Status Filters
-        if (status) where.status = status;
+        if (status) {
+            if (status === 'exceptions') {
+                where.status = { in: ['exception', 'failed', 'cancelled', 'returned'] };
+            } else {
+                where.status = status;
+            }
+        }
         if (statusIn) {
             const statuses = String(statusIn).split(',').map(v => v.trim()).filter(Boolean);
             if (statuses.length > 0) where.status = { in: statuses };
+        }
+
+        const isExceptionQuery = status === 'exception' || status === 'exceptions' || (statusIn && String(statusIn).includes('exception'));
+        if (isExceptionQuery) {
+            try {
+                await autoSyncAllExceptions(prisma);
+            } catch (_) {}
         }
 
         // 2. Organization Filter — enforce tenant isolation for non-platform users

@@ -11,7 +11,7 @@ class CarrierSyncCronService {
         this.isSyncing = false;
         // Default interval: 15 minutes
         this.intervalMs = parseInt(process.env.CARRIER_CRON_SYNC_INTERVAL_MS, 10) || 15 * 60 * 1000;
-        this.batchSize = parseInt(process.env.CARRIER_CRON_SYNC_BATCH_SIZE, 10) || 20;
+        this.batchSize = parseInt(process.env.CARRIER_CRON_SYNC_BATCH_SIZE, 10) || 35;
         this.concurrency = 2; // Polite scraper concurrency to protect server IP
     }
 
@@ -99,8 +99,12 @@ class CarrierSyncCronService {
                 logger.warn(`[CarrierSyncCron] Error during auto-heal pass: ${healErr.message}`);
             }
 
-            const activeStatuses = ['created', 'pending', 'booked', 'picked_up', 'in_transit', 'out_for_delivery', 'received_at_hub', 'verified', 'exception'];
-            const maxAgeDays = parseInt(options.maxDays || process.env.CARRIER_CRON_MAX_AGE_DAYS, 10) || 7;
+            const activeStatuses = [
+                'created', 'pending', 'updated', 'booked', 'ready_for_pickup',
+                'picked_up', 'in_transit', 'out_for_delivery', 'received_at_hub',
+                'verified', 'exception', 'failed'
+            ];
+            const maxAgeDays = parseInt(options.maxDays || process.env.CARRIER_CRON_MAX_AGE_DAYS, 10) || 30;
             const cutoffDate = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000);
 
             const whereClause = {
@@ -238,6 +242,11 @@ class CarrierSyncCronService {
                     } catch (err) {
                         summary.errors++;
                         logger.warn(`[CarrierSyncCron] Failed sync for ${shipment.trackingNumber}: ${err.message}`);
+                        // Touch updatedAt so failing shipments rotate to the back of the queue instead of starving other shipments
+                        await prisma.shipment.update({
+                            where: { id: shipment.id },
+                            data: { updatedAt: new Date() }
+                        }).catch(() => {});
                         return {
                             trackingNumber: shipment.trackingNumber,
                             error: err.message,
