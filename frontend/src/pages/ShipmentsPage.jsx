@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import ShipmentList from '../components/ShipmentList';
 import BulkShipmentImportModal from '../components/BulkShipmentImportModal';
 import PhenixSyncModal from '../components/PhenixSyncModal';
+import UndeliveredLogModal from '../components/UndeliveredLogModal';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { getRoleLabel } from '../utils/roleLabels';
@@ -27,6 +28,7 @@ const ShipmentsPage = () => {
 
     const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
     const [isPhenixModalOpen, setIsPhenixModalOpen] = useState(false);
+    const [isUndeliveredModalOpen, setIsUndeliveredModalOpen] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
 
     const initialOrgId = searchParams.get('org') || 'all';
@@ -198,14 +200,25 @@ const ShipmentsPage = () => {
                     {/* Action Buttons */}
                     <div className="flex items-center gap-2 sm:self-end">
                         {isTargetManagement && (
-                            <button
-                                type="button"
-                                onClick={() => setIsPhenixModalOpen(true)}
-                                className="btn btn-outline btn-accent btn-sm rounded-xl font-bold flex-1 sm:flex-initial gap-1.5"
-                            >
-                                <span className="material-symbols-outlined text-xs">sync_alt</span>
-                                {t('sync_phenix_erp', 'Sync Phenix')}
-                            </button>
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsUndeliveredModalOpen(true)}
+                                    className="btn btn-outline btn-primary btn-sm rounded-xl font-bold flex-1 sm:flex-initial gap-1.5"
+                                    title={isRTL ? 'سجل تتبع ومراقبة وتصدير الشحنات غير المسلمة' : 'Export & monitor undelivered consignments log'}
+                                >
+                                    <span className="material-symbols-outlined text-xs">monitoring</span>
+                                    {t('undelivered_log', isRTL ? 'سجل غير المسلم' : 'Undelivered Log')}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsPhenixModalOpen(true)}
+                                    className="btn btn-outline btn-accent btn-sm rounded-xl font-bold flex-1 sm:flex-initial gap-1.5"
+                                >
+                                    <span className="material-symbols-outlined text-xs">sync_alt</span>
+                                    {t('sync_phenix_erp', 'Sync Phenix')}
+                                </button>
+                            </>
                         )}
                         <button
                             type="button"
@@ -363,6 +376,14 @@ const ShipmentsPage = () => {
                 isOpen={isPhenixModalOpen}
                 onClose={() => setIsPhenixModalOpen(false)}
                 onSyncSuccess={() => setRefreshKey(prev => prev + 1)}
+            />
+
+            {/* Undelivered Shipments Tracking & Aging Log Modal */}
+            <UndeliveredLogModal
+                isOpen={isUndeliveredModalOpen}
+                onClose={() => setIsUndeliveredModalOpen(false)}
+                organizations={organizations}
+                selectedOrgId={selectedOrgId}
             />
         </div>
     );

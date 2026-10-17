@@ -9,6 +9,7 @@ import { useShipmentStats } from '../utils/useShipmentStats';
 import StatusBadge from './common/StatusBadge';
 import TradeRouteDisplay from './common/TradeRouteDisplay';
 import ShipmentInspectorDrawer from './common/ShipmentInspectorDrawer';
+import UndeliveredLogModal from './UndeliveredLogModal';
 import {
   buildShipmentDeleteBlockedMessage,
   canDeleteShipmentStatus,
@@ -189,6 +190,7 @@ export const ShipmentList = ({
   const [selectedIds, setSelectedIds] = useState([]);
   const [inspectingShipment, setInspectingShipment] = useState(null);
   const [perPage, setPerPage] = useState(25);
+  const [isUndeliveredModalOpen, setIsUndeliveredModalOpen] = useState(false);
 
   // Sync initialFilter prop if changed by parent
   useEffect(() => {
@@ -520,6 +522,15 @@ export const ShipmentList = ({
             <span>
               {t('showing_x_of_y', `Showing ${shipments.length} of ${total || 0} shipments`).replace('{count}', shipments.length).replace('{total}', total || 0)}
             </span>
+            <button 
+              type="button"
+              onClick={() => setIsUndeliveredModalOpen(true)} 
+              className="btn btn-ghost btn-xs text-primary font-bold gap-1 px-2 border border-primary/25 hover:bg-primary/10 rounded-lg"
+              title={isRTL ? 'تصدير ومراقبة تقرير الشحنات غير المسلمة' : 'Export and monitor undelivered consignments log'}
+            >
+              <span className="material-symbols-outlined text-sm">download</span>
+              <span className="hidden sm:inline">{isRTL ? 'تصدير التقرير' : 'Export Log'}</span>
+            </button>
             <button 
               onClick={() => mutate()} 
               className="btn btn-ghost btn-xs btn-square"
@@ -854,6 +865,13 @@ export const ShipmentList = ({
         shipment={inspectingShipment}
         onClose={() => setInspectingShipment(null)}
         onDownloadLabel={handleDownloadLabel}
+      />
+
+      {/* 5. Undelivered Shipments Tracking & Aging Log Modal */}
+      <UndeliveredLogModal
+        isOpen={isUndeliveredModalOpen}
+        onClose={() => setIsUndeliveredModalOpen(false)}
+        selectedOrgId={organizationId}
       />
 
     </div>

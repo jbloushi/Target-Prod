@@ -638,6 +638,25 @@ export const shipmentService = {
     }
   },
 
+  // Download Undelivered Shipments Tracking & Aging Log (CSV)
+  downloadUndeliveredLog: async (filters = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (filters.carrier && filters.carrier !== 'ALL') params.append('carrier', filters.carrier);
+      if (filters.status && filters.status !== 'all') params.append('status', filters.status);
+      if (filters.tier && filters.tier !== 'all') params.append('tier', filters.tier);
+      if (filters.organizationId && filters.organizationId !== 'all') params.append('organizationId', filters.organizationId);
+
+      const response = await api.get(`shipments/export/undelivered-log?${params.toString()}`, {
+        responseType: 'blob'
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error downloading undelivered log:', error);
+      throw error;
+    }
+  },
+
   // Seed database with sample data (development only)
   seedDatabase: async (req, res) => {
     if (isProductionMode()) {
