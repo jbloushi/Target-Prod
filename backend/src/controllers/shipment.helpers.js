@@ -947,6 +947,41 @@ async function autoSyncAllExceptions(prismaClient) {
 
 const autoHealAllResolvedExceptions = autoSyncAllExceptions;
 
+/**
+ * Calculate great-circle distance (in km) between two coordinates using the Haversine formula.
+ * Accepts [longitude, latitude] arrays or { longitude, latitude } / { lng, lat } objects.
+ */
+function calculateDistance(coord1, coord2) {
+    const extractLonLat = (c) => {
+        if (!c) return null;
+        if (Array.isArray(c) && c.length >= 2) {
+            const lon = Number(c[0]);
+            const lat = Number(c[1]);
+            return Number.isFinite(lon) && Number.isFinite(lat) ? [lon, lat] : null;
+        }
+        if (typeof c === 'object') {
+            const lon = Number(c.longitude ?? c.lng ?? c.lon);
+            const lat = Number(c.latitude ?? c.lat);
+            return Number.isFinite(lon) && Number.isFinite(lat) ? [lon, lat] : null;
+        }
+        return null;
+    };
+
+    const p1 = extractLonLat(coord1);
+    const p2 = extractLonLat(coord2);
+    if (!p1 || !p2) return 0;
+
+    const toRad = (deg) => (deg * Math.PI) / 180;
+    const R = 6371; // Earth radius in km
+    const dLat = toRad(p2[1] - p1[1]);
+    const dLon = toRad(p2[0] - p1[0]);
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(p1[1])) * Math.cos(toRad(p2[1])) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
 module.exports = {
     DEFAULT_MARKUP,
     hasMarkupShape,
@@ -961,6 +996,7 @@ module.exports = {
     persistTrackingEvents,
     buildTrackingSyncDocuments,
     calculateEstimatedDelivery,
+    calculateDistance,
     hasCriticalChanges,
     isInternalShipment,
     getAllowedStatusUpdates,

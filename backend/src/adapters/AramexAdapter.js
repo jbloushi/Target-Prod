@@ -59,6 +59,9 @@ class AramexAdapter {
      * @param {Object} payload 
      */
     async createShipment(payload, serviceCode) {
+        if (process.env.NODE_ENV === 'production' && !this.hasOfficialCredentials() && process.env.ALLOW_MOCK_CARRIER_BOOKING !== 'true') {
+            throw new Error('Live Aramex API booking credentials are not configured in production.');
+        }
         const trackingNumber = `ARM${Math.floor(1000000000 + Math.random() * 9000000000)}`;
         return {
             success: true,

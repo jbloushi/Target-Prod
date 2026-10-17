@@ -100,6 +100,8 @@ class ShipmentDraftService {
         let snapshot;
         const needsCarrier = !isInternalShipment && carrierCapabilities.supportsRating && serviceCode;
 
+        const isPlatformStaff = ['admin', 'staff', 'accounting'].includes(String(user?.role || '').toLowerCase());
+
         if (isInternalShipment) {
             snapshot = buildInternalPricingSnapshot(data.currency || 'KWD');
         } else if (needsCarrier) {
@@ -108,25 +110,41 @@ class ShipmentDraftService {
             } catch (err) {
                 logger.warn(`ShipmentDraftService: Live pricing failed, falling back to manual snapshot: ${err.message}`);
                 const { markup, source } = PricingService.resolveMarkup(targetUser, targetUser.organization, cleanData.carrierCode || 'DGR');
+                const fallbackBase = isPlatformStaff ? (data.costPrice || data.price || 15.0) : 15.0;
                 snapshot = PricingService.createSnapshot(
-                    data.costPrice || data.price || 15.0,
+                    fallbackBase,
                     markup,
                     data.currency || 'KWD',
                     source
                 );
-                if (data.price || data.totalPrice) snapshot.totalPrice = Number(data.price || data.totalPrice);
+                if (isPlatformStaff && (data.price || data.totalPrice)) {
+                    snapshot = PricingService.createSnapshot(
+                        Number(data.price || data.totalPrice),
+                        { type: 'FLAT', flatValue: 0 },
+                        data.currency || 'KWD',
+                        'staff_manual_override'
+                    );
+                }
             }
         } else {
             // Fallback for locally managed shipments / other carriers
             const { markup, source } = PricingService.resolveMarkup(targetUser, targetUser.organization, cleanData.carrierCode || 'DGR');
+            const baseCost = isPlatformStaff ? (data.costPrice || data.price || data.totalPrice || 0) : 0;
             snapshot = PricingService.createSnapshot(
-                data.costPrice || data.price || data.totalPrice || 0,
+                baseCost,
                 markup,
                 data.currency || 'KWD',
                 source
             );
-            // Override total if provided manually (TRUSTED sources only)
-            if (data.price || data.totalPrice) snapshot.totalPrice = Number(data.price || data.totalPrice);
+            // Override total if provided manually by trusted platform staff only
+            if (isPlatformStaff && (data.price || data.totalPrice)) {
+                snapshot = PricingService.createSnapshot(
+                    Number(data.price || data.totalPrice),
+                    { type: 'FLAT', flatValue: 0 },
+                    data.currency || 'KWD',
+                    'staff_manual_override'
+                );
+            }
         }
 
         if (snapshot && typeof snapshot === 'object') {

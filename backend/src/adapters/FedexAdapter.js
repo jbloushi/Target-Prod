@@ -60,6 +60,9 @@ class FedexAdapter extends CarrierAdapter {
      * Create Shipment API Call
      */
     async createShipment(shipmentData, serviceCode) {
+        if (process.env.NODE_ENV === 'production' && !this.hasOfficialCredentials() && process.env.ALLOW_MOCK_CARRIER_BOOKING !== 'true') {
+            throw new Error('Live FedEx API booking credentials are not configured in production.');
+        }
         const trackingNumber = `FED${Math.floor(100000000000 + Math.random() * 900000000000)}`;
         return {
             success: true,

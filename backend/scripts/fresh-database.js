@@ -10,6 +10,12 @@ const isConfirmed = args.includes('--confirm') || args.includes('-y') || args.in
 const modeArg = args.find(a => a.startsWith('--mode='))?.split('=')[1] || (args.includes('--clean') ? 'clean' : (args.includes('--clear-only') ? 'clear-only' : 'demo'));
 
 async function main() {
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PROD_DB_RESET !== 'true') {
+    console.error('\n❌ FATAL SAFETY BLOCK: Refusing to run fresh-database.js when NODE_ENV=production.');
+    console.error('To override in an emergency staging environment, set ALLOW_PROD_DB_RESET=true explicitly.\n');
+    process.exit(1);
+  }
+
   console.log('================================================================');
   console.log('🔄 TARGET LOGISTICS - DATABASE RESET & SEED TOOL');
   console.log('================================================================');

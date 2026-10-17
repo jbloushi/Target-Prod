@@ -305,35 +305,42 @@ const startServer = async () => {
     // Connect to MySQL via Prisma
     await connectDB();
 
-    // Start background queue workers for carrier dispatch, notifications, and webhooks
-    const { initWorkers } = require('./services/queue');
-    const queue = initWorkers();
-    queue.start();
+    // In PM2 cluster mode, only start singleton background crons and queue workers on primary instance (0)
+    const isPrimaryWorker = !process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0';
 
-    // Start background carrier sync cron
-    const carrierSyncCronService = require('./services/carrierSyncCron.service');
-    if (process.env.CARRIER_CRON_SYNC_ENABLED !== 'false') {
-      carrierSyncCronService.start();
-    }
+    if (isPrimaryWorker) {
+      // Start background queue workers for carrier dispatch, notifications, and webhooks
+      const { initWorkers } = require('./services/queue');
+      const queue = initWorkers();
+      queue.start();
 
-    // Start background EOM statement cron
-    const eomStatementCronService = require('./services/eomStatementCron.service');
-    if (process.env.EOM_STATEMENT_CRON_ENABLED !== 'false') {
-      eomStatementCronService.start();
-    }
+      // Start background carrier sync cron
+      const carrierSyncCronService = require('./services/carrierSyncCron.service');
+      if (process.env.CARRIER_CRON_SYNC_ENABLED !== 'false') {
+        carrierSyncCronService.start();
+      }
 
-    // Start background Phenix ERP auto-sync cron monitor
-    const phenixSyncCronService = require('./services/phenixSyncCron.service');
-    phenixSyncCronService.start();
+      // Start background EOM statement cron
+      const eomStatementCronService = require('./services/eomStatementCron.service');
+      if (process.env.EOM_STATEMENT_CRON_ENABLED !== 'false') {
+        eomStatementCronService.start();
+      }
 
-    // Start background Salla stock & tracking sync cron monitor
-    const sallaSyncCronService = require('./services/sallaSyncCron.service');
-    sallaSyncCronService.start();
+      // Start background Phenix ERP auto-sync cron monitor
+      const phenixSyncCronService = require('./services/phenixSyncCron.service');
+      phenixSyncCronService.start();
 
-    // Start background Tryton ERP shadow parity reconciliation cron
-    const trytonShadowCronService = require('./services/trytonShadowCron.service');
-    if (process.env.TRYTON_SHADOW_CRON_ENABLED !== 'false') {
-      trytonShadowCronService.start();
+      // Start background Salla stock & tracking sync cron monitor
+      const sallaSyncCronService = require('./services/sallaSyncCron.service');
+      sallaSyncCronService.start();
+
+      // Start background Tryton ERP shadow parity reconciliation cron
+      const trytonShadowCronService = require('./services/trytonShadowCron.service');
+      if (process.env.TRYTON_SHADOW_CRON_ENABLED !== 'false') {
+        trytonShadowCronService.start();
+      }
+    } else {
+      logger.info(`[Cluster] Skipping singleton cron & queue workers on secondary PM2 instance ${process.env.NODE_APP_INSTANCE}`);
     }
 
     // Start Express server

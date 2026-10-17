@@ -589,6 +589,26 @@ exports.syncPhenixShipments = async (req, res) => {
  */
 exports.handleTrackingMoreWebhook = async (req, res) => {
     try {
+        const webhookSecret = process.env.TRACKINGMORE_WEBHOOK_SECRET;
+        if (webhookSecret) {
+            const providedSig = req.headers['x-trackingmore-signature'] || req.headers['x-webhook-secret'] || req.query?.secret;
+            if (!providedSig) {
+                logger.warn('[TrackingMore-Webhook] Rejected request: missing webhook signature/secret');
+                return res.status(401).json({ success: false, error: 'Unauthorized webhook request' });
+            }
+            const crypto = require('crypto');
+            const sigBuf = Buffer.from(String(providedSig));
+            const secretBuf = Buffer.from(String(webhookSecret));
+            const hmacHex = crypto.createHmac('sha256', webhookSecret).update(JSON.stringify(req.body || {})).digest('hex');
+            const hmacBuf = Buffer.from(hmacHex);
+            const isDirectMatch = sigBuf.length === secretBuf.length && crypto.timingSafeEqual(sigBuf, secretBuf);
+            const isHmacMatch = sigBuf.length === hmacBuf.length && crypto.timingSafeEqual(sigBuf, hmacBuf);
+            if (!isDirectMatch && !isHmacMatch) {
+                logger.warn('[TrackingMore-Webhook] Rejected request: invalid webhook signature');
+                return res.status(401).json({ success: false, error: 'Invalid webhook signature' });
+            }
+        }
+
         const body = req.body || {};
         const event = body.event || 'tracking_update';
         const data = body.data || body.msg || body;

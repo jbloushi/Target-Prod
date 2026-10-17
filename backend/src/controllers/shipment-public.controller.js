@@ -491,6 +491,47 @@ exports.processPublicPayment = async (req, res) => {
         const { trackingNumber } = req.params;
         const { paymentMethod = 'KNET', customerName, customerEmail, customerPhone, reference } = req.body || {};
 
+        // Production Security Gate (SEC-01): Prevent unauthenticated direct settlement without gateway/staff verification
+        if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_PUBLIC_CHECKOUT !== 'true') {
+            let isAuthorized = false;
+            const authHeader = req.headers.authorization;
+            if (authHeader && authHeader.startsWith('Bearer ')) {
+                try {
+                    const jwt = require('jsonwebtoken');
+                    const decoded = jwt.verify(authHeader.split(' ')[1], process.env.JWT_SECRET);
+                    if (decoded && ['admin', 'staff', 'accounting'].includes(String(decoded.role || '').toLowerCase())) {
+                        isAuthorized = true;
+                    }
+                } catch (_) {
+                    // Invalid token
+                }
+            }
+
+            const paymentSig = req.headers['x-payment-signature'];
+            const secret = process.env.PUBLIC_PAYMENT_SECRET || process.env.OTTU_WEBHOOK_SECRET;
+            if (!isAuthorized && paymentSig && secret) {
+                const crypto = require('crypto');
+                const expectedSig = crypto
+                    .createHmac('sha256', secret)
+                    .update(`${trackingNumber}:${reference || ''}`)
+                    .digest('hex');
+                if (
+                    paymentSig.length === expectedSig.length &&
+                    crypto.timingSafeEqual(Buffer.from(paymentSig), Buffer.from(expectedSig))
+                ) {
+                    isAuthorized = true;
+                }
+            }
+
+            if (!isAuthorized) {
+                logger.warn(`[Security] Blocked unverified direct public payment attempt for ${trackingNumber}`);
+                return res.status(403).json({
+                    success: false,
+                    error: 'Direct payment settlement requires gateway verification. Please complete payment via the Ottu checkout session.'
+                });
+            }
+        }
+
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
@@ -640,6 +681,26 @@ exports.createOttuSession = async (req, res) => {
  */
 exports.handleOttuWebhook = async (req, res) => {
     try {
+        const webhookSecret = process.env.OTTU_WEBHOOK_SECRET;
+        if (webhookSecret) {
+            const providedSig = req.headers['x-ottu-signature'] || req.headers['x-webhook-secret'] || req.body?.signature || req.query?.secret;
+            if (!providedSig) {
+                logger.warn('[Ottu Webhook] Rejected request: missing webhook signature/secret');
+                return res.status(401).json({ success: false, error: 'Unauthorized webhook request' });
+            }
+            const crypto = require('crypto');
+            const sigBuf = Buffer.from(String(providedSig));
+            const secretBuf = Buffer.from(String(webhookSecret));
+            const hmacHex = crypto.createHmac('sha256', webhookSecret).update(JSON.stringify(req.body || {})).digest('hex');
+            const hmacBuf = Buffer.from(hmacHex);
+            const isDirectMatch = sigBuf.length === secretBuf.length && crypto.timingSafeEqual(sigBuf, secretBuf);
+            const isHmacMatch = sigBuf.length === hmacBuf.length && crypto.timingSafeEqual(sigBuf, hmacBuf);
+            if (!isDirectMatch && !isHmacMatch) {
+                logger.warn('[Ottu Webhook] Rejected request: invalid webhook signature');
+                return res.status(401).json({ success: false, error: 'Invalid webhook signature' });
+            }
+        }
+
         const ottuService = require('../services/ottuPayment.service');
         const result = await ottuService.handleWebhook(req.body);
         res.status(200).json({ success: true, result });

@@ -109,8 +109,8 @@ exports.getShipmentETA = async (req, res) => {
         if (!shipment) return res.status(404).json({ error: 'Not found' });
         if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
 
-        const curr = shipment.currentLocation;
-        const dest = shipment.destination;
+        const curr = shipment.currentLocation || shipment.origin || {};
+        const dest = shipment.destination || {};
         
         const distance = calculateDistance([curr.longitude, curr.latitude], [dest.longitude, dest.latitude]);
         const eta = new Date();
@@ -132,9 +132,9 @@ exports.getShipmentRouteDistance = async (req, res) => {
         if (!shipment) return res.status(404).json({ success: false, error: 'Not found' });
         if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
 
-        const origin = shipment.origin;
-        const curr = shipment.currentLocation;
-        const dest = shipment.destination;
+        const origin = shipment.origin || {};
+        const curr = shipment.currentLocation || origin;
+        const dest = shipment.destination || {};
 
         const distanceTraveled = calculateDistance([origin.longitude, origin.latitude], [curr.longitude, curr.latitude]);
         const remainingDistance = calculateDistance([curr.longitude, curr.latitude], [dest.longitude, dest.latitude]);
@@ -147,7 +147,7 @@ exports.getShipmentRouteDistance = async (req, res) => {
                 distanceTraveled: distanceTraveled.toFixed(2),
                 remainingDistance: remainingDistance.toFixed(2),
                 totalDistance: totalDistance.toFixed(2),
-                progress: Math.min(Math.round((distanceTraveled / totalDistance) * 100), 99)
+                progress: totalDistance > 0 ? Math.min(Math.round((distanceTraveled / totalDistance) * 100), 99) : 0
             }
         });
     } catch (error) {

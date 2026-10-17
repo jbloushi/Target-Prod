@@ -228,7 +228,21 @@ exports.pickupShipment = async (req, res) => {
         }
 
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
-        if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
+        const isUnassignedDriverPickup =
+            user?.role === 'driver' &&
+            !shipment.assignedDriverId &&
+            ['ready_for_pickup', 'pending', 'created', 'draft', 'booked', 'updated'].includes(String(shipment.status || '').toLowerCase());
+
+        if (!isUnassignedDriverPickup && !canAccessShipment(req, shipment)) {
+            return res.status(403).json({ success: false, error: 'Permission denied' });
+        }
+
+        if (isUnassignedDriverPickup) {
+            shipment = await prisma.shipment.update({
+                where: { id: shipment.id },
+                data: { assignedDriverId: user.id }
+            });
+        }
 
         const result = await ShipmentLifecycleService.recordPickup(shipment, user);
         if (result.alreadyPickedUp) {

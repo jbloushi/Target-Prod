@@ -56,6 +56,26 @@ export const PublicCheckoutPage = () => {
       setPaying(true);
       setError('');
 
+      // Attempt live Ottu Payment Gateway session first
+      try {
+        const sessionRes = await publicCheckoutService.createOttuSession(trackingNumber, {
+          customerName: cardName || shipment?.senderName,
+          customerPhone: shipment?.senderPhone,
+        });
+        if (sessionRes?.alreadyPaid) {
+          setPaidSuccess(true);
+          return;
+        }
+        const checkoutUrl = sessionRes?.data?.checkoutUrl;
+        const gateway = sessionRes?.data?.gateway;
+        if (checkoutUrl && gateway === 'OTTU') {
+          window.location.href = checkoutUrl;
+          return;
+        }
+      } catch (ottuErr) {
+        console.warn('Ottu session fallback note:', ottuErr?.message);
+      }
+
       const res = await publicCheckoutService.processPayment(trackingNumber, {
         paymentMethod,
         customerName: cardName,

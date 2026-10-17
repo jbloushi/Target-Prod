@@ -652,8 +652,12 @@ exports.generateCarrierDocuments = async (req, res) => {
             }
         }
 
-        // 2. If official documents are still missing (not yet booked), execute live carrier booking
-        if (!awbUrl && !dhlTracking) {
+        // 2. Only execute live carrier booking on GET if explicitly requested by staff/admin (?autoBook=true)
+        const allowAutoBookOnGet =
+            String(req.query?.autoBook || '').toLowerCase() === 'true' &&
+            ['admin', 'staff'].includes(String(req.user?.role || '').toLowerCase());
+
+        if (!awbUrl && !dhlTracking && allowAutoBookOnGet) {
             try {
                 const bookResult = await ShipmentBookingService.bookShipment(
                     trackingNumber,
@@ -690,6 +694,11 @@ exports.generateCarrierDocuments = async (req, res) => {
                     });
                 }
             }
+        } else if (!awbUrl && !dhlTracking && carrierCode === 'DGR') {
+            return res.status(400).json({
+                success: false,
+                error: 'Official DHL Express documents are not yet available because this shipment has not been booked with DHL Express.'
+            });
         }
 
         // 3. Fallback Document Handling:

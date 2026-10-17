@@ -19,7 +19,11 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       port: Number(process.env.PORT) || 3000,
       strictPort: false,
-      allowedHosts: true, 
+      allowedHosts: true,
+      fs: {
+        strict: true,
+        deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**']
+      },
       proxy: {
         '^/api(?:/|$)': {
           target: 'http://127.0.0.1:8899',

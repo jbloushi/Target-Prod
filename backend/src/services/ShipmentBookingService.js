@@ -129,18 +129,25 @@ class ShipmentBookingService {
 
         const price = shipment.pricingSnapshot?.totalPrice ?? shipment.price ?? 0;
 
-        // Financial Gate: Credit Check
+        // Financial Gate: Credit Check against net available credit (creditLimit - currentDebt)
         const isBypassRole = ['admin', 'staff', 'accounting'].includes(bookingUserRole);
-        if (!isBypassRole && organizationId && organization?.creditLimit != null) {
-            if (price > 0 && price > organization.creditLimit) {
+        if (!isBypassRole && organizationId && organization?.creditLimit != null && Number(organization.creditLimit) > 0) {
+            const currentDebt = Math.max(
+                0,
+                Number(organization.balance || 0) - Number(organization.unappliedBalance || 0)
+            );
+            const availableCredit = Number(organization.creditLimit) - currentDebt;
+            if (price > 0 && price > availableCredit) {
                 await prisma.shipment.update({
                     where: { id: shipment.id },
                     data: {
                         financeHold: {
                             status: true,
-                            reason: 'Shipment price exceeds organization credit limit',
+                            reason: 'Shipment price exceeds organization available credit limit',
                             checkedAt: new Date(),
-                            availableCredit: organization.creditLimit,
+                            availableCredit,
+                            creditLimit: Number(organization.creditLimit),
+                            currentBalance: Number(organization.balance || 0),
                             requiredAmount: price
                         }
                     }

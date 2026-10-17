@@ -348,13 +348,32 @@ class PricingService {
     }
 
     /**
-     * Checks if a pricing snapshot is still valid (not expired).
+     * Checks if a pricing snapshot is still valid (not expired and untampered).
      * @param {Object} snapshot 
      * @returns {boolean}
      */
     static validateSnapshot(snapshot) {
         if (!snapshot || !snapshot.expiresAt) return false;
-        return new Date() < new Date(snapshot.expiresAt);
+        if (new Date() >= new Date(snapshot.expiresAt)) return false;
+
+        if (snapshot.rateHash) {
+            try {
+                const carrierDec = new Decimal(snapshot.carrierRate ?? 0);
+                const markupDec = new Decimal(snapshot.markup ?? 0);
+                const totalDec = new Decimal(snapshot.totalPrice ?? 0);
+                const currency = snapshot.currency || 'KWD';
+                const expectedHash = crypto
+                    .createHash('sha256')
+                    .update(`${carrierDec.toFixed(3)}-${markupDec.toFixed(3)}-${totalDec.toFixed(3)}-${currency}`)
+                    .digest('hex');
+                if (snapshot.rateHash !== expectedHash) {
+                    return false;
+                }
+            } catch (_) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

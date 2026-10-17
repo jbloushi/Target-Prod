@@ -773,14 +773,12 @@ class DgrAdapter extends CarrierAdapter {
         const maxRetries = 7;
         let lastError = null;
         let lastPayload = null;
-        let stripVas = false; // strips user optional services
-        let stripDgVas = false; // strips DG VAS when route doesn't support it
+        let stripVas = false; // strips non-DG user optional services only
 
         for (let offsetDays = 0; offsetDays <= maxRetries; offsetDays++) {
             const effectiveShipment = {
                 ...shipment,
-                ...(stripVas ? { optionalServices: [] } : {}),
-                ...(stripDgVas ? { dangerousGoods: { ...shipment.dangerousGoods, contains: false } } : {})
+                ...(stripVas ? { optionalServices: [] } : {})
             };
             const payload = buildDgrShipmentPayload(effectiveShipment, { accountNumber: activeConfig.accountNumber }, offsetDays);
             lastPayload = payload;
@@ -897,9 +895,8 @@ class DgrAdapter extends CarrierAdapter {
                     (errorData.detail && errorData.detail.includes('not available for the requested pickup date'))
                 );
 
-                // 7008: VAS not available for this route — strip and retry in order:
-                // 1st attempt: strip user optional services
-                // 2nd attempt: strip DG VAS (if DG service code is route-restricted)
+                // 7008: VAS not available for this route — only strip non-DG optional services.
+                // Never silently strip Dangerous Goods declarations (aviation safety compliance).
                 const isVasError = errorData?.detail?.includes('7008') || errorData?.detail?.includes('Special Service Code');
                 if (isVasError) {
                     if (!stripVas && effectiveShipment.optionalServices?.length > 0) {
@@ -907,10 +904,10 @@ class DgrAdapter extends CarrierAdapter {
                         offsetDays--;
                         continue;
                     }
-                    if (!stripDgVas && effectiveShipment.dangerousGoods?.contains && effectiveShipment.dangerousGoods?.serviceCode) {
-                        stripDgVas = true;
-                        offsetDays--;
-                        continue;
+                    if (effectiveShipment.dangerousGoods?.contains && effectiveShipment.dangerousGoods?.serviceCode) {
+                        throw new Error(
+                            `DHL Express rejected Dangerous Goods service code (${effectiveShipment.dangerousGoods.serviceCode}) for this route/account (Error 7008). Hazardous cargo cannot be booked without DG clearance.`
+                        );
                     }
                 }
 
