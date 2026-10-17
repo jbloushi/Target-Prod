@@ -20,6 +20,10 @@ class CarrierSyncCronService {
      */
     start() {
         if (this.isRunning) return;
+        if (process.env.NODE_APP_INSTANCE && process.env.NODE_APP_INSTANCE !== '0') {
+            logger.info(`[CarrierSyncCron] Skipping start on secondary PM2 instance ${process.env.NODE_APP_INSTANCE}`);
+            return;
+        }
         this.isRunning = true;
         logger.info(`[CarrierSyncCron] Started periodic carrier sync (interval: ${this.intervalMs / 1000}s)`);
 
@@ -115,11 +119,12 @@ class CarrierSyncCronService {
                 ];
             }
 
-            const candidates = await prisma.shipment.findMany({
+            const rawCandidates = await prisma.shipment.findMany({
                 where: whereClause,
                 orderBy: { updatedAt: 'asc' },
                 take: limit
             });
+            const candidates = Array.isArray(rawCandidates) ? rawCandidates : [];
 
             summary.scanned = candidates.length;
             if (candidates.length === 0) {
@@ -159,16 +164,30 @@ class CarrierSyncCronService {
                         const updates = await syncCarrierTrackingHistory(shipment);
                         summary.synced++;
 
-                        if (updates && (
-                            updates.status !== shipment.status || 
-                            updates.history?.length !== shipment.history?.length ||
-                            updates.trackingSyncMeta ||
-                            (updates.estimatedDelivery && (!shipment.estimatedDelivery || new Date(shipment.estimatedDelivery).getTime() !== new Date(updates.estimatedDelivery).getTime()))
-                        )) {
+                        const statusChanged = Boolean(updates?.status && updates.status !== shipment.status);
+                        const currentHistory = Array.isArray(shipment.history) ? shipment.history : [];
+                        const hasNewHistory = Array.isArray(updates?.history);
+                        const historyChanged = Boolean(hasNewHistory && (
+                            updates.history.length !== currentHistory.length ||
+                            (updates.history.length > 0 && JSON.stringify(updates.history[updates.history.length - 1]) !== JSON.stringify(currentHistory[currentHistory.length - 1]))
+                        ));
+                        const etaChanged = Boolean(updates?.estimatedDelivery && (
+                            !shipment.estimatedDelivery || 
+                            new Date(shipment.estimatedDelivery).getTime() !== new Date(updates.estimatedDelivery).getTime()
+                        ));
+                        const currentSnapshot = shipment.pricingSnapshot && typeof shipment.pricingSnapshot === 'object' ? shipment.pricingSnapshot : {};
+                        const weightChanged = Boolean(updates?.actualWeight && updates.actualWeight !== currentSnapshot.carrierWeight);
+                        const piecesChanged = Boolean(updates?.totalPieces && updates.totalPieces !== currentSnapshot.carrierPieces);
+
+                        const hasGenuineChanges = statusChanged || historyChanged || etaChanged || weightChanged || piecesChanged;
+
+                        if (updates && hasGenuineChanges) {
                             const dataToUpdate = {
-                                history: updates.history,
-                                status: updates.status,
-                                documents: buildTrackingSyncDocuments(shipment, updates)
+                                history: updates.history || shipment.history,
+                                status: updates.status || shipment.status,
+                                documents: typeof buildTrackingSyncDocuments === 'function'
+                                    ? buildTrackingSyncDocuments(shipment, updates)
+                                    : (shipment.documents || {})
                             };
                             if (updates.estimatedDelivery) {
                                 dataToUpdate.estimatedDelivery = updates.estimatedDelivery;

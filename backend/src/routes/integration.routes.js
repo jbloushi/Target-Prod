@@ -9,6 +9,7 @@ const router = express.Router();
 router.post('/chatwoot/webhook', integrationController.handleChatwootWebhook);
 router.post('/logestechs/webhook', integrationController.handleLogesTechsWebhook);
 router.post('/trackingmore/webhook', integrationController.handleTrackingMoreWebhook);
+router.post('/trackingmore', integrationController.handleTrackingMoreWebhook);
 
 router.use(authController.protect);
 

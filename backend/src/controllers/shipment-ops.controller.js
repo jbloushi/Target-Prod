@@ -9,7 +9,7 @@ const logger = require('../utils/logger');
 const path = require('path');
 const fs = require('fs');
 const { SHIPMENT_STATUSES, MANUAL_SHIPMENT_STATUSES } = require('../constants/statusConstants');
-const { canUpdateShipmentStatus, isManualShipment } = require('./shipment.helpers');
+const { canUpdateShipmentStatus, isManualShipment, compactHistory } = require('./shipment.helpers');
 const { canAccessShipment } = require('../middleware/authorize.middleware');
 const chatwootNotificationService = require('../services/chatwootNotificationService');
 const ShipmentLifecycleService = require('../services/ShipmentLifecycleService');
@@ -48,7 +48,7 @@ exports.updateShipmentStatus = async (req, res) => {
             where: { id: shipment.id },
             data: {
                 status,
-                history: [...history, newHistoryEntry]
+                history: compactHistory([...history, newHistoryEntry])
             }
         });
 
@@ -627,7 +627,7 @@ exports.confirmDeliveryWithPod = async (req, res) => {
 
         const updateData = {
             status: 'delivered',
-            history: [...history, newHistoryEntry],
+            history: compactHistory([...history, newHistoryEntry]),
             documents: {
                 ...existingDocs,
                 pod: podData

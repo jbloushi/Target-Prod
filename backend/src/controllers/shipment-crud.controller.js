@@ -8,7 +8,7 @@ const ShipmentLifecycleService = require('../services/ShipmentLifecycleService')
 const { handleControllerError } = require('../utils/controllerError');
 const { hasCapability, isPlatformRole } = require('../middleware/rbac.policy');
 const { canAccessShipment, scopeShipmentWhere } = require('../middleware/authorize.middleware');
-const { INTERNAL_SHIPMENT_STATUSES, SHIPMENT_STATUSES, normalizeStatus } = require('../constants/statusConstants');
+const { INTERNAL_SHIPMENT_STATUSES, SHIPMENT_STATUSES, normalizeStatus, isNegativeOrExceptionPhrase } = require('../constants/statusConstants');
 const { DELETABLE_SHIPMENT_STATUSES, buildShipmentDeleteBlockedMessage, hasCarrierBooking, canDeleteShipment } = require('../utils/shipmentDeletionPolicy');
 const { syncCarrierTrackingHistory, buildTrackingSyncDocuments, hasCriticalChanges, canUpdateShipmentStatus, isInternalShipment, buildDisplayHistory, autoHealAllResolvedExceptions, autoHealResolvedShipment, getResolvedExceptionStatus, autoSyncAllExceptions } = require('./shipment.helpers');
 const chatwootNotificationService = require('../services/chatwootNotificationService');
@@ -807,10 +807,22 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
         }
 
         const rawHistory = Array.isArray(shipment.history) ? shipment.history : [];
-        const hasDeliveredScan = rawHistory.some((e) => {
-            const s = normalizeStatus(e.status || e.description || e.statusCode);
-            return s === 'delivered';
-        });
+        const resolveScanStatus = (e) => {
+            if (!e) return 'booked';
+            const rawStatus = typeof e.status === 'object' ? (e.status?.status || '') : (e.status || '');
+            const desc = String(e.description || '');
+            if (isNegativeOrExceptionPhrase(desc) || isNegativeOrExceptionPhrase(rawStatus)) {
+                return 'exception';
+            }
+            const codeStatus = (e.statusCode || e.code) ? normalizeStatus(e.statusCode || e.code) : null;
+            if (codeStatus === 'exception') return 'exception';
+            if (desc && normalizeStatus(desc) === 'exception') return 'exception';
+            if (rawStatus === 'delivered' && desc && normalizeStatus(desc) !== 'delivered' && codeStatus !== 'delivered' && !e.pod) {
+                return normalizeStatus(desc);
+            }
+            return normalizeStatus(e.statusCode || e.code || rawStatus || desc);
+        };
+        const hasDeliveredScan = rawHistory.some((e) => resolveScanStatus(e) === 'delivered');
         if (hasDeliveredScan && shipment.status !== 'delivered') {
             logger.info(`Auto-healing delivered status for ${shipment.trackingNumber}: ${shipment.status} -> delivered`);
             await prisma.shipment.update({
@@ -821,7 +833,7 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
         } else if (shipment.status === 'exception' && rawHistory.length > 0) {
             const sortedHistoryDesc = [...rawHistory].filter(e => e.timestamp).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             const latestScan = sortedHistoryDesc[0];
-            const latestStatus = normalizeStatus(latestScan?.status || latestScan?.description || latestScan?.statusCode);
+            const latestStatus = resolveScanStatus(latestScan);
             if (latestStatus && latestStatus !== 'exception' && ['in_transit', 'received_at_hub', 'out_for_delivery', 'delivered'].includes(latestStatus)) {
                 logger.info(`Auto-clearing resolved exception for ${shipment.trackingNumber}: exception -> ${latestStatus}`);
                 await prisma.shipment.update({

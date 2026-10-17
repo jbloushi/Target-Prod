@@ -1,12 +1,19 @@
 const logger = require('../../utils/logger');
-let prismaClient;
+const { isTerminalStatus } = require('../../constants/statusConstants');
+const { compactHistory } = require('../../controllers/shipment.helpers');
 
+let dbModule = null;
 try {
-    const db = require('../../config/database');
-    prismaClient = db.prisma;
+    dbModule = require('../../config/database');
 } catch (e) {
-    prismaClient = null;
+    dbModule = null;
 }
+
+function getPrismaClient() {
+    return dbModule?.prisma || null;
+}
+
+let prismaClient = getPrismaClient();
 
 const DEFAULT_TTL_MS = 15 * 60 * 1000; // 15 minutes
 const trackingSyncCache = new Map(); // trackingNumber -> lastSyncTimestamp (ms)
@@ -72,19 +79,78 @@ function triggerBackgroundTrackingSync(shipment, syncFn) {
         try {
             if (typeof syncFn === 'function') {
                 const updates = await syncFn(shipment);
-                if (updates && prismaClient && typeof prismaClient.shipment?.update === 'function') {
-                    await prismaClient.shipment.update({
-                        where: { id: shipment.id },
-                        data: {
-                            history: updates.history,
-                            status: updates.status
+                const client = getPrismaClient() || prismaClient;
+
+                if (updates && client && typeof client.shipment?.update === 'function') {
+                    let currentStatus = shipment.status;
+                    let existingDocuments = shipment.documents;
+                    let existingHistory = Array.isArray(shipment.history) ? shipment.history : [];
+
+                    if (typeof client.shipment?.findUnique === 'function') {
+                        const fresh = await client.shipment.findUnique({
+                            where: { id: shipment.id },
+                            select: { id: true, status: true, history: true, documents: true }
+                        });
+
+                        if (!fresh) {
+                            logger.info(`[trackingCache] Shipment ${trackingNumber} no longer exists, skipping background sync update`);
+                            return;
                         }
+
+                        currentStatus = fresh.status;
+                        existingDocuments = fresh.documents;
+                        if (Array.isArray(fresh.history)) {
+                            existingHistory = fresh.history;
+                        }
+                    }
+
+                    // Guard against regressing terminal statuses (delivered, cancelled, returned)
+                    const targetStatus = isTerminalStatus(currentStatus)
+                        ? currentStatus
+                        : (updates.status || currentStatus);
+
+                    const resolvedHistory = Array.isArray(updates.history)
+                        ? (existingHistory.length > 0 ? compactHistory([...existingHistory, ...updates.history]) : updates.history)
+                        : existingHistory;
+
+                    const updateData = {
+                        history: resolvedHistory,
+                        status: targetStatus
+                    };
+
+                    if (updates.trackingSyncMeta) {
+                        updateData.documents = {
+                            ...(existingDocuments && typeof existingDocuments === 'object' ? existingDocuments : {}),
+                            trackingSync: updates.trackingSyncMeta
+                        };
+                    }
+
+                    if (updates.estimatedDelivery) {
+                        updateData.estimatedDelivery = updates.estimatedDelivery;
+                    }
+
+                    await client.shipment.update({
+                        where: { id: shipment.id },
+                        data: updateData
                     });
+
                     logger.debug(`[trackingCache] Background sync completed for ${trackingNumber}`);
                 }
             }
         } catch (error) {
-            logger.warn(`[trackingCache] Background sync failed for ${trackingNumber}: ${error.message}`);
+            const isP2025 = error?.code === 'P2025' ||
+                (error?.message && (
+                    error.message.includes('P2025') ||
+                    error.message.includes('Record to update not found') ||
+                    error.message.includes('No record was found for an update') ||
+                    error.message.includes('records that were required but not found')
+                ));
+
+            if (isP2025) {
+                logger.info(`[trackingCache] Shipment ${trackingNumber} deleted during background refresh (P2025)`);
+            } else {
+                logger.warn(`[trackingCache] Background sync failed for ${trackingNumber}: ${error.message}`);
+            }
         } finally {
             trackingSyncInFlight.delete(trackingNumber);
         }

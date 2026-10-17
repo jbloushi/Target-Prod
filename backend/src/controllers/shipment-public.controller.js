@@ -75,14 +75,42 @@ exports.getPublicShipment = async (req, res) => {
             triggerBackgroundTrackingSync(shipment, syncCarrierTrackingHistory);
         }
 
-        const persistedEvents = compactHistory(shipment.history || []).map(h => ({
+        const { isNegativeOrExceptionPhrase } = require('../constants/statusConstants');
+        const isPublicSafeEvent = (h) => {
+            if (!h) return false;
+            const src = String(h.source || '').toLowerCase();
+            if (src === 'staff' || src === 'phenix_erp' || src === 'accounting' || src === 'finance') return false;
+            if (h.type === 'comment' || h.type === 'note' || Boolean(h.comment) || Boolean(h.internalOnly)) return false;
+            const desc = String(h.description || '').toLowerCase();
+            if (desc.includes('phenix') || desc.includes('ledger') || desc.includes('cost price') || desc.includes('margin') || desc.includes('internal note')) return false;
+            return true;
+        };
+
+        const resolveEventNormalizedStatus = (h) => {
+            const rawStatus = typeof h?.status === 'object' ? (h.status?.status || 'booked') : (h?.status || '');
+            const desc = String(h?.description || '');
+            if (isNegativeOrExceptionPhrase(desc) || isNegativeOrExceptionPhrase(rawStatus)) {
+                return 'exception';
+            }
+            const codeStatus = (h?.statusCode || h?.code) ? normalizeStatus(h.statusCode || h.code) : null;
+            if (codeStatus === 'exception') return 'exception';
+            if (desc && normalizeStatus(desc) === 'exception') return 'exception';
+            if (rawStatus === 'delivered' && desc && normalizeStatus(desc) !== 'delivered' && codeStatus !== 'delivered') {
+                return normalizeStatus(desc);
+            }
+            return normalizeStatus(h?.statusCode || h?.code || rawStatus || desc || 'booked');
+        };
+
+        const persistedEvents = compactHistory((shipment.history || []).filter(isPublicSafeEvent)).map(h => ({
             source: h.source || 'platform',
-            status: normalizeStatus(typeof h.status === 'object' ? (h.status?.status || 'booked') : (h.status || 'booked')),
+            status: resolveEventNormalizedStatus(h),
             description: h.description || '',
             timestamp: h.timestamp,
             localTimestamp: h.localTimestamp || null,
             timezoneOffset: h.timezoneOffset || null,
-            location: h.location?.formattedAddress || h.location?.city || ''
+            collapsedCount: h.collapsedCount || h.occurrences || 1,
+            occurrences: h.occurrences || h.collapsedCount || 1,
+            location: h.location?.formattedAddress || h.location?.city || (typeof h.location === 'string' ? h.location : '')
         })).filter((event) => event.timestamp);
 
         let rawEvents = [];
@@ -98,7 +126,11 @@ exports.getPublicShipment = async (req, res) => {
                 const tracking = await carrier.getTracking(carrierTrackingNumber);
                 const carrierEvents = (tracking?.events || []).map((event) => ({
                     source: 'carrier',
-                    status: normalizeStatus(event.statusCode || tracking?.status || shipment.status || 'booked'),
+                    status: resolveEventNormalizedStatus({
+                        statusCode: event.statusCode,
+                        status: tracking?.status || shipment.status || 'booked',
+                        description: event.description
+                    }),
                     description: event.description || '',
                     timestamp: event.timestamp,
                     localTimestamp: event.localTimestamp || null,
@@ -121,19 +153,23 @@ exports.getPublicShipment = async (req, res) => {
         const originLocation = shipment.origin?.formattedAddress || shipment.origin?.city || '';
         let events = buildDisplayHistory(rawEvents, { originLocation }).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         if (events.length === 0 && Array.isArray(shipment.history) && shipment.history.length > 0) {
-            const fallbackRaw = compactHistory(shipment.history || []).map(h => ({
+            const fallbackRaw = compactHistory((shipment.history || []).filter(isPublicSafeEvent)).map(h => ({
                 source: h.source || 'platform',
-                status: normalizeStatus(typeof h.status === 'object' ? (h.status?.status || 'booked') : (h.status || 'booked')),
+                status: resolveEventNormalizedStatus(h),
                 description: h.description || '',
                 timestamp: h.timestamp,
-                location: h.location?.formattedAddress || h.location?.city || ''
+                localTimestamp: h.localTimestamp || null,
+                timezoneOffset: h.timezoneOffset || null,
+                collapsedCount: h.collapsedCount || h.occurrences || 1,
+                occurrences: h.occurrences || h.collapsedCount || 1,
+                location: h.location?.formattedAddress || h.location?.city || (typeof h.location === 'string' ? h.location : '')
             }));
             events = buildDisplayHistory(fallbackRaw, { originLocation }).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             if (rawEvents.length === 0) rawEvents = fallbackRaw;
         }
 
-        const anyDeliveredEvent = rawEvents.some((e) => normalizeStatus(e.status || e.description) === 'delivered')
-            || (Array.isArray(shipment.history) && shipment.history.some((e) => normalizeStatus(e.status || e.description) === 'delivered'));
+        const anyDeliveredEvent = rawEvents.some((e) => resolveEventNormalizedStatus(e) === 'delivered')
+            || (Array.isArray(shipment.history) && shipment.history.some((e) => resolveEventNormalizedStatus(e) === 'delivered'));
         if (anyDeliveredEvent && shipment.status !== 'delivered') {
             await prisma.shipment.update({
                 where: { id: shipment.id },
@@ -144,7 +180,7 @@ exports.getPublicShipment = async (req, res) => {
             const allEvents = [...rawEvents, ...(Array.isArray(shipment.history) ? shipment.history : [])];
             const sortedDesc = allEvents.filter(e => e.timestamp).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             const latestScan = sortedDesc[0];
-            const latestStatus = normalizeStatus(latestScan?.status || latestScan?.description || latestScan?.statusCode);
+            const latestStatus = resolveEventNormalizedStatus(latestScan);
             if (latestStatus && latestStatus !== 'exception' && ['in_transit', 'received_at_hub', 'out_for_delivery', 'delivered'].includes(latestStatus)) {
                 await prisma.shipment.update({
                     where: { id: shipment.id },

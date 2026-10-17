@@ -1,6 +1,7 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
 const freeScraper = require('./FreeWebScraperService');
+const { normalizeStatus, isNegativeOrExceptionPhrase } = require('../constants/statusConstants');
 
 /**
  * Universal Carrier Tracking Service
@@ -212,17 +213,66 @@ class UniversalTrackingService {
     }
 
     _mapTrackingMoreStatus(status, desc = '') {
-        const s = String(status || '').toLowerCase();
-        const text = String(desc || '').toLowerCase();
+        const s = String(status || '').toLowerCase().trim();
+        const text = String(desc || '').toLowerCase().trim();
+        const combined = `${s} ${text}`;
 
-        if (s === 'delivered' || text.includes('delivered') || text.includes('signed')) return 'delivered';
-        if (s === 'outfordelivery' || s === 'out_for_delivery' || text.includes('out for delivery') || text.includes('with courier')) return 'out_for_delivery';
-        if (s === 'pickup' || s === 'picked_up' || text.includes('picked up') || text.includes('collected')) return 'picked_up';
-        if (s === 'exception' || s === 'undelivered' || s === 'expired' || text.includes('exception') || text.includes('delayed') || text.includes('held')) return 'exception';
-        if (s === 'transit' || s === 'in_transit' || text.includes('in transit') || text.includes('departed') || text.includes('arrived')) return 'in_transit';
-        if (s === 'inforeceived' || s === 'pending') return 'booked';
+        // 1. Negative & Exception phrases evaluated BEFORE positive milestones
+        const exceptionKeywords = [
+            'undeliver', 'not delivered', 'failed', 'premises closed', 'consignee premises closed',
+            'on hold', 'held', 'delay', 'incomplete', 'damage', 'clearance delay',
+            'contacted consignee', 'consignee unavailable', 'consignee refused', 'refused',
+            'bad address', 'address incorrect', 'not at home', 'customer not home',
+            'delivery attempt failed', 'rescheduled', 'action required', 'emergency',
+            'expired', 'exception'
+        ];
+        if (isNegativeOrExceptionPhrase(combined) || exceptionKeywords.some(kw => combined.includes(kw))) {
+            return 'exception';
+        }
 
-        return 'in_transit';
+        // 2. Return / RTO phrases (strict word boundary on 'rto' so 'carton' doesn't match)
+        if (combined.includes('returned') || combined.includes('return to origin') || combined.includes('return to shipper') || /\brto\b/i.test(combined)) {
+            return 'returned';
+        }
+
+        // 3. Delivered matching (strictly without generic 'consignee', with strict word boundaries on 'signed')
+        if (
+            s === 'delivered' ||
+            combined.includes('delivered to recipient') ||
+            combined.includes('shipment delivered') ||
+            combined.includes('delivered to') ||
+            combined.includes('proof of delivery') ||
+            s === 'dlv' ||
+            s === 'pod' ||
+            /\bdelivered\b/.test(combined) ||
+            /\bsigned\s+(?:for\s+)?by\b/i.test(combined) ||
+            /\bsigned\b/i.test(combined) ||
+            /(?:^|\s)pod\s+(?:received|captured|uploaded|available|signed)\b/i.test(combined)
+        ) {
+            return 'delivered';
+        }
+
+        // 4. Other positive milestones
+        if (s === 'outfordelivery' || s === 'out_for_delivery' || combined.includes('out for delivery') || combined.includes('with courier') || combined.includes('with driver') || combined.includes('delivery champion') || s === 'od') {
+            return 'out_for_delivery';
+        }
+        if (s === 'pickup' || s === 'picked_up' || combined.includes('picked up') || combined.includes('collected') || s === 'pu') {
+            return 'picked_up';
+        }
+        if (combined.includes('received at hub') || combined.includes('arrived at facility') || combined.includes('arrived at operations') || combined.includes('sorting hub') || s === 'af') {
+            return 'received_at_hub';
+        }
+        if (s === 'transit' || s === 'in_transit' || combined.includes('in transit') || combined.includes('flight') || combined.includes('departed') || combined.includes('transferred') || s === 'sh' || combined.includes('customs') || combined.includes('arrived')) {
+            return 'in_transit';
+        }
+        if (s === 'inforeceived' || s === 'pending' || combined.includes('book') || combined.includes('creat')) {
+            return 'booked';
+        }
+        if (combined.includes('cancel')) {
+            return 'cancelled';
+        }
+
+        return normalizeStatus(s || text || 'in_transit');
     }
 
     /**

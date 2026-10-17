@@ -122,6 +122,54 @@ class ShipmentBookingService {
         // Ensure Carrier is enabled for this account
         this.ensureCarrierAllowed({ carrierCode, organization, payingUser, bookingUserRole });
 
+        // Idempotency: Prevent overlapping requests unless explicitly forced
+        // Check 60s cooldown and already-booked status BEFORE refreshing pricing snapshot or checking credit
+        const bookingAttempts = Array.isArray(shipment.bookingAttempts) ? shipment.bookingAttempts : [];
+        if (!options?.force) {
+            const activeAttempt = bookingAttempts.find((a) =>
+                a.status === 'succeeded' || (a.status === 'pending' && new Date() - new Date(a.createdAt) < 60000)
+            );
+
+            if (activeAttempt) {
+                const hasRealDocs = Boolean(shipment.labelUrl || shipment.awbUrl || shipment.status === 'booked');
+                if (activeAttempt.status === 'succeeded' && hasRealDocs) {
+                    return { alreadyBooked: true, shipment, attemptId: activeAttempt.attemptId, carrierCode };
+                }
+                if (activeAttempt.status === 'pending' && new Date() - new Date(activeAttempt.createdAt) < 60000) {
+                    throw new Error('A booking request is currently being processed by the carrier. Please wait.');
+                }
+                if (activeAttempt.status === 'pending') {
+                    const reconciliation = await this.reconcileBookingAttempt(
+                        trackingNumber,
+                        activeAttempt.attemptId,
+                        carrierCode
+                    );
+                    if (reconciliation.outcome === 'booked') {
+                        return {
+                            alreadyBooked: true,
+                            shipment: reconciliation.shipment,
+                            attemptId: activeAttempt.attemptId,
+                            carrierCode
+                        };
+                    }
+                    const error = new Error('Previous carrier booking outcome is uncertain and requires reconciliation before retrying.');
+                    error.statusCode = 409;
+                    error.bookingOutcome = 'reconciliation_required';
+                    throw error;
+                }
+            }
+
+            if (shipment.status === 'booked' && (shipment.labelUrl || shipment.awbUrl || shipment.carrierShipmentId)) {
+                const lastSucceededAttempt = [...bookingAttempts].reverse().find(a => a.status === 'succeeded');
+                return {
+                    alreadyBooked: true,
+                    shipment,
+                    attemptId: lastSucceededAttempt?.attemptId || shipment.carrierShipmentId || 'already-booked',
+                    carrierCode
+                };
+            }
+        }
+
         // Force a pricing refresh if the snapshot is expired or invalid
         if (!PricingService.validateSnapshot(shipment.pricingSnapshot) && carrierCapabilities.supportsExternalApi !== false) {
             await this.refreshPricingSnapshotForBooking({ shipment, carrierCode, payingUser, organization });
@@ -169,43 +217,6 @@ class ShipmentBookingService {
                     }
                 });
                 throw new Error('Insufficient available credit to finalize booking.');
-            }
-        }
-
-        // Idempotency: Prevent overlapping requests unless explicitly forced
-        const bookingAttempts = Array.isArray(shipment.bookingAttempts) ? shipment.bookingAttempts : [];
-        if (!options?.force) {
-            const activeAttempt = bookingAttempts.find((a) =>
-                a.status === 'succeeded' || (a.status === 'pending' && new Date() - new Date(a.createdAt) < 60000)
-            );
-
-            if (activeAttempt) {
-                const hasRealDocs = Boolean(shipment.labelUrl || shipment.awbUrl || shipment.status === 'booked');
-                if (activeAttempt.status === 'succeeded' && hasRealDocs) {
-                    return { alreadyBooked: true, shipment, attemptId: activeAttempt.attemptId, carrierCode };
-                }
-                if (activeAttempt.status === 'pending' && new Date() - new Date(activeAttempt.createdAt) < 60000) {
-                    throw new Error('A booking request is currently being processed by the carrier. Please wait.');
-                }
-                if (activeAttempt.status === 'pending') {
-                    const reconciliation = await this.reconcileBookingAttempt(
-                        trackingNumber,
-                        activeAttempt.attemptId,
-                        carrierCode
-                    );
-                    if (reconciliation.outcome === 'booked') {
-                        return {
-                            alreadyBooked: true,
-                            shipment: reconciliation.shipment,
-                            attemptId: activeAttempt.attemptId,
-                            carrierCode
-                        };
-                    }
-                    const error = new Error('Previous carrier booking outcome is uncertain and requires reconciliation before retrying.');
-                    error.statusCode = 409;
-                    error.bookingOutcome = 'reconciliation_required';
-                    throw error;
-                }
             }
         }
 
@@ -705,6 +716,10 @@ class ShipmentBookingService {
                        (shipment.metadata && (shipment.metadata.isTest === true || shipment.metadata.environment === 'test'));
         const environment = isTest ? 'test' : (shipment.pricingSnapshot?.environment || shipment.environment || 'production');
         const adapter = CarrierFactory.getAdapter(carrierCode, { isTest, environment });
+        if (!adapter || typeof adapter.getRates !== 'function') {
+            logger.warn(`Carrier adapter for ${carrierCode} does not provide getRates; skipping pricing refresh.`);
+            return;
+        }
         const quotes = await adapter.getRates({ ...this.mapToCarrierPayload(shipment), isTest, environment });
 
         if (!Array.isArray(quotes) || quotes.length === 0) throw new Error('No valid rates available for refresh.');

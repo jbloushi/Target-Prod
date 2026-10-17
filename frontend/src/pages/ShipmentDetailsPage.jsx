@@ -7,7 +7,7 @@ import { useSnackbar } from 'notistack';
 import { financeService, integrationService, shipmentService, userService, whatsappService } from '../services/api';
 import api from '../services/api';
 import {
-    STATUS_ORDER, STATUS_LABELS, INTERNAL_SHIPMENT_STATUSES, getStepIndex, normalizeStatus, isStatusAhead
+    STATUS_ORDER, STATUS_LABELS, INTERNAL_SHIPMENT_STATUSES, getStepIndex, normalizeStatus, isStatusAhead, isNegativeOrExceptionPhrase
 } from '../constants/statusConfig';
 import {
     buildShipmentDeleteBlockedMessage,
@@ -362,6 +362,7 @@ const ShipmentDetailsPage = () => {
     const [historyTab, setHistoryTab] = useState('milestones'); // 'milestones' | 'telemetry' | 'comments'
     const [newCommentText, setNewCommentText] = useState('');
     const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+    const [isSyncingCarrier, setIsSyncingCarrier] = useState(false);
 
     // Drawers State
     const [editDrawerOpen, setEditDrawerOpen] = useState(false);
@@ -1147,50 +1148,60 @@ const ShipmentDetailsPage = () => {
         const rawStatus = typeof evt.status === 'object' ? (evt.status?.status || evt.status?.name || 'in_transit') : (evt.status || 'in_transit');
         const s = String(rawStatus || '').toLowerCase();
         const desc = String(evt.description || '').toLowerCase();
+        const codeStr = String(evt.statusCode || evt.code || '').toLowerCase();
+
+        const hasExceptionPhrase = isNegativeOrExceptionPhrase(evt.description) || isNegativeOrExceptionPhrase(rawStatus);
+        const normCode = codeStr ? normalizeStatus(codeStr) : null;
+        const normDesc = evt.description ? normalizeStatus(evt.description) : null;
+        const normRaw = normalizeStatus(rawStatus);
 
         let targetStatus = 'in_transit';
         let badgeColor = 'badge-primary';
         let friendlyTitle = getEventDisplayMessage(evt, 'In Transit');
-
         let isExceptionEvent = false;
 
-        if (s.includes('exception') || s.includes('hold') || desc.includes('held') || desc.includes('delay') || desc.includes('undelivered') || desc.includes('failed') || desc.includes('incomplete') || desc.includes('damage') || desc.includes('clearance_delay')) {
+        if (hasExceptionPhrase || normCode === 'exception' || normDesc === 'exception' || normRaw === 'exception' || s.includes('hold')) {
             targetStatus = 'exception';
             badgeColor = 'badge-error text-white';
             friendlyTitle = isRTL ? 'طابور التدخل والاستثناءات الفورية' : 'Active Triage & Exception Flag';
             isExceptionEvent = true;
-        } else if (s.includes('out_for_delivery') || desc.includes('out for delivery') || s.includes('for_delivery') || desc.includes('for delivery') || s === 'od' || desc.includes('with courier') || desc.includes('with driver')) {
-            targetStatus = 'out_for_delivery';
-            badgeColor = 'badge-secondary text-white';
-            friendlyTitle = isRTL ? 'مع المندوب للتسليم' : 'Out for Delivery with Courier';
-        } else if (s.includes('delivered') || desc.includes('delivered') || desc.includes('consignee') || evt.pod || s === 'dlv' || desc.includes('proof of delivery')) {
+        } else if (normCode === 'delivered' || normDesc === 'delivered' || (normRaw === 'delivered' && (!evt.description || normDesc === 'delivered')) || Boolean(evt.pod)) {
             targetStatus = 'delivered';
             badgeColor = 'badge-success text-white';
             friendlyTitle = isRTL ? 'تم التسليم للمستلم' : 'Delivered to Consignee';
+        } else if (normCode === 'out_for_delivery' || normDesc === 'out_for_delivery' || normRaw === 'out_for_delivery') {
+            targetStatus = 'out_for_delivery';
+            badgeColor = 'badge-secondary text-white';
+            friendlyTitle = isRTL ? 'مع المندوب للتسليم' : 'Out for Delivery with Courier';
         } else if (s.includes('custom') || desc.includes('customs') || desc.includes('clearance') || desc.includes('duty')) {
             targetStatus = 'in_transit';
             badgeColor = 'badge-accent text-white';
             friendlyTitle = isRTL ? 'التخليص الجمركي' : 'Customs Clearance Processed';
-        } else if (s.includes('arrive') || desc.includes('arrived') || desc.includes('received at hub') || desc.includes('facility') || s === 'af') {
+        } else if (normCode === 'received_at_hub' || normDesc === 'received_at_hub' || normRaw === 'received_at_hub') {
             targetStatus = 'received_at_hub';
             badgeColor = 'badge-primary';
             friendlyTitle = isRTL ? 'وصل مركز الفرز والعمليات' : 'Arrived at Sorting Hub';
-        } else if (s.includes('depart') || desc.includes('departed') || desc.includes('in transit') || desc.includes('flight') || s === 'sh') {
+        } else if (s.includes('depart') || desc.includes('departed') || desc.includes('in transit') || desc.includes('flight') || s === 'sh' || normCode === 'in_transit' || normDesc === 'in_transit') {
             targetStatus = 'in_transit';
             badgeColor = 'badge-info text-white';
             friendlyTitle = isRTL ? 'قيد النقل الدولي' : 'In Transit / International Transit';
-        } else if (s.includes('pick') || desc.includes('picked up') || desc.includes('collected') || s === 'pu') {
+        } else if (normCode === 'picked_up' || normDesc === 'picked_up' || normRaw === 'picked_up') {
             targetStatus = 'picked_up';
             badgeColor = 'badge-warning text-white';
             friendlyTitle = isRTL ? 'تم استلام الشحنة' : 'Picked Up from Shipper';
-        } else if (s.includes('book') || s.includes('creat') || desc.includes('created') || desc.includes('record created')) {
+        } else if (normCode === 'booked' || normDesc === 'booked' || normRaw === 'booked' || s.includes('book') || s.includes('creat') || desc.includes('created') || desc.includes('record created')) {
             targetStatus = 'booked';
             badgeColor = 'badge-ghost';
             friendlyTitle = isRTL ? 'تم إنشاء وحجز البوليصة' : 'Consignment Booked & Registered';
+        } else if (normCode === 'cancelled' || normDesc === 'cancelled' || normRaw === 'cancelled') {
+            targetStatus = 'cancelled';
+            badgeColor = 'badge-error badge-outline';
+            friendlyTitle = isRTL ? 'ملغاة / مرتجعة' : 'Cancelled / Returned';
         }
 
         const dateParts = formatTimestampKuwait(evt.timestamp);
         const loc = typeof evt.location === 'object' ? (evt.location?.formattedAddress || evt.location?.city || '') : (evt.location || '');
+        const collapsedCount = Number(evt.collapsedCount || evt.occurrences || 1);
 
         return {
             ...evt,
@@ -1198,6 +1209,9 @@ const ShipmentDetailsPage = () => {
             badgeColor,
             friendlyTitle,
             isExceptionEvent,
+            collapsedCount,
+            timezoneOffset: evt.timezoneOffset || null,
+            localTimestamp: evt.localTimestamp || null,
             dateParts,
             locationText: loc,
             rawDescription: evt.description || evt.status || 'Carrier update',
@@ -1206,16 +1220,17 @@ const ShipmentDetailsPage = () => {
     };
 
     // Tab 1: Formatted Milestone Events
-    const milestoneEvents = sortedHistory.map(reformatToTargetMilestone);
+    const baseMilestoneEvents = sortedHistory.map(reformatToTargetMilestone);
 
     // Compute effective status linking normalized milestones directly to progression and top badge
-    const latestMilestone = milestoneEvents[0];
-    const hasDeliveredMilestone = milestoneEvents.some(m => m.targetStatus === 'delivered');
+    const latestMilestone = baseMilestoneEvents[0];
+    const hasDeliveredMilestone = baseMilestoneEvents.some(m => m.targetStatus === 'delivered');
 
     const getEffectiveStatus = () => {
         const rawNorm = normalizeStatus(shipment.status);
         if (rawNorm === 'cancelled') return 'cancelled';
-        if (rawNorm === 'delivered' || hasDeliveredMilestone) return 'delivered';
+        if (hasDeliveredMilestone) return 'delivered';
+        if (rawNorm === 'delivered' && baseMilestoneEvents.length === 0) return 'delivered';
         
         // If the LATEST milestone is an active exception
         if (latestMilestone?.isExceptionEvent || latestMilestone?.targetStatus === 'exception') {
@@ -1232,11 +1247,43 @@ const ShipmentDetailsPage = () => {
                 return latestMilestone.targetStatus;
             }
         }
-        return rawNorm;
+        return rawNorm === 'delivered' ? (latestMilestone?.targetStatus || 'in_transit') : rawNorm;
     };
 
     const effectiveStatus = getEffectiveStatus();
     const normStatus = effectiveStatus;
+
+    // Distinguish Active Exception vs. Resolved Historical Exception in timeline
+    const milestoneEvents = baseMilestoneEvents.map((m, idx) => {
+        const isResolvedException = m.isExceptionEvent && (effectiveStatus !== 'exception' || idx > 0);
+        if (isResolvedException) {
+            return {
+                ...m,
+                isResolvedException: true,
+                badgeColor: 'badge-warning text-warning-content',
+                friendlyTitle: isRTL ? 'استثناء سابق (تمت المعالجة)' : 'Resolved Hold / Prior Exception'
+            };
+        }
+        return {
+            ...m,
+            isResolvedException: false
+        };
+    });
+
+    // Handler for live on-demand carrier tracking sync
+    const handleSyncCarrierTracking = async () => {
+        if (!shipment?.trackingNumber || isSyncingCarrier) return;
+        setIsSyncingCarrier(true);
+        try {
+            await api.get(`/shipments/${shipment.trackingNumber}?refresh=true`);
+            await getShipment(shipment.trackingNumber);
+            enqueueSnackbar(isRTL ? 'تمت مزامنة حالة التتبع مع الناقل بنجاح' : 'Carrier tracking milestones synced!', { variant: 'success' });
+        } catch (err) {
+            enqueueSnackbar(err.response?.data?.error || err.message || 'Failed to sync carrier tracking', { variant: 'error' });
+        } finally {
+            setIsSyncingCarrier(false);
+        }
+    };
 
     // Calculate progression percentage across standard 5 visual milestones
     let visualStep = 0;
@@ -1294,6 +1341,8 @@ const ShipmentDetailsPage = () => {
         return {
             idx: rawHistory.length - idx,
             timestamp: evt.timestamp,
+            timezoneOffset: evt.timezoneOffset || null,
+            collapsedCount: Number(evt.collapsedCount || evt.occurrences || 1),
             dateParts,
             location: loc,
             description: evt.description || (typeof evt.status === 'object' ? evt.status?.status : evt.status) || 'Scan Event',
@@ -2448,15 +2497,30 @@ const ShipmentDetailsPage = () => {
                                 </button>
                             </div>
 
-                            {canEdit && (
-                                <button
-                                    onClick={() => handleOpenEdit('status')}
-                                    className="btn btn-primary btn-outline btn-xs font-bold rounded-lg gap-1 mb-2 sm:mb-0"
-                                >
-                                    <span className="material-symbols-outlined text-xs">add_task</span>
-                                    {isRTL ? 'إضافة محطة / تحديث الحالة' : 'Advance Milestone'}
-                                </button>
-                            )}
+                            <div className="flex items-center gap-2 mb-2 sm:mb-0">
+                                {!isInternalShipment && (
+                                    <button
+                                        type="button"
+                                        onClick={handleSyncCarrierTracking}
+                                        disabled={isSyncingCarrier}
+                                        className="btn btn-ghost border border-base-300 btn-xs font-bold rounded-lg gap-1"
+                                        title={isRTL ? 'مزامنة محطات التتبع مع الناقل' : 'Sync live tracking milestones from carrier'}
+                                    >
+                                        <span className={`material-symbols-outlined text-xs ${isSyncingCarrier ? 'animate-spin' : ''}`}>sync</span>
+                                        {isSyncingCarrier ? (isRTL ? 'جاري المزامنة...' : 'Syncing...') : (isRTL ? 'مزامنة الناقل' : 'Sync Carrier')}
+                                    </button>
+                                )}
+                                {canEdit && (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleOpenEdit('status')}
+                                        className="btn btn-primary btn-outline btn-xs font-bold rounded-lg gap-1"
+                                    >
+                                        <span className="material-symbols-outlined text-xs">add_task</span>
+                                        {isRTL ? 'إضافة محطة / تحديث الحالة' : 'Advance Milestone'}
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
                         {/* Tab 1 Content: Milestones Timeline */}
@@ -2496,16 +2560,21 @@ const ShipmentDetailsPage = () => {
                                                             </div>
                                                             <div className="timeline-end timeline-box py-3 px-4 border-base-200 bg-base-100 shadow-xs rounded-xl space-y-1.5 w-full max-w-3xl mb-1">
                                                                 <div className="flex flex-wrap justify-between items-baseline gap-2">
-                                                                    <div className="flex items-center gap-2">
+                                                                    <div className="flex items-center gap-2 flex-wrap">
                                                                         <span className={`badge badge-xs font-black ${event.badgeColor}`}>
                                                                             {event.friendlyTitle}
                                                                         </span>
                                                                         <span className="font-extrabold text-xs text-base-content">
                                                                             {event.rawDescription}
                                                                         </span>
+                                                                        {event.collapsedCount > 1 && (
+                                                                            <span className="badge badge-xs badge-ghost font-mono text-[10px]">
+                                                                                x{event.collapsedCount} scans
+                                                                            </span>
+                                                                        )}
                                                                     </div>
                                                                     <span className="font-mono text-[10.5px] text-base-content/50">
-                                                                        {event.dateParts.time}
+                                                                        {event.dateParts.time}{event.timezoneOffset ? ` (${event.timezoneOffset})` : ''}
                                                                     </span>
                                                                 </div>
 
@@ -2593,11 +2662,18 @@ const ShipmentDetailsPage = () => {
                                                             )}
                                                             <tr className="hover">
                                                                 <td className="text-base-content/40">{tEvt.idx}</td>
-                                                                <td className="whitespace-nowrap font-bold text-base-content">{tEvt.dateParts.time}</td>
+                                                                <td className="whitespace-nowrap font-bold text-base-content">
+                                                                    {tEvt.dateParts.time}{tEvt.timezoneOffset ? ` (${tEvt.timezoneOffset})` : ''}
+                                                                </td>
                                                                 <td>
                                                                     <span className="badge badge-xs badge-neutral font-bold">{tEvt.statusCode}</span>
                                                                 </td>
-                                                                <td className="font-sans font-medium text-base-content">{tEvt.description}</td>
+                                                                <td className="font-sans font-medium text-base-content">
+                                                                    {tEvt.description}
+                                                                    {tEvt.collapsedCount > 1 && (
+                                                                        <span className="badge badge-xs badge-ghost font-mono text-[10px] ms-1.5">x{tEvt.collapsedCount}</span>
+                                                                    )}
+                                                                </td>
                                                                 <td className="whitespace-nowrap">{tEvt.location}</td>
                                                                 <td>
                                                                     <span className="badge badge-xs badge-ghost text-[10px] uppercase">{tEvt.source}</span>

@@ -700,12 +700,32 @@ class LogesTechsAdapter extends CarrierAdapter {
     }
 
     async getTracking(trackingNumber) {
-        const data = await this.getStatus({ barcode: trackingNumber });
+        const cleanTracking = String(trackingNumber || '').trim();
+        if (!cleanTracking) {
+            const err = new Error('Validation Failed: trackingNumber is required for getTracking');
+            err.statusCode = 400;
+            throw err;
+        }
+
+        const isNumeric = /^\d+$/.test(cleanTracking);
+        let data;
+
+        try {
+            data = await this.getStatus({ barcode: cleanTracking });
+        } catch (err) {
+            if (isNumeric) {
+                logger.debug?.(`[LogesTechsAdapter.getTracking] Barcode lookup failed for numeric identifier ${cleanTracking}, attempting ID lookup: ${err.message}`);
+                data = await this.getStatus({ id: cleanTracking });
+            } else {
+                throw err;
+            }
+        }
+
         const events = this._extractTrackingEvents(data);
 
         return {
             carrierCode: this.code,
-            trackingNumber,
+            trackingNumber: cleanTracking,
             status: data?.status || data?.currentStatus || data?.enStatus || 'UNKNOWN',
             description: data?.description || data?.message || data?.enStatus || 'No status description',
             events

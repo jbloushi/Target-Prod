@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../../context/LanguageContext';
 import StatusBadge from './StatusBadge';
 import TradeRouteDisplay from './TradeRouteDisplay';
+import { normalizeStatus, isNegativeOrExceptionPhrase } from '../../constants/statusConfig';
+import { dedupeTrackingEvents } from '../../utils/dedupeTrackingEvents';
 
 const CARRIER_INFO_MAP = {
     'DGR': { name: 'DHL Express', nameAr: 'دي إتش إل إكسبريس', badge: 'badge-error' },
@@ -11,6 +13,8 @@ const CARRIER_INFO_MAP = {
     'ARAMEX': { name: 'Aramex', nameAr: 'أرامكس', badge: 'badge-warning' },
     'FDX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'badge-secondary' },
     'FEDEX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'badge-secondary' },
+    'OTE': { name: 'OTE Logistics', nameAr: 'أو تي إي', badge: 'badge-info' },
+    'LOGESTECHS': { name: 'OTE Logistics', nameAr: 'أو تي إي', badge: 'badge-info' },
     'MAN': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'badge-primary' },
     'INTERNAL': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'badge-primary' },
 };
@@ -41,16 +45,19 @@ export const ShipmentInspectorDrawer = ({
     if (!shipment) return null;
 
     const trackingNumber = shipment.trackingNumber || '—';
-    const status = shipment.status || 'draft';
+    const rawStatus = shipment.status || 'draft';
+    const status = normalizeStatus(rawStatus);
     const carrierCode = shipment.carrierCode || shipment.carrier || (shipment.serviceType?.toLowerCase().includes('dhl') ? 'DHL' : shipment.serviceType?.toLowerCase().includes('fedex') ? 'FEDEX' : shipment.serviceType?.toLowerCase().includes('aramex') ? 'ARAMEX' : null);
     const origin = shipment.origin || { city: shipment.originCity || 'Kuwait City', country: shipment.originCountry || 'KW' };
     const destination = shipment.destination || { city: shipment.destCity || 'Riyadh', country: shipment.destCountry || 'SA' };
+    const originCityLabel = origin?.city || origin?.formattedAddress || (isRTL ? 'مركز الانطلاق' : 'Origin Hub');
+    const destCityLabel = destination?.city || destination?.formattedAddress || (isRTL ? 'وجهة التسليم' : 'Destination Hub');
     const consigneeName = shipment.receiver?.contactPerson || shipment.receiver?.name || (typeof shipment.destination === 'object' ? (shipment.destination?.contactPerson || shipment.destination?.name) : null) || (typeof shipment.customer === 'object' ? (shipment.customer?.name || shipment.customer?.contactPerson) : (typeof shipment.customer === 'string' ? shipment.customer : null)) || (isRTL ? 'المستلم' : 'Consignee');
     const consigneePhone = shipment.receiver?.phone || (typeof shipment.destination === 'object' ? shipment.destination?.phone : null) || (typeof shipment.customer === 'object' ? shipment.customer?.phone : (typeof shipment.phone === 'string' ? shipment.phone : null)) || '+965 9988 7766';
     const orgName = shipment.organization?.name || shipment.org || 'Target Logistics';
     const serviceType = shipment.serviceType || shipment.service || 'Express Air Cargo';
-    const weight = shipment.weight || shipment.package?.weight || 3.5;
-    const pieces = shipment.pieces || shipment.package?.pieces || 1;
+    const weight = shipment.weight || shipment.package?.weight || (Array.isArray(shipment.parcels) && shipment.parcels.length > 0 ? shipment.parcels.reduce((s, p) => s + (Number(p.weight) || 0), 0) : 1);
+    const pieces = shipment.pieces || shipment.package?.pieces || (Array.isArray(shipment.parcels) && shipment.parcels.length > 0 ? shipment.parcels.reduce((s, p) => s + (Number(p.quantity) || 1), 0) : 1);
 
     const parseDateRobust = (raw) => {
         if (!raw) return null;
@@ -89,6 +96,13 @@ export const ShipmentInspectorDrawer = ({
         ? parsedDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kuwait' }) 
         : '—';
     const isImported = Boolean(shipment.documents?.phenixBillId || shipment.documents?.source === 'PHENIX_ERP');
+
+    // Deduplicate and sort history checkpoints (newest first, up to 5 recent milestones)
+    const rawHistory = Array.isArray(shipment.history) ? shipment.history : [];
+    const dedupedHistory = dedupeTrackingEvents(
+        rawHistory.filter(e => e && e.timestamp && e.type !== 'comment' && e.type !== 'note'),
+        (e) => `${e?.status}|${e?.timestamp}|${e?.description}`
+    ).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 5);
 
     const copyTracking = () => {
         navigator.clipboard.writeText(trackingNumber);
@@ -223,43 +237,95 @@ export const ShipmentInspectorDrawer = ({
 
                 {/* Live Milestone Progress Timeline */}
                 <div className="space-y-2">
-                    <h4 className="font-extrabold text-base-content uppercase tracking-wider text-[11px]">
-                        {isRTL ? 'مراحل التتبع' : 'Milestones & History'}
-                    </h4>
+                    <div className="flex justify-between items-center">
+                        <h4 className="font-extrabold text-base-content uppercase tracking-wider text-[11px]">
+                            {isRTL ? 'مراحل التتبع' : 'Milestones & History'}
+                        </h4>
+                        {dedupedHistory.length > 0 && (
+                            <span className="badge badge-xs badge-ghost font-mono">
+                                {dedupedHistory.length} {isRTL ? 'محطة' : 'events'}
+                            </span>
+                        )}
+                    </div>
                     <div className="p-3 bg-base-100 border border-base-200 rounded-xl">
-                        <ul className="timeline timeline-vertical timeline-compact text-xs">
-                            <li>
-                                <div className="timeline-middle text-success">
-                                    <span className="material-symbols-outlined text-sm">check_circle</span>
-                                </div>
-                                <div className="timeline-end timeline-box py-1 px-2 border-base-200 text-xs">
-                                    <span className="font-bold text-base-content block">{isRTL ? 'استلام المنفذ' : 'Gate In / Manifested'}</span>
-                                    <span className="text-[10px] text-base-content/50">Kuwait Airport (KWI)</span>
-                                </div>
-                                <hr className="bg-success" />
-                            </li>
-                            <li>
-                                <hr className={['in_transit', 'out_for_delivery', 'delivered'].includes(status) ? 'bg-success' : 'bg-base-300'} />
-                                <div className={`timeline-middle ${['in_transit', 'out_for_delivery', 'delivered'].includes(status) ? 'text-primary' : 'text-base-300'}`}>
-                                    <span className="material-symbols-outlined text-sm">flight</span>
-                                </div>
-                                <div className="timeline-end timeline-box py-1 px-2 border-base-200 text-xs">
-                                    <span className="font-bold text-base-content block">{isRTL ? 'نقل جوي دولي' : 'In Global Flight'}</span>
-                                    <span className="text-[10px] text-base-content/50">Kuwait ➔ Riyadh Hub</span>
-                                </div>
-                                <hr className={['out_for_delivery', 'delivered'].includes(status) ? 'bg-success' : 'bg-base-300'} />
-                            </li>
-                            <li>
-                                <hr className={status === 'delivered' ? 'bg-success' : 'bg-base-300'} />
-                                <div className={`timeline-middle ${status === 'delivered' ? 'text-success' : 'text-base-300'}`}>
-                                    <span className="material-symbols-outlined text-sm">task_alt</span>
-                                </div>
-                                <div className="timeline-end timeline-box py-1 px-2 border-base-200 text-xs">
-                                    <span className="font-bold text-base-content block">{isRTL ? 'تسليم المستلم' : 'Consignee Delivery'}</span>
-                                    <span className="text-[10px] text-base-content/50">{status === 'delivered' ? 'Signed & Completed' : 'Pending dispatch'}</span>
-                                </div>
-                            </li>
-                        </ul>
+                        {dedupedHistory.length > 0 ? (
+                            <ul className="timeline timeline-vertical timeline-compact text-xs">
+                                {dedupedHistory.map((evt, idx) => {
+                                    const isLatest = idx === 0;
+                                    const evtDesc = evt.description || (typeof evt.status === 'string' ? evt.status : 'Checkpoint update');
+                                    const isExc = isNegativeOrExceptionPhrase(evtDesc) || normalizeStatus(evt.statusCode || evt.status || evtDesc) === 'exception';
+                                    const isResolvedExc = isExc && (status !== 'exception' || idx > 0);
+                                    const evtNorm = isExc ? 'exception' : normalizeStatus(evt.statusCode || evtDesc || evt.status);
+                                    const locText = typeof evt.location === 'object' ? (evt.location?.formattedAddress || evt.location?.city || '') : (evt.location || '');
+                                    const dt = parseDateRobust(evt.timestamp);
+                                    const timeLabel = dt ? dt.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kuwait' }) : '';
+                                    const collapsed = Number(evt.collapsedCount || evt.occurrences || 1);
+
+                                    return (
+                                        <li key={`${evt.timestamp}-${idx}`}>
+                                            {idx > 0 && <hr className={isLatest ? 'bg-primary' : 'bg-base-300'} />}
+                                            <div className={`timeline-middle ${
+                                                evtNorm === 'delivered' ? 'text-success'
+                                                : (isExc && !isResolvedExc) ? 'text-error'
+                                                : isResolvedExc ? 'text-warning'
+                                                : isLatest ? 'text-primary' : 'text-base-content/40'
+                                            }`}>
+                                                <span className="material-symbols-outlined text-sm">
+                                                    {evtNorm === 'delivered' ? 'task_alt' : isExc ? 'warning' : isLatest ? 'check_circle' : 'circle'}
+                                                </span>
+                                            </div>
+                                            <div className="timeline-end timeline-box py-1.5 px-2.5 border-base-200 text-xs w-full mb-1">
+                                                <div className="flex items-center justify-between gap-1 flex-wrap">
+                                                    <span className="font-bold text-base-content block">{evtDesc}</span>
+                                                    {collapsed > 1 && (
+                                                        <span className="badge badge-xs badge-ghost font-mono text-[9px]">x{collapsed}</span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center justify-between gap-2 text-[10px] text-base-content/50 mt-0.5">
+                                                    <span>{locText || originCityLabel}</span>
+                                                    <span className="font-mono">{timeLabel}</span>
+                                                </div>
+                                            </div>
+                                            {idx < dedupedHistory.length - 1 && <hr className="bg-base-300" />}
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        ) : (
+                            <ul className="timeline timeline-vertical timeline-compact text-xs">
+                                <li>
+                                    <div className="timeline-middle text-success">
+                                        <span className="material-symbols-outlined text-sm">check_circle</span>
+                                    </div>
+                                    <div className="timeline-end timeline-box py-1 px-2 border-base-200 text-xs">
+                                        <span className="font-bold text-base-content block">{isRTL ? 'استلام المنفذ' : 'Booked / Manifested'}</span>
+                                        <span className="text-[10px] text-base-content/50">{originCityLabel}</span>
+                                    </div>
+                                    <hr className="bg-success" />
+                                </li>
+                                <li>
+                                    <hr className={['in_transit', 'out_for_delivery', 'delivered'].includes(status) ? 'bg-success' : 'bg-base-300'} />
+                                    <div className={`timeline-middle ${['in_transit', 'out_for_delivery', 'delivered'].includes(status) ? 'text-primary' : 'text-base-300'}`}>
+                                        <span className="material-symbols-outlined text-sm">flight</span>
+                                    </div>
+                                    <div className="timeline-end timeline-box py-1 px-2 border-base-200 text-xs">
+                                        <span className="font-bold text-base-content block">{isRTL ? 'نقل دولي' : 'In Transit Corridor'}</span>
+                                        <span className="text-[10px] text-base-content/50">{originCityLabel} ➔ {destCityLabel}</span>
+                                    </div>
+                                    <hr className={['out_for_delivery', 'delivered'].includes(status) ? 'bg-success' : 'bg-base-300'} />
+                                </li>
+                                <li>
+                                    <hr className={status === 'delivered' ? 'bg-success' : 'bg-base-300'} />
+                                    <div className={`timeline-middle ${status === 'delivered' ? 'text-success' : 'text-base-300'}`}>
+                                        <span className="material-symbols-outlined text-sm">task_alt</span>
+                                    </div>
+                                    <div className="timeline-end timeline-box py-1 px-2 border-base-200 text-xs">
+                                        <span className="font-bold text-base-content block">{isRTL ? 'تسليم المستلم' : 'Consignee Delivery'}</span>
+                                        <span className="text-[10px] text-base-content/50">{status === 'delivered' ? `${destCityLabel} • Signed & Completed` : `${destCityLabel} • Pending dispatch`}</span>
+                                    </div>
+                                </li>
+                            </ul>
+                        )}
                     </div>
                 </div>
 

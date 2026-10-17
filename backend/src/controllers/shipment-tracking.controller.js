@@ -1,6 +1,7 @@
 const { prisma } = require('../config/database');
+const { createHash } = require('crypto');
 const logger = require('../utils/logger');
-const { calculateDistance, canUpdateShipmentStatus } = require('./shipment.helpers');
+const { calculateDistance, canUpdateShipmentStatus, compactHistory, parseCoordinates, normalizeStatus } = require('./shipment.helpers');
 const { canAccessShipment, scopeShipmentWhere } = require('../middleware/authorize.middleware');
 const chatwootNotificationService = require('../services/chatwootNotificationService');
 
@@ -10,7 +11,7 @@ const chatwootNotificationService = require('../services/chatwootNotificationSer
 exports.updateShipmentLocation = async (req, res) => {
     try {
         const { trackingNumber } = req.params;
-        const { coordinates, address, status, description } = req.body;
+        const { coordinates, address, status, description, localTimestamp, timezoneOffset } = req.body || {};
 
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Not found' });
@@ -20,20 +21,100 @@ exports.updateShipmentLocation = async (req, res) => {
             return res.status(403).json({ success: false, error: 'Permission denied to update shipment status' });
         }
 
-        const updatedHistory = shipment.history || [];
+        const { longitude, latitude } = parseCoordinates(coordinates, shipment.currentLocation || {});
+        const formattedAddress = address || shipment.currentLocation?.formattedAddress || 'Location updated';
         const newLocation = {
-            ...shipment.currentLocation,
-            formattedAddress: address,
-            longitude: coordinates[0],
-            latitude: coordinates[1]
+            ...(shipment.currentLocation && typeof shipment.currentLocation === 'object' ? shipment.currentLocation : {}),
+            formattedAddress,
+            longitude,
+            latitude
         };
 
-        updatedHistory.push({
+        const now = new Date();
+        const eventTimestamp = req.body?.timestamp ? new Date(req.body.timestamp) : now;
+        const validTimestampStr = (!Number.isNaN(eventTimestamp.getTime()) ? eventTimestamp : now).toISOString();
+
+        const actorSource = req.body?.source || (req.user?.role === 'driver' ? 'driver' : (req.user?.role ? 'staff' : 'system'));
+
+        const rawHistory = Array.isArray(shipment.history) ? shipment.history : [];
+        const historyEntry = {
             location: newLocation,
             status: status || shipment.status,
             description: description || 'Location updated',
-            timestamp: new Date().toISOString()
-        });
+            source: actorSource,
+            timestamp: validTimestampStr,
+            ...(localTimestamp ? { localTimestamp } : {}),
+            ...(timezoneOffset ? { timezoneOffset } : {})
+        };
+
+        const updatedHistory = compactHistory([...rawHistory, historyEntry]);
+
+        // Upsert relational event into ShipmentTrackingEvent
+        if (prisma.shipmentTrackingEvent && typeof prisma.shipmentTrackingEvent.upsert === 'function') {
+            try {
+                const provider = 'FLEET';
+                const eventStatus = status || shipment.status;
+                const eventDesc = description || 'Location updated';
+                const eventKey = createHash('sha256').update(JSON.stringify({
+                    provider,
+                    status: eventStatus,
+                    description: eventDesc,
+                    timestamp: validTimestampStr,
+                    location: formattedAddress
+                })).digest('hex');
+
+                const eventTime = !Number.isNaN(eventTimestamp.getTime()) ? eventTimestamp : now;
+
+                await prisma.shipmentTrackingEvent.upsert({
+                    where: {
+                        shipmentId_eventKey: {
+                            shipmentId: shipment.id,
+                            eventKey
+                        }
+                    },
+                    create: {
+                        shipmentId: shipment.id,
+                        provider,
+                        carrierCode: String(shipment.carrierCode || 'INTERNAL').toUpperCase(),
+                        source: actorSource,
+                        eventKey,
+                        rawStatus: eventStatus,
+                        normalizedStatus: normalizeStatus(eventStatus),
+                        description: eventDesc,
+                        eventTimestamp: eventTime,
+                        location: newLocation,
+                        rawPayload: {
+                            coordinates: { longitude, latitude },
+                            address: formattedAddress,
+                            status: eventStatus,
+                            description: eventDesc,
+                            source: actorSource,
+                            timestamp: validTimestampStr,
+                            localTimestamp: localTimestamp || null,
+                            timezoneOffset: timezoneOffset || null
+                        }
+                    },
+                    update: {
+                        rawStatus: eventStatus,
+                        normalizedStatus: normalizeStatus(eventStatus),
+                        description: eventDesc,
+                        location: newLocation,
+                        rawPayload: {
+                            coordinates: { longitude, latitude },
+                            address: formattedAddress,
+                            status: eventStatus,
+                            description: eventDesc,
+                            source: actorSource,
+                            timestamp: validTimestampStr,
+                            localTimestamp: localTimestamp || null,
+                            timezoneOffset: timezoneOffset || null
+                        }
+                    }
+                });
+            } catch (eventErr) {
+                logger.warn(`[LocationUpdate] Failed to record tracking event for ${shipment.trackingNumber}: ${eventErr.message}`);
+            }
+        }
 
         const updated = await prisma.shipment.update({
             where: { trackingNumber },

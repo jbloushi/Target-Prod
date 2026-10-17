@@ -18,7 +18,7 @@ class JobQueue {
         this.pollTimer = null;
         this.dbTableVerified = false;
         this.isProcessing = false;
-        this.forceInMemory = options.inMemoryOnly ?? (process.env.NODE_ENV === 'test');
+        this.forceInMemory = options.inMemoryOnly ?? (process.env.JEST_WORKER_ID !== undefined || process.env.NODE_ENV === 'test');
     }
 
     /**

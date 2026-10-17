@@ -16,6 +16,7 @@ import {
   getPublicStepIndex,
   normalizeStatus,
   isStatusAhead,
+  isNegativeOrExceptionPhrase,
 } from '../constants/statusConfig';
 
 const API = getApiBaseUrl();
@@ -46,6 +47,9 @@ const getDisplayTimestamp = (eventOrTimestamp) => {
 
 const formatDisplayDateParts = (eventOrTimestamp) => {
   const timestamp = getDisplayTimestamp(eventOrTimestamp);
+  const tzSuffix = (eventOrTimestamp && typeof eventOrTimestamp === 'object' && eventOrTimestamp.timezoneOffset)
+    ? ` (${eventOrTimestamp.timezoneOffset})`
+    : '';
   const localMatch = String(timestamp || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
   if (localMatch) {
     const [, year, month, day, hour, minute] = localMatch;
@@ -55,16 +59,40 @@ const formatDisplayDateParts = (eventOrTimestamp) => {
     const suffix = hourNumber >= 12 ? 'PM' : 'AM';
     return {
       date: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }),
-      time: `${String(hour12).padStart(2, '0')}:${minute} ${suffix}`
+      time: `${String(hour12).padStart(2, '0')}:${minute} ${suffix}${tzSuffix}`
     };
   }
   return {
     date: fmt.date(timestamp),
-    time: fmt.time(timestamp)
+    time: `${fmt.time(timestamp)}${tzSuffix}`
   };
 };
 
 const normalizeEventText = (v) => String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+const isPublicSafeEvent = (event) => {
+  if (!event || !event.timestamp) return false;
+  const src = String(event.source || '').toLowerCase();
+  if (src === 'staff' || src === 'phenix_erp' || src === 'accounting' || src === 'finance') return false;
+  if (event.type === 'comment' || event.type === 'note' || Boolean(event.comment) || Boolean(event.internalOnly)) return false;
+  const desc = normalizeEventText(event.description);
+  if (desc.includes('phenix') || desc.includes('ledger') || desc.includes('cost price') || desc.includes('margin') || desc.includes('internal note')) return false;
+  return true;
+};
+
+const resolvePublicEventStatus = (e) => {
+  if (!e) return 'in_transit';
+  const desc = String(e.description || '');
+  const rawStatus = String(e.status || '');
+  if (isNegativeOrExceptionPhrase(desc) || isNegativeOrExceptionPhrase(rawStatus)) {
+    return 'exception';
+  }
+  if (desc && normalizeStatus(desc) === 'exception') return 'exception';
+  if (rawStatus === 'delivered' && desc && normalizeStatus(desc) !== 'delivered') {
+    return normalizeStatus(desc);
+  }
+  return normalizeStatus(e.statusCode || e.code || desc || rawStatus);
+};
 
 const publicEventKey = (event) => {
   const desc = normalizeEventText(event?.description || event?.status);
@@ -80,14 +108,14 @@ function mergeEvents(shipment) {
   const merged = (
     shipment?.events
     || [...(shipment?.carrierEvents || []), ...(shipment?.internalEvents || [])]
-  ).filter((event) => event?.timestamp);
+  ).filter(isPublicSafeEvent);
   return dedupeTrackingEvents(merged, publicEventKey)
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 }
 
 function rawEventsForLog(shipment) {
   const raw = shipment?.rawEvents || shipment?.events || [];
-  return [...raw].filter((event) => event?.timestamp).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  return [...raw].filter(isPublicSafeEvent).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 }
 
 const DEMO_PRESETS = [
@@ -151,20 +179,18 @@ export const PublicTrackingLandingPage = () => {
     if (!shipment) return 'draft';
     const rawNorm = normalizeStatus(shipment.status);
     if (rawNorm === 'cancelled') return 'cancelled';
-    const hasDelivered = timelineEvents.some(e => {
-      const s = normalizeStatus(e.status || e.description);
-      return s === 'delivered';
-    });
-    if (rawNorm === 'delivered' || hasDelivered) return 'delivered';
+    const hasDelivered = timelineEvents.some(e => resolvePublicEventStatus(e) === 'delivered');
+    if (hasDelivered) return 'delivered';
+    if (rawNorm === 'delivered' && timelineEvents.length === 0) return 'delivered';
     if (lastEvent) {
-      const lastNorm = normalizeStatus(lastEvent.status || lastEvent.description);
+      const lastNorm = resolvePublicEventStatus(lastEvent);
       if (lastNorm === 'exception') return 'exception';
       if (['picked_up', 'received_at_hub', 'in_transit', 'out_for_delivery'].includes(lastNorm)) {
         return lastNorm;
       }
       if (isStatusAhead(rawNorm, lastNorm)) return lastNorm;
     }
-    return rawNorm;
+    return rawNorm === 'delivered' ? (lastEvent ? resolvePublicEventStatus(lastEvent) : 'in_transit') : rawNorm;
   }, [shipment, timelineEvents, lastEvent]);
 
   const stepIndex = shipment ? getPublicStepIndex(effectiveStatus) : 0;
@@ -610,18 +636,40 @@ export const PublicTrackingLandingPage = () => {
                         {timelineEvents.map((evt, idx) => {
                           const dateParts = formatDisplayDateParts(evt);
                           const isLatest = idx === 0;
+                          const evtNorm = resolvePublicEventStatus(evt);
+                          const isExc = evtNorm === 'exception';
+                          const isResolvedExc = isExc && (effectiveStatus !== 'exception' || idx > 0);
+                          const collapsed = Number(evt.collapsedCount || evt.occurrences || 1);
                           return (
                             <div key={`${evt.timestamp}-${idx}`} className="relative group">
                               <span
                                 className={`absolute -left-6 top-1 w-4 h-4 rounded-full border-2 transition-all ${
-                                  isLatest
+                                  evtNorm === 'delivered'
+                                    ? 'bg-success border-success ring-4 ring-success/20'
+                                    : (isExc && !isResolvedExc)
+                                    ? 'bg-error border-error ring-4 ring-error/20'
+                                    : isResolvedExc
+                                    ? 'bg-warning border-warning'
+                                    : isLatest
                                     ? 'bg-primary border-primary ring-4 ring-primary/20'
                                     : 'bg-base-100 border-base-300'
                                 }`}
                               />
                               <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
-                                <div className="text-sm font-extrabold text-base-content">
-                                  {getEventDisplayMessage(evt, evt.status || 'Status update')}
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {isExc && (
+                                    <span className={`badge badge-xs font-black ${isResolvedExc ? 'badge-warning text-warning-content' : 'badge-error text-white'}`}>
+                                      {isResolvedExc ? 'Resolved Hold' : 'Exception / Hold'}
+                                    </span>
+                                  )}
+                                  <span className="text-sm font-extrabold text-base-content">
+                                    {getEventDisplayMessage(evt, evt.status || 'Status update')}
+                                  </span>
+                                  {collapsed > 1 && (
+                                    <span className="badge badge-xs badge-ghost font-mono text-[10px]">
+                                      x{collapsed}
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="text-xs text-base-content/50 font-mono">
                                   {dateParts.date} • {dateParts.time}
@@ -665,6 +713,7 @@ export const PublicTrackingLandingPage = () => {
                           <tbody>
                             {timelineEvents.map((evt, idx) => {
                               const dateParts = formatDisplayDateParts(evt);
+                              const collapsed = Number(evt.collapsedCount || evt.occurrences || 1);
                               return (
                                 <tr key={`${evt.timestamp}-${idx}`} className="font-mono">
                                   <td className="whitespace-nowrap">{dateParts.date} {dateParts.time}</td>
@@ -674,12 +723,12 @@ export const PublicTrackingLandingPage = () => {
                                   </td>
                                   <td>
                                     <span className="badge badge-xs badge-neutral">
-                                      {evt.source || 'target_ops'}
+                                      {evt.source === 'carrier' ? 'Carrier Network' : 'Target Hub'}
                                     </span>
                                   </td>
                                   <td>
-                                    {evt.occurrences > 1 ? (
-                                      <span className="badge badge-xs badge-primary">x{evt.occurrences}</span>
+                                    {collapsed > 1 ? (
+                                      <span className="badge badge-xs badge-primary">x{collapsed}</span>
                                     ) : '1'}
                                   </td>
                                 </tr>

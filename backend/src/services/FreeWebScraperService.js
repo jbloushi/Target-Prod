@@ -1,5 +1,6 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
+const { normalizeStatus, isNegativeOrExceptionPhrase } = require('../constants/statusConstants');
 
 /**
  * Free Carrier Web Scraper Service
@@ -367,13 +368,51 @@ class FreeWebScraperService {
     }
 
     _mapStatus(text = '') {
-        const s = String(text).toLowerCase();
-        if (s.includes('out for delivery') || s.includes('with courier') || s.includes('doorstep')) return 'out_for_delivery';
-        if (s.includes('delivered') || s.includes('received by')) return 'delivered';
-        if (s.includes('picked up') || s.includes('collected')) return 'picked_up';
-        if (s.includes('exception') || s.includes('delayed') || s.includes('held') || s.includes('attempted')) return 'exception';
+        const s = String(text || '').toLowerCase().trim();
+
+        // 1. Negative & Exception phrases evaluated BEFORE positive milestones
+        const exceptionKeywords = [
+            'undeliver', 'not delivered', 'failed', 'premises closed', 'consignee premises closed',
+            'on hold', 'held', 'delay', 'incomplete', 'damage', 'clearance delay',
+            'contacted consignee', 'consignee unavailable', 'consignee refused', 'refused',
+            'bad address', 'address incorrect', 'not at home', 'customer not home',
+            'delivery attempt failed', 'rescheduled', 'action required', 'emergency',
+            'attempted', 'exception'
+        ];
+        if (isNegativeOrExceptionPhrase(s) || exceptionKeywords.some(kw => s.includes(kw))) {
+            return 'exception';
+        }
+
+        // 2. Return / RTO phrases (strict word boundary on 'rto' so 'carton' doesn't match)
+        if (s.includes('returned') || s.includes('return to origin') || s.includes('return to shipper') || /\brto\b/i.test(s)) {
+            return 'returned';
+        }
+
+        // 3. Delivered (strictly without generic consignee match, with strict word boundaries on 'signed')
+        if (
+            s.includes('delivered to recipient') ||
+            s.includes('shipment delivered') ||
+            s.includes('delivered to') ||
+            s.includes('received by') ||
+            s.includes('proof of delivery') ||
+            s === 'dlv' ||
+            s === 'pod' ||
+            /\bdelivered\b/.test(s) ||
+            /\bsigned\s+(?:for\s+)?by\b/i.test(s) ||
+            /\bsigned\b/i.test(s) ||
+            /(?:^|\s)pod\s+(?:received|captured|uploaded|available|signed)\b/i.test(s)
+        ) {
+            return 'delivered';
+        }
+
+        // 4. Other positive milestones
+        if (s.includes('out for delivery') || s.includes('with courier') || s.includes('doorstep') || s.includes('with driver') || s === 'od') return 'out_for_delivery';
+        if (s.includes('picked up') || s.includes('collected') || s === 'pu') return 'picked_up';
+        if (s.includes('received at hub') || s.includes('arrived at facility') || s.includes('sorting hub') || s === 'af') return 'received_at_hub';
         if (s.includes('booked') || s.includes('created') || s.includes('record')) return 'booked';
-        return 'in_transit';
+        if (s.includes('cancel')) return 'cancelled';
+
+        return normalizeStatus(s || 'in_transit');
     }
 }
 

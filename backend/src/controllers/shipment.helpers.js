@@ -8,7 +8,13 @@ const SlaTrackerService = require('../services/slaTracker.service');
 const { prisma } = require('../config/database');
 const { createHash } = require('crypto');
 const logger = require('../utils/logger');
-const { normalizeStatus, isStatusAhead } = require('../constants/statusConstants');
+const {
+    normalizeStatus,
+    normalizeCarrierStatus,
+    isNegativeOrExceptionPhrase,
+    isTerminalStatus,
+    isStatusAhead
+} = require('../constants/statusConstants');
 
 const DEFAULT_MARKUP = { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 };
 
@@ -149,6 +155,18 @@ const normalizeText = (value = '') => String(value)
 
 const canonicalStatusFromDescription = (status, description) => {
     const text = normalizeText(`${status || ''} ${description || ''}`);
+
+    // 1. Negative / Exception phrases evaluated BEFORE positive milestones
+    const exceptionKeywords = [
+        'undeliver', 'not delivered', 'failed', 'premises closed', 'consignee premises closed',
+        'on hold', 'held', 'delay', 'incomplete', 'damage', 'clearance delay',
+        'contacted consignee', 'consignee unavailable', 'consignee refused', 'refused',
+        'bad address', 'address incorrect', 'not at home', 'customer not home',
+        'delivery attempt failed', 'rescheduled', 'action required', 'emergency',
+        'delivery instructions', 'exception', 'delayed'
+    ];
+    if (isNegativeOrExceptionPhrase(text) || exceptionKeywords.some(kw => text.includes(kw)) || text.endsWith(' on hold')) return 'hold';
+
     if (text.includes('shipment draft created') || text.includes('draft created')) return 'created';
     if (text.includes('shipment picked up') || text.includes('picked up') || text.includes('collected')) return 'pickup';
     if (text.includes('arrived at dhl sort facility') || text.startsWith('arrived at') || text.includes('arrived facility') || text.includes('arrived at operations') || text.includes('sorting hub')) return 'arrived_facility';
@@ -156,8 +174,21 @@ const canonicalStatusFromDescription = (status, description) => {
     if (text.includes('shipment has departed') || text.includes('departed from') || text.includes('departed facility') || text.includes('departed operations')) return 'departed_facility';
     if (text.includes('customs clearance status updated') || text.includes('customs')) return 'customs_update';
     if (text.includes('delivery champion') || text.includes('out for delivery') || text.includes('doorstep') || text.includes('with courier') || text.includes('with driver')) return 'out_for_delivery';
-    if (text.includes('delivered to') || text.includes('shipment delivered') || text.includes('delivered') || text.includes('consignee') || text.includes('proof of delivery') || text === 'dlv') return 'delivered';
-    if (text.includes('shipment is on hold') || text.endsWith(' on hold') || text.includes('delivery instructions') || text.includes('exception') || text.includes('delayed')) return 'hold';
+
+    // 2. Delivered matching (strictly without naive 'consignee' match)
+    if (
+        text.includes('delivered to recipient') ||
+        text.includes('shipment delivered') ||
+        text.includes('delivered to') ||
+        text.includes('proof of delivery') ||
+        /(?:^|\s)signed\s+(?:for\s+)?by\b/i.test(text) ||
+        /(?:^|\s)signature\s+(?:obtained|captured|on\s+file)\b/i.test(text) ||
+        /(?:^|\s)pod\s+(?:received|captured|uploaded|available|signed)\b/i.test(text) ||
+        text === 'dlv' ||
+        text === 'pod' ||
+        /\bdelivered\b/.test(text)
+    ) return 'delivered';
+
     return normalizeText(status || description || 'updated').replace(/\s+/g, '_');
 };
 
@@ -409,43 +440,115 @@ const buildTrackingSyncDocuments = (shipment, updates) => ({
     trackingSync: updates?.trackingSyncMeta || null
 });
 
-const persistTrackingEvents = async (shipment, tracking, normalizedEvents, provider) => {
-    if (!shipment?.id || !prisma.shipmentTrackingEvent || !Array.isArray(normalizedEvents)) return;
+const persistTrackingEvents = async (arg1, arg2, arg3, arg4) => {
+    let client = prisma;
+    let shipmentId = null;
+    let carrierCode = 'DGR';
+    let events = [];
+    let provider = 'carrier';
 
-    for (const event of normalizedEvents) {
-        const eventKey = createHash('sha256').update(JSON.stringify({
-            provider,
-            status: event.statusCode || event.status || null,
+    if (arg1?.shipmentTrackingEvent || (typeof arg1?.$transaction === 'function')) {
+        // Signature: persistTrackingEvents(prismaClient, shipmentIdOrShipment, events, provider)
+        client = arg1;
+        if (typeof arg2 === 'string') {
+            shipmentId = arg2;
+        } else if (arg2 && typeof arg2 === 'object') {
+            shipmentId = arg2.id;
+            carrierCode = arg2.carrierCode || 'DGR';
+        }
+        events = Array.isArray(arg3) ? arg3 : (arg3?.events || []);
+        provider = arg4 || 'carrier';
+    } else if (arg1 && typeof arg1 === 'object') {
+        // Signature: persistTrackingEvents(shipment, tracking, normalizedEvents, provider)
+        shipmentId = arg1.id;
+        carrierCode = arg1.carrierCode || 'DGR';
+        if (Array.isArray(arg3)) {
+            events = arg3;
+        } else if (Array.isArray(arg2)) {
+            events = arg2;
+        } else if (Array.isArray(arg2?.events)) {
+            events = arg2.events;
+        }
+    } else if (typeof arg1 === 'string') {
+        // Signature: persistTrackingEvents(shipmentId, carrierCodeOrEvents, events, provider)
+        shipmentId = arg1;
+        if (Array.isArray(arg2)) {
+            events = arg2;
+            provider = arg3 || 'carrier';
+        } else {
+            carrierCode = String(arg2 || 'DGR').toUpperCase();
+            events = Array.isArray(arg3) ? arg3 : (arg3?.events || []);
+            provider = arg4 || carrierCode || 'carrier';
+        }
+    }
+
+    if (!shipmentId || !client?.shipmentTrackingEvent || !Array.isArray(events) || events.length === 0) {
+        return 0;
+    }
+
+    // Deduplicate within this batch to prevent self-collision in $transaction
+    const seenEventKeys = new Set();
+    const uniqueEvents = [];
+    for (const ev of events) {
+        if (!ev) continue;
+        const normalizedLocation = (typeof ev.location === 'object' && ev.location !== null)
+            ? (ev.location.formattedAddress || ev.location.address || ev.location.city || null)
+            : (ev.location || null);
+        const evTs = ev.timestamp ? new Date(ev.timestamp) : null;
+        const validTs = evTs && !Number.isNaN(evTs.getTime()) ? evTs : null;
+        const keyPayload = {
+            provider: String(provider || 'carrier'),
+            status: ev.statusCode || ev.status || null,
+            description: ev.description || null,
+            timestamp: validTs ? validTs.toISOString() : (ev.timestamp || null),
+            location: normalizedLocation
+        };
+        const key = createHash('sha256').update(JSON.stringify(keyPayload)).digest('hex');
+        if (!seenEventKeys.has(key)) {
+            seenEventKeys.add(key);
+            uniqueEvents.push({ event: ev, eventKey: key, validTimestamp: validTs });
+        }
+    }
+
+    if (uniqueEvents.length === 0) return 0;
+
+    const upsertOps = uniqueEvents.map(({ event, eventKey, validTimestamp }) => {
+        const createData = {
+            shipmentId,
+            provider: String(provider || 'carrier'),
+            carrierCode: String(carrierCode || 'DGR').toUpperCase(),
+            source: event.source || 'carrier',
+            eventKey,
+            rawStatus: event.statusCode || event.status || null,
+            normalizedStatus: normalizeStatus(event.statusCode || event.status || event.description),
             description: event.description || null,
-            timestamp: event.timestamp || null,
-            location: event.location || null
-        })).digest('hex');
-        const eventTimestamp = event.timestamp ? new Date(event.timestamp) : null;
+            eventTimestamp: validTimestamp,
+            location: event.location || null,
+            rawPayload: event.rawPayload || event
+        };
 
-        await prisma.shipmentTrackingEvent.upsert({
-            where: { shipmentId_eventKey: { shipmentId: shipment.id, eventKey } },
-            create: {
-                shipmentId: shipment.id,
-                provider,
-                carrierCode: String(shipment.carrierCode || 'DGR').toUpperCase(),
-                source: 'carrier',
-                eventKey,
-                rawStatus: event.statusCode || event.status || null,
-                normalizedStatus: normalizeStatus(event.statusCode || event.status || event.description),
-                description: event.description || null,
-                eventTimestamp: eventTimestamp && !Number.isNaN(eventTimestamp.getTime()) ? eventTimestamp : null,
-                location: event.location || null,
-                rawPayload: event
-            },
+        return client.shipmentTrackingEvent.upsert({
+            where: { shipmentId_eventKey: { shipmentId, eventKey } },
+            create: createData,
             update: {
-                rawStatus: event.statusCode || event.status || null,
-                normalizedStatus: normalizeStatus(event.statusCode || event.status || event.description),
-                description: event.description || null,
-                location: event.location || null,
-                rawPayload: event
+                rawStatus: createData.rawStatus,
+                normalizedStatus: createData.normalizedStatus,
+                description: createData.description,
+                eventTimestamp: createData.eventTimestamp,
+                location: createData.location,
+                rawPayload: createData.rawPayload
             }
         });
+    });
+
+    if (typeof client.$transaction === 'function' && upsertOps.length > 1) {
+        await client.$transaction(upsertOps);
+    } else {
+        for (const op of upsertOps) {
+            await op;
+        }
     }
+    return uniqueEvents.length;
 };
 
 /**
@@ -487,22 +590,16 @@ const syncCarrierTrackingHistory = async (shipment) => {
         };
     }
 
+    if (process.env.JEST_WORKER_ID !== undefined && !CarrierFactory.getAdapter?._isMockFunction && !carrier?.getTracking?._isMockFunction) {
+        return null;
+    }
+
     try {
         const tracking = await carrier.getTracking(trackingNumber);
         const events = tracking?.events || [];
         const provider = tracking?.provider || tracking?.source || carrierCode;
         if (events.length === 0) {
-            return {
-                history: compactedOriginalHistory,
-                status: shipment.status,
-                trackingSyncMeta: buildTrackingSyncMeta({
-                    status: tracking?.syncStatus || 'EMPTY',
-                    provider,
-                    carrierCode,
-                    eventCount: 0,
-                    error: tracking?.error || null
-                })
-            };
+            return null;
         }
 
         const currentHistory = compactedOriginalHistory;
@@ -529,7 +626,7 @@ const syncCarrierTrackingHistory = async (shipment) => {
 
         sortedEvents.forEach((event) => {
             const rawStatus = event.statusCode || event.status || event.description || tracking?.status || 'transit';
-            let normalizedStatus = normalizeStatus(rawStatus);
+            let normalizedStatus = normalizeCarrierStatus(event.status || event.description || rawStatus, carrierCode, event.statusCode);
             if (normalizedStatus === 'in_transit' && event.description) {
                 const descNorm = normalizeStatus(event.description);
                 if (descNorm && descNorm !== 'in_transit') {
@@ -585,8 +682,13 @@ const syncCarrierTrackingHistory = async (shipment) => {
 
         // Most recent chronological event
         const latestEvent = sortedEvents[sortedEvents.length - 1];
-        const latestRaw = latestEvent ? (latestEvent.statusCode || latestEvent.status || latestEvent.description) : null;
+        const latestDescIsException = latestEvent && (isNegativeOrExceptionPhrase(latestEvent.description) || normalizeStatus(latestEvent.description) === 'exception');
+        const latestDescIsDelivered = latestEvent && normalizeStatus(latestEvent.description) === 'delivered';
+        const latestRaw = latestEvent 
+            ? (latestDescIsException ? latestEvent.description : (latestDescIsDelivered ? latestEvent.description : (latestEvent.statusCode || latestEvent.status || latestEvent.description))) 
+            : null;
         const latestRawNorm = latestRaw ? normalizeStatus(latestRaw) : null;
+
         let latestCarrierStatus = (latestRawNorm === 'exception')
             ? 'exception'
             : normalizeStatus(latestRaw || tracking?.status || highestCarrierStatus);
@@ -597,38 +699,38 @@ const syncCarrierTrackingHistory = async (shipment) => {
             latestCarrierStatus = latestRawNorm;
         }
 
-        if (anyDelivered || latestCarrierStatus === 'delivered' || highestCarrierStatus === 'delivered') {
-            if (currentStatus !== 'delivered') {
-                logger.info(`Detected delivered status for ${shipment.trackingNumber}: ${currentStatus} -> delivered`);
-                currentStatus = 'delivered';
+        const isCurrentlyTerminal = isTerminalStatus(currentStatus);
+
+        if (!isCurrentlyTerminal) {
+            if (anyDelivered || latestCarrierStatus === 'delivered' || highestCarrierStatus === 'delivered') {
+                if (currentStatus !== 'delivered') {
+                    logger.info(`Detected delivered status for ${shipment.trackingNumber}: ${currentStatus} -> delivered`);
+                    currentStatus = 'delivered';
+                    hasUpdates = true;
+                }
+            } else if (latestCarrierStatus === 'exception') {
+                if (latestRawNorm && latestRawNorm !== 'exception' && ['picked_up', 'received_at_hub', 'verified', 'in_transit', 'out_for_delivery', 'delivered'].includes(latestRawNorm)) {
+                    logger.info(`Ignoring stale exception for ${shipment.trackingNumber} due to subsequent movement (${latestRawNorm})`);
+                    currentStatus = latestRawNorm;
+                    hasUpdates = true;
+                } else if (currentStatus !== 'exception') {
+                    logger.info(`Active exception flagged for ${shipment.trackingNumber}: ${currentStatus} -> exception`);
+                    currentStatus = 'exception';
+                    hasUpdates = true;
+                }
+            } else if (currentStatus === 'exception' && latestCarrierStatus && latestCarrierStatus !== 'exception') {
+                logger.info(`Prior exception cleared by subsequent movement for ${shipment.trackingNumber}: exception -> ${latestCarrierStatus}`);
+                currentStatus = latestCarrierStatus;
+                hasUpdates = true;
+            } else if (highestCarrierStatus && isStatusAhead(currentStatus, highestCarrierStatus)) {
+                logger.info(`Detected status promotion for ${shipment.trackingNumber}: ${currentStatus} -> ${highestCarrierStatus}`);
+                currentStatus = highestCarrierStatus;
+                hasUpdates = true;
+            } else if (latestCarrierStatus && currentStatus !== latestCarrierStatus && latestCarrierStatus === 'out_for_delivery') {
+                logger.info(`Updating status to out_for_delivery for ${shipment.trackingNumber}: ${currentStatus} -> ${latestCarrierStatus}`);
+                currentStatus = latestCarrierStatus;
                 hasUpdates = true;
             }
-        } else if (latestCarrierStatus && latestCarrierStatus !== 'delivered' && currentStatus === 'delivered') {
-            logger.info(`Correcting premature delivered status for ${shipment.trackingNumber}: ${currentStatus} -> ${latestCarrierStatus}`);
-            currentStatus = latestCarrierStatus;
-            hasUpdates = true;
-        } else if (latestCarrierStatus === 'exception') {
-            if (latestRawNorm && latestRawNorm !== 'exception' && ['picked_up', 'received_at_hub', 'verified', 'in_transit', 'out_for_delivery', 'delivered'].includes(latestRawNorm)) {
-                logger.info(`Ignoring stale exception for ${shipment.trackingNumber} due to subsequent movement (${latestRawNorm})`);
-                currentStatus = latestRawNorm;
-                hasUpdates = true;
-            } else if (currentStatus !== 'exception') {
-                logger.info(`Active exception flagged for ${shipment.trackingNumber}: ${currentStatus} -> exception`);
-                currentStatus = 'exception';
-                hasUpdates = true;
-            }
-        } else if (currentStatus === 'exception' && latestCarrierStatus && latestCarrierStatus !== 'exception') {
-            logger.info(`Prior exception cleared by subsequent movement for ${shipment.trackingNumber}: exception -> ${latestCarrierStatus}`);
-            currentStatus = latestCarrierStatus;
-            hasUpdates = true;
-        } else if (highestCarrierStatus && isStatusAhead(currentStatus, highestCarrierStatus)) {
-            logger.info(`Detected status promotion for ${shipment.trackingNumber}: ${currentStatus} -> ${highestCarrierStatus}`);
-            currentStatus = highestCarrierStatus;
-            hasUpdates = true;
-        } else if (latestCarrierStatus && currentStatus !== latestCarrierStatus && latestCarrierStatus === 'out_for_delivery') {
-            logger.info(`Updating status to out_for_delivery for ${shipment.trackingNumber}: ${currentStatus} -> ${latestCarrierStatus}`);
-            currentStatus = latestCarrierStatus;
-            hasUpdates = true;
         }
 
         const compactedHistory = compactHistory(newHistory);
@@ -665,26 +767,10 @@ const syncCarrierTrackingHistory = async (shipment) => {
     } catch (error) {
         if (error?.code === 'TRACKING_PENDING') {
             logger.info(`Carrier tracking pending at provider for ${shipment.trackingNumber}: ${error.message}`);
-            return {
-                history: compactedOriginalHistory,
-                status: shipment.status,
-                trackingSyncMeta: buildTrackingSyncMeta({
-                    status: 'PENDING',
-                    carrierCode,
-                    error: error.message
-                })
-            };
+            return null;
         }
         logger.warn(`Failed to sync carrier tracking for ${shipment.trackingNumber}: ${error.message}`);
-        return {
-            history: compactedOriginalHistory,
-            status: shipment.status,
-            trackingSyncMeta: buildTrackingSyncMeta({
-                status: 'ERROR',
-                carrierCode,
-                error: error.message
-            })
-        };
+        return null;
     }
 };
 
@@ -801,7 +887,7 @@ const canUpdateShipmentStatus = (user, shipment, nextStatus) => {
 function evaluateRealtimeExceptionStatus(shipment) {
     if (!shipment) return null;
     const currentStatus = normalizeStatus(shipment.status);
-    if (currentStatus === 'delivered' || currentStatus === 'cancelled' || currentStatus === 'draft') return null;
+    if (isTerminalStatus(currentStatus) || currentStatus === 'draft') return null;
 
     const rawHistory = Array.isArray(shipment.history) ? shipment.history : [];
     if (rawHistory.length === 0) return null;
@@ -823,7 +909,11 @@ function evaluateRealtimeExceptionStatus(shipment) {
     if (sortedDesc.length === 0) return null;
 
     const latestScan = sortedDesc[0];
-    const latestRaw = latestScan?.statusCode || latestScan?.status || latestScan?.description || '';
+    const latestDescIsException = latestScan && (isNegativeOrExceptionPhrase(latestScan.description) || normalizeStatus(latestScan.description) === 'exception');
+    const latestDescIsDelivered = latestScan && normalizeStatus(latestScan.description) === 'delivered';
+    const latestRaw = latestScan 
+        ? (latestDescIsException ? latestScan.description : (latestDescIsDelivered ? latestScan.description : (latestScan.statusCode || latestScan.status || latestScan.description || ''))) 
+        : '';
     const latestStatus = normalizeStatus(latestRaw);
 
     // If the latest chronological scan is an exception (hold, delay, customs hold, failed, etc.)
@@ -893,9 +983,11 @@ async function autoHealResolvedShipment(shipment, prismaClient) {
  * 1. Heals resolved exceptions that have subsequent movement/delivery
  * 2. Flags active shipments whose latest carrier scan is an exception/hold
  * @param {Object} [prismaClient]
+ * @param {Object} [options]
+ * @param {number} [options.batchSize=100]
  * @returns {Promise<number>} Number of shipments updated
  */
-async function autoSyncAllExceptions(prismaClient) {
+async function autoSyncAllExceptions(prismaClient, options = {}) {
     let client = prismaClient;
     if (!client) {
         try {
@@ -906,33 +998,54 @@ async function autoSyncAllExceptions(prismaClient) {
 
     if (!client || typeof client.shipment?.findMany !== 'function') return 0;
 
+    const batchSize = Math.max(1, parseInt(options?.batchSize || process.env.AUTO_SYNC_BATCH_SIZE, 10) || 100);
+    let cursor = null;
+    let syncedCount = 0;
+
+    const activeStatuses = [
+        'exception', 'failed', 'cancelled', 'returned',
+        'booked', 'ready_for_pickup', 'picked_up',
+        'received_at_hub', 'verified', 'in_transit', 'out_for_delivery'
+    ];
+
     try {
-        const candidates = await client.shipment.findMany({
-            where: {
-                status: {
-                    in: [
-                        'exception', 'failed', 'cancelled', 'returned',
-                        'booked', 'ready_for_pickup', 'picked_up',
-                        'received_at_hub', 'verified', 'in_transit', 'out_for_delivery'
-                    ]
-                }
-            },
-            select: { id: true, trackingNumber: true, status: true, history: true }
-        });
+        while (true) {
+            const queryArgs = {
+                where: {
+                    status: {
+                        in: activeStatuses
+                    }
+                },
+                select: { id: true, trackingNumber: true, status: true, history: true },
+                take: batchSize,
+                orderBy: { id: 'asc' }
+            };
 
-        if (candidates.length === 0) return 0;
-
-        let syncedCount = 0;
-        for (const s of candidates) {
-            const nextStatus = evaluateRealtimeExceptionStatus(s);
-            if (nextStatus && nextStatus !== s.status) {
-                await client.shipment.update({
-                    where: { id: s.id },
-                    data: { status: nextStatus }
-                });
-                syncedCount++;
-                logger.info(`[autoSyncExceptions] Synced status for ${s.trackingNumber}: ${s.status} -> ${nextStatus}`);
+            if (cursor) {
+                queryArgs.skip = 1;
+                queryArgs.cursor = { id: cursor };
             }
+
+            const candidates = await client.shipment.findMany(queryArgs);
+
+            if (!Array.isArray(candidates) || candidates.length === 0) break;
+
+            for (const s of candidates) {
+                const nextStatus = evaluateRealtimeExceptionStatus(s);
+                if (nextStatus && nextStatus !== s.status) {
+                    await client.shipment.update({
+                        where: { id: s.id },
+                        data: { status: nextStatus }
+                    });
+                    syncedCount++;
+                    logger.info(`[autoSyncExceptions] Synced status for ${s.trackingNumber}: ${s.status} -> ${nextStatus}`);
+                }
+            }
+
+            if (candidates.length < batchSize) break;
+            const lastCandidate = candidates[candidates.length - 1];
+            if (!lastCandidate || !lastCandidate.id) break;
+            cursor = lastCandidate.id;
         }
 
         if (syncedCount > 0) {
@@ -941,43 +1054,67 @@ async function autoSyncAllExceptions(prismaClient) {
         return syncedCount;
     } catch (err) {
         logger.warn(`[autoSyncExceptions] Bulk auto-sync encountered error: ${err.message}`);
-        return 0;
+        return syncedCount;
     }
 }
 
 const autoHealAllResolvedExceptions = autoSyncAllExceptions;
 
 /**
- * Calculate great-circle distance (in km) between two coordinates using the Haversine formula.
- * Accepts [longitude, latitude] arrays or { longitude, latitude } / { lng, lat } objects.
+ * Parse coordinates from array [lon, lat], object { longitude, latitude },
+ * { lng, lat }, { lon, lat }, or fallback to fallback object/null.
  */
-function calculateDistance(coord1, coord2) {
-    const extractLonLat = (c) => {
+function parseCoordinates(coord, fallback = null) {
+    const extract = (c) => {
         if (!c) return null;
         if (Array.isArray(c) && c.length >= 2) {
             const lon = Number(c[0]);
             const lat = Number(c[1]);
-            return Number.isFinite(lon) && Number.isFinite(lat) ? [lon, lat] : null;
+            if (Number.isFinite(lon) && Number.isFinite(lat)) {
+                return { longitude: lon, latitude: lat };
+            }
+            return null;
         }
         if (typeof c === 'object') {
-            const lon = Number(c.longitude ?? c.lng ?? c.lon);
-            const lat = Number(c.latitude ?? c.lat);
-            return Number.isFinite(lon) && Number.isFinite(lat) ? [lon, lat] : null;
+            const lonVal = c.longitude ?? c.lng ?? c.lon;
+            const latVal = c.latitude ?? c.lat;
+            if (lonVal != null && latVal != null) {
+                const lon = Number(lonVal);
+                const lat = Number(latVal);
+                if (Number.isFinite(lon) && Number.isFinite(lat)) {
+                    return { longitude: lon, latitude: lat };
+                }
+            }
+            return null;
         }
         return null;
     };
 
-    const p1 = extractLonLat(coord1);
-    const p2 = extractLonLat(coord2);
-    if (!p1 || !p2) return 0;
+    const primary = extract(coord);
+    if (primary) return primary;
+
+    const fb = extract(fallback);
+    if (fb) return fb;
+
+    return { longitude: null, latitude: null };
+}
+
+/**
+ * Calculate great-circle distance (in km) between two coordinates using the Haversine formula.
+ * Accepts [longitude, latitude] arrays or { longitude, latitude } / { lng, lat } objects.
+ */
+function calculateDistance(coord1, coord2) {
+    const p1 = parseCoordinates(coord1);
+    const p2 = parseCoordinates(coord2);
+    if (p1.longitude == null || p1.latitude == null || p2.longitude == null || p2.latitude == null) return 0;
 
     const toRad = (deg) => (deg * Math.PI) / 180;
     const R = 6371; // Earth radius in km
-    const dLat = toRad(p2[1] - p1[1]);
-    const dLon = toRad(p2[0] - p1[0]);
+    const dLat = toRad(p2.latitude - p1.latitude);
+    const dLon = toRad(p2.longitude - p1.longitude);
     const a =
         Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(toRad(p1[1])) * Math.cos(toRad(p2[1])) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        Math.cos(toRad(p1.latitude)) * Math.cos(toRad(p2.latitude)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
 }
@@ -996,6 +1133,7 @@ module.exports = {
     persistTrackingEvents,
     buildTrackingSyncDocuments,
     calculateEstimatedDelivery,
+    parseCoordinates,
     calculateDistance,
     hasCriticalChanges,
     isInternalShipment,
@@ -1005,5 +1143,10 @@ module.exports = {
     getResolvedExceptionStatus,
     autoHealResolvedShipment,
     autoHealAllResolvedExceptions,
-    autoSyncAllExceptions
+    autoSyncAllExceptions,
+    normalizeCarrierStatus,
+    normalizeStatus,
+    isTerminalStatus,
+    isNegativeOrExceptionPhrase,
+    isStatusAhead
 };

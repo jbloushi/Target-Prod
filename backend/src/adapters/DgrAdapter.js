@@ -10,6 +10,7 @@ const path = require('path');
 const CarrierAdapter = require('./CarrierAdapter');
 const { normalizeShipment } = require('../utils/shipmentNormalizer');
 const logger = require('../utils/logger');
+const dhlWebScraper = require('../services/dhlWebScraper.service');
 const {
     dhlApiKey,
     dhlApiSecret,
@@ -976,7 +977,8 @@ class DgrAdapter extends CarrierAdapter {
             const activeConfig = await this._getResolvedConfig(shipmentData);
             const res = await axios.get(`${activeConfig.baseUrl}/shipments/${trackingNumber}/tracking`, {
                 headers: this.getAuthHeader(activeConfig),
-                params: { trackingView: 'all-checkpoints' }
+                params: { trackingView: 'all-checkpoints' },
+                timeout: 10000
             });
 
             const shipment = res.data.shipments?.[0];
@@ -1050,6 +1052,29 @@ class DgrAdapter extends CarrierAdapter {
                 events: dedupedEvents
             };
         } catch (error) {
+            // Attempt fallback to DHL web scraper when official API fails (401, 404, 429, timeout, network error)
+            try {
+                const scraper = this.webScraper || dhlWebScraper;
+                if (scraper && typeof scraper.scrapeDhl === 'function') {
+                    const fallbackResult = await scraper.scrapeDhl(trackingNumber);
+                    if (fallbackResult && Array.isArray(fallbackResult.events) && fallbackResult.events.length > 0) {
+                        logger.info(`[DgrAdapter.getTracking] Recovered tracking for ${trackingNumber} via DHL web scraper fallback`);
+                        return {
+                            status: fallbackResult.status || 'UNKNOWN',
+                            description: fallbackResult.description || 'Web tracking scan',
+                            carrierCode: 'DGR',
+                            trackingNumber,
+                            estimatedDelivery: fallbackResult.estimatedDelivery || null,
+                            carrierWeight: fallbackResult.carrierWeight,
+                            carrierPieces: fallbackResult.carrierPieces,
+                            events: fallbackResult.events,
+                            source: 'scraper'
+                        };
+                    }
+                }
+            } catch (scraperErr) {
+                logger.debug?.(`[DgrAdapter.getTracking] Scraper fallback failed for ${trackingNumber}: ${scraperErr.message}`);
+            }
             throw new Error(`DHL Tracking Error: ${error.response?.data?.detail || error.message}`);
         }
     }

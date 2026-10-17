@@ -208,6 +208,7 @@ const apiRoutes = require('./routes/api.routes');
 const financeRoutes = require('./routes/finance.routes');
 const organizationRoutes = require('./routes/organization.routes');
 const integrationRoutes = require('./routes/integration.routes');
+const integrationController = require('./controllers/integration.controller');
 const sallaRoutes = require('./routes/salla.routes');
 
 const shipmentPublicRoutes = require('./routes/shipment-public.routes');
@@ -220,6 +221,7 @@ const releaseInfo = require('./utils/releaseInfo');
 // Standard API Route Mounting
 app.use('/api', whatsappRoutes);
 app.post('/api/public/checkout/ottu/webhook', shipmentPublicController.handleOttuWebhook);
+app.post('/api/webhooks/trackingmore', integrationController.handleTrackingMoreWebhook);
 app.use('/api/public/shipments', shipmentPublicRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/settings', settingsRoutes);
@@ -237,6 +239,7 @@ app.use('/api/shipments', shipmentRoutes);
 
 // Direct root aliases for proxy resilience (handles reverse proxies stripping /api)
 app.post('/public/checkout/ottu/webhook', shipmentPublicController.handleOttuWebhook);
+app.post('/webhooks/trackingmore', integrationController.handleTrackingMoreWebhook);
 app.use('/public/shipments', shipmentPublicRoutes);
 app.use('/auth', authRoutes);
 app.use('/settings', settingsRoutes);

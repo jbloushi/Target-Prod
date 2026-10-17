@@ -3,8 +3,8 @@ const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
 const config = require('../config/config');
 const chatwootNotificationService = require('../services/chatwootNotificationService');
-const { compactHistory, persistTrackingEvents } = require('./shipment.helpers');
-const { normalizeStatus, isStatusAhead } = require('../constants/statusConstants');
+const { compactHistory, persistTrackingEvents, buildHistoryKey } = require('./shipment.helpers');
+const { normalizeStatus, isStatusAhead, isTerminalStatus, isNegativeOrExceptionPhrase } = require('../constants/statusConstants');
 
 // Chatwoot message statuses that map to our log statuses
 const CHATWOOT_STATUS_MAP = {
@@ -584,29 +584,72 @@ exports.syncPhenixShipments = async (req, res) => {
 };
 
 /**
+ * Verifies TrackingMore webhook request authenticity.
+ * Supports:
+ * - HMAC-SHA256 via req.rawBody (or JSON.stringify fallback)
+ * - Header trackingmore-signature (official TrackingMore header)
+ * - Header x-trackingmore-signature (custom header)
+ * - Header x-webhook-secret (direct secret token)
+ * - Query parameter ?secret=... (direct secret token)
+ * - Constant-time comparison via crypto.timingSafeEqual
+ */
+function verifyTrackingMoreSignature(req, secret) {
+    if (!secret) return true;
+
+    const provided = req.headers['trackingmore-signature'] ||
+                     req.headers['x-trackingmore-signature'] ||
+                     req.headers['x-webhook-secret'] ||
+                     req.query?.secret;
+
+    if (!provided) return false;
+
+    const cleanProvided = String(provided).trim();
+
+    // 1. Direct Secret Token Match
+    const secretBuf = Buffer.from(String(secret).trim());
+    const providedBuf = Buffer.from(cleanProvided);
+    if (providedBuf.length === secretBuf.length && crypto.timingSafeEqual(providedBuf, secretBuf)) {
+        return true;
+    }
+
+    // 2. HMAC-SHA256 Signature Match
+    const rawPayload = req.rawBody
+        ? (Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : String(req.rawBody))
+        : JSON.stringify(req.body || {});
+
+    const hmacHex = crypto.createHmac('sha256', secret).update(rawPayload).digest('hex');
+    const providedLowerBuf = Buffer.from(cleanProvided.toLowerCase());
+    const hmacLowerBuf = Buffer.from(hmacHex.toLowerCase());
+
+    if (providedLowerBuf.length === hmacLowerBuf.length && crypto.timingSafeEqual(providedLowerBuf, hmacLowerBuf)) {
+        return true;
+    }
+
+    // Check base64 format if provided
+    const hmacBase64 = crypto.createHmac('sha256', secret).update(rawPayload).digest('base64');
+    const base64Buf = Buffer.from(hmacBase64);
+    if (providedBuf.length === base64Buf.length && crypto.timingSafeEqual(providedBuf, base64Buf)) {
+        return true;
+    }
+
+    return false;
+}
+
+/**
  * TrackingMore Universal Webhook Receiver (V4)
- * POST /api/integrations/trackingmore/webhook
+ * POST /api/webhooks/trackingmore (alias: /api/integrations/trackingmore/webhook)
  */
 exports.handleTrackingMoreWebhook = async (req, res) => {
     try {
-        const webhookSecret = process.env.TRACKINGMORE_WEBHOOK_SECRET;
+        const webhookSecret = process.env.TRACKINGMORE_WEBHOOK_SECRET || config.trackingMoreWebhookSecret;
         if (webhookSecret) {
-            const providedSig = req.headers['x-trackingmore-signature'] || req.headers['x-webhook-secret'] || req.query?.secret;
-            if (!providedSig) {
-                logger.warn('[TrackingMore-Webhook] Rejected request: missing webhook signature/secret');
+            if (!verifyTrackingMoreSignature(req, webhookSecret)) {
+                logger.warn('[TrackingMore-Webhook] Rejected request: invalid or missing webhook signature');
                 return res.status(401).json({ success: false, error: 'Unauthorized webhook request' });
             }
-            const crypto = require('crypto');
-            const sigBuf = Buffer.from(String(providedSig));
-            const secretBuf = Buffer.from(String(webhookSecret));
-            const hmacHex = crypto.createHmac('sha256', webhookSecret).update(JSON.stringify(req.body || {})).digest('hex');
-            const hmacBuf = Buffer.from(hmacHex);
-            const isDirectMatch = sigBuf.length === secretBuf.length && crypto.timingSafeEqual(sigBuf, secretBuf);
-            const isHmacMatch = sigBuf.length === hmacBuf.length && crypto.timingSafeEqual(sigBuf, hmacBuf);
-            if (!isDirectMatch && !isHmacMatch) {
-                logger.warn('[TrackingMore-Webhook] Rejected request: invalid webhook signature');
-                return res.status(401).json({ success: false, error: 'Invalid webhook signature' });
-            }
+        } else if (process.env.ENFORCE_WEBHOOK_SECRETS === 'true') {
+            logger.warn('[TrackingMore-Webhook] Webhook secret not configured on server - failing closed');
+            return res.status(401).json({ success: false, error: 'Webhook secret is not configured' });
         }
 
         const body = req.body || {};
@@ -650,45 +693,125 @@ exports.handleTrackingMoreWebhook = async (req, res) => {
 
             const parsedEvents = rawEvents.map((evt) => {
                 const ts = evt.checkpoint_date || evt.Date || evt.checkpoint_time || new Date().toISOString();
-                const loc = evt.location || [evt.city, evt.state, evt.country_iso2 || evt.country_iso].filter(Boolean).join(', ') || 'FedEx Facility';
+                const loc = evt.location || [evt.city, evt.state, evt.country_iso2 || evt.country_iso].filter(Boolean).join(', ') || 'Carrier Facility';
                 const desc = evt.tracking_detail || evt.details || evt.checkpoint_delivery_substatus || evt.checkpoint_delivery_status || evt.checkpoint_status || evt.StatusDescription || 'Carrier Checkpoint';
                 const stage = evt.checkpoint_delivery_status || evt.checkpoint_status || evt.status || item.delivery_status;
 
                 let mappedStatus = 'in_transit';
-                const stageStr = String(stage || desc).toLowerCase();
-                if (stageStr.includes('deliver') || stageStr === 'delivered') mappedStatus = 'delivered';
-                else if (stageStr.includes('out_for_delivery') || stageStr.includes('outfordelivery')) mappedStatus = 'out_for_delivery';
-                else if (stageStr.includes('pickup') || stageStr.includes('picked_up') || stageStr.includes('collected')) mappedStatus = 'picked_up';
-                else if (stageStr.includes('exception') || stageStr.includes('alert') || stageStr.includes('undelivered')) mappedStatus = 'exception';
+                const stageStr = String(stage || '').toLowerCase().trim();
+                const descStr = String(desc || '').toLowerCase().trim();
+
+                // 1. Negative & Exception phrases evaluated BEFORE positive milestones (No false-positive delivered)
+                if (
+                    isNegativeOrExceptionPhrase(descStr) ||
+                    isNegativeOrExceptionPhrase(stageStr) ||
+                    stageStr === 'undelivered' ||
+                    stageStr === 'exception' ||
+                    descStr.includes('undelivered') ||
+                    descStr.includes('attempt failed') ||
+                    descStr.includes('premises closed')
+                ) {
+                    mappedStatus = 'exception';
+                } else {
+                    mappedStatus = normalizeStatus(stage || desc || 'in_transit');
+                }
+
+                const eventDate = new Date(ts);
+                const validDate = !Number.isNaN(eventDate.getTime()) ? eventDate : new Date();
+                const normalizedLocation = typeof loc === 'string' ? loc : (loc?.formattedAddress || loc?.city || 'Carrier Facility');
+
+                // Build unique SHA-256 eventKey matching persistTrackingEvents contract
+                const keyPayload = {
+                    provider: 'trackingmore',
+                    status: mappedStatus,
+                    description: desc,
+                    timestamp: validDate.toISOString(),
+                    location: normalizedLocation
+                };
+                const eventKey = crypto.createHash('sha256').update(JSON.stringify(keyPayload)).digest('hex');
 
                 return {
                     status: mappedStatus,
+                    rawStatus: stage || null,
                     description: desc,
                     source: 'carrier',
-                    timestamp: new Date(ts),
+                    timestamp: validDate,
                     location: {
-                        formattedAddress: typeof loc === 'string' ? loc : 'Carrier Facility',
+                        formattedAddress: normalizedLocation,
                         city: evt.city || undefined
-                    }
+                    },
+                    eventKey,
+                    rawPayload: evt
                 };
             });
 
-            // Deduplicate and sort chronologically
-            parsedEvents.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-            await persistTrackingEvents(shipment, { events: parsedEvents }, parsedEvents, 'trackingmore');
+            // Query existing eventKeys from ShipmentTrackingEvent
+            let existingDbEventKeys = new Set();
+            if (prisma.shipmentTrackingEvent && typeof prisma.shipmentTrackingEvent.findMany === 'function') {
+                try {
+                    const dbEvents = await prisma.shipmentTrackingEvent.findMany({
+                        where: { shipmentId: shipment.id },
+                        select: { eventKey: true }
+                    });
+                    existingDbEventKeys = new Set(dbEvents.map(e => e.eventKey));
+                } catch (dbErr) {
+                    logger.debug(`[TrackingMore-Webhook] Could not query shipmentTrackingEvent: ${dbErr.message}`);
+                }
+            }
 
-            // Merge with existing history
+            // Query existing history keys
             const existingHistory = Array.isArray(shipment.history) ? shipment.history : [];
-            const mergedHistory = compactHistory([...existingHistory, ...parsedEvents]);
+            const existingHistoryKeys = new Set(existingHistory.map(e => buildHistoryKey(e)));
 
-            // Determine latest status
+            // Identify truly new events
+            const newEvents = parsedEvents.filter(evt => {
+                const isKnownInDb = existingDbEventKeys.has(evt.eventKey);
+                const isKnownInHistory = existingHistoryKeys.has(buildHistoryKey(evt));
+                return !isKnownInDb && !isKnownInHistory;
+            });
+
+            // Sort parsed events chronologically
+            parsedEvents.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
             const latestEvent = parsedEvents[parsedEvents.length - 1];
             const candidateStatus = latestEvent?.status || shipment.status;
-            const newStatus = candidateStatus === 'exception'
-                ? (shipment.status === 'delivered' ? shipment.status : 'exception')
-                : (isStatusAhead(shipment.status, candidateStatus) || candidateStatus === 'delivered'
-                    ? candidateStatus
-                    : shipment.status);
+
+            // Determine status with terminal state protection
+            let newStatus = shipment.status;
+            if (isTerminalStatus(shipment.status)) {
+                // Terminal statuses (delivered, cancelled, returned) cannot be regressed
+                newStatus = shipment.status;
+            } else if (candidateStatus === 'exception') {
+                newStatus = 'exception';
+            } else if (candidateStatus === 'delivered') {
+                newStatus = 'delivered';
+            } else if (shipment.status === 'exception') {
+                if (['picked_up', 'received_at_hub', 'verified', 'in_transit', 'out_for_delivery'].includes(candidateStatus)) {
+                    newStatus = candidateStatus;
+                }
+            } else if (isStatusAhead(shipment.status, candidateStatus)) {
+                newStatus = candidateStatus;
+            }
+
+            // Check if anything actually changed (idempotency barrier)
+            const statusChanged = newStatus !== shipment.status;
+            const hasNewEvents = newEvents.length > 0;
+            const carrierWeight = parseFloat(item.weight_kg || item.weight || 0);
+            const carrierPieces = parseInt(item.pieces || 0, 10);
+            const weightChanged = (carrierWeight > 0 && carrierWeight !== shipment.pricingSnapshot?.carrierWeight) ||
+                                  (carrierPieces > 0 && carrierPieces !== shipment.pricingSnapshot?.carrierPieces);
+
+            if (!hasNewEvents && !statusChanged && !weightChanged) {
+                logger.info(`[TrackingMore-Webhook] Idempotent delivery: no new checkpoints or status changes for #${shipment.trackingNumber}`);
+                continue;
+            }
+
+            // Persist new checkpoints into relational ShipmentTrackingEvent
+            if (hasNewEvents) {
+                await persistTrackingEvents(shipment, { events: parsedEvents }, parsedEvents, 'trackingmore');
+            }
+
+            // Merge with existing history
+            const mergedHistory = compactHistory([...existingHistory, ...parsedEvents]);
 
             const updateData = {
                 history: mergedHistory,
@@ -700,14 +823,12 @@ exports.handleTrackingMoreWebhook = async (req, res) => {
                         status: 'SUCCESS',
                         provider: 'trackingmore',
                         carrierCode: shipment.carrierCode || 'FEDEX',
-                        eventCount: parsedEvents.length,
+                        eventCount: mergedHistory.length,
                         error: null
                     }
                 }
             };
 
-            const carrierWeight = parseFloat(item.weight_kg || item.weight || 0);
-            const carrierPieces = parseInt(item.pieces || 0, 10);
             if (carrierWeight > 0 || carrierPieces > 0) {
                 updateData.pricingSnapshot = {
                     ...(shipment.pricingSnapshot || {}),
@@ -721,9 +842,10 @@ exports.handleTrackingMoreWebhook = async (req, res) => {
                 data: updateData
             });
 
-            logger.info(`[TrackingMore-Webhook] Successfully synced #${shipment.trackingNumber}: status=${newStatus}, events=${mergedHistory.length}`);
+            logger.info(`[TrackingMore-Webhook] Successfully synced #${shipment.trackingNumber}: status=${newStatus}, newEvents=${newEvents.length}, totalHistory=${mergedHistory.length}`);
 
-            if (newStatus !== shipment.status) {
+            // Trigger notification ONLY if status changed
+            if (statusChanged) {
                 const eventType = chatwootNotificationService.mapStatusToNotificationEvent(newStatus);
                 if (eventType) {
                     chatwootNotificationService.triggerShipmentNotification(eventType, updatedShipment);

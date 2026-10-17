@@ -6,6 +6,7 @@ const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
 const chatwootNotificationService = require('./chatwootNotificationService');
 const { postJournalEntry, postDriverCodCollectionEntry } = require('./generalLedger.service');
+const { compactHistory } = require('../controllers/shipment.helpers');
 
 // Standard Kuwait Governorate Zone Map
 const KUWAIT_GOVERNORATES = {
@@ -128,7 +129,7 @@ async function createDeliveryRun({ driverId, vehicleId, zone, shipmentIds = [], 
     let seq = 1;
     for (const s of shipments) {
         const history = Array.isArray(s.history) ? s.history : [];
-        const newHistory = [
+        const newHistory = compactHistory([
             ...history,
             {
                 location: s.currentLocation || 'Target Kuwait Hub',
@@ -137,7 +138,7 @@ async function createDeliveryRun({ driverId, vehicleId, zone, shipmentIds = [], 
                 source: 'fleet_dispatch',
                 timestamp: new Date()
             }
-        ];
+        ]);
 
         await prisma.shipment.update({
             where: { id: s.id },
@@ -290,7 +291,7 @@ async function completeDeliveryStop({
             podLocation: location || null,
             podTimestamp: new Date(),
             codStatus: codAmt > 0 ? 'COLLECTED' : shipment.codStatus,
-            history: [...history, newHistoryEntry]
+            history: compactHistory([...history, newHistoryEntry])
         }
     });
 
@@ -385,7 +386,7 @@ async function recordDeliveryException({
             failureReason: failureReason || 'FAILED_ATTEMPT',
             failureNotes: failureNotes || null,
             estimatedDelivery: rescheduleDate ? new Date(rescheduleDate) : shipment.estimatedDelivery,
-            history: [...history, newHistoryEntry]
+            history: compactHistory([...history, newHistoryEntry])
         }
     });
 
