@@ -173,16 +173,18 @@ class CarrierReconciliationService {
                 }
 
                 const delta = parseFloat(adj.deltaAmount);
+                const absDelta = Math.abs(delta);
                 const currency = adj.currency || 'KWD';
                 const description = `Carrier Invoice Reconciliation Adjustment: ${adj.reason || 'Cost discrepancy'}`;
                 const entryType = delta > 0 ? 'CREDIT' : 'DEBIT';
 
+                // Post to platform-level CARRIER_PAYABLE (organizationId = null so client merchant balance is never mutated)
                 const entry = await financeLedgerService.createLedgerEntry(
-                    adj.organizationId || null,
+                    null,
                     {
                         sourceRepo: 'Shipment',
                         sourceId: adj.shipmentId,
-                        amount: Math.abs(delta),
+                        amount: absDelta,
                         currency,
                         entryType,
                         category: 'CARRIER_PAYABLE',
@@ -191,11 +193,65 @@ class CarrierReconciliationService {
                         createdBy: userId,
                         metadata: {
                             adjustmentDelta: delta,
-                            reason: adj.reason
+                            reason: adj.reason,
+                            customerOrganizationId: adj.organizationId || null,
+                            accountType: 'LIABILITY_AP'
                         }
                     },
                     tx
                 );
+
+                // Keep shipment.costPrice synchronized with actual carrier billed cost
+                try {
+                    const existingShipment = await tx.shipment.findUnique({
+                        where: { id: adj.shipmentId },
+                        select: { costPrice: true, pricingSnapshot: true, trackingNumber: true }
+                    });
+                    if (existingShipment) {
+                        const baseCost = Number(existingShipment.costPrice ?? existingShipment.pricingSnapshot?.carrierRate ?? 0);
+                        const updatedCost = Math.max(0, Number((baseCost + delta).toFixed(3)));
+                        await tx.shipment.update({
+                            where: { id: adj.shipmentId },
+                            data: { costPrice: updatedCost }
+                        });
+                    }
+                } catch (costErr) {
+                    logger.warn(`[CarrierReconciliation] Could not update shipment costPrice for ${adj.shipmentId}: ${costErr.message}`);
+                }
+
+                // Post balanced Double-Entry General Ledger variance (Account 5010 COGS vs Account 2020 Carrier AP)
+                try {
+                    const generalLedgerService = require('./generalLedger.service');
+                    if (typeof generalLedgerService.postJournalEntry === 'function') {
+                        await generalLedgerService.postJournalEntry({
+                            entryNumber: `JE-RECON-${Date.now().toString().slice(-6)}-${posted.length + 1}`,
+                            date: new Date(),
+                            reference: adj.shipmentId,
+                            sourceType: 'CARRIER_RECONCILIATION',
+                            sourceId: adj.shipmentId,
+                            notes: description,
+                            createdById: userId,
+                            lines: [
+                                {
+                                    accountCode: '5010', // Carrier Cost of Goods Sold (COGS)
+                                    debit: delta > 0 ? absDelta : 0,
+                                    credit: delta < 0 ? absDelta : 0,
+                                    currency,
+                                    memo: description
+                                },
+                                {
+                                    accountCode: '2020', // Carrier Accounts Payable
+                                    debit: delta < 0 ? absDelta : 0,
+                                    credit: delta > 0 ? absDelta : 0,
+                                    currency,
+                                    memo: description
+                                }
+                            ]
+                        }, tx);
+                    }
+                } catch (glErr) {
+                    logger.warn(`[CarrierReconciliation] GL variance entry skipped for ${adj.shipmentId}: ${glErr.message}`);
+                }
 
                 posted.push(entry);
             }

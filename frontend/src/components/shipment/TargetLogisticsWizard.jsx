@@ -855,16 +855,94 @@ export const TargetLogisticsWizard = ({
     return (service.selectedAddons || []).reduce((sum, a) => sum + (parseFloat(a.rate) || 0), 0);
   }, [service.selectedAddons]);
 
+  // ── Live Quote & Rate Card Fetching (P5-02) ──
+  useEffect(() => {
+    let isCancelled = false;
+    if (step !== 4 && step !== 6) return undefined;
+    if (!receiver.countryCode && !receiver.country) return undefined;
+
+    const fetchLiveRateQuote = async () => {
+      try {
+        setLoadingQuotes(true);
+        const packagesPayload = (pkg.packagesList || []).map(p => ({
+          weight: { value: Number(p.weight) || 1.0, unit: 'kg' },
+          dimensions: {
+            length: Number(p.length) || 20,
+            width: Number(p.width) || 15,
+            height: Number(p.height) || 10,
+            unit: 'cm'
+          }
+        }));
+
+        const quoteRes = await shipmentService.getQuotes({
+          userId: selectedClientId || undefined,
+          carrierCode: service.carrierCode || 'DGR',
+          serviceCode: service.serviceCode || 'P',
+          currency: service.currency || 'KWD',
+          weight: totalWeight > 0 ? totalWeight : 1.0,
+          packages: packagesPayload,
+          sender: {
+            city: sender.city || 'Kuwait City',
+            countryCode: sender.countryCode || 'KW',
+            postalCode: sender.zip || '13001'
+          },
+          receiver: {
+            city: receiver.city || 'Dubai',
+            countryCode: receiver.countryCode || 'AE',
+            country: receiver.country || 'United Arab Emirates',
+            postalCode: receiver.zip || '00000'
+          }
+        });
+
+        if (isCancelled) return;
+        const list = Array.isArray(quoteRes?.data) ? quoteRes.data : (Array.isArray(quoteRes) ? quoteRes : []);
+        if (list.length > 0) {
+          setQuoteRates(list);
+          const matchedQuote = list.find(q => String(q.carrierCode || 'DGR').toUpperCase() === String(service.carrierCode || 'DGR').toUpperCase()) || list[0];
+          const liveTotal = Number(matchedQuote?.totalPrice ?? matchedQuote?.estimatedShipmentCost ?? 0);
+          if (liveTotal > 0) {
+            setService(prev => ({
+              ...prev,
+              quotedPrice: liveTotal,
+              isAllInQuote: Boolean(matchedQuote?.rateCardResult || matchedQuote?.pricingPolicySource === 'contract_rate_card' || matchedQuote?.totalPrice)
+            }));
+          }
+        }
+      } catch (err) {
+        console.debug('Live quote lookup fallback note:', err?.message);
+      } finally {
+        if (!isCancelled) setLoadingQuotes(false);
+      }
+    };
+
+    fetchLiveRateQuote();
+    return () => { isCancelled = true; };
+  }, [step, selectedClientId, service.carrierCode, service.serviceCode, receiver.countryCode, receiver.country, receiver.city, totalWeight, pkg.packagesList]);
+
   const baseRate = useMemo(() => {
+    const matchedLive = quoteRates.find(q => String(q.carrierCode || 'DGR').toUpperCase() === String(service.carrierCode || 'DGR').toUpperCase());
+    const liveAmount = Number(matchedLive?.totalPrice ?? matchedLive?.estimatedShipmentCost ?? 0);
+    if (liveAmount > 0) return Number(liveAmount.toFixed(3));
     if (service.carrierCode === 'INTERNAL') return 4.5;
     if (service.carrierCode === 'FEDEX') return 21.75;
-    return 18.5; // DHL default
-  }, [service.carrierCode]);
+    if (service.carrierCode === 'ARAMEX') return 14.25;
+    return 18.5; // Fallback default when live quote is unavailable
+  }, [service.carrierCode, quoteRates]);
+
+  const hasLiveAllInQuote = useMemo(() => {
+    const matchedLive = quoteRates.find(q => String(q.carrierCode || 'DGR').toUpperCase() === String(service.carrierCode || 'DGR').toUpperCase());
+    return Boolean(matchedLive && Number(matchedLive.totalPrice ?? matchedLive.estimatedShipmentCost ?? 0) > 0);
+  }, [service.carrierCode, quoteRates]);
+
+  const fuelSurchargeAmount = useMemo(() => {
+    // Live quotes and contract rate cards (e.g. 5535_AMANI) already return the final selling price
+    if (hasLiveAllInQuote || service.carrierCode === 'INTERNAL') return 0;
+    return Number((baseRate * 0.095).toFixed(3));
+  }, [baseRate, hasLiveAllInQuote, service.carrierCode]);
 
   const finalCost = useMemo(() => {
-    const fuelSurcharge = Number((baseRate * 0.095).toFixed(3));
-    return Number((baseRate + addonsTotal + fuelSurcharge).toFixed(3));
-  }, [baseRate, addonsTotal]);
+    return Number((baseRate + addonsTotal + fuelSurchargeAmount).toFixed(3));
+  }, [baseRate, addonsTotal, fuelSurchargeAmount]);
 
   // ── Change-diff Tracking for Edit Mode ──
   const changedFieldsList = useMemo(() => {
@@ -2941,12 +3019,15 @@ export const TargetLogisticsWizard = ({
                     { id: 'INTERNAL', name: 'Target Dedicated Fleet', desc: 'Domestic same-day courier dispatch · Kuwait nationwide delivery network', price: '4.500', time: 'Same day delivery', icon: 'electric_rickshaw', color: '#059669', bg: '#ecfdf5' }
                   ].map(c => {
                     const isSelected = service.carrierCode === c.id;
+                    const matchedLive = quoteRates.find(q => String(q.carrierCode || 'DGR').toUpperCase() === c.id);
+                    const liveAmt = Number(matchedLive?.totalPrice ?? matchedLive?.estimatedShipmentCost ?? 0);
+                    const displayPrice = liveAmt > 0 ? liveAmt.toFixed(3) : c.price;
                     return (
                       <div
                         key={c.id}
                         onClick={() => {
                           if (isCarrierLocked) return;
-                          setService({ ...service, carrierCode: c.id, carrierId: c.id, serviceName: c.name, quotedPrice: parseFloat(c.price) });
+                          setService({ ...service, carrierCode: c.id, carrierId: c.id, serviceName: c.name, quotedPrice: parseFloat(displayPrice) });
                           if (errors.service_carrierCode) setErrors(prev => { const n = { ...prev }; delete n.service_carrierCode; return n; });
                         }}
                         className={`p-3.5 rounded-xl border-[1.5px] cursor-pointer transition-all flex items-center justify-between gap-4 ${
@@ -2983,7 +3064,9 @@ export const TargetLogisticsWizard = ({
                             <span>{c.time}</span>
                           </div>
                           <div className="text-end">
-                            <div className="text-xs sm:text-sm font-black text-[#0050d4]">KWD {c.price}</div>
+                            <div className="text-xs sm:text-sm font-black text-[#0050d4]">
+                              {loadingQuotes && isSelected ? '...' : `KWD ${displayPrice}`}
+                            </div>
                             <div className="text-[10px] text-[#8c9196] sm:hidden">{c.time}</div>
                           </div>
                         </div>
@@ -3458,7 +3541,9 @@ export const TargetLogisticsWizard = ({
                     )}
                     <div className="flex justify-between text-[#575c60]">
                       <span>Fuel Surcharge</span>
-                      <span className="font-mono">KWD {(baseRate * 0.095).toFixed(3)}</span>
+                      <span className="font-mono">
+                        {fuelSurchargeAmount > 0 ? `KWD ${fuelSurchargeAmount.toFixed(3)}` : (isRTL ? 'مشمول في السعر' : 'Included')}
+                      </span>
                     </div>
                     <div className="flex justify-between pt-2 border-t-2 border-[#c7d7fa] text-sm font-black text-[#1a1f23]">
                       <span>{isRTL ? 'الإجمالي النهائي' : 'Total Consignment Cost'}</span>

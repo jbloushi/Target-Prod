@@ -99,7 +99,7 @@ const signedAmount = (entryType, amount) => normalizeAmount(amount).times(entryT
 const getOrganizationBalance = async (organizationId, currency = null, dateRange = null) => {
     if (organizationId === 'all') {
         const balanceCurrency = normalizeCurrencyCode(currency || BASE_CURRENCY);
-        const where = { currency: balanceCurrency };
+        const where = { currency: balanceCurrency, category: { not: 'CARRIER_PAYABLE' } };
         if (dateRange) where.createdAt = dateRange;
 
         const totals = await prisma.organizationLedger.groupBy({
@@ -124,7 +124,11 @@ const getOrganizationBalance = async (organizationId, currency = null, dateRange
     if (!organizationId && organizationId !== null) return 0;
     const balanceCurrency = normalizeCurrencyCode(currency || await getOrganizationCurrency(organizationId));
 
-    const where = { organizationId: organizationId || null, currency: balanceCurrency };
+    const where = {
+        organizationId: organizationId || null,
+        currency: balanceCurrency,
+        category: { not: 'CARRIER_PAYABLE' }
+    };
     if (dateRange) where.createdAt = dateRange;
 
     const totals = await prisma.organizationLedger.groupBy({
@@ -151,7 +155,9 @@ const getOrganizationBalance = async (organizationId, currency = null, dateRange
 };
 
 const getOrganizationBalancesByCurrency = async (organizationId, dateRange = null) => {
-    const where = organizationId === 'all' ? {} : { organizationId: organizationId || null };
+    const where = organizationId === 'all'
+        ? { category: { not: 'CARRIER_PAYABLE' } }
+        : { organizationId: organizationId || null, category: { not: 'CARRIER_PAYABLE' } };
     if (dateRange) where.createdAt = dateRange;
 
     const totals = await prisma.organizationLedger.groupBy({
@@ -191,16 +197,27 @@ const createLedgerEntry = async (organizationId, entry, externalTx = null) => {
     const transactionAmount = signedAmount(entry.entryType, amount);
 
     const execute = async (tx) => {
+        // Acquire exclusive row-level lock on parent Organization to serialize concurrent running balance updates (DB-03)
+        if (organizationId && typeof tx.$queryRawUnsafe === 'function') {
+            try {
+                await tx.$queryRawUnsafe('SELECT id FROM Organization WHERE id = ? FOR UPDATE', organizationId);
+            } catch (_) {
+                // Fallback safely if running against a mock client or SQLite/in-memory test stub
+            }
+        }
+
+        const isCarrierPayable = entry.category === 'CARRIER_PAYABLE';
         const lastEntry = await tx.organizationLedger.findFirst({
             where: {
                 organizationId: organizationId || null,
-                currency: ledgerCurrency
+                currency: ledgerCurrency,
+                category: isCarrierPayable ? 'CARRIER_PAYABLE' : { not: 'CARRIER_PAYABLE' }
             },
             orderBy: { createdAt: 'desc' }
         });
         const balanceAfter = normalizeAmount(lastEntry?.balanceAfter || 0).plus(transactionAmount);
 
-        if (organizationId && entry.category !== 'CARRIER_PAYABLE') {
+        if (organizationId && !isCarrierPayable) {
             const org = await tx.organization.findUnique({
                 where: { id: organizationId },
                 select: { currency: true }
@@ -1164,8 +1181,22 @@ const remitDriverCodCash = async ({ driverId, amount, currency, shipmentIds = []
     if (!driver) throw makeClientError('Driver not found', 404);
 
     return await prisma.$transaction(async (tx) => {
-        // Mark shipments as REMITTED
+        let remittedShipments = [];
         if (shipmentIds.length > 0) {
+            remittedShipments = await tx.shipment.findMany({
+                where: {
+                    id: { in: shipmentIds },
+                    assignedDriverId: driverId
+                },
+                select: {
+                    id: true,
+                    trackingNumber: true,
+                    organizationId: true,
+                    codAmount: true,
+                    codCurrency: true
+                }
+            });
+
             await tx.shipment.updateMany({
                 where: {
                     id: { in: shipmentIds },
@@ -1177,7 +1208,9 @@ const remitDriverCodCash = async ({ driverId, amount, currency, shipmentIds = []
             });
         }
 
-        // Post Cash Remittance entry in Ledger
+        const remitRef = `REMIT-${driver.id.slice(0, 6).toUpperCase()}-${Date.now()}`;
+
+        // Post Cash Remittance entry in Hub/Driver Ledger
         const ledgerEntry = await createLedgerEntry(
             driver.organizationId || null,
             {
@@ -1186,7 +1219,7 @@ const remitDriverCodCash = async ({ driverId, amount, currency, shipmentIds = []
                 entryType: 'CREDIT',
                 category: 'COD_REMITTANCE',
                 description: `COD Cash Remittance from Driver ${driver.name}: ${toApiAmount(remitAmount)} ${remitCurrency}`,
-                reference: `REMIT-${driver.id.slice(0, 6).toUpperCase()}-${Date.now()}`,
+                reference: remitRef,
                 createdBy: receivedBy,
                 metadata: {
                     driverId,
@@ -1197,6 +1230,33 @@ const remitDriverCodCash = async ({ driverId, amount, currency, shipmentIds = []
             },
             tx
         );
+
+        // Credit each respective merchant organization for collected COD funds (DB-04)
+        for (const s of remittedShipments) {
+            const sCod = normalizeAmount(s.codAmount || 0);
+            if (s.organizationId && s.organizationId !== driver.organizationId && sCod.gt(0)) {
+                await createLedgerEntry(
+                    s.organizationId,
+                    {
+                        sourceRepo: 'Shipment',
+                        sourceId: s.id,
+                        amount: toApiAmount(sCod),
+                        currency: normalizeCurrencyCode(s.codCurrency || remitCurrency),
+                        entryType: 'CREDIT',
+                        category: 'COD_COLLECTED_ESCROW',
+                        description: `COD collected & remitted at hub for shipment ${s.trackingNumber}`,
+                        reference: s.trackingNumber,
+                        createdBy: receivedBy,
+                        metadata: {
+                            remittanceReference: remitRef,
+                            driverId,
+                            trackingNumber: s.trackingNumber
+                        }
+                    },
+                    tx
+                );
+            }
+        }
 
         return ledgerEntry;
     });
@@ -1261,8 +1321,23 @@ const confirmDriverCodRemittance = async ({ driverId, amount, currency, shipment
     if (!driver) throw makeClientError('Driver not found', 404);
 
     return await prisma.$transaction(async (tx) => {
+        let remittedShipments = [];
         // Mark shipments as REMITTED
         if (shipmentIds.length > 0) {
+            remittedShipments = await tx.shipment.findMany({
+                where: {
+                    id: { in: shipmentIds },
+                    assignedDriverId: driverId
+                },
+                select: {
+                    id: true,
+                    trackingNumber: true,
+                    organizationId: true,
+                    codAmount: true,
+                    codCurrency: true
+                }
+            });
+
             await tx.shipment.updateMany({
                 where: {
                     id: { in: shipmentIds },
@@ -1274,6 +1349,8 @@ const confirmDriverCodRemittance = async ({ driverId, amount, currency, shipment
             });
         }
 
+        const remitRef = `REMIT-${driver.id.slice(0, 6).toUpperCase()}-${Date.now()}`;
+
         // Post Cash Remittance entry in Ledger
         const ledgerEntry = await createLedgerEntry(
             driver.organizationId || null,
@@ -1283,7 +1360,7 @@ const confirmDriverCodRemittance = async ({ driverId, amount, currency, shipment
                 entryType: 'CREDIT',
                 category: 'COD_REMITTANCE',
                 description: `COD Cash Remittance Verified from Driver ${driver.name}: ${toApiAmount(finalAmount)} ${remitCurrency} (Bag: ${bagReference || 'N/A'})`,
-                reference: `REMIT-${driver.id.slice(0, 6).toUpperCase()}-${Date.now()}`,
+                reference: remitRef,
                 createdBy: verifiedBy,
                 metadata: {
                     driverId,
@@ -1297,6 +1374,34 @@ const confirmDriverCodRemittance = async ({ driverId, amount, currency, shipment
             },
             tx
         );
+
+        // Credit each respective merchant organization for collected COD funds (DB-04)
+        for (const s of remittedShipments) {
+            const sCod = normalizeAmount(s.codAmount || 0);
+            if (s.organizationId && s.organizationId !== driver.organizationId && sCod.gt(0)) {
+                await createLedgerEntry(
+                    s.organizationId,
+                    {
+                        sourceRepo: 'Shipment',
+                        sourceId: s.id,
+                        amount: toApiAmount(sCod),
+                        currency: normalizeCurrencyCode(s.codCurrency || remitCurrency),
+                        entryType: 'CREDIT',
+                        category: 'COD_COLLECTED_ESCROW',
+                        description: `COD collected & verified at hub for shipment ${s.trackingNumber} (Bag: ${bagReference || 'N/A'})`,
+                        reference: s.trackingNumber,
+                        createdBy: verifiedBy,
+                        metadata: {
+                            remittanceReference: remitRef,
+                            bagReference,
+                            driverId,
+                            trackingNumber: s.trackingNumber
+                        }
+                    },
+                    tx
+                );
+            }
+        }
 
         // Post Double-Entry GL entry (Dr 1030 Hub Vault Safe, Cr 1020 Cash in Transit - Drivers COD)
         try {

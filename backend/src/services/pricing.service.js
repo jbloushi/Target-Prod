@@ -235,29 +235,33 @@ class PricingService {
 
         // 1. Agent Carrier Override
         if (user?.agentPolicy?.markupByCarrier?.[carrierCode]) {
-            const m = user.agentPolicy.markupByCarrier[carrierCode];
-            if (m.type && (m.percentageValue || m.flatValue)) return { markup: m, source: 'agent_carrier' };
+            const m = this.normalizeMarkupConfig(user.agentPolicy.markupByCarrier[carrierCode]);
+            if (m) return { markup: m, source: 'agent_carrier' };
         }
 
         // 2. Agent Default
         if (user?.agentPolicy?.markupOverride) {
-            const m = user.agentPolicy.markupOverride;
-            if (m.type && (m.percentageValue || m.flatValue || m.formula)) return { markup: m, source: 'agent_default' };
+            const m = this.normalizeMarkupConfig(user.agentPolicy.markupOverride);
+            if (m) return { markup: m, source: 'agent_default' };
         }
 
         // 3. User/Client Markup (Legacy/Direct)
-        if (user?.markup && user.markup.type && (user.markup.percentageValue || user.markup.flatValue || user.markup.value)) {
-            return { markup: user.markup, source: 'user_default' };
+        if (user?.markup) {
+            const m = this.normalizeMarkupConfig(user.markup);
+            if (m) return { markup: m, source: 'user_default' };
         }
 
         // 4. Org Carrier Override
         if (organization?.markup?.byCarrier?.[carrierCode]) {
-            const m = organization.markup.byCarrier[carrierCode];
-            if (m.type && (m.percentageValue || m.flatValue)) return { markup: m, source: 'org_carrier' };
+            const m = this.normalizeMarkupConfig(organization.markup.byCarrier[carrierCode]);
+            if (m) return { markup: m, source: 'org_carrier' };
         }
 
-        // 5. Org Default
-        if (organization?.markup) return { markup: organization.markup, source: 'org_default' };
+        // 5. Org Default (validated via normalizeMarkupConfig so malformed JSON falls back cleanly)
+        if (organization?.markup) {
+            const m = this.normalizeMarkupConfig(organization.markup);
+            if (m) return { markup: m, source: 'org_default' };
+        }
 
         // 6. System Default Fallback
         return {

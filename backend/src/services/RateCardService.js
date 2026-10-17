@@ -357,12 +357,15 @@ class RateCardService {
     }
 
     /**
+    /**
      * Calculate billable weight for a shipment:
-     * Billable Weight = max(actual weight, (L x W x H) / 5000)
+     * Billable Weight = max(actual weight, (L x W x H) / volumetricDivisor)
      * @param {Object|Array} packagesOrShipment
-     * @returns {Object} { billableWeight, actualWeight, volumetricWeight }
+     * @param {Object} [options={}]
+     * @param {number} [options.volumetricDivisor=5000] - Standard 5000 for air express, 4000 for GCC road freight
+     * @returns {Object} { billableWeight, actualWeight, volumetricWeight, volumetricDivisor }
      */
-    calculateBillableWeight(packagesOrShipment) {
+    calculateBillableWeight(packagesOrShipment, options = {}) {
         let packages = [];
         if (Array.isArray(packagesOrShipment)) {
             packages = packagesOrShipment;
@@ -371,6 +374,9 @@ class RateCardService {
         } else if (packagesOrShipment?.weight !== undefined) {
             packages = [packagesOrShipment];
         }
+
+        const rawDivisor = Number(options.volumetricDivisor || packagesOrShipment?.volumetricDivisor || 5000);
+        const volumetricDivisor = Number.isFinite(rawDivisor) && rawDivisor > 0 ? rawDivisor : 5000;
 
         let totalActualWeight = 0;
         let totalVolumetricWeight = 0;
@@ -385,8 +391,7 @@ class RateCardService {
             const height = Number(pkg.dimensions?.height || pkg.height || 0) || 0;
 
             if (length > 0 && width > 0 && height > 0) {
-                // Volumetric divisor standard: 5000
-                const volWeight = (length * width * height) / 5000;
+                const volWeight = (length * width * height) / volumetricDivisor;
                 totalVolumetricWeight += volWeight;
             }
         }
@@ -401,7 +406,8 @@ class RateCardService {
         return {
             billableWeight: Number(billableWeight.toFixed(3)),
             actualWeight: Number(totalActualWeight.toFixed(3)),
-            volumetricWeight: Number(totalVolumetricWeight.toFixed(3))
+            volumetricWeight: Number(totalVolumetricWeight.toFixed(3)),
+            volumetricDivisor
         };
     }
 
@@ -413,9 +419,11 @@ class RateCardService {
      * @param {string} params.countryCode - Destination country code/name
      * @param {number} [params.weight] - Optional explicit weight in kg
      * @param {Array} [params.packages] - Optional shipment packages
+     * @param {number} [params.volumetricDivisor] - Optional volumetric divisor override (e.g. 5000 or 4000)
+     * @param {Object} [params.surcharges] - Optional surcharge overrides ({ fuelSurchargePct, remoteAreaFee, dgFee })
      * @returns {Object} Pricing calculation result
      */
-    calculateRate({ rateCardId, carrierCode = 'DGR', countryCode, weight, packages }) {
+    calculateRate({ rateCardId, carrierCode = 'DGR', countryCode, weight, packages, volumetricDivisor, surcharges = {} }) {
         const card = this.getRateCard(rateCardId);
         if (!card) {
             throw new Error(`Rate card '${rateCardId}' not found.`);
@@ -426,16 +434,19 @@ class RateCardService {
             throw new Error(`Could not resolve shipping zone for country '${countryCode}'.`);
         }
 
+        const effectiveDivisor = Number(volumetricDivisor || card.volumetricDivisor || 5000) || 5000;
+
         // Calculate weights
         let weights;
         if (packages && packages.length > 0) {
-            weights = this.calculateBillableWeight(packages);
+            weights = this.calculateBillableWeight(packages, { volumetricDivisor: effectiveDivisor });
         } else {
             const parsedWeight = Number(weight || 0.5);
             weights = {
                 billableWeight: parsedWeight > 0 ? parsedWeight : 0.5,
                 actualWeight: parsedWeight > 0 ? parsedWeight : 0.5,
-                volumetricWeight: 0
+                volumetricWeight: 0,
+                volumetricDivisor: effectiveDivisor
             };
         }
 
@@ -465,12 +476,17 @@ class RateCardService {
             excessWeight = Number((billable - maxBracket).toFixed(3));
             excessPerKgRate = Number(card.over30KgPerKgRate?.[String(zone)] !== undefined ? card.over30KgPerKgRate[String(zone)] : 4.0);
 
-            // Weight over 30kg is calculated per excess kg (or fractional kg rounded to 0.5)
-            // User requested flat per-kg calculated
+            // Weight over 30kg is calculated per excess kg
             baseRate = rateAt30 + (excessWeight * excessPerKgRate);
         }
 
-        const finalRate = Number(baseRate.toFixed(3));
+        const cleanBaseRate = Number(baseRate.toFixed(3));
+        const fuelPct = Number(surcharges?.fuelSurchargePct ?? card.fuelSurchargePct ?? 0) || 0;
+        const fuelSurcharge = fuelPct > 0 ? Number(((cleanBaseRate * fuelPct) / 100).toFixed(3)) : 0;
+        const remoteAreaFee = Number(Number(surcharges?.remoteAreaFee ?? card.remoteAreaFee ?? 0).toFixed(3)) || 0;
+        const dgFee = Number(Number(surcharges?.dgFee ?? card.dgFee ?? 0).toFixed(3)) || 0;
+        const surchargesTotal = Number((fuelSurcharge + remoteAreaFee + dgFee).toFixed(3));
+        const finalRate = Number((cleanBaseRate + surchargesTotal).toFixed(3));
 
         return {
             rateCardId: card.id,
@@ -483,6 +499,12 @@ class RateCardService {
             actualWeight: weights.actualWeight,
             volumetricWeight: weights.volumetricWeight,
             billableWeight: weights.billableWeight,
+            volumetricDivisor: effectiveDivisor,
+            baseRate: cleanBaseRate,
+            fuelSurcharge,
+            remoteAreaFee,
+            dgFee,
+            surchargesTotal,
             rate: finalRate,
             totalPrice: finalRate,
             excessWeight: excessWeight > 0 ? excessWeight : 0,

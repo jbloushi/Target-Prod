@@ -356,65 +356,72 @@ class ShipmentBookingService {
                 }
             }
 
-            // Update in DB
-            const finalizedShipment = await prisma.shipment.update({
-                where: { id: shipment.id },
-                data: updateData
-            });
-
-            // Accounting: Post Debit to Ledger (Customer Receivable) & Credit to Carrier Payable (COGS)
-            const finalPrice = finalizedShipment.pricingSnapshot?.totalPrice ?? finalizedShipment.price ?? 0;
-            const carrierCost = finalizedShipment.pricingSnapshot?.carrierRate ?? finalizedShipment.costPrice ?? 0;
-
-            if (finalPrice > 0 && organizationId) {
-                await financeLedgerService.createLedgerEntry(organizationId, {
-                    sourceRepo: 'Shipment',
-                    sourceId: finalizedShipment.id,
-                    amount: finalPrice,
-                    currency: finalizedShipment.currency || finalizedShipment.pricingSnapshot?.currency || 'KWD',
-                    entryType: 'DEBIT',
-                    category: 'SHIPMENT_CHARGE',
-                    description: `Charge for ${finalizedShipment.trackingNumber}`,
-                    reference: finalizedShipment.trackingNumber,
-                    createdBy: payingUser?.id,
-                    metadata: {
-                        attemptId,
-                        carrierCode: finalizedShipment.carrierCode,
-                        currency: finalizedShipment.currency || finalizedShipment.pricingSnapshot?.currency || 'KWD',
-                        fixedFeeApplied: finalizedShipment.carrierCode === 'OTE'
-                    }
+            // Atomic DB Transaction (DB-01): Persist shipment status update + financial ledger entries together
+            const executeBookingCommit = async (tx) => {
+                const updatedShipment = await tx.shipment.update({
+                    where: { id: shipment.id },
+                    data: updateData
                 });
 
-                // Post Carrier Accounts Payable liability if external carrier cost exists
-                if (carrierCost > 0 && finalizedShipment.carrierCode !== 'INTERNAL' && typeof financeLedgerService.recordCarrierPayable === 'function') {
-                    await financeLedgerService.recordCarrierPayable({
-                        organizationId,
-                        shipmentId: finalizedShipment.id,
-                        carrierCode: finalizedShipment.carrierCode,
-                        costPrice: carrierCost,
-                        currency: finalizedShipment.currency || finalizedShipment.pricingSnapshot?.currency || 'KWD',
-                        trackingNumber: finalizedShipment.trackingNumber,
-                        createdBy: payingUser?.id
-                    });
+                const finalPrice = updatedShipment.pricingSnapshot?.totalPrice ?? updatedShipment.price ?? 0;
+                const carrierCost = updatedShipment.pricingSnapshot?.carrierRate ?? updatedShipment.costPrice ?? 0;
+
+                if (finalPrice > 0 && organizationId) {
+                    await financeLedgerService.createLedgerEntry(organizationId, {
+                        sourceRepo: 'Shipment',
+                        sourceId: updatedShipment.id,
+                        amount: finalPrice,
+                        currency: updatedShipment.currency || updatedShipment.pricingSnapshot?.currency || 'KWD',
+                        entryType: 'DEBIT',
+                        category: 'SHIPMENT_CHARGE',
+                        description: `Charge for ${updatedShipment.trackingNumber}`,
+                        reference: updatedShipment.trackingNumber,
+                        createdBy: payingUser?.id,
+                        metadata: {
+                            attemptId,
+                            carrierCode: updatedShipment.carrierCode,
+                            currency: updatedShipment.currency || updatedShipment.pricingSnapshot?.currency || 'KWD',
+                            fixedFeeApplied: updatedShipment.carrierCode === 'OTE'
+                        }
+                    }, tx);
+
+                    // Post Carrier Accounts Payable liability if external carrier cost exists
+                    if (carrierCost > 0 && updatedShipment.carrierCode !== 'INTERNAL' && typeof financeLedgerService.recordCarrierPayable === 'function') {
+                        await financeLedgerService.recordCarrierPayable({
+                            organizationId,
+                            shipmentId: updatedShipment.id,
+                            carrierCode: updatedShipment.carrierCode,
+                            costPrice: carrierCost,
+                            currency: updatedShipment.currency || updatedShipment.pricingSnapshot?.currency || 'KWD',
+                            trackingNumber: updatedShipment.trackingNumber,
+                            createdBy: payingUser?.id
+                        }, tx);
+                    }
+
+                    // Post Double-Entry General Ledger Entry (Dr AR, Cr Freight Revenue, Dr COGS, Cr Carrier AP)
+                    try {
+                        const generalLedgerService = require('./generalLedger.service');
+                        await generalLedgerService.postShipmentBookingEntry({
+                            shipmentId: updatedShipment.id,
+                            trackingNumber: updatedShipment.trackingNumber,
+                            organizationId,
+                            customerPrice: finalPrice,
+                            carrierCost,
+                            carrierCode: updatedShipment.carrierCode,
+                            currency: updatedShipment.currency || updatedShipment.pricingSnapshot?.currency || 'KWD',
+                            createdById: payingUser?.id
+                        }, tx);
+                    } catch (glError) {
+                        logger.warn(`[ShipmentBookingService] GL Journal Entry posting warning for ${updatedShipment.trackingNumber}: ${glError.message}`);
+                    }
                 }
 
-                // Post Double-Entry General Ledger Entry (Dr AR, Cr Freight Revenue, Dr COGS, Cr Carrier AP)
-                try {
-                    const generalLedgerService = require('./generalLedger.service');
-                    await generalLedgerService.postShipmentBookingEntry({
-                        shipmentId: finalizedShipment.id,
-                        trackingNumber: finalizedShipment.trackingNumber,
-                        organizationId,
-                        customerPrice: finalPrice,
-                        carrierCost,
-                        carrierCode: finalizedShipment.carrierCode,
-                        currency: finalizedShipment.currency || finalizedShipment.pricingSnapshot?.currency || 'KWD',
-                        createdById: payingUser?.id
-                    });
-                } catch (glError) {
-                    logger.warn(`[ShipmentBookingService] GL Journal Entry posting warning for ${finalizedShipment.trackingNumber}: ${glError.message}`);
-                }
-            }
+                return updatedShipment;
+            };
+
+            const finalizedShipment = typeof prisma.$transaction === 'function'
+                ? await prisma.$transaction(executeBookingCommit)
+                : await executeBookingCommit(prisma);
 
             // Dispatch webhook and chatwoot notification
             try {

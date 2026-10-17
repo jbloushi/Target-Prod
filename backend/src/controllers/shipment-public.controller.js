@@ -438,11 +438,16 @@ exports.getPublicCheckout = async (req, res) => {
             }
         } catch (_) {}
 
-        // Construct rate breakdown
+        // Construct authentic rate breakdown from pricing snapshot without synthetic percentages (P2-12)
         const snapshot = shipment.pricingSnapshot || {};
-        const baseFreight = Number(snapshot.basePrice || snapshot.subtotal || amountDue * 0.85);
-        const fuelSurcharge = Number(snapshot.fuelSurcharge || amountDue * 0.10);
-        const handlingFee = Number(snapshot.handlingFee || snapshot.vat || Math.max(0, amountDue - baseFreight - fuelSurcharge));
+        const fuelSurcharge = Number(snapshot.fuelSurcharge || 0);
+        const handlingFee = Number(snapshot.handlingFee || snapshot.vat || snapshot.dgFee || snapshot.remoteAreaFee || 0);
+        const baseFreight = Number(
+            snapshot.basePrice ||
+            snapshot.subtotal ||
+            snapshot.baseRate ||
+            Math.max(0, amountDue - fuelSurcharge - handlingFee)
+        );
 
         res.status(200).json({
             success: true,
