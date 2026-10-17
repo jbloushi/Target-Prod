@@ -973,9 +973,10 @@ class DgrAdapter extends CarrierAdapter {
      * Fetches granular tracking history for a shipment.
      */
     async getTracking(trackingNumber, shipmentData = null) {
+        const cleanAwb = String(trackingNumber || '').replace(/^(?:TRK|DHL|DGR)-/i, '').trim() || trackingNumber;
         try {
             const activeConfig = await this._getResolvedConfig(shipmentData);
-            const res = await axios.get(`${activeConfig.baseUrl}/shipments/${trackingNumber}/tracking`, {
+            const res = await axios.get(`${activeConfig.baseUrl}/shipments/${cleanAwb}/tracking`, {
                 headers: this.getAuthHeader(activeConfig),
                 params: { trackingView: 'all-checkpoints' },
                 timeout: 10000
@@ -1056,7 +1057,7 @@ class DgrAdapter extends CarrierAdapter {
             try {
                 const scraper = this.webScraper || dhlWebScraper;
                 if (scraper && typeof scraper.scrapeDhl === 'function') {
-                    const fallbackResult = await scraper.scrapeDhl(trackingNumber);
+                    const fallbackResult = await scraper.scrapeDhl(cleanAwb);
                     if (fallbackResult && Array.isArray(fallbackResult.events) && fallbackResult.events.length > 0) {
                         logger.info(`[DgrAdapter.getTracking] Recovered tracking for ${trackingNumber} via DHL web scraper fallback`);
                         return {

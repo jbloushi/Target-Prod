@@ -595,7 +595,33 @@ const syncCarrierTrackingHistory = async (shipment) => {
     }
 
     try {
-        const tracking = await carrier.getTracking(trackingNumber);
+        let tracking = null;
+        let primaryError = null;
+        try {
+            tracking = await carrier.getTracking(trackingNumber);
+        } catch (err) {
+            primaryError = err;
+            if (err?.code === 'TRACKING_PENDING') {
+                throw err;
+            }
+        }
+
+        if ((!tracking || !Array.isArray(tracking.events) || tracking.events.length === 0) && process.env.JEST_WORKER_ID === undefined) {
+            const cleanDigits = String(trackingNumber || '').replace(/^(?:TRK|ARM|DHL|DGR|FED|FDX|OTE)-/i, '').trim();
+            const universalTracking = require('../services/UniversalTrackingService');
+            if (/^[345]\d{10}$/.test(cleanDigits)) {
+                tracking = await universalTracking.getTracking('ARAMEX', cleanDigits).catch(() => null);
+            } else if (/^\d{10}$/.test(cleanDigits) && !['DGR', 'DHL'].includes(carrierCode)) {
+                tracking = await universalTracking.getTracking('DHL', cleanDigits).catch(() => null);
+            } else if (/^\d{12}$/.test(cleanDigits) && !['FEDEX', 'FDX'].includes(carrierCode)) {
+                tracking = await universalTracking.getTracking('FEDEX', cleanDigits).catch(() => null);
+            }
+        }
+
+        if (!tracking && primaryError) {
+            throw primaryError;
+        }
+
         const events = tracking?.events || [];
         const provider = tracking?.provider || tracking?.source || carrierCode;
         if (events.length === 0) {

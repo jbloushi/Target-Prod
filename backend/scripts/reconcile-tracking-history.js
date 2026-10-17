@@ -41,6 +41,8 @@ function parseCliArgs(argv = process.argv.slice(2)) {
     for (const arg of argv) {
         if (arg === '--dry-run' || arg === '-d') {
             opts.dryRun = true;
+        } else if (arg === '--sync-active' || arg === '-s') {
+            opts.syncActive = true;
         } else if (arg.startsWith('--carrier=')) {
             opts.carrier = arg.split('=')[1]?.trim().toUpperCase() || null;
         } else if (arg.startsWith('--limit=')) {
@@ -292,6 +294,27 @@ async function reconcileTrackingHistory(options = {}) {
         }
     }
 
+    if (options.syncActive && !dryRun) {
+        const carrierSyncCronService = require('../src/services/carrierSyncCron.service');
+        if (!silent) {
+            console.log(`  [LIVE ACTIVE SYNC] Polling carrier APIs & Web Scrapers for all active/in-transit shipments (up to 365 days)...`);
+        }
+        const liveRes = await carrierSyncCronService.runSyncBatch({
+            limit: limit || 500,
+            maxDays: 365,
+            carrier: carrier || undefined
+        });
+        summary.liveActiveScanned = liveRes.scanned || 0;
+        summary.liveActiveUpdated = liveRes.updated || 0;
+        if (!silent) {
+            for (const r of (liveRes.results || [])) {
+                if (r.updated) {
+                    console.log(`  [LIVE CARRIER UPDATE]  ${r.trackingNumber}: ${r.previousStatus} -> ${r.newStatus}`);
+                }
+            }
+        }
+    }
+
     if (!silent) {
         console.log(`\n================================================================`);
         console.log(`  RECONCILIATION SUMMARY (${dryRun ? 'DRY-RUN' : 'COMMITTED'})`);
@@ -302,6 +325,10 @@ async function reconcileTrackingHistory(options = {}) {
         console.log(`  Resolved Holds Cleared     : ${summary.resolvedExceptionsHealed}`);
         console.log(`  Missing Delivered Promoted : ${summary.missingDeliveredPromoted}`);
         console.log(`  Relational Events Synced   : ${summary.relationalEventsUpserted}`);
+        if (options.syncActive && !dryRun) {
+            console.log(`  Live Active Polled (365d)  : ${summary.liveActiveScanned || 0}`);
+            console.log(`  Live Active Updated        : ${summary.liveActiveUpdated || 0}`);
+        }
         console.log(`  Errors                     : ${summary.errors}`);
         console.log(`================================================================\n`);
     }

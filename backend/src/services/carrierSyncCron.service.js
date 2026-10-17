@@ -104,7 +104,7 @@ class CarrierSyncCronService {
                 'picked_up', 'in_transit', 'out_for_delivery', 'received_at_hub',
                 'verified', 'exception', 'failed'
             ];
-            const maxAgeDays = parseInt(options.maxDays || process.env.CARRIER_CRON_MAX_AGE_DAYS, 10) || 30;
+            const maxAgeDays = parseInt(options.maxDays || process.env.CARRIER_CRON_MAX_AGE_DAYS, 10) || 180;
             const cutoffDate = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000);
 
             const whereClause = {

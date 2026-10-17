@@ -242,7 +242,7 @@ describe('CarrierSyncCronService', () => {
         });
     });
 
-    test('runSyncBatch queries all non-terminal statuses including ready_for_pickup, updated, failed, and exception across 30-day window', async () => {
+    test('runSyncBatch queries all non-terminal statuses including ready_for_pickup, updated, failed, and exception across 180-day window', async () => {
         prisma.shipment.findMany.mockResolvedValueOnce([]);
 
         await carrierSyncCronService.runSyncBatch({ limit: 10 });
@@ -256,6 +256,6 @@ describe('CarrierSyncCronService', () => {
         ]));
         const cutoffMs = Date.now() - queryCall.where.createdAt.gte.getTime();
         const cutoffDays = Math.round(cutoffMs / (24 * 60 * 60 * 1000));
-        expect(cutoffDays).toBe(30);
+        expect(cutoffDays).toBe(180);
     });
 });
