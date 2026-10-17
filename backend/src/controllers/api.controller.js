@@ -202,7 +202,42 @@ exports.createShipment = async (req, res) => {
         }, resolvedServiceCode);
         const carrierTrackingNumber = result.dhlTrackingNumber || result.trackingNumber || null;
         const carrierShipmentId = result.carrierShipmentId || carrierTrackingNumber;
-        const bookingPrice = resolvedCarrierCode === 'OTE' ? 25 : (result.totalPrice || 0);
+
+        // 4b. Compute server-side pricing snapshot (sell price, carrier wholesale cost, markup)
+        let pricingSnapshot = null;
+        try {
+            const ShipmentDraftService = require('../services/ShipmentDraftService');
+            if (typeof ShipmentDraftService?.getSecurePricing === 'function') {
+                pricingSnapshot = await ShipmentDraftService.getSecurePricing(
+                    {
+                        ...shipmentData,
+                        origin: mapAddressToSchema(normalized.sender),
+                        destination: mapAddressToSchema(normalized.receiver),
+                        parcels: normalized.packages.map(p => ({
+                            weight: p.weight.value,
+                            dimensions: p.dimensions,
+                            description: p.description
+                        })),
+                        carrierCode: resolvedCarrierCode,
+                        serviceCode: resolvedServiceCode
+                    },
+                    apiUser,
+                    resolvedServiceCode,
+                    resolvedCarrierCode
+                );
+            }
+        } catch (priceErr) {
+            logger.warn(`API Shipment pricing snapshot fallback for ${result.trackingNumber}: ${priceErr.message}`);
+        }
+
+        const bookingPrice = resolvedCarrierCode === 'OTE'
+            ? 25
+            : Number(pricingSnapshot?.totalPrice || result.totalPrice || 0);
+        const carrierCost = Number(pricingSnapshot?.carrierRate ?? result.costPrice ?? result.carrierRate ?? 0);
+        const markupAmount = pricingSnapshot?.markup !== undefined && pricingSnapshot?.markup !== null
+            ? Number(pricingSnapshot.markup)
+            : (bookingPrice > 0 && carrierCost > 0 ? Number((bookingPrice - carrierCost).toFixed(3)) : null);
+        const billingCurrency = resolvedCarrierCode === 'OTE' ? 'AED' : (pricingSnapshot?.currency || 'KWD');
 
         // 5. Audit/Persist to MySQL
         const newShipment = await prisma.shipment.create({
@@ -231,7 +266,13 @@ exports.createShipment = async (req, res) => {
                 })),
                 items: normalized.items,
                 price: bookingPrice,
-                currency: resolvedCarrierCode === 'OTE' ? 'AED' : 'KWD',
+                costPrice: carrierCost > 0 ? carrierCost : undefined,
+                markupAmount: markupAmount !== null ? markupAmount : undefined,
+                pricingSnapshot: pricingSnapshot || undefined,
+                currency: billingCurrency,
+                paid: false,
+                totalPaid: 0,
+                remainingBalance: bookingPrice,
                 codAmount: resolvedCarrierCode === 'OTE' ? 25 : null,
                 codCurrency: resolvedCarrierCode === 'OTE' ? 'AED' : null,
                 codStatus: resolvedCarrierCode === 'OTE' ? 'pending' : null,
@@ -247,37 +288,102 @@ exports.createShipment = async (req, res) => {
             }
         });
 
-        // Accounting: Post Debit to Customer Ledger & Credit to Carrier Payable
-        if (req.user.organizationId && bookingPrice > 0) {
+        // Accounting: Post Debit to Customer Ledger, Official Invoice, Platform Carrier Payable & Double-Entry GL
+        if ((req.user.organizationId && bookingPrice > 0) || (resolvedCarrierCode !== 'INTERNAL' && carrierCost > 0)) {
             try {
                 const financeLedgerService = require('../services/financeLedger.service');
-                await financeLedgerService.createLedgerEntry(req.user.organizationId, {
-                    sourceRepo: 'Shipment',
-                    sourceId: newShipment.id,
-                    amount: bookingPrice,
-                    currency: newShipment.currency,
-                    entryType: 'DEBIT',
-                    category: 'SHIPMENT_CHARGE',
-                    description: `API Booking Charge for ${newShipment.trackingNumber}`,
-                    reference: newShipment.trackingNumber,
-                    createdBy: req.user.id,
-                    metadata: {
-                        carrierCode: resolvedCarrierCode,
-                        serviceCode: resolvedServiceCode,
-                        currency: newShipment.currency
-                    }
-                });
+                let chargeEntry = null;
 
-                if (resolvedCarrierCode !== 'INTERNAL' && Number(newShipment.costPrice || 0) > 0) {
+                if (req.user.organizationId && bookingPrice > 0) {
+                    chargeEntry = await financeLedgerService.createLedgerEntry(req.user.organizationId, {
+                        sourceRepo: 'Shipment',
+                        sourceId: newShipment.id,
+                        amount: bookingPrice,
+                        currency: newShipment.currency,
+                        entryType: 'DEBIT',
+                        category: 'SHIPMENT_CHARGE',
+                        description: `API Booking Charge for ${newShipment.trackingNumber}`,
+                        reference: newShipment.trackingNumber,
+                        createdBy: req.user.id,
+                        metadata: {
+                            carrierCode: resolvedCarrierCode,
+                            serviceCode: resolvedServiceCode,
+                            costPrice: carrierCost,
+                            currency: newShipment.currency
+                        }
+                    });
+
+                    // Auto-generate official Tax Invoice in Finance Module
+                    if (chargeEntry?.id && typeof prisma.invoice?.findUnique === 'function' && typeof prisma.invoice?.create === 'function') {
+                        try {
+                            const invoiceNumber = `INV-SHP-${newShipment.trackingNumber}`;
+                            const existingInvoice = await prisma.invoice.findUnique({ where: { invoiceNumber } });
+                            if (!existingInvoice) {
+                                const now = new Date();
+                                await prisma.invoice.create({
+                                    data: {
+                                        invoiceNumber,
+                                        organizationId: req.user.organizationId,
+                                        periodStart: now,
+                                        periodEnd: now,
+                                        subtotal: bookingPrice,
+                                        vat: 0,
+                                        total: bookingPrice,
+                                        currency: newShipment.currency || 'KWD',
+                                        status: 'issued',
+                                        notes: `API Consignment Tax Invoice (${newShipment.trackingNumber} - ${resolvedCarrierCode})`,
+                                        createdById: req.user.id,
+                                        lines: {
+                                            create: {
+                                                shipmentId: newShipment.id,
+                                                ledgerEntryId: chargeEntry.id,
+                                                trackingNumber: newShipment.trackingNumber,
+                                                shipmentDate: now,
+                                                amount: bookingPrice,
+                                                currency: newShipment.currency || 'KWD',
+                                                paid: false,
+                                                totalPaid: 0,
+                                                remainingBalance: bookingPrice
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+                        } catch (invErr) {
+                            logger.warn(`API Shipment auto-invoice warning for ${newShipment.trackingNumber}: ${invErr.message}`);
+                        }
+                    }
+                }
+
+                if (resolvedCarrierCode !== 'INTERNAL' && carrierCost > 0 && typeof financeLedgerService.recordCarrierPayable === 'function') {
                     await financeLedgerService.recordCarrierPayable({
-                        organizationId: req.user.organizationId,
+                        organizationId: null,
                         shipmentId: newShipment.id,
                         carrierCode: resolvedCarrierCode,
-                        costPrice: newShipment.costPrice || 0,
+                        costPrice: carrierCost,
                         currency: newShipment.currency,
                         trackingNumber: newShipment.trackingNumber,
                         createdBy: req.user.id
                     });
+                }
+
+                // Post Double-Entry General Ledger Entry (Dr 1100 AR, Cr 4010 Freight Revenue, Dr 5010 Carrier Expense, Cr 2010 Carrier AP)
+                try {
+                    const generalLedgerService = require('../services/generalLedger.service');
+                    if (typeof generalLedgerService?.postShipmentBookingEntry === 'function') {
+                        await generalLedgerService.postShipmentBookingEntry({
+                            shipmentId: newShipment.id,
+                            trackingNumber: newShipment.trackingNumber,
+                            organizationId: req.user.organizationId,
+                            customerPrice: bookingPrice,
+                            carrierCost,
+                            carrierCode: resolvedCarrierCode,
+                            currency: newShipment.currency || 'KWD',
+                            createdById: req.user.id
+                        });
+                    }
+                } catch (glErr) {
+                    logger.warn(`API Shipment GL auto-post non-fatal warning for ${newShipment.trackingNumber}: ${glErr.message}`);
                 }
             } catch (ledgeErr) {
                 logger.warn(`API Shipment ledger posting non-fatal warning for ${newShipment.trackingNumber}: ${ledgeErr.message}`);
@@ -293,6 +399,8 @@ exports.createShipment = async (req, res) => {
                 carrier: resolvedCarrierCode,
                 serviceCode: newShipment.serviceCode,
                 status: newShipment.status,
+                price: newShipment.price,
+                currency: newShipment.currency,
                 codAmount: newShipment.codAmount || null,
                 codCurrency: newShipment.codCurrency || null,
                 codStatus: newShipment.codStatus || null

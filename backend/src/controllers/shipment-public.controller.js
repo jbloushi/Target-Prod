@@ -614,6 +614,54 @@ exports.processPublicPayment = async (req, res) => {
                 }
             });
 
+            // 5. Mark linked InvoiceLine / Invoice as paid if already issued
+            if (typeof tx.invoiceLine?.findMany === 'function' && typeof tx.invoiceLine?.updateMany === 'function') {
+                try {
+                    const lines = await tx.invoiceLine.findMany({ where: { shipmentId: shipment.id } });
+                    if (lines.length > 0) {
+                        await tx.invoiceLine.updateMany({
+                            where: { shipmentId: shipment.id },
+                            data: {
+                                paid: true,
+                                totalPaid: Number(amount),
+                                remainingBalance: 0
+                            }
+                        });
+                        if (typeof tx.invoice?.updateMany === 'function') {
+                            const invoiceIds = [...new Set(lines.map(l => l.invoiceId).filter(Boolean))];
+                            if (invoiceIds.length > 0) {
+                                await tx.invoice.updateMany({
+                                    where: { id: { in: invoiceIds } },
+                                    data: {
+                                        status: 'paid',
+                                        paidAt: new Date()
+                                    }
+                                });
+                            }
+                        }
+                    }
+                } catch (invSettleErr) {
+                    logger.warn(`Public checkout invoice update non-fatal warning for ${trackingNumber}: ${invSettleErr.message}`);
+                }
+            }
+
+            // 6. Post Payment Receipt to Double-Entry General Ledger (Dr 1010 Bank/Cash, Cr 1100 AR)
+            try {
+                const generalLedgerService = require('../services/generalLedger.service');
+                if (typeof generalLedgerService?.postPaymentReceiptEntry === 'function') {
+                    await generalLedgerService.postPaymentReceiptEntry({
+                        paymentId: payment.id,
+                        reference: paymentReference,
+                        organizationId: shipment.organizationId || null,
+                        amount: Number(amount),
+                        currency,
+                        createdById: shipment.userId || null
+                    }, tx);
+                }
+            } catch (glErr) {
+                logger.warn(`Public checkout GL payment receipt non-fatal warning for ${trackingNumber}: ${glErr.message}`);
+            }
+
             return { payment, updatedShipment };
         });
 

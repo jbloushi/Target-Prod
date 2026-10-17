@@ -212,6 +212,9 @@ class ShipmentDraftService {
                 markupAmount: snapshot.markup, // Mapped to markupAmount natively
                 currency: snapshot.billingCurrency || snapshot.currency || cleanData.currency || 'KWD',
                 pricingSnapshot: snapshot,
+                paid: false,
+                totalPaid: 0,
+                remainingBalance: snapshot.totalPrice || 0,
                 codAmount,
                 codCurrency,
                 codStatus,

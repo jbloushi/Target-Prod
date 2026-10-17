@@ -1324,19 +1324,21 @@ const confirmDriverCodRemittance = async ({ driverId, amount, currency, shipment
         let remittedShipments = [];
         // Mark shipments as REMITTED
         if (shipmentIds.length > 0) {
-            remittedShipments = await tx.shipment.findMany({
-                where: {
-                    id: { in: shipmentIds },
-                    assignedDriverId: driverId
-                },
-                select: {
-                    id: true,
-                    trackingNumber: true,
-                    organizationId: true,
-                    codAmount: true,
-                    codCurrency: true
-                }
-            });
+            if (typeof tx.shipment?.findMany === 'function') {
+                remittedShipments = await tx.shipment.findMany({
+                    where: {
+                        id: { in: shipmentIds },
+                        assignedDriverId: driverId
+                    },
+                    select: {
+                        id: true,
+                        trackingNumber: true,
+                        organizationId: true,
+                        codAmount: true,
+                        codCurrency: true
+                    }
+                });
+            }
 
             await tx.shipment.updateMany({
                 where: {

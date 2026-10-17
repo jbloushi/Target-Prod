@@ -475,6 +475,23 @@ async function syncPhenixFinancialRecord({ shipment, v, orgId, defaultUserId }) 
                     } catch (err) {
                         logger.warn(`[PhenixSync] Dual-write queue payment dispatch error: ${err.message}`);
                     }
+
+                    // Post Payment Receipt to internal Double-Entry General Ledger (Dr 1010 Cash/Bank, Cr 1100 AR)
+                    try {
+                        const generalLedgerService = require('./generalLedger.service');
+                        if (typeof generalLedgerService?.postPaymentReceiptEntry === 'function') {
+                            await generalLedgerService.postPaymentReceiptEntry({
+                                paymentId: payment.id,
+                                reference: paymentRef,
+                                organizationId: orgId,
+                                amount: v.totalAmount,
+                                currency: 'KWD',
+                                createdById: defaultUserId
+                            });
+                        }
+                    } catch (glPayErr) {
+                        logger.warn(`[PhenixSync] GL payment receipt non-fatal warning for ${shipment.trackingNumber}: ${glPayErr.message}`);
+                    }
                 }
 
                 // Update shipment paid state
@@ -541,6 +558,7 @@ async function syncPhenixFinancialRecord({ shipment, v, orgId, defaultUserId }) 
         }
 
         // 4. Record Platform-Level Carrier Wholesale Payable (COGS / Carrier AP) from bill_detailCustomField_11
+        let postedNewPayable = false;
         if (hasCostPrice) {
             const existingPayable = await prisma.organizationLedger.findFirst({
                 where: {
@@ -560,6 +578,36 @@ async function syncPhenixFinancialRecord({ shipment, v, orgId, defaultUserId }) 
                     trackingNumber: shipment.trackingNumber,
                     createdBy: defaultUserId
                 });
+                postedNewPayable = true;
+            }
+        }
+
+        // 5. Post Double-Entry General Ledger Entry (Dr 1100 AR, Cr 4010 Revenue, Dr 5010 Carrier Expense, Cr 2010 Carrier AP)
+        if ((hasSellPrice || postedNewPayable) && typeof prisma.journalEntry?.findFirst === 'function') {
+            try {
+                const existingGl = await prisma.journalEntry.findFirst({
+                    where: {
+                        sourceType: 'SHIPMENT_BOOKING',
+                        sourceId: String(shipment.id)
+                    }
+                });
+                if (!existingGl) {
+                    const generalLedgerService = require('./generalLedger.service');
+                    if (typeof generalLedgerService?.postShipmentBookingEntry === 'function') {
+                        await generalLedgerService.postShipmentBookingEntry({
+                            shipmentId: shipment.id,
+                            trackingNumber: shipment.trackingNumber,
+                            organizationId: orgId,
+                            customerPrice: v.totalAmount || 0,
+                            carrierCost: v.costPrice || 0,
+                            carrierCode: shipment.carrierCode || v.derivedCarrier || 'DGR',
+                            currency: 'KWD',
+                            createdById: defaultUserId
+                        });
+                    }
+                }
+            } catch (glErr) {
+                logger.warn(`[PhenixSync] GL booking entry non-fatal warning for ${shipment.trackingNumber}: ${glErr.message}`);
             }
         }
     } catch (finErr) {

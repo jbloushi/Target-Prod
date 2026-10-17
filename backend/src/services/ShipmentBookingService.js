@@ -358,20 +358,39 @@ class ShipmentBookingService {
 
             // Atomic DB Transaction (DB-01): Persist shipment status update + financial ledger entries together
             const executeBookingCommit = async (tx) => {
+                const preFinalPrice = updateData.pricingSnapshot?.totalPrice ?? freshShipment.pricingSnapshot?.totalPrice ?? freshShipment.price ?? 0;
+                const preCarrierCost = updateData.pricingSnapshot?.carrierRate ?? freshShipment.pricingSnapshot?.carrierRate ?? freshShipment.costPrice ?? 0;
+                const preMarkupAmount = updateData.pricingSnapshot?.markup ?? freshShipment.pricingSnapshot?.markup ?? freshShipment.markupAmount ?? null;
+
+                if (Number(preFinalPrice) > 0) {
+                    updateData.price = Number(preFinalPrice);
+                    updateData.remainingBalance = freshShipment.paid
+                        ? 0
+                        : Math.max(0, Number((Number(preFinalPrice) - Number(freshShipment.totalPaid || 0)).toFixed(4)));
+                }
+                if (Number(preCarrierCost) > 0) {
+                    updateData.costPrice = Number(preCarrierCost);
+                }
+                if (preMarkupAmount !== null && preMarkupAmount !== undefined) {
+                    updateData.markupAmount = Number(preMarkupAmount);
+                }
+
                 const updatedShipment = await tx.shipment.update({
                     where: { id: shipment.id },
                     data: updateData
                 });
 
-                const finalPrice = updatedShipment.pricingSnapshot?.totalPrice ?? updatedShipment.price ?? 0;
-                const carrierCost = updatedShipment.pricingSnapshot?.carrierRate ?? updatedShipment.costPrice ?? 0;
+                const finalPrice = Number(updatedShipment.pricingSnapshot?.totalPrice ?? updatedShipment.price ?? preFinalPrice ?? 0);
+                const carrierCost = Number(updatedShipment.pricingSnapshot?.carrierRate ?? updatedShipment.costPrice ?? preCarrierCost ?? 0);
+                const billingCurrency = updatedShipment.currency || updatedShipment.pricingSnapshot?.currency || 'KWD';
 
+                let chargeEntry = null;
                 if (finalPrice > 0 && organizationId) {
-                    await financeLedgerService.createLedgerEntry(organizationId, {
+                    chargeEntry = await financeLedgerService.createLedgerEntry(organizationId, {
                         sourceRepo: 'Shipment',
                         sourceId: updatedShipment.id,
                         amount: finalPrice,
-                        currency: updatedShipment.currency || updatedShipment.pricingSnapshot?.currency || 'KWD',
+                        currency: billingCurrency,
                         entryType: 'DEBIT',
                         category: 'SHIPMENT_CHARGE',
                         description: `Charge for ${updatedShipment.trackingNumber}`,
@@ -380,25 +399,71 @@ class ShipmentBookingService {
                         metadata: {
                             attemptId,
                             carrierCode: updatedShipment.carrierCode,
-                            currency: updatedShipment.currency || updatedShipment.pricingSnapshot?.currency || 'KWD',
+                            costPrice: carrierCost,
+                            currency: billingCurrency,
                             fixedFeeApplied: updatedShipment.carrierCode === 'OTE'
                         }
                     }, tx);
 
-                    // Post Carrier Accounts Payable liability if external carrier cost exists
-                    if (carrierCost > 0 && updatedShipment.carrierCode !== 'INTERNAL' && typeof financeLedgerService.recordCarrierPayable === 'function') {
-                        await financeLedgerService.recordCarrierPayable({
-                            organizationId,
-                            shipmentId: updatedShipment.id,
-                            carrierCode: updatedShipment.carrierCode,
-                            costPrice: carrierCost,
-                            currency: updatedShipment.currency || updatedShipment.pricingSnapshot?.currency || 'KWD',
-                            trackingNumber: updatedShipment.trackingNumber,
-                            createdBy: payingUser?.id
-                        }, tx);
+                    // Auto-generate official Invoice in Finance Module if not already created
+                    if (chargeEntry?.id && typeof tx.invoice?.findUnique === 'function' && typeof tx.invoice?.create === 'function') {
+                        try {
+                            const invoiceNumber = `INV-SHP-${updatedShipment.trackingNumber}`;
+                            const existingInvoice = await tx.invoice.findUnique({ where: { invoiceNumber } });
+                            if (!existingInvoice) {
+                                const now = new Date();
+                                const isPaid = Boolean(updatedShipment.paid);
+                                await tx.invoice.create({
+                                    data: {
+                                        invoiceNumber,
+                                        organizationId,
+                                        periodStart: now,
+                                        periodEnd: now,
+                                        subtotal: finalPrice,
+                                        vat: 0,
+                                        total: finalPrice,
+                                        currency: billingCurrency,
+                                        status: isPaid ? 'paid' : 'issued',
+                                        paidAt: isPaid ? now : null,
+                                        notes: `Platform Consignment Tax Invoice (${updatedShipment.trackingNumber} - ${updatedShipment.carrierCode})`,
+                                        createdById: payingUser?.id || updatedShipment.userId,
+                                        lines: {
+                                            create: {
+                                                shipmentId: updatedShipment.id,
+                                                ledgerEntryId: chargeEntry.id,
+                                                trackingNumber: updatedShipment.trackingNumber,
+                                                shipmentDate: now,
+                                                amount: finalPrice,
+                                                currency: billingCurrency,
+                                                paid: isPaid,
+                                                totalPaid: isPaid ? finalPrice : Number(updatedShipment.totalPaid || 0),
+                                                remainingBalance: isPaid ? 0 : Math.max(0, Number((finalPrice - Number(updatedShipment.totalPaid || 0)).toFixed(4)))
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+                        } catch (invErr) {
+                            logger.warn(`[ShipmentBookingService] Auto-invoice creation warning for ${updatedShipment.trackingNumber}: ${invErr.message}`);
+                        }
                     }
+                }
 
-                    // Post Double-Entry General Ledger Entry (Dr AR, Cr Freight Revenue, Dr COGS, Cr Carrier AP)
+                // Post Platform-Level Carrier Accounts Payable liability if external carrier cost exists
+                if (carrierCost > 0 && updatedShipment.carrierCode !== 'INTERNAL' && typeof financeLedgerService.recordCarrierPayable === 'function') {
+                    await financeLedgerService.recordCarrierPayable({
+                        organizationId: null,
+                        shipmentId: updatedShipment.id,
+                        carrierCode: updatedShipment.carrierCode,
+                        costPrice: carrierCost,
+                        currency: billingCurrency,
+                        trackingNumber: updatedShipment.trackingNumber,
+                        createdBy: payingUser?.id
+                    }, tx);
+                }
+
+                // Post Double-Entry General Ledger Entry (Dr AR, Cr Freight Revenue, Dr COGS, Cr Carrier AP)
+                if ((finalPrice > 0 && organizationId) || (carrierCost > 0 && updatedShipment.carrierCode !== 'INTERNAL')) {
                     try {
                         const generalLedgerService = require('./generalLedger.service');
                         await generalLedgerService.postShipmentBookingEntry({
@@ -408,7 +473,7 @@ class ShipmentBookingService {
                             customerPrice: finalPrice,
                             carrierCost,
                             carrierCode: updatedShipment.carrierCode,
-                            currency: updatedShipment.currency || updatedShipment.pricingSnapshot?.currency || 'KWD',
+                            currency: billingCurrency,
                             createdById: payingUser?.id
                         }, tx);
                     } catch (glError) {
@@ -659,7 +724,12 @@ class ShipmentBookingService {
             where: { id: shipment.id },
             data: {
                 pricingSnapshot: snapshot,
-                price: snapshot.totalPrice
+                price: snapshot.totalPrice,
+                costPrice: snapshot.carrierRate,
+                markupAmount: snapshot.markup,
+                remainingBalance: shipment.paid
+                    ? 0
+                    : Math.max(0, Number((Number(snapshot.totalPrice || 0) - Number(shipment.totalPaid || 0)).toFixed(4)))
             }
         });
     }
