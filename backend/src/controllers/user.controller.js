@@ -215,6 +215,7 @@ exports.getUsers = async (req, res) => {
             }
         }
 
+        const isAdmin = req.user?.role === 'admin';
         const users = await prisma.user.findMany({
             where,
             select: {
@@ -226,6 +227,10 @@ exports.getUsers = async (req, res) => {
                 organizationId: true,
                 carrierConfig: true,
                 agentPolicy: true,
+                ...(isAdmin ? {
+                    chatwootUserId: true,
+                    chatwootEmail: true
+                } : {}),
                 organization: {
                     select: {
                         id: true,
@@ -248,12 +253,19 @@ exports.getUsers = async (req, res) => {
             }
         });
 
-        const mappedUsers = users.map(u => ({
-            ...u,
-            markup: u.agentPolicy?.markupOverride || { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 },
-            optionalServiceMarkup: u.agentPolicy?.optionalServiceMarkup || {},
-            creditLimit: u.organization?.creditLimit !== undefined ? u.organization.creditLimit : (u.creditLimit || 0)
-        }));
+        const mappedUsers = users.map(u => {
+            const mapped = {
+                ...u,
+                markup: u.agentPolicy?.markupOverride || { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 },
+                optionalServiceMarkup: u.agentPolicy?.optionalServiceMarkup || {},
+                creditLimit: u.organization?.creditLimit !== undefined ? u.organization.creditLimit : (u.creditLimit || 0)
+            };
+            if (!isAdmin) {
+                delete mapped.chatwootUserId;
+                delete mapped.chatwootEmail;
+            }
+            return mapped;
+        });
 
         res.status(200).json({
             success: true,
@@ -371,6 +383,83 @@ exports.replaceAccessScopes = async (req, res) => {
 };
 
 /**
+ * Get user by ID
+ * @route GET /api/users/:id
+ * @access Private
+ */
+exports.getUserById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const isAdmin = req.user?.role === 'admin';
+
+        const user = await prisma.user.findUnique({
+            where: { id },
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                phone: true,
+                role: true,
+                organizationId: true,
+                carrierConfig: true,
+                agentPolicy: true,
+                ...(isAdmin ? {
+                    chatwootUserId: true,
+                    chatwootEmail: true
+                } : {}),
+                organization: {
+                    select: {
+                        id: true,
+                        name: true,
+                        addresses: true,
+                        markup: true,
+                        creditLimit: true
+                    }
+                },
+                addresses: true,
+                active: true,
+                createdAt: true,
+                accessScopes: {
+                    where: { active: true },
+                    select: accessScopeSelect
+                }
+            }
+        });
+
+        if (!user) {
+            return res.status(404).json({ success: false, error: 'User not found' });
+        }
+
+        if (isOrgUserManager(req.user)) {
+            if (user.organizationId !== req.user.organizationId || !CLIENT_SCOPE_ROLES.includes(user.role)) {
+                return res.status(403).json({ success: false, error: 'Access denied' });
+            }
+        }
+
+        const mappedUser = {
+            ...user,
+            markup: user.agentPolicy?.markupOverride || { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 },
+            optionalServiceMarkup: user.agentPolicy?.optionalServiceMarkup || {},
+            creditLimit: user.organization?.creditLimit !== undefined ? user.organization.creditLimit : (user.creditLimit || 0)
+        };
+        delete mappedUser.password;
+        delete mappedUser.apiKeyHash;
+
+        if (!isAdmin) {
+            delete mappedUser.chatwootUserId;
+            delete mappedUser.chatwootEmail;
+        }
+
+        res.status(200).json({
+            success: true,
+            data: mappedUser
+        });
+    } catch (error) {
+        return handleControllerError(res, error, 'User retrieval');
+    }
+};
+
+/**
  * Create user (Admin)
  * @route POST /api/users
  * @access Private (Admin)
@@ -389,7 +478,9 @@ exports.createUser = async (req, res) => {
             markup,
             optionalServiceMarkup,
             creditLimit,
-            shippingAccess
+            shippingAccess,
+            chatwootUserId,
+            chatwootEmail
         } = req.body;
 
         if (!name || !email || !password) {
@@ -413,31 +504,56 @@ exports.createUser = async (req, res) => {
             shippingAccess = undefined;
         }
 
+        const isAdmin = req.user?.role === 'admin';
+        const sanitizedChatwootUserId = isAdmin && chatwootUserId !== undefined
+            ? (chatwootUserId ? String(chatwootUserId).trim() : null)
+            : undefined;
+        const sanitizedChatwootEmail = isAdmin && chatwootEmail !== undefined
+            ? (chatwootEmail ? String(chatwootEmail).trim().toLowerCase() : null)
+            : undefined;
+
         const hashedPassword = await hashPassword(password);
         const normalizedShippingAccess = normalizeShippingAccess(shippingAccess || {
             carrierCode: carrierConfig?.preferredCarrier || 'DGR',
             serviceCode: carrierConfig?.serviceCode || 'P'
         });
 
+        const createData = {
+            name,
+            email: email.toLowerCase(),
+            phone: phone || null,
+            role,
+            password: hashedPassword,
+            carrierConfig: {
+                ...(carrierConfig || {}),
+                preferredCarrier: normalizedShippingAccess.carrierCode,
+                serviceCode: normalizedShippingAccess.serviceCode
+            },
+            agentPolicy: buildAgentPolicy({}, { markup, shippingAccess: normalizedShippingAccess, optionalServiceMarkup, carrierConfig }),
+            creditLimit: creditLimit !== undefined ? Number(creditLimit) : undefined,
+            ...(targetOrgId ? { organization: { connect: { id: targetOrgId } } } : {})
+        };
+
+        if (sanitizedChatwootUserId !== undefined) {
+            createData.chatwootUserId = sanitizedChatwootUserId;
+        }
+        if (sanitizedChatwootEmail !== undefined) {
+            createData.chatwootEmail = sanitizedChatwootEmail;
+        }
+
         const user = await prisma.user.create({
-            data: {
-                name,
-                email: email.toLowerCase(),
-                phone: phone || null,
-                role,
-                password: hashedPassword,
-                carrierConfig: {
-                    ...(carrierConfig || {}),
-                    preferredCarrier: normalizedShippingAccess.carrierCode,
-                    serviceCode: normalizedShippingAccess.serviceCode
-                },
-                agentPolicy: buildAgentPolicy({}, { markup, shippingAccess: normalizedShippingAccess, optionalServiceMarkup, carrierConfig }),
-                creditLimit: creditLimit !== undefined ? Number(creditLimit) : undefined,
-                ...(targetOrgId ? { organization: { connect: { id: targetOrgId } } } : {})
-            }
+            data: createData
         });
 
-        res.status(201).json({ success: true, data: user });
+        const responseUser = { ...user };
+        delete responseUser.password;
+        delete responseUser.apiKeyHash;
+        if (!isAdmin) {
+            delete responseUser.chatwootUserId;
+            delete responseUser.chatwootEmail;
+        }
+
+        res.status(201).json({ success: true, data: responseUser });
     } catch (error) {
         return handleControllerError(res, error, 'User creation');
     }
@@ -459,6 +575,7 @@ exports.getMe = async (req, res) => {
             return res.status(404).json({ success: false, error: 'User not found' });
         }
 
+        const isAdmin = req.user?.role === 'admin';
         const mappedUser = {
             ...user,
             markup: user.agentPolicy?.markupOverride || { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 },
@@ -467,6 +584,11 @@ exports.getMe = async (req, res) => {
         };
         delete mappedUser.password;
         delete mappedUser.apiKeyHash;
+
+        if (!isAdmin) {
+            delete mappedUser.chatwootUserId;
+            delete mappedUser.chatwootEmail;
+        }
 
         res.status(200).json({
             success: true,
@@ -544,12 +666,13 @@ exports.updateProfile = async (req, res) => {
 exports.updateUser = async (req, res) => {
     try {
         const userId = req.params.id;
-        let { name, email, phone, role, organizationId, organization, carrierConfig, markup, optionalServiceMarkup, creditLimit, shippingAccess } = req.body;
+        let { name, email, phone, role, organizationId, organization, carrierConfig, markup, optionalServiceMarkup, creditLimit, shippingAccess, chatwootUserId, chatwootEmail } = req.body;
 
         const targetOrgId = isOrgUserManager(req.user)
             ? req.user.organizationId
             : (organizationId || organization);
 
+        const isAdmin = req.user?.role === 'admin';
         const updateData = {};
         if (name !== undefined) updateData.name = name;
         if (email !== undefined) updateData.email = email.toLowerCase();
@@ -558,6 +681,16 @@ exports.updateUser = async (req, res) => {
         if (req.body.password && String(req.body.password).trim().length >= 8) {
             updateData.password = await hashPassword(String(req.body.password).trim());
         }
+
+        if (isAdmin) {
+            if (chatwootUserId !== undefined) {
+                updateData.chatwootUserId = chatwootUserId ? String(chatwootUserId).trim() : null;
+            }
+            if (chatwootEmail !== undefined) {
+                updateData.chatwootEmail = chatwootEmail ? String(chatwootEmail).trim().toLowerCase() : null;
+            }
+        }
+
         const existingUser = await prisma.user.findUnique({ where: { id: userId }, include: { organization: true } });
         if (!existingUser) throw new Error("User not found");
         if (!assertOrgUserManagementAllowed(req, res, { targetOrgId, targetRole: role, existingUser })) return;
@@ -624,9 +757,17 @@ exports.updateUser = async (req, res) => {
             }
         }
 
+        const responseUser = { ...user };
+        delete responseUser.password;
+        delete responseUser.apiKeyHash;
+        if (!isAdmin) {
+            delete responseUser.chatwootUserId;
+            delete responseUser.chatwootEmail;
+        }
+
         res.status(200).json({
             success: true,
-            data: user
+            data: responseUser
         });
     } catch (error) {
         return handleControllerError(res, error, 'User update');

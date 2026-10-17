@@ -5,7 +5,7 @@ import { generateAccountStatementPDF } from '../utils/pdfGenerator';
 import { format } from 'date-fns';
 import { useLanguage } from '../context/LanguageContext';
 
-const FinanceReports = ({ ledger = [], shipments = [], organizations = [] }) => {
+const FinanceReports = ({ ledger = [], shipments = [], organizations = [], onOpenDocs, onStartTour }) => {
     const { t, lang, isRTL } = useLanguage();
     const curSymbol = lang === 'ar' ? 'د.ك' : 'KWD';
     const [activeReport, setActiveReport] = useState('profitability');
@@ -265,7 +265,7 @@ const FinanceReports = ({ ledger = [], shipments = [], organizations = [] }) => 
                             {t('rep_cogs_desc', 'Real-time double-entry margin analysis comparing wholesale carrier cost vs. billed revenue.')}
                         </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div data-tour="reports-export-actions" className="flex items-center gap-2">
                         <button 
                             type="button" 
                             onClick={loadProfitability} 
@@ -280,7 +280,7 @@ const FinanceReports = ({ ledger = [], shipments = [], organizations = [] }) => 
                 </div>
 
                 {/* Summary KPI Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div data-tour="reports-profitability-kpi" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     <div className="bg-base-200/50 border border-base-200 rounded-xl p-4 space-y-1">
                         <div className="text-[10px] font-bold uppercase tracking-wider text-base-content/60">{t('rep_total_revenue', 'Total Billed Revenue')}</div>
                         <div className="text-xl font-black text-base-content font-mono">{fmt(summary.totalRevenue)} <span className="text-xs font-sans text-base-content/60">{curSymbol}</span></div>
@@ -364,7 +364,7 @@ const FinanceReports = ({ ledger = [], shipments = [], organizations = [] }) => 
         const unremittedTotals = codData.unremittedTotalsByCurrency || {};
 
         return (
-            <div className="card bg-base-100 border border-base-200 p-6 space-y-5 shadow-xs">
+            <div data-tour="reports-cod-clearing" className="card bg-base-100 border border-base-200 p-6 space-y-5 shadow-xs">
                 <div className="flex justify-between items-center gap-3">
                     <div>
                         <h3 className="text-base font-extrabold text-base-content">{t('rep_cod_title', 'Driver Cash-on-Delivery (COD) Clearing')}</h3>
@@ -1196,7 +1196,7 @@ const FinanceReports = ({ ledger = [], shipments = [], organizations = [] }) => 
                     </p>
                 </div>
 
-                <div className="space-y-4">
+                <div data-tour="reports-recon-uploader" className="space-y-4">
                     <div className="flex gap-4 items-end flex-wrap">
                         <div className="space-y-1">
                             <label className="block text-xs font-bold text-base-content/70">{t('rep_select_carrier', 'Select Carrier')}:</label>
@@ -1354,57 +1354,86 @@ const FinanceReports = ({ ledger = [], shipments = [], organizations = [] }) => 
 
     return (
         <div className="space-y-6">
-            <div className="flex gap-2 flex-wrap">
-                <button
-                    type="button"
-                    className={`btn btn-sm ${activeReport === 'profitability' ? 'btn-primary font-bold' : 'btn-ghost'}`}
-                    onClick={() => setActiveReport('profitability')}
-                >
-                    <span className="material-symbols-outlined text-base">trending_up</span>
-                    {t('rep_tab_profitability', 'Shipment Profitability & COGS')}
-                </button>
-                <button
-                    type="button"
-                    className={`btn btn-sm ${activeReport === 'reconciliation' ? 'btn-primary font-bold' : 'btn-ghost'}`}
-                    onClick={() => setActiveReport('reconciliation')}
-                >
-                    <span className="material-symbols-outlined text-base">receipt_long</span>
-                    {t('rep_tab_reconciliation', 'Carrier Reconciliation')}
-                </button>
-                <button
-                    type="button"
-                    className={`btn btn-sm ${activeReport === 'cod' ? 'btn-primary font-bold' : 'btn-ghost'}`}
-                    onClick={() => setActiveReport('cod')}
-                >
-                    <span className="material-symbols-outlined text-base">payments</span>
-                    {t('rep_tab_cod', 'Driver COD Clearing')}
-                </button>
-                <button
-                    type="button"
-                    className={`btn btn-sm ${activeReport === 'revenue' ? 'btn-primary font-bold' : 'btn-ghost'}`}
-                    onClick={() => setActiveReport('revenue')}
-                >
-                    <span className="material-symbols-outlined text-base">calendar_today</span>
-                    {t('rep_tab_revenue', 'Revenue & Collections')}
-                </button>
-                {organizations.length > 0 && (
+            <div data-tour="reports-subnav" className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                <div className="flex gap-2 flex-wrap">
                     <button
                         type="button"
-                        className={`btn btn-sm ${activeReport === 'balances' ? 'btn-primary font-bold' : 'btn-ghost'}`}
-                        onClick={() => setActiveReport('balances')}
+                        className={`btn btn-sm ${activeReport === 'profitability' ? 'btn-primary font-bold' : 'btn-ghost'}`}
+                        onClick={() => setActiveReport('profitability')}
                     >
-                        <span className="material-symbols-outlined text-base">account_balance</span>
-                        {t('rep_tab_balances', 'Organization Balances')}
+                        <span className="material-symbols-outlined text-base">trending_up</span>
+                        {t('rep_tab_profitability', 'Shipment Profitability & COGS')}
                     </button>
+                    <button
+                        type="button"
+                        className={`btn btn-sm ${activeReport === 'reconciliation' ? 'btn-primary font-bold' : 'btn-ghost'}`}
+                        onClick={() => setActiveReport('reconciliation')}
+                    >
+                        <span className="material-symbols-outlined text-base">receipt_long</span>
+                        {t('rep_tab_reconciliation', 'Carrier Reconciliation')}
+                    </button>
+                    <button
+                        type="button"
+                        className={`btn btn-sm ${activeReport === 'cod' ? 'btn-primary font-bold' : 'btn-ghost'}`}
+                        onClick={() => setActiveReport('cod')}
+                    >
+                        <span className="material-symbols-outlined text-base">payments</span>
+                        {t('rep_tab_cod', 'Driver COD Clearing')}
+                    </button>
+                    <button
+                        type="button"
+                        className={`btn btn-sm ${activeReport === 'revenue' ? 'btn-primary font-bold' : 'btn-ghost'}`}
+                        onClick={() => setActiveReport('revenue')}
+                    >
+                        <span className="material-symbols-outlined text-base">calendar_today</span>
+                        {t('rep_tab_revenue', 'Revenue & Collections')}
+                    </button>
+                    {organizations.length > 0 && (
+                        <button
+                            type="button"
+                            className={`btn btn-sm ${activeReport === 'balances' ? 'btn-primary font-bold' : 'btn-ghost'}`}
+                            onClick={() => setActiveReport('balances')}
+                        >
+                            <span className="material-symbols-outlined text-base">account_balance</span>
+                            {t('rep_tab_balances', 'Organization Balances')}
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        className={`btn btn-sm ${activeReport === 'rates' ? 'btn-primary font-bold' : 'btn-ghost'}`}
+                        onClick={() => setActiveReport('rates')}
+                    >
+                        <span className="material-symbols-outlined text-base">currency_exchange</span>
+                        {t('rep_tab_rates', 'Multi-Currency FX Rates')}
+                    </button>
+                </div>
+
+                {(onOpenDocs || onStartTour) && (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                        {onOpenDocs && (
+                            <button
+                                type="button"
+                                className="btn btn-sm btn-ghost gap-1.5 font-bold"
+                                onClick={() => onOpenDocs('reports')}
+                                title={lang === 'ar' ? 'دليل التقارير المالية' : 'Reports Documentation'}
+                            >
+                                <span className="material-symbols-outlined text-base">menu_book</span>
+                                <span>{lang === 'ar' ? 'دليل التقارير' : 'Reports Guide'}</span>
+                            </button>
+                        )}
+                        {onStartTour && (
+                            <button
+                                type="button"
+                                className="btn btn-sm btn-ghost gap-1.5 font-bold"
+                                onClick={() => onStartTour('reports_tour')}
+                                title={lang === 'ar' ? 'جولة التقارير المالية' : 'Interactive Reports Walkthrough'}
+                            >
+                                <span className="material-symbols-outlined text-base">explore</span>
+                                <span>{lang === 'ar' ? 'جولة التقارير' : 'Reports Tour'}</span>
+                            </button>
+                        )}
+                    </div>
                 )}
-                <button
-                    type="button"
-                    className={`btn btn-sm ${activeReport === 'rates' ? 'btn-primary font-bold' : 'btn-ghost'}`}
-                    onClick={() => setActiveReport('rates')}
-                >
-                    <span className="material-symbols-outlined text-base">currency_exchange</span>
-                    {t('rep_tab_rates', 'Multi-Currency FX Rates')}
-                </button>
             </div>
 
             {activeReport === 'profitability' && renderProfitability()}

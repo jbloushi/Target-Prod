@@ -22,6 +22,15 @@ router.post('/admin/whatsapp/dispatch-queued', authController.protect, authorize
 // Manual WhatsApp Trigger from Shipment Details
 router.post('/shipments/:trackingNumber/whatsapp/send', authController.protect, adminWhatsAppLogs.sendShipmentWhatsApp);
 
+// Manual WhatsApp Payment Link Trigger
+router.post('/shipments/:trackingNumber/whatsapp/payment-link', authController.protect, authorizeAny('MANAGE_USERS', 'BOOK_CARRIERS', 'MANAGE_SYSTEM_SETTINGS', 'MANAGE_FINANCE'), adminWhatsAppLogs.sendManualPaymentLinkNotice);
+
+// WhatsApp Configuration Settings
+router.get('/settings/whatsapp', authController.protect, authorize('MANAGE_SYSTEM_SETTINGS'), adminWhatsAppLogs.getWhatsAppConfig);
+router.put('/settings/whatsapp', authController.protect, authorize('MANAGE_SYSTEM_SETTINGS'), adminWhatsAppLogs.updateWhatsAppConfig);
+router.get('/admin/whatsapp/config', authController.protect, authorize('MANAGE_SYSTEM_SETTINGS'), adminWhatsAppLogs.getWhatsAppConfig);
+router.put('/admin/whatsapp/config', authController.protect, authorize('MANAGE_SYSTEM_SETTINGS'), adminWhatsAppLogs.updateWhatsAppConfig);
+
 // Meta WhatsApp Message Templates
 router.get('/whatsapp/templates', authController.protect, adminWhatsAppLogs.getMetaTemplates);
 

@@ -1,5 +1,6 @@
 const { prisma } = require('../config/database');
 const whatsappService = require('../services/whatsappIntegration.service');
+const whatsAppConfigService = require('../services/whatsAppConfig.service');
 const logger = require('../utils/logger');
 
 /**
@@ -546,11 +547,144 @@ async function dispatchQueuedNotifications(req, res) {
     }
 }
 
+/**
+ * GET /api/settings/whatsapp
+ * Admin-only: retrieve WhatsApp configuration with masked secrets and event rules
+ */
+async function getWhatsAppConfig(req, res) {
+    try {
+        const config = await whatsAppConfigService.getConfig({ internal: false });
+        const rules = await whatsAppConfigService.getRules();
+        return res.json({
+            success: true,
+            config,
+            rules
+        });
+    } catch (err) {
+        logger.error(`[getWhatsAppConfig Error] ${err.message}`);
+        return res.status(500).json({ success: false, error: err.message });
+    }
+}
+
+/**
+ * PUT /api/settings/whatsapp
+ * Admin-only: update WhatsApp configuration and rules, preserving existing secrets
+ */
+async function updateWhatsAppConfig(req, res) {
+    try {
+        const { config, rules } = req.body || {};
+        let updatedConfig = null;
+        let updatedRules = null;
+
+        if (config && typeof config === 'object') {
+            updatedConfig = await whatsAppConfigService.updateConfig(config);
+        } else {
+            updatedConfig = await whatsAppConfigService.getConfig({ internal: false });
+        }
+
+        if (rules && Array.isArray(rules)) {
+            updatedRules = await whatsAppConfigService.updateRules(rules);
+        } else {
+            updatedRules = await whatsAppConfigService.getRules();
+        }
+
+        return res.json({
+            success: true,
+            config: updatedConfig,
+            rules: updatedRules
+        });
+    } catch (err) {
+        logger.error(`[updateWhatsAppConfig Error] ${err.message}`);
+        return res.status(500).json({ success: false, error: err.message });
+    }
+}
+
+/**
+ * POST /api/shipments/:trackingNumber/whatsapp/payment-link
+ * Staff/Admin: trigger manual payment link notice via WhatsApp with custom checkout URL
+ */
+async function sendManualPaymentLinkNotice(req, res) {
+    try {
+        const { trackingNumber } = req.params;
+        const { customPaymentUrl, paymentUrl, amount, recipientRole, recipientPhone, currency = 'KWD' } = req.body || {};
+
+        const effectivePaymentUrl = customPaymentUrl || paymentUrl;
+
+        if (!effectivePaymentUrl || typeof effectivePaymentUrl !== 'string') {
+            return res.status(400).json({ success: false, error: 'Payment URL is required' });
+        }
+
+        const trimmedUrl = effectivePaymentUrl.trim();
+        if (!trimmedUrl) {
+            return res.status(400).json({ success: false, error: 'Payment URL cannot be empty' });
+        }
+
+        if (trimmedUrl.includes('\r') || trimmedUrl.includes('\n')) {
+            return res.status(400).json({ success: false, error: 'CRLF injection rejected' });
+        }
+
+        try {
+            const parsed = new URL(trimmedUrl);
+            if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+                return res.status(400).json({ success: false, error: 'Payment URL must use secure HTTP or HTTPS protocol' });
+            }
+        } catch {
+            return res.status(400).json({ success: false, error: 'Invalid URL format' });
+        }
+
+        let effectiveAmount = amount;
+        if (effectiveAmount !== undefined && effectiveAmount !== null && effectiveAmount !== '') {
+            const n = Number(effectiveAmount);
+            if (!Number.isFinite(n) || n <= 0) {
+                return res.status(400).json({ success: false, error: 'Amount must be greater than zero' });
+            }
+            effectiveAmount = n.toFixed(3);
+        }
+
+        const shipment = await prisma.shipment.findFirst({
+            where: {
+                OR: [
+                    { trackingNumber },
+                    { id: trackingNumber }
+                ]
+            }
+        });
+
+        if (!shipment) {
+            return res.status(404).json({ success: false, error: 'Shipment not found' });
+        }
+
+        const role = (recipientRole === 'sender' || recipientRole === 'shipper') ? 'sender' : 'receiver';
+        const finalAmount = effectiveAmount || Number(shipment.remainingBalance || shipment.price || 0).toFixed(3);
+
+        const result = await whatsappService.sendPaymentLinkNotification({
+            shipment,
+            recipientRole: role,
+            recipientPhone,
+            paymentLink: trimmedUrl,
+            amount: finalAmount,
+            currency: shipment.currency || currency
+        });
+
+        return res.json({
+            success: true,
+            message: 'Payment link notification dispatched',
+            data: result
+        });
+    } catch (err) {
+        logger.error(`[sendManualPaymentLinkNotice Error] ${err.message}`);
+        return res.status(500).json({ success: false, error: err.message });
+    }
+}
+
 module.exports = {
     getNotificationLogs,
     resendNotification,
     sendShipmentWhatsApp,
     getMetaTemplates,
     syncMicroserviceTelemetry,
-    dispatchQueuedNotifications
+    dispatchQueuedNotifications,
+    getWhatsAppConfig,
+    updateWhatsAppConfig,
+    sendManualPaymentLinkNotice
 };

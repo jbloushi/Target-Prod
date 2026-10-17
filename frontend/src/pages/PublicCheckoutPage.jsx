@@ -59,8 +59,8 @@ export const PublicCheckoutPage = () => {
       // Attempt live Ottu Payment Gateway session first
       try {
         const sessionRes = await publicCheckoutService.createOttuSession(trackingNumber, {
-          customerName: cardName || shipment?.senderName,
-          customerPhone: shipment?.senderPhone,
+          customerName: cardName || data?.senderName || data?.destination?.contactPerson || data?.origin?.contactPerson,
+          customerPhone: data?.senderPhone || data?.destination?.phone || data?.origin?.phone,
         });
         if (sessionRes?.alreadyPaid) {
           setPaidSuccess(true);

@@ -16,19 +16,19 @@ const TabButton = ({ $active, children, onClick }) => (
   </button>
 );
 
-const KPIBar = ({ children }) => (
-  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+const KPIBar = ({ children, ...props }) => (
+  <div {...props} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
     {children}
   </div>
 );
 
-const KPICard = ({ children, style }) => (
-  <div style={style} className="bg-base-100 rounded-2xl border border-base-200 p-4 shadow-xs">
+const KPICard = ({ children, style, ...props }) => (
+  <div {...props} style={style} className="bg-base-100 rounded-2xl border border-base-200 p-4 shadow-xs">
     {children}
   </div>
 );
 
-const FinancialStatementsTab = ({ lang = 'en' }) => {
+const FinancialStatementsTab = ({ lang = 'en', onOpenDocs, onStartTour }) => {
   const { enqueueSnackbar } = useSnackbar();
   const [statementType, setStatementType] = useState('balanceSheet'); // 'balanceSheet' | 'incomeStatement' | 'trialBalance'
   const [loading, setLoading] = useState(false);
@@ -68,7 +68,7 @@ const FinancialStatementsTab = ({ lang = 'en' }) => {
     <div>
       {/* Statement Sub-Selector */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
-        <div style={{ display: 'flex', gap: 6, padding: 4, background: '#eef2f6', borderRadius: 12 }}>
+        <div data-tour="statements-type-selector" style={{ display: 'flex', gap: 6, padding: 4, background: '#eef2f6', borderRadius: 12 }}>
           <TabButton $active={statementType === 'balanceSheet'} onClick={() => setStatementType('balanceSheet')}>
             {lang === 'ar' ? 'الميزانية العمومية (Balance Sheet)' : 'Balance Sheet'}
           </TabButton>
@@ -80,7 +80,23 @@ const FinancialStatementsTab = ({ lang = 'en' }) => {
           </TabButton>
         </div>
 
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div data-tour="statements-date-filter" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          {(onOpenDocs || onStartTour) && (
+            <div style={{ display: 'flex', gap: 6, marginTop: 18 }}>
+              {onOpenDocs && (
+                <Button variant="ghost" size="sm" onClick={() => onOpenDocs('statements')}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 16, marginRight: 4 }}>menu_book</span>
+                  {lang === 'ar' ? 'دليل القوائم' : 'Statements Guide'}
+                </Button>
+              )}
+              {onStartTour && (
+                <Button variant="ghost" size="sm" onClick={() => onStartTour('statements_tour')}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 16, marginRight: 4 }}>explore</span>
+                  {lang === 'ar' ? 'جولة القوائم' : 'Statements Tour'}
+                </Button>
+              )}
+            </div>
+          )}
           {statementType === 'incomeStatement' ? (
             <>
               <WInput
@@ -121,8 +137,8 @@ const FinancialStatementsTab = ({ lang = 'en' }) => {
           {/* BALANCE SHEET VIEW */}
           {statementType === 'balanceSheet' && (
             <>
-              <KPIBar>
-                <KPICard>
+              <KPIBar data-tour="statements-kpis">
+                <KPICard data-tour="statements-assets-card">
                   <div style={{ fontSize: 11, fontWeight: 700, color: TK.text3, textTransform: 'uppercase' }}>
                     {lang === 'ar' ? 'إجمالي الأصول (Assets)' : 'Total Assets'}
                   </div>
@@ -146,7 +162,7 @@ const FinancialStatementsTab = ({ lang = 'en' }) => {
                     {fmt(report.equity?.total)} <span style={{ fontSize: 13 }}>KWD</span>
                   </div>
                 </KPICard>
-                <KPICard style={{ borderLeft: report.isBalanced ? `4px solid ${TK.success}` : `4px solid ${TK.error}` }}>
+                <KPICard data-tour="statements-equation-check" style={{ borderLeft: report.isBalanced ? `4px solid ${TK.success}` : `4px solid ${TK.error}` }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: TK.text3, textTransform: 'uppercase' }}>
                     {lang === 'ar' ? 'توازن المعادلة المحاسبية' : 'Accounting Equation'}
                   </div>
@@ -191,6 +207,7 @@ const FinancialStatementsTab = ({ lang = 'en' }) => {
                 </Card>
 
                 {/* Liabilities & Equity Card */}
+                <div data-tour="statements-liabilities-equity-card">
                 <Card title={lang === 'ar' ? 'الخصوم وحقوق الملكية (Liabilities & Equity)' : 'Liabilities & Equity'}>
                   <TableWrapper>
                     <Table>
@@ -244,6 +261,7 @@ const FinancialStatementsTab = ({ lang = 'en' }) => {
                     </Table>
                   </TableWrapper>
                 </Card>
+                </div>
               </div>
             </>
           )}
@@ -251,7 +269,7 @@ const FinancialStatementsTab = ({ lang = 'en' }) => {
           {/* INCOME STATEMENT VIEW */}
           {statementType === 'incomeStatement' && (
             <>
-              <KPIBar>
+              <KPIBar data-tour="statements-kpis">
                 <KPICard>
                   <div style={{ fontSize: 11, fontWeight: 700, color: TK.text3, textTransform: 'uppercase' }}>
                     {lang === 'ar' ? 'إجمالي الإيرادات' : 'Total Revenue'}
@@ -286,6 +304,7 @@ const FinancialStatementsTab = ({ lang = 'en' }) => {
                 </KPICard>
               </KPIBar>
 
+              <div data-tour="statements-pnl-breakdown">
               <Card title={lang === 'ar' ? 'بيان الأرباح والخسائر المفصل (P&L Breakdown)' : 'Profit & Loss Statement'}>
                 <TableWrapper>
                   <Table>
@@ -358,13 +377,14 @@ const FinancialStatementsTab = ({ lang = 'en' }) => {
                   </Table>
                 </TableWrapper>
               </Card>
+              </div>
             </>
           )}
 
           {/* TRIAL BALANCE VIEW */}
           {statementType === 'trialBalance' && (
             <>
-              <KPIBar>
+              <KPIBar data-tour="statements-kpis">
                 <KPICard>
                   <div style={{ fontSize: 11, fontWeight: 700, color: TK.text3, textTransform: 'uppercase' }}>
                     {lang === 'ar' ? 'إجمالي المدين (Debits)' : 'Total Debits'}
@@ -394,6 +414,7 @@ const FinancialStatementsTab = ({ lang = 'en' }) => {
                 </KPICard>
               </KPIBar>
 
+              <div data-tour="statements-trial-balance">
               <Card title={lang === 'ar' ? 'ميزان المراجعة الكامل (Trial Balance Table)' : 'Trial Balance Account Register'}>
                 <TableWrapper>
                   <Table>
@@ -441,6 +462,7 @@ const FinancialStatementsTab = ({ lang = 'en' }) => {
                   </Table>
                 </TableWrapper>
               </Card>
+              </div>
             </>
           )}
         </>

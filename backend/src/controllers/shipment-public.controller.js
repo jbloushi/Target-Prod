@@ -1019,3 +1019,281 @@ exports.createPublicReturn = async (req, res) => {
         res.status(500).json({ success: false, error: 'Failed to create return waybill' });
     }
 };
+
+/**
+ * Public location lookup by single-use/scoped token
+ * @route GET /api/public/location/:token
+ * @route GET /api/public/shipments/location/:token
+ */
+exports.getLocationByToken = async (req, res) => {
+    try {
+        const { token } = req.params;
+        if (!token || typeof token !== 'string' || !token.trim()) {
+            return res.status(400).json({ success: false, error: 'Location token is required' });
+        }
+
+        const cleanToken = token.trim();
+        const shipment = await prisma.shipment.findFirst({
+            where: { locationToken: cleanToken }
+        });
+
+        if (!shipment) {
+            return res.status(404).json({
+                success: false,
+                valid: false,
+                error: 'Location link not found or invalid'
+            });
+        }
+
+        const now = Date.now();
+        if (shipment.locationTokenExpiresAt && new Date(shipment.locationTokenExpiresAt).getTime() < now) {
+            return res.status(410).json({
+                success: false,
+                valid: false,
+                code: 410,
+                error: 'Location link has expired'
+            });
+        }
+
+        // Check if token was already used past 15-minute grace window
+        const usedAt = shipment.locationTokenUsedAt || shipment.destination?.locationTokenUsedAt;
+        if (usedAt) {
+            const gracePeriodMs = 15 * 60 * 1000;
+            if (now - new Date(usedAt).getTime() > gracePeriodMs) {
+                return res.status(410).json({
+                    success: false,
+                    valid: false,
+                    code: 410,
+                    error: 'Location pin already confirmed'
+                });
+            }
+        }
+
+        const recipientName = shipment.destination?.contactPerson || shipment.customerName || shipment.recipientName || 'Valued Customer';
+        const currentDestination = shipment.destination || {};
+
+        return res.status(200).json({
+            success: true,
+            valid: true,
+            trackingNumber: shipment.trackingNumber,
+            recipientName,
+            currentDestination,
+            status: shipment.status,
+            data: {
+                trackingNumber: shipment.trackingNumber,
+                recipientName,
+                status: shipment.status,
+                currentDestination,
+                destination: currentDestination,
+                estimatedDelivery: shipment.estimatedDelivery,
+                expiresAt: shipment.locationTokenExpiresAt
+            }
+        });
+    } catch (error) {
+        logger.error('Error fetching location by token:', error);
+        return res.status(500).json({ success: false, error: 'Failed to retrieve location details' });
+    }
+};
+
+/**
+ * Update shipment destination location via single-use/scoped token
+ * @route POST /api/public/location/:token
+ * @route PATCH /api/public/location/:token
+ * @route POST /api/public/shipments/location/:token
+ * @route PATCH /api/public/shipments/location/:token
+ */
+exports.updateLocationByToken = async (req, res) => {
+    try {
+        const { token } = req.params;
+        if (!token || typeof token !== 'string' || !token.trim()) {
+            return res.status(400).json({ success: false, error: 'Location token is required' });
+        }
+
+        const cleanToken = token.trim();
+        const shipment = await prisma.shipment.findFirst({
+            where: { locationToken: cleanToken }
+        });
+
+        if (!shipment) {
+            return res.status(404).json({
+                success: false,
+                valid: false,
+                error: 'Location link not found or invalid'
+            });
+        }
+
+        const now = Date.now();
+        if (shipment.locationTokenExpiresAt && new Date(shipment.locationTokenExpiresAt).getTime() < now) {
+            return res.status(410).json({
+                success: false,
+                valid: false,
+                code: 410,
+                error: 'Location link has expired'
+            });
+        }
+
+        // Check if token was already used past 15-minute grace window
+        const existingUsedAt = shipment.locationTokenUsedAt || shipment.destination?.locationTokenUsedAt;
+        if (existingUsedAt) {
+            const gracePeriodMs = 15 * 60 * 1000;
+            if (now - new Date(existingUsedAt).getTime() > gracePeriodMs) {
+                return res.status(410).json({
+                    success: false,
+                    valid: false,
+                    code: 410,
+                    error: 'Location pin already confirmed'
+                });
+            }
+        }
+
+        // Coordinate extraction: support latitude/longitude, lat/lng, [lng, lat], [lat, lng]
+        let lat = null;
+        let lng = null;
+
+        if (req.body.latitude !== undefined && req.body.longitude !== undefined) {
+            lat = Number(req.body.latitude);
+            lng = Number(req.body.longitude);
+        } else if (req.body.lat !== undefined && req.body.lng !== undefined) {
+            lat = Number(req.body.lat);
+            lng = Number(req.body.lng);
+        } else if (Array.isArray(req.body.coordinates) && req.body.coordinates.length >= 2) {
+            const c0 = Number(req.body.coordinates[0]);
+            const c1 = Number(req.body.coordinates[1]);
+
+            // Detect inverted [lat, lng] specifically within Kuwait/GCC regional bounds
+            // Kuwait Latitude is ~28.5 to ~30.5; Longitude is ~46.5 to ~49.0
+            if (c0 >= 28 && c0 <= 31 && c1 >= 46 && c1 <= 49) {
+                lat = c0;
+                lng = c1;
+            } else if (c1 >= 28 && c1 <= 31 && c0 >= 46 && c0 <= 49) {
+                lng = c0;
+                lat = c1;
+            } else {
+                // GeoJSON standard: [longitude, latitude]
+                lng = c0;
+                lat = c1;
+            }
+        }
+
+        if (lat === null || lng === null || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Valid latitude and longitude coordinates are required'
+            });
+        }
+
+        if (lat < -90 || lat > 90) {
+            return res.status(400).json({
+                success: false,
+                error: 'Latitude must be a valid number between -90 and 90'
+            });
+        }
+
+        if (lng < -180 || lng > 180) {
+            return res.status(400).json({
+                success: false,
+                error: 'Longitude must be a valid number between -180 and 180'
+            });
+        }
+
+        const oldDestination = shipment.destination || {};
+        const formattedAddress = req.body.formattedAddress || req.body.address || oldDestination.formattedAddress || '';
+        const deliveryNotes = req.body.deliveryNotes || req.body.notes || req.body.landmark || oldDestination.deliveryNotes || '';
+        const buildingName = req.body.buildingName || oldDestination.buildingName || '';
+        const unitNumber = req.body.unitNumber || oldDestination.unitNumber || '';
+        const floor = req.body.floor || oldDestination.floor || '';
+        const landmark = req.body.landmark || oldDestination.landmark || '';
+        const city = req.body.city || oldDestination.city || '';
+        const state = req.body.state || oldDestination.state || '';
+        const postalCode = req.body.postalCode || oldDestination.postalCode || '';
+        const country = req.body.country || oldDestination.country || 'Kuwait';
+        const countryCode = req.body.countryCode || oldDestination.countryCode || 'KW';
+        const streetLines = req.body.streetLines || oldDestination.streetLines || [formattedAddress, ''];
+
+        const submissionTimestamp = new Date();
+        const updatedDestination = {
+            ...oldDestination,
+            formattedAddress,
+            latitude: lat,
+            longitude: lng,
+            coordinates: [lng, lat],
+            streetLines,
+            city,
+            state,
+            postalCode,
+            country,
+            countryCode,
+            buildingName,
+            unitNumber,
+            floor,
+            landmark,
+            deliveryNotes,
+            locationTokenUsedAt: submissionTimestamp.toISOString()
+        };
+
+        const existingHistory = Array.isArray(shipment.history) ? shipment.history : [];
+        const historyEvent = {
+            event: 'LOCATION_CONFIRMED_BY_CUSTOMER',
+            status: shipment.status || 'out_for_delivery',
+            source: 'consignee_portal',
+            description: 'Consignee confirmed exact GPS delivery pin via self-service portal',
+            location: formattedAddress || `${city || 'Kuwait'}, Kuwait`,
+            coordinates: [lng, lat],
+            latitude: lat,
+            longitude: lng,
+            timestamp: submissionTimestamp.toISOString()
+        };
+        const updatedHistory = [...existingHistory, historyEvent];
+
+        // Maintain 15-minute grace window for re-edits, then expire
+        const graceExpiry = new Date(Date.now() + 15 * 60 * 1000);
+
+        const updateData = {
+            destination: updatedDestination,
+            history: updatedHistory,
+            locationTokenExpiresAt: graceExpiry
+        };
+
+        await prisma.shipment.update({
+            where: { id: shipment.id },
+            data: updateData
+        });
+
+        // Audit Log
+        try {
+            await prisma.shipmentAuditLog.create({
+                data: {
+                    shipmentId: shipment.id,
+                    trackingNumber: shipment.trackingNumber,
+                    actorType: 'CONSIGNEE_PORTAL',
+                    actorName: shipment.destination?.contactPerson || shipment.customerName || 'Consignee',
+                    action: 'LOCATION_CONFIRMED_BY_CUSTOMER',
+                    fieldChanges: {
+                        oldDestination,
+                        newDestination: updatedDestination
+                    },
+                    ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+                }
+            });
+        } catch (auditErr) {
+            logger.warn(`Failed to create audit log for customer GPS confirmation: ${auditErr.message}`);
+        }
+
+        logger.info(`Shipment ${shipment.trackingNumber} destination GPS confirmed by customer via token`);
+
+        return res.status(200).json({
+            success: true,
+            message: 'Delivery location confirmed successfully!',
+            trackingNumber: shipment.trackingNumber,
+            destination: updatedDestination,
+            data: {
+                trackingNumber: shipment.trackingNumber,
+                destination: updatedDestination
+            }
+        });
+    } catch (error) {
+        logger.error('Error updating location by token:', error);
+        return res.status(500).json({ success: false, error: 'Failed to update location' });
+    }
+};
+

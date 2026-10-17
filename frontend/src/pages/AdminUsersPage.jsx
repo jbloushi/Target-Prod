@@ -230,6 +230,8 @@ const AdminUsersPage = () => {
             initialData.organizationId = initialData.organization.id;
         }
         initialData.accessScopes = initialData.accessScopes || [];
+        initialData.chatwootUserId = targetUser?.chatwootUserId || '';
+        initialData.chatwootEmail = targetUser?.chatwootEmail || '';
 
         setFormData(initialData);
         setActiveTab('profile');
@@ -254,6 +256,14 @@ const AdminUsersPage = () => {
 
             if (payload.creditLimit !== undefined) payload.creditLimit = Number(payload.creditLimit);
             if (payload.organization && !payload.organizationId) payload.organizationId = payload.organization;
+
+            if (currentUser?.role === 'admin') {
+                payload.chatwootUserId = formData.chatwootUserId ? String(formData.chatwootUserId).trim() : null;
+                payload.chatwootEmail = formData.chatwootEmail ? String(formData.chatwootEmail).trim() : null;
+            } else {
+                delete payload.chatwootUserId;
+                delete payload.chatwootEmail;
+            }
 
             if (payload.markup) {
                 payload.markup.percentageValue = Number(payload.markup.percentageValue || 0);
@@ -680,6 +690,13 @@ const AdminUsersPage = () => {
                                                         <div className="font-bold text-sm text-base-content">{u.name}</div>
                                                         <div className="text-[11px] text-base-content/60 font-mono">{u.email}</div>
                                                         {u.phone && <div className="text-[10.5px] text-base-content/50">{u.phone}</div>}
+                                                        {currentUser?.role === 'admin' && (u.chatwootUserId || u.chatwootEmail) && (
+                                                            <div className="mt-0.5">
+                                                                <span className="badge badge-xs badge-info gap-1 font-mono text-[10px]">
+                                                                    CW #{u.chatwootUserId || u.chatwootEmail}
+                                                                </span>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </td>
@@ -947,6 +964,50 @@ const AdminUsersPage = () => {
                                             </span>
                                         </div>
                                     )
+                                )}
+
+                                {/* Chatwoot Live Support Identity Mapping (Admin-only RBAC Guard) */}
+                                {currentUser?.role === 'admin' && (
+                                    <div className="p-3.5 bg-base-200/50 rounded-xl border border-base-200 space-y-3">
+                                        <div className="flex items-center gap-1.5 text-xs font-bold text-primary uppercase">
+                                            <span className="material-symbols-outlined text-sm">support_agent</span>
+                                            <span>{lang === 'ar' ? 'هوية وكيل المحادثات الحية (Chatwoot)' : 'Chatwoot Live Support Identity'}</span>
+                                            <span className="badge badge-primary badge-outline text-[10px] font-bold">Admin Only</span>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="text-xs font-bold text-base-content/70 block mb-1">
+                                                    {lang === 'ar' ? 'معرّف وكيل Chatwoot' : 'Chatwoot Agent ID'}
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.chatwootUserId || ''}
+                                                    onChange={(e) => updateField('chatwootUserId', e.target.value)}
+                                                    placeholder="e.g. 104"
+                                                    className="input input-xs sm:input-sm input-bordered w-full font-mono text-xs focus:input-primary"
+                                                    data-testid="input-chatwoot-user-id"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-base-content/70 block mb-1">
+                                                    {lang === 'ar' ? 'البريد الإلكتروني في Chatwoot' : 'Chatwoot Email'}
+                                                </label>
+                                                <input
+                                                    type="email"
+                                                    value={formData.chatwootEmail || ''}
+                                                    onChange={(e) => updateField('chatwootEmail', e.target.value)}
+                                                    placeholder="agent@mawthook.io"
+                                                    className="input input-xs sm:input-sm input-bordered w-full font-mono text-xs focus:input-primary"
+                                                    data-testid="input-chatwoot-email"
+                                                />
+                                            </div>
+                                        </div>
+                                        <p className="text-[10.5px] text-base-content/50">
+                                            {lang === 'ar'
+                                                ? 'ربط حساب مستخدم تارجت مع وكيل شات ووت للدعم المباشر. متاح فقط لمديري النظام.'
+                                                : 'Associates Target user actions with Chatwoot live support inbox tickets. Restricted to Superadmin.'}
+                                        </p>
+                                    </div>
                                 )}
                             </div>
                         )}

@@ -20,6 +20,26 @@ const ROLE_DISPLAY_NAMES = {
 
 const SUPERADMIN_TAB_IDS = new Set(['fleet', 'ratecards', 'phenix', 'whatsapp', 'notifications', 'routing']);
 
+export const DEFAULT_WHATSAPP_RULES = [
+  { eventType: 'out_for_delivery', recipientRole: 'receiver', templateName: 'target_shipment_out_for_delivery', enabled: true, allowQuietHoursBypass: false },
+  { eventType: 'delivered', recipientRole: 'receiver', templateName: 'target_shipment_delivered', enabled: true, allowQuietHoursBypass: false },
+  { eventType: 'delivered', recipientRole: 'sender', templateName: 'target_shipment_delivered', enabled: true, allowQuietHoursBypass: false },
+  { eventType: 'on_hold_customs_issue', recipientRole: 'receiver', templateName: 'target_customs_exception_hold', enabled: true, allowQuietHoursBypass: true },
+  { eventType: 'on_hold_customs_issue', recipientRole: 'sender', templateName: 'target_customs_exception_hold', enabled: true, allowQuietHoursBypass: true },
+  { eventType: 'payment_link_ready', recipientRole: 'receiver', templateName: 'payment_request_v1', enabled: true, allowQuietHoursBypass: false },
+  { eventType: 'payment_link_ready', recipientRole: 'sender', templateName: 'payment_request_v1', enabled: true, allowQuietHoursBypass: false },
+  { eventType: 'shipment_created', recipientRole: 'receiver', templateName: 'shipment_confirmation_2', enabled: true, allowQuietHoursBypass: false },
+  { eventType: 'shipment_created', recipientRole: 'sender', templateName: 'shipment_confirmation_2', enabled: true, allowQuietHoursBypass: false },
+];
+
+export const EVENT_METRIC_CONFIG = {
+  out_for_delivery: { labelEn: 'Out for Delivery', labelAr: 'خرج للتوصيل', icon: 'local_shipping', color: 'badge-info' },
+  delivered: { labelEn: 'Delivered (ePOD)', labelAr: 'تم التوصيل', icon: 'check_circle', color: 'badge-success' },
+  on_hold_customs_issue: { labelEn: 'Customs & Border Hold', labelAr: 'احتجاز جمركي', icon: 'gavel', color: 'badge-error' },
+  payment_link_ready: { labelEn: 'Payment Link Ready', labelAr: 'رابط الدفع جاهز', icon: 'payments', color: 'badge-warning' },
+  shipment_created: { labelEn: 'Shipment Created', labelAr: 'إنشاء الشحنة', icon: 'inventory_2', color: 'badge-primary' },
+};
+
 export const getTabs = (lang, isSuperadmin) => [
   { id: 'profile', label: lang === 'ar' ? 'ملف الشاحن' : 'Shipper Profile', icon: 'person' },
   { id: 'addresses', label: lang === 'ar' ? 'سجل العناوين' : 'Address Presets', icon: 'location_on' },
@@ -100,6 +120,28 @@ export const SettingsPage = () => {
   const [systemSettings, setSystemSettings] = useState(null);
   const [savingSettings, setSavingSettings] = useState(false);
 
+  // Dedicated WhatsApp & Chatwoot Configuration State (Milestone 4)
+  const [whatsAppConfig, setWhatsAppConfig] = useState({
+    provider: 'SHIPMENT_WHATSAPP',
+    serviceUrl: 'https://msg.target-kw.com',
+    phoneId: '',
+    apiKey: '',
+    chatwootBaseUrl: 'https://inbox.mawthook.io',
+    chatwootAccountId: '1',
+    chatwootInboxId: '',
+    chatwootApiToken: '',
+    quietHoursEnabled: false,
+    quietHoursStart: '22:00',
+    quietHoursEnd: '08:00',
+    quietHoursTimezone: 'Asia/Kuwait',
+    allowDeliveryQuietHours: false,
+  });
+  const [whatsAppRules, setWhatsAppRules] = useState([]);
+  const [loadingWhatsApp, setLoadingWhatsApp] = useState(false);
+  const [savingWhatsApp, setSavingWhatsApp] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [showChatwootToken, setShowChatwootToken] = useState(false);
+
   // Notification Toggles
   const [notifs, setNotifs] = useState({
     email_ship: true,
@@ -175,6 +217,95 @@ export const SettingsPage = () => {
     };
     if (isSuperadmin) loadSettings();
   }, [isSuperadmin]);
+
+  const fetchWhatsAppSettings = async () => {
+    try {
+      setLoadingWhatsApp(true);
+      const res = await api.get('settings/whatsapp');
+      if (res.data?.success) {
+        if (res.data.config) {
+          setWhatsAppConfig(prev => ({
+            ...prev,
+            ...res.data.config,
+            apiKey: res.data.config.apiKey || '',
+            phoneId: res.data.config.phoneId || '',
+            chatwootBaseUrl: res.data.config.chatwootBaseUrl || 'https://inbox.mawthook.io',
+            chatwootAccountId: res.data.config.chatwootAccountId || '1',
+            chatwootInboxId: res.data.config.chatwootInboxId || '',
+            chatwootApiToken: res.data.config.chatwootApiToken || '',
+            serviceUrl: res.data.config.serviceUrl || 'https://msg.target-kw.com',
+            quietHoursStart: res.data.config.quietHoursStart || '22:00',
+            quietHoursEnd: res.data.config.quietHoursEnd || '08:00',
+            quietHoursTimezone: res.data.config.quietHoursTimezone || 'Asia/Kuwait',
+            allowDeliveryQuietHours: Boolean(res.data.config.allowDeliveryQuietHours),
+            quietHoursEnabled: Boolean(res.data.config.quietHoursEnabled),
+          }));
+        }
+        if (Array.isArray(res.data.rules) && res.data.rules.length > 0) {
+          setWhatsAppRules(res.data.rules);
+        } else {
+          setWhatsAppRules(DEFAULT_WHATSAPP_RULES);
+        }
+      }
+    } catch (err) {
+      console.debug('Error loading WhatsApp settings:', err.message);
+      enqueueSnackbar(lang === 'ar' ? 'فشل تحميل إعدادات واتساب' : 'Failed to load WhatsApp configuration', { variant: 'error' });
+    } finally {
+      setLoadingWhatsApp(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isSuperadmin && activeTab === 'whatsapp') {
+      fetchWhatsAppSettings();
+    }
+  }, [isSuperadmin, activeTab]);
+
+  const handleSaveWhatsApp = async () => {
+    try {
+      setSavingWhatsApp(true);
+      const currentRules = whatsAppRules.length > 0 ? whatsAppRules : DEFAULT_WHATSAPP_RULES;
+      const payload = {
+        config: { ...whatsAppConfig },
+        rules: currentRules,
+      };
+      const res = await api.put('settings/whatsapp', payload);
+      if (res.data?.success) {
+        if (res.data.config) {
+          setWhatsAppConfig(prev => ({
+            ...prev,
+            ...res.data.config,
+            apiKey: res.data.config.apiKey || '',
+            phoneId: res.data.config.phoneId || '',
+            chatwootApiToken: res.data.config.chatwootApiToken || '',
+          }));
+        }
+        if (Array.isArray(res.data.rules)) {
+          setWhatsAppRules(res.data.rules);
+        }
+        enqueueSnackbar(
+          lang === 'ar' ? 'تم حفظ إعدادات واتساب وشات ووت بنجاح' : 'WhatsApp and Chatwoot settings updated successfully',
+          { variant: 'success' }
+        );
+      } else {
+        throw new Error(res.data?.error || 'Save failed');
+      }
+    } catch (err) {
+      console.error('Error updating WhatsApp configuration:', err);
+      enqueueSnackbar(
+        (lang === 'ar' ? 'فشل حفظ إعدادات واتساب: ' : 'Failed to save WhatsApp settings: ') + (err.response?.data?.error || err.message),
+        { variant: 'error' }
+      );
+    } finally {
+      setSavingWhatsApp(false);
+    }
+  };
+
+  const handleRuleChange = (index, field, value) => {
+    const list = whatsAppRules.length > 0 ? [...whatsAppRules] : [...DEFAULT_WHATSAPP_RULES];
+    list[index] = { ...list[index], [field]: value };
+    setWhatsAppRules(list);
+  };
 
   const generateNewKey = async () => {
     try {
@@ -1360,97 +1491,468 @@ export const SettingsPage = () => {
             </div>
           )}
 
-          {/* TAB 4: WhatsApp & Meta Cloud API */}
+          {/* TAB 4: WhatsApp & Meta Cloud API + Chatwoot Integration */}
           {isSuperadmin && activeTab === 'whatsapp' && (
-            <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
-              <div className="card-body p-6 sm:p-8 space-y-6">
-                <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-base-200">
-                  <div>
-                    <h2 className="text-lg font-black text-base-content tracking-tight">
-                      Meta WhatsApp Business Cloud API
-                    </h2>
-                    <p className="text-xs text-base-content/60 mt-0.5">
-                      Direct automated notifications for pickups, tracking links, and digital delivery confirmations.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      try {
-                        setSavingSettings(true);
-                        await settingsService.updateSystemSettings({ whatsapp: systemSettings?.whatsapp });
-                        enqueueSnackbar('WhatsApp settings updated successfully', { variant: 'success' });
-                      } catch (err) {
-                        enqueueSnackbar('Failed to update WhatsApp settings', { variant: 'error' });
-                      } finally {
-                        setSavingSettings(false);
-                      }
-                    }}
-                    disabled={savingSettings}
-                    className="btn btn-primary btn-sm font-bold text-xs gap-1.5 shadow-md shadow-primary/20"
-                  >
-                    {savingSettings ? <span className="loading loading-spinner loading-xs" /> : <span className="material-symbols-outlined text-base">save</span>}
-                    <span>Save WhatsApp Config</span>
-                  </button>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-base-content/70 uppercase">API Provider Mode</label>
-                      <select
-                        value={systemSettings?.whatsapp?.provider || 'SHIPMENT_WHATSAPP'}
-                        onChange={(e) => setSystemSettings({
-                          ...systemSettings,
-                          whatsapp: { ...(systemSettings?.whatsapp || {}), provider: e.target.value },
-                        })}
-                        className="select select-bordered w-full text-sm font-medium focus:select-primary"
+            <div className="space-y-6">
+              {/* Tab Header Card */}
+              <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
+                <div className="card-body p-6 sm:p-8">
+                  <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-base-200">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-primary text-2xl">chat</span>
+                        <h2 className="text-lg font-black text-base-content tracking-tight">
+                          {lang === 'ar' ? 'إعدادات واتساب وميتا والدعم المباشر (Chatwoot)' : 'WhatsApp Cloud API & Chatwoot Live Support'}
+                        </h2>
+                      </div>
+                      <p className="text-xs text-base-content/60 mt-1">
+                        {lang === 'ar'
+                          ? 'إدارة قوالب Meta Cloud المعتمدة، بيانات اعتماد شات ووت، قواعد الإشعارات المفصلة، وسياسات ساعات الهدوء في الكويت.'
+                          : 'Manage approved Meta Cloud utility templates, Chatwoot agent credentials, granular event toggles, and Kuwait quiet-hours delivery policies.'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={fetchWhatsAppSettings}
+                        disabled={loadingWhatsApp || savingWhatsApp}
+                        className="btn btn-outline border-base-300 btn-sm font-bold text-xs gap-1.5"
+                        title={lang === 'ar' ? 'إعادة تحميل الإعدادات' : 'Reload Settings'}
                       >
-                        <option value="SHIPMENT_WHATSAPP">Target Microservice (msg.target-kw.com)</option>
-                        <option value="META">Meta Official WhatsApp Cloud API</option>
-                        <option value="CHATWOOT">Chatwoot Omnichannel Inbox</option>
-                        <option value="MOCK">Mock Local Sandbox</option>
+                        {loadingWhatsApp ? <span className="loading loading-spinner loading-xs" /> : <span className="material-symbols-outlined text-base">refresh</span>}
+                        <span>{lang === 'ar' ? 'تحديث' : 'Refresh'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="save-whatsapp-btn"
+                        onClick={handleSaveWhatsApp}
+                        disabled={savingWhatsApp || loadingWhatsApp}
+                        className="btn btn-primary btn-sm font-bold text-xs gap-1.5 shadow-md shadow-primary/20"
+                      >
+                        {savingWhatsApp ? <span className="loading loading-spinner loading-xs" /> : <span className="material-symbols-outlined text-base">save</span>}
+                        <span>{lang === 'ar' ? 'حفظ إعدادات واتساب وشات ووت' : 'Save WhatsApp Config'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Top Status Alert if loading */}
+                  {loadingWhatsApp && (
+                    <div className="alert alert-info py-2 text-xs rounded-xl flex items-center gap-2">
+                      <span className="loading loading-spinner loading-xs" />
+                      <span>{lang === 'ar' ? 'جاري تحميل إعدادات واتساب من الخادم...' : 'Loading WhatsApp configuration from server...'}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* CARD 1: Provider & Endpoint Card */}
+              <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden" data-testid="card-whatsapp-provider">
+                <div className="card-body p-6 sm:p-8 space-y-4">
+                  <div className="flex items-center gap-2 pb-2 border-b border-base-200">
+                    <span className="material-symbols-outlined text-primary text-xl">hub</span>
+                    <h3 className="text-sm font-black uppercase tracking-wider text-base-content">
+                      {lang === 'ar' ? 'مزود الخدمة ونقطة الاتصال (Provider & Endpoint)' : 'Provider & Endpoint Gateway'}
+                    </h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-base-content/70 uppercase">
+                        {lang === 'ar' ? 'وضع مزود الخدمة' : 'Provider Mode'}
+                      </label>
+                      <select
+                        data-testid="provider-mode-select"
+                        value={whatsAppConfig.provider || 'SHIPMENT_WHATSAPP'}
+                        onChange={(e) => setWhatsAppConfig({ ...whatsAppConfig, provider: e.target.value })}
+                        className="select select-bordered select-sm w-full text-xs font-semibold focus:select-primary"
+                      >
+                        <option value="SHIPMENT_WHATSAPP">SHIPMENT_WHATSAPP (Target Microservice)</option>
+                        <option value="META">META (Official Cloud API)</option>
+                        <option value="MOCK">MOCK (Local Sandbox)</option>
                       </select>
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-base-content/70 uppercase">Service Endpoint URL / Phone ID</label>
+                      <label className="text-xs font-bold text-base-content/70 uppercase">
+                        {lang === 'ar' ? 'عنوان خدمة المايكروسيرفس' : 'Service URL'}
+                      </label>
                       <input
                         type="text"
-                        value={systemSettings?.whatsapp?.serviceUrl || systemSettings?.whatsapp?.phoneNumberId || 'https://msg.target-kw.com'}
-                        onChange={(e) => setSystemSettings({
-                          ...systemSettings,
-                          whatsapp: { ...(systemSettings?.whatsapp || {}), serviceUrl: e.target.value },
-                        })}
+                        data-testid="service-url-input"
+                        value={whatsAppConfig.serviceUrl || ''}
+                        onChange={(e) => setWhatsAppConfig({ ...whatsAppConfig, serviceUrl: e.target.value })}
                         placeholder="https://msg.target-kw.com"
-                        className="input input-bordered w-full font-mono text-sm focus:input-primary"
+                        className="input input-bordered input-sm w-full font-mono text-xs focus:input-primary"
                       />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-base-content/70 uppercase">
+                        {lang === 'ar' ? 'معرف الهاتف (Phone ID)' : 'Phone ID'}
+                      </label>
+                      <input
+                        type="text"
+                        data-testid="phone-id-input"
+                        value={whatsAppConfig.phoneId || ''}
+                        onChange={(e) => setWhatsAppConfig({ ...whatsAppConfig, phoneId: e.target.value })}
+                        placeholder="e.g. 10928348912"
+                        className="input input-bordered input-sm w-full font-mono text-xs focus:input-primary"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-base-content/70 uppercase">
+                        {lang === 'ar' ? 'مفتاح API السري' : 'API Key'}
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showApiKey ? 'text' : 'password'}
+                          data-testid="api-key-input"
+                          value={whatsAppConfig.apiKey || ''}
+                          onChange={(e) => setWhatsAppConfig({ ...whatsAppConfig, apiKey: e.target.value })}
+                          placeholder="••••••••"
+                          className="input input-bordered input-sm w-full font-mono text-xs pr-8 focus:input-primary"
+                        />
+                        <button
+                          type="button"
+                          data-testid="toggle-api-key"
+                          onClick={() => setShowApiKey(!showApiKey)}
+                          className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-base-content/50 hover:text-base-content"
+                          title={showApiKey ? 'Hide Secret' : 'Show Secret'}
+                        >
+                          <span className="material-symbols-outlined text-sm">
+                            {showApiKey ? 'visibility_off' : 'visibility'}
+                          </span>
+                        </button>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Incoming Webhook Box */}
-                  <div className="p-4 rounded-xl bg-base-200/50 border border-base-200 space-y-2">
-                    <div className="text-[11px] font-bold text-base-content/60 uppercase">INCOMING META WEBHOOK ENDPOINT</div>
+                  {/* Incoming Meta Webhook Endpoint Box */}
+                  <div className="p-3.5 rounded-xl bg-base-200/50 border border-base-200 space-y-2">
+                    <div className="text-[11px] font-bold text-base-content/60 uppercase">
+                      {lang === 'ar' ? 'نقطة استقبال الويب هوك من ميتا (Webhook Callback)' : 'INCOMING META WEBHOOK ENDPOINT'}
+                    </div>
                     <div className="flex flex-col sm:flex-row gap-2 items-center">
-                      <code className="input input-bordered w-full flex-1 font-mono text-xs flex items-center bg-base-100 select-all">
+                      <code className="input input-bordered input-sm w-full flex-1 font-mono text-xs flex items-center bg-base-100 select-all">
                         {`${window.location.origin}/api/whatsapp/webhook`}
                       </code>
                       <button
                         type="button"
                         onClick={() => {
                           navigator.clipboard.writeText(`${window.location.origin}/api/whatsapp/webhook`);
-                          enqueueSnackbar('Meta Webhook URL copied to clipboard!', { variant: 'info' });
+                          enqueueSnackbar(lang === 'ar' ? 'تم نسخ رابط الويب هوك إلى الحافظة' : 'Meta Webhook URL copied to clipboard!', { variant: 'info' });
                         }}
-                        className="btn btn-outline border-base-300 btn-sm font-bold text-xs gap-1.5"
+                        className="btn btn-outline border-base-300 btn-xs sm:btn-sm font-bold text-xs gap-1.5"
                       >
-                        <span className="material-symbols-outlined text-base">content_copy</span>
-                        <span>Copy URL</span>
+                        <span className="material-symbols-outlined text-sm">content_copy</span>
+                        <span>{lang === 'ar' ? 'نسخ الرابط' : 'Copy URL'}</span>
                       </button>
                     </div>
-                    <p className="text-[11px] text-base-content/50">
-                      Paste this URL into Meta App Dashboard &rarr; WhatsApp &rarr; Configuration &rarr; Webhook callback.
+                    <p className="text-[10.5px] text-base-content/50">
+                      {lang === 'ar'
+                        ? 'الصق هذا الرابط في لوحة تحكم Meta App Dashboard > WhatsApp > Configuration > Webhook Callback.'
+                        : 'Paste this URL into Meta App Dashboard > WhatsApp > Configuration > Webhook callback.'}
                     </p>
                   </div>
+                </div>
+              </div>
+
+              {/* CARD 2: Chatwoot Live Support Credentials Card */}
+              <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden" data-testid="card-chatwoot-credentials">
+                <div className="card-body p-6 sm:p-8 space-y-4">
+                  <div className="flex items-center gap-2 pb-2 border-b border-base-200">
+                    <span className="material-symbols-outlined text-primary text-xl">support_agent</span>
+                    <div>
+                      <h3 className="text-sm font-black uppercase tracking-wider text-base-content">
+                        {lang === 'ar' ? 'بيانات اعتماد شات ووت للدعم المباشر (Chatwoot Live Support)' : 'Chatwoot Live Support Credentials'}
+                      </h3>
+                      <p className="text-[11px] text-base-content/50">
+                        {lang === 'ar'
+                          ? 'ربط وتوجيه محادثات العملاء إلى صندوق الوارد الموحد في Chatwoot.'
+                          : 'Connects WhatsApp recipient conversations and customer enquiries to Chatwoot omnichannel inboxes.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-base-content/70 uppercase">
+                        {lang === 'ar' ? 'عنوان منصة Chatwoot' : 'Base URL'}
+                      </label>
+                      <input
+                        type="text"
+                        data-testid="chatwoot-base-url-input"
+                        value={whatsAppConfig.chatwootBaseUrl || ''}
+                        onChange={(e) => setWhatsAppConfig({ ...whatsAppConfig, chatwootBaseUrl: e.target.value })}
+                        placeholder="https://inbox.mawthook.io"
+                        className="input input-bordered input-sm w-full font-mono text-xs focus:input-primary"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-base-content/70 uppercase">
+                        {lang === 'ar' ? 'معرف الحساب (Account ID)' : 'Account ID'}
+                      </label>
+                      <input
+                        type="text"
+                        data-testid="chatwoot-account-id-input"
+                        value={whatsAppConfig.chatwootAccountId || ''}
+                        onChange={(e) => setWhatsAppConfig({ ...whatsAppConfig, chatwootAccountId: e.target.value })}
+                        placeholder="1"
+                        className="input input-bordered input-sm w-full font-mono text-xs focus:input-primary"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-base-content/70 uppercase">
+                        {lang === 'ar' ? 'معرف صندوق الوارد (Inbox ID)' : 'Inbox ID'}
+                      </label>
+                      <input
+                        type="text"
+                        data-testid="chatwoot-inbox-id-input"
+                        value={whatsAppConfig.chatwootInboxId || ''}
+                        onChange={(e) => setWhatsAppConfig({ ...whatsAppConfig, chatwootInboxId: e.target.value })}
+                        placeholder="1"
+                        className="input input-bordered input-sm w-full font-mono text-xs focus:input-primary"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-base-content/70 uppercase">
+                        {lang === 'ar' ? 'رمز API السري (API Token)' : 'API Token'}
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showChatwootToken ? 'text' : 'password'}
+                          data-testid="chatwoot-api-token-input"
+                          value={whatsAppConfig.chatwootApiToken || ''}
+                          onChange={(e) => setWhatsAppConfig({ ...whatsAppConfig, chatwootApiToken: e.target.value })}
+                          placeholder="••••••••"
+                          className="input input-bordered input-sm w-full font-mono text-xs pr-8 focus:input-primary"
+                        />
+                        <button
+                          type="button"
+                          data-testid="toggle-chatwoot-token"
+                          onClick={() => setShowChatwootToken(!showChatwootToken)}
+                          className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-base-content/50 hover:text-base-content"
+                          title={showChatwootToken ? 'Hide Token' : 'Show Token'}
+                        >
+                          <span className="material-symbols-outlined text-sm">
+                            {showChatwootToken ? 'visibility_off' : 'visibility'}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* CARD 3: Granular Milestone Event Toggles Card */}
+              <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden" data-testid="card-milestone-rules">
+                <div className="card-body p-6 sm:p-8 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-base-200">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-primary text-xl">tune</span>
+                      <div>
+                        <h3 className="text-sm font-black uppercase tracking-wider text-base-content">
+                          {lang === 'ar' ? 'قواعد ومحفزات إشعارات الأحداث (Granular Milestone Event Toggles)' : 'Granular Milestone Event Toggles'}
+                        </h3>
+                        <p className="text-[11px] text-base-content/50">
+                          {lang === 'ar'
+                            ? 'التحكم الدقيق في إرسال قوالب واتساب لكل حدث ومستلم وتخطي ساعات الهدوء.'
+                            : 'Configure automated utility template dispatch per milestone and recipient role with quiet-hours bypass privileges.'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto border border-base-200 rounded-xl">
+                    <table className="table table-sm w-full" data-testid="whatsapp-rules-table">
+                      <thead>
+                        <tr className="bg-base-200/60 text-base-content text-xs font-bold uppercase">
+                          <th>{lang === 'ar' ? 'الحدث التشغيلي' : 'Milestone Event'}</th>
+                          <th>{lang === 'ar' ? 'الدور المستلم' : 'Recipient Role'}</th>
+                          <th>{lang === 'ar' ? 'اسم قالب Meta' : 'Template Name'}</th>
+                          <th className="text-center">{lang === 'ar' ? 'تفعيل الإرسال' : 'Enabled'}</th>
+                          <th className="text-center">{lang === 'ar' ? 'تجاوز ساعات الهدوء' : 'Quiet-Hours Bypass'}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-base-200/60">
+                        {(whatsAppRules.length > 0 ? whatsAppRules : DEFAULT_WHATSAPP_RULES).map((rule, idx) => {
+                          const eventMeta = EVENT_METRIC_CONFIG[rule.eventType] || {
+                            labelEn: rule.eventType,
+                            labelAr: rule.eventType,
+                            icon: 'notifications',
+                            color: 'badge-ghost',
+                          };
+                          const isConsignee = ['receiver', 'consignee'].includes(rule.recipientRole);
+
+                          return (
+                            <tr key={`${rule.eventType}-${rule.recipientRole}-${idx}`} className="hover:bg-base-200/30">
+                              <td>
+                                <div className="flex items-center gap-2">
+                                  <span className="material-symbols-outlined text-base text-base-content/70">
+                                    {eventMeta.icon}
+                                  </span>
+                                  <div>
+                                    <div className="font-bold text-xs text-base-content">
+                                      {lang === 'ar' ? eventMeta.labelAr : eventMeta.labelEn}
+                                    </div>
+                                    <div className="font-mono text-[10px] text-base-content/50">
+                                      {rule.eventType}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td>
+                                <span className={`badge badge-xs font-bold ${isConsignee ? 'badge-primary' : 'badge-neutral'} gap-1`}>
+                                  <span className="material-symbols-outlined text-[12px]">
+                                    {isConsignee ? 'person_pin_circle' : 'storefront'}
+                                  </span>
+                                  <span>
+                                    {isConsignee
+                                      ? (lang === 'ar' ? 'المستلم (Consignee)' : 'Consignee')
+                                      : (lang === 'ar' ? 'المرسل (Shipper)' : 'Shipper')}
+                                  </span>
+                                </span>
+                              </td>
+
+                              <td>
+                                <input
+                                  type="text"
+                                  value={rule.templateName || ''}
+                                  onChange={(e) => handleRuleChange(idx, 'templateName', e.target.value)}
+                                  className="input input-xs input-bordered w-full max-w-xs font-mono text-[11px] focus:input-primary"
+                                />
+                              </td>
+
+                              <td className="text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(rule.enabled)}
+                                  onChange={(e) => handleRuleChange(idx, 'enabled', e.target.checked)}
+                                  className="toggle toggle-primary toggle-sm"
+                                  data-testid={`toggle-rule-enabled-${rule.eventType}-${rule.recipientRole}`}
+                                />
+                              </td>
+
+                              <td className="text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(rule.allowQuietHoursBypass)}
+                                  onChange={(e) => handleRuleChange(idx, 'allowQuietHoursBypass', e.target.checked)}
+                                  className="toggle toggle-warning toggle-sm"
+                                  data-testid={`toggle-rule-bypass-${rule.eventType}-${rule.recipientRole}`}
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              {/* CARD 4: Kuwait Quiet-Hours Delivery Suppression Card */}
+              <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden" data-testid="card-quiet-hours">
+                <div className="card-body p-6 sm:p-8 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b border-base-200">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-warning text-xl">bedtime</span>
+                      <div>
+                        <h3 className="text-sm font-black uppercase tracking-wider text-base-content">
+                          {lang === 'ar' ? 'حظر الإشعارات أثناء ساعات الهدوء - الكويت (Quiet-Hours Delivery Suppression)' : 'Kuwait Quiet-Hours Delivery Suppression'}
+                        </h3>
+                        <p className="text-[11px] text-base-content/50">
+                          {lang === 'ar'
+                            ? 'إيقاف مؤقت للإشعارات غير العاجلة خلال ساعات الليل والصباح الباكر بتوقيت الكويت (AST).'
+                            : 'Suppresses or queues routine notifications between specified overnight hours in Arabian Standard Time (AST / UTC+3).'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <label className="label cursor-pointer gap-2 p-1 bg-base-200/50 rounded-lg border border-base-200">
+                      <span className="label-text text-xs font-bold text-base-content">
+                        {lang === 'ar' ? 'تفعيل ساعات الهدوء' : 'Quiet-Hours Active'}
+                      </span>
+                      <input
+                        type="checkbox"
+                        data-testid="quiet-hours-enabled-toggle"
+                        checked={Boolean(whatsAppConfig.quietHoursEnabled)}
+                        onChange={(e) => setWhatsAppConfig({ ...whatsAppConfig, quietHoursEnabled: e.target.checked })}
+                        className="toggle toggle-primary toggle-sm"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-base-content/70 uppercase">
+                        {lang === 'ar' ? 'وقت البدء (Start Time AST)' : 'Start Time (AST)'}
+                      </label>
+                      <input
+                        type="time"
+                        data-testid="quiet-hours-start-input"
+                        value={whatsAppConfig.quietHoursStart || '22:00'}
+                        onChange={(e) => setWhatsAppConfig({ ...whatsAppConfig, quietHoursStart: e.target.value })}
+                        className="input input-bordered input-sm w-full font-mono text-xs focus:input-primary"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-base-content/70 uppercase">
+                        {lang === 'ar' ? 'وقت الانتهاء (End Time AST)' : 'End Time (AST)'}
+                      </label>
+                      <input
+                        type="time"
+                        data-testid="quiet-hours-end-input"
+                        value={whatsAppConfig.quietHoursEnd || '08:00'}
+                        onChange={(e) => setWhatsAppConfig({ ...whatsAppConfig, quietHoursEnd: e.target.value })}
+                        className="input input-bordered input-sm w-full font-mono text-xs focus:input-primary"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-base-content/70 uppercase">
+                        {lang === 'ar' ? 'المنطقة الزمنية (Timezone)' : 'Timezone'}
+                      </label>
+                      <input
+                        type="text"
+                        data-testid="quiet-hours-timezone-input"
+                        value={whatsAppConfig.quietHoursTimezone || 'Asia/Kuwait'}
+                        onChange={(e) => setWhatsAppConfig({ ...whatsAppConfig, quietHoursTimezone: e.target.value })}
+                        placeholder="Asia/Kuwait"
+                        className="input input-bordered input-sm w-full font-mono text-xs focus:input-primary"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-base-content/70 uppercase">
+                        {lang === 'ar' ? 'استثناء إشعارات التسليم' : 'Allow Delivery Quiet-Hours'}
+                      </label>
+                      <label className="label cursor-pointer py-1.5 px-3 bg-base-200/50 rounded-lg border border-base-200">
+                        <span className="label-text text-[11px] font-bold text-base-content">
+                          {lang === 'ar' ? 'السماح أثناء ساعات الهدوء' : 'Bypass for Deliveries'}
+                        </span>
+                        <input
+                          type="checkbox"
+                          data-testid="allow-delivery-quiet-hours-toggle"
+                          checked={Boolean(whatsAppConfig.allowDeliveryQuietHours)}
+                          onChange={(e) => setWhatsAppConfig({ ...whatsAppConfig, allowDeliveryQuietHours: e.target.checked })}
+                          className="toggle toggle-warning toggle-sm"
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  <p className="text-[10.5px] text-base-content/50 pt-1">
+                    {lang === 'ar'
+                      ? 'عند تفعيل "استثناء إشعارات التسليم" (allowDeliveryQuietHours)، سيتم إرسال إشعارات الخروج للتوصيل والتسليم الفعلي للعملاء حتى أثناء نافذة ساعات الهدوء.'
+                      : 'When "allowDeliveryQuietHours" is enabled, out_for_delivery and delivered notifications are immediately dispatched even during active quiet-hours windows.'}
+                  </p>
                 </div>
               </div>
             </div>

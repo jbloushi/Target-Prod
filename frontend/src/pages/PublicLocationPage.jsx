@@ -19,14 +19,17 @@ const countries = [
 const API_URL = getApiBaseUrl();
 
 export const PublicLocationPage = () => {
-  const { trackingNumber } = useParams();
+  const { token, trackingNumber: routeTrackingNumber } = useParams();
+  const isTokenMode = Boolean(token);
+
   const [shipment, setShipment] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isExpired, setIsExpired] = useState(false);
 
   const [updating, setUpdating] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [userMode, setUserMode] = useState('view'); // 'view' | 'update'
+  const [userMode, setUserMode] = useState(isTokenMode ? 'update' : 'view'); // 'view' | 'update'
 
   const [addressData, setAddressData] = useState({
     formattedAddress: '',
@@ -44,7 +47,7 @@ export const PublicLocationPage = () => {
   });
 
   // OTP Verification State
-  const [otpStep, setOtpStep] = useState('initial'); // 'initial' | 'sent' | 'verified'
+  const [otpStep, setOtpStep] = useState(isTokenMode ? 'verified' : 'initial'); // 'initial' | 'sent' | 'verified'
   const [otpInput, setOtpInput] = useState('');
   const [otpToken, setOtpToken] = useState(null);
   const [sendingOtp, setSendingOtp] = useState(false);
@@ -52,25 +55,105 @@ export const PublicLocationPage = () => {
   const [otpMessage, setOtpMessage] = useState('');
   const [devOtpHint, setDevOtpHint] = useState('');
 
-  useEffect(() => {
-    const fetchShipment = async () => {
-      try {
-        const response = await fetch(`${API_URL}/public/shipments/${trackingNumber}`);
-        const data = await response.json();
+  const effectiveTracking = shipment?.trackingNumber || routeTrackingNumber || '';
 
-        if (data.success) {
-          setShipment(data.data);
-        } else {
-          setError(data.error?.message || data.error || 'Failed to load consignment.');
+  useEffect(() => {
+    let isMounted = true;
+    const loadData = async () => {
+      setLoading(true);
+      setError(null);
+      setIsExpired(false);
+      try {
+        if (token) {
+          // Public single-use token access (no OTP required)
+          let response = await fetch(`${API_URL}/public/location/${encodeURIComponent(token)}`);
+          if (response.status === 404) {
+            // Fallback to route alias if proxy strips /shipments
+            response = await fetch(`${API_URL}/public/shipments/location/${encodeURIComponent(token)}`);
+          }
+
+          if (response.status === 410) {
+            if (isMounted) {
+              setIsExpired(true);
+              setError('This delivery location link has expired.');
+            }
+            return;
+          }
+
+          const data = await response.json();
+          if (!response.ok || !data.success) {
+            if (isMounted) {
+              setError(data.error || 'Failed to load delivery location details.');
+            }
+            return;
+          }
+
+          if (isMounted) {
+            const dest = data.currentDestination || data.destination || data.data?.currentDestination || data.data?.destination || {};
+            const trackNo = data.trackingNumber || data.data?.trackingNumber || '';
+            const recName = data.recipientName || data.data?.recipientName || dest.contactPerson || '';
+
+            setShipment({
+              trackingNumber: trackNo,
+              recipientName: recName,
+              status: data.status || data.data?.status || 'out_for_delivery',
+              destination: dest,
+              history: data.history || data.data?.history || []
+            });
+
+            // Pre-populate addressData with existing destination
+            const initialCoords = (dest.latitude !== undefined && dest.longitude !== undefined)
+              ? [Number(dest.longitude), Number(dest.latitude)]
+              : (Array.isArray(dest.coordinates) ? dest.coordinates : null);
+
+            setAddressData({
+              formattedAddress: dest.formattedAddress || dest.address || '',
+              streetLines: dest.streetLines || [dest.formattedAddress || '', ''],
+              city: dest.city || '',
+              state: dest.state || '',
+              postalCode: dest.postalCode || '',
+              countryCode: dest.countryCode || 'KW',
+              country: dest.country || 'Kuwait',
+              unitNumber: dest.unitNumber || '',
+              buildingName: dest.buildingName || '',
+              landmark: dest.landmark || '',
+              deliveryNotes: dest.deliveryNotes || '',
+              coordinates: initialCoords,
+            });
+
+            // Authenticated by token: proceed straight to map pin interface
+            setOtpStep('verified');
+            setUserMode('update');
+          }
+        } else if (routeTrackingNumber) {
+          // Legacy OTP access
+          const response = await fetch(`${API_URL}/public/shipments/${encodeURIComponent(routeTrackingNumber)}`);
+          const data = await response.json();
+
+          if (isMounted) {
+            if (data.success) {
+              setShipment(data.data);
+            } else {
+              setError(data.error?.message || data.error || 'Failed to load consignment.');
+            }
+          }
         }
       } catch (err) {
-        setError('Network error. Please try again later.');
+        if (isMounted) {
+          setError('Network error. Please try again later.');
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
-    fetchShipment();
-  }, [trackingNumber]);
+
+    loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, [token, routeTrackingNumber]);
 
   const reverseGeocode = async (lat, lng) => {
     if (!window.google || !window.google.maps) return;
@@ -114,7 +197,7 @@ export const PublicLocationPage = () => {
     setSendingOtp(true);
     setError(null);
     try {
-      const response = await fetch(`${API_URL}/public/shipments/${trackingNumber}/location/send-otp`, {
+      const response = await fetch(`${API_URL}/public/shipments/${effectiveTracking}/location/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -138,7 +221,7 @@ export const PublicLocationPage = () => {
     setVerifyingOtp(true);
     setError(null);
     try {
-      const response = await fetch(`${API_URL}/public/shipments/${trackingNumber}/location/verify-otp`, {
+      const response = await fetch(`${API_URL}/public/shipments/${effectiveTracking}/location/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ otp: otpInput }),
@@ -161,34 +244,101 @@ export const PublicLocationPage = () => {
   const handleSubmit = async () => {
     if (!addressData) return;
     setUpdating(true);
+    setError(null);
     try {
-      const response = await fetch(`${API_URL}/public/shipments/${trackingNumber}/location`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          coordinates: addressData.coordinates,
-          address: addressData.formattedAddress,
-          streetLines: addressData.streetLines,
-          city: addressData.city,
-          state: addressData.state,
-          postalCode: addressData.postalCode,
-          countryCode: addressData.countryCode,
-          country: addressData.country,
-          unitNumber: addressData.unitNumber,
-          buildingName: addressData.buildingName,
-          landmark: addressData.landmark,
-          deliveryNotes: addressData.deliveryNotes,
-          otpToken,
-        }),
-      });
-      const data = await response.json();
-      if (data.success) {
-        setSuccess(true);
+      if (isTokenMode) {
+        // Direct token submission
+        let response = await fetch(`${API_URL}/public/location/${encodeURIComponent(token)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            coordinates: addressData.coordinates,
+            latitude: addressData.coordinates ? addressData.coordinates[1] : undefined,
+            longitude: addressData.coordinates ? addressData.coordinates[0] : undefined,
+            formattedAddress: addressData.formattedAddress,
+            address: addressData.formattedAddress,
+            streetLines: addressData.streetLines,
+            city: addressData.city,
+            state: addressData.state,
+            postalCode: addressData.postalCode,
+            countryCode: addressData.countryCode,
+            country: addressData.country,
+            unitNumber: addressData.unitNumber,
+            buildingName: addressData.buildingName,
+            landmark: addressData.landmark,
+            deliveryNotes: addressData.deliveryNotes,
+            notes: addressData.deliveryNotes || addressData.landmark,
+          }),
+        });
+
+        if (response.status === 404) {
+          // Fallback to route alias if proxy strips /api/public
+          response = await fetch(`${API_URL}/public/shipments/location/${encodeURIComponent(token)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              coordinates: addressData.coordinates,
+              latitude: addressData.coordinates ? addressData.coordinates[1] : undefined,
+              longitude: addressData.coordinates ? addressData.coordinates[0] : undefined,
+              formattedAddress: addressData.formattedAddress,
+              address: addressData.formattedAddress,
+              streetLines: addressData.streetLines,
+              city: addressData.city,
+              state: addressData.state,
+              postalCode: addressData.postalCode,
+              countryCode: addressData.countryCode,
+              country: addressData.country,
+              unitNumber: addressData.unitNumber,
+              buildingName: addressData.buildingName,
+              landmark: addressData.landmark,
+              deliveryNotes: addressData.deliveryNotes,
+              notes: addressData.deliveryNotes || addressData.landmark,
+            }),
+          });
+        }
+
+        if (response.status === 410) {
+          setIsExpired(true);
+          setError('This delivery location link has expired.');
+          return;
+        }
+
+        const data = await response.json();
+        if (data.success) {
+          setSuccess(true);
+        } else {
+          setError(data.error || 'Failed to submit delivery pin.');
+        }
       } else {
-        setError(data.error?.message || data.error || 'Failed to update location.');
+        // Legacy OTP protected flow
+        const response = await fetch(`${API_URL}/public/shipments/${routeTrackingNumber}/location`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            coordinates: addressData.coordinates,
+            address: addressData.formattedAddress,
+            streetLines: addressData.streetLines,
+            city: addressData.city,
+            state: addressData.state,
+            postalCode: addressData.postalCode,
+            countryCode: addressData.countryCode,
+            country: addressData.country,
+            unitNumber: addressData.unitNumber,
+            buildingName: addressData.buildingName,
+            landmark: addressData.landmark,
+            deliveryNotes: addressData.deliveryNotes,
+            otpToken,
+          }),
+        });
+        const data = await response.json();
+        if (data.success) {
+          setSuccess(true);
+        } else {
+          setError(data.error?.message || data.error || 'Failed to update location.');
+        }
       }
     } catch (err) {
-      setError('Failed to submit location update.');
+      setError('Failed to submit location update. Please try again.');
     } finally {
       setUpdating(false);
     }
@@ -203,14 +353,56 @@ export const PublicLocationPage = () => {
     );
   }
 
+  if (isExpired) {
+    return (
+      <div className="min-h-screen bg-base-200/50 bg-target-pattern flex flex-col font-sans">
+        <header className="navbar bg-base-100 border-b border-base-200 px-6 py-3">
+          <Link to="/" className="flex items-center">
+            <img src="/images/target-logo.png" alt="Target Logistics" className="h-8 w-auto object-contain dark:hidden" />
+            <img src="/images/target-logo-white.png" alt="Target Logistics" className="h-8 w-auto object-contain hidden dark:block" />
+          </Link>
+        </header>
+
+        <div className="flex-1 flex items-center justify-center p-4">
+          <div className="card bg-base-100 border border-base-200 shadow-sm max-w-md w-full p-8 text-center space-y-4">
+            <div className="w-16 h-16 rounded-full bg-warning/10 text-warning flex items-center justify-center mx-auto text-3xl">
+              <span className="material-symbols-outlined text-4xl">schedule</span>
+            </div>
+            <h2 className="text-2xl font-black text-base-content">Location Link Expired</h2>
+            <p className="text-xs sm:text-sm text-base-content/60 leading-relaxed">
+              This self-service location link has expired or the delivery pin has already been confirmed.
+            </p>
+            <div className="p-3 bg-base-200 rounded-xl text-xs text-base-content/70">
+              If your delivery location requires changes or you need driver assistance, please contact our support team.
+            </div>
+            <div className="pt-2 space-y-2">
+              <a
+                href="https://wa.me/96599112233?text=Hello%20Target%20Logistics%2C%20I%20need%20assistance%20with%20my%20delivery%20location"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-primary w-full font-bold text-xs gap-2 shadow-md shadow-primary/20"
+              >
+                <span className="material-symbols-outlined text-base">chat</span>
+                Contact Support on WhatsApp
+              </a>
+              <Link to="/track" className="btn btn-ghost btn-sm w-full font-bold text-xs text-base-content/60">
+                Track Consignment
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (error && !shipment) {
     return (
       <div className="min-h-screen bg-base-200/50 flex flex-col items-center justify-center p-4">
         <div className="card bg-base-100 border border-base-200 shadow-sm max-w-md w-full p-8 text-center space-y-4">
           <div className="w-14 h-14 rounded-2xl bg-error/10 text-error flex items-center justify-center mx-auto text-2xl">
-            <span className="material-symbols-outlined text-3xl">error</span>
+            <span className="material-symbols-outlined text-3xl">link_off</span>
           </div>
-          <h2 className="text-xl font-black text-base-content">Lookup Error</h2>
+          <h2 className="text-xl font-black text-base-content">Invalid Location Link</h2>
           <p className="text-xs text-base-content/60">{error}</p>
           <div className="pt-2">
             <Link to="/track" className="btn btn-primary btn-sm text-xs font-bold">
@@ -243,11 +435,25 @@ export const PublicLocationPage = () => {
                 Your exact delivery GPS coordinates have been relayed to the assigned courier driver.
               </p>
             </div>
-            <div className="p-3 bg-base-200 rounded-xl font-mono text-xs text-base-content/70">
-              Waybill: <strong>{trackingNumber}</strong>
-            </div>
+            {effectiveTracking && (
+              <div className="p-3 bg-base-200 rounded-xl font-mono text-xs text-base-content/70">
+                Waybill: <strong>{effectiveTracking}</strong>
+              </div>
+            )}
+            {addressData.formattedAddress && (
+              <div className="text-xs text-base-content/70 bg-base-200/50 p-3 rounded-xl text-left space-y-1">
+                <div className="font-bold text-base-content/90 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-sm text-primary">pin_drop</span>
+                  Confirmed Delivery Pin:
+                </div>
+                <div className="truncate">{addressData.formattedAddress}</div>
+                {addressData.buildingName && (
+                  <div className="text-base-content/50 text-[11px]">Building: {addressData.buildingName} {addressData.unitNumber ? `(Unit ${addressData.unitNumber})` : ''}</div>
+                )}
+              </div>
+            )}
             <div className="pt-2">
-              <Link to={`/track/${trackingNumber}`} className="btn btn-primary w-full font-bold text-xs shadow-md shadow-primary/20">
+              <Link to={effectiveTracking ? `/track/${effectiveTracking}` : '/track'} className="btn btn-primary w-full font-bold text-xs shadow-md shadow-primary/20">
                 View Live Consignment Tracker &rarr;
               </Link>
             </div>
@@ -262,13 +468,13 @@ export const PublicLocationPage = () => {
       {/* Top Header */}
       <header className="navbar bg-base-100 border-b border-base-200 px-4 sm:px-8 py-3 sticky top-0 z-40 shadow-sm">
         <div className="flex-1 flex items-center gap-3">
-          <Link to={`/track/${trackingNumber}`} className="flex items-center">
+          <Link to={effectiveTracking ? `/track/${effectiveTracking}` : '/track'} className="flex items-center">
             <img src="/images/target-logo.png" alt="Target Logistics" className="h-8 w-auto object-contain dark:hidden" />
             <img src="/images/target-logo-white.png" alt="Target Logistics" className="h-8 w-auto object-contain hidden dark:block" />
           </Link>
         </div>
         <div className="flex-none">
-          <Link to={`/track/${trackingNumber}`} className="btn btn-ghost btn-sm text-xs font-bold text-base-content/70">
+          <Link to={effectiveTracking ? `/track/${effectiveTracking}` : '/track'} className="btn btn-ghost btn-sm text-xs font-bold text-base-content/70">
             &larr; Back to Consignment
           </Link>
         </div>
@@ -284,12 +490,26 @@ export const PublicLocationPage = () => {
                 📍
               </div>
               <h2 className="text-xl font-black text-base-content tracking-tight">
-                Receiver GPS Confirmation
+                {isTokenMode ? 'Customer Location Confirmation' : 'Receiver GPS Confirmation'}
               </h2>
-              <div className="font-mono font-bold text-primary text-sm">{trackingNumber}</div>
+              {effectiveTracking && (
+                <div className="font-mono font-bold text-primary text-sm">{effectiveTracking}</div>
+              )}
+              {shipment?.recipientName && (
+                <div className="text-xs font-semibold text-base-content/70">
+                  Recipient: <strong>{shipment.recipientName}</strong>
+                </div>
+              )}
             </div>
 
-            {shipment?.history && (
+            {isTokenMode && (
+              <div className="p-3 bg-primary/5 rounded-xl border border-primary/20 text-xs text-base-content/70 leading-relaxed text-center">
+                <div className="font-bold text-primary mb-0.5">WhatsApp Verified Link</div>
+                Please confirm or adjust your exact map pin and address so the courier can deliver your shipment accurately.
+              </div>
+            )}
+
+            {shipment?.history && shipment.history.length > 0 && (
               <div className="pt-2">
                 <TrackingTimeline history={shipment.history} currentStatus={shipment.status} />
               </div>

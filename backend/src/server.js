@@ -221,6 +221,9 @@ const releaseInfo = require('./utils/releaseInfo');
 // Standard API Route Mounting
 app.use('/api', whatsappRoutes);
 app.post('/api/public/checkout/ottu/webhook', shipmentPublicController.handleOttuWebhook);
+app.get('/api/public/location/:token', shipmentPublicController.getLocationByToken);
+app.post('/api/public/location/:token', shipmentPublicController.updateLocationByToken);
+app.patch('/api/public/location/:token', shipmentPublicController.updateLocationByToken);
 app.post('/api/webhooks/trackingmore', integrationController.handleTrackingMoreWebhook);
 app.use('/api/public/shipments', shipmentPublicRoutes);
 app.use('/api/auth', authRoutes);
@@ -239,6 +242,9 @@ app.use('/api/shipments', shipmentRoutes);
 
 // Direct root aliases for proxy resilience (handles reverse proxies stripping /api)
 app.post('/public/checkout/ottu/webhook', shipmentPublicController.handleOttuWebhook);
+app.get('/public/location/:token', shipmentPublicController.getLocationByToken);
+app.post('/public/location/:token', shipmentPublicController.updateLocationByToken);
+app.patch('/public/location/:token', shipmentPublicController.updateLocationByToken);
 app.post('/webhooks/trackingmore', integrationController.handleTrackingMoreWebhook);
 app.use('/public/shipments', shipmentPublicRoutes);
 app.use('/auth', authRoutes);

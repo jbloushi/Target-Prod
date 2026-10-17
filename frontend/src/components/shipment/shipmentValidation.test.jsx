@@ -327,7 +327,9 @@ describe('shipmentValidation Unit Tests', () => {
 describe('KineticShipmentWizard Integration Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useRealTimers();
     window.HTMLElement.prototype.scrollIntoView = vi.fn();
+    window.scrollTo = vi.fn();
   });
 
   it('renders "Next Step" as clickable (not disabled) on initial mount', () => {
@@ -365,7 +367,8 @@ describe('KineticShipmentWizard Integration Tests', () => {
 
     // sender_addr1 has an error because addr1 is initially empty
     await waitFor(() => {
-      expect(screen.getByText(/Address Line 1 \(Street\) is required/i)).toBeDefined();
+      const matches = screen.getAllByText(/Address Line 1 \(Street\) is required/i);
+      expect(matches.length).toBeGreaterThan(0);
     });
 
     // Type into sender addr1

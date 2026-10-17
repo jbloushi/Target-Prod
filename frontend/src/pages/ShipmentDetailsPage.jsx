@@ -26,6 +26,8 @@ import GoogleAddressInput from '../components/GoogleAddressInput';
 import { DG_PRESET_OPTIONS } from '../components/shipment/KineticShipmentWizard';
 import { NON_POSTAL_COUNTRIES } from '../components/shipment/shipmentValidation';
 import TargetLogisticsWizard from '../components/shipment/TargetLogisticsWizard';
+import ChatwootConversationDrawer from '../components/common/ChatwootConversationDrawer';
+import ManualPaymentLinkModal from '../components/shipments/ManualPaymentLinkModal';
 
 // ── Pure DaisyUI Form Components matching KineticShipmentWizard ──────
 const DaisyInput = ({
@@ -381,6 +383,14 @@ const ShipmentDetailsPage = () => {
     const [sendingLocationReq, setSendingLocationReq] = useState(false);
     const [sendingReturnPortal, setSendingReturnPortal] = useState(false);
     const [startingEngagement, setStartingEngagement] = useState(false);
+    const [chatwootDrawerOpen, setChatwootDrawerOpen] = useState(false);
+    const [chatwootDrawerTarget, setChatwootDrawerTarget] = useState(null);
+    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+
+    const openChatwootDrawer = (target = null) => {
+        setChatwootDrawerTarget(target);
+        setChatwootDrawerOpen(true);
+    };
 
     // Keep ref in sync so polling interval can read latest status without stale closures
     shipmentRef.current = shipment;
@@ -1594,6 +1604,18 @@ const ShipmentDetailsPage = () => {
                             {isRTL ? 'فاتورة / QR تارغت' : 'Invoice/QR'}
                         </button>
 
+                        {/* Chatwoot Live Support */}
+                        <button
+                            type="button"
+                            onClick={() => openChatwootDrawer()}
+                            className="btn btn-outline btn-primary btn-sm rounded-xl font-bold gap-1 text-xs"
+                            title={isRTL ? 'فتح المحادثة المباشرة في شات ووت' : 'Open Chatwoot Live Support'}
+                            data-testid="header-chatwoot-btn"
+                        >
+                            <span className="material-symbols-outlined text-xs">support_agent</span>
+                            {isRTL ? 'دعم شات ووت' : 'Chatwoot Live Support'}
+                        </button>
+
                         {/* Capture POD (For In Transit or Out for Delivery) */}
                         {['out_for_delivery', 'in_transit'].includes(effectiveStatus) && (
                             <button
@@ -2793,12 +2815,13 @@ const ShipmentDetailsPage = () => {
                         {accountingSummary.remainingBalance > 0 && (
                             <div className="space-y-2 pt-2 border-t border-base-200">
                                 <button
-                                    onClick={() => handleSendPaymentLink('sender')}
-                                    disabled={sendingPaymentLink}
+                                    type="button"
+                                    onClick={() => setIsPaymentModalOpen(true)}
                                     className="btn btn-primary btn-sm rounded-xl font-extrabold w-full gap-1.5 shadow-sm text-xs"
+                                    data-testid="send-payment-link-btn"
                                 >
-                                    <span className="material-symbols-outlined text-[13px]">chat</span>
-                                    {sendingPaymentLink ? 'Dispatching...' : (isRTL ? 'إرسال رابط الدفع واتساب' : 'Send WhatsApp Payment Link')}
+                                    <span className="material-symbols-outlined text-[13px]">payments</span>
+                                    {isRTL ? 'إرسال رابط الدفع واتساب' : 'Send WhatsApp Payment Link'}
                                 </button>
                                 <div className="flex gap-2">
                                     <button
@@ -2829,9 +2852,21 @@ const ShipmentDetailsPage = () => {
                                         {isRTL ? 'سجل إشعارات واتساب' : 'WhatsApp Dispatch Tracker'}
                                     </h3>
                                 </div>
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-300">
-                                    {(shipment.notificationLogs || []).length} logs
-                                </span>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => openChatwootDrawer()}
+                                        className="btn btn-outline btn-primary btn-xs rounded-lg font-bold gap-1 text-[11px]"
+                                        title={isRTL ? 'فتح دعم شات ووت المباشر' : 'Chatwoot Live Support'}
+                                        data-testid="card-chatwoot-btn"
+                                    >
+                                        <span className="material-symbols-outlined text-[13px]">support_agent</span>
+                                        <span>{isRTL ? 'دعم شات ووت' : 'Chatwoot Live Support'}</span>
+                                    </button>
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-300">
+                                        {(shipment.notificationLogs || []).length} logs
+                                    </span>
+                                </div>
                             </div>
 
                             <div className="space-y-3">
@@ -2879,14 +2914,30 @@ const ShipmentDetailsPage = () => {
                                                         </span>
                                                     </button>
                                                 ) : (
-                                                    <Link
-                                                        to={`/admin/whatsapp-logs?search=${shipment.trackingNumber}`}
-                                                        className="btn btn-ghost btn-xs h-6 min-h-6 text-[10.5px] px-2 rounded-lg font-bold gap-1 text-primary hover:bg-primary/10 border border-primary/20"
-                                                        title={isRTL ? 'عرض سجلات واتساب' : 'View WhatsApp logs'}
-                                                    >
-                                                        <span className="material-symbols-outlined text-[11px]">history</span>
-                                                        <span>{isRTL ? 'السجلات' : 'Logs'}</span>
-                                                    </Link>
+                                                    <div className="flex items-center gap-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => openChatwootDrawer({
+                                                                phone,
+                                                                recipientName: isSenderRole ? sender.name : receiver.name,
+                                                                conversationId: latestLog?.chatwootConversationId,
+                                                                accountId: latestLog?.chatwootAccountId
+                                                            })}
+                                                            className="btn btn-ghost btn-xs h-6 min-h-6 text-[10.5px] px-2 rounded-lg font-bold gap-1 text-primary hover:bg-primary/10 border border-primary/20"
+                                                            title={isRTL ? 'فتح محادثة شات ووت' : 'Chatwoot'}
+                                                        >
+                                                            <span className="material-symbols-outlined text-[11px]">support_agent</span>
+                                                            <span>{isRTL ? 'شات ووت' : 'Chatwoot'}</span>
+                                                        </button>
+                                                        <Link
+                                                            to={`/admin/whatsapp-logs?search=${shipment.trackingNumber}`}
+                                                            className="btn btn-ghost btn-xs h-6 min-h-6 text-[10.5px] px-2 rounded-lg font-bold gap-1 text-primary hover:bg-primary/10 border border-primary/20"
+                                                            title={isRTL ? 'عرض سجلات واتساب' : 'View WhatsApp logs'}
+                                                        >
+                                                            <span className="material-symbols-outlined text-[11px]">history</span>
+                                                            <span>{isRTL ? 'السجلات' : 'Logs'}</span>
+                                                        </Link>
+                                                    </div>
                                                 )}
                                             </div>
 
@@ -3175,6 +3226,58 @@ const ShipmentDetailsPage = () => {
                     </div>
                 </div>
             )}
+
+            {/* Embedded Chatwoot Live Support Drawer */}
+            <ChatwootConversationDrawer
+                isOpen={chatwootDrawerOpen}
+                onClose={() => {
+                    setChatwootDrawerOpen(false);
+                    setChatwootDrawerTarget(null);
+                }}
+                accountId={
+                    chatwootDrawerTarget?.accountId ||
+                    shipment?.chatwootAccountId ||
+                    shipment?.notificationLogs?.find(l => l.chatwootAccountId)?.chatwootAccountId ||
+                    '1'
+                }
+                chatwootConversationId={
+                    chatwootDrawerTarget?.conversationId ||
+                    shipment?.chatwootConversationId ||
+                    shipment?.notificationLogs?.find(l => l.chatwootConversationId)?.chatwootConversationId ||
+                    null
+                }
+                phone={
+                    chatwootDrawerTarget?.phone ||
+                    receiver?.phone ||
+                    shipment?.destination?.phone ||
+                    shipment?.customerPhone ||
+                    ''
+                }
+                recipientName={
+                    chatwootDrawerTarget?.recipientName ||
+                    receiver?.name ||
+                    receiver?.contactPerson ||
+                    shipment?.destination?.contactPerson ||
+                    shipment?.destination?.name ||
+                    shipment?.customerName ||
+                    'Consignee'
+                }
+                trackingNumber={shipment?.trackingNumber}
+            />
+
+            {/* Manual Payment Link Modal */}
+            <ManualPaymentLinkModal
+                isOpen={isPaymentModalOpen}
+                onClose={() => setIsPaymentModalOpen(false)}
+                onSuccess={async () => {
+                    if (shipment?.trackingNumber) {
+                        await getShipment(shipment.trackingNumber);
+                    }
+                }}
+                shipment={shipment}
+                trackingNumber={shipment?.trackingNumber}
+                defaultRole="consignee"
+            />
 
         </div>
     );

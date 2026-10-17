@@ -15,6 +15,8 @@ import AccountsPayableTab from '../components/accounting/AccountsPayableTab';
 import TreasuryTab from '../components/accounting/TreasuryTab';
 import PeriodClosingTab from '../components/accounting/PeriodClosingTab';
 import StatusBadge from '../components/common/StatusBadge';
+import { FinancialDocsHubDrawer } from '../components/accounting/docs';
+import { FinancialWalkthroughTour, useFinancialTour, TOUR_IDS } from '../components/accounting/tour';
 
 const INVOICE_STATUS_OPTIONS = ['DRAFT', 'ISSUED', 'PARTIALLY_PAID', 'PAID', 'VOID', 'OVERDUE'];
 
@@ -87,6 +89,18 @@ const FinancePage = () => {
 
     // Active Tab
     const [activeTab, setActiveTab] = useState('overview');
+
+    // Documentation Hub & Guided Walkthrough State
+    const [isDocsOpen, setIsDocsOpen] = useState(false);
+    const [docsCategory, setDocsCategory] = useState('all');
+    const [isTourDropdownOpen, setIsTourDropdownOpen] = useState(false);
+
+    // Tour Engine Hook
+    const tour = useFinancialTour({
+        onTabRequired: (tab) => {
+            setActiveTab(tab);
+        }
+    });
 
     // Period & Timeframe State
     const [selectedPeriod, setSelectedPeriod] = useState('this_month'); // 'today' | '7days' | 'this_month' | 'last_month' | 'all' | 'custom'
@@ -739,7 +753,7 @@ const FinancePage = () => {
     return (
         <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
             {/* Header Ribbon */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-base-200">
+            <div data-tour="finance-header" className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-base-200">
                 <div>
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                         <span className="badge badge-primary font-mono font-bold text-xs uppercase tracking-wider">
@@ -819,6 +833,121 @@ const FinancePage = () => {
                             )}
                         </div>
                     )}
+
+                    <button
+                        type="button"
+                        onClick={() => {
+                            const cat = (activeTab === 'ap' ? 'ap' : (activeTab === 'statements' ? 'statements' : (activeTab === 'reports' ? 'reports' : 'all')));
+                            setDocsCategory(cat);
+                            setIsDocsOpen(true);
+                        }}
+                        className="btn btn-sm btn-ghost border border-base-200 gap-1.5 font-bold text-primary hover:bg-primary/10"
+                        title={lang === 'ar' ? 'دليل المحاسبة والوثائق الإرشادية' : 'Financial Documentation & Guides Hub'}
+                    >
+                        <span className="material-symbols-outlined text-[18px]">menu_book</span>
+                        <span>{lang === 'ar' ? 'الأدلة المالية' : 'Financial Guides'}</span>
+                    </button>
+
+                    <div className="relative">
+                        <button
+                            type="button"
+                            onClick={() => setIsTourDropdownOpen((prev) => !prev)}
+                            className="btn btn-sm btn-primary text-white gap-1.5 font-bold shadow-xs"
+                            title={lang === 'ar' ? 'الجولات الإرشادية التفاعلية' : 'Interactive Guided Walkthroughs'}
+                        >
+                            <span className="material-symbols-outlined text-[18px]">explore</span>
+                            <span>{lang === 'ar' ? 'الجولة التفاعلية' : 'Interactive Tour'}</span>
+                            <span className="material-symbols-outlined text-xs">arrow_drop_down</span>
+                        </button>
+
+                        {isTourDropdownOpen && (
+                            <>
+                                <div
+                                    className="fixed inset-0 z-40"
+                                    onClick={() => setIsTourDropdownOpen(false)}
+                                />
+                                <div
+                                    className="absolute end-0 mt-1.5 w-64 bg-base-100 rounded-2xl border border-base-200 shadow-xl p-2 z-50 text-xs space-y-1 animate-in fade-in zoom-in-95"
+                                    dir={isRTL ? 'rtl' : 'ltr'}
+                                >
+                                    <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-base-content/50 border-b border-base-200 mb-1">
+                                        {lang === 'ar' ? 'اختر الجولة التفاعلية' : 'Select Walkthrough'}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsTourDropdownOpen(false);
+                                            tour.startTour(TOUR_IDS.FULL_TOUR);
+                                        }}
+                                        className="w-full text-start px-3 py-2 rounded-xl hover:bg-base-200/80 flex items-center gap-2.5 font-bold text-base-content transition-colors"
+                                    >
+                                        <span className="material-symbols-outlined text-primary text-base">explore</span>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="truncate">{lang === 'ar' ? 'الجولة الشاملة' : 'Full Tour'}</div>
+                                            <div className="text-[10px] text-base-content/50 font-normal">{lang === 'ar' ? 'نظرة عامة على جميع الأجنحة' : 'High-level traversal'}</div>
+                                        </div>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsTourDropdownOpen(false);
+                                            tour.startTour(TOUR_IDS.AP_TOUR);
+                                        }}
+                                        className="w-full text-start px-3 py-2 rounded-xl hover:bg-base-200/80 flex items-center gap-2.5 font-bold text-base-content transition-colors"
+                                    >
+                                        <span className="material-symbols-outlined text-primary text-base">assignment_returned</span>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="truncate">{lang === 'ar' ? 'جولة مستحقات الموردين' : 'Accounts Payable Tour'}</div>
+                                            <div className="text-[10px] text-base-content/50 font-normal">{lang === 'ar' ? 'استحقاقات و 3-Way Match' : 'Liabilities & 3-way match'}</div>
+                                        </div>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsTourDropdownOpen(false);
+                                            tour.startTour(TOUR_IDS.STATEMENTS_TOUR);
+                                        }}
+                                        className="w-full text-start px-3 py-2 rounded-xl hover:bg-base-200/80 flex items-center gap-2.5 font-bold text-base-content transition-colors"
+                                    >
+                                        <span className="material-symbols-outlined text-primary text-base">account_balance</span>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="truncate">{lang === 'ar' ? 'جولة القوائم المالية' : 'Financial Statements Tour'}</div>
+                                            <div className="text-[10px] text-base-content/50 font-normal">{lang === 'ar' ? 'الميزانية، الأرباح، وميزان المراجعة' : 'Balance sheet & P&L'}</div>
+                                        </div>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsTourDropdownOpen(false);
+                                            tour.startTour(TOUR_IDS.REPORTS_TOUR);
+                                        }}
+                                        className="w-full text-start px-3 py-2 rounded-xl hover:bg-base-200/80 flex items-center gap-2.5 font-bold text-base-content transition-colors"
+                                    >
+                                        <span className="material-symbols-outlined text-primary text-base">analytics</span>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="truncate">{lang === 'ar' ? 'جولة التقارير المالية' : 'Financial Reports Tour'}</div>
+                                            <div className="text-[10px] text-base-content/50 font-normal">{lang === 'ar' ? 'الربحية ومطابقة الشحن و COD' : 'Margins, carrier CSV, COD'}</div>
+                                        </div>
+                                    </button>
+                                    {tour.isPaused && (
+                                        <div className="pt-1 border-t border-base-200 mt-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setIsTourDropdownOpen(false);
+                                                    tour.resumeTour();
+                                                }}
+                                                className="w-full text-start px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 flex items-center gap-2 font-bold"
+                                            >
+                                                <span className="material-symbols-outlined text-base">play_arrow</span>
+                                                <span>{lang === 'ar' ? 'استئناف الجولة المحفوظة' : 'Resume Saved Tour'}</span>
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </>
+                        )}
+                    </div>
 
                     <button
                         type="button"
@@ -944,7 +1073,7 @@ const FinancePage = () => {
             </div>
 
             {/* ── WORKSPACE SUITE SWITCHER (TIER 1) ── */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div data-tour="finance-suite-selector" className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {/* Suite 1: Customer AR & Billing */}
                 <button
                     type="button"
@@ -2096,7 +2225,16 @@ const FinancePage = () => {
 
             {/* ── TAB 5: PROFITABILITY REPORTS ── */}
             {activeTab === 'reports' && can('VIEW_FINANCE') && (
-                <FinanceReports ledger={ledger} shipments={shipments} organizations={organizations} />
+                <FinanceReports
+                    ledger={ledger}
+                    shipments={shipments}
+                    organizations={organizations}
+                    onOpenDocs={(cat) => {
+                        setDocsCategory(cat || 'reports');
+                        setIsDocsOpen(true);
+                    }}
+                    onStartTour={(tourId) => tour.startTour(tourId || TOUR_IDS.REPORTS_TOUR)}
+                />
             )}
 
             {/* ── SECTION 5: DRIVER COD & VAULT CLEARING ── */}
@@ -2439,7 +2577,14 @@ const FinancePage = () => {
 
             {/* ── TAB 7: FINANCIAL STATEMENTS ── */}
             {activeTab === 'statements' && can('VIEW_FINANCE') && (
-                <FinancialStatementsTab lang={lang} />
+                <FinancialStatementsTab
+                    lang={lang}
+                    onOpenDocs={(cat) => {
+                        setDocsCategory(cat || 'statements');
+                        setIsDocsOpen(true);
+                    }}
+                    onStartTour={(tourId) => tour.startTour(tourId || TOUR_IDS.STATEMENTS_TOUR)}
+                />
             )}
 
             {/* ── TAB 8: GENERAL LEDGER & COA ── */}
@@ -2449,7 +2594,14 @@ const FinancePage = () => {
 
             {/* ── TAB 9: ACCOUNTS PAYABLE ── */}
             {activeTab === 'ap' && can('VIEW_FINANCE') && (
-                <AccountsPayableTab lang={lang} />
+                <AccountsPayableTab
+                    lang={lang}
+                    onOpenDocs={(cat) => {
+                        setDocsCategory(cat || 'ap');
+                        setIsDocsOpen(true);
+                    }}
+                    onStartTour={(tourId) => tour.startTour(tourId || TOUR_IDS.AP_TOUR)}
+                />
             )}
 
             {/* ── TAB 10: TREASURY & BANKING ── */}
@@ -2815,6 +2967,27 @@ const FinancePage = () => {
                 </div>
                 <div className="modal-backdrop bg-black/60 backdrop-blur-xs" onClick={() => setFifoConfirmOpen(false)} />
             </div>
+
+            {/* Financial Documentation & Guides Hub Drawer */}
+            <FinancialDocsHubDrawer
+                isOpen={isDocsOpen}
+                onClose={() => setIsDocsOpen(false)}
+                initialCategory={docsCategory}
+                onStartTour={(tourId) => {
+                    setIsDocsOpen(false);
+                    tour.startTour(tourId);
+                }}
+                lang={lang}
+                isRTL={isRTL}
+            />
+
+            {/* Interactive Guided Walkthrough Tour Overlay */}
+            <FinancialWalkthroughTour
+                tourHook={tour}
+                onTabRequired={(tab) => setActiveTab(tab)}
+                lang={lang}
+                isRTL={isRTL}
+            />
         </div>
     );
 };

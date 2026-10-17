@@ -2,7 +2,23 @@ const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/auth.controller');
 const settingsController = require('../controllers/settings.controller');
+const adminWhatsAppLogs = require('../controllers/adminWhatsAppLogs.controller');
 const { authorize } = require('../middleware/authorize.middleware');
+
+// Admin WhatsApp Settings
+router.get(
+    '/whatsapp',
+    authController.protect,
+    authorize('MANAGE_SYSTEM_SETTINGS'),
+    adminWhatsAppLogs.getWhatsAppConfig
+);
+
+router.put(
+    '/whatsapp',
+    authController.protect,
+    authorize('MANAGE_SYSTEM_SETTINGS'),
+    adminWhatsAppLogs.updateWhatsAppConfig
+);
 
 // Public/Authenticated reading of system settings (e.g. carrier display names)
 router.get('/system', settingsController.getSystemSettings);

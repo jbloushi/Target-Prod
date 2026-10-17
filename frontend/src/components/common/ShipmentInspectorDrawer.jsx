@@ -5,6 +5,7 @@ import StatusBadge from './StatusBadge';
 import TradeRouteDisplay from './TradeRouteDisplay';
 import { normalizeStatus, isNegativeOrExceptionPhrase } from '../../constants/statusConfig';
 import { dedupeTrackingEvents } from '../../utils/dedupeTrackingEvents';
+import ChatwootConversationDrawer from './ChatwootConversationDrawer';
 
 const CARRIER_INFO_MAP = {
     'DGR': { name: 'DHL Express', nameAr: 'دي إتش إل إكسبريس', badge: 'badge-error' },
@@ -32,6 +33,7 @@ export const ShipmentInspectorDrawer = ({
     const { t, lang } = useLanguage();
     const isRTL = lang === 'ar';
     const [copied, setCopied] = useState(false);
+    const [isChatwootOpen, setIsChatwootOpen] = useState(false);
 
     // Close on Escape key
     useEffect(() => {
@@ -341,6 +343,16 @@ export const ShipmentInspectorDrawer = ({
                             <span className="material-symbols-outlined text-base">chat</span>
                             {isRTL ? 'واتساب المستلم' : 'WhatsApp Client'}
                         </a>
+                        <button
+                            type="button"
+                            onClick={() => setIsChatwootOpen(true)}
+                            className="btn btn-outline btn-primary btn-sm flex-1 font-bold rounded-xl gap-1"
+                            title={isRTL ? 'فتح محادثة شات ووت المباشرة' : 'Open Chatwoot Live Support'}
+                            data-testid="inspector-open-chatwoot-btn"
+                        >
+                            <span className="material-symbols-outlined text-base">support_agent</span>
+                            {isRTL ? 'شات ووت' : 'Open Chatwoot'}
+                        </button>
                         {onDownloadLabel && (
                             <button 
                                 onClick={() => onDownloadLabel(shipment)} 
@@ -354,6 +366,25 @@ export const ShipmentInspectorDrawer = ({
                 </div>
 
             </div>
+
+            {/* Embedded Chatwoot Drawer */}
+            <ChatwootConversationDrawer
+                isOpen={isChatwootOpen}
+                onClose={() => setIsChatwootOpen(false)}
+                accountId={
+                    shipment.chatwootAccountId ||
+                    shipment.notificationLogs?.find(l => l.chatwootAccountId)?.chatwootAccountId ||
+                    '1'
+                }
+                chatwootConversationId={
+                    shipment.chatwootConversationId ||
+                    shipment.notificationLogs?.find(l => l.chatwootConversationId)?.chatwootConversationId ||
+                    null
+                }
+                phone={consigneePhone}
+                recipientName={consigneeName}
+                trackingNumber={trackingNumber}
+            />
         </div>
     );
 };

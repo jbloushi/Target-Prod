@@ -107,6 +107,9 @@ model User {
   apiKeyHash  String?
   apiKeyLast4 String?
 
+  chatwootUserId String?
+  chatwootEmail  String?
+
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -225,6 +228,9 @@ model Shipment {
   failureReason    String?
   failureNotes     String?      @db.Text
   deliveredAt      DateTime?
+
+  locationToken          String?   @unique
+  locationTokenExpiresAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -960,3 +966,43 @@ model Vehicle {
   @@index([driverId, active], map: "Vehicle_driver_active_idx")
   @@index([status, active], map: "Vehicle_status_active_idx")
 }
+
+// ========================================
+// WHATSAPP & CHATWOOT CONFIGURATION
+// ========================================
+
+model WhatsAppConfig {
+  id                      String              @id @default(cuid())
+  provider                String              @default("SHIPMENT_WHATSAPP")
+  serviceUrl              String              @default("https://msg.target-kw.com")
+  apiKey                  String?
+  phoneId                 String?
+  chatwootBaseUrl         String              @default("https://inbox.mawthook.io")
+  chatwootAccountId       String              @default("1")
+  chatwootInboxId         String?
+  chatwootApiToken        String?
+  quietHoursEnabled       Boolean             @default(false)
+  quietHoursStart         String              @default("22:00")
+  quietHoursEnd           String              @default("08:00")
+  quietHoursTimezone      String              @default("Asia/Kuwait")
+  allowDeliveryQuietHours Boolean             @default(false)
+  rules                   WhatsAppEventRule[]
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+}
+
+model WhatsAppEventRule {
+  id                    String         @id @default(cuid())
+  configId              String
+  config                WhatsAppConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  eventType             String
+  recipientRole         String
+  templateName          String
+  enabled               Boolean        @default(true)
+  allowQuietHoursBypass Boolean        @default(false)
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  @@unique([configId, eventType, recipientRole])
+}
+

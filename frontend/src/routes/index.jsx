@@ -85,6 +85,10 @@ const AppRoutes = () => {
         <Route path="/returns" element={<PublicReturnPortalPage />} />
         <Route path="/returns/:trackingNumber" element={<PublicReturnPortalPage />} />
 
+        {/* Standalone Customer Self-Service GPS Pin Portal */}
+        <Route path="/location/:token" element={<PublicLocationPage />} />
+        <Route path="location/:token" element={<PublicLocationPage />} />
+
         {/* Standalone Driver Route (No Sidebar) */}
         <Route path="/driver/pickup" element={
           <ProtectedRoute allowedRoles={['driver', 'admin', 'staff', 'manager']}>

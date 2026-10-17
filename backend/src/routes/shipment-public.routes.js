@@ -2,6 +2,15 @@ const express = require('express');
 const router = express.Router();
 const publicController = require('../controllers/shipment-public.controller');
 
+// @route   GET /location/:token (and /api/public/shipments/location/:token)
+// @desc    Get public shipment delivery details by single-use/scoped token
+router.get('/location/:token', publicController.getLocationByToken);
+
+// @route   POST /location/:token (and PATCH /location/:token)
+// @desc    Update destination delivery coordinates by token
+router.post('/location/:token', publicController.updateLocationByToken);
+router.patch('/location/:token', publicController.updateLocationByToken);
+
 // @route   GET /api/public/shipments/:trackingNumber
 // @desc    Get public shipment details and history (unprotected)
 router.get('/:trackingNumber', publicController.getPublicShipment);

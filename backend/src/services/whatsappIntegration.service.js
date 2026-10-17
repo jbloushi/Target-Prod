@@ -1,6 +1,8 @@
 const axios = require('axios');
+const crypto = require('crypto');
 const { prisma } = require('../config/database');
 const { getSystemSettings } = require('./systemSettings.service');
+const whatsAppConfigService = require('./whatsAppConfig.service');
 const chatwootService = require('./chatwootNotificationService');
 const logger = require('../utils/logger');
 
@@ -45,7 +47,9 @@ function resolveRecipientPhone(phone, phoneCountryCode = '965') {
     return normalized;
 }
 
-function getTemplateLanguage(templateName) {
+function getTemplateLanguage(templateName, userLang = 'en') {
+    if (userLang === 'ar') return 'ar';
+    if (templateName && templateName.startsWith('target_')) return 'en_US';
     if (templateName === 'otptargetlogin') return 'en_US';
     if (templateName === 'shipment_tracking_quick') return 'en_GB';
     if (templateName === 'shipment_confirmation_2' || templateName === 'hello_world') return 'en_US';
@@ -122,7 +126,7 @@ async function checkMicroserviceSent(billId, role = 'receiver') {
 /**
  * Dispatch message via the Shipment-WhatsApp Microservice (https://msg.target-kw.com)
  */
-async function sendViaShipmentWhatsappMicroservice({ serviceUrl = 'https://msg.target-kw.com', templateName, language, toPhone, variables = [], headerVariables = [], billId = null, trackingNumber = null, role = 'receiver', apiKey = null }) {
+async function sendViaShipmentWhatsappMicroservice({ serviceUrl = 'https://msg.target-kw.com', templateName, language, toPhone, variables = [], headerVariables = [], billId = null, trackingNumber = null, role = 'receiver', apiKey = null, buttonUrlParam = null }) {
     const cleanPhone = String(toPhone).replace(/\D/g, '');
     const cleanServiceUrl = String(serviceUrl || 'https://msg.target-kw.com').replace(/\/+$/, '');
     const url = `${cleanServiceUrl}/api/send`;
@@ -149,7 +153,8 @@ async function sendViaShipmentWhatsappMicroservice({ serviceUrl = 'https://msg.t
                 variables: variables.map(v => v === null || v === undefined ? '' : String(v)),
                 headerVariables: headerVariables.map(v => v === null || v === undefined ? '' : String(v)),
                 header: (headerVariables && headerVariables.length > 0) ? String(headerVariables[0]) : undefined,
-                role: role || undefined
+                role: role || undefined,
+                buttonUrlParam: buttonUrlParam || undefined
             }
         ]
     };
@@ -242,9 +247,10 @@ function buildMetaMessagePayload(toPhone, eventType, context, templateNameOverri
         eventType === 'location_request' ? 'location_request_v1' :
         eventType === 'return_portal' ? 'return_portal_v1' :
         eventType === 'customer_engagement' ? 'customer_inquiry_start' :
+        eventType === 'out_for_delivery' ? 'target_shipment_out_for_delivery' :
+        eventType === 'delivered' ? 'target_shipment_delivered' :
+        eventType === 'on_hold_customs_issue' ? 'target_customs_exception_hold' :
         eventType === 'shipment_created' || eventType === 'new_shipment_created' ? 'shipment_confirmation_2' :
-        eventType === 'out_for_delivery' ? 'out_for_delivery_v1' :
-        eventType === 'delivered' ? 'delivery_complete_v1' :
         eventType === 'pickup_scheduled' ? 'pickup_alert_v1' :
         'new_shipment_created'
     );
@@ -258,7 +264,80 @@ function buildMetaMessagePayload(toPhone, eventType, context, templateNameOverri
 
     let components = [];
 
-    if (targetTemplateName === 'payment_request_v1') {
+    if (targetTemplateName === 'target_shipment_out_for_delivery') {
+        const destCity = context.shipment?.destination?.city || context.destination?.city || 'Kuwait City';
+        const destArea = context.shipment?.destination?.area || context.destination?.area || '';
+        const cityArea = destArea ? `${destCity}, ${destArea}` : destCity;
+        const courier = context.shipment?.assignedDriver?.name || context.courier || 'Target Express Fleet #12';
+        const deliveryWindow = context.deliveryWindow || estDeliveryFormatted || 'Today between 2:00 PM - 5:00 PM';
+        const token = context.locationToken || context.shipment?.locationToken || context.buttonUrlParam || '';
+
+        components = [
+            {
+                type: 'header',
+                parameters: [{ type: 'text', text: displayTracking }]
+            },
+            {
+                type: 'body',
+                parameters: [
+                    { type: 'text', text: context.recipientName || 'Valued Customer' },
+                    { type: 'text', text: displayTracking },
+                    { type: 'text', text: cityArea },
+                    { type: 'text', text: courier },
+                    { type: 'text', text: deliveryWindow }
+                ]
+            }
+        ];
+
+        if (token) {
+            components.push({
+                type: 'button',
+                sub_type: 'url',
+                index: '0',
+                parameters: [{ type: 'text', text: token }]
+            });
+        }
+    } else if (targetTemplateName === 'target_shipment_delivered') {
+        const deliveryTime = context.deliveryTimestamp || (context.shipment?.deliveredAt ? `${formatLegibleDate(context.shipment.deliveredAt)} AST` : `${dateFormatted} AST`);
+        const signee = context.podRecipientName || context.signee || context.shipment?.podRecipientName || 'Consignee Direct Signature';
+
+        components = [
+            {
+                type: 'header',
+                parameters: [{ type: 'text', text: displayTracking }]
+            },
+            {
+                type: 'body',
+                parameters: [
+                    { type: 'text', text: context.recipientName || 'Valued Customer' },
+                    { type: 'text', text: displayTracking },
+                    { type: 'text', text: deliveryTime },
+                    { type: 'text', text: signee },
+                    { type: 'text', text: trackingUrl }
+                ]
+            }
+        ];
+    } else if (targetTemplateName === 'target_customs_exception_hold') {
+        const reason = context.customsReason || context.reason || context.shipment?.failureReason || 'Customs inspection hold at Kuwait Airport Cargo Terminal';
+        const action = context.customsAction || context.action || 'Please provide Civil ID copy and commercial invoice';
+
+        components = [
+            {
+                type: 'header',
+                parameters: [{ type: 'text', text: displayTracking }]
+            },
+            {
+                type: 'body',
+                parameters: [
+                    { type: 'text', text: displayTracking },
+                    { type: 'text', text: context.recipientName || 'Valued Customer' },
+                    { type: 'text', text: reason },
+                    { type: 'text', text: action },
+                    { type: 'text', text: trackingUrl }
+                ]
+            }
+        ];
+    } else if (targetTemplateName === 'payment_request_v1') {
         components = [
             {
                 type: 'header',
@@ -377,7 +456,13 @@ class WhatsAppIntegrationService {
      * Send automatic or manual shipment event notification via WhatsApp
      */
     async sendNotification({ shipment, recipientRole, recipientPhone, recipientCountryCode, recipientName, eventType, templateName, customMessage, force = false, existingLogId = null, bypassAgeGuard = false }) {
-        const settings = getSystemSettings()?.whatsapp || {};
+        const dbConfig = await whatsAppConfigService.getConfig({ internal: true }).catch(() => null);
+        const sysSettings = getSystemSettings()?.whatsapp || {};
+        const settings = {
+            ...sysSettings,
+            ...(dbConfig || {}),
+            enabled: dbConfig?.enabled !== undefined ? dbConfig.enabled : (sysSettings.enabled ?? true)
+        };
         const phone = resolveRecipientPhone(recipientPhone, recipientCountryCode || '965');
 
         if (!phone) {
@@ -388,8 +473,102 @@ class WhatsAppIntegrationService {
         const role = recipientRole || 'customer';
         const roleGroup = (role === 'sender') ? ['sender'] : ['receiver', 'customer'];
         const microRole = (role === 'sender') ? 'sender' : 'receiver';
-        const chosenTemplate = templateName || 'shipment_confirmation_2';
         const provider = settings.provider || 'SHIPMENT_WHATSAPP';
+
+        let chosenTemplate = templateName;
+        if (!chosenTemplate) {
+            if (eventType === 'out_for_delivery') chosenTemplate = 'target_shipment_out_for_delivery';
+            else if (eventType === 'delivered') chosenTemplate = 'target_shipment_delivered';
+            else if (eventType === 'on_hold_customs_issue') chosenTemplate = 'target_customs_exception_hold';
+            else if (eventType === 'payment_link_ready') chosenTemplate = 'payment_request_v1';
+            else chosenTemplate = 'shipment_confirmation_2';
+        }
+
+        // Token generation for out_for_delivery if missing or expired
+        let buttonUrlParam = null;
+        if (chosenTemplate === 'target_shipment_out_for_delivery' || eventType === 'out_for_delivery') {
+            const isExpired = !shipment.locationTokenExpiresAt || new Date(shipment.locationTokenExpiresAt).getTime() < Date.now();
+            if (!shipment.locationToken || isExpired) {
+                const token = `loc_${crypto.randomBytes(32).toString('hex')}`;
+                const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+                try {
+                    if (shipment.id) {
+                        await prisma.shipment.update({
+                            where: { id: shipment.id },
+                            data: {
+                                locationToken: token,
+                                locationTokenExpiresAt: expiresAt
+                            }
+                        });
+                    }
+                } catch (tokErr) {
+                    logger.warn(`[WhatsApp] Failed to save locationToken on shipment: ${tokErr.message}`);
+                }
+                shipment.locationToken = token;
+                shipment.locationTokenExpiresAt = expiresAt;
+            }
+            buttonUrlParam = shipment.locationToken;
+        }
+
+        // Check quiet hours suppression
+        const isQuiet = whatsAppConfigService._computeQuietHours(settings);
+        if (isQuiet && !force) {
+            const rule = await whatsAppConfigService.getRule(eventType, role).catch(() => null);
+            const allowBypass = Boolean(rule?.allowQuietHoursBypass);
+            const isDeliveryEvent = eventType === 'out_for_delivery' || eventType === 'delivered';
+            const allowDelivery = isDeliveryEvent && Boolean(settings.allowDeliveryQuietHours);
+
+            if (!allowBypass && !allowDelivery) {
+                logger.info(`[WhatsApp Quiet Hours] Message for ${shipment.trackingNumber} (${eventType} to ${role}) suppressed during quiet hours`);
+                
+                let quietLog;
+                if (existingLogId) {
+                    quietLog = await prisma.shipmentNotificationLog.update({
+                        where: { id: existingLogId },
+                        data: {
+                            status: 'QUEUED',
+                            errorMessage: 'QUIET_HOURS_SUPPRESSED'
+                        }
+                    });
+                } else {
+                    quietLog = await prisma.shipmentNotificationLog.create({
+                        data: {
+                            shipmentId: shipment.id,
+                            trackingNumber: shipment.trackingNumber,
+                            eventType: eventType || 'manual_trigger',
+                            recipientRole: role,
+                            recipientName: recipientName || null,
+                            recipientPhone: phone,
+                            provider,
+                            templateName: chosenTemplate,
+                            status: 'QUEUED',
+                            errorMessage: 'QUIET_HOURS_SUPPRESSED',
+                            sentAt: new Date()
+                        }
+                    });
+                }
+
+                return {
+                    status: 'QUEUED',
+                    reason: 'QUIET_HOURS_SUPPRESSED',
+                    logId: quietLog.id,
+                    message: 'Outbound WhatsApp notification suppressed by quiet-hours window'
+                };
+            }
+        }
+
+        // Check event enabled rule
+        if (!force && eventType) {
+            const isEnabled = await whatsAppConfigService.isEventEnabled(eventType, role);
+            if (!isEnabled) {
+                logger.info(`[WhatsApp Event Rule] Event ${eventType} is disabled for role ${role}. Skipping dispatch.`);
+                return {
+                    status: 'SKIPPED',
+                    reason: 'EVENT_RULE_DISABLED',
+                    message: `Event ${eventType} is disabled for role ${role} in WhatsApp settings`
+                };
+            }
+        }
 
         // STRICT AGE & DEDUPLICATION GUARDS: Prevent sending to old shipments (>36h) or duplicate sends
         if (!force) {
@@ -543,7 +722,7 @@ class WhatsAppIntegrationService {
             });
         }
 
-        if (!settings.enabled) {
+        if (settings.enabled === false) {
             await prisma.shipmentNotificationLog.update({
                 where: { id: log.id },
                 data: {
@@ -597,6 +776,45 @@ class WhatsAppIntegrationService {
                     receiptNo,
                     resolvedReceiverName,
                     resolvedReceiverPhone,
+                    trackingUrl
+                ];
+                headerVariables = [displayTracking];
+            } else if (chosenTemplate === 'target_shipment_out_for_delivery') {
+                const destCity = shipment.destination?.city || context.destination?.city || 'Kuwait City';
+                const destArea = shipment.destination?.area || context.destination?.area || '';
+                const cityArea = destArea ? `${destCity}, ${destArea}` : destCity;
+                const courier = shipment.assignedDriver?.name || shipment.carrierCode || 'Target Express Fleet #12';
+                const deliveryWindow = estDeliveryFormatted || 'Today between 2:00 PM - 5:00 PM';
+
+                variables = [
+                    resolvedReceiverName,
+                    displayTracking,
+                    cityArea,
+                    courier,
+                    deliveryWindow
+                ];
+                headerVariables = [displayTracking];
+            } else if (chosenTemplate === 'target_shipment_delivered') {
+                const deliveryTime = shipment.deliveredAt ? `${formatLegibleDate(shipment.deliveredAt)} AST` : `${dateFormatted} AST`;
+                const signee = shipment.podRecipientName || 'Consignee Direct Signature';
+
+                variables = [
+                    effectiveRecipientName,
+                    displayTracking,
+                    deliveryTime,
+                    signee,
+                    trackingUrl
+                ];
+                headerVariables = [displayTracking];
+            } else if (chosenTemplate === 'target_customs_exception_hold') {
+                const holdReason = customMessage?.reason || shipment.failureReason || 'Customs inspection hold at Kuwait Airport Cargo Terminal';
+                const reqAction = customMessage?.action || 'Please provide Civil ID copy and commercial invoice';
+
+                variables = [
+                    displayTracking,
+                    resolvedReceiverName,
+                    holdReason,
+                    reqAction,
                     trackingUrl
                 ];
                 headerVariables = [displayTracking];
@@ -655,7 +873,8 @@ class WhatsAppIntegrationService {
                     billId,
                     trackingNumber: shipment.trackingNumber,
                     role: recipientRole || 'receiver',
-                    apiKey: settings.apiKey || null
+                    apiKey: settings.apiKey || null,
+                    buttonUrlParam
                 });
 
                 const enrichedPayload = {

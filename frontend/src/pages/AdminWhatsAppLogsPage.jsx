@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSnackbar } from 'notistack';
 import { whatsappService } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
+import ChatwootConversationDrawer from '../components/common/ChatwootConversationDrawer';
 
 /** Format human-readable message text matching exact Meta template copy */
 export function formatExactMessageCopy(log) {
@@ -115,6 +116,7 @@ export const AdminWhatsAppLogsPage = () => {
     const [dateRangeFilter, setDateRangeFilter] = useState('ALL');
     const [search, setSearch] = useState('');
     const [selectedLog, setSelectedLog] = useState(null);
+    const [chatwootDrawerLog, setChatwootDrawerLog] = useState(null);
     const [previewMessageLog, setPreviewMessageLog] = useState(null);
     const [copiedMessageText, setCopiedMessageText] = useState(false);
     const [syncingTelemetry, setSyncingTelemetry] = useState(false);
@@ -787,6 +789,18 @@ export const AdminWhatsAppLogsPage = () => {
                                                         {lang === 'ar' ? 'فحص' : 'Inspect'}
                                                     </button>
 
+                                                    {/* Chatwoot Drawer Button */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setChatwootDrawerLog(log)}
+                                                        className="btn btn-xs btn-outline btn-primary gap-1 font-semibold"
+                                                        title={lang === 'ar' ? 'فتح محادثة شات ووت' : 'Open in Chatwoot'}
+                                                        data-testid="logs-table-chatwoot-btn"
+                                                    >
+                                                        <span className="material-symbols-outlined text-[14px]">support_agent</span>
+                                                        <span>Chatwoot</span>
+                                                    </button>
+
                                                     {/* Resend Action */}
                                                     {log.status === 'FAILED' && (
                                                         <button
@@ -1051,18 +1065,29 @@ export const AdminWhatsAppLogsPage = () => {
                         );
                     })()}
 
-                    <div className="modal-action pt-3 border-t border-base-200 flex justify-between items-center">
-                        {selectedLog?.recipientPhone && (
-                            <a
-                                href={`https://wa.me/${(selectedLog.recipientPhone || '').replace(/[^0-9]/g, '')}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="btn btn-sm btn-outline btn-success gap-1.5 font-bold"
+                    <div className="modal-action pt-3 border-t border-base-200 flex justify-between items-center gap-2">
+                        <div className="flex items-center gap-2">
+                            {selectedLog?.recipientPhone && (
+                                <a
+                                    href={`https://wa.me/${(selectedLog.recipientPhone || '').replace(/[^0-9]/g, '')}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="btn btn-sm btn-outline btn-success gap-1.5 font-bold"
+                                >
+                                    <span className="material-symbols-outlined text-base">chat</span>
+                                    {lang === 'ar' ? 'محادثة في واتساب' : 'Chat in WhatsApp'}
+                                </a>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => setChatwootDrawerLog(selectedLog)}
+                                className="btn btn-sm btn-outline btn-primary gap-1.5 font-bold"
+                                data-testid="logs-modal-chatwoot-btn"
                             >
-                                <span className="material-symbols-outlined text-base">chat</span>
-                                {lang === 'ar' ? 'محادثة في واتساب' : 'Chat in WhatsApp'}
-                            </a>
-                        )}
+                                <span className="material-symbols-outlined text-base">support_agent</span>
+                                {lang === 'ar' ? 'فتح شات ووت' : 'Open Chatwoot'}
+                            </button>
+                        </div>
                         <button
                             type="button"
                             onClick={() => setSelectedLog(null)}
@@ -1197,6 +1222,22 @@ export const AdminWhatsAppLogsPage = () => {
                 </div>
                 <div className="modal-backdrop bg-black/60 backdrop-blur-xs" onClick={() => setPreviewMessageLog(null)} />
             </div>
+
+            {/* Embedded Chatwoot Drawer */}
+            <ChatwootConversationDrawer
+                isOpen={Boolean(chatwootDrawerLog)}
+                onClose={() => setChatwootDrawerLog(null)}
+                accountId={chatwootDrawerLog?.chatwootAccountId || '1'}
+                chatwootConversationId={chatwootDrawerLog?.chatwootConversationId || null}
+                phone={chatwootDrawerLog?.recipientPhone || ''}
+                recipientName={chatwootDrawerLog?.recipientName || ''}
+                trackingNumber={
+                    chatwootDrawerLog?.trackingNumber || 
+                    chatwootDrawerLog?.shipment?.trackingNumber || 
+                    chatwootDrawerLog?.shipment?.dhlTrackingNumber || 
+                    ''
+                }
+            />
         </div>
     );
 };

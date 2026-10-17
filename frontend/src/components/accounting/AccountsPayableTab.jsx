@@ -5,7 +5,7 @@ import { financeService } from '../../services/api';
 import { TK } from '../../tokens/kineticHorizon';
 import { Card, Button, WInput, Select, Modal, TableWrapper, Table, Thead, Tbody, Tr, Th, Td, Loader } from '../../ui';
 
-const AccountsPayableTab = ({ lang = 'en' }) => {
+const AccountsPayableTab = ({ lang = 'en', onOpenDocs, onStartTour }) => {
   const { enqueueSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(false);
   const [bills, setBills] = useState([]);
@@ -177,8 +177,8 @@ const AccountsPayableTab = ({ lang = 'en' }) => {
     <div>
       {/* Top Action Bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
-          <div className="bg-base-100 rounded-2xl border border-base-200 p-4 shadow-xs">
+        <div data-tour="ap-kpi-bar" className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
+          <div data-tour="ap-kpi-outstanding" className="bg-base-100 rounded-2xl border border-base-200 p-4 shadow-xs">
             <div style={{ fontSize: 11, fontWeight: 700, color: TK.text3, textTransform: 'uppercase' }}>
               {lang === 'ar' ? 'إجمالي مستحقات الموردين (AP)' : 'Outstanding Carrier AP'}
             </div>
@@ -186,7 +186,7 @@ const AccountsPayableTab = ({ lang = 'en' }) => {
               {fmt(totalPayable)} <span style={{ fontSize: 13 }}>KWD</span>
             </div>
           </div>
-          <div className="bg-base-100 rounded-2xl border border-base-200 p-4 shadow-xs">
+          <div data-tour="ap-kpi-settled" className="bg-base-100 rounded-2xl border border-base-200 p-4 shadow-xs">
             <div style={{ fontSize: 11, fontWeight: 700, color: TK.text3, textTransform: 'uppercase' }}>
               {lang === 'ar' ? 'المسدد هذا الشهر' : 'Settled Disbursements'}
             </div>
@@ -196,12 +196,28 @@ const AccountsPayableTab = ({ lang = 'en' }) => {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 10 }}>
-          <Button variant="outline" onClick={() => setIsReconcileModalOpen(true)}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          {(onOpenDocs || onStartTour) && (
+            <div style={{ display: 'flex', gap: 6 }}>
+              {onOpenDocs && (
+                <Button variant="ghost" size="sm" onClick={() => onOpenDocs('ap')}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 16, marginRight: 4 }}>menu_book</span>
+                  {lang === 'ar' ? 'دليل AP' : 'AP Guide'}
+                </Button>
+              )}
+              {onStartTour && (
+                <Button variant="ghost" size="sm" onClick={() => onStartTour('ap_tour')}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 16, marginRight: 4 }}>explore</span>
+                  {lang === 'ar' ? 'جولة AP' : 'AP Tour'}
+                </Button>
+              )}
+            </div>
+          )}
+          <Button data-tour="ap-action-3way-match" variant="outline" onClick={() => setIsReconcileModalOpen(true)}>
             <span className="material-symbols-outlined" style={{ fontSize: 16, marginRight: 4 }}>find_replace</span>
             {lang === 'ar' ? 'مطابقة فواتير الناقل (3-Way Match)' : '3-Way Match Tool'}
           </Button>
-          <Button variant="primary" onClick={() => setIsBillModalOpen(true)}>
+          <Button data-tour="ap-action-new-bill" variant="primary" onClick={() => setIsBillModalOpen(true)}>
             <span className="material-symbols-outlined" style={{ fontSize: 16, marginRight: 4 }}>post_add</span>
             {lang === 'ar' ? 'تسجيل فاتورة مورد / ناقل' : 'New Vendor Bill'}
           </Button>
@@ -211,7 +227,8 @@ const AccountsPayableTab = ({ lang = 'en' }) => {
       {loading ? (
         <Card style={{ padding: 40, textAlign: 'center' }}><Loader /></Card>
       ) : (
-        <Card title={lang === 'ar' ? 'فواتير ومستحقات الموردين والناقلين' : 'Carrier & Vendor Bills'}>
+        <div data-tour="ap-bills-table">
+          <Card title={lang === 'ar' ? 'فواتير ومستحقات الموردين والناقلين' : 'Carrier & Vendor Bills'}>
           <TableWrapper>
             <Table>
               <Thead>
@@ -255,7 +272,7 @@ const AccountsPayableTab = ({ lang = 'en' }) => {
                     </Td>
                     <Td style={{ textAlign: 'center' }}>
                       {b.status !== 'PAID' && (
-                        <Button variant="primary" size="sm" onClick={() => openPayModal(b)}>
+                        <Button data-tour="ap-action-pay" variant="primary" size="sm" onClick={() => openPayModal(b)}>
                           {lang === 'ar' ? 'سداد' : 'Pay Bill'}
                         </Button>
                       )}
@@ -268,6 +285,7 @@ const AccountsPayableTab = ({ lang = 'en' }) => {
             </Table>
           </TableWrapper>
         </Card>
+        </div>
       )}
 
       {/* CREATE BILL MODAL */}

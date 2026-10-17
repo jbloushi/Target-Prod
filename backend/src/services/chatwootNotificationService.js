@@ -612,9 +612,11 @@ class ChatwootNotificationService {
     }
 
     async sendShipmentNotification(eventType, shipment, options = {}) {
+        const whatsAppConfigService = require('./whatsAppConfig.service');
         const { getSystemSettings } = require('./systemSettings.service');
-        const systemSettings = getSystemSettings()?.whatsapp || {};
-        const activeProvider = systemSettings.provider || 'META';
+        const dbConfig = await whatsAppConfigService.getConfig({ internal: true }).catch(() => null);
+        const systemSettings = dbConfig || getSystemSettings()?.whatsapp || {};
+        const activeProvider = systemSettings.provider || 'SHIPMENT_WHATSAPP';
         const targets = getNotificationTargets(eventType, shipment);
 
         // When provider is SHIPMENT_WHATSAPP, META, or MOCK, route directly to WhatsApp integration
