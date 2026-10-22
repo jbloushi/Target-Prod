@@ -264,7 +264,13 @@ class FreeWebScraperService {
             const isCurrent = classes.includes('current');
 
             if (isDone || isCurrent) {
-                const normalizedStatus = stageMap[stageLower] || normalizeStatus(stageName) || 'in_transit';
+                // The current movement milestone can carry an operational exception.
+                // A completed delivery may retain a stale banner and remains authoritative.
+                const hasCurrentException = isCurrent && stageLower !== 'delivered' &&
+                    stageLower !== 'returned' && isNegativeOrExceptionPhrase(latestUpdateText);
+                const normalizedStatus = hasCurrentException
+                    ? 'exception'
+                    : stageMap[stageLower] || normalizeStatus(stageName) || 'in_transit';
                 if (isCurrent || normalizedStatus === 'delivered') {
                     highestStatus = normalizedStatus;
                 }

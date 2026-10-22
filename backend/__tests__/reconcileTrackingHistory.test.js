@@ -37,6 +37,12 @@ describe('reconcile-tracking-history script', () => {
     test('evaluateHistoryCheckpointStatus repairs false-positive delivered on negative phrases', () => {
         expect(evaluateHistoryCheckpointStatus({
             status: 'delivered',
+            statusCode: 'delivered',
+            description: 'In Transit / International TransitIn transit - Updated delivery address required from customer'
+        })).toBe('exception');
+
+        expect(evaluateHistoryCheckpointStatus({
+            status: 'delivered',
             description: 'Consignee premises closed'
         })).toBe('exception');
 

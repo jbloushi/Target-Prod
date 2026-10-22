@@ -148,6 +148,7 @@ const EXCEPTION_KEYWORDS = [
     'contacted consignee', 'consignee unavailable', 'consignee not available', 'not available',
     'consignee refused', 'refused',
     'bad address', 'address incorrect', 'incorrect address', 'incorrect delivery address',
+    'updated delivery address required',
     'not at home', 'customer not home', 'consignee not home',
     'delivery attempt failed', 'rescheduled', 'reschedule', 'rescheduling',
     'action required', 'emergency',

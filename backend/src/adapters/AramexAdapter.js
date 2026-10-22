@@ -1,5 +1,6 @@
 const universalTracking = require('../services/UniversalTrackingService');
 const logger = require('../utils/logger');
+const { isNegativeOrExceptionPhrase } = require('../constants/statusConstants');
 
 class AramexAdapter {
     constructor(config = {}) {
@@ -166,6 +167,7 @@ class AramexAdapter {
 
     _mapAramexStatusCode(code, desc = '') {
         const text = String(desc || '').toLowerCase();
+        if (isNegativeOrExceptionPhrase(text)) return 'exception';
         if (text.includes('out for delivery') || text.includes('delivery champion') || text.includes('doorstep') || code === 'SH014' || code === 'SH041') return 'out_for_delivery';
         if (text.includes('delivered to') || text.includes('shipment delivered') || text === 'delivered' || (text.includes('delivered') && !text.includes('delivery champion')) || code === 'SH005' || code === 'SH006') return 'delivered';
         if (text.includes('collected') || text.includes('picked up') || code === 'SH001' || code === 'SH003') return 'picked_up';
