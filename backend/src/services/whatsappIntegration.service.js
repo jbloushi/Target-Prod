@@ -586,6 +586,15 @@ class WhatsAppIntegrationService {
                     const ageHours = (Date.now() - sDate.getTime()) / (1000 * 60 * 60);
                     if (ageHours > 36) {
                         logger.info(`[WhatsApp Age Guard] Skipped outbound notification for historical shipment ${shipment.trackingNumber} (Age: ${Math.round(ageHours)}h > 36h ceiling)`);
+                        if (existingLogId) {
+                            await prisma.shipmentNotificationLog.update({
+                                where: { id: existingLogId },
+                                data: {
+                                    status: 'SKIPPED',
+                                    errorMessage: 'HISTORICAL_SHIPMENT_DELIVERED'
+                                }
+                            });
+                        }
                         return {
                             status: 'SKIPPED',
                             reason: 'HISTORICAL_SHIPMENT',
@@ -626,15 +635,33 @@ class WhatsAppIntegrationService {
                 if (microSent?.sent) {
                     logger.info(`[WhatsApp Dedup Guard] Blocked duplicate send: Bill #${billId} (${microRole}) was already sent by microservice (at ${microSent.sentAt})`);
                     // Ensure local log reflects that it was sent by microservice
-                    let savedLog = await prisma.shipmentNotificationLog.findFirst({
-                        where: {
-                            OR: [
-                                { shipmentId: shipment.id },
-                                { trackingNumber: shipment.trackingNumber }
-                            ],
-                            recipientRole: { in: roleGroup }
-                        }
-                    });
+                    const autoSentAt = microSent.sentAt ? new Date(microSent.sentAt) : new Date();
+                    const autoSentLogData = {
+                        recipientName: recipientName || null,
+                        recipientPhone: phone,
+                        provider,
+                        templateName: chosenTemplate,
+                        status: 'SENT',
+                        errorMessage: null,
+                        chatwootMessageId: `msg-autosend-${microSent.sentAt || Date.now()}`,
+                        payloadJson: { source: 'MICROSERVICE_AUTOSEND', billId },
+                        responseJson: { autoSent: true, sentAt: microSent.sentAt },
+                        sentAt: autoSentAt
+                    };
+                    let savedLog = existingLogId
+                        ? await prisma.shipmentNotificationLog.update({
+                            where: { id: existingLogId },
+                            data: autoSentLogData
+                        })
+                        : await prisma.shipmentNotificationLog.findFirst({
+                            where: {
+                                OR: [
+                                    { shipmentId: shipment.id },
+                                    { trackingNumber: shipment.trackingNumber }
+                                ],
+                                recipientRole: { in: roleGroup }
+                            }
+                        });
                     if (!savedLog) {
                         savedLog = await prisma.shipmentNotificationLog.create({
                             data: {
@@ -642,15 +669,7 @@ class WhatsAppIntegrationService {
                                 trackingNumber: shipment.trackingNumber,
                                 eventType: eventType || 'shipment_created',
                                 recipientRole: role,
-                                recipientName: recipientName || null,
-                                recipientPhone: phone,
-                                provider,
-                                templateName: chosenTemplate,
-                                status: 'SENT',
-                                chatwootMessageId: `msg-autosend-${microSent.sentAt || Date.now()}`,
-                                payloadJson: { source: 'MICROSERVICE_AUTOSEND', billId },
-                                responseJson: { autoSent: true, sentAt: microSent.sentAt },
-                                sentAt: microSent.sentAt ? new Date(microSent.sentAt) : new Date()
+                                ...autoSentLogData
                             }
                         });
                     }
