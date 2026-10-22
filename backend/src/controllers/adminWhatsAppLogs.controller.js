@@ -171,7 +171,8 @@ async function getNotificationLogs(req, res) {
             }),
             prisma.shipmentNotificationLog.count({
                 where: {
-                    status: { in: ['PENDING', 'pending', 'queued', 'QUEUED', 'SKIPPED', 'skipped'] }
+                    status: { in: ['PENDING', 'pending', 'queued', 'QUEUED'] },
+                    recipientRole: { in: ['sender', 'shipper', 'merchant'] }
                 }
             })
         ]);
