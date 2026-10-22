@@ -443,7 +443,8 @@ async function dispatchQueuedNotifications(req, res) {
         const limit = Math.min(300, Math.max(1, parseInt(req.body?.limit || '200', 10)));
         const queuedLogs = await prisma.shipmentNotificationLog.findMany({
             where: {
-                status: { in: ['QUEUED', 'queued', 'pending', 'PENDING'] }
+                status: { in: ['QUEUED', 'queued', 'pending', 'PENDING'] },
+                recipientRole: { in: ['sender', 'shipper', 'merchant'] }
             },
             include: {
                 shipment: true
@@ -468,8 +469,7 @@ async function dispatchQueuedNotifications(req, res) {
         let failed = 0;
 
         for (const log of queuedLogs) {
-            const isSender = (log.recipientRole || '').toLowerCase() === 'sender';
-            const roleGroup = isSender ? ['sender'] : ['receiver', 'customer', 'consignee'];
+            const roleGroup = ['sender', 'shipper', 'merchant'];
 
             // 1. Strict Deduplication Check: Local DB
             const anySent = await prisma.shipmentNotificationLog.findFirst({
@@ -510,7 +510,7 @@ async function dispatchQueuedNotifications(req, res) {
             try {
                 const sendResult = await whatsappService.sendNotification({
                     shipment,
-                    recipientRole: log.recipientRole,
+                    recipientRole: 'sender',
                     recipientPhone: log.recipientPhone,
                     recipientName: log.recipientName,
                     eventType: log.eventType,

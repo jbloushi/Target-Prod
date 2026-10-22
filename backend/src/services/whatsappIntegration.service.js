@@ -5,6 +5,7 @@ const { getSystemSettings } = require('./systemSettings.service');
 const whatsAppConfigService = require('./whatsAppConfig.service');
 const chatwootService = require('./chatwootNotificationService');
 const logger = require('../utils/logger');
+const { normalizeStatus } = require('../constants/statusConstants');
 
 function normalizePhone(phone, phoneCountryCode = '965') {
     if (!phone) return null;
@@ -570,11 +571,12 @@ class WhatsAppIntegrationService {
             }
         }
 
-        // STRICT AGE & DEDUPLICATION GUARDS: Prevent sending to old shipments (>36h) or duplicate sends
+        // Keep the age guard for delivered shipments, but allow notifications for
+        // older shipments while they are still moving through the lifecycle.
         if (!force) {
-            // Check shipment age: do not notify for historical shipments older than 36 hours
+            // Do not send stale notifications for shipments already delivered.
             const shipmentDateRaw = shipment?.documents?.rawDate || shipment?.createdAt;
-            if (shipmentDateRaw && !bypassAgeGuard) {
+            if (shipmentDateRaw && !bypassAgeGuard && normalizeStatus(shipment?.status) === 'delivered') {
                 let sDate = new Date(shipmentDateRaw);
                 if (typeof shipmentDateRaw === 'string' && /^\d{1,2}\/\d{1,2}\/\d{4}/.test(shipmentDateRaw)) {
                     const m = shipmentDateRaw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);

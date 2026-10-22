@@ -87,24 +87,6 @@ function parsePhenixDate(rawDate) {
     return Number.isNaN(d.getTime()) ? new Date() : d;
 }
 
-/**
- * Checks if a Phenix date string represents a recent consignment eligible for customer notification.
- * ONLY consignments from today or yesterday (under 36 hours old) are notified.
- * Historical consignments from earlier dates are strictly skipped to avoid notifying outdated orders.
- */
-function isDateEligibleForNotification(rawDate, maxDaysBack = 1, timeZone = 'Asia/Kuwait') {
-    if (!rawDate) return false;
-    const parsedDate = parsePhenixDate(rawDate);
-    if (!parsedDate || Number.isNaN(parsedDate.getTime())) return false;
-
-    const now = new Date();
-    const diffMs = now.getTime() - parsedDate.getTime();
-    const diffDays = diffMs / (24 * 60 * 60 * 1000);
-
-    // Hard limit: only allow today or yesterday (<= 1.5 days old)
-    return diffDays >= -0.5 && diffDays <= 1.5;
-}
-
 function buildPhenixRequestBody(from, to) {
     return {
         _parameters: [
@@ -1398,30 +1380,16 @@ class PhenixSyncService {
                     }
                 }
 
-                if (sendWhatsApp && (wasCreated || needsFinancialSync)) {
-                    const isEligible = !isTerminal && isDateEligibleForNotification(v.date, opts.daysBack || 2);
-                    if (isEligible) {
-                        if (v.receiverPhone) {
-                            notificationsToSend.push({
-                                shipment,
-                                v,
-                                recipientRole: 'receiver',
-                                recipientPhone: v.receiverPhone,
-                                recipientName: v.receiverName
-                            });
-                        }
-                        const senderPhone = v.senderPhone || shipment.origin?.phone;
-                        if (senderPhone) {
-                            notificationsToSend.push({
-                                shipment,
-                                v,
-                                recipientRole: 'sender',
-                                recipientPhone: senderPhone,
-                                recipientName: v.senderName || v.merchantName || shipment.origin?.contactPerson || 'Shipper'
-                            });
-                        }
-                    } else {
-                        logger.info(`[PhenixSync Safety Guard] Shipment #${shipment.trackingNumber} (status: ${shipment.status}, date: ${v.date}) is not eligible for automated WhatsApp. Skipped live outbound WhatsApp.`);
+                if (sendWhatsApp && (wasCreated || needsFinancialSync) && !isTerminal) {
+                    const senderPhone = v.senderPhone || shipment.origin?.phone;
+                    if (senderPhone) {
+                        notificationsToSend.push({
+                            shipment,
+                            v,
+                            recipientRole: 'sender',
+                            recipientPhone: senderPhone,
+                            recipientName: v.senderName || v.merchantName || shipment.origin?.contactPerson || 'Shipper'
+                        });
                     }
                 }
 
