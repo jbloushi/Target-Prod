@@ -173,7 +173,8 @@ export const useFinancialTour = ({
         const targetSteps = tours[canonicalId] || getTourSteps(canonicalId);
 
         if (!targetSteps || targetSteps.length === 0) {
-            console.warn(`[useFinancialTour] No steps found for tour ID: "${tourId}"`);
+            const stringTourId = String(tourId ?? '');
+            console.warn(`[useFinancialTour] No steps found for tour ID: "${stringTourId}"`);
             return;
         }
 

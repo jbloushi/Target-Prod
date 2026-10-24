@@ -43,7 +43,8 @@ export const VisualFlowIndicator = ({
   lang = lang || 'en';
   isRTL = isRTL !== undefined ? isRTL : (lang === 'ar');
 
-  if (!Array.isArray(steps) || steps.length === 0) {
+  const validSteps = Array.isArray(steps) ? steps.filter(Boolean) : [];
+  if (validSteps.length === 0) {
     return null;
   }
 
@@ -60,10 +61,10 @@ export const VisualFlowIndicator = ({
         className={`w-full ${
           isVertical
             ? 'flex flex-col space-y-4'
-            : 'grid grid-cols-1 md:grid-cols-' + Math.min(steps.length, 4) + ' gap-3 md:gap-2'
+            : 'grid grid-cols-1 md:grid-cols-' + Math.min(validSteps.length, 4) + ' gap-3 md:gap-2'
         }`}
       >
-        {steps.map((stepItem, index) => {
+        {validSteps.map((stepItem, index) => {
           const stepNumber = stepItem.step !== undefined ? stepItem.step : index + 1;
           
           // Determine status
@@ -85,7 +86,7 @@ export const VisualFlowIndicator = ({
           const isActive = status === 'active';
           const isPending = status === 'pending';
           const isClickable = Boolean(onStepClick);
-          const isLast = index === steps.length - 1;
+          const isLast = index === validSteps.length - 1;
 
           const title = getLocalizedText(stepItem.title, lang);
           const description = getLocalizedText(stepItem.description, lang);

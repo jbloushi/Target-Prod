@@ -31,6 +31,22 @@ export const FINANCIAL_GUIDES = [
     },
     tourId: 'TOUR_ACCOUNTS_PAYABLE',
     targetTab: 'ap',
+    screenshots: [
+      {
+        src: '/docs/finance/10-ap-overview.png',
+        caption: {
+          en: 'Accounts Payable: the KPI cards show outstanding and settled amounts; use "New Vendor Bill" or "3-Way Match Tool" from the top-right.',
+          ar: 'مستحقات الموردين: تعرض البطاقات المبالغ المستحقة والمسددة؛ استخدم "تسجيل فاتورة مورد" أو "أداة المطابقة الثلاثية" من أعلى اليمين.'
+        }
+      },
+      {
+        src: '/docs/finance/14-ap-pay-bill-modal.png',
+        caption: {
+          en: 'Pay Bill: select the disbursement bank account, confirm the amount and reference, then click "Disburse & Update Ledger".',
+          ar: 'سداد الفاتورة: اختر الحساب البنكي، وأكد المبلغ والمرجع، ثم اضغط "صرف وتحديث الدفتر".'
+        }
+      }
+    ],
     diagramType: 'THREE_WAY_MATCH',
     keyAccounts: [
       {
@@ -249,6 +265,22 @@ export const FINANCIAL_GUIDES = [
     },
     tourId: 'TOUR_FINANCIAL_STATEMENTS',
     targetTab: 'statements',
+    screenshots: [
+      {
+        src: '/docs/finance/20-statements-balance-sheet.png',
+        caption: {
+          en: 'Balance Sheet: choose the statement type and the "As of" date, then check that the accounting equation shows Balanced (A = L + E).',
+          ar: 'الميزانية العمومية: اختر نوع القائمة وتاريخ "كما في"، ثم تأكد أن المعادلة المحاسبية متوازنة (أ = خ + م).'
+        }
+      },
+      {
+        src: '/docs/finance/22-statements-income-statement.png',
+        caption: {
+          en: 'Income Statement (P&L): set the From/To dates to review revenue, cost of goods sold, gross profit, expenses, and net income.',
+          ar: 'قائمة الدخل: حدد الفترة من/إلى لمراجعة الإيرادات وتكلفة البضاعة المباعة ومجمل الربح والمصروفات وصافي الدخل.'
+        }
+      }
+    ],
     diagramType: 'ACCOUNTING_EQUATION',
     keyAccounts: [
       {
@@ -459,6 +491,15 @@ export const FINANCIAL_GUIDES = [
     },
     tourId: 'TOUR_FINANCIAL_REPORTS',
     targetTab: 'reports',
+    screenshots: [
+      {
+        src: '/docs/finance/30-reports-overview.png',
+        caption: {
+          en: 'Profitability Reports: pick a report from the sub-navigation, review the KPI cards, then export the table to CSV.',
+          ar: 'تقارير الربحية: اختر التقرير من القائمة الفرعية، راجع بطاقات المؤشرات، ثم صدّر الجدول إلى CSV.'
+        }
+      }
+    ],
     diagramType: 'COD_FIDUCIARY_LIFECYCLE',
     keyAccounts: [
       {
@@ -665,7 +706,7 @@ export const FINANCIAL_GUIDES = [
 export const getFilteredGuides = (guides, category = 'all', searchQuery = '', lang = 'en') => {
   if (!Array.isArray(guides)) return [];
 
-  const query = (searchQuery || '').trim().toLowerCase();
+  const query = String(searchQuery ?? '').trim().toLowerCase();
 
   return guides.filter((guide) => {
     // 1. Category filter

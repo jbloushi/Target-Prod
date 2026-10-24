@@ -89,10 +89,13 @@ export const FinancialDocsHubDrawer = ({
   // Toggle expandable guide section
   const toggleSection = (guideId, sectionId) => {
     const key = `${guideId}_${sectionId}`;
-    setExpandedSections((prev) => ({
-      ...prev,
-      [key]: !prev[key]
-    }));
+    setExpandedSections((prev) => {
+      const currentlyExpanded = prev[key] !== false;
+      return {
+        ...prev,
+        [key]: !currentlyExpanded
+      };
+    });
   };
 
   const handleLaunchTour = (tourId) => {
@@ -348,6 +351,36 @@ export const FinancialDocsHubDrawer = ({
                     </div>
                   )}
 
+                  {/* Product Screenshots */}
+                  {Array.isArray(guide.screenshots) && guide.screenshots.length > 0 && (
+                    <div className="space-y-2" data-testid="guide-screenshots">
+                      <h4 className="text-[11px] uppercase tracking-wider font-bold text-base-content/50 flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-xs">photo_camera</span>
+                        <span>{lang === 'ar' ? 'لقطات من الواجهة' : 'Screenshots'}</span>
+                      </h4>
+                      <div className="space-y-4">
+                        {guide.screenshots.map((shot) => {
+                          const caption = shot?.caption?.[lang] || shot?.caption?.en || '';
+                          return (
+                            <figure key={shot.src} className="rounded-xl border border-base-200 overflow-hidden bg-base-100">
+                              <img
+                                src={shot.src}
+                                alt={caption}
+                                loading="lazy"
+                                className="w-full h-auto block"
+                              />
+                              {caption && (
+                                <figcaption className="px-3 py-2 text-xs text-base-content/70 border-t border-base-200">
+                                  {caption}
+                                </figcaption>
+                              )}
+                            </figure>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Embedded Vector / CSS Diagram */}
                   {guide.diagramType && (
                     <div className="space-y-2">
@@ -390,6 +423,7 @@ export const FinancialDocsHubDrawer = ({
                               <button
                                 type="button"
                                 onClick={() => toggleSection(guide.id, section.id)}
+                                aria-expanded={isExpanded}
                                 className="w-full px-4 py-2.5 bg-base-200/40 hover:bg-base-200/70 text-start flex items-center justify-between gap-2 text-xs sm:text-sm font-bold text-base-content transition-colors"
                               >
                                 <span className="flex items-center gap-2">
