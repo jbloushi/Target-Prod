@@ -100,10 +100,14 @@ function formatProcessedParams(params) {
 
 function getChatwootConfig() {
     const chatwoot = config.chatwoot || {};
+    const rawBaseUrl = trimTrailingSlash(chatwoot.baseUrl);
+    const baseUrl = (!rawBaseUrl || rawBaseUrl.includes('chatwoot.example.com'))
+        ? 'https://inbox.mawthook.io'
+        : rawBaseUrl;
     return {
         enabled: chatwoot.enabled === true,
-        baseUrl: trimTrailingSlash(chatwoot.baseUrl),
-        accountId: chatwoot.accountId,
+        baseUrl,
+        accountId: chatwoot.accountId || '1',
         inboxId: chatwoot.inboxId,
         apiAccessToken: chatwoot.apiAccessToken,
         allowPlainTextFallback: chatwoot.allowPlainTextFallback !== false,
