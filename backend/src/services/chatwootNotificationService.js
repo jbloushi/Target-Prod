@@ -7,17 +7,17 @@ const { STATUS_LABELS } = require('../constants/statusConstants');
 const PROVIDER = 'chatwoot';
 
 const EVENT_TARGETS = {
-    shipment_created: ['sender', 'receiver'],
+    shipment_created: ['sender'],
     pickup_scheduled: ['sender'],
     received_at_hub: ['sender'],
-    verified_and_dispatched: ['sender', 'receiver'],
+    verified_and_dispatched: ['sender'],
     payment_link_ready: ['sender'],
-    payment_confirmed: ['sender', 'receiver'],
-    on_hold_customs_issue: ['sender', 'receiver'],
-    documents_needed: ['sender', 'receiver'],
-    delivery_attempt: ['receiver'],
-    out_for_delivery: ['receiver'],
-    delivered: ['sender', 'receiver'],
+    payment_confirmed: ['sender'],
+    on_hold_customs_issue: ['sender'],
+    documents_needed: ['sender'],
+    delivery_attempt: ['sender'],
+    out_for_delivery: ['sender'],
+    delivered: ['sender'],
     rto_in_transit: ['sender'],
     returned: ['sender']
 };
@@ -71,6 +71,32 @@ const APPROVED_META_TEMPLATES = new Set([
     'invoice_notification_v1',
     'hello_world'
 ]);
+
+function getTemplateLanguage(templateName, userLang = 'en') {
+    if (userLang === 'ar') return 'ar';
+    if (templateName && templateName.startsWith('target_')) return 'en_US';
+    if (templateName === 'otptargetlogin') return 'en_US';
+    if (templateName === 'shipment_tracking_quick') return 'en_GB';
+    if (templateName === 'shipment_confirmation_2' || templateName === 'hello_world') return 'en_US';
+    return 'en';
+}
+
+function formatProcessedParams(params) {
+    if (!params) return {};
+    if (typeof params === 'object' && !Array.isArray(params)) {
+        return params;
+    }
+    const bodyHash = {};
+    if (Array.isArray(params)) {
+        params.forEach((val, idx) => {
+            bodyHash[String(idx + 1)] = String(val ?? '');
+        });
+    }
+    return {
+        body: bodyHash,
+        ...bodyHash
+    };
+}
 
 function getChatwootConfig() {
     const chatwoot = config.chatwoot || {};
@@ -404,8 +430,8 @@ function buildMessagePayload(eventType, context, target, customTemplateName = nu
                 template_params: {
                     name: resolvedTemplateName,
                     category: template?.category || (resolvedTemplateName === 'otptargetlogin' ? 'AUTHENTICATION' : 'UTILITY'),
-                    language: template?.language || 'en',
-                    processed_params: template?.processed_params || buildTemplateParameters(context, target),
+                    language: template?.language || getTemplateLanguage(resolvedTemplateName),
+                    processed_params: formatProcessedParams(template?.processed_params || buildTemplateParameters(context, target)),
                     parameters: template?.parameters || buildTemplateParameters(context, target)
                 }
             }),
@@ -827,7 +853,33 @@ class ChatwootNotificationService {
             }
         };
 
-        const created = await this.request('post', `/api/v1/accounts/${cw.accountId}/contacts`, payload);
+        let created;
+        try {
+            created = await this.request('post', `/api/v1/accounts/${cw.accountId}/contacts`, payload);
+        } catch (createErr) {
+            const errMsg = createErr.response?.data?.message || createErr.message || '';
+            if (/email has already been taken/i.test(errMsg) || createErr.response?.status === 422) {
+                logger.warn(`[chatwoot] contact creation duplicate email conflict for ${target.email}: ${errMsg}. Retrying without email.`);
+                const retryPayload = { ...payload };
+                delete retryPayload.email;
+                try {
+                    created = await this.request('post', `/api/v1/accounts/${cw.accountId}/contacts`, retryPayload);
+                } catch (retryErr) {
+                    if (target.email) {
+                        try {
+                            const emailSearch = await this.request('get', `/api/v1/accounts/${cw.accountId}/contacts/search`, undefined, { q: target.email });
+                            const emailContacts = emailSearch?.payload || emailSearch?.data || emailSearch || [];
+                            if (Array.isArray(emailContacts) && emailContacts.length > 0) {
+                                return emailContacts[0];
+                            }
+                        } catch (_) {}
+                    }
+                    throw retryErr;
+                }
+            } else {
+                throw createErr;
+            }
+        }
         const contact = created?.payload?.contact || created?.payload || created;
         if (contact && !contact.custom_attributes) {
             contact.custom_attributes = payload.custom_attributes;
@@ -1112,8 +1164,8 @@ class ChatwootNotificationService {
                 template_params: {
                     name: chosenTemplate,
                     category: chosenTemplate === 'otptargetlogin' ? 'AUTHENTICATION' : 'UTILITY',
-                    language: 'en',
-                    processed_params: buildTemplateParameters(context, target),
+                    language: getTemplateLanguage(chosenTemplate),
+                    processed_params: formatProcessedParams(buildTemplateParameters(context, target)),
                     parameters: buildTemplateParameters(context, target)
                 }
             };
@@ -1204,7 +1256,7 @@ class ChatwootNotificationService {
         const { getSystemSettings } = require('./systemSettings.service');
         const dbConfig = await whatsAppConfigService.getConfig({ internal: true }).catch(() => null);
         const systemSettings = dbConfig || getSystemSettings()?.whatsapp || {};
-        const activeProvider = systemSettings.provider || 'SHIPMENT_WHATSAPP';
+        const activeProvider = systemSettings.provider || 'CHATWOOT';
         const targets = getNotificationTargets(eventType, shipment);
 
         // When provider is SHIPMENT_WHATSAPP, META, or MOCK, route directly to WhatsApp integration

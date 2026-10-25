@@ -354,6 +354,10 @@ const startServer = async () => {
       if (process.env.TRYTON_SHADOW_CRON_ENABLED !== 'false') {
         trytonShadowCronService.start();
       }
+
+      // Start background WhatsApp queued notifications drainer
+      const whatsappQueueDrainerService = require('./services/whatsappQueueDrainer.service');
+      whatsappQueueDrainerService.start();
     } else {
       logger.info(`[Cluster] Skipping singleton cron & queue workers on secondary PM2 instance ${process.env.NODE_APP_INSTANCE}`);
     }
@@ -390,6 +394,8 @@ const startServer = async () => {
           phenixSyncCronService.stop();
           sallaSyncCronService.stop();
           trytonShadowCronService.stop();
+          const whatsappQueueDrainerService = require('./services/whatsappQueueDrainer.service');
+          whatsappQueueDrainerService.stop();
           const { jobQueue } = require('./services/queue');
           jobQueue.stop();
           const { closeDB } = require('./config/database');

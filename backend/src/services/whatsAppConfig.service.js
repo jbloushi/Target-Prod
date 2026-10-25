@@ -2,7 +2,8 @@ const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
 
 const DEFAULT_CONFIG = {
-    provider: 'SHIPMENT_WHATSAPP',
+    provider: 'CHATWOOT',
+    fallbackProvider: 'SHIPMENT_WHATSAPP',
     serviceUrl: 'https://msg.target-kw.com',
     apiKey: null,
     phoneId: null,
@@ -18,15 +19,19 @@ const DEFAULT_CONFIG = {
 };
 
 const DEFAULT_RULES = [
-    { eventType: 'out_for_delivery', recipientRole: 'receiver', templateName: 'target_shipment_out_for_delivery', enabled: true, allowQuietHoursBypass: false },
-    { eventType: 'delivered', recipientRole: 'receiver', templateName: 'target_shipment_delivered', enabled: true, allowQuietHoursBypass: false },
+    { eventType: 'shipment_created', recipientRole: 'sender', templateName: 'target_shipment_created', enabled: true, allowQuietHoursBypass: false },
+    { eventType: 'pickup_scheduled', recipientRole: 'sender', templateName: 'target_pickup_scheduled', enabled: true, allowQuietHoursBypass: false },
+    { eventType: 'received_at_hub', recipientRole: 'sender', templateName: 'target_received_at_hub', enabled: true, allowQuietHoursBypass: false },
+    { eventType: 'verified_and_dispatched', recipientRole: 'sender', templateName: 'target_verified_dispatched', enabled: true, allowQuietHoursBypass: false },
+    { eventType: 'out_for_delivery', recipientRole: 'sender', templateName: 'target_shipment_out_for_delivery', enabled: true, allowQuietHoursBypass: false },
+    { eventType: 'delivery_attempt', recipientRole: 'sender', templateName: 'target_delivery_attempt', enabled: true, allowQuietHoursBypass: false },
     { eventType: 'delivered', recipientRole: 'sender', templateName: 'target_shipment_delivered', enabled: true, allowQuietHoursBypass: false },
-    { eventType: 'on_hold_customs_issue', recipientRole: 'receiver', templateName: 'target_customs_exception_hold', enabled: true, allowQuietHoursBypass: true },
     { eventType: 'on_hold_customs_issue', recipientRole: 'sender', templateName: 'target_customs_exception_hold', enabled: true, allowQuietHoursBypass: true },
-    { eventType: 'payment_link_ready', recipientRole: 'receiver', templateName: 'payment_request_v1', enabled: true, allowQuietHoursBypass: false },
+    { eventType: 'documents_needed', recipientRole: 'sender', templateName: 'target_documents_needed', enabled: true, allowQuietHoursBypass: false },
     { eventType: 'payment_link_ready', recipientRole: 'sender', templateName: 'payment_request_v1', enabled: true, allowQuietHoursBypass: false },
-    { eventType: 'shipment_created', recipientRole: 'receiver', templateName: 'shipment_confirmation_2', enabled: true, allowQuietHoursBypass: false },
-    { eventType: 'shipment_created', recipientRole: 'sender', templateName: 'shipment_confirmation_2', enabled: true, allowQuietHoursBypass: false }
+    { eventType: 'payment_confirmed', recipientRole: 'sender', templateName: 'target_payment_confirmed', enabled: true, allowQuietHoursBypass: false },
+    { eventType: 'rto_in_transit', recipientRole: 'sender', templateName: 'target_rto_in_transit', enabled: true, allowQuietHoursBypass: false },
+    { eventType: 'returned', recipientRole: 'sender', templateName: 'target_shipment_returned', enabled: true, allowQuietHoursBypass: false }
 ];
 
 function maskSecrets(config) {
@@ -251,6 +256,10 @@ class WhatsAppConfigService {
             });
             if (rule) {
                 return Boolean(rule.enabled);
+            }
+            // Auto notifications are limited to shipper/sender; consignee/receiver is disabled by default
+            if (recipientRole === 'receiver' || recipientRole === 'consignee' || recipientRole === 'customer') {
+                return false;
             }
             return true;
         } catch (err) {
