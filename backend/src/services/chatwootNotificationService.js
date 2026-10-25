@@ -98,7 +98,7 @@ function formatProcessedParams(params) {
     };
 }
 
-const IS_PLACEHOLDER_TOKEN_REGEX = /^(replace-with|your[_-]?token|example|token|placeholder|changeme)/i;
+const IS_PLACEHOLDER_TOKEN_REGEX = /^(replace-with|your[_-]?token|your_real|example|token|placeholder|changeme)/i;
 
 function isPlaceholderToken(token) {
     if (!token || typeof token !== 'string') return true;
@@ -1243,6 +1243,9 @@ class ChatwootNotificationService {
             name: recipientName
         };
 
+        if (!this.isConfigured()) {
+            throw new Error('Chatwoot configuration incomplete');
+        }
         const chosenTemplate = templateName || CANONICAL_EVENT_TEMPLATES[eventType] || 'target_shipment_delivered';
         const contact = await this.findOrCreateContact(target, context);
         const conversation = await this.findOrCreateConversation(contact, target, context);
@@ -1495,7 +1498,7 @@ class ChatwootNotificationService {
                             recipientCountryCode: target.countryCode,
                             recipientName: target.name,
                             eventType,
-                            templateName: options.templateName || templateName,
+                            templateName: options.templateName,
                             force: true,
                             provider: 'SHIPMENT_WHATSAPP',
                             existingLogId: log.id

@@ -919,19 +919,57 @@ class WhatsAppIntegrationService {
 
             try {
                 const billId = shipment.documents?.phenixBillId || null;
-                const result = await sendViaShipmentWhatsappMicroservice({
-                    serviceUrl,
-                    templateName: chosenTemplate,
-                    language: getTemplateLanguage(chosenTemplate),
-                    toPhone: phone,
-                    variables,
-                    headerVariables,
-                    billId,
-                    trackingNumber: shipment.trackingNumber,
-                    role: recipientRole || 'receiver',
-                    apiKey: settings.apiKey || null,
-                    buttonUrlParam
-                });
+                let result;
+                try {
+                    result = await sendViaShipmentWhatsappMicroservice({
+                        serviceUrl,
+                        templateName: chosenTemplate,
+                        language: getTemplateLanguage(chosenTemplate),
+                        toPhone: phone,
+                        variables,
+                        headerVariables,
+                        billId,
+                        trackingNumber: shipment.trackingNumber,
+                        role: recipientRole || 'receiver',
+                        apiKey: settings.apiKey || null,
+                        buttonUrlParam
+                    });
+                } catch (primaryMicroErr) {
+                    if (/132001|Template name does not exist/i.test(primaryMicroErr.message) && chosenTemplate !== 'shipment_confirmation_2') {
+                        const fallbackMicroTemplate = 'shipment_confirmation_2';
+                        logger.warn(`[Shipment-WhatsApp] Template ${chosenTemplate} not found in WABA (#132001); retrying with ${fallbackMicroTemplate} [en_US]`);
+                        const fbVars = buildMicroserviceVariables({
+                            chosenTemplate: fallbackMicroTemplate,
+                            context,
+                            shipment,
+                            displayTracking,
+                            resolvedReceiverName,
+                            resolvedReceiverPhone,
+                            effectiveRecipientName,
+                            customMessage,
+                            estDeliveryFormatted,
+                            dateFormatted,
+                            fullUpdatedText,
+                            trackingUrl
+                        });
+                        chosenTemplate = fallbackMicroTemplate;
+                        result = await sendViaShipmentWhatsappMicroservice({
+                            serviceUrl,
+                            templateName: fallbackMicroTemplate,
+                            language: 'en_US',
+                            toPhone: phone,
+                            variables: fbVars.variables,
+                            headerVariables: fbVars.headerVariables,
+                            billId,
+                            trackingNumber: shipment.trackingNumber,
+                            role: recipientRole || 'receiver',
+                            apiKey: settings.apiKey || null,
+                            buttonUrlParam
+                        });
+                    } else {
+                        throw primaryMicroErr;
+                    }
+                }
 
                 const enrichedPayload = {
                     ...result.payload,
@@ -1041,19 +1079,57 @@ class WhatsAppIntegrationService {
 
                     try {
                         const billId = shipment.documents?.phenixBillId || null;
-                        const fallbackResult = await sendViaShipmentWhatsappMicroservice({
-                            serviceUrl: settings.serviceUrl || 'https://msg.target-kw.com',
-                            templateName: chosenTemplate,
-                            language: getTemplateLanguage(chosenTemplate),
-                            toPhone: phone,
-                            variables,
-                            headerVariables,
-                            billId,
-                            trackingNumber: shipment.trackingNumber,
-                            role: recipientRole || 'receiver',
-                            apiKey: settings.apiKey || null,
-                            buttonUrlParam
-                        });
+                        let fallbackResult;
+                        try {
+                            fallbackResult = await sendViaShipmentWhatsappMicroservice({
+                                serviceUrl: settings.serviceUrl || 'https://msg.target-kw.com',
+                                templateName: chosenTemplate,
+                                language: getTemplateLanguage(chosenTemplate),
+                                toPhone: phone,
+                                variables,
+                                headerVariables,
+                                billId,
+                                trackingNumber: shipment.trackingNumber,
+                                role: recipientRole || 'receiver',
+                                apiKey: settings.apiKey || null,
+                                buttonUrlParam
+                            });
+                        } catch (primaryFallbackErr) {
+                            if (/132001|Template name does not exist/i.test(primaryFallbackErr.message) && chosenTemplate !== 'shipment_confirmation_2') {
+                                const fallbackMicroTemplate = 'shipment_confirmation_2';
+                                logger.warn(`[chatwoot fallback] Template ${chosenTemplate} not found in WABA (#132001); retrying with ${fallbackMicroTemplate} [en_US]`);
+                                const fbVars = buildMicroserviceVariables({
+                                    chosenTemplate: fallbackMicroTemplate,
+                                    context,
+                                    shipment,
+                                    displayTracking,
+                                    resolvedReceiverName,
+                                    resolvedReceiverPhone,
+                                    effectiveRecipientName,
+                                    customMessage,
+                                    estDeliveryFormatted,
+                                    dateFormatted,
+                                    fullUpdatedText,
+                                    trackingUrl
+                                });
+                                chosenTemplate = fallbackMicroTemplate;
+                                fallbackResult = await sendViaShipmentWhatsappMicroservice({
+                                    serviceUrl: settings.serviceUrl || 'https://msg.target-kw.com',
+                                    templateName: fallbackMicroTemplate,
+                                    language: 'en_US',
+                                    toPhone: phone,
+                                    variables: fbVars.variables,
+                                    headerVariables: fbVars.headerVariables,
+                                    billId,
+                                    trackingNumber: shipment.trackingNumber,
+                                    role: recipientRole || 'receiver',
+                                    apiKey: settings.apiKey || null,
+                                    buttonUrlParam
+                                });
+                            } else {
+                                throw primaryFallbackErr;
+                            }
+                        }
 
                         await prisma.shipmentNotificationLog.update({
                             where: { id: log.id },
