@@ -26,7 +26,7 @@ import GoogleAddressInput from '../components/GoogleAddressInput';
 import { DG_PRESET_OPTIONS } from '../components/shipment/KineticShipmentWizard';
 import { NON_POSTAL_COUNTRIES } from '../components/shipment/shipmentValidation';
 import TargetLogisticsWizard from '../components/shipment/TargetLogisticsWizard';
-import ChatwootConversationDrawer from '../components/common/ChatwootConversationDrawer';
+import NativeChatDrawer from '../components/support/NativeChatDrawer';
 import ManualPaymentLinkModal from '../components/shipments/ManualPaymentLinkModal';
 
 // ── Pure DaisyUI Form Components matching KineticShipmentWizard ──────
@@ -3227,8 +3227,8 @@ const ShipmentDetailsPage = () => {
                 </div>
             )}
 
-            {/* Embedded Chatwoot Live Support Drawer */}
-            <ChatwootConversationDrawer
+            {/* Native Shipment Chat & Support Drawer */}
+            <NativeChatDrawer
                 isOpen={chatwootDrawerOpen}
                 onClose={() => {
                     setChatwootDrawerOpen(false);
@@ -3263,6 +3263,7 @@ const ShipmentDetailsPage = () => {
                     'Consignee'
                 }
                 trackingNumber={shipment?.trackingNumber}
+                shipment={shipment}
             />
 
             {/* Manual Payment Link Modal */}

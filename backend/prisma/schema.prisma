@@ -59,12 +59,13 @@ model Organization {
   currency         String  @default("KWD")
 
   // JSON Blobs
-  markup                Json?
-  allowedCarriers       Json?
-  addresses             Json?
-  billingContactName    String?
-  billingWhatsappNumber String?
-  billingEmail          String?
+  markup                 Json?
+  allowedCarriers        Json?
+  addresses              Json?
+  billingContactName     String?
+  billingWhatsappNumber  String?
+  billingEmail           String?
+  chatwootOrganizationId String?
 
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -107,8 +108,9 @@ model User {
   apiKeyHash  String?
   apiKeyLast4 String?
 
-  chatwootUserId String?
-  chatwootEmail  String?
+  chatwootUserId      String?
+  chatwootEmail       String?
+  chatwootAccessToken String? @db.Text
 
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -258,22 +260,22 @@ model Shipment {
 }
 
 model ShipmentTrackingEvent {
-  id               String   @id @default(uuid())
+  id               String    @id @default(uuid())
   shipmentId       String
-  shipment         Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  shipment         Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
   provider         String
   carrierCode      String
-  source           String   @default("carrier")
+  source           String    @default("carrier")
   eventKey         String
   rawStatus        String?
   normalizedStatus String?
-  description      String?  @db.Text
+  description      String?   @db.Text
   eventTimestamp   DateTime?
-  receivedAt       DateTime @default(now())
+  receivedAt       DateTime  @default(now())
   location         Json?
   rawPayload       Json?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@unique([shipmentId, eventKey], map: "ShipmentTrackingEvent_shipment_event_key_uq")
   @@index([shipmentId, eventTimestamp], map: "ShipmentTrackingEvent_shipment_timestamp_idx")
@@ -453,6 +455,8 @@ model ShipmentNotificationLog {
   recipientName          String?
   recipientPhone         String?
   provider               String    @default("chatwoot")
+  isFallback             Boolean   @default(false)
+  fallbackReason         String?   @db.Text
   chatwootAccountId      String?
   chatwootInboxId        String?
   chatwootContactId      String?
@@ -470,6 +474,7 @@ model ShipmentNotificationLog {
   @@index([trackingNumber], map: "ShipmentNotification_tracking_idx")
   @@index([eventType, status, createdAt], map: "ShipmentNotification_event_status_created_idx")
   @@index([provider, status, createdAt], map: "ShipmentNotification_provider_status_created_idx")
+  @@index([isFallback, createdAt], map: "ShipmentNotification_fallback_created_idx")
 }
 
 model OrganizationLedger {
@@ -973,7 +978,9 @@ model Vehicle {
 
 model WhatsAppConfig {
   id                      String              @id @default(cuid())
+  enabled                 Boolean             @default(true)
   provider                String              @default("SHIPMENT_WHATSAPP")
+  fallbackProvider        String              @default("SHIPMENT_WHATSAPP")
   serviceUrl              String              @default("https://msg.target-kw.com")
   apiKey                  String?
   phoneId                 String?
@@ -1005,4 +1012,3 @@ model WhatsAppEventRule {
 
   @@unique([configId, eventType, recipientRole])
 }
-

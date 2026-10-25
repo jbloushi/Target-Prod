@@ -5,7 +5,7 @@ import StatusBadge from './StatusBadge';
 import TradeRouteDisplay from './TradeRouteDisplay';
 import { normalizeStatus, isNegativeOrExceptionPhrase } from '../../constants/statusConfig';
 import { dedupeTrackingEvents } from '../../utils/dedupeTrackingEvents';
-import ChatwootConversationDrawer from './ChatwootConversationDrawer';
+import NativeChatDrawer from '../support/NativeChatDrawer';
 
 const CARRIER_INFO_MAP = {
     'DGR': { name: 'DHL Express', nameAr: 'دي إتش إل إكسبريس', badge: 'badge-error' },
@@ -367,8 +367,8 @@ export const ShipmentInspectorDrawer = ({
 
             </div>
 
-            {/* Embedded Chatwoot Drawer */}
-            <ChatwootConversationDrawer
+            {/* Native Shipment Chat Drawer */}
+            <NativeChatDrawer
                 isOpen={isChatwootOpen}
                 onClose={() => setIsChatwootOpen(false)}
                 accountId={
@@ -384,6 +384,7 @@ export const ShipmentInspectorDrawer = ({
                 phone={consigneePhone}
                 recipientName={consigneeName}
                 trackingNumber={trackingNumber}
+                shipment={shipment}
             />
         </div>
     );

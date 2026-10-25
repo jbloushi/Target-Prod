@@ -1,8 +1,9 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useContext } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useThemeMode } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
+import SupportChatContext from '../../context/SupportChatContext';
 import { financeService } from '../../services/api';
 import { getRoleLabel } from '../../utils/roleLabels';
 import PaywallModal from '../../components/PaywallModal';
@@ -73,6 +74,10 @@ const Header = () => {
     const isAdminOrOwnerOrAcct = ['admin', 'manager', 'accounting'].includes(userRole);
     const isDriver = userRole === 'driver';
     const isCompanyManager = userRole === 'org_manager';
+    const canAccessSupport = isStaff || ['org_manager', 'org_agent'].includes(userRole);
+
+    const supportChat = useContext(SupportChatContext);
+    const unreadSupportCount = supportChat?.unreadCount || 0;
 
     // Check if route is active
     const isActive = (path) => {
@@ -148,6 +153,30 @@ const Header = () => {
                                 <span className="material-symbols-outlined text-base">local_shipping</span>
                                 <span>{t('nav_shipments', 'Shipments')}</span>
                             </Link>
+
+                            {/* Support Center */}
+                            {canAccessSupport && (
+                                <Link
+                                    to="/support"
+                                    data-testid="header-support-link"
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 relative ${
+                                        isActive('/support')
+                                            ? 'bg-primary/10 text-primary font-black shadow-xs'
+                                            : 'text-base-content/70 hover:text-base-content hover:bg-base-200/60'
+                                    }`}
+                                >
+                                    <span className="material-symbols-outlined text-base">support_agent</span>
+                                    <span>{isRTL ? 'مركز الدعم' : 'Support'}</span>
+                                    {unreadSupportCount > 0 && (
+                                        <span
+                                            data-testid="header-support-unread-badge"
+                                            className="badge badge-primary badge-xs font-mono font-bold px-1.5 min-w-[18px] h-4"
+                                        >
+                                            {unreadSupportCount > 99 ? '99+' : unreadSupportCount}
+                                        </span>
+                                    )}
+                                </Link>
+                            )}
 
                             {/* Operations Dropdown */}
                             <div className="relative" ref={opsMenuRef}>
@@ -525,6 +554,26 @@ const Header = () => {
                             <span className="material-symbols-outlined text-lg">account_balance_wallet</span>
                             <span>{t('nav_financials', 'Financials')}</span>
                         </Link>
+
+                        {canAccessSupport && (
+                            <Link
+                                to="/support"
+                                data-testid="mobile-support-link"
+                                className={`p-3 rounded-xl flex items-center justify-between text-xs font-bold border ${
+                                    isActive('/support') ? 'bg-primary/10 border-primary text-primary' : 'bg-base-200/50 border-base-200 text-base-content'
+                                }`}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <span className="material-symbols-outlined text-lg">support_agent</span>
+                                    <span>{isRTL ? 'مركز الدعم' : 'Support'}</span>
+                                </div>
+                                {unreadSupportCount > 0 && (
+                                    <span className="badge badge-primary badge-xs font-mono font-bold" data-testid="mobile-support-unread-badge">
+                                        {unreadSupportCount > 99 ? '99+' : unreadSupportCount}
+                                    </span>
+                                )}
+                            </Link>
+                        )}
                     </div>
 
                     {/* Operations Hub */}

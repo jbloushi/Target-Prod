@@ -6,6 +6,7 @@ import { LanguageProvider } from './context/LanguageContext';
 import AppRoutes from './routes';
 import { AuthProvider } from './context/AuthContext';
 import { ShipmentProvider } from './context/ShipmentContext';
+import { SupportChatProvider } from './context/SupportChatContext';
 import './ui/tokens.css'; // Import Design System Tokens
 
 // Configure React Router future flags
@@ -85,7 +86,9 @@ function App() {
             <AuthProvider>
               <ShipmentProvider>
                 <Router future={routerFutureConfig}>
-                  <AppRoutes />
+                  <SupportChatProvider>
+                    <AppRoutes />
+                  </SupportChatProvider>
                 </Router>
               </ShipmentProvider>
             </AuthProvider>

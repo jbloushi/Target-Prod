@@ -5,6 +5,10 @@ const { hashPassword } = require('../utils/security');
 const { normalizeShippingAccess } = require('../services/shippingAccess.service');
 const { canCreateShipmentForUser } = require('../middleware/authorize.middleware');
 const { isPlatformRole, isCompanyManagerRole } = require('../middleware/rbac.policy');
+const fieldEncryption = require('../utils/fieldEncryption');
+
+const MASKED_TOKEN_PLACEHOLDER = '••••••••';
+const isMaskedToken = (val) => typeof val === 'string' && (val.includes('••••') || val.includes('[redacted]'));
 
 const normalizeCarrierPricing = (carrierConfig = {}) => {
     const pricingByCarrier = carrierConfig?.pricingByCarrier || {};
@@ -229,7 +233,8 @@ exports.getUsers = async (req, res) => {
                 agentPolicy: true,
                 ...(isAdmin ? {
                     chatwootUserId: true,
-                    chatwootEmail: true
+                    chatwootEmail: true,
+                    chatwootAccessToken: true
                 } : {}),
                 organization: {
                     select: {
@@ -260,9 +265,12 @@ exports.getUsers = async (req, res) => {
                 optionalServiceMarkup: u.agentPolicy?.optionalServiceMarkup || {},
                 creditLimit: u.organization?.creditLimit !== undefined ? u.organization.creditLimit : (u.creditLimit || 0)
             };
-            if (!isAdmin) {
+            if (isAdmin) {
+                mapped.chatwootAccessToken = u.chatwootAccessToken ? MASKED_TOKEN_PLACEHOLDER : null;
+            } else {
                 delete mapped.chatwootUserId;
                 delete mapped.chatwootEmail;
+                delete mapped.chatwootAccessToken;
             }
             return mapped;
         });
@@ -405,7 +413,8 @@ exports.getUserById = async (req, res) => {
                 agentPolicy: true,
                 ...(isAdmin ? {
                     chatwootUserId: true,
-                    chatwootEmail: true
+                    chatwootEmail: true,
+                    chatwootAccessToken: true
                 } : {}),
                 organization: {
                     select: {
@@ -445,9 +454,12 @@ exports.getUserById = async (req, res) => {
         delete mappedUser.password;
         delete mappedUser.apiKeyHash;
 
-        if (!isAdmin) {
+        if (isAdmin) {
+            mappedUser.chatwootAccessToken = user.chatwootAccessToken ? MASKED_TOKEN_PLACEHOLDER : null;
+        } else {
             delete mappedUser.chatwootUserId;
             delete mappedUser.chatwootEmail;
+            delete mappedUser.chatwootAccessToken;
         }
 
         res.status(200).json({
@@ -480,7 +492,8 @@ exports.createUser = async (req, res) => {
             creditLimit,
             shippingAccess,
             chatwootUserId,
-            chatwootEmail
+            chatwootEmail,
+            chatwootAccessToken
         } = req.body;
 
         if (!name || !email || !password) {
@@ -489,6 +502,14 @@ exports.createUser = async (req, res) => {
 
         if (password.length < 8) {
             return res.status(400).json({ success: false, error: 'Password must be at least 8 characters' });
+        }
+
+        const isAdmin = req.user?.role === 'admin';
+        if (!isAdmin && chatwootAccessToken !== undefined) {
+            return res.status(403).json({
+                success: false,
+                error: 'Only administrators can configure Chatwoot access tokens'
+            });
         }
 
         const targetOrgId = isOrgUserManager(req.user)
@@ -504,13 +525,27 @@ exports.createUser = async (req, res) => {
             shippingAccess = undefined;
         }
 
-        const isAdmin = req.user?.role === 'admin';
         const sanitizedChatwootUserId = isAdmin && chatwootUserId !== undefined
             ? (chatwootUserId ? String(chatwootUserId).trim() : null)
             : undefined;
         const sanitizedChatwootEmail = isAdmin && chatwootEmail !== undefined
             ? (chatwootEmail ? String(chatwootEmail).trim().toLowerCase() : null)
             : undefined;
+
+        let encryptedChatwootAccessToken = undefined;
+        if (isAdmin && chatwootAccessToken !== undefined) {
+            if (chatwootAccessToken && !isMaskedToken(chatwootAccessToken)) {
+                const trimmed = String(chatwootAccessToken).trim();
+                if (trimmed) {
+                    const envelope = fieldEncryption.encrypt(trimmed);
+                    encryptedChatwootAccessToken = JSON.stringify(envelope);
+                } else {
+                    encryptedChatwootAccessToken = null;
+                }
+            } else if (chatwootAccessToken === null || chatwootAccessToken === '') {
+                encryptedChatwootAccessToken = null;
+            }
+        }
 
         const hashedPassword = await hashPassword(password);
         const normalizedShippingAccess = normalizeShippingAccess(shippingAccess || {
@@ -540,6 +575,9 @@ exports.createUser = async (req, res) => {
         if (sanitizedChatwootEmail !== undefined) {
             createData.chatwootEmail = sanitizedChatwootEmail;
         }
+        if (encryptedChatwootAccessToken !== undefined) {
+            createData.chatwootAccessToken = encryptedChatwootAccessToken;
+        }
 
         const user = await prisma.user.create({
             data: createData
@@ -548,9 +586,12 @@ exports.createUser = async (req, res) => {
         const responseUser = { ...user };
         delete responseUser.password;
         delete responseUser.apiKeyHash;
-        if (!isAdmin) {
+        if (isAdmin) {
+            responseUser.chatwootAccessToken = user.chatwootAccessToken ? MASKED_TOKEN_PLACEHOLDER : null;
+        } else {
             delete responseUser.chatwootUserId;
             delete responseUser.chatwootEmail;
+            delete responseUser.chatwootAccessToken;
         }
 
         res.status(201).json({ success: true, data: responseUser });
@@ -585,9 +626,12 @@ exports.getMe = async (req, res) => {
         delete mappedUser.password;
         delete mappedUser.apiKeyHash;
 
-        if (!isAdmin) {
+        if (isAdmin) {
+            mappedUser.chatwootAccessToken = user.chatwootAccessToken ? MASKED_TOKEN_PLACEHOLDER : null;
+        } else {
             delete mappedUser.chatwootUserId;
             delete mappedUser.chatwootEmail;
+            delete mappedUser.chatwootAccessToken;
         }
 
         res.status(200).json({
@@ -666,13 +710,20 @@ exports.updateProfile = async (req, res) => {
 exports.updateUser = async (req, res) => {
     try {
         const userId = req.params.id;
-        let { name, email, phone, role, organizationId, organization, carrierConfig, markup, optionalServiceMarkup, creditLimit, shippingAccess, chatwootUserId, chatwootEmail } = req.body;
+        let { name, email, phone, role, organizationId, organization, carrierConfig, markup, optionalServiceMarkup, creditLimit, shippingAccess, chatwootUserId, chatwootEmail, chatwootAccessToken } = req.body;
+
+        const isAdmin = req.user?.role === 'admin';
+        if (!isAdmin && chatwootAccessToken !== undefined) {
+            return res.status(403).json({
+                success: false,
+                error: 'Only administrators can configure Chatwoot access tokens'
+            });
+        }
 
         const targetOrgId = isOrgUserManager(req.user)
             ? req.user.organizationId
             : (organizationId || organization);
 
-        const isAdmin = req.user?.role === 'admin';
         const updateData = {};
         if (name !== undefined) updateData.name = name;
         if (email !== undefined) updateData.email = email.toLowerCase();
@@ -688,6 +739,17 @@ exports.updateUser = async (req, res) => {
             }
             if (chatwootEmail !== undefined) {
                 updateData.chatwootEmail = chatwootEmail ? String(chatwootEmail).trim().toLowerCase() : null;
+            }
+            if (chatwootAccessToken !== undefined) {
+                if (isMaskedToken(chatwootAccessToken)) {
+                    // Partial update: preserve existing token in database without overwriting
+                } else if (chatwootAccessToken === null || String(chatwootAccessToken).trim() === '') {
+                    updateData.chatwootAccessToken = null;
+                } else {
+                    const trimmed = String(chatwootAccessToken).trim();
+                    const envelope = fieldEncryption.encrypt(trimmed);
+                    updateData.chatwootAccessToken = JSON.stringify(envelope);
+                }
             }
         }
 
@@ -760,9 +822,12 @@ exports.updateUser = async (req, res) => {
         const responseUser = { ...user };
         delete responseUser.password;
         delete responseUser.apiKeyHash;
-        if (!isAdmin) {
+        if (isAdmin) {
+            responseUser.chatwootAccessToken = user.chatwootAccessToken ? MASKED_TOKEN_PLACEHOLDER : null;
+        } else {
             delete responseUser.chatwootUserId;
             delete responseUser.chatwootEmail;
+            delete responseUser.chatwootAccessToken;
         }
 
         res.status(200).json({
@@ -939,3 +1004,21 @@ exports.deleteUser = async (req, res) => {
         return handleControllerError(res, error, 'User deletion');
     }
 };
+
+/**
+ * Decrypt a user's stored Chatwoot personal access token.
+ * Used by outbound chat services to attribute agent replies.
+ * @param {string|object|null} storedToken - JSON string envelope from User.chatwootAccessToken
+ * @returns {string|null} Decrypted plaintext token, or null if empty or invalid
+ */
+exports.decryptChatwootToken = (storedToken) => {
+    if (!storedToken) return null;
+    try {
+        const envelope = typeof storedToken === 'string' ? JSON.parse(storedToken) : storedToken;
+        return fieldEncryption.decrypt(envelope);
+    } catch (err) {
+        logger.error('[userController] Failed to decrypt Chatwoot access token:', err.message);
+        return null;
+    }
+};
+

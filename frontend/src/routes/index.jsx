@@ -34,6 +34,7 @@ const TermsPage = lazy(() => import('../pages/TermsPage'));
 const ApiDocsPage = lazy(() => import('../pages/ApiDocsPage'));
 const FleetDispatchPage = lazy(() => import('../pages/FleetDispatchPage'));
 const DriverRunPage = lazy(() => import('../pages/DriverRunPage'));
+const SupportCenterPage = lazy(() => import('../pages/SupportCenterPage'));
 
 
 
@@ -223,8 +224,20 @@ const AppRoutes = () => {
           <Route path="billing" element={<Navigate to="/finance" replace />} />
           <Route path="financials" element={<Navigate to="/finance" replace />} />
 
+          {/* Support Center & Omnichannel Chat */}
+          <Route path="support" element={
+            <ProtectedRoute allowedRoles={['admin', 'staff', 'manager', 'accounting', 'org_manager', 'org_agent']}>
+              <SupportCenterPage />
+            </ProtectedRoute>
+          } />
+          <Route path="support/:conversationId" element={
+            <ProtectedRoute allowedRoles={['admin', 'staff', 'manager', 'accounting', 'org_manager', 'org_agent']}>
+              <SupportCenterPage />
+            </ProtectedRoute>
+          } />
+
           {/* Messages & Notifications */}
-          <Route path="messages" element={<InConstructionPage title="Messages" description="Communication center." />} />
+          <Route path="messages" element={<Navigate to="/support" replace />} />
           <Route path="notifications" element={<InConstructionPage title="Notifications" description="System alerts and updates." />} />
 
           <Route path="settings" element={

@@ -216,10 +216,12 @@ const shipmentPublicController = require('./controllers/shipment-public.controll
 const settingsRoutes = require('./routes/settings.routes');
 const whatsappRoutes = require('./routes/whatsapp.routes');
 const fleetRoutes = require('./routes/fleet.routes');
+const supportChatRoutes = require('./routes/supportChat.routes');
 const releaseInfo = require('./utils/releaseInfo');
 
 // Standard API Route Mounting
 app.use('/api', whatsappRoutes);
+app.use('/api/support', supportChatRoutes);
 app.post('/api/public/checkout/ottu/webhook', shipmentPublicController.handleOttuWebhook);
 app.get('/api/public/location/:token', shipmentPublicController.getLocationByToken);
 app.post('/api/public/location/:token', shipmentPublicController.updateLocationByToken);
@@ -241,6 +243,7 @@ app.use('/api/geocode', geocodeRoutes);
 app.use('/api/shipments', shipmentRoutes);
 
 // Direct root aliases for proxy resilience (handles reverse proxies stripping /api)
+app.use('/support', supportChatRoutes);
 app.post('/public/checkout/ottu/webhook', shipmentPublicController.handleOttuWebhook);
 app.get('/public/location/:token', shipmentPublicController.getLocationByToken);
 app.post('/public/location/:token', shipmentPublicController.updateLocationByToken);

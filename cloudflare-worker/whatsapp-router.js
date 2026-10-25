@@ -20,7 +20,7 @@ export default {
     // ─────────────────────────────────────────────────────────────
     // 1. GET Handshake Verification (Meta Hub Challenge)
     // ─────────────────────────────────────────────────────────────
-    if (request.method === 'GET') {
+    if (request.method === 'GET' && url.searchParams.has('hub.mode')) {
       const mode = url.searchParams.get('hub.mode');
       const token = url.searchParams.get('hub.verify_token');
       const challenge = url.searchParams.get('hub.challenge');
@@ -48,7 +48,7 @@ export default {
     // ─────────────────────────────────────────────────────────────
     // 2. Health & Status Check
     // ─────────────────────────────────────────────────────────────
-    if (request.method === 'HEAD' || (request.method === 'GET' && !url.searchParams.has('hub.mode'))) {
+    if (request.method === 'HEAD' || request.method === 'GET') {
       return new Response(
         JSON.stringify({
           status: 'online',
@@ -98,11 +98,11 @@ export default {
         env.SHIPMENT_WEBHOOK_URL ||
         'https://msg.target-kw.com/api/webhook';
 
-      // 3. Chatwoot Support Inbox
+      // 3. Chatwoot Support Inbox (Guaranteed default fallback to Mawthook WhatsApp Inbox)
       const chatwootUrl =
         env[`CHATWOOT_WEBHOOK_URL_${cleanPhone}`] ||
         env.CHATWOOT_WEBHOOK_URL ||
-        null;
+        'https://inbox.mawthook.io/webhooks/whatsapp/+96569656563';
 
       // Collect all downstream targets (deduplicated)
       const targets = [

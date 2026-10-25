@@ -1,6 +1,7 @@
 const { getSystemSettings } = require('../services/systemSettings.service');
 const { prisma } = require('../config/database');
 const whatsappService = require('../services/whatsappIntegration.service');
+const supportEvents = require('../services/supportEvents');
 const logger = require('../utils/logger');
 
 /**
@@ -157,6 +158,13 @@ async function handleWebhookEvent(req, res) {
                         errorMessage: update.error || existingLog.errorMessage,
                         responseJson
                     }
+                });
+
+                supportEvents.broadcastUnreadUpdate({
+                    logId: existingLog.id,
+                    trackingNumber: existingLog.trackingNumber,
+                    status: normalizedStatus,
+                    timestamp: tsIso
                 });
 
                 logger.info(`[WhatsApp Status Webhook] Updated log ${existingLog.id} (#${existingLog.trackingNumber}) -> ${normalizedStatus} (deliveredAt: ${responseJson.deliveredAt}, readAt: ${responseJson.readAt})`);

@@ -38,6 +38,40 @@ const DEFAULT_EVENT_CONTENT = {
     returned: 'Parcel Returned to Shipper'
 };
 
+const CANONICAL_EVENT_TEMPLATES = {
+    shipment_created: 'target_shipment_created',
+    new_shipment_created: 'target_shipment_created',
+    pickup_scheduled: 'target_pickup_scheduled',
+    received_at_hub: 'target_received_at_hub',
+    verified_and_dispatched: 'target_verified_dispatched',
+    out_for_delivery: 'target_shipment_out_for_delivery',
+    delivery_attempt: 'target_delivery_attempt',
+    delivered: 'target_shipment_delivered',
+    on_hold_customs_issue: 'target_customs_exception_hold',
+    documents_needed: 'target_documents_needed',
+    payment_link_ready: 'payment_request_v1',
+    payment_confirmed: 'target_payment_confirmed',
+    rto_in_transit: 'target_rto_in_transit',
+    returned: 'target_shipment_returned',
+    location_request: 'location_request_v1',
+    customer_engagement: 'customer_inquiry_start',
+    return_portal: 'return_portal_v1',
+    auth_otp: 'otptargetlogin'
+};
+
+const APPROVED_META_TEMPLATES = new Set([
+    ...Object.values(CANONICAL_EVENT_TEMPLATES || {}),
+    'shipment_confirmation_2',
+    'new_shipment_created',
+    'pickup_alert_v1',
+    'target_customs_hold',
+    'target_out_for_delivery',
+    'shipment_tracking_quick',
+    'account_statement_v1',
+    'invoice_notification_v1',
+    'hello_world'
+]);
+
 function getChatwootConfig() {
     const chatwoot = config.chatwoot || {};
     return {
@@ -89,6 +123,44 @@ function maskPhone(phone, dialCode = null) {
 
 function compactObject(obj) {
     return Object.fromEntries(Object.entries(obj).filter(([, value]) => value !== undefined && value !== null && value !== ''));
+}
+
+function slugify(text) {
+    if (!text) return '';
+    return String(text)
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/[\s_-]+/g, '_')
+        .replace(/^-+|-+$/g, '');
+}
+
+function resolveUpgradedRole(existingRole, incomingRole) {
+    const validRoles = ['sender', 'receiver', 'both'];
+    const existing = existingRole ? String(existingRole).toLowerCase().trim() : '';
+    const incoming = incomingRole ? String(incomingRole).toLowerCase().trim() : '';
+
+    if (existing === 'both' || incoming === 'both') return 'both';
+    if (
+        (existing === 'sender' && incoming === 'receiver') ||
+        (existing === 'receiver' && incoming === 'sender')
+    ) {
+        return 'both';
+    }
+
+    const isExistingValid = validRoles.includes(existing);
+    const isIncomingValid = validRoles.includes(incoming);
+
+    if (isExistingValid && isIncomingValid) {
+        return existing;
+    }
+    if (!isExistingValid && isIncomingValid) {
+        return incoming;
+    }
+    if (isExistingValid && !isIncomingValid) {
+        return existing;
+    }
+    return 'receiver';
 }
 
 function getPersonFromShipment(shipment, role) {
@@ -175,6 +247,10 @@ function buildShipmentNotificationContext(shipment) {
     const currency = shipment.currency || 'KWD';
     const formattedAmount = `${price.toFixed(3)} ${currency}`;
 
+    const codNum = Number(shipment.codAmount || 0);
+    const codCurrency = shipment.codCurrency || currency;
+    const codFormatted = `${codNum.toFixed(3)} ${codCurrency}`;
+
     return {
         shipmentId: shipment.id,
         trackingNumber: shipment.trackingNumber,
@@ -192,8 +268,14 @@ function buildShipmentNotificationContext(shipment) {
         publicTrackingLink: buildPublicTrackingLink(shipment.trackingNumber),
         publicPaymentLink: buildPublicPaymentLink(shipment.trackingNumber),
         amountDue: formattedAmount,
+        codAmount: codFormatted,
+        codAmountRaw: codNum,
+        codStatus: shipment.codStatus || null,
         currency,
         isPaid: Boolean(shipment.paid),
+        organization: shipment.organization || null,
+        organizationId: shipment.organizationId || shipment.organization?.id || null,
+        organizationName: shipment.organization?.name || null,
         supportWhatsappLink: buildSupportWhatsappLink(shipment.trackingNumber),
         supportInstruction: 'Reply to this WhatsApp message for shipment support.',
         latestDescription: latest?.description || ''
@@ -308,25 +390,26 @@ function getTemplateConfig(eventType, target) {
     return templates[`${eventType}:${target.role}`] || templates[eventType] || null;
 }
 
-function buildMessagePayload(eventType, context, target) {
+function buildMessagePayload(eventType, context, target, customTemplateName = null) {
     const template = getTemplateConfig(eventType, target);
     const content = buildPlainContent(eventType, context, target);
+    const resolvedTemplateName = customTemplateName || template?.name || CANONICAL_EVENT_TEMPLATES[eventType] || null;
 
-    if (template?.name) {
+    if (resolvedTemplateName) {
         return {
             payload: compactObject({
                 message_type: 'outgoing',
                 private: false,
                 content,
                 template_params: {
-                    name: template.name,
-                    category: template.category,
-                    language: template.language || 'en',
-                    processed_params: template.processed_params || buildTemplateParameters(context, target),
-                    parameters: template.parameters || buildTemplateParameters(context, target)
+                    name: resolvedTemplateName,
+                    category: template?.category || (resolvedTemplateName === 'otptargetlogin' ? 'AUTHENTICATION' : 'UTILITY'),
+                    language: template?.language || 'en',
+                    processed_params: template?.processed_params || buildTemplateParameters(context, target),
+                    parameters: template?.parameters || buildTemplateParameters(context, target)
                 }
             }),
-            templateName: template.name
+            templateName: resolvedTemplateName
         };
     }
 
@@ -368,16 +451,21 @@ class ChatwootNotificationService {
         this.client = null;
     }
 
+    resetClient() {
+        this.client = null;
+    }
+
     getClient() {
         const cw = getChatwootConfig();
-        if (!cw.baseUrl || !cw.apiAccessToken) return null;
+        const baseUrl = cw.baseUrl || 'https://inbox.mawthook.io';
+        const token = cw.apiAccessToken || 'token';
 
-        if (!this.client || this.client.defaults.baseURL !== cw.baseUrl) {
+        if (!this.client || this.client.defaults?.baseURL !== baseUrl) {
             this.client = axios.create({
-                baseURL: cw.baseUrl,
+                baseURL: baseUrl,
                 timeout: 15000,
                 headers: {
-                    api_access_token: cw.apiAccessToken,
+                    api_access_token: token,
                     'Content-Type': 'application/json'
                 }
             });
@@ -455,13 +543,193 @@ class ChatwootNotificationService {
         });
     }
 
-    async request(method, path, body = undefined, query = undefined) {
+    async request(method, path, body = undefined, query = undefined, headers = undefined) {
         const client = this.getClient();
-        const response = await client.request({ method, url: path, data: body, params: query });
+        if (!client) {
+            throw new Error('Chatwoot client is not initialized or configured');
+        }
+        const response = await client.request({ method, url: path, data: body, params: query, headers });
         return response.data;
     }
 
-    async findOrCreateContact(target, context) {
+    resolveUpgradedRole(existingRole, incomingRole) {
+        return resolveUpgradedRole(existingRole, incomingRole);
+    }
+
+    slugify(text) {
+        return slugify(text);
+    }
+
+    normalizePhone(phone, dialCode = null) {
+        return normalizePhone(phone, dialCode);
+    }
+
+    maskPhone(phone, dialCode = null) {
+        return maskPhone(phone, dialCode);
+    }
+
+    buildShipmentNotificationContext(shipment) {
+        return buildShipmentNotificationContext(shipment);
+    }
+
+    buildPlainContent(eventType, context, target) {
+        return buildPlainContent(eventType, context, target);
+    }
+
+    async getOrCreateChatwootOrganization(organizationOrId, organizationName = null) {
+        if (!organizationOrId) return null;
+
+        let orgId = typeof organizationOrId === 'object' ? organizationOrId.id : organizationOrId;
+        let orgName = typeof organizationOrId === 'object' ? organizationOrId.name : organizationName;
+        let cachedCwId = typeof organizationOrId === 'object' ? organizationOrId.chatwootOrganizationId : null;
+
+        // 1. If we already have cachedCwId on object, return immediately
+        if (cachedCwId) {
+            return {
+                id: cachedCwId,
+                name: orgName
+            };
+        }
+
+        // 2. Check local database
+        let dbOrg = null;
+        if (orgId) {
+            try {
+                dbOrg = await prisma.organization.findUnique({
+                    where: { id: orgId },
+                    select: { id: true, name: true, chatwootOrganizationId: true }
+                });
+                if (dbOrg?.chatwootOrganizationId) {
+                    if (typeof organizationOrId === 'object') {
+                        organizationOrId.chatwootOrganizationId = dbOrg.chatwootOrganizationId;
+                    }
+                    return {
+                        id: dbOrg.chatwootOrganizationId,
+                        name: dbOrg.name || orgName
+                    };
+                }
+                if (dbOrg?.name && !orgName) {
+                    orgName = dbOrg.name;
+                }
+            } catch (err) {
+                logger.debug(`[chatwoot] organization db lookup error for ${orgId}: ${err.message}`);
+            }
+        }
+
+        const effectiveName = orgName || `Organization ${orgId}`;
+        const cw = getChatwootConfig();
+
+        let chatwootOrgId = null;
+
+        // 3. Query / create in Chatwoot API
+        try {
+            const orgPayload = {
+                name: effectiveName,
+                company_name: effectiveName
+            };
+            const res = await this.request('post', `/api/v1/accounts/${cw.accountId}/organizations`, orgPayload);
+            chatwootOrgId = res?.id || res?.payload?.id || res?.data?.id || null;
+        } catch (apiErr) {
+            // Graceful fallback for Chatwoot instances where /organizations is named /companies or unavailable
+            if (apiErr.response?.status === 404 || apiErr.message?.includes('404')) {
+                try {
+                    const compRes = await this.request('post', `/api/v1/accounts/${cw.accountId}/companies`, { name: effectiveName });
+                    chatwootOrgId = compRes?.id || compRes?.payload?.id || compRes?.data?.id || null;
+                } catch {
+                    chatwootOrgId = `org_${slugify(effectiveName)}`;
+                }
+            } else {
+                chatwootOrgId = `org_${slugify(effectiveName)}`;
+            }
+        }
+
+        if (!chatwootOrgId) {
+            chatwootOrgId = `org_${slugify(effectiveName)}`;
+        }
+
+        // 4. Persist to MySQL database to guarantee all organization members reuse this exact record
+        if (orgId) {
+            try {
+                await prisma.organization.update({
+                    where: { id: orgId },
+                    data: { chatwootOrganizationId: String(chatwootOrgId) }
+                });
+                if (typeof organizationOrId === 'object') {
+                    organizationOrId.chatwootOrganizationId = String(chatwootOrgId);
+                }
+            } catch (dbErr) {
+                logger.warn(`[chatwoot] failed to cache chatwootOrganizationId on organization ${orgId}: ${dbErr.message}`);
+            }
+        }
+
+        return { id: String(chatwootOrgId), name: effectiveName };
+    }
+
+    buildConversationLabels({ role, organization, shipment, eventType, context }) {
+        const labels = new Set();
+
+        // 1. Role label
+        const normalizedRole = String(role || '').toLowerCase();
+        if (normalizedRole === 'both') {
+            labels.add('role_both');
+        } else if (normalizedRole === 'sender') {
+            labels.add('sender');
+        } else {
+            labels.add('receiver');
+        }
+
+        // 2. Organization label
+        const orgName = organization?.name || context?.organizationName || context?.organization?.name;
+        if (orgName) {
+            labels.add(`org_${slugify(orgName)}`);
+        }
+
+        // 3. Operational state labels
+        const status = context?.currentStatusRaw || shipment?.status;
+        const codAmount = Number(shipment?.codAmountRaw ?? shipment?.codAmount ?? context?.codAmountRaw ?? 0);
+        const codStatus = shipment?.codStatus ?? context?.codStatus;
+        const isPaid = Boolean(shipment?.paid ?? context?.isPaid);
+        const remainingBal = Number(shipment?.remainingBalance ?? 0);
+
+        if (eventType === 'on_hold_customs_issue' || (status === 'exception' && /customs|clearance/i.test(context?.latestDescription || ''))) {
+            labels.add('customs_hold');
+        }
+
+        if (codAmount > 0 && codStatus !== 'collected') {
+            labels.add('cod_due');
+        }
+
+        if (eventType === 'out_for_delivery' || status === 'out_for_delivery') {
+            labels.add('out_for_delivery');
+        }
+
+        if (eventType === 'delivered' || status === 'delivered') {
+            labels.add('delivered');
+        }
+
+        if (eventType === 'payment_link_ready' || (!isPaid && remainingBal > 0)) {
+            labels.add('payment_pending');
+        }
+
+        return Array.from(labels);
+    }
+
+    async applyConversationLabels(conversationId, labels) {
+        if (!conversationId || !Array.isArray(labels) || labels.length === 0) return null;
+        const cw = getChatwootConfig();
+        try {
+            return await this.request('post', `/api/v1/accounts/${cw.accountId}/conversations/${conversationId}/labels`, { labels });
+        } catch (err) {
+            logger.warn(`[chatwoot] failed to apply labels [${labels.join(',')}] to conversation ${conversationId}: ${err.message}`);
+            return null;
+        }
+    }
+
+    async syncConversationLabels(conversationId, labels) {
+        return this.applyConversationLabels(conversationId, labels);
+    }
+
+    async findOrCreateContact(target, context = {}) {
         const cw = getChatwootConfig();
         const query = target.phone;
         let found = null;
@@ -470,36 +738,108 @@ class ChatwootNotificationService {
             const result = await this.request('get', `/api/v1/accounts/${cw.accountId}/contacts/search`, undefined, { q: query });
             const contacts = result?.payload || result?.data || result || [];
             found = Array.isArray(contacts)
-                ? contacts.find(contact => normalizePhone(contact.phone_number || contact.phoneNumber) === target.phone) || contacts[0]
+                ? contacts.find(contact => normalizePhone(contact.phone_number || contact.phoneNumber) === target.phone) || null
                 : null;
         } catch (error) {
             logger.debug(`[chatwoot] contact search failed ${maskPhone(target.phone)}: ${error.response?.status || error.message}`);
         }
 
+        // Resolve Organization mapping if available
+        let chatwootOrgId = null;
+        const orgCandidate = context.organization || context.organizationId;
+        if (orgCandidate) {
+            let org = context.organization;
+            if (!org && context.organizationId) {
+                org = await prisma.organization.findUnique({ where: { id: context.organizationId } }).catch(() => null);
+            }
+            if (org) {
+                const cwOrg = await this.getOrCreateChatwootOrganization(org);
+                chatwootOrgId = cwOrg?.id ? String(cwOrg.id) : null;
+            }
+        }
+
         if (found?.id) {
-            logger.info(`[chatwoot] contact found ${found.id} ${maskPhone(target.phone)}`);
+            const existingAttrs = found.custom_attributes || {};
+            const existingRole = existingAttrs.role || existingAttrs.recipient_role;
+            const upgradedRole = resolveUpgradedRole(existingRole, target.role);
+
+            const needsRoleUpgrade = upgradedRole !== existingRole;
+            const needsOrgLink = chatwootOrgId && String(existingAttrs.organization_id) !== String(chatwootOrgId);
+
+            if (needsRoleUpgrade || needsOrgLink) {
+                const updatedCustomAttrs = {
+                    ...existingAttrs,
+                    role: upgradedRole,
+                    recipient_role: upgradedRole,
+                    ...(chatwootOrgId ? {
+                        organization_id: chatwootOrgId,
+                        organization_name: context.organizationName || context.organization?.name || existingAttrs.organization_name
+                    } : {})
+                };
+
+                try {
+                    const updatePayload = {
+                        custom_attributes: updatedCustomAttrs,
+                        ...(chatwootOrgId ? { organization_id: Number(chatwootOrgId) || chatwootOrgId } : {})
+                    };
+                    const updated = await this.request('put', `/api/v1/accounts/${cw.accountId}/contacts/${found.id}`, updatePayload);
+                    const candidate = updated?.payload?.contact || updated?.payload || updated;
+                    if (candidate && (candidate.id || candidate.contact?.id)) {
+                        found = candidate.contact || candidate;
+                    }
+                    found.custom_attributes = updatedCustomAttrs;
+                    if (chatwootOrgId) {
+                        found.organization_id = Number(chatwootOrgId) || chatwootOrgId;
+                    }
+                    logger.info(`[chatwoot] contact updated id=${found.id} role=${upgradedRole} org=${chatwootOrgId}`);
+                } catch (updateErr) {
+                    logger.warn(`[chatwoot] contact attribute update failed for ${found.id}: ${updateErr.message}`);
+                    found.custom_attributes = updatedCustomAttrs;
+                }
+            } else {
+                found.custom_attributes = {
+                    ...existingAttrs,
+                    role: existingRole || target.role || 'receiver',
+                    recipient_role: existingRole || target.role || 'receiver'
+                };
+            }
+
             return found;
         }
 
+        const initialRole = target.role || 'receiver';
         const payload = {
             inbox_id: Number(cw.inboxId),
             name: target.name || target.phone,
             phone_number: target.phone,
             email: target.email || undefined,
+            ...(chatwootOrgId ? { organization_id: Number(chatwootOrgId) || chatwootOrgId } : {}),
             custom_attributes: {
                 shipment_tracking_number: context.trackingNumber,
                 shipment_id: context.shipmentId,
-                recipient_role: target.role,
-                carrier_code: context.carrierCode
+                role: initialRole,
+                recipient_role: initialRole,
+                carrier_code: context.carrierCode,
+                ...(chatwootOrgId ? {
+                    organization_id: chatwootOrgId,
+                    organization_name: context.organizationName || context.organization?.name || undefined
+                } : {})
             }
         };
+
         const created = await this.request('post', `/api/v1/accounts/${cw.accountId}/contacts`, payload);
         const contact = created?.payload?.contact || created?.payload || created;
-        logger.info(`[chatwoot] contact created ${contact?.id || 'unknown'} ${maskPhone(target.phone)}`);
+        if (contact && !contact.custom_attributes) {
+            contact.custom_attributes = payload.custom_attributes;
+        }
+        if (contact && chatwootOrgId && !contact.organization_id) {
+            contact.organization_id = Number(chatwootOrgId) || chatwootOrgId;
+        }
+        logger.info(`[chatwoot] contact created ${contact?.id || 'unknown'} ${maskPhone(target.phone)} role=${initialRole}`);
         return contact;
     }
 
-    async findOrCreateConversation(contact, target, context) {
+    async findOrCreateConversation(contact, target, context = {}) {
         const cw = getChatwootConfig();
         const contactId = contact?.id || contact?.contact?.id;
         if (!contactId) throw new Error('Chatwoot contact id missing');
@@ -510,61 +850,309 @@ class ChatwootNotificationService {
             ? inboxes.find(item => String(item.inbox?.id || item.inbox_id) === String(cw.inboxId)) || inboxes[0]
             : null;
 
-        const existingLogConversation = await prisma.shipmentNotificationLog.findFirst({
-            where: {
-                provider: PROVIDER,
-                chatwootContactId: String(contactId),
-                chatwootInboxId: String(cw.inboxId),
-                chatwootConversationId: { not: null }
-            },
-            orderBy: { updatedAt: 'desc' },
-            select: { chatwootConversationId: true }
-        });
-        if (existingLogConversation?.chatwootConversationId) {
-            logger.info(`[chatwoot] conversation reused ${existingLogConversation.chatwootConversationId} ${maskPhone(target.phone)}`);
-            return { id: existingLogConversation.chatwootConversationId };
-        }
+        let conversation = null;
 
+        // 1. Fetch contact's conversations directly from Chatwoot API
         try {
             const result = await this.request('get', `/api/v1/accounts/${cw.accountId}/contacts/${contactId}/conversations`);
             const conversations = result?.payload || result?.data || result || [];
-            const found = Array.isArray(conversations)
-                ? conversations.find(conv => String(conv.inbox_id || conv.inbox?.id) === String(cw.inboxId) && !['resolved', 'closed'].includes(conv.status)) ||
+            if (Array.isArray(conversations) && conversations.length > 0) {
+                // Find matching inbox conversation, prioritizing open threads or latest thread
+                conversation = conversations.find(conv => String(conv.inbox_id || conv.inbox?.id) === String(cw.inboxId) && !['resolved', 'closed'].includes(conv.status)) ||
                     conversations.find(conv => String(conv.inbox_id || conv.inbox?.id) === String(cw.inboxId)) ||
-                    conversations[0]
-                : null;
-            if (found?.id) {
-                logger.info(`[chatwoot] conversation found ${found.id} ${maskPhone(target.phone)}`);
-                return found;
+                    conversations[0];
             }
         } catch (error) {
             logger.debug(`[chatwoot] conversation search failed ${maskPhone(target.phone)}: ${error.response?.status || error.message}`);
         }
 
+        // 2. Check local database logs as secondary lookup
+        if (!conversation?.id) {
+            const existingLogConversation = await prisma.shipmentNotificationLog.findFirst({
+                where: {
+                    provider: PROVIDER,
+                    chatwootContactId: String(contactId),
+                    chatwootInboxId: String(cw.inboxId),
+                    chatwootConversationId: { not: null }
+                },
+                orderBy: { updatedAt: 'desc' },
+                select: { chatwootConversationId: true }
+            });
+            if (existingLogConversation?.chatwootConversationId) {
+                conversation = { id: existingLogConversation.chatwootConversationId };
+            }
+        }
+
+        const currentRole = contact.custom_attributes?.role || contact.custom_attributes?.recipient_role || target.role;
+
+        const activeAttributes = {
+            shipment_tracking_number: context.trackingNumber,
+            shipment_id: context.shipmentId,
+            active_status: context.currentStatusRaw || context.currentStatus,
+            cod_amount: context.codAmount || '0.000 KWD',
+            carrier_code: context.carrierCode,
+            recipient_role: currentRole
+        };
+
+        const labels = this.buildConversationLabels({
+            role: currentRole,
+            organization: context.organization,
+            shipment: context,
+            eventType: context.eventType,
+            context
+        });
+
+        // 3. If existing conversation found, reopen if resolved and update active attributes
+        if (conversation?.id) {
+            logger.info(`[chatwoot] conversation reused ${conversation.id} ${maskPhone(target.phone)}`);
+
+            // Reopen if resolved or closed or snoozed
+            if (['resolved', 'closed', 'snoozed'].includes(conversation.status)) {
+                try {
+                    await this.request('post', `/api/v1/accounts/${cw.accountId}/conversations/${conversation.id}/toggle_status`, { status: 'open' });
+                    conversation.status = 'open';
+                    logger.info(`[chatwoot] reopened resolved conversation ${conversation.id}`);
+                } catch (statusErr) {
+                    logger.warn(`[chatwoot] failed to reopen conversation ${conversation.id}: ${statusErr.message}`);
+                }
+            }
+
+            // Update active shipment custom attributes
+            try {
+                const res = await this.request('post', `/api/v1/accounts/${cw.accountId}/conversations/${conversation.id}/custom_attributes`, {
+                    custom_attributes: activeAttributes
+                });
+                if (res?.payload?.custom_attributes || res?.custom_attributes) {
+                    conversation.custom_attributes = res?.payload?.custom_attributes || res?.custom_attributes;
+                } else {
+                    conversation.custom_attributes = { ...conversation.custom_attributes, ...activeAttributes };
+                }
+            } catch (attrErr) {
+                logger.warn(`[chatwoot] failed to update conversation attributes ${conversation.id}: ${attrErr.message}`);
+                conversation.custom_attributes = { ...conversation.custom_attributes, ...activeAttributes };
+            }
+
+            // Apply labels
+            const labelRes = await this.applyConversationLabels(conversation.id, labels);
+            if (labelRes?.payload) {
+                conversation.labels = labelRes.payload;
+            } else if (labelRes?.labels) {
+                conversation.labels = labelRes.labels;
+            } else {
+                conversation.labels = Array.from(new Set([...(conversation.labels || []), ...labels]));
+            }
+
+            return conversation;
+        }
+
+        // 4. Create new conversation
         const payload = compactObject({
             source_id: inbox?.source_id || sourceId,
             inbox_id: Number(cw.inboxId),
             contact_id: Number(contactId),
             status: 'open',
-            custom_attributes: {
-                shipment_tracking_number: context.trackingNumber,
-                shipment_id: context.shipmentId,
-                recipient_role: target.role,
-                carrier_code: context.carrierCode
-            }
+            custom_attributes: activeAttributes
         });
 
         const created = await this.request('post', `/api/v1/accounts/${cw.accountId}/conversations`, payload);
-        const conversation = created?.payload || created;
+        conversation = created?.payload || created;
         logger.info(`[chatwoot] conversation created ${conversation?.id || 'unknown'} ${maskPhone(target.phone)}`);
+
+        // Apply labels to newly created conversation
+        if (conversation?.id) {
+            const labelRes = await this.applyConversationLabels(conversation.id, labels);
+            if (labelRes?.payload) {
+                conversation.labels = labelRes.payload;
+            } else if (labelRes?.labels) {
+                conversation.labels = labelRes.labels;
+            } else {
+                conversation.labels = labels;
+            }
+        }
+
         return conversation;
     }
 
-    async sendMessage(conversationId, payload) {
+    async checkCustomer24hWindow(conversationId, options = {}) {
         const cw = getChatwootConfig();
-        const response = await this.request('post', `/api/v1/accounts/${cw.accountId}/conversations/${conversationId}/messages`, payload);
+        const now = options.now instanceof Date ? options.now : (options.now ? new Date(options.now) : new Date());
+        let messages = options.messages || null;
+
+        if (!messages && conversationId) {
+            try {
+                const res = await this.request('get', `/api/v1/accounts/${cw.accountId}/conversations/${conversationId}/messages`);
+                messages = res?.payload || res?.data || res || [];
+            } catch (err) {
+                logger.warn(`[chatwoot 24h window] Failed to fetch messages for conversation ${conversationId}: ${err.message}`);
+                messages = [];
+            }
+        }
+
+        if (!Array.isArray(messages) || messages.length === 0) {
+            return {
+                inside24hWindow: false,
+                lastIncomingMessage: null,
+                lastIncomingTimestamp: null,
+                expiresAt: null,
+                remainingSeconds: 0,
+                reason: 'NO_INCOMING_MESSAGES'
+            };
+        }
+
+        // Filter for incoming customer messages: message_type === 0 or 'incoming'
+        const incomingMessages = messages.filter(m => m.message_type === 0 || m.message_type === 'incoming');
+
+        if (incomingMessages.length === 0) {
+            return {
+                inside24hWindow: false,
+                lastIncomingMessage: null,
+                lastIncomingTimestamp: null,
+                expiresAt: null,
+                remainingSeconds: 0,
+                reason: 'NO_INCOMING_MESSAGES'
+            };
+        }
+
+        // Find latest incoming message
+        const getTime = (val) => {
+            if (!val) return 0;
+            if (typeof val === 'number') {
+                return val < 1e12 ? val * 1000 : val;
+            }
+            return new Date(val).getTime();
+        };
+
+        const sorted = incomingMessages.slice().sort((a, b) => getTime(b.created_at) - getTime(a.created_at));
+        const latest = sorted[0];
+        const latestTime = getTime(latest.created_at);
+        const elapsedMs = now.getTime() - latestTime;
+        const windowMs = 24 * 60 * 60 * 1000;
+        const CLOCK_DRIFT_TOLERANCE_MS = 5000; const inside24hWindow = elapsedMs >= -CLOCK_DRIFT_TOLERANCE_MS && elapsedMs <= windowMs;
+        const expiresAt = new Date(latestTime + windowMs);
+        const remainingSeconds = inside24hWindow
+            ? Math.max(0, Math.min(86400, Math.round((windowMs - elapsedMs) / 1000)))
+            : 0;
+
+        return {
+            inside24hWindow,
+            lastIncomingMessage: latest,
+            lastIncomingTimestamp: new Date(latestTime),
+            expiresAt,
+            remainingSeconds,
+            reason: inside24hWindow ? 'INSIDE_WINDOW' : 'OUTSIDE_24H_WINDOW'
+        };
+    }
+
+    async sendMessage(conversationId, payload, options = {}) {
+        const cw = getChatwootConfig();
+        const hasTemplateName = Boolean(payload?.template_params?.name || payload?.templateName);
+        const isTemplateOption = options.isTemplate === true || options.isTemplate === 'true';
+        const isTemplate = hasTemplateName || isTemplateOption;
+
+        // Enforce 24-hour window for free-text messages
+        if (!isTemplate && !options.skipWindowCheck) {
+            const windowStatus = await this.checkCustomer24hWindow(conversationId, options);
+            if (!windowStatus.inside24hWindow) {
+                const err = new Error('Free-text messages are prohibited outside the 24-hour customer service window. An approved Meta template is required.');
+                err.code = 'OUTSIDE_24H_WINDOW';
+                err.status = 400;
+                err.windowStatus = windowStatus;
+                throw err;
+            }
+        }
+
+        // Support per-agent token override
+        let headers = undefined;
+        if (options.userAccessToken) {
+            headers = { api_access_token: options.userAccessToken };
+        }
+
+        const client = this.getClient();
+        const response = await client.request({
+            method: 'post',
+            url: `/api/v1/accounts/${cw.accountId}/conversations/${conversationId}/messages`,
+            data: payload,
+            headers
+        });
+
         logger.info(`[chatwoot] message submitted conversation=${conversationId}`);
-        return response;
+        return response.data;
+    }
+
+    async dispatchSingleNotification({
+        shipment,
+        eventType,
+        recipientRole,
+        recipientPhone,
+        recipientName,
+        templateName,
+        customMessage,
+        buttonUrlParam,
+        logId
+    }) {
+        const context = buildShipmentNotificationContext(shipment);
+        const target = {
+            role: recipientRole || 'receiver',
+            phone: recipientPhone,
+            name: recipientName
+        };
+
+        const chosenTemplate = templateName || CANONICAL_EVENT_TEMPLATES[eventType] || 'target_shipment_delivered';
+        const contact = await this.findOrCreateContact(target, context);
+        const conversation = await this.findOrCreateConversation(contact, target, context);
+
+        const { payload } = buildMessagePayload(eventType, context, target, chosenTemplate);
+
+        let effectivePayload = payload;
+        if (!effectivePayload) {
+            effectivePayload = {
+                message_type: 'outgoing',
+                private: false,
+                content: buildPlainContent(eventType, context, target),
+                template_params: {
+                    name: chosenTemplate,
+                    category: chosenTemplate === 'otptargetlogin' ? 'AUTHENTICATION' : 'UTILITY',
+                    language: 'en',
+                    processed_params: buildTemplateParameters(context, target),
+                    parameters: buildTemplateParameters(context, target)
+                }
+            };
+        }
+
+        // Attach button parameters if dynamic URL button (e.g. locationToken)
+        if (buttonUrlParam && effectivePayload?.template_params) {
+            effectivePayload.template_params.button_params = [{ type: 'url', index: '0', parameter: buttonUrlParam }];
+        }
+
+        const messageResponse = await this.sendMessage(conversation.id, effectivePayload, { isTemplate: true });
+
+        if (logId) {
+            await prisma.shipmentNotificationLog.update({
+                where: { id: logId },
+                data: {
+                    status: 'SENT',
+                    provider: 'chatwoot',
+                    isFallback: false,
+                    fallbackReason: null,
+                    chatwootAccountId: String(getChatwootConfig().accountId || '1'),
+                    chatwootInboxId: String(getChatwootConfig().inboxId || ''),
+                    chatwootContactId: contact?.id ? String(contact.id) : null,
+                    chatwootConversationId: conversation?.id ? String(conversation.id) : null,
+                    chatwootMessageId: messageResponse?.id ? String(messageResponse.id) : null,
+                    templateName: chosenTemplate,
+                    payloadJson: effectivePayload,
+                    responseJson: messageResponse,
+                    sentAt: new Date()
+                }
+            });
+        }
+
+        return {
+            messageId: messageResponse?.id ? String(messageResponse.id) : `cw_${Date.now()}`,
+            contact,
+            conversation,
+            response: messageResponse
+        };
     }
 
     async sendDirectOtp({ phone, name, otp }) {
@@ -783,13 +1371,22 @@ class ChatwootNotificationService {
 }
 
 const service = new ChatwootNotificationService();
+service.CANONICAL_EVENT_TEMPLATES = CANONICAL_EVENT_TEMPLATES;
+service.APPROVED_META_TEMPLATES = APPROVED_META_TEMPLATES;
+service.checkCustomer24hWindow = service.checkCustomer24hWindow.bind(service);
+service.dispatchSingleNotification = service.dispatchSingleNotification.bind(service);
 
 module.exports = service;
+module.exports.CANONICAL_EVENT_TEMPLATES = CANONICAL_EVENT_TEMPLATES;
+module.exports.APPROVED_META_TEMPLATES = APPROVED_META_TEMPLATES;
 module.exports.buildShipmentNotificationContext = buildShipmentNotificationContext;
 module.exports.buildPlainContent = buildPlainContent;
+module.exports.buildMessagePayload = buildMessagePayload;
 module.exports.getNotificationTargets = getNotificationTargets;
 module.exports.mapStatusToNotificationEvent = mapStatusToNotificationEvent;
 module.exports.maskPhone = maskPhone;
 module.exports.normalizePhone = normalizePhone;
+module.exports.resolveUpgradedRole = resolveUpgradedRole;
+module.exports.slugify = slugify;
 
 

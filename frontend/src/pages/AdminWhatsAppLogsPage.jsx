@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSnackbar } from 'notistack';
 import { whatsappService } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
-import ChatwootConversationDrawer from '../components/common/ChatwootConversationDrawer';
+import NativeChatDrawer from '../components/support/NativeChatDrawer';
 
 /** Format human-readable message text matching exact Meta template copy */
 export function formatExactMessageCopy(log) {
@@ -1223,8 +1223,8 @@ export const AdminWhatsAppLogsPage = () => {
                 <div className="modal-backdrop bg-black/60 backdrop-blur-xs" onClick={() => setPreviewMessageLog(null)} />
             </div>
 
-            {/* Embedded Chatwoot Drawer */}
-            <ChatwootConversationDrawer
+            {/* Native Shipment Chat Drawer */}
+            <NativeChatDrawer
                 isOpen={Boolean(chatwootDrawerLog)}
                 onClose={() => setChatwootDrawerLog(null)}
                 accountId={chatwootDrawerLog?.chatwootAccountId || '1'}
@@ -1237,6 +1237,7 @@ export const AdminWhatsAppLogsPage = () => {
                     chatwootDrawerLog?.shipment?.dhlTrackingNumber || 
                     ''
                 }
+                shipment={chatwootDrawerLog?.shipment}
             />
         </div>
     );

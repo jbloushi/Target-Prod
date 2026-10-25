@@ -240,6 +240,137 @@ async function sendViaShipmentWhatsappMicroservice({ serviceUrl = 'https://msg.t
     };
 }
 
+function buildMicroserviceVariables({
+    chosenTemplate,
+    context,
+    shipment,
+    displayTracking,
+    resolvedReceiverName,
+    resolvedReceiverPhone,
+    effectiveRecipientName,
+    customMessage,
+    estDeliveryFormatted,
+    dateFormatted,
+    fullUpdatedText,
+    trackingUrl
+}) {
+    let variables = [];
+    let headerVariables = [displayTracking];
+
+    if (chosenTemplate === 'new_shipment_created' || chosenTemplate === 'target_shipment_created') {
+        variables = [
+            context.route || 'Kuwait City, KW → Destination',
+            estDeliveryFormatted,
+            context.currentStatus || 'Shipment In Transit',
+            fullUpdatedText,
+            trackingUrl
+        ];
+    } else if (chosenTemplate === 'shipment_confirmation_2') {
+        const receiptNo = resolveInvoiceDetail(shipment, displayTracking);
+        variables = [
+            receiptNo,
+            dateFormatted,
+            resolvedReceiverName,
+            resolvedReceiverPhone,
+            trackingUrl
+        ];
+        headerVariables = [displayTracking];
+    } else if (chosenTemplate === 'shipment_tracking_quick') {
+        const receiptNo = resolveInvoiceDetail(shipment, displayTracking);
+        variables = [
+            displayTracking,
+            dateFormatted,
+            receiptNo,
+            resolvedReceiverName,
+            resolvedReceiverPhone,
+            trackingUrl
+        ];
+        headerVariables = [displayTracking];
+    } else if (chosenTemplate === 'target_shipment_out_for_delivery') {
+        const destCity = shipment.destination?.city || context.destination?.city || 'Kuwait City';
+        const destArea = shipment.destination?.area || context.destination?.area || '';
+        const cityArea = destArea ? `${destCity}, ${destArea}` : destCity;
+        const courier = shipment.assignedDriver?.name || shipment.carrierCode || 'Target Express Fleet #12';
+        const deliveryWindow = estDeliveryFormatted || 'Today between 2:00 PM - 5:00 PM';
+
+        variables = [
+            resolvedReceiverName,
+            displayTracking,
+            cityArea,
+            courier,
+            deliveryWindow
+        ];
+        headerVariables = [displayTracking];
+    } else if (chosenTemplate === 'target_shipment_delivered') {
+        const deliveryTime = shipment.deliveredAt ? `${formatLegibleDate(shipment.deliveredAt)} AST` : `${dateFormatted} AST`;
+        const signee = shipment.podRecipientName || 'Consignee Direct Signature';
+
+        variables = [
+            effectiveRecipientName,
+            displayTracking,
+            deliveryTime,
+            signee,
+            trackingUrl
+        ];
+        headerVariables = [displayTracking];
+    } else if (chosenTemplate === 'target_customs_exception_hold') {
+        const holdReason = customMessage?.reason || shipment.failureReason || 'Customs inspection hold at Kuwait Airport Cargo Terminal';
+        const reqAction = customMessage?.action || 'Please provide Civil ID copy and commercial invoice';
+
+        variables = [
+            displayTracking,
+            resolvedReceiverName,
+            holdReason,
+            reqAction,
+            trackingUrl
+        ];
+        headerVariables = [displayTracking];
+    } else if (chosenTemplate === 'payment_request_v1') {
+        const payAmt = customMessage?.amount || context.amountDue || `${Number(shipment.remainingBalance || shipment.price || 0).toFixed(3)} ${shipment.currency || 'KWD'}`;
+        const payUrl = customMessage?.paymentLink || context.publicPaymentLink || `https://target-kw.com/pay/${displayTracking}`;
+        variables = [
+            effectiveRecipientName,
+            payAmt,
+            payUrl,
+            dateFormatted
+        ];
+        headerVariables = [displayTracking];
+    } else if (chosenTemplate === 'location_request_v1') {
+        const locUrl = customMessage?.locationUrl || `${trackingUrl}/location`;
+        variables = [
+            effectiveRecipientName,
+            displayTracking,
+            locUrl
+        ];
+        headerVariables = [displayTracking];
+    } else if (chosenTemplate === 'return_portal_v1') {
+        const retUrl = customMessage?.returnUrl || `https://target-kw.com/returns/${displayTracking}`;
+        variables = [
+            effectiveRecipientName,
+            displayTracking,
+            retUrl
+        ];
+        headerVariables = [displayTracking];
+    } else if (chosenTemplate === 'customer_inquiry_start') {
+        variables = [
+            effectiveRecipientName,
+            displayTracking,
+            trackingUrl
+        ];
+        headerVariables = [displayTracking];
+    } else {
+        variables = [
+            context.route || 'Kuwait City, KW → Destination',
+            estDeliveryFormatted,
+            context.currentStatus || 'Shipment In Transit',
+            fullUpdatedText,
+            trackingUrl
+        ];
+    }
+
+    return { variables, headerVariables };
+}
+
 function buildMetaMessagePayload(toPhone, eventType, context, templateNameOverride = null) {
     const cleanPhone = String(toPhone).replace(/\D/g, '');
     
@@ -333,12 +464,12 @@ function buildMetaMessagePayload(toPhone, eventType, context, templateNameOverri
                     { type: 'text', text: displayTracking },
                     { type: 'text', text: context.recipientName || 'Valued Customer' },
                     { type: 'text', text: reason },
-                    { type: 'text', text: action },
-                    { type: 'text', text: trackingUrl }
+                    { type: 'text', text: action }
                 ]
             }
         ];
     } else if (targetTemplateName === 'payment_request_v1') {
+        const paymentLink = context.publicPaymentLink || context.paymentUrl || `https://target-kw.com/pay/${displayTracking}`;
         components = [
             {
                 type: 'header',
@@ -348,10 +479,16 @@ function buildMetaMessagePayload(toPhone, eventType, context, templateNameOverri
                 type: 'body',
                 parameters: [
                     { type: 'text', text: context.recipientName || 'Valued Customer' },
+                    { type: 'text', text: displayTracking },
                     { type: 'text', text: context.amountDue || '0.000 KWD' },
-                    { type: 'text', text: context.publicPaymentLink || `https://target-kw.com/pay/${displayTracking}` },
                     { type: 'text', text: dateFormatted }
                 ]
+            },
+            {
+                type: 'button',
+                sub_type: 'url',
+                index: '0',
+                parameters: [{ type: 'text', text: paymentLink }]
             }
         ];
     } else if (targetTemplateName === 'location_request_v1') {
@@ -456,7 +593,7 @@ class WhatsAppIntegrationService {
     /**
      * Send automatic or manual shipment event notification via WhatsApp
      */
-    async sendNotification({ shipment, recipientRole, recipientPhone, recipientCountryCode, recipientName, eventType, templateName, customMessage, force = false, existingLogId = null, bypassAgeGuard = false }) {
+    async sendNotification({ shipment, recipientRole, recipientPhone, recipientCountryCode, recipientName, eventType, templateName, customMessage, force = false, existingLogId = null, bypassAgeGuard = false, provider: optionsProvider = null }) {
         const dbConfig = await whatsAppConfigService.getConfig({ internal: true }).catch(() => null);
         const sysSettings = getSystemSettings()?.whatsapp || {};
         const settings = {
@@ -474,7 +611,8 @@ class WhatsAppIntegrationService {
         const role = recipientRole || 'customer';
         const roleGroup = (role === 'sender') ? ['sender'] : ['receiver', 'customer'];
         const microRole = (role === 'sender') ? 'sender' : 'receiver';
-        const provider = settings.provider || 'SHIPMENT_WHATSAPP';
+        const rawProvider = optionsProvider || settings.provider || 'chatwoot';
+        const provider = String(rawProvider).toUpperCase();
 
         let chosenTemplate = templateName;
         if (!chosenTemplate) {
@@ -540,7 +678,7 @@ class WhatsAppIntegrationService {
                             recipientRole: role,
                             recipientName: recipientName || null,
                             recipientPhone: phone,
-                            provider,
+                            provider: rawProvider,
                             templateName: chosenTemplate,
                             status: 'QUEUED',
                             errorMessage: 'QUIET_HOURS_SUPPRESSED',
@@ -719,7 +857,7 @@ class WhatsAppIntegrationService {
                 data: {
                     recipientName: effectiveRecipientName,
                     recipientPhone: phone,
-                    provider,
+                    provider: rawProvider,
                     templateName: chosenTemplate,
                     status: 'QUEUED',
                     errorMessage: null,
@@ -735,7 +873,7 @@ class WhatsAppIntegrationService {
                     recipientRole: role,
                     recipientName: effectiveRecipientName,
                     recipientPhone: phone,
-                    provider,
+                    provider: rawProvider,
                     templateName: chosenTemplate,
                     status: 'QUEUED',
                     sentAt: new Date()
@@ -754,7 +892,7 @@ class WhatsAppIntegrationService {
             return { status: 'SKIPPED', logId: log.id, message: 'WhatsApp disabled in settings' };
         }
 
-        // 1. Primary Shipment-WhatsApp Microservice Dispatch (msg.target-kw.com)
+        // 1. Explicit Shipment-WhatsApp Microservice Dispatch (msg.target-kw.com)
         if (provider === 'SHIPMENT_WHATSAPP' || provider === 'TARGET_MSG') {
             const serviceUrl = settings.serviceUrl || 'https://msg.target-kw.com';
             const estDeliveryFormatted = formatLegibleDate(context.estimatedDeliveryDate);
@@ -764,123 +902,20 @@ class WhatsAppIntegrationService {
             const trackingUrl = context.publicTrackingLink || `https://target-kw.com/track/${context.trackingNumber}`;
             const displayTracking = shipment.dhlTrackingNumber || context.trackingNumber || shipment.trackingNumber;
 
-            let variables = [];
-            let headerVariables = [displayTracking];
-
-            if (chosenTemplate === 'new_shipment_created') {
-                variables = [
-                    context.route || 'Kuwait City, KW → Destination',
-                    estDeliveryFormatted,
-                    context.currentStatus || 'Shipment In Transit',
-                    fullUpdatedText,
-                    trackingUrl
-                ];
-            } else if (chosenTemplate === 'shipment_confirmation_2') {
-                // Meta template: HEADER={{1}} (trackingNumber)
-                // BODY: {{1}}=Invoice/Receipt, {{2}}=Date, {{3}}=Receiver Name, {{4}}=Receiver Tel, {{5}}=Tracking Link
-                const receiptNo = resolveInvoiceDetail(shipment, displayTracking);
-                
-                // Receiver Name & Tel in the template body MUST ALWAYS be the destination Consignee
-                variables = [
-                    receiptNo,
-                    dateFormatted,
-                    resolvedReceiverName,
-                    resolvedReceiverPhone,
-                    trackingUrl
-                ];
-                headerVariables = [displayTracking];
-            } else if (chosenTemplate === 'shipment_tracking_quick') {
-                const receiptNo = resolveInvoiceDetail(shipment, displayTracking);
-                variables = [
-                    displayTracking,
-                    dateFormatted,
-                    receiptNo,
-                    resolvedReceiverName,
-                    resolvedReceiverPhone,
-                    trackingUrl
-                ];
-                headerVariables = [displayTracking];
-            } else if (chosenTemplate === 'target_shipment_out_for_delivery') {
-                const destCity = shipment.destination?.city || context.destination?.city || 'Kuwait City';
-                const destArea = shipment.destination?.area || context.destination?.area || '';
-                const cityArea = destArea ? `${destCity}, ${destArea}` : destCity;
-                const courier = shipment.assignedDriver?.name || shipment.carrierCode || 'Target Express Fleet #12';
-                const deliveryWindow = estDeliveryFormatted || 'Today between 2:00 PM - 5:00 PM';
-
-                variables = [
-                    resolvedReceiverName,
-                    displayTracking,
-                    cityArea,
-                    courier,
-                    deliveryWindow
-                ];
-                headerVariables = [displayTracking];
-            } else if (chosenTemplate === 'target_shipment_delivered') {
-                const deliveryTime = shipment.deliveredAt ? `${formatLegibleDate(shipment.deliveredAt)} AST` : `${dateFormatted} AST`;
-                const signee = shipment.podRecipientName || 'Consignee Direct Signature';
-
-                variables = [
-                    effectiveRecipientName,
-                    displayTracking,
-                    deliveryTime,
-                    signee,
-                    trackingUrl
-                ];
-                headerVariables = [displayTracking];
-            } else if (chosenTemplate === 'target_customs_exception_hold') {
-                const holdReason = customMessage?.reason || shipment.failureReason || 'Customs inspection hold at Kuwait Airport Cargo Terminal';
-                const reqAction = customMessage?.action || 'Please provide Civil ID copy and commercial invoice';
-
-                variables = [
-                    displayTracking,
-                    resolvedReceiverName,
-                    holdReason,
-                    reqAction,
-                    trackingUrl
-                ];
-                headerVariables = [displayTracking];
-            } else if (chosenTemplate === 'payment_request_v1') {
-                const payAmt = customMessage?.amount || context.amountDue || `${Number(shipment.remainingBalance || shipment.price || 0).toFixed(3)} ${shipment.currency || 'KWD'}`;
-                const payUrl = customMessage?.paymentLink || context.publicPaymentLink || `https://target-kw.com/pay/${displayTracking}`;
-                variables = [
-                    effectiveRecipientName,
-                    payAmt,
-                    payUrl,
-                    dateFormatted
-                ];
-                headerVariables = [displayTracking];
-            } else if (chosenTemplate === 'location_request_v1') {
-                const locUrl = customMessage?.locationUrl || `${trackingUrl}/location`;
-                variables = [
-                    effectiveRecipientName,
-                    displayTracking,
-                    locUrl
-                ];
-                headerVariables = [displayTracking];
-            } else if (chosenTemplate === 'return_portal_v1') {
-                const retUrl = customMessage?.returnUrl || `https://target-kw.com/returns/${displayTracking}`;
-                variables = [
-                    effectiveRecipientName,
-                    displayTracking,
-                    retUrl
-                ];
-                headerVariables = [displayTracking];
-            } else if (chosenTemplate === 'customer_inquiry_start') {
-                variables = [
-                    effectiveRecipientName,
-                    displayTracking,
-                    trackingUrl
-                ];
-                headerVariables = [displayTracking];
-            } else {
-                variables = [
-                    context.route || 'Kuwait City, KW → Destination',
-                    estDeliveryFormatted,
-                    context.currentStatus || 'Shipment In Transit',
-                    fullUpdatedText,
-                    trackingUrl
-                ];
-            }
+            const { variables, headerVariables } = buildMicroserviceVariables({
+                chosenTemplate,
+                context,
+                shipment,
+                displayTracking,
+                resolvedReceiverName,
+                resolvedReceiverPhone,
+                effectiveRecipientName,
+                customMessage,
+                estDeliveryFormatted,
+                dateFormatted,
+                fullUpdatedText,
+                trackingUrl
+            });
 
             try {
                 const billId = shipment.documents?.phenixBillId || null;
@@ -916,12 +951,15 @@ class WhatsAppIntegrationService {
                     data: {
                         status: 'SENT',
                         chatwootMessageId: result.messageId,
+                        provider: 'SHIPMENT_WHATSAPP',
+                        isFallback: false,
+                        fallbackReason: null,
                         payloadJson: enrichedPayload,
                         responseJson: result.rawResponse
                     }
                 });
 
-                return { status: 'SENT', logId: updated.id, externalMessageId: result.messageId, provider: 'SHIPMENT_WHATSAPP' };
+                return { status: 'SENT', logId: updated.id, externalMessageId: result.messageId, provider: 'SHIPMENT_WHATSAPP', isFallback: false };
             } catch (err) {
                 logger.error(`[Shipment-WhatsApp Dispatch Error] ${err.message}`);
                 await prisma.shipmentNotificationLog.update({
@@ -933,20 +971,144 @@ class WhatsAppIntegrationService {
                         responseJson: err.rawResponse || { error: err.message }
                     }
                 });
+                throw err;
             }
         }
 
-        // 2. Chatwoot provider fallback
-        if (provider === 'CHATWOOT') {
-            const res = await chatwootService.sendShipmentNotification(eventType || 'out_for_delivery', shipment, { force: true });
-            await prisma.shipmentNotificationLog.update({
-                where: { id: log.id },
-                data: {
+        // 2. Primary Chatwoot Outbound Dispatch with Emergency Fallback to msg.target-kw.com
+        if (provider === 'CHATWOOT' || (!['MOCK', 'META'].includes(provider))) {
+            const displayTracking = shipment.dhlTrackingNumber || context.trackingNumber || shipment.trackingNumber;
+            const estDeliveryFormatted = formatLegibleDate(context.estimatedDeliveryDate);
+            const dateFormatted = context.updatedAt ? formatLegibleDate(context.updatedAt) : formatLegibleDate(new Date());
+            const timeFormatted = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+            const fullUpdatedText = `${dateFormatted} at ${timeFormatted}`;
+            const trackingUrl = context.publicTrackingLink || `https://target-kw.com/track/${context.trackingNumber}`;
+
+            try {
+                const chatwootResult = await chatwootService.dispatchSingleNotification({
+                    shipment,
+                    eventType,
+                    recipientRole: role,
+                    recipientPhone: phone,
+                    recipientName: effectiveRecipientName,
+                    templateName: chosenTemplate,
+                    customMessage,
+                    buttonUrlParam,
+                    logId: log.id
+                });
+
+                return {
                     status: 'SENT',
-                    responseJson: res
+                    logId: log.id,
+                    externalMessageId: chatwootResult.messageId,
+                    provider: 'chatwoot',
+                    isFallback: false
+                };
+            } catch (chatwootErr) {
+                const is5xx = (chatwootErr.response?.status >= 500 && chatwootErr.response?.status < 600) ||
+                              Boolean(chatwootErr.status >= 500 && chatwootErr.status < 600) ||
+                              /50\d|5\d\d|Bad Gateway|Gateway Timeout|Internal Server Error/i.test(chatwootErr.message);
+                const isTimeout = chatwootErr.code === 'ETIMEDOUT' ||
+                                  chatwootErr.code === 'ECONNABORTED' ||
+                                  /timeout/i.test(chatwootErr.message);
+                const isNetwork = ['ECONNREFUSED', 'ENOTFOUND', 'ENETUNREACH'].includes(chatwootErr.code) ||
+                                  /ECONNREFUSED|ENOTFOUND|network error/i.test(chatwootErr.message);
+                const isConfigMissing = chatwootErr.message?.includes('Chatwoot configuration incomplete') ||
+                                        chatwootErr.message?.includes('disabled') ||
+                                        chatwootErr.message?.includes('not configured') ||
+                                        chatwootErr.message?.includes('not initialized') ||
+                                        chatwootErr.message?.includes('is not a function') ||
+                                        !chatwootService.isConfigured();
+
+                if (is5xx || isTimeout || isNetwork || isConfigMissing) {
+                    const fallbackReason = `Chatwoot dispatch failed (${chatwootErr.response?.status || chatwootErr.status || chatwootErr.code || chatwootErr.message})`;
+                    logger.warn(`[chatwoot fallback] ${fallbackReason} for ${shipment.trackingNumber} to ${role}. Failing over to msg.target-kw.com`);
+
+                    const { variables, headerVariables } = buildMicroserviceVariables({
+                        chosenTemplate,
+                        context,
+                        shipment,
+                        displayTracking,
+                        resolvedReceiverName,
+                        resolvedReceiverPhone,
+                        effectiveRecipientName,
+                        customMessage,
+                        estDeliveryFormatted,
+                        dateFormatted,
+                        fullUpdatedText,
+                        trackingUrl
+                    });
+
+                    try {
+                        const billId = shipment.documents?.phenixBillId || null;
+                        const fallbackResult = await sendViaShipmentWhatsappMicroservice({
+                            serviceUrl: settings.serviceUrl || 'https://msg.target-kw.com',
+                            templateName: chosenTemplate,
+                            language: getTemplateLanguage(chosenTemplate),
+                            toPhone: phone,
+                            variables,
+                            headerVariables,
+                            billId,
+                            trackingNumber: shipment.trackingNumber,
+                            role: recipientRole || 'receiver',
+                            apiKey: settings.apiKey || null,
+                            buttonUrlParam
+                        });
+
+                        await prisma.shipmentNotificationLog.update({
+                            where: { id: log.id },
+                            data: {
+                                status: 'SENT',
+                                provider: 'fallback',
+                                isFallback: true,
+                                fallbackReason,
+                                chatwootMessageId: fallbackResult.messageId,
+                                payloadJson: {
+                                    ...fallbackResult.payload,
+                                    fallback: true,
+                                    primaryError: chatwootErr.message
+                                },
+                                responseJson: fallbackResult.rawResponse,
+                                sentAt: new Date()
+                            }
+                        });
+
+                        return {
+                            status: 'SENT',
+                            logId: log.id,
+                            externalMessageId: fallbackResult.messageId,
+                            provider: 'fallback',
+                            isFallback: true,
+                            fallbackReason
+                        };
+                    } catch (fallbackErr) {
+                        logger.error(`[chatwoot fallback error] Fallback microservice also failed: ${fallbackErr.message}`);
+                        await prisma.shipmentNotificationLog.update({
+                            where: { id: log.id },
+                            data: {
+                                status: 'FAILED',
+                                provider: 'fallback',
+                                isFallback: true,
+                                fallbackReason: `${fallbackReason} | Microservice error: ${fallbackErr.message}`,
+                                errorMessage: fallbackErr.message,
+                                responseJson: fallbackErr.rawResponse || { error: fallbackErr.message }
+                            }
+                        });
+                        throw fallbackErr;
+                    }
                 }
-            });
-            return { status: 'SENT', logId: log.id, provider: 'CHATWOOT' };
+
+                // Non-fallback error (e.g. 400 validation error like OUTSIDE_24H_WINDOW)
+                await prisma.shipmentNotificationLog.update({
+                    where: { id: log.id },
+                    data: {
+                        status: 'FAILED',
+                        errorMessage: chatwootErr.message,
+                        responseJson: chatwootErr.response?.data || { error: chatwootErr.message, code: chatwootErr.code }
+                    }
+                });
+                throw chatwootErr;
+            }
         }
 
         // 3. Mock Provider for Local/Sandbox Unit Tests
@@ -1535,4 +1697,16 @@ www.target-kw.com | +965 6965 6563`;
     }
 }
 
-module.exports = new WhatsAppIntegrationService();
+WhatsAppIntegrationService.prototype.buildMetaMessagePayload = buildMetaMessagePayload;
+WhatsAppIntegrationService.prototype.sendViaShipmentWhatsappMicroservice = sendViaShipmentWhatsappMicroservice;
+
+const serviceInstance = new WhatsAppIntegrationService();
+serviceInstance.buildMetaMessagePayload = buildMetaMessagePayload;
+serviceInstance.sendViaShipmentWhatsappMicroservice = sendViaShipmentWhatsappMicroservice;
+
+module.exports = serviceInstance;
+module.exports.sendViaShipmentWhatsappMicroservice = sendViaShipmentWhatsappMicroservice;
+module.exports.buildMetaMessagePayload = buildMetaMessagePayload;
+module.exports.resolveRecipientPhone = resolveRecipientPhone;
+module.exports.isDevMode = isDevMode;
+module.exports.DEV_SAFE_PHONE = DEV_SAFE_PHONE;
