@@ -1235,6 +1235,29 @@ exports.updateShipment = async (req, res) => {
             : baseAllowedFields;
         const manualEditableFields = ['price', 'costPrice', 'estimatedDelivery'];
         const updateData = {};
+        const normalizePartyPhone = (party) => {
+            if (!party || typeof party !== 'object' || !party.phone) return party;
+            const rawPh = String(party.phone).trim();
+            const dialDigits = String(party.phoneCountryCode || '').replace(/\D/g, '');
+            if (!rawPh || !dialDigits) return party;
+            if (!rawPh.startsWith('+') && !rawPh.startsWith('00')) {
+                let phDigits = rawPh.replace(/\D/g, '');
+                if (phDigits) {
+                    if (phDigits.startsWith(dialDigits) && phDigits.length >= dialDigits.length + 7) {
+                        return { ...party, phone: `+${phDigits}` };
+                    }
+                    if (phDigits.startsWith('0') && dialDigits !== '1') phDigits = phDigits.slice(1);
+                    return { ...party, phone: `+${dialDigits}${phDigits}` };
+                }
+            }
+            return party;
+        };
+        if (updates.origin && typeof updates.origin === 'object') {
+            updates.origin = normalizePartyPhone(updates.origin);
+        }
+        if (updates.destination && typeof updates.destination === 'object') {
+            updates.destination = normalizePartyPhone(updates.destination);
+        }
         const currentOrigin = shipment.origin && typeof shipment.origin === 'object' ? { ...shipment.origin } : {};
         let nextOrigin = updates.origin && typeof updates.origin === 'object' 
             ? { ...currentOrigin, ...updates.origin } 

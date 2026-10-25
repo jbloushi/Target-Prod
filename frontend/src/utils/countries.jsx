@@ -394,7 +394,7 @@ export const extractPhonePrefix = (rawPhone, fallbackDialCode = '+965') => {
 
 /**
  * Format a phone number and selected dialCode into a clean E.164 international phone string.
- * Always honors the selected dialCode unless the phone number explicitly starts with a different '+' prefix.
+ * Always honors the selected dialCode when provided.
  */
 export const formatE164Phone = (phone, dialCode = '+965') => {
     if (!phone) return '';
@@ -403,13 +403,20 @@ export const formatE164Phone = (phone, dialCode = '+965') => {
 
     const cleanDial = String(dialCode || '+965').replace(/\D/g, '') || '965';
 
-    // If user typed an explicit + or 00 prefix, check if it matches the selected dialCode or another country
+    // If phone contains a + or 00 prefix, strip any known country prefix first so the selected dialCode is honored
     if (str.startsWith('+') || str.startsWith('00')) {
         const normalized = str.startsWith('00') ? `+${str.slice(2)}` : str;
         const allDigits = normalized.slice(1).replace(/\D/g, '');
         if (!allDigits) return '';
         if (allDigits.startsWith(cleanDial)) {
             const rest = allDigits.slice(cleanDial.length).replace(/^0+/, '');
+            return `+${cleanDial}${rest}`;
+        }
+        // If dialCode was explicitly selected and differs from the existing prefix in phone,
+        // extract the local part and apply the selected dialCode
+        const extracted = extractPhonePrefix(normalized, `+${cleanDial}`);
+        if (extracted.localPhone) {
+            const rest = extracted.localPhone.replace(/^0+/, '');
             return `+${cleanDial}${rest}`;
         }
         return `+${allDigits}`;

@@ -240,7 +240,10 @@ exports.sendChatwootTestMessage = async (req, res) => {
             };
         }
 
-        const result = await chatwootNotificationService.sendShipmentNotification(eventType, shipmentForSend, { force: Boolean(force) });
+        const result = await chatwootNotificationService.sendShipmentNotification(eventType, shipmentForSend, {
+            force: Boolean(force),
+            recipientRole: recipientRole || null
+        });
         return res.status(200).json({ success: true, data: result });
     } catch (error) {
         logger.error('[chatwoot] test message failed:', error);

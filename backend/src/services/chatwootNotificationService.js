@@ -322,13 +322,16 @@ function getPersonFromShipment(shipment, role) {
     const source = role === 'sender'
         ? (shipment.origin || shipment.customer || {})
         : (shipment.destination || {});
+    const fallbackPhone = role === 'sender'
+        ? (shipment.customer?.phone || shipment.user?.phone || shipment.organization?.phone || null)
+        : (shipment.customerPhone || null);
     return {
         role,
-        name: source.contactPerson || source.name || source.company || (role === 'sender' ? shipment.customer?.name : null),
-        email: source.email || (role === 'sender' ? shipment.customer?.email : null),
+        name: source.contactPerson || source.name || source.company || (role === 'sender' ? (shipment.customer?.name || shipment.user?.name) : null),
+        email: source.email || (role === 'sender' ? (shipment.customer?.email || shipment.user?.email) : null),
         countryCode: source.phoneCountryCode || null,
         phone: normalizePhone(
-            source.phone || (role === 'sender' ? shipment.customer?.phone : null),
+            source.phone || fallbackPhone,
             source.phoneCountryCode
         ),
         raw: source
@@ -438,8 +441,8 @@ function buildShipmentNotificationContext(shipment) {
     };
 }
 
-function getNotificationTargets(eventType, shipment) {
-    const roles = EVENT_TARGETS[eventType] || [];
+function getNotificationTargets(eventType, shipment, recipientRole = null) {
+    const roles = recipientRole ? [recipientRole] : (EVENT_TARGETS[eventType] || []);
     return roles
         .map(role => getPersonFromShipment(shipment, role))
         .filter(target => target.phone);
@@ -745,42 +748,50 @@ class ChatwootNotificationService {
             errorMessage
         };
 
-        if (force) {
-            const existing = await prisma.shipmentNotificationLog.findFirst({
-                where: {
-                    shipmentId: shipment.id,
-                    eventType,
-                    recipientRole: target.role
-                },
-                orderBy: { updatedAt: 'desc' }
-            });
-            if (existing?.id) {
-                return prisma.shipmentNotificationLog.update({
-                    where: { id: existing.id },
-                    data: { ...data, payloadJson: null, responseJson: null, sentAt: null }
-                });
+        const existing = await prisma.shipmentNotificationLog.findFirst({
+            where: {
+                shipmentId: shipment.id,
+                eventType,
+                recipientRole: target.role
+            },
+            orderBy: { updatedAt: 'desc' }
+        });
+
+        if (existing?.id) {
+            const existingStatusUpper = String(existing.status || '').toUpperCase();
+            const alreadySentEarlier = ['SENT', 'DELIVERED', 'READ', 'SUBMITTED'].includes(existingStatusUpper);
+            if (!force && alreadySentEarlier) {
+                logger.info(`[chatwoot] skipped duplicate (already sent earlier) ${eventType} ${shipment.trackingNumber} ${target.role} ${maskPhone(target.phone)}`);
+                return null;
             }
-            return prisma.shipmentNotificationLog.create({ data });
+            return prisma.shipmentNotificationLog.update({
+                where: { id: existing.id },
+                data: { ...data, payloadJson: null, responseJson: null, sentAt: null }
+            });
         }
 
         try {
             return await prisma.shipmentNotificationLog.create({ data });
         } catch (error) {
             if (error.code === 'P2002') {
-                logger.info(`[chatwoot] skipped duplicate ${eventType} ${shipment.trackingNumber} ${target.role} ${maskPhone(target.phone)}`);
-                const existing = await prisma.shipmentNotificationLog.findFirst({
+                const concurrent = await prisma.shipmentNotificationLog.findFirst({
                     where: {
                         shipmentId: shipment.id,
                         eventType,
-                        recipientRole: target.role,
-                        provider: PROVIDER
-                    }
+                        recipientRole: target.role
+                    },
+                    orderBy: { updatedAt: 'desc' }
                 });
-                if (existing?.status !== 'skipped') {
-                    await prisma.shipmentNotificationLog.update({
-                        where: { id: existing.id },
-                        data: { responseJson: { skippedReason: 'duplicate' } }
-                    }).catch(() => null);
+                const concurrentStatusUpper = String(concurrent?.status || '').toUpperCase();
+                if (!force && ['SENT', 'DELIVERED', 'READ', 'SUBMITTED'].includes(concurrentStatusUpper)) {
+                    logger.info(`[chatwoot] skipped duplicate ${eventType} ${shipment.trackingNumber} ${target.role} ${maskPhone(target.phone)}`);
+                    return null;
+                }
+                if (concurrent?.id) {
+                    return prisma.shipmentNotificationLog.update({
+                        where: { id: concurrent.id },
+                        data: { ...data, payloadJson: null, responseJson: null, sentAt: null }
+                    });
                 }
                 return null;
             }
@@ -1539,7 +1550,7 @@ class ChatwootNotificationService {
         const dbConfig = await whatsAppConfigService.getConfig({ internal: true }).catch(() => null);
         const systemSettings = dbConfig || getSystemSettings()?.whatsapp || {};
         const activeProvider = systemSettings.provider || 'CHATWOOT';
-        const targets = getNotificationTargets(eventType, shipment);
+        const targets = getNotificationTargets(eventType, shipment, options.recipientRole || null);
 
         // When provider is SHIPMENT_WHATSAPP, META, or MOCK, route directly to WhatsApp integration
         if (activeProvider === 'SHIPMENT_WHATSAPP' || activeProvider === 'TARGET_MSG' || activeProvider === 'META' || activeProvider === 'MOCK') {
@@ -1629,7 +1640,7 @@ class ChatwootNotificationService {
         for (const target of targets) {
             const log = await this.createLog({ shipment, eventType, target, force: options.force });
             if (!log) {
-                results.push({ target: target.role, status: 'skipped', reason: 'duplicate' });
+                results.push({ target: target.role, status: 'skipped', reason: 'already_sent' });
                 continue;
             }
 

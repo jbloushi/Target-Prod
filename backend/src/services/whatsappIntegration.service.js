@@ -771,7 +771,7 @@ class WhatsAppIntegrationService {
                         { trackingNumber: shipment.trackingNumber }
                     ],
                     recipientRole: { in: roleGroup },
-                    status: { in: ['SENT', 'DELIVERED', 'READ'] },
+                    status: { in: ['SENT', 'DELIVERED', 'READ', 'SUBMITTED', 'submitted', 'sent'] },
                     ...(existingLogId ? { id: { not: existingLogId } } : {})
                 },
                 orderBy: { sentAt: 'desc' }

@@ -21,7 +21,7 @@ import { dedupeTrackingEvents } from '../utils/dedupeTrackingEvents';
 import StatusBadge from '../components/common/StatusBadge';
 import TradeRouteDisplay from '../components/common/TradeRouteDisplay';
 import ProofOfDeliveryModal from '../components/ProofOfDeliveryModal';
-import { countries } from '../utils/countries';
+import { countries, extractPhonePrefix, formatE164Phone } from '../utils/countries';
 import { SearchablePhoneDialSelector } from '../components/common/SearchableCountrySelect';
 import GoogleAddressInput from '../components/GoogleAddressInput';
 import { DG_PRESET_OPTIONS } from '../components/shipment/KineticShipmentWizard';
@@ -628,17 +628,42 @@ const ShipmentDetailsPage = () => {
     };
 
     // Send WhatsApp Event
-    const handleSendWhatsAppRole = async (recipientRole, eventType = 'shipment_created') => {
+    const handleSendWhatsAppRole = async (recipientRole, eventType = 'shipment_created', forceSend = false) => {
         if (!shipment?.trackingNumber || !recipientRole) return;
         setSendingWhatsAppRole(recipientRole);
         try {
-            await integrationService.sendChatwootTestMessage({
+            const res = await integrationService.sendChatwootTestMessage({
                 trackingNumber: shipment.trackingNumber,
                 eventType,
                 recipientRole,
-                force: true
+                force: Boolean(forceSend)
             });
-            enqueueSnackbar(isRTL ? `تم إرسال إشعار واتساب إلى ${recipientRole}` : `WhatsApp message queued for ${recipientRole}!`, { variant: 'success' });
+            const data = res?.data || res;
+            const targetResult = Array.isArray(data?.results)
+                ? data.results.find(r => r.target === recipientRole) || data.results[0]
+                : null;
+
+            if (targetResult?.status === 'failed') {
+                enqueueSnackbar(
+                    targetResult.error || (isRTL ? `فشل إرسال إشعار واتساب إلى ${recipientRole}` : `Failed to send WhatsApp to ${recipientRole}`),
+                    { variant: 'error' }
+                );
+            } else if (targetResult?.status === 'skipped' && targetResult?.reason === 'already_sent') {
+                enqueueSnackbar(
+                    isRTL ? `تم إرسال إشعار واتساب مسبقاً إلى ${recipientRole}` : `WhatsApp notification was already sent earlier to ${recipientRole}`,
+                    { variant: 'info' }
+                );
+            } else if (data?.skipped) {
+                enqueueSnackbar(
+                    isRTL ? `تم تخطي الإرسال (${data.reason || 'غير مفعل'})` : `WhatsApp send skipped (${data.reason || 'not configured'})`,
+                    { variant: 'warning' }
+                );
+            } else {
+                enqueueSnackbar(
+                    isRTL ? `تم إرسال إشعار واتساب إلى ${recipientRole}` : `WhatsApp message sent to ${recipientRole}!`,
+                    { variant: 'success' }
+                );
+            }
             await getShipment(shipment.trackingNumber);
         } catch (err) {
             enqueueSnackbar(err.message || 'Failed to send WhatsApp message', { variant: 'error' });
@@ -696,13 +721,15 @@ const ShipmentDetailsPage = () => {
 
         const sCountryObj = countries.find(c => c.code === (sOrigin.countryCode || sOrigin.country)) || { dialCode: '+965' };
         const dCountryObj = countries.find(c => c.code === (sDest.countryCode || sDest.country)) || { dialCode: '+966' };
+        const sExtPhone = extractPhonePrefix(sOrigin.phone || '', sOrigin.phoneCountryCode || sCountryObj.dialCode || '+965');
+        const dExtPhone = extractPhonePrefix(sDest.phone || '', sDest.phoneCountryCode || dCountryObj.dialCode || '+966');
 
         const draft = {
             sender: {
                 name: sOrigin.contactPerson || sOrigin.name || '',
                 company: sOrigin.company || '',
-                phone: sOrigin.phone || '',
-                phoneCountryCode: sOrigin.phoneCountryCode || sCountryObj.dialCode || '+965',
+                phone: sExtPhone.localPhone || sOrigin.phone || '',
+                phoneCountryCode: sOrigin.phoneCountryCode || sExtPhone.dialCode || sCountryObj.dialCode || '+965',
                 email: sOrigin.email || '',
                 taxId: sOrigin.taxId || sOrigin.vatNumber || sOrigin.crNumber || '',
                 addr1: sOrigin.line1 || sOrigin.address || sOrigin.addr1 || '',
@@ -718,8 +745,8 @@ const ShipmentDetailsPage = () => {
             receiver: {
                 name: sDest.contactPerson || sDest.name || '',
                 company: sDest.company || '',
-                phone: sDest.phone || '',
-                phoneCountryCode: sDest.phoneCountryCode || dCountryObj.dialCode || '+966',
+                phone: dExtPhone.localPhone || sDest.phone || '',
+                phoneCountryCode: sDest.phoneCountryCode || dExtPhone.dialCode || dCountryObj.dialCode || '+966',
                 email: sDest.email || '',
                 taxId: sDest.taxId || sDest.vatNumber || sDest.civilId || '',
                 addr1: sDest.line1 || sDest.address || sDest.addr1 || '',
@@ -790,7 +817,7 @@ const ShipmentDetailsPage = () => {
                 name: editDraft.sender.name,
                 contactPerson: editDraft.sender.name,
                 company: editDraft.sender.company,
-                phone: editDraft.sender.phone,
+                phone: formatE164Phone(editDraft.sender.phone, editDraft.sender.phoneCountryCode) || editDraft.sender.phone,
                 phoneCountryCode: editDraft.sender.phoneCountryCode,
                 email: editDraft.sender.email,
                 taxId: editDraft.sender.taxId,
@@ -815,7 +842,7 @@ const ShipmentDetailsPage = () => {
                 name: editDraft.receiver.name,
                 contactPerson: editDraft.receiver.name,
                 company: editDraft.receiver.company,
-                phone: editDraft.receiver.phone,
+                phone: formatE164Phone(editDraft.receiver.phone, editDraft.receiver.phoneCountryCode) || editDraft.receiver.phone,
                 phoneCountryCode: editDraft.receiver.phoneCountryCode,
                 email: editDraft.receiver.email,
                 taxId: editDraft.receiver.taxId,
@@ -2876,7 +2903,7 @@ const ShipmentDetailsPage = () => {
                                     );
                                     const latestLog = roleLogs[0] || null;
                                     const logStatus = (latestLog?.status || '').toUpperCase();
-                                    const isSent = ['SENT', 'DELIVERED', 'READ'].includes(logStatus);
+                                    const isSent = ['SENT', 'DELIVERED', 'READ', 'SUBMITTED'].includes(logStatus);
                                     const isFailed = logStatus === 'FAILED';
                                     const phone = latestLog?.recipientPhone || (isSenderRole ? sender.phone : receiver.phone) || '';
                                     const sentDate = latestLog?.sentAt ? new Date(latestLog.sentAt).toLocaleDateString() : '';
@@ -2889,7 +2916,7 @@ const ShipmentDetailsPage = () => {
                                                 {!isSent ? (
                                                     <button
                                                         type="button"
-                                                        onClick={() => handleSendWhatsAppRole(role.key)}
+                                                        onClick={() => handleSendWhatsAppRole(role.key, 'shipment_created', isFailed)}
                                                         disabled={sendingWhatsAppRole === role.key}
                                                         className={`btn btn-xs h-6 min-h-6 text-[10.5px] px-2 rounded-lg font-bold gap-1 ${
                                                             isFailed 
@@ -2980,7 +3007,7 @@ const ShipmentDetailsPage = () => {
                                     <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
                                         {shipment.notificationLogs.map((log) => {
                                             const s = (log.status || '').toUpperCase();
-                                            const badgeStyle = s === 'DELIVERED' || s === 'READ' || s === 'SENT'
+                                            const badgeStyle = s === 'DELIVERED' || s === 'READ' || s === 'SENT' || s === 'SUBMITTED'
                                                 ? 'bg-emerald-100 text-emerald-950 border border-emerald-300'
                                                 : s === 'FAILED'
                                                     ? 'bg-rose-100 text-rose-950 border border-rose-300'

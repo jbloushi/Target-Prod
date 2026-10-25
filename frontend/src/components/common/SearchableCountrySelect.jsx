@@ -22,19 +22,27 @@ export const SearchablePhoneDialSelector = ({
   const searchInputRef = useRef(null);
 
   const selectedCountry = useMemo(() => {
-    const cleanVal = String(value || '+965').trim();
-    if (countryCode) {
-      const byCode = countries.find(
-        c => c.code === String(countryCode).toUpperCase() && c.dialCode === cleanVal
-      );
-      if (byCode) return byCode;
+    const cleanVal = String(value || '').trim();
+    if (cleanVal) {
+      if (countryCode) {
+        const byCodeAndDial = countries.find(
+          c => c.code === String(countryCode).toUpperCase() && c.dialCode === cleanVal
+        );
+        if (byCodeAndDial) return byCodeAndDial;
+      }
+      const byExactDial = countries.find(c => c.dialCode === cleanVal);
+      if (byExactDial) return byExactDial;
+      const cleanDigits = cleanVal.replace(/\D/g, '');
+      if (cleanDigits) {
+        const byDigits = countries.find(c => c.dialCode.replace(/\D/g, '') === cleanDigits);
+        if (byDigits) return byDigits;
+      }
     }
-    return (
-      countries.find(c => c.dialCode === cleanVal) ||
-      countries.find(c => c.dialCode.replace(/\D/g, '') === cleanVal.replace(/\D/g, '')) ||
-      countries.find(c => c.code === 'KW') ||
-      countries[0]
-    );
+    if (countryCode) {
+      const byCodeOnly = countries.find(c => c.code === String(countryCode).toUpperCase());
+      if (byCodeOnly) return byCodeOnly;
+    }
+    return countries.find(c => c.code === 'KW') || countries[0];
   }, [value, countryCode]);
 
   const filtered = useMemo(() => filterCountries(query), [query]);

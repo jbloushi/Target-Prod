@@ -435,16 +435,27 @@ class ShipmentDraftService {
             if (clean.phone && clean.phoneCountryCode) {
                 const rawPh = String(clean.phone).trim();
                 const dialDigits = String(clean.phoneCountryCode).replace(/\D/g, '');
-                if (rawPh && dialDigits && !rawPh.startsWith('+') && !rawPh.startsWith('00')) {
-                    let phDigits = rawPh.replace(/\D/g, '');
-                    if (phDigits) {
-                        if (phDigits.startsWith(dialDigits) && phDigits.length >= dialDigits.length + 7) {
-                            clean.phone = `+${phDigits}`;
-                        } else {
-                            if (phDigits.startsWith('0') && dialDigits !== '1') phDigits = phDigits.slice(1);
-                            clean.phone = `+${dialDigits}${phDigits}`;
+                if (rawPh && dialDigits) {
+                    if (!rawPh.startsWith('+') && !rawPh.startsWith('00')) {
+                        let phDigits = rawPh.replace(/\D/g, '');
+                        if (phDigits) {
+                            if (phDigits.startsWith(dialDigits) && phDigits.length >= dialDigits.length + 7) {
+                                clean.phone = `+${phDigits}`;
+                            } else {
+                                if (phDigits.startsWith('0') && dialDigits !== '1') phDigits = phDigits.slice(1);
+                                clean.phone = `+${dialDigits}${phDigits}`;
+                            }
+                        }
+                    } else {
+                        const normalized = rawPh.startsWith('00') ? `+${rawPh.slice(2)}` : rawPh;
+                        const allDigits = normalized.slice(1).replace(/\D/g, '');
+                        if (allDigits && allDigits.startsWith(dialDigits)) {
+                            const rest = allDigits.slice(dialDigits.length).replace(/^0+/, '');
+                            clean.phone = `+${dialDigits}${rest}`;
                         }
                     }
+                }
+            }
                 }
             }
 

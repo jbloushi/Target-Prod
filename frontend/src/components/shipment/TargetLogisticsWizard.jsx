@@ -98,7 +98,7 @@ export const TargetLogisticsWizard = ({
       return {
         name: orig.contactPerson || orig.name || '',
         company: orig.company || '',
-        phone: orig.phone || '',
+        phone: extractPhonePrefix(orig.phone || '', orig.phoneCountryCode || countries.find(c => c.code === cCode)?.dialCode || '+965').localPhone || orig.phone || '',
         email: orig.email || '',
         taxId: orig.taxId || orig.vatNumber || '',
         addr1: orig.streetLines?.[0] || orig.line1 || orig.address || '',
@@ -134,7 +134,7 @@ export const TargetLogisticsWizard = ({
       return {
         name: dest.contactPerson || dest.name || '',
         company: dest.company || '',
-        phone: dest.phone || '',
+        phone: extractPhonePrefix(dest.phone || '', dest.phoneCountryCode || countries.find(c => c.code === cCode)?.dialCode || '+971').localPhone || dest.phone || '',
         email: dest.email || '',
         taxId: dest.taxId || dest.vatNumber || dest.civilId || '',
         addr1: dest.streetLines?.[0] || dest.line1 || dest.address || '',
@@ -385,7 +385,7 @@ export const TargetLogisticsWizard = ({
       setSender(prev => ({
         ...prev,
         company: cl.organization?.name || cl.company || cl.name || prev.company,
-        phone: cl.phone || prev.phone,
+        phone: cl.phone ? extractPhonePrefix(cl.phone, countryObj?.dialCode || prev.phoneCountryCode || '+965').localPhone : prev.phone,
         email: cl.email || prev.email,
         taxId: cl.carrierConfig?.taxId || cl.carrierConfig?.vatNo || prev.taxId,
         addr1: defAddr?.addressLine1 || defAddr?.streetLines?.[0] || prev.addr1,
@@ -422,14 +422,14 @@ export const TargetLogisticsWizard = ({
         ...prev,
         name: org.contactPerson || org.name || prev.name,
         company: org.name || prev.company,
-        phone: org.phone || prev.phone,
+        phone: org.phone ? extractPhonePrefix(org.phone, countryObj?.dialCode || prev.phoneCountryCode || '+965').localPhone : prev.phone,
         email: org.email || prev.email,
         addr1: org.address || org.addressLine1 || prev.addr1,
         city: org.city || prev.city,
         state: org.state || prev.state,
         country: countryObj?.name || org.country || prev.country,
         countryCode: countryObj?.code || org.countryCode || prev.countryCode,
-        phoneCountryCode: countryObj?.dialCode || prev.phoneCountryCode,
+        phoneCountryCode: org.phone ? extractPhonePrefix(org.phone, countryObj?.dialCode || prev.phoneCountryCode || '+965').dialCode : (countryObj?.dialCode || prev.phoneCountryCode),
         taxId: org.taxNumber || org.vatNumber || org.taxId || prev.taxId
       }));
       const orgCarrier = org.allowedCarriers?.defaultCarrier;
@@ -468,7 +468,7 @@ export const TargetLogisticsWizard = ({
       ...prev,
       name: a.contactPerson || a.name || prev.name,
       company: a.company || prev.company,
-      phone: a.phone || prev.phone,
+      phone: a.phone ? extractPhonePrefix(a.phone, a.phoneCountryCode || countryObj?.dialCode || prev.phoneCountryCode || '+965').localPhone : prev.phone,
       phoneCountryCode: a.phoneCountryCode || extractPhonePrefix(a.phone, countryObj?.dialCode || prev.phoneCountryCode || '+965').dialCode,
       email: a.email || prev.email,
       taxId: a.taxId || prev.taxId,
@@ -505,7 +505,7 @@ export const TargetLogisticsWizard = ({
       ...prev,
       name: a.contactPerson || a.name || prev.name,
       company: a.company || prev.company,
-      phone: a.phone || prev.phone,
+      phone: a.phone ? extractPhonePrefix(a.phone, a.phoneCountryCode || countryObj?.dialCode || prev.phoneCountryCode || '+971').localPhone : prev.phone,
       phoneCountryCode: a.phoneCountryCode || extractPhonePrefix(a.phone, countryObj?.dialCode || prev.phoneCountryCode || '+971').dialCode,
       email: a.email || prev.email,
       taxId: a.taxId || prev.taxId,
@@ -1502,7 +1502,7 @@ export const TargetLogisticsWizard = ({
                           value={sender.phoneCountryCode}
                           countryCode={sender.countryCode}
                           isRTL={isRTL}
-                          onChange={(dialCode) => setSender(prev => ({ ...prev, phoneCountryCode: dialCode }))}
+                          onChange={(dialCode) => setSender(prev => ({ ...prev, phone: (prev.phone && (prev.phone.startsWith('+') || prev.phone.startsWith('00'))) ? extractPhonePrefix(prev.phone, dialCode).localPhone : prev.phone, phoneCountryCode: dialCode }))}
                         />
                         <input
                           type="tel"
@@ -1512,7 +1512,7 @@ export const TargetLogisticsWizard = ({
                             if (val.startsWith('+') && val.length > 3) {
                               const ext = extractPhonePrefix(val, sender.phoneCountryCode);
                               if (ext.countryCode) {
-                                setSender(prev => ({ ...prev, phone: val, phoneCountryCode: ext.dialCode }));
+                                setSender(prev => ({ ...prev, phone: ext.localPhone, phoneCountryCode: ext.dialCode }));
                               } else {
                                 setSender(prev => ({ ...prev, phone: val }));
                               }
@@ -1648,7 +1648,7 @@ export const TargetLogisticsWizard = ({
                         zip: res.postalCode || (NON_POSTAL_COUNTRIES.includes(res.countryCode) ? '00000' : prev.zip),
                         country: countryObj?.name || res.country || prev.country,
                         countryCode: countryObj?.code || res.countryCode || prev.countryCode,
-                        phoneCountryCode: countryObj?.dialCode || prev.phoneCountryCode,
+                        phoneCountryCode: (!prev.phone?.trim() && prev.countryCode !== (countryObj?.code || res.countryCode)) ? (countryObj?.dialCode || prev.phoneCountryCode) : prev.phoneCountryCode,
                         latitude: res.latitude !== undefined && res.latitude !== null ? Number(res.latitude) : prev.latitude,
                         longitude: res.longitude !== undefined && res.longitude !== null ? Number(res.longitude) : prev.longitude,
                         formattedAddress: res.formattedAddress || prev.formattedAddress
@@ -1683,7 +1683,7 @@ export const TargetLogisticsWizard = ({
                           city: loc.city || prev.city,
                           country: countryObj?.name || loc.country || prev.country,
                           countryCode: countryObj?.code || loc.countryCode || prev.countryCode,
-                          phoneCountryCode: countryObj?.dialCode || prev.phoneCountryCode,
+                          phoneCountryCode: (!prev.phone?.trim() && prev.countryCode !== (countryObj?.code || loc.countryCode)) ? (countryObj?.dialCode || prev.phoneCountryCode) : prev.phoneCountryCode,
                           state: loc.state || prev.state,
                           area: loc.area || prev.area,
                           zip: loc.postalCode || (NON_POSTAL_COUNTRIES.includes(loc.countryCode) ? '00000' : prev.zip),
@@ -2000,7 +2000,7 @@ export const TargetLogisticsWizard = ({
                           value={receiver.phoneCountryCode}
                           countryCode={receiver.countryCode}
                           isRTL={isRTL}
-                          onChange={(dialCode) => setReceiver(prev => ({ ...prev, phoneCountryCode: dialCode }))}
+                          onChange={(dialCode) => setReceiver(prev => ({ ...prev, phone: (prev.phone && (prev.phone.startsWith('+') || prev.phone.startsWith('00'))) ? extractPhonePrefix(prev.phone, dialCode).localPhone : prev.phone, phoneCountryCode: dialCode }))}
                         />
                         <input
                           type="tel"
@@ -2010,7 +2010,7 @@ export const TargetLogisticsWizard = ({
                             if (val.startsWith('+') && val.length > 3) {
                               const ext = extractPhonePrefix(val, receiver.phoneCountryCode);
                               if (ext.countryCode) {
-                                setReceiver(prev => ({ ...prev, phone: val, phoneCountryCode: ext.dialCode }));
+                                setReceiver(prev => ({ ...prev, phone: ext.localPhone, phoneCountryCode: ext.dialCode }));
                               } else {
                                 setReceiver(prev => ({ ...prev, phone: val }));
                               }
@@ -2146,7 +2146,7 @@ export const TargetLogisticsWizard = ({
                         zip: res.postalCode || (NON_POSTAL_COUNTRIES.includes(res.countryCode) ? '00000' : prev.zip),
                         country: countryObj?.name || res.country || prev.country,
                         countryCode: countryObj?.code || res.countryCode || prev.countryCode,
-                        phoneCountryCode: countryObj?.dialCode || prev.phoneCountryCode,
+                        phoneCountryCode: (!prev.phone?.trim() && prev.countryCode !== (countryObj?.code || res.countryCode)) ? (countryObj?.dialCode || prev.phoneCountryCode) : prev.phoneCountryCode,
                         latitude: res.latitude !== undefined && res.latitude !== null ? Number(res.latitude) : prev.latitude,
                         longitude: res.longitude !== undefined && res.longitude !== null ? Number(res.longitude) : prev.longitude,
                         formattedAddress: res.formattedAddress || prev.formattedAddress
@@ -2181,7 +2181,7 @@ export const TargetLogisticsWizard = ({
                           city: loc.city || prev.city,
                           country: countryObj?.name || loc.country || prev.country,
                           countryCode: countryObj?.code || loc.countryCode || prev.countryCode,
-                          phoneCountryCode: countryObj?.dialCode || prev.phoneCountryCode,
+                          phoneCountryCode: (!prev.phone?.trim() && prev.countryCode !== (countryObj?.code || loc.countryCode)) ? (countryObj?.dialCode || prev.phoneCountryCode) : prev.phoneCountryCode,
                           state: loc.state || prev.state,
                           area: loc.area || prev.area,
                           zip: loc.postalCode || (NON_POSTAL_COUNTRIES.includes(loc.countryCode) ? '00000' : prev.zip),

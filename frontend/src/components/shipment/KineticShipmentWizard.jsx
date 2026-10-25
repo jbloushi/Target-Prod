@@ -348,6 +348,7 @@ const DaisyPhoneInput = ({
   value,
   onChange,
   dialCode = '+965',
+  countryCode = '',
   onDialCodeChange,
   required = false,
   half = false,
@@ -396,6 +397,7 @@ const DaisyPhoneInput = ({
       <div className="flex items-center gap-1.5">
         <SearchablePhoneDialSelector
           value={dialCode}
+          countryCode={countryCode}
           disabled={disabled}
           variant="daisy"
           onChange={(nextDial) => onDialCodeChange && onDialCodeChange(nextDial)}
@@ -452,28 +454,31 @@ const AddressStep = ({
     const addr = savedAddresses.find((a, idx) => a.id === selectedId || a._id === selectedId || String(idx) === selectedId);
     if (addr) {
       const countryObj = countries.find(c => c.code === addr.countryCode) || countries.find(c => c.name === addr.country);
-      setData(d => ({
-        ...d,
-        name: addr.contactPerson || addr.name || d.name,
-        company: addr.company || d.company,
-        phone: addr.phone || d.phone,
-        phoneCountryCode: countryObj?.dialCode || addr.phoneCountryCode || d.phoneCountryCode,
-        email: addr.email || d.email,
-        taxId: addr.taxId || d.taxId,
-        addr1: addr.addressLine1 || addr.streetLines?.[0] || addr.addr1 || d.addr1,
-        addr2: addr.addressLine2 || addr.streetLines?.[1] || addr.addr2 || '',
-        city: addr.city || d.city,
-        state: addr.state || d.state,
-        zip: addr.postalCode || addr.zip || (NON_POSTAL_COUNTRIES.includes(addr.countryCode) ? '00000' : d.zip),
-        country: countryObj?.name || addr.country || d.country,
-        countryCode: countryObj?.code || addr.countryCode || d.countryCode,
-        area: addr.area || d.area,
-        latitude: addr.latitude || d.latitude,
-        longitude: addr.longitude || d.longitude,
-        instructions: addr.instructions || d.instructions,
-        formattedAddress: addr.formattedAddress || `${addr.addressLine1 || addr.addr1 || ''}, ${addr.city || ''}, ${countryObj?.name || ''}`,
-        verified: true
-      }));
+      setData(d => {
+        const ext = addr.phone ? extractPhonePrefix(addr.phone, addr.phoneCountryCode || countryObj?.dialCode || d.phoneCountryCode || '+965') : null;
+        return {
+          ...d,
+          name: addr.contactPerson || addr.name || d.name,
+          company: addr.company || d.company,
+          phone: ext ? ext.localPhone : d.phone,
+          phoneCountryCode: addr.phoneCountryCode || ext?.dialCode || countryObj?.dialCode || d.phoneCountryCode,
+          email: addr.email || d.email,
+          taxId: addr.taxId || d.taxId,
+          addr1: addr.addressLine1 || addr.streetLines?.[0] || addr.addr1 || d.addr1,
+          addr2: addr.addressLine2 || addr.streetLines?.[1] || addr.addr2 || '',
+          city: addr.city || d.city,
+          state: addr.state || d.state,
+          zip: addr.postalCode || addr.zip || (NON_POSTAL_COUNTRIES.includes(addr.countryCode) ? '00000' : d.zip),
+          country: countryObj?.name || addr.country || d.country,
+          countryCode: countryObj?.code || addr.countryCode || d.countryCode,
+          area: addr.area || d.area,
+          latitude: addr.latitude || d.latitude,
+          longitude: addr.longitude || d.longitude,
+          instructions: addr.instructions || d.instructions,
+          formattedAddress: addr.formattedAddress || `${addr.addressLine1 || addr.addr1 || ''}, ${addr.city || ''}, ${countryObj?.name || ''}`,
+          verified: true
+        };
+      });
       if (clearErrors) {
         clearErrors([`${pfx}_name`, `${pfx}_phone`, `${pfx}_addr1`, `${pfx}_city`, `${pfx}_country`, `${pfx}_zip`]);
       }
@@ -620,9 +625,28 @@ const AddressStep = ({
           id={`field-${pfx}_phone`}
           label={lang === 'ar' ? 'رقم الهاتف المباشر' : 'Phone Number'}
           value={data.phone}
-          onChange={e => { upd('phone', e.target.value); clearError && clearError(`${pfx}_phone`); }}
+          onChange={e => {
+            const val = e.target.value;
+            if (val.startsWith('+') && val.length > 3) {
+              const ext = extractPhonePrefix(val, data.phoneCountryCode);
+              if (ext.countryCode) {
+                setData(d => ({ ...d, phone: ext.localPhone, phoneCountryCode: ext.dialCode }));
+              } else {
+                upd('phone', val);
+              }
+            } else {
+              upd('phone', val);
+            }
+            clearError && clearError(`${pfx}_phone`);
+          }}
           dialCode={data.phoneCountryCode}
-          onDialCodeChange={c => upd('phoneCountryCode', c)}
+          countryCode={data.countryCode}
+          onDialCodeChange={c => setData(d => {
+            const cleanedPhone = (d.phone && (d.phone.startsWith('+') || d.phone.startsWith('00')))
+              ? extractPhonePrefix(d.phone, c).localPhone
+              : d.phone;
+            return { ...d, phone: cleanedPhone, phoneCountryCode: c };
+          })}
           error={Boolean(errors[`${pfx}_phone`])}
           helperText={errors[`${pfx}_phone`]}
           required
@@ -687,7 +711,7 @@ const AddressStep = ({
               zip: res.postalCode || (NON_POSTAL_COUNTRIES.includes(res.countryCode) ? '00000' : d.zip),
               country: countryObj?.name || res.country || d.country,
               countryCode: countryObj?.code || res.countryCode || d.countryCode,
-              phoneCountryCode: countryObj?.dialCode || d.phoneCountryCode,
+              phoneCountryCode: (!d.phone?.trim() && d.countryCode !== (countryObj?.code || res.countryCode)) ? (countryObj?.dialCode || d.phoneCountryCode) : d.phoneCountryCode,
               latitude: res.latitude !== undefined && res.latitude !== null ? Number(res.latitude) : d.latitude,
               longitude: res.longitude !== undefined && res.longitude !== null ? Number(res.longitude) : d.longitude,
               formattedAddress: res.formattedAddress || d.formattedAddress,
@@ -2272,14 +2296,17 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
     name: '', company: '', phone: '', email: '', taxId: '', addr1: '', addr2: '', area: '', city: countryCode === 'KW' ? 'Kuwait City' : 'Dubai', state: '', zip: NON_POSTAL_COUNTRIES.includes(countryCode) ? '00000' : '13001', country, countryCode, phoneCountryCode: countryCode === 'KW' ? '+965' : (countryCode === 'AE' ? '+971' : '+966'), instructions: '', formattedAddress: '', latitude: countryCode === 'KW' ? 29.3759 : 25.2048, longitude: countryCode === 'KW' ? 47.9774 : 55.2708, verified: false
   });
 
-  const [sender, setSender] = useState(() => ({
-    name: user?.name || '',
-    company: user?.organization?.name || '',
-    phone: user?.phone || '',
-    email: user?.email || '',
-    taxId: user?.carrierConfig?.taxId || user?.carrierConfig?.vatNo || '',
-    addr1: '', addr2: '', area: '', city: 'Kuwait City', state: '', zip: '00000', country: 'Kuwait', countryCode: 'KW', phoneCountryCode: '+965', instructions: '', formattedAddress: '', latitude: 29.3759, longitude: 47.9774, verified: false
-  }));
+  const [sender, setSender] = useState(() => {
+    const ext = extractPhonePrefix(user?.phone || '', '+965');
+    return {
+      name: user?.name || '',
+      company: user?.organization?.name || '',
+      phone: ext.localPhone,
+      email: user?.email || '',
+      taxId: user?.carrierConfig?.taxId || user?.carrierConfig?.vatNo || '',
+      addr1: '', addr2: '', area: '', city: 'Kuwait City', state: '', zip: '00000', country: 'Kuwait', countryCode: 'KW', phoneCountryCode: ext.dialCode || '+965', instructions: '', formattedAddress: '', latitude: 29.3759, longitude: 47.9774, verified: false
+    };
+  });
 
   const [receiver, setReceiver] = useState(() => blank('United Arab Emirates', 'AE'));
   const [pkg, setPkg] = useState(() => ({
@@ -2382,50 +2409,56 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
           if (data) {
             const senderSrc = data.sender || data.origin;
             if (senderSrc) {
-              setSender(prev => ({
-                ...prev,
-                name: senderSrc.contactPerson || senderSrc.name || prev.name,
-                company: senderSrc.company || prev.company,
-                phone: senderSrc.phone || prev.phone,
-                phoneCountryCode: senderSrc.phoneCountryCode || prev.phoneCountryCode,
-                email: senderSrc.email || prev.email,
-                taxId: senderSrc.taxId || prev.taxId,
-                addr1: senderSrc.addressLine1 || senderSrc.streetLines?.[0] || senderSrc.addr1 || prev.addr1,
-                addr2: senderSrc.addressLine2 || senderSrc.streetLines?.[1] || senderSrc.addr2 || prev.addr2,
-                area: senderSrc.area || prev.area,
-                city: senderSrc.city || prev.city,
-                state: senderSrc.state || prev.state,
-                country: senderSrc.country || prev.country,
-                countryCode: senderSrc.countryCode || prev.countryCode,
-                zip: senderSrc.postalCode || senderSrc.zip || prev.zip,
-                formattedAddress: senderSrc.formattedAddress || prev.formattedAddress,
-                latitude: senderSrc.latitude || prev.latitude,
-                longitude: senderSrc.longitude || prev.longitude
-              }));
+              setSender(prev => {
+                const ext = extractPhonePrefix(senderSrc.phone || '', senderSrc.phoneCountryCode || prev.phoneCountryCode || '+965');
+                return {
+                  ...prev,
+                  name: senderSrc.contactPerson || senderSrc.name || prev.name,
+                  company: senderSrc.company || prev.company,
+                  phone: ext.localPhone || senderSrc.phone || prev.phone,
+                  phoneCountryCode: senderSrc.phoneCountryCode || ext.dialCode || prev.phoneCountryCode,
+                  email: senderSrc.email || prev.email,
+                  taxId: senderSrc.taxId || prev.taxId,
+                  addr1: senderSrc.addressLine1 || senderSrc.streetLines?.[0] || senderSrc.addr1 || prev.addr1,
+                  addr2: senderSrc.addressLine2 || senderSrc.streetLines?.[1] || senderSrc.addr2 || prev.addr2,
+                  area: senderSrc.area || prev.area,
+                  city: senderSrc.city || prev.city,
+                  state: senderSrc.state || prev.state,
+                  country: senderSrc.country || prev.country,
+                  countryCode: senderSrc.countryCode || prev.countryCode,
+                  zip: senderSrc.postalCode || senderSrc.zip || prev.zip,
+                  formattedAddress: senderSrc.formattedAddress || prev.formattedAddress,
+                  latitude: senderSrc.latitude || prev.latitude,
+                  longitude: senderSrc.longitude || prev.longitude
+                };
+              });
             }
             const receiverDest = data.receiver || data.destination;
             if (receiverDest) {
-              setReceiver(prev => ({
-                ...prev,
-                name: receiverDest.contactPerson || receiverDest.name || prev.name,
-                company: receiverDest.company || prev.company,
-                phone: receiverDest.phone || prev.phone,
-                phoneCountryCode: receiverDest.phoneCountryCode || prev.phoneCountryCode,
-                email: receiverDest.email || prev.email,
-                taxId: receiverDest.taxId || prev.taxId,
-                addr1: receiverDest.addressLine1 || receiverDest.streetLines?.[0] || receiverDest.addr1 || prev.addr1,
-                addr2: receiverDest.addressLine2 || receiverDest.streetLines?.[1] || receiverDest.addr2 || prev.addr2,
-                area: receiverDest.area || prev.area,
-                city: receiverDest.city || prev.city,
-                state: receiverDest.state || prev.state,
-                country: receiverDest.country || prev.country,
-                countryCode: receiverDest.countryCode || prev.countryCode,
-                zip: receiverDest.postalCode || receiverDest.zip || prev.zip,
-                instructions: receiverDest.instructions || data.specialInstructions || prev.instructions,
-                formattedAddress: receiverDest.formattedAddress || prev.formattedAddress,
-                latitude: receiverDest.latitude || prev.latitude,
-                longitude: receiverDest.longitude || prev.longitude
-              }));
+              setReceiver(prev => {
+                const ext = extractPhonePrefix(receiverDest.phone || '', receiverDest.phoneCountryCode || prev.phoneCountryCode || '+971');
+                return {
+                  ...prev,
+                  name: receiverDest.contactPerson || receiverDest.name || prev.name,
+                  company: receiverDest.company || prev.company,
+                  phone: ext.localPhone || receiverDest.phone || prev.phone,
+                  phoneCountryCode: receiverDest.phoneCountryCode || ext.dialCode || prev.phoneCountryCode,
+                  email: receiverDest.email || prev.email,
+                  taxId: receiverDest.taxId || prev.taxId,
+                  addr1: receiverDest.addressLine1 || receiverDest.streetLines?.[0] || receiverDest.addr1 || prev.addr1,
+                  addr2: receiverDest.addressLine2 || receiverDest.streetLines?.[1] || receiverDest.addr2 || prev.addr2,
+                  area: receiverDest.area || prev.area,
+                  city: receiverDest.city || prev.city,
+                  state: receiverDest.state || prev.state,
+                  country: receiverDest.country || prev.country,
+                  countryCode: receiverDest.countryCode || prev.countryCode,
+                  zip: receiverDest.postalCode || receiverDest.zip || prev.zip,
+                  instructions: receiverDest.instructions || data.specialInstructions || prev.instructions,
+                  formattedAddress: receiverDest.formattedAddress || prev.formattedAddress,
+                  latitude: receiverDest.latitude || prev.latitude,
+                  longitude: receiverDest.longitude || prev.longitude
+                };
+              });
             }
             if (data.packages?.length || data.parcels?.length) {
               const list = data.packages || data.parcels;
@@ -2521,11 +2554,12 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
 
       const defAddr = cAddrs.find(a => a.isDefault) || cAddrs[0] || {};
       const countryObj = countries.find(c => c.code === defAddr.countryCode) || countries.find(c => c.name === defAddr.country);
+      const extPhone = extractPhonePrefix(client.phone || defAddr.phone || '', defAddr.phoneCountryCode || countryObj?.dialCode || '+965');
 
       setSender({
         name: client.name || defAddr.contactPerson || '',
         company: client.organization?.name || client.company || defAddr.company || '',
-        phone: client.phone || defAddr.phone || '',
+        phone: extPhone.localPhone,
         email: client.email || defAddr.email || '',
         taxId: client.carrierConfig?.taxId || client.carrierConfig?.vatNo || defAddr.taxId || '',
         addr1: defAddr.addressLine1 || defAddr.streetLines?.[0] || '',
@@ -2536,7 +2570,7 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
         zip: defAddr.postalCode || defAddr.zip || '00000',
         country: countryObj?.name || 'Kuwait',
         countryCode: countryObj?.code || 'KW',
-        phoneCountryCode: countryObj?.dialCode || '+965',
+        phoneCountryCode: extPhone.dialCode || countryObj?.dialCode || '+965',
         instructions: '',
         formattedAddress: defAddr.formattedAddress || '',
         latitude: defAddr.latitude || 29.3759,
