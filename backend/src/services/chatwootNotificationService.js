@@ -221,6 +221,7 @@ function getPersonFromShipment(shipment, role) {
         role,
         name: source.contactPerson || source.name || source.company || (role === 'sender' ? shipment.customer?.name : null),
         email: source.email || (role === 'sender' ? shipment.customer?.email : null),
+        countryCode: source.phoneCountryCode || null,
         phone: normalizePhone(
             source.phone || (role === 'sender' ? shipment.customer?.phone : null),
             source.phoneCountryCode

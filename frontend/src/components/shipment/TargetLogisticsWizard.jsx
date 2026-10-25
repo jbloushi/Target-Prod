@@ -6,7 +6,8 @@ import { useSnackbar } from 'notistack';
 import api, { shipmentService, userService, organizationService } from '../../services/api';
 import GoogleAddressInput from '../GoogleAddressInput';
 import { GoogleMapPinDrop } from '../GoogleMapPinDrop';
-import { countries } from '../../utils/countries';
+import { countries, extractPhonePrefix, formatE164Phone } from '../../utils/countries';
+import { SearchableCountrySelect, SearchablePhoneDialSelector } from '../common/SearchableCountrySelect';
 import { getContainerTypes, getContainerTypeById } from '../../utils/containerTypesConfig';
 import { DG_PRESET_OPTIONS, DEFAULT_PACKAGE_TEMPLATES } from './KineticShipmentWizard';
 import { NON_POSTAL_COUNTRIES } from './shipmentValidation';
@@ -108,7 +109,7 @@ export const TargetLogisticsWizard = ({
         zip: orig.postalCode || orig.zip || (NON_POSTAL_COUNTRIES.includes(cCode) ? '00000' : '13001'),
         country: orig.country || 'Kuwait',
         countryCode: cCode,
-        phoneCountryCode: orig.phoneCountryCode || (cCode === 'KW' ? '+965' : '+971'),
+        phoneCountryCode: orig.phoneCountryCode || extractPhonePrefix(orig.phone, countries.find(c => c.code === cCode)?.dialCode || '+965').dialCode,
         formattedAddress: orig.formattedAddress || '',
         latitude: orig.latitude || 29.3759,
         longitude: orig.longitude || 47.9774
@@ -117,11 +118,11 @@ export const TargetLogisticsWizard = ({
     return {
       name: user?.name || '',
       company: user?.organization?.name || '',
-      phone: user?.phone || '',
+      phone: extractPhonePrefix(user?.phone || '', '+965').localPhone,
       email: user?.email || '',
       taxId: user?.carrierConfig?.taxId || user?.carrierConfig?.vatNo || '',
       addr1: '', addr2: '', area: '', city: 'Kuwait City', state: '', zip: '00000',
-      country: 'Kuwait', countryCode: 'KW', phoneCountryCode: '+965',
+      country: 'Kuwait', countryCode: 'KW', phoneCountryCode: extractPhonePrefix(user?.phone || '', '+965').dialCode || '+965',
       formattedAddress: '', latitude: 29.3759, longitude: 47.9774
     };
   }, [mode, shipment, user]);
@@ -144,7 +145,7 @@ export const TargetLogisticsWizard = ({
         zip: dest.postalCode || dest.zip || (NON_POSTAL_COUNTRIES.includes(cCode) ? '00000' : '00000'),
         country: dest.country || 'United Arab Emirates',
         countryCode: cCode,
-        phoneCountryCode: dest.phoneCountryCode || (cCode === 'AE' ? '+971' : '+965'),
+        phoneCountryCode: dest.phoneCountryCode || extractPhonePrefix(dest.phone, countries.find(c => c.code === cCode)?.dialCode || '+971').dialCode,
         instructions: dest.instructions || shipment.specialInstructions || '',
         formattedAddress: dest.formattedAddress || '',
         latitude: dest.latitude || 25.1850,
@@ -391,7 +392,8 @@ export const TargetLogisticsWizard = ({
         city: defAddr?.city || prev.city,
         state: defAddr?.state || prev.state,
         country: countryObj?.name || defAddr?.country || prev.country,
-        countryCode: countryObj?.code || defAddr?.countryCode || prev.countryCode
+        countryCode: countryObj?.code || defAddr?.countryCode || prev.countryCode,
+        phoneCountryCode: extractPhonePrefix(cl.phone, countryObj?.dialCode || prev.phoneCountryCode || '+965').dialCode
       }));
       if (cl.organizationId) {
         setSelectedOrgId(cl.organizationId);
@@ -467,7 +469,7 @@ export const TargetLogisticsWizard = ({
       name: a.contactPerson || a.name || prev.name,
       company: a.company || prev.company,
       phone: a.phone || prev.phone,
-      phoneCountryCode: countryObj?.dialCode || a.phoneCountryCode || prev.phoneCountryCode,
+      phoneCountryCode: a.phoneCountryCode || extractPhonePrefix(a.phone, countryObj?.dialCode || prev.phoneCountryCode || '+965').dialCode,
       email: a.email || prev.email,
       taxId: a.taxId || prev.taxId,
       addr1: a.addressLine1 || a.streetLines?.[0] || a.line1 || a.address || a.addr1 || prev.addr1,
@@ -504,7 +506,7 @@ export const TargetLogisticsWizard = ({
       name: a.contactPerson || a.name || prev.name,
       company: a.company || prev.company,
       phone: a.phone || prev.phone,
-      phoneCountryCode: countryObj?.dialCode || a.phoneCountryCode || prev.phoneCountryCode,
+      phoneCountryCode: a.phoneCountryCode || extractPhonePrefix(a.phone, countryObj?.dialCode || prev.phoneCountryCode || '+971').dialCode,
       email: a.email || prev.email,
       taxId: a.taxId || prev.taxId,
       addr1: a.addressLine1 || a.streetLines?.[0] || a.line1 || a.address || a.addr1 || prev.addr1,
@@ -1023,8 +1025,8 @@ export const TargetLogisticsWizard = ({
           name: sender.name,
           contactPerson: sender.name,
           company: sender.company,
-          phone: sender.phone,
-          phoneCountryCode: sender.phoneCountryCode,
+          phone: formatE164Phone(sender.phone, sender.phoneCountryCode) || sender.phone,
+          phoneCountryCode: sender.phoneCountryCode || '+965',
           email: sender.email,
           taxId: sender.taxId,
           country: sender.country,
@@ -1042,8 +1044,8 @@ export const TargetLogisticsWizard = ({
           name: receiver.name,
           contactPerson: receiver.name,
           company: receiver.company,
-          phone: receiver.phone,
-          phoneCountryCode: receiver.phoneCountryCode,
+          phone: formatE164Phone(receiver.phone, receiver.phoneCountryCode) || receiver.phone,
+          phoneCountryCode: receiver.phoneCountryCode || '+971',
           email: receiver.email,
           taxId: receiver.taxId,
           civilId: receiver.taxId,
@@ -1496,22 +1498,27 @@ export const TargetLogisticsWizard = ({
                         errors.sender_phone ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus-within:border-[#0050d4]'
                       }`}>
                         <span className="material-symbols-outlined text-[17px] text-[#8c9196]">phone</span>
-                        <select 
+                        <SearchablePhoneDialSelector
                           value={sender.phoneCountryCode}
-                          onChange={(e) => setSender({ ...sender, phoneCountryCode: e.target.value })}
-                          className="text-[11px] font-bold text-[#0050d4] bg-[#f0f4f8] rounded-md px-1.5 py-0.5 outline-none cursor-pointer max-w-[100px]"
-                        >
-                          {countries.map(c => (
-                            <option key={c.code} value={c.dialCode}>
-                              {c.flag} {c.dialCode} ({c.code})
-                            </option>
-                          ))}
-                        </select>
+                          countryCode={sender.countryCode}
+                          isRTL={isRTL}
+                          onChange={(dialCode) => setSender(prev => ({ ...prev, phoneCountryCode: dialCode }))}
+                        />
                         <input
                           type="tel"
                           value={sender.phone}
                           onChange={(e) => {
-                            setSender({ ...sender, phone: e.target.value });
+                            const val = e.target.value;
+                            if (val.startsWith('+') && val.length > 3) {
+                              const ext = extractPhonePrefix(val, sender.phoneCountryCode);
+                              if (ext.countryCode) {
+                                setSender(prev => ({ ...prev, phone: val, phoneCountryCode: ext.dialCode }));
+                              } else {
+                                setSender(prev => ({ ...prev, phone: val }));
+                              }
+                            } else {
+                              setSender(prev => ({ ...prev, phone: val }));
+                            }
                             if (errors.sender_phone) setErrors(prev => { const n = { ...prev }; delete n.sender_phone; return n; });
                           }}
                           placeholder="69095959"
@@ -1834,11 +1841,12 @@ export const TargetLogisticsWizard = ({
                           <label className="text-[11px] font-bold text-[#575c60] block mb-1">
                             {isRTL ? 'الدولة / الإقليم' : 'Country / Territory'} <span className="text-red-500">*</span>
                           </label>
-                          <select
+                          <SearchableCountrySelect
                             value={sender.countryCode}
-                            onChange={(e) => {
-                              const code = e.target.value;
-                              const cObj = countries.find(c => c.code === code);
+                            valueMode="code"
+                            isRTL={isRTL}
+                            error={Boolean(errors.sender_country)}
+                            onChange={(code, cObj) => {
                               setSender(prev => ({
                                 ...prev,
                                 countryCode: code,
@@ -1848,14 +1856,7 @@ export const TargetLogisticsWizard = ({
                               }));
                               if (errors.sender_country) setErrors(prev => { const n = { ...prev }; delete n.sender_country; return n; });
                             }}
-                            className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold outline-none focus:border-[#0050d4] bg-white cursor-pointer"
-                          >
-                            {countries.map(c => (
-                              <option key={c.code} value={c.code}>
-                                {c.flag} {c.name} ({c.code})
-                              </option>
-                            ))}
-                          </select>
+                          />
                         </div>
 
                         <div>
@@ -1995,22 +1996,27 @@ export const TargetLogisticsWizard = ({
                         errors.receiver_phone ? 'border-red-400 bg-red-50/20' : 'border-[#e9edf2] focus-within:border-[#0050d4]'
                       }`}>
                         <span className="material-symbols-outlined text-[17px] text-[#8c9196]">phone</span>
-                        <select 
+                        <SearchablePhoneDialSelector
                           value={receiver.phoneCountryCode}
-                          onChange={(e) => setReceiver({ ...receiver, phoneCountryCode: e.target.value })}
-                          className="text-[11px] font-bold text-[#0050d4] bg-[#f0f4f8] rounded-md px-1.5 py-0.5 outline-none cursor-pointer max-w-[100px]"
-                        >
-                          {countries.map(c => (
-                            <option key={c.code} value={c.dialCode}>
-                              {c.flag} {c.dialCode} ({c.code})
-                            </option>
-                          ))}
-                        </select>
+                          countryCode={receiver.countryCode}
+                          isRTL={isRTL}
+                          onChange={(dialCode) => setReceiver(prev => ({ ...prev, phoneCountryCode: dialCode }))}
+                        />
                         <input
                           type="tel"
                           value={receiver.phone}
                           onChange={(e) => {
-                            setReceiver({ ...receiver, phone: e.target.value });
+                            const val = e.target.value;
+                            if (val.startsWith('+') && val.length > 3) {
+                              const ext = extractPhonePrefix(val, receiver.phoneCountryCode);
+                              if (ext.countryCode) {
+                                setReceiver(prev => ({ ...prev, phone: val, phoneCountryCode: ext.dialCode }));
+                              } else {
+                                setReceiver(prev => ({ ...prev, phone: val }));
+                              }
+                            } else {
+                              setReceiver(prev => ({ ...prev, phone: val }));
+                            }
                             if (errors.receiver_phone) setErrors(prev => { const n = { ...prev }; delete n.receiver_phone; return n; });
                           }}
                           placeholder="501234567"
@@ -2333,11 +2339,12 @@ export const TargetLogisticsWizard = ({
                           <label className="text-[11px] font-bold text-[#575c60] block mb-1">
                             {isRTL ? 'الدولة / الإقليم' : 'Country / Territory'} <span className="text-red-500">*</span>
                           </label>
-                          <select
+                          <SearchableCountrySelect
                             value={receiver.countryCode}
-                            onChange={(e) => {
-                              const code = e.target.value;
-                              const cObj = countries.find(c => c.code === code);
+                            valueMode="code"
+                            isRTL={isRTL}
+                            error={Boolean(errors.receiver_country)}
+                            onChange={(code, cObj) => {
                               setReceiver(prev => ({
                                 ...prev,
                                 countryCode: code,
@@ -2347,14 +2354,7 @@ export const TargetLogisticsWizard = ({
                               }));
                               if (errors.receiver_country) setErrors(prev => { const n = { ...prev }; delete n.receiver_country; return n; });
                             }}
-                            className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold outline-none focus:border-[#0050d4] bg-white cursor-pointer"
-                          >
-                            {countries.map(c => (
-                              <option key={c.code} value={c.code}>
-                                {c.flag} {c.name} ({c.code})
-                              </option>
-                            ))}
-                          </select>
+                          />
                         </div>
 
                         <div>
@@ -3403,17 +3403,12 @@ export const TargetLogisticsWizard = ({
                     <label className="text-[11px] font-bold text-[#575c60] block mb-1">
                       {isRTL ? 'بلد المنشأ (Country of Origin)' : 'Country of Origin'}
                     </label>
-                    <select
+                    <SearchableCountrySelect
                       value={customs.origin || 'Kuwait'}
-                      onChange={(e) => setCustoms({ ...customs, origin: e.target.value })}
-                      className="w-full p-2 border-[1.5px] border-[#e9edf2] rounded-xl text-xs font-semibold bg-white outline-none focus:border-[#0050d4] cursor-pointer"
-                    >
-                      {countries.map(c => (
-                        <option key={c.code} value={c.name}>
-                          {c.flag} {c.name} ({c.code})
-                        </option>
-                      ))}
-                    </select>
+                      valueMode="name"
+                      isRTL={isRTL}
+                      onChange={(countryName) => setCustoms(prev => ({ ...prev, origin: countryName }))}
+                    />
                   </div>
                 </div>
 

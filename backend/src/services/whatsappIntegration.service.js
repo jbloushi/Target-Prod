@@ -12,12 +12,33 @@ function normalizePhone(phone, phoneCountryCode = '965') {
     let s = String(phone).trim();
     if (!s) return null;
 
+    const dialDigits = String(phoneCountryCode || '').replace(/\D/g, '');
+
+    // If explicitly prefixed with + or 00, normalize directly
+    if (s.startsWith('+') || s.startsWith('00')) {
+        const clean = (s.startsWith('00') ? s.slice(2) : s.slice(1)).replace(/\D/g, '');
+        if (!clean) return null;
+        if (dialDigits && clean.startsWith(dialDigits)) {
+            const rest = clean.slice(dialDigits.length).replace(/^0+/, '');
+            return `+${dialDigits}${rest}`;
+        }
+        return clean.length >= 8 && clean.length <= 16 ? `+${clean}` : null;
+    }
+
     let digits = s.replace(/\D/g, '');
     if (!digits) return null;
 
-    // Strip leading 00 (e.g. 00966555 -> 966555)
-    if (s.startsWith('00') || digits.startsWith('00')) {
-        digits = digits.replace(/^00/, '');
+    if (dialDigits) {
+        if (digits.startsWith(dialDigits) && digits.length >= dialDigits.length + 7) {
+            return `+${digits}`;
+        }
+        const localDigits = (digits.startsWith('0') && dialDigits !== '1')
+            ? digits.slice(1)
+            : digits;
+        const combined = `${dialDigits}${localDigits}`;
+        if (combined.length >= 8 && combined.length <= 16) {
+            return `+${combined}`;
+        }
     }
 
     // Kuwait local 8-digit mobile numbers starting with 2, 5, 6, 9 (e.g. 97959567 -> +96597959567)
@@ -833,7 +854,10 @@ class WhatsAppIntegrationService {
             shipment.documents?.merchantName,
             (role === 'sender' ? recipientName : null)
         ], 'Shipper');
-        const resolvedSenderPhone = normalizePhone(shipment.origin?.phone || shipment.documents?.senderPhone || (role === 'sender' ? phone : '')) || phone;
+        const resolvedSenderPhone = normalizePhone(
+            shipment.origin?.phone || shipment.documents?.senderPhone || (role === 'sender' ? phone : ''),
+            shipment.origin?.phoneCountryCode || (role === 'sender' ? recipientCountryCode : '965')
+        ) || phone;
 
         const resolvedReceiverName = resolvePersonName([
             shipment.destination?.contactPerson,
@@ -845,7 +869,10 @@ class WhatsAppIntegrationService {
             shipment.destination?.company,
             shipment.destination?.name
         ], 'Valued Customer');
-        const resolvedReceiverPhone = normalizePhone(shipment.destination?.phone || shipment.customer?.phone || shipment.customerPhone || shipment.documents?.receiverPhone || (role === 'receiver' || role === 'customer' ? phone : '')) || phone;
+        const resolvedReceiverPhone = normalizePhone(
+            shipment.destination?.phone || shipment.customer?.phone || shipment.customerPhone || shipment.documents?.receiverPhone || (role === 'receiver' || role === 'customer' ? phone : ''),
+            shipment.destination?.phoneCountryCode || (role !== 'sender' ? recipientCountryCode : '965')
+        ) || phone;
 
         const effectiveRecipientName = (role === 'sender') ? resolvedSenderName : resolvedReceiverName;
 

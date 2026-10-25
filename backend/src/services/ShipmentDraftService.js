@@ -432,6 +432,21 @@ class ShipmentDraftService {
             const clean = { ...addr };
             if (clean.latitude === null) delete clean.latitude;
             if (clean.longitude === null) delete clean.longitude;
+            if (clean.phone && clean.phoneCountryCode) {
+                const rawPh = String(clean.phone).trim();
+                const dialDigits = String(clean.phoneCountryCode).replace(/\D/g, '');
+                if (rawPh && dialDigits && !rawPh.startsWith('+') && !rawPh.startsWith('00')) {
+                    let phDigits = rawPh.replace(/\D/g, '');
+                    if (phDigits) {
+                        if (phDigits.startsWith(dialDigits) && phDigits.length >= dialDigits.length + 7) {
+                            clean.phone = `+${phDigits}`;
+                        } else {
+                            if (phDigits.startsWith('0') && dialDigits !== '1') phDigits = phDigits.slice(1);
+                            clean.phone = `+${dialDigits}${phDigits}`;
+                        }
+                    }
+                }
+            }
 
             if (!clean.formattedAddress && (clean.streetLines?.length || clean.city)) {
                 const parts = [

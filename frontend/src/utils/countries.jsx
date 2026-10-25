@@ -306,3 +306,127 @@ export const getCountryDisplayName = (countryOrCode, lang = 'en') => {
     return found ? (lang === 'ar' ? (ARABIC_COUNTRY_NAMES[found.code] || found.name) : found.name) : (ARABIC_COUNTRY_NAMES[code] || countryOrCode);
 };
 
+
+/**
+ * Priority GCC & Middle East countries shown at the top of dropdowns when no search filter is active.
+ */
+export const PRIORITY_COUNTRY_CODES = ['KW', 'AE', 'SA', 'QA', 'BH', 'OM', 'EG', 'JO', 'US', 'GB'];
+
+/**
+ * Sort countries with priority GCC/MENA countries at the top, followed by alphabetical order.
+ */
+export const getSortedCountries = () => {
+    const priority = PRIORITY_COUNTRY_CODES
+        .map(code => countries.find(c => c.code === code))
+        .filter(Boolean);
+    const rest = countries.filter(c => !PRIORITY_COUNTRY_CODES.includes(c.code));
+    return [...priority, ...rest];
+};
+
+/**
+ * Filter countries by search query matching English name, Arabic name, ISO code, or dial code.
+ */
+export const filterCountries = (query = '') => {
+    const q = String(query || '').trim().toLowerCase();
+    const sorted = getSortedCountries();
+    if (!q) return sorted;
+
+    const qDigits = q.replace(/\D/g, '');
+    return sorted.filter(c => {
+        const nameMatch = c.name.toLowerCase().includes(q);
+        const codeMatch = c.code.toLowerCase().includes(q);
+        const arName = ARABIC_COUNTRY_NAMES[c.code] || '';
+        const arMatch = arName.includes(q);
+        const dialMatch = c.dialCode.toLowerCase().includes(q) || (qDigits && c.dialCode.replace(/\D/g, '').includes(qDigits));
+        return nameMatch || codeMatch || arMatch || dialMatch;
+    });
+};
+
+/**
+ * Detect if a raw phone number starts with an explicit international prefix (+XX or 00XX)
+ * and split it into { dialCode, localPhone, countryCode } if matched.
+ */
+export const extractPhonePrefix = (rawPhone, fallbackDialCode = '+965') => {
+    const fallbackClean = fallbackDialCode
+        ? (`+${String(fallbackDialCode).replace(/\D/g, '')}`)
+        : '+965';
+    if (!rawPhone) {
+        return { dialCode: fallbackClean, localPhone: '', formattedPhone: '' };
+    }
+    const str = String(rawPhone).trim();
+    const normalized = str.startsWith('00') ? `+${str.slice(2)}` : str;
+
+    if (normalized.startsWith('+')) {
+        const digitsOnly = normalized.slice(1).replace(/\D/g, '');
+        const candidates = [...countries]
+            .map(c => ({ ...c, cleanDial: c.dialCode.replace(/\D/g, '') }))
+            .filter(c => c.cleanDial && digitsOnly.startsWith(c.cleanDial))
+            .sort((a, b) => b.cleanDial.length - a.cleanDial.length);
+
+        if (candidates.length > 0) {
+            const best = candidates[0];
+            const rest = digitsOnly.slice(best.cleanDial.length);
+            return {
+                dialCode: best.dialCode,
+                localPhone: rest,
+                countryCode: best.code,
+                formattedPhone: `+${best.cleanDial}${rest}`
+            };
+        }
+    }
+
+    const cleanDigits = str.replace(/\D/g, '');
+    const dialDigits = fallbackClean.replace(/\D/g, '');
+    let localDigits = cleanDigits;
+
+    if (dialDigits && localDigits.startsWith(dialDigits) && localDigits.length > dialDigits.length + 5) {
+        localDigits = localDigits.slice(dialDigits.length);
+    } else if (localDigits.startsWith('0') && dialDigits !== '1') {
+        localDigits = localDigits.slice(1);
+    }
+
+    return {
+        dialCode: fallbackClean,
+        localPhone: localDigits,
+        formattedPhone: cleanDigits ? `+${dialDigits}${localDigits}` : ''
+    };
+};
+
+/**
+ * Format a phone number and selected dialCode into a clean E.164 international phone string.
+ * Always honors the selected dialCode unless the phone number explicitly starts with a different '+' prefix.
+ */
+export const formatE164Phone = (phone, dialCode = '+965') => {
+    if (!phone) return '';
+    const str = String(phone).trim();
+    if (!str) return '';
+
+    const cleanDial = String(dialCode || '+965').replace(/\D/g, '') || '965';
+
+    // If user typed an explicit + or 00 prefix, check if it matches the selected dialCode or another country
+    if (str.startsWith('+') || str.startsWith('00')) {
+        const normalized = str.startsWith('00') ? `+${str.slice(2)}` : str;
+        const allDigits = normalized.slice(1).replace(/\D/g, '');
+        if (!allDigits) return '';
+        if (allDigits.startsWith(cleanDial)) {
+            const rest = allDigits.slice(cleanDial.length).replace(/^0+/, '');
+            return `+${cleanDial}${rest}`;
+        }
+        return `+${allDigits}`;
+    }
+
+    let digits = str.replace(/\D/g, '');
+    if (!digits) return '';
+
+    // If digits already start with the dialCode and total length is a full international number (e.g., 96569095959)
+    if (digits.startsWith(cleanDial) && digits.length >= cleanDial.length + 7) {
+        digits = digits.slice(cleanDial.length);
+    }
+
+    // Strip leading trunk 0 for non-NANP countries (e.g. 01040957289 with +20 -> +201040957289)
+    if (digits.startsWith('0') && cleanDial !== '1') {
+        digits = digits.slice(1);
+    }
+
+    return `+${cleanDial}${digits}`;
+};

@@ -4,7 +4,8 @@ import { useSnackbar } from 'notistack';
 import api, { shipmentService, userService } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { countries } from '../../utils/countries';
+import { countries, extractPhonePrefix, formatE164Phone } from '../../utils/countries';
+import { SearchableCountrySelect, SearchablePhoneDialSelector } from '../common/SearchableCountrySelect';
 import GoogleAddressInput from '../GoogleAddressInput';
 import GoogleMapPinDrop from '../GoogleMapPinDrop';
 import { TradeRouteDisplay } from '../common/TradeRouteDisplay';
@@ -205,6 +206,15 @@ const KNOWN_CARRIERS = {
     icon: 'local_shipping',
     desc: 'Comprehensive regional and international courier network across Middle East, GCC, and global lanes.'
   },
+  SMSA: {
+    code: 'SMSA',
+    name: 'SMSA Express',
+    badge: 'KSA E-commerce & COD',
+    color: '#059669',
+    bg: '#ECFDF5',
+    icon: 'local_shipping',
+    desc: 'Saudi Arabia domestic and cross-border e-commerce delivery with COD support.'
+  },
   OTE: {
     code: 'OTE',
     name: 'LogesTechs GCC Ground',
@@ -384,18 +394,12 @@ const DaisyPhoneInput = ({
         </div>
       )}
       <div className="flex items-center gap-1.5">
-        <select
+        <SearchablePhoneDialSelector
           value={dialCode}
-          onChange={(e) => onDialCodeChange && onDialCodeChange(e.target.value)}
           disabled={disabled}
-          className="select select-bordered select-sm w-24 bg-base-100 text-xs font-mono font-bold shrink-0 focus:select-primary"
-        >
-          {countries.map((c) => (
-            <option key={c.code} value={c.dialCode}>
-              {c.dialCode} ({c.code})
-            </option>
-          ))}
-        </select>
+          variant="daisy"
+          onChange={(nextDial) => onDialCodeChange && onDialCodeChange(nextDial)}
+        />
         <div className="relative flex-1">
           <input
             type="tel"
@@ -774,36 +778,24 @@ const AddressStep = ({
               </span>
             )}
           </div>
-          <div className="relative">
-            <span className="material-symbols-outlined absolute start-3 top-1/2 -translate-y-1/2 text-base-content/40 text-lg pointer-events-none">
-              public
-            </span>
-            <select
-              value={data.countryCode || 'KW'}
-              onChange={(e) => {
-                const code = e.target.value;
-                const cObj = countries.find(c => c.code === code);
-                setData(d => ({
-                  ...d,
-                  country: cObj?.name || d.country,
-                  countryCode: cObj?.code || 'KW',
-                  phoneCountryCode: cObj?.dialCode || d.phoneCountryCode || '+965',
-                  zip: NON_POSTAL_COUNTRIES.includes(cObj?.code) ? '00000' : (d.zip === '00000' ? '' : d.zip)
-                }));
-                clearError && clearError(`${pfx}_country`);
-                clearError && clearError(`${pfx}_zip`);
-              }}
-              className={`select select-bordered select-sm w-full ps-9 bg-base-100 text-sm font-medium ${
-                errors[`${pfx}_country`] ? 'select-error border-error' : 'focus:select-primary'
-              }`}
-            >
-              {countries.map(c => (
-                <option key={c.code} value={c.code}>
-                  {c.flag} {c.name} ({c.code})
-                </option>
-              ))}
-            </select>
-          </div>
+          <SearchableCountrySelect
+            value={data.countryCode || 'KW'}
+            valueMode="code"
+            isRTL={lang === 'ar'}
+            variant="daisy"
+            error={Boolean(errors[`${pfx}_country`])}
+            onChange={(code, cObj) => {
+              setData(d => ({
+                ...d,
+                country: cObj?.name || d.country,
+                countryCode: cObj?.code || 'KW',
+                phoneCountryCode: cObj?.dialCode || d.phoneCountryCode || '+965',
+                zip: NON_POSTAL_COUNTRIES.includes(cObj?.code) ? '00000' : (d.zip === '00000' ? '' : d.zip)
+              }));
+              clearError && clearError(`${pfx}_country`);
+              clearError && clearError(`${pfx}_zip`);
+            }}
+          />
         </div>
 
         {/* Postal Code */}
@@ -2872,7 +2864,7 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
           contactPerson: sender.name,
           name: sender.name,
           company: sender.company || '',
-          phone: sender.phone,
+          phone: formatE164Phone(sender.phone, sender.phoneCountryCode) || sender.phone,
           phoneCountryCode: sender.phoneCountryCode || '+965',
           email: sender.email || '',
           streetLines: senderStreet.length > 0 ? senderStreet : [sender.formattedAddress || 'Main Street'],
@@ -2893,7 +2885,7 @@ export const KineticShipmentWizard = ({ onClose, onComplete, editing }) => {
           contactPerson: receiver.name,
           name: receiver.name,
           company: receiver.company || '',
-          phone: receiver.phone,
+          phone: formatE164Phone(receiver.phone, receiver.phoneCountryCode) || receiver.phone,
           phoneCountryCode: receiver.phoneCountryCode || '+971',
           email: receiver.email || '',
           streetLines: receiverStreet.length > 0 ? receiverStreet : [receiver.formattedAddress || 'Main Street'],

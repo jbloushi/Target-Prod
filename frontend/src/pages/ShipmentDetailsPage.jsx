@@ -22,6 +22,7 @@ import StatusBadge from '../components/common/StatusBadge';
 import TradeRouteDisplay from '../components/common/TradeRouteDisplay';
 import ProofOfDeliveryModal from '../components/ProofOfDeliveryModal';
 import { countries } from '../utils/countries';
+import { SearchablePhoneDialSelector } from '../components/common/SearchableCountrySelect';
 import GoogleAddressInput from '../components/GoogleAddressInput';
 import { DG_PRESET_OPTIONS } from '../components/shipment/KineticShipmentWizard';
 import { NON_POSTAL_COUNTRIES } from '../components/shipment/shipmentValidation';
@@ -170,18 +171,12 @@ const DaisyPhoneInput = ({
         </div>
       )}
       <div className="flex items-center gap-1.5">
-        <select
+        <SearchablePhoneDialSelector
           value={dialCode}
-          onChange={(e) => onDialCodeChange && onDialCodeChange(e.target.value)}
           disabled={disabled}
-          className="select select-bordered select-sm w-24 bg-base-100 text-xs font-mono font-bold shrink-0 focus:select-primary"
-        >
-          {countries.map((c) => (
-            <option key={c.code} value={c.dialCode}>
-              {c.dialCode} ({c.code})
-            </option>
-          ))}
-        </select>
+          variant="daisy"
+          onChange={(nextDial) => onDialCodeChange && onDialCodeChange(nextDial)}
+        />
         <div className="relative flex-1">
           <input
             type="tel"
