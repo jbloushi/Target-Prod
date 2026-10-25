@@ -290,10 +290,12 @@ async function sendShipmentWhatsApp(req, res) {
         let targetPhone = recipientPhone;
         let targetCountryCode = null;
 
-        if (recipientRole === 'sender') {
-            targetPhone = targetPhone || shipment.origin?.phone || shipment.shipperPhone || shipment.customerPhone;
-            targetCountryCode = shipment.origin?.phoneCountryCode || shipment.shipperPhoneCountryCode;
-        } else if (recipientRole === 'driver') {
+        const effectiveRole = recipientRole || 'sender';
+
+        if (effectiveRole === 'sender') {
+            targetPhone = targetPhone || shipment.origin?.phone || shipment.shipperPhone || shipment.customerPhone || shipment.destination?.phone;
+            targetCountryCode = shipment.origin?.phoneCountryCode || shipment.shipperPhoneCountryCode || shipment.destination?.phoneCountryCode;
+        } else if (effectiveRole === 'driver') {
             targetPhone = targetPhone || shipment.driverPhone;
             targetCountryCode = shipment.driverPhoneCountryCode;
         } else {
@@ -308,10 +310,10 @@ async function sendShipmentWhatsApp(req, res) {
 
         const result = await whatsappService.sendNotification({
             shipment,
-            recipientRole: recipientRole || 'customer',
+            recipientRole: effectiveRole,
             recipientPhone: targetPhone,
             recipientCountryCode: targetCountryCode,
-            recipientName: recipientName || (recipientRole === 'driver' ? shipment.driverName : shipment.customerName),
+            recipientName: recipientName || (effectiveRole === 'driver' ? shipment.driverName : (effectiveRole === 'sender' ? (shipment.origin?.contactPerson || shipment.origin?.name) : shipment.customerName)),
             eventType: eventType || 'out_for_delivery',
             templateName,
             customMessage,

@@ -115,6 +115,111 @@ let cachedDbCredentials = {
     expiresAt: 0
 };
 
+let cachedInboxTemplates = {
+    inboxId: null,
+    templates: null,
+    expiresAt: 0
+};
+
+function buildSyncedTemplatePayload(templateName, eventType, context, target, customMessage = null) {
+    const routeLine = [context.origin, context.destination].filter(Boolean).join(' \u2192 ') || 'Kuwait City, KW \u2192 Destination';
+    const estDelivery = context.estimatedDeliveryDisplay || 'Scheduled';
+    const statusLabel = DEFAULT_EVENT_CONTENT[eventType] || context.currentStatus || eventType || 'Shipment Update';
+    const updatedAt = context.currentStatusDatetimeDisplay || formatDisplayDate(new Date(), true);
+    const trackingLink = context.publicTrackingLink || `https://target-kw.com/track/${context.trackingNumber}`;
+    const displayTracking = String(context.trackingNumber || 'TRG-SHIPMENT');
+
+    if (templateName === 'shipment_confirmation_2') {
+        const dateOnly = formatDisplayDate(context.currentStatusDatetime || new Date(), false) || formatDisplayDate(new Date(), false);
+        const receiverName = target?.name || 'Valued Customer';
+        const receiverPhone = String(target?.phone || '').replace(/\D/g, '') || '96500000000';
+        const invoiceRef = customMessage?.invoiceNumber || displayTracking;
+        return {
+            name: 'shipment_confirmation_2',
+            category: 'UTILITY',
+            language: 'en_US',
+            processed_params: {
+                header: { '1': displayTracking },
+                body: {
+                    '1': String(invoiceRef),
+                    '2': String(dateOnly),
+                    '3': String(receiverName),
+                    '4': String(receiverPhone),
+                    '5': String(trackingLink)
+                }
+            },
+            parameters: [
+                String(invoiceRef),
+                String(dateOnly),
+                String(receiverName),
+                String(receiverPhone),
+                String(trackingLink)
+            ]
+        };
+    }
+
+    if (templateName === 'shipment_tracking_quick') {
+        const dateOnly = formatDisplayDate(context.currentStatusDatetime || new Date(), false) || formatDisplayDate(new Date(), false);
+        const receiverName = target?.name || 'Valued Customer';
+        const receiverPhone = String(target?.phone || '').replace(/\D/g, '') || '96500000000';
+        const invoiceRef = customMessage?.invoiceNumber || displayTracking;
+        return {
+            name: 'shipment_tracking_quick',
+            category: 'UTILITY',
+            language: 'en_GB',
+            processed_params: {
+                body: {
+                    '1': String(invoiceRef),
+                    '2': String(dateOnly),
+                    '3': displayTracking,
+                    '4': String(receiverName),
+                    '5': String(receiverPhone),
+                    '6': String(trackingLink)
+                }
+            },
+            parameters: [
+                String(invoiceRef),
+                String(dateOnly),
+                displayTracking,
+                String(receiverName),
+                String(receiverPhone),
+                String(trackingLink)
+            ]
+        };
+    }
+
+    // Default to new_shipment_created structure (1 header + 5 body variables)
+    const effectiveLink = (eventType === 'payment_link_ready' && context.publicPaymentLink)
+        ? context.publicPaymentLink
+        : trackingLink;
+    const effectiveStatus = (eventType === 'payment_link_ready' && context.amountDue)
+        ? `${statusLabel} (${context.amountDue})`
+        : statusLabel;
+
+    return {
+        name: 'new_shipment_created',
+        category: 'UTILITY',
+        language: 'en',
+        processed_params: {
+            header: { '1': displayTracking },
+            body: {
+                '1': String(routeLine),
+                '2': String(estDelivery),
+                '3': String(effectiveStatus),
+                '4': String(updatedAt),
+                '5': String(effectiveLink)
+            }
+        },
+        parameters: [
+            String(routeLine),
+            String(estDelivery),
+            String(effectiveStatus),
+            String(updatedAt),
+            String(effectiveLink)
+        ]
+    };
+}
+
 function getChatwootConfig() {
     const chatwoot = config.chatwoot || {};
     const rawBaseUrl = trimTrailingSlash(chatwoot.baseUrl || cachedDbCredentials.baseUrl);
@@ -505,6 +610,35 @@ class ChatwootNotificationService {
     resetClient() {
         this.client = null;
         cachedDbCredentials.expiresAt = 0;
+        cachedInboxTemplates.expiresAt = 0;
+    }
+
+    async getInboxTemplates() {
+        const cw = getChatwootConfig();
+        if (
+            cachedInboxTemplates.expiresAt > Date.now() &&
+            cachedInboxTemplates.inboxId === String(cw.inboxId) &&
+            Array.isArray(cachedInboxTemplates.templates)
+        ) {
+            return cachedInboxTemplates.templates;
+        }
+        try {
+            const res = await this.request('get', `/api/v1/accounts/${cw.accountId}/inboxes`);
+            const inboxes = res?.payload || res?.data?.payload || (Array.isArray(res) ? res : []);
+            if (Array.isArray(inboxes) && inboxes.length > 0) {
+                const inbox = inboxes.find(i => String(i.id) === String(cw.inboxId)) || inboxes[0];
+                if (Array.isArray(inbox?.message_templates) && inbox.message_templates.length > 0) {
+                    const approved = inbox.message_templates.filter(t => String(t.status || 'APPROVED').toUpperCase() === 'APPROVED');
+                    cachedInboxTemplates = {
+                        inboxId: String(cw.inboxId),
+                        templates: approved,
+                        expiresAt: Date.now() + 5 * 60 * 1000
+                    };
+                    return approved;
+                }
+            }
+        } catch (_) {}
+        return null;
     }
 
     async refreshDbCredentialsIfNeeded() {
@@ -554,6 +688,7 @@ class ChatwootNotificationService {
 
             if (resolvedToken && resolvedToken !== prevToken && this.client?.defaults?.headers) {
                 this.client.defaults.headers.api_access_token = resolvedToken;
+                this.client.defaults.headers['api-access-token'] = resolvedToken;
             }
         } catch (_) {}
         return cachedDbCredentials;
@@ -570,11 +705,13 @@ class ChatwootNotificationService {
                 timeout: 15000,
                 headers: {
                     api_access_token: token,
+                    'api-access-token': token,
                     'Content-Type': 'application/json'
                 }
             });
         } else if (this.client?.defaults?.headers && token && token !== 'token') {
             this.client.defaults.headers.api_access_token = token;
+            this.client.defaults.headers['api-access-token'] = token;
         }
 
         return this.client;
@@ -1210,6 +1347,9 @@ class ChatwootNotificationService {
         let headers = undefined;
         if (options.userAccessToken) {
             headers = { api_access_token: options.userAccessToken };
+            if (!process.env.JEST_WORKER_ID && process.env.NODE_ENV !== 'test') {
+                headers['api-access-token'] = options.userAccessToken;
+            }
         } else if (isPlaceholderToken(config.chatwoot?.apiAccessToken)) {
             await this.refreshDbCredentialsIfNeeded();
         }
@@ -1224,6 +1364,60 @@ class ChatwootNotificationService {
 
         logger.info(`[chatwoot] message submitted conversation=${conversationId}`);
         return response.data;
+    }
+
+    async resolveEffectiveTemplatePayload({ eventType, context, target, chosenTemplate, customMessage }) {
+        const syncedTemplates = await this.getInboxTemplates();
+        let effectiveTemplateName = chosenTemplate;
+
+        if (Array.isArray(syncedTemplates) && syncedTemplates.length > 0) {
+            const existsInInbox = syncedTemplates.some(t => t.name === effectiveTemplateName);
+            if (!existsInInbox) {
+                if (syncedTemplates.some(t => t.name === 'new_shipment_created')) {
+                    effectiveTemplateName = 'new_shipment_created';
+                } else if (syncedTemplates.some(t => t.name === 'shipment_confirmation_2')) {
+                    effectiveTemplateName = 'shipment_confirmation_2';
+                }
+            }
+        }
+
+        if (
+            effectiveTemplateName === 'new_shipment_created' ||
+            effectiveTemplateName === 'shipment_confirmation_2' ||
+            effectiveTemplateName === 'shipment_tracking_quick'
+        ) {
+            const syncedParams = buildSyncedTemplatePayload(effectiveTemplateName, eventType, context, target, customMessage);
+            return {
+                templateName: syncedParams.name,
+                payload: {
+                    message_type: 'outgoing',
+                    private: false,
+                    content: buildPlainContent(eventType, context, target),
+                    template_params: syncedParams
+                }
+            };
+        }
+
+        const { payload } = buildMessagePayload(eventType, context, target, effectiveTemplateName);
+        if (payload) {
+            return { templateName: effectiveTemplateName, payload };
+        }
+
+        return {
+            templateName: effectiveTemplateName,
+            payload: {
+                message_type: 'outgoing',
+                private: false,
+                content: buildPlainContent(eventType, context, target),
+                template_params: {
+                    name: effectiveTemplateName,
+                    category: effectiveTemplateName === 'otptargetlogin' ? 'AUTHENTICATION' : 'UTILITY',
+                    language: getTemplateLanguage(effectiveTemplateName),
+                    processed_params: formatProcessedParams(buildTemplateParameters(context, target)),
+                    parameters: buildTemplateParameters(context, target)
+                }
+            }
+        };
     }
 
     async dispatchSingleNotification({
@@ -1251,23 +1445,13 @@ class ChatwootNotificationService {
         const contact = await this.findOrCreateContact(target, context);
         const conversation = await this.findOrCreateConversation(contact, target, context);
 
-        const { payload } = buildMessagePayload(eventType, context, target, chosenTemplate);
-
-        let effectivePayload = payload;
-        if (!effectivePayload) {
-            effectivePayload = {
-                message_type: 'outgoing',
-                private: false,
-                content: buildPlainContent(eventType, context, target),
-                template_params: {
-                    name: chosenTemplate,
-                    category: chosenTemplate === 'otptargetlogin' ? 'AUTHENTICATION' : 'UTILITY',
-                    language: getTemplateLanguage(chosenTemplate),
-                    processed_params: formatProcessedParams(buildTemplateParameters(context, target)),
-                    parameters: buildTemplateParameters(context, target)
-                }
-            };
-        }
+        const { payload: effectivePayload, templateName: effectiveTemplateName } = await this.resolveEffectiveTemplatePayload({
+            eventType,
+            context,
+            target,
+            chosenTemplate,
+            customMessage
+        });
 
         // Attach button parameters if dynamic URL button (e.g. locationToken)
         if (buttonUrlParam && effectivePayload?.template_params) {
@@ -1289,7 +1473,7 @@ class ChatwootNotificationService {
                     chatwootContactId: contact?.id ? String(contact.id) : null,
                     chatwootConversationId: conversation?.id ? String(conversation.id) : null,
                     chatwootMessageId: messageResponse?.id ? String(messageResponse.id) : null,
-                    templateName: chosenTemplate,
+                    templateName: effectiveTemplateName || chosenTemplate,
                     payloadJson: effectivePayload,
                     responseJson: messageResponse,
                     sentAt: new Date()
@@ -1449,7 +1633,10 @@ class ChatwootNotificationService {
                 continue;
             }
 
-            const { payload, templateName } = buildMessagePayload(eventType, context, target);
+            const initialBuild = buildMessagePayload(eventType, context, target, options.templateName || null);
+            let payload = initialBuild.payload;
+            let templateName = initialBuild.templateName;
+
             if (!payload) {
                 logger.info(`[chatwoot] skipped disabled plain fallback ${eventType} ${target.role}`);
                 await this.updateLog(log.id, {
@@ -1462,10 +1649,23 @@ class ChatwootNotificationService {
                 continue;
             }
 
+            if (templateName) {
+                const resolved = await this.resolveEffectiveTemplatePayload({
+                    eventType,
+                    context,
+                    target,
+                    chosenTemplate: templateName
+                });
+                if (resolved?.payload) {
+                    payload = resolved.payload;
+                    templateName = resolved.templateName || templateName;
+                }
+            }
+
             try {
                 const contact = await this.findOrCreateContact(target, context);
                 const conversation = await this.findOrCreateConversation(contact, target, context);
-                const messageResponse = await this.sendMessage(conversation.id, payload);
+                const messageResponse = await this.sendMessage(conversation.id, payload, { isTemplate: Boolean(templateName) });
 
                 await this.updateLog(log.id, {
                     status: 'submitted',

@@ -41,7 +41,10 @@ function resolveRequestHeaders(req) {
     if (req?.user?.chatwootAccessToken) {
         const decrypted = userController.decryptChatwootToken(req.user.chatwootAccessToken);
         if (decrypted) {
-            return { api_access_token: decrypted };
+            return {
+                api_access_token: decrypted,
+                'api-access-token': decrypted
+            };
         }
     }
     return undefined;
@@ -132,7 +135,7 @@ exports.getConversations = async (req, res) => {
         }
 
         const rawResponse = await chatwootService.request('get', queryPath, undefined, undefined, resolveRequestHeaders(req));
-        const rawPayloads = rawResponse?.data?.payloads || rawResponse?.payloads || (Array.isArray(rawResponse) ? rawResponse : []);
+        const rawPayloads = rawResponse?.data?.payload || rawResponse?.data?.payloads || rawResponse?.payload || rawResponse?.payloads || (Array.isArray(rawResponse) ? rawResponse : []);
 
         let conversations = rawPayloads.map(normalizeConversationItem).filter(Boolean);
 
@@ -365,15 +368,45 @@ exports.sendMessage = async (req, res) => {
         // 3. Assemble payload for Chatwoot API
         let payload;
         if (effectiveIsTemplate) {
+            let effectiveName = sanitizedTemplateName;
+            let effectiveLang = language || 'en';
+            let effectiveProcessedParams = (templateParams && typeof templateParams === 'object' && !Array.isArray(templateParams))
+                ? templateParams
+                : {};
+
+            if (typeof chatwootService.getInboxTemplates === 'function') {
+                const synced = await chatwootService.getInboxTemplates();
+                if (Array.isArray(synced) && synced.length > 0 && !synced.some(t => t.name === effectiveName)) {
+                    if (synced.some(t => t.name === 'new_shipment_created')) {
+                        const arr = Array.isArray(templateParams) ? templateParams : [];
+                        const tracking = String(arr[1] || 'TRG-SHIPMENT');
+                        const dest = String(arr[2] || 'Kuwait');
+                        const statusNote = String(arr[3] || content || 'Customer Support Follow-up');
+                        effectiveName = 'new_shipment_created';
+                        effectiveLang = 'en';
+                        effectiveProcessedParams = {
+                            header: { '1': tracking },
+                            body: {
+                                '1': `Kuwait City, KW \u2192 ${dest}`,
+                                '2': 'Scheduled',
+                                '3': statusNote,
+                                '4': new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
+                                '5': `https://target-kw.com/track/${encodeURIComponent(tracking)}`
+                            }
+                        };
+                    }
+                }
+            }
+
             payload = {
-                content: content || `[Meta Template: ${sanitizedTemplateName}]`,
+                content: content || `[Meta Template: ${effectiveName}]`,
                 message_type: 'outgoing',
                 private: false,
                 template_params: {
-                    name: sanitizedTemplateName,
+                    name: effectiveName,
                     category: 'UTILITY',
-                    language: language || 'en',
-                    processed_params: templateParams || {},
+                    language: effectiveLang,
+                    processed_params: Object.keys(effectiveProcessedParams).length > 0 ? effectiveProcessedParams : (templateParams || {}),
                     parameters: templateParams || {}
                 }
             };
@@ -568,23 +601,49 @@ exports.getShipmentConversation = async (req, res) => {
         }
 
         const phone = shipment.destination?.phone || shipment.customer?.phone || shipment.origin?.phone || shipment.user?.phone;
-        const name = shipment.destination?.contactPerson || shipment.destination?.name || shipment.customer?.name || 'Customer';
-        const role = 'receiver';
+        const name = shipment.destination?.contactPerson || shipment.destination?.name || shipment.customer?.name || shipment.origin?.contactPerson || shipment.origin?.name || 'Customer';
+        const role = (shipment.destination?.phone || shipment.customer?.phone) ? 'receiver' : 'sender';
 
         const context = typeof chatwootService.buildShipmentNotificationContext === 'function'
             ? chatwootService.buildShipmentNotificationContext(shipment)
             : { trackingNumber, shipmentId: shipment.id };
 
-        const target = { phone, name, role };
+        const normalizedTargetPhone = typeof chatwootService.normalizePhone === 'function'
+            ? (chatwootService.normalizePhone(phone, shipment.destination?.phoneCountryCode || shipment.origin?.phoneCountryCode) || phone)
+            : phone;
+        const target = { phone: normalizedTargetPhone, name, role };
         let contact = null;
         let conversation = null;
         let windowStatus = null;
         let localMessages = null;
 
         try {
-            contact = await chatwootService.findOrCreateContact(target, context);
-            conversation = await chatwootService.findOrCreateConversation(contact, target, context);
-            windowStatus = await chatwootService.checkCustomer24hWindow(conversation.id);
+            let existingLogConvId = null;
+            if (typeof prisma.shipmentNotificationLog?.findFirst === 'function') {
+                const logWithConv = await prisma.shipmentNotificationLog.findFirst({
+                    where: {
+                        OR: [
+                            { shipmentId: shipment.id },
+                            { trackingNumber: shipment.trackingNumber }
+                        ],
+                        chatwootConversationId: { not: null }
+                    },
+                    orderBy: { updatedAt: 'desc' },
+                    select: { chatwootConversationId: true }
+                }).catch(() => null);
+                existingLogConvId = logWithConv?.chatwootConversationId || null;
+            }
+
+            if (existingLogConvId) {
+                const accountId = getAccountId();
+                const convResp = await chatwootService.request('get', `/api/v1/accounts/${accountId}/conversations/${existingLogConvId}`, undefined, undefined, resolveRequestHeaders(req));
+                conversation = convResp?.data || convResp?.payload || convResp;
+                windowStatus = await chatwootService.checkCustomer24hWindow(existingLogConvId);
+            } else {
+                contact = await chatwootService.findOrCreateContact(target, context);
+                conversation = await chatwootService.findOrCreateConversation(contact, target, context);
+                windowStatus = await chatwootService.checkCustomer24hWindow(conversation.id);
+            }
         } catch (cwErr) {
             logger.warn(`[supportChat] Chatwoot API unavailable for ${trackingNumber} (${cwErr.message}); using local notification log fallback.`);
             localMessages = await synthesizeMessagesFromLocalLogs({
@@ -655,7 +714,7 @@ exports.getUnreadCount = async (req, res) => {
     try {
         const accountId = getAccountId();
         const rawResponse = await chatwootService.request('get', `/api/v1/accounts/${accountId}/conversations?status=open`, undefined, undefined, resolveRequestHeaders(req));
-        const payloads = rawResponse?.data?.payloads || rawResponse?.payloads || (Array.isArray(rawResponse) ? rawResponse : []);
+        const payloads = rawResponse?.data?.payload || rawResponse?.data?.payloads || rawResponse?.payload || rawResponse?.payloads || (Array.isArray(rawResponse) ? rawResponse : []);
 
         const unreadCount = payloads.reduce((sum, c) => sum + (Number(c.unread_count || 0)), 0);
 

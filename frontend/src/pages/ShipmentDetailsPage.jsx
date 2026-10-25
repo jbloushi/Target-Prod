@@ -3243,6 +3243,8 @@ const ShipmentDetailsPage = () => {
                 }
                 phone={
                     chatwootDrawerTarget?.phone ||
+                    sender?.phone ||
+                    shipment?.origin?.phone ||
                     receiver?.phone ||
                     shipment?.destination?.phone ||
                     shipment?.customerPhone ||
@@ -3250,12 +3252,16 @@ const ShipmentDetailsPage = () => {
                 }
                 recipientName={
                     chatwootDrawerTarget?.recipientName ||
+                    sender?.name ||
+                    sender?.contactPerson ||
+                    shipment?.origin?.contactPerson ||
+                    shipment?.origin?.name ||
                     receiver?.name ||
                     receiver?.contactPerson ||
                     shipment?.destination?.contactPerson ||
                     shipment?.destination?.name ||
                     shipment?.customerName ||
-                    'Consignee'
+                    'Customer'
                 }
                 trackingNumber={shipment?.trackingNumber}
                 shipment={shipment}

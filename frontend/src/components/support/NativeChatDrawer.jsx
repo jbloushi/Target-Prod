@@ -32,8 +32,8 @@ export const NativeChatDrawer = ({
 
     const effectiveConversationId = chatwootConversationId || conversationId || null;
     const effectiveTrackingNumber = trackingNumber || shipment?.trackingNumber || null;
-    const effectivePhone = phone || shipment?.destination?.phone || shipment?.customerPhone || '';
-    const displayName = recipientName || shipment?.destination?.contactPerson || shipment?.customerName || title || 'Customer';
+    const effectivePhone = phone || shipment?.origin?.phone || shipment?.destination?.phone || shipment?.customerPhone || '';
+    const displayName = recipientName || shipment?.origin?.contactPerson || shipment?.destination?.contactPerson || shipment?.customerName || title || 'Customer';
 
     // Auto-bind / select conversation when drawer opens
     const initDrawerConversation = useCallback(async () => {
