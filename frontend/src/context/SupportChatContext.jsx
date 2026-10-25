@@ -224,6 +224,9 @@ export const SupportChatProvider = ({ children }) => {
                 }
                 setActiveConversation(conv);
                 if (data.windowStatus) setWindowStatus(data.windowStatus);
+                if (Array.isArray(data.messages) && data.messages.length > 0) {
+                    setMessages(data.messages);
+                }
                 await Promise.all([
                     loadConversationMessages(data.conversationId),
                     loadLogisticsContext(data.conversationId, { trackingNumber })

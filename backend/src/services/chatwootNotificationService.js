@@ -98,18 +98,38 @@ function formatProcessedParams(params) {
     };
 }
 
+const IS_PLACEHOLDER_TOKEN_REGEX = /^(replace-with|your[_-]?token|example|token|placeholder|changeme)/i;
+
+function isPlaceholderToken(token) {
+    if (!token || typeof token !== 'string') return true;
+    const trimmed = token.trim();
+    if (!trimmed) return true;
+    return IS_PLACEHOLDER_TOKEN_REGEX.test(trimmed);
+}
+
+let cachedDbCredentials = {
+    token: null,
+    inboxId: null,
+    accountId: null,
+    baseUrl: null,
+    expiresAt: 0
+};
+
 function getChatwootConfig() {
     const chatwoot = config.chatwoot || {};
-    const rawBaseUrl = trimTrailingSlash(chatwoot.baseUrl);
+    const rawBaseUrl = trimTrailingSlash(chatwoot.baseUrl || cachedDbCredentials.baseUrl);
     const baseUrl = (!rawBaseUrl || rawBaseUrl.includes('chatwoot.example.com'))
         ? 'https://inbox.mawthook.io'
         : rawBaseUrl;
+    const rawToken = !isPlaceholderToken(chatwoot.apiAccessToken)
+        ? chatwoot.apiAccessToken
+        : (cachedDbCredentials.token || chatwoot.apiAccessToken);
     return {
         enabled: chatwoot.enabled === true,
         baseUrl,
-        accountId: chatwoot.accountId || '1',
-        inboxId: chatwoot.inboxId,
-        apiAccessToken: chatwoot.apiAccessToken,
+        accountId: chatwoot.accountId || cachedDbCredentials.accountId || '1',
+        inboxId: chatwoot.inboxId || cachedDbCredentials.inboxId || '1',
+        apiAccessToken: rawToken,
         allowPlainTextFallback: chatwoot.allowPlainTextFallback !== false,
         templateConfig: chatwoot.templateConfig || {}
     };
@@ -483,6 +503,59 @@ class ChatwootNotificationService {
 
     resetClient() {
         this.client = null;
+        cachedDbCredentials.expiresAt = 0;
+    }
+
+    async refreshDbCredentialsIfNeeded() {
+        if (cachedDbCredentials.expiresAt > Date.now() && cachedDbCredentials.token) {
+            return cachedDbCredentials;
+        }
+        try {
+            const dbCfg = await prisma.whatsAppConfig?.findFirst?.().catch(() => null);
+            let resolvedToken = (dbCfg?.chatwootApiToken && !isPlaceholderToken(dbCfg.chatwootApiToken))
+                ? dbCfg.chatwootApiToken.trim()
+                : null;
+
+            if (!resolvedToken && typeof prisma.user?.findMany === 'function') {
+                const fieldEncryption = require('../utils/fieldEncryption');
+                const usersWithTokens = await prisma.user.findMany({
+                    where: { chatwootAccessToken: { not: null } },
+                    select: { chatwootAccessToken: true, role: true },
+                    take: 10
+                }).catch(() => []);
+
+                if (Array.isArray(usersWithTokens)) {
+                    const sortedUsers = [...usersWithTokens].sort((a, b) => (a.role === 'admin' ? -1 : b.role === 'admin' ? 1 : 0));
+                    for (const u of sortedUsers) {
+                        if (!u?.chatwootAccessToken) continue;
+                        try {
+                            const envelope = typeof u.chatwootAccessToken === 'string'
+                                ? JSON.parse(u.chatwootAccessToken)
+                                : u.chatwootAccessToken;
+                            const dec = fieldEncryption.decrypt(envelope);
+                            if (dec && !isPlaceholderToken(dec)) {
+                                resolvedToken = dec.trim();
+                                break;
+                            }
+                        } catch (_) {}
+                    }
+                }
+            }
+
+            const prevToken = cachedDbCredentials.token;
+            cachedDbCredentials = {
+                token: resolvedToken,
+                inboxId: dbCfg?.chatwootInboxId || cachedDbCredentials.inboxId || '1',
+                accountId: dbCfg?.chatwootAccountId || cachedDbCredentials.accountId || '1',
+                baseUrl: dbCfg?.chatwootBaseUrl || cachedDbCredentials.baseUrl || null,
+                expiresAt: Date.now() + 60 * 1000
+            };
+
+            if (resolvedToken && resolvedToken !== prevToken && this.client?.defaults?.headers) {
+                this.client.defaults.headers.api_access_token = resolvedToken;
+            }
+        } catch (_) {}
+        return cachedDbCredentials;
     }
 
     getClient() {
@@ -499,6 +572,8 @@ class ChatwootNotificationService {
                     'Content-Type': 'application/json'
                 }
             });
+        } else if (this.client?.defaults?.headers && token && token !== 'token') {
+            this.client.defaults.headers.api_access_token = token;
         }
 
         return this.client;
@@ -506,7 +581,14 @@ class ChatwootNotificationService {
 
     isConfigured() {
         const cw = getChatwootConfig();
-        return Boolean(cw.enabled && cw.baseUrl && cw.accountId && cw.inboxId && cw.apiAccessToken);
+        return Boolean(
+            cw.enabled &&
+            cw.baseUrl &&
+            cw.accountId &&
+            cw.inboxId &&
+            cw.apiAccessToken &&
+            !isPlaceholderToken(cw.apiAccessToken)
+        );
     }
 
     async createLog({ shipment, eventType, target, status = 'pending', errorMessage = null, force = false }) {
@@ -574,6 +656,9 @@ class ChatwootNotificationService {
     }
 
     async request(method, path, body = undefined, query = undefined, headers = undefined) {
+        if (!headers?.api_access_token && isPlaceholderToken(config.chatwoot?.apiAccessToken)) {
+            await this.refreshDbCredentialsIfNeeded();
+        }
         const client = this.getClient();
         if (!client) {
             throw new Error('Chatwoot client is not initialized or configured');
@@ -1121,6 +1206,8 @@ class ChatwootNotificationService {
         let headers = undefined;
         if (options.userAccessToken) {
             headers = { api_access_token: options.userAccessToken };
+        } else if (isPlaceholderToken(config.chatwoot?.apiAccessToken)) {
+            await this.refreshDbCredentialsIfNeeded();
         }
 
         const client = this.getClient();
@@ -1288,8 +1375,12 @@ class ChatwootNotificationService {
             return { skipped: false, provider: activeProvider, results };
         }
 
+        if (isPlaceholderToken(config.chatwoot?.apiAccessToken)) {
+            await this.refreshDbCredentialsIfNeeded();
+        }
         const cw = getChatwootConfig();
         const context = buildShipmentNotificationContext(shipment);
+        const fallbackEnabled = (systemSettings.fallbackProvider || 'SHIPMENT_WHATSAPP') === 'SHIPMENT_WHATSAPP';
 
         if (!cw.enabled) {
             logger.info('[chatwoot] skipped disabled');
@@ -1305,6 +1396,32 @@ class ChatwootNotificationService {
         }
 
         if (!this.isConfigured()) {
+            if (fallbackEnabled) {
+                logger.warn('[chatwoot] Chatwoot token not configured yet; failing over to SHIPMENT_WHATSAPP (msg.target-kw.com)');
+                const whatsappIntegration = require('./whatsappIntegration.service');
+                const fallbackResults = [];
+                for (const target of targets) {
+                    try {
+                        const res = await whatsappIntegration.sendNotification({
+                            shipment,
+                            recipientRole: target.role,
+                            recipientPhone: target.phone,
+                            recipientCountryCode: target.countryCode,
+                            recipientName: target.name,
+                            eventType,
+                            templateName: options.templateName,
+                            force: true,
+                            provider: 'SHIPMENT_WHATSAPP'
+                        });
+                        fallbackResults.push({ target: target.role, status: res.status || 'submitted', externalMessageId: res.externalMessageId, isFallback: true });
+                    } catch (fbErr) {
+                        logger.error(`[chatwoot fallback] SHIPMENT_WHATSAPP failover error: ${fbErr.message}`);
+                        fallbackResults.push({ target: target.role, status: 'failed', error: fbErr.message });
+                    }
+                }
+                return { skipped: false, provider: 'SHIPMENT_WHATSAPP', isFallback: true, results: fallbackResults };
+            }
+
             logger.warn('[chatwoot] skipped disabled or incomplete configuration');
             await Promise.all(targets.map(target => this.createLog({
                 shipment,
@@ -1363,6 +1480,30 @@ class ChatwootNotificationService {
                 const response = error.response?.data;
                 const message = response?.message || response?.error || error.message;
                 logger.error(`[chatwoot] message failed ${eventType} ${shipment.trackingNumber} ${target.role} ${maskPhone(target.phone)}: ${message}`);
+
+                if (fallbackEnabled) {
+                    try {
+                        logger.warn(`[chatwoot fallback] Failing over ${shipment.trackingNumber} (${eventType}) to SHIPMENT_WHATSAPP after Chatwoot error: ${message}`);
+                        const whatsappIntegration = require('./whatsappIntegration.service');
+                        const fbRes = await whatsappIntegration.sendNotification({
+                            shipment,
+                            recipientRole: target.role,
+                            recipientPhone: target.phone,
+                            recipientCountryCode: target.countryCode,
+                            recipientName: target.name,
+                            eventType,
+                            templateName: options.templateName || templateName,
+                            force: true,
+                            provider: 'SHIPMENT_WHATSAPP',
+                            existingLogId: log.id
+                        });
+                        results.push({ target: target.role, status: fbRes.status || 'submitted', externalMessageId: fbRes.externalMessageId, isFallback: true });
+                        continue;
+                    } catch (fbErr) {
+                        logger.error(`[chatwoot fallback] Microservice failover also failed for ${shipment.trackingNumber}: ${fbErr.message}`);
+                    }
+                }
+
                 await this.updateLog(log.id, {
                     status: 'failed',
                     templateName,
