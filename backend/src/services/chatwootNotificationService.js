@@ -1137,10 +1137,13 @@ class ChatwootNotificationService {
         const contactId = contact?.id || contact?.contact?.id;
         if (!contactId) throw new Error('Chatwoot contact id missing');
 
-        const sourceId = `contact:${contactId}:whatsapp`;
+        const phoneDigits = String(target?.phone || contact?.phone_number || '').replace(/\D/g, '');
+        const sourceId = phoneDigits || `contact:${contactId}:whatsapp`;
         const inboxes = contact.contact_inboxes || contact.contactInboxes || [];
         const inbox = Array.isArray(inboxes)
-            ? inboxes.find(item => String(item.inbox?.id || item.inbox_id) === String(cw.inboxId)) || inboxes[0]
+            ? inboxes.find(item => String(item.inbox?.id || item.inbox_id) === String(cw.inboxId) && item.source_id === phoneDigits) ||
+              inboxes.find(item => String(item.inbox?.id || item.inbox_id) === String(cw.inboxId)) ||
+              inboxes[0]
             : null;
 
         let conversation = null;
@@ -1150,10 +1153,39 @@ class ChatwootNotificationService {
             const result = await this.request('get', `/api/v1/accounts/${cw.accountId}/contacts/${contactId}/conversations`);
             const conversations = result?.payload || result?.data || result || [];
             if (Array.isArray(conversations) && conversations.length > 0) {
-                // Find matching inbox conversation, prioritizing open threads or latest thread
-                conversation = conversations.find(conv => String(conv.inbox_id || conv.inbox?.id) === String(cw.inboxId) && !['resolved', 'closed'].includes(conv.status)) ||
-                    conversations.find(conv => String(conv.inbox_id || conv.inbox?.id) === String(cw.inboxId)) ||
-                    conversations[0];
+                const rankConversation = (conv) => {
+                    const isMatchingInbox = String(conv.inbox_id || conv.inbox?.id) === String(cw.inboxId);
+                    const isOpen = !['resolved', 'closed'].includes(conv.status);
+                    const canReply = conv.can_reply === true;
+                    return (isMatchingInbox ? 100 : 0) + (canReply ? 50 : 0) + (isOpen ? 20 : 0);
+                };
+
+                const sorted = conversations.slice().sort((a, b) => {
+                    const rankDiff = rankConversation(b) - rankConversation(a);
+                    if (rankDiff !== 0) return rankDiff;
+                    const actDiff = (Number(b.last_activity_at) || 0) - (Number(a.last_activity_at) || 0);
+                    if (actDiff !== 0) return actDiff;
+                    return (Number(b.id) || 0) - (Number(a.id) || 0);
+                });
+
+                conversation = sorted[0];
+
+                // If there are duplicate open conversations in the same inbox (e.g. an older outbound-only
+                // thread with can_reply: false alongside an active customer reply thread with can_reply: true),
+                // resolve the stale duplicate threads so agents and automation share a single open conversation.
+                if (conversation?.id && conversation.can_reply === true) {
+                    const staleOpenDuplicates = sorted.slice(1).filter(conv =>
+                        String(conv.inbox_id || conv.inbox?.id) === String(cw.inboxId) &&
+                        !['resolved', 'closed'].includes(conv.status) &&
+                        conv.can_reply === false &&
+                        String(conv.id) !== String(conversation.id)
+                    );
+                    for (const staleConv of staleOpenDuplicates) {
+                        this.request('post', `/api/v1/accounts/${cw.accountId}/conversations/${staleConv.id}/toggle_status`, { status: 'resolved' })
+                            .then(() => logger.info(`[chatwoot] resolved duplicate stale conversation ${staleConv.id} in favor of active conversation ${conversation.id}`))
+                            .catch(err => logger.debug(`[chatwoot] could not resolve duplicate conversation ${staleConv.id}: ${err.message}`));
+                    }
+                }
             }
         } catch (error) {
             logger.debug(`[chatwoot] conversation search failed ${maskPhone(target.phone)}: ${error.response?.status || error.message}`);

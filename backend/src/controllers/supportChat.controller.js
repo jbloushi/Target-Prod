@@ -638,7 +638,22 @@ exports.getShipmentConversation = async (req, res) => {
                 const accountId = getAccountId();
                 const convResp = await chatwootService.request('get', `/api/v1/accounts/${accountId}/conversations/${existingLogConvId}`, undefined, undefined, resolveRequestHeaders(req));
                 conversation = convResp?.data || convResp?.payload || convResp;
-                windowStatus = await chatwootService.checkCustomer24hWindow(existingLogConvId);
+
+                // If the logged conversation is outside the 24h reply window (can_reply === false),
+                // check if the contact has a newer active conversation (e.g. from an incoming WhatsApp reply)
+                if (conversation && conversation.can_reply === false && target.phone) {
+                    try {
+                        contact = await chatwootService.findOrCreateContact(target, context);
+                        const bestConv = await chatwootService.findOrCreateConversation(contact, target, context);
+                        if (bestConv?.id && String(bestConv.id) !== String(existingLogConvId)) {
+                            conversation = bestConv;
+                        }
+                    } catch (reconcileErr) {
+                        logger.debug(`[supportChat] Conversation reconciliation skipped for ${trackingNumber}: ${reconcileErr.message}`);
+                    }
+                }
+
+                windowStatus = await chatwootService.checkCustomer24hWindow(conversation?.id || existingLogConvId);
             } else {
                 contact = await chatwootService.findOrCreateContact(target, context);
                 conversation = await chatwootService.findOrCreateConversation(contact, target, context);
