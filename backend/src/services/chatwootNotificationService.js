@@ -608,18 +608,21 @@ class ChatwootNotificationService {
         };
 
         if (force) {
-            return prisma.shipmentNotificationLog.upsert({
+            const existing = await prisma.shipmentNotificationLog.findFirst({
                 where: {
-                    shipmentId_eventType_recipientRole_provider: {
-                        shipmentId: shipment.id,
-                        eventType,
-                        recipientRole: target.role,
-                        provider: PROVIDER
-                    }
+                    shipmentId: shipment.id,
+                    eventType,
+                    recipientRole: target.role
                 },
-                update: { ...data, payloadJson: null, responseJson: null, sentAt: null },
-                create: data
+                orderBy: { updatedAt: 'desc' }
             });
+            if (existing?.id) {
+                return prisma.shipmentNotificationLog.update({
+                    where: { id: existing.id },
+                    data: { ...data, payloadJson: null, responseJson: null, sentAt: null }
+                });
+            }
+            return prisma.shipmentNotificationLog.create({ data });
         }
 
         try {
