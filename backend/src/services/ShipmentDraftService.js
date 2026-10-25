@@ -456,8 +456,6 @@ class ShipmentDraftService {
                     }
                 }
             }
-                }
-            }
 
             if (!clean.formattedAddress && (clean.streetLines?.length || clean.city)) {
                 const parts = [
