@@ -55,6 +55,8 @@ Evidence: `backend/src/routes/whatsapp.routes.js`; `sendShipmentWhatsApp` in `ba
 
 **Recommendation:** Restrict the endpoint to an explicit operational permission, verify shipment access, constrain allowed recipient roles and phone overrides, and audit actor/reason. Keep deliberately receiver-facing actions on separately named, permissioned endpoints.
 
+**Current remediation:** The manual route now checks shipment-level access. Caller-supplied phone, name, template, message, and force controls require an operational capability; recipient roles are validated. A sender lifecycle action uses the approved Chatwoot confirmation path and the shipment's shipper contact.
+
 ### 3. Public WhatsApp status webhook accepts unauthenticated status mutations
 
 **Priority:** P1
@@ -72,6 +74,8 @@ Evidence: `backend/src/routes/whatsapp.routes.js` exposes webhook POST aliases w
 Evidence: `chatwootNotificationService.createLog`, `whatsappIntegration.service.js` log creation, and `adminWhatsAppLogs.controller.js::resendNotification`.
 
 **Recommendation:** Keep a normalized delivery address in a protected encrypted/contact reference usable for retries, and a separate masked display field for routine UI. Resend should resolve the destination from a trusted shipment party/contact record and confirm it matches the logged recipient role. Do not treat a display mask as a send address.
+
+**Current remediation:** Admin resend resolves a current destination from the shipment rather than using the masked log phone. Sender lifecycle resends use the approved Chatwoot service and update the exact log ID. A missing trusted phone blocks the send. A longer-term encrypted delivery-address reference and retention policy remain open.
 
 ### 5. Personal data is emitted to logs and retained in raw payload snapshots
 
@@ -117,6 +121,8 @@ Evidence: `adminWhatsAppLogs.controller.js` delivery-rate calculation; direct/Ch
 Evidence: `chatwootNotificationService.triggerShipmentNotification`; `whatsappQueueDrainer.service.js`; `adminWhatsAppLogs.controller.js::dispatchQueuedNotifications`/`resendNotification`; `whatsappIntegration.service.js::sendNotification`.
 
 **Recommendation:** Use one durable queue and atomic claim/idempotency key across providers, define retryable versus terminal failure classes, and record attempt count/next-attempt/dead-letter reason. Keep policy checks inside the dispatch service and make queue workers pass an explicit policy-approved retry capability instead of broad `force`.
+
+**Current remediation:** The legacy drainer binds lifecycle retries to the exact queued log ID and skips events already submitted from another row. It also closes rows without a current shipper phone. Admin batch dispatch uses the approved Chatwoot lifecycle template and current shipper phone. An atomic claim/lease across concurrent workers remains open.
 
 ### 10. Existing Chatwoot setup/event documentation is stale
 
