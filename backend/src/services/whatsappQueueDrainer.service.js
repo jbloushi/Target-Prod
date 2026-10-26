@@ -2,6 +2,22 @@ const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
 const whatsAppConfigService = require('./whatsAppConfig.service');
 
+const SHIPMENT_LIFECYCLE_EVENTS = new Set([
+    'shipment_created',
+    'new_shipment_created',
+    'shipment_created_backfill',
+    'pickup_scheduled',
+    'received_at_hub',
+    'verified_and_dispatched',
+    'on_hold_customs_issue',
+    'documents_needed',
+    'delivery_attempt',
+    'out_for_delivery',
+    'delivered',
+    'rto_in_transit',
+    'returned'
+]);
+
 class WhatsAppQueueDrainerService {
     constructor() {
         this.timer = null;
@@ -69,6 +85,7 @@ class WhatsAppQueueDrainerService {
 
             logger.info(`[WhatsAppQueueDrainer] Draining ${queued.length} queued shipper notifications via Chatwoot...`);
             const whatsappIntegration = require('./whatsappIntegration.service');
+            const chatwootNotificationService = require('./chatwootNotificationService');
 
             for (const log of queued) {
                 try {
@@ -90,17 +107,26 @@ class WhatsAppQueueDrainerService {
                         continue;
                     }
 
-                    await whatsappIntegration.sendNotification({
-                        shipment,
-                        recipientRole: 'sender',
-                        recipientPhone: log.recipientPhone,
-                        recipientName: log.recipientName,
-                        eventType: log.eventType,
-                        templateName: log.templateName,
-                        force: true, // Bypass quiet hours check since we verified not quiet hours
-                        existingLogId: log.id,
-                        provider: 'chatwoot'
-                    });
+                    if (SHIPMENT_LIFECYCLE_EVENTS.has(log.eventType)) {
+                        await chatwootNotificationService.sendShipmentNotification(log.eventType, shipment, {
+                            recipientRole: 'sender',
+                            templateName: 'shipment_confirmation_2',
+                            disableProviderFallback: true,
+                            force: true
+                        });
+                    } else {
+                        await whatsappIntegration.sendNotification({
+                            shipment,
+                            recipientRole: 'sender',
+                            recipientPhone: log.recipientPhone,
+                            recipientName: log.recipientName,
+                            eventType: log.eventType,
+                            templateName: log.templateName,
+                            force: true, // Bypass quiet hours check since we verified not quiet hours
+                            existingLogId: log.id,
+                            provider: 'chatwoot'
+                        });
+                    }
 
                     // Throttle 250ms between sends to protect API rate limits
                     await new Promise(r => setTimeout(r, 250));
