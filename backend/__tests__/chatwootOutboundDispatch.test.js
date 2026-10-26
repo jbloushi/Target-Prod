@@ -16,6 +16,7 @@ const whatsappService = require('../src/services/whatsappIntegration.service');
 const chatwootService = require('../src/services/chatwootNotificationService');
 const whatsAppConfigService = require('../src/services/whatsAppConfig.service');
 const appConfig = require('../src/config/config');
+const logger = require('../src/utils/logger');
 
 // Mock external HTTP requests: zero real customer messages and zero live network requests
 jest.mock('axios');
@@ -298,6 +299,28 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
 
             expect(result.results[0].status).toBe('failed');
             expect(axios.post).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('OTP log redaction', () => {
+        test('does not log the OTP value or full recipient phone on template dispatch', async () => {
+            const otp = '638204';
+            const infoSpy = jest.spyOn(logger, 'info').mockImplementation(() => {});
+            axios.post.mockResolvedValueOnce({ data: { status: 'sent', messageId: 'wamid.OTP_TEST' } });
+
+            await whatsappService.sendViaShipmentWhatsappMicroservice({
+                serviceUrl: 'https://msg.target-kw.com',
+                templateName: 'otptargetlogin',
+                language: 'en_US',
+                toPhone: '+96597959567',
+                variables: [otp]
+            });
+
+            const logged = JSON.stringify(infoSpy.mock.calls);
+            expect(logged).not.toContain(otp);
+            expect(logged).not.toContain('96597959567');
+            expect(logged).toContain('9567');
+            infoSpy.mockRestore();
         });
     });
 

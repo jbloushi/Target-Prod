@@ -54,6 +54,11 @@ function normalizePhone(phone, phoneCountryCode = '965') {
     return null;
 }
 
+function maskPhoneForLog(phone) {
+    const digits = String(phone || '').replace(/\D/g, '');
+    return digits.length < 4 ? '****' : `${'*'.repeat(digits.length - 4)}${digits.slice(-4)}`;
+}
+
 const DEV_SAFE_PHONE = '+201040957289';
 
 function isDevMode() {
@@ -63,7 +68,7 @@ function isDevMode() {
 function resolveRecipientPhone(phone, phoneCountryCode = '965') {
     const normalized = normalizePhone(phone, phoneCountryCode);
     if (isDevMode()) {
-        logger.info(`[WhatsApp DEV Safe Routing] Intended recipient: ${normalized || phone} -> Overriding dispatch to developer: ${DEV_SAFE_PHONE}`);
+        logger.info(`[WhatsApp DEV Safe Routing] Intended recipient: ${maskPhoneForLog(normalized || phone)} -> Overriding dispatch to developer: ${maskPhoneForLog(DEV_SAFE_PHONE)}`);
         return DEV_SAFE_PHONE;
     }
     return normalized;
@@ -181,7 +186,10 @@ async function sendViaShipmentWhatsappMicroservice({ serviceUrl = 'https://msg.t
         ]
     };
 
-    logger.info(`[Shipment-WhatsApp Dispatch] URL: ${url} Template: ${templateName} [${lang}] Recipient: ${cleanPhone}`, payload);
+    const safeLogPayload = /otp/i.test(String(templateName || ''))
+        ? { templateName, language: lang, recipient: maskPhoneForLog(cleanPhone), rowCount: payload.rows.length }
+        : payload;
+    logger.info(`[Shipment-WhatsApp Dispatch] URL: ${url} Template: ${templateName} [${lang}] Recipient: ${maskPhoneForLog(cleanPhone)}`, safeLogPayload);
 
     let response;
     try {
@@ -1621,7 +1629,7 @@ www.target-kw.com | +965 6965 6563`;
         if (!phone || !otp) return null;
         const resolvedPhone = resolveRecipientPhone(phone, '965');
         if (!resolvedPhone) {
-            logger.warn(`[WhatsApp OTP] Invalid phone number: ${phone}`);
+            logger.warn(`[WhatsApp OTP] Invalid phone number ending ${maskPhoneForLog(phone).slice(-4)}`);
             return null;
         }
 
@@ -1632,7 +1640,7 @@ www.target-kw.com | +965 6965 6563`;
         const langCode = 'en_US';
         const bodyText = `Please share code ${otp} with delivery agent after verifying the package.`;
 
-        logger.info(`[WhatsApp OTP Dispatch] Template: ${templateName} [${langCode}] Target: ${cleanPhone} (OTP: ${otp}) Provider: ${provider}`);
+        logger.info(`[WhatsApp OTP Dispatch] Template: ${templateName} [${langCode}] Target: ${maskPhoneForLog(cleanPhone)} Provider: ${provider}`);
 
         // 1. Direct Meta WhatsApp Business API Cloud Endpoint (Most accurate for Authentication / Custom templates)
         if (settings.accessToken && settings.phoneNumberId) {
@@ -1714,7 +1722,7 @@ www.target-kw.com | +965 6965 6563`;
                     });
 
                     const wamid = res.data?.messages?.[0]?.id || null;
-                    logger.info(`[WhatsApp Meta API OTP Sent] Successfully sent template '${templateName}' to ${cleanPhone} (Payload Set ${i + 1}). WAMID: ${wamid}`);
+                    logger.info(`[WhatsApp Meta API OTP Sent] Template '${templateName}' sent to ${maskPhoneForLog(cleanPhone)} (Payload Set ${i + 1}). WAMID: ${wamid}`);
                     return { status: 'SENT', externalMessageId: wamid, provider: 'META' };
                 } catch (metaErr) {
                     const errorDetail = metaErr.response?.data?.error?.message || metaErr.message;
