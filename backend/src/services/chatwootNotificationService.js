@@ -22,6 +22,28 @@ const EVENT_TARGETS = {
     returned: ['sender']
 };
 
+const SHIPMENT_CONFIRMATION_EVENTS = new Set([
+    'shipment_created',
+    'pickup_scheduled',
+    'received_at_hub',
+    'verified_and_dispatched',
+    'on_hold_customs_issue',
+    'documents_needed',
+    'delivery_attempt',
+    'out_for_delivery',
+    'delivered',
+    'rto_in_transit',
+    'returned',
+    'shipment_created_backfill'
+]);
+
+function selectNotificationTemplate(eventType, recipientRole, requestedTemplate = null) {
+    if (recipientRole === 'sender' && SHIPMENT_CONFIRMATION_EVENTS.has(eventType)) {
+        return 'shipment_confirmation_2';
+    }
+    return requestedTemplate || null;
+}
+
 const DEFAULT_EVENT_CONTENT = {
     shipment_created: 'Shipment Created',
     pickup_scheduled: 'Driver Scheduled for Pickup',
@@ -121,6 +143,44 @@ let cachedInboxTemplates = {
     expiresAt: 0
 };
 
+function resolveShipmentInvoiceReference(shipment, trackingNumber) {
+    const documents = shipment?.documents && typeof shipment.documents === 'object' ? shipment.documents : {};
+    const customsInvoice = shipment?.customsInvoice && typeof shipment.customsInvoice === 'object'
+        ? shipment.customsInvoice
+        : (shipment?.origin?.customsInvoice && typeof shipment.origin.customsInvoice === 'object'
+            ? shipment.origin.customsInvoice
+            : {});
+    const billId = documents.phenixBillId || shipment?.phenixBillId;
+    const receiptNo = documents.phenixReceiptNo || shipment?.phenixReceiptNo;
+
+    if (billId && receiptNo) return `Bill #${billId} (Receipt #${receiptNo})`;
+    if (billId) return `Bill #${billId}`;
+    if (receiptNo) return `Receipt #${receiptNo}`;
+
+    const invoice = documents.invoiceNumber || customsInvoice.invoiceNumber ||
+        documents.commercialInvoiceNumber || documents.customsInvoiceNumber || shipment?.invoiceNumber;
+    return invoice && String(invoice).trim() ? String(invoice).trim() : String(trackingNumber || 'TRG-SHIPMENT');
+}
+
+function buildApprovedTemplateContent(templateName, context, templateParams) {
+    if (templateName !== 'shipment_confirmation_2') return null;
+    const [invoice, date, receiverName, receiverPhone, trackingLink] = templateParams.parameters;
+    return [
+        'Thank you for choosing us.',
+        '',
+        `Invoice: ${invoice}`,
+        `Date: ${date}`,
+        '',
+        `Receiver Name: ${receiverName}`,
+        `Receiver Tel: ${receiverPhone}`,
+        '',
+        `Track Order: ${trackingLink}`,
+        '',
+        'Target Logistics',
+        'www.target-kw.com | www.instagram.com/u_target'
+    ].join('\n');
+}
+
 function buildSyncedTemplatePayload(templateName, eventType, context, target, customMessage = null) {
     const routeLine = [context.origin, context.destination].filter(Boolean).join(' \u2192 ') || 'Kuwait City, KW \u2192 Destination';
     const estDelivery = context.estimatedDeliveryDisplay || 'Scheduled';
@@ -130,10 +190,12 @@ function buildSyncedTemplatePayload(templateName, eventType, context, target, cu
     const displayTracking = String(context.trackingNumber || 'TRG-SHIPMENT');
 
     if (templateName === 'shipment_confirmation_2') {
-        const dateOnly = formatDisplayDate(context.currentStatusDatetime || new Date(), false) || formatDisplayDate(new Date(), false);
-        const receiverName = target?.name || 'Valued Customer';
-        const receiverPhone = String(target?.phone || '').replace(/\D/g, '') || '96500000000';
-        const invoiceRef = customMessage?.invoiceNumber || displayTracking;
+        const dateOnly = context.shipmentDateDisplay || formatDisplayDate(context.currentStatusDatetime || new Date(), false) || formatDisplayDate(new Date(), false);
+        const receiverName = context.receiverName || '[receiver name]';
+        const receiverPhone = context.receiverPhone
+            ? String(context.receiverPhone).replace(/\D/g, '')
+            : '[receiver telephone]';
+        const invoiceRef = customMessage?.invoiceNumber || context.invoiceReference || displayTracking;
         return {
             name: 'shipment_confirmation_2',
             category: 'UTILITY',
@@ -409,10 +471,22 @@ function buildShipmentNotificationContext(shipment) {
     const codNum = Number(shipment.codAmount || 0);
     const codCurrency = shipment.codCurrency || currency;
     const codFormatted = `${codNum.toFixed(3)} ${codCurrency}`;
+    const destination = shipment.destination || {};
+    const documents = shipment.documents && typeof shipment.documents === 'object' ? shipment.documents : {};
+    const receiverName = destination.contactPerson || destination.consigneeName || documents.receiverName ||
+        destination.name || destination.company || '';
+    const receiverPhone = normalizePhone(
+        destination.phone || documents.receiverPhone,
+        destination.phoneCountryCode || documents.receiverPhoneCountryCode
+    ) || '';
 
     return {
         shipmentId: shipment.id,
         trackingNumber: shipment.trackingNumber,
+        invoiceReference: resolveShipmentInvoiceReference(shipment, shipment.trackingNumber),
+        shipmentDateDisplay: formatDisplayDate(shipment.createdAt || statusDatetime, false),
+        receiverName,
+        receiverPhone,
         carrierCode,
         carrierName,
         carrierDisplayName: carrierCode === 'DGR' || carrierCode === 'DHL' ? 'DHL Express' : carrierName,
@@ -1413,10 +1487,16 @@ class ChatwootNotificationService {
         const syncedTemplates = await this.getInboxTemplates();
         let effectiveTemplateName = chosenTemplate;
 
-        if (Array.isArray(syncedTemplates) && syncedTemplates.length > 0) {
+        if (effectiveTemplateName === 'shipment_confirmation_2' && !Array.isArray(syncedTemplates)) {
+            throw new Error('Unable to verify approved Chatwoot template shipment_confirmation_2 for the configured inbox');
+        }
+
+        if (Array.isArray(syncedTemplates)) {
             const existsInInbox = syncedTemplates.some(t => t.name === effectiveTemplateName);
             if (!existsInInbox) {
-                if (syncedTemplates.some(t => t.name === 'new_shipment_created')) {
+                if (effectiveTemplateName === 'shipment_confirmation_2') {
+                    throw new Error('Required approved Chatwoot template shipment_confirmation_2 is not available in the configured inbox');
+                } else if (syncedTemplates.some(t => t.name === 'new_shipment_created')) {
                     effectiveTemplateName = 'new_shipment_created';
                 } else if (syncedTemplates.some(t => t.name === 'shipment_confirmation_2')) {
                     effectiveTemplateName = 'shipment_confirmation_2';
@@ -1435,7 +1515,7 @@ class ChatwootNotificationService {
                 payload: {
                     message_type: 'outgoing',
                     private: false,
-                    content: buildPlainContent(eventType, context, target),
+                    content: buildApprovedTemplateContent(effectiveTemplateName, context, syncedParams) || buildPlainContent(eventType, context, target),
                     template_params: syncedParams
                 }
             };
@@ -1551,7 +1631,7 @@ class ChatwootNotificationService {
         }
     }
 
-    buildShipmentNotificationPreview(eventType, shipment, recipientRole = null) {
+    async buildShipmentNotificationPreview(eventType, shipment, recipientRole = null, requestedTemplate = null) {
         const context = buildShipmentNotificationContext(shipment);
         let targets = getNotificationTargets(eventType, shipment);
 
@@ -1560,8 +1640,25 @@ class ChatwootNotificationService {
             targets = target.phone ? [target] : [];
         }
 
-        return targets.map((target) => {
-            const { payload, templateName } = buildMessagePayload(eventType, context, target);
+        return Promise.all(targets.map(async (target) => {
+            const selectedTemplate = selectNotificationTemplate(eventType, target.role, requestedTemplate);
+            let { payload, templateName } = buildMessagePayload(eventType, context, target, selectedTemplate);
+            let previewError = null;
+            if (templateName) {
+                try {
+                    const resolved = await this.resolveEffectiveTemplatePayload({
+                        eventType,
+                        context,
+                        target,
+                        chosenTemplate: templateName
+                    });
+                    payload = resolved.payload;
+                    templateName = resolved.templateName || templateName;
+                } catch (error) {
+                    previewError = error.message;
+                    payload = null;
+                }
+            }
             return {
                 eventType,
                 recipientRole: target.role,
@@ -1570,10 +1667,11 @@ class ChatwootNotificationService {
                 templateName,
                 content: payload?.content || null,
                 templateParams: payload?.template_params || null,
-                canSend: Boolean(payload && target.phone),
+                canSend: Boolean(payload && target.phone && !previewError),
+                previewError,
                 fallbackAllowed: getChatwootConfig().allowPlainTextFallback
             };
-        });
+        }));
     }
 
     async sendShipmentNotification(eventType, shipment, options = {}) {
@@ -1582,7 +1680,11 @@ class ChatwootNotificationService {
         const dbConfig = await whatsAppConfigService.getConfig({ internal: true }).catch(() => null);
         const systemSettings = dbConfig || getSystemSettings()?.whatsapp || {};
         const activeProvider = systemSettings.provider || 'CHATWOOT';
-        const targets = getNotificationTargets(eventType, shipment, options.recipientRole || null);
+        const allTargets = getNotificationTargets(eventType, shipment, options.recipientRole || null);
+        const context = buildShipmentNotificationContext(shipment);
+        const targets = [];
+
+        targets.push(...allTargets);
 
         // When provider is SHIPMENT_WHATSAPP, META, or MOCK, route directly to WhatsApp integration
         if (activeProvider === 'SHIPMENT_WHATSAPP' || activeProvider === 'TARGET_MSG' || activeProvider === 'META' || activeProvider === 'MOCK') {
@@ -1596,8 +1698,8 @@ class ChatwootNotificationService {
                         recipientPhone: target.phone,
                         recipientCountryCode: target.countryCode,
                         recipientName: target.name,
-                        eventType,
-                        templateName: options.templateName,
+                        eventType: options.fallbackEventType || eventType,
+                        templateName: selectNotificationTemplate(eventType, target.role, options.templateName),
                         force: Boolean(options.force)
                     });
                     results.push({ target: target.role, status: res.status || 'submitted', externalMessageId: res.externalMessageId });
@@ -1613,7 +1715,6 @@ class ChatwootNotificationService {
             await this.refreshDbCredentialsIfNeeded();
         }
         const cw = getChatwootConfig();
-        const context = buildShipmentNotificationContext(shipment);
         const fallbackEnabled = (systemSettings.fallbackProvider || 'SHIPMENT_WHATSAPP') === 'SHIPMENT_WHATSAPP';
 
         if (!cw.enabled) {
@@ -1630,7 +1731,10 @@ class ChatwootNotificationService {
         }
 
         if (!this.isConfigured()) {
-            if (fallbackEnabled) {
+            const requiresApprovedConfirmation = targets.some(target =>
+                selectNotificationTemplate(eventType, target.role, options.templateName) === 'shipment_confirmation_2'
+            );
+            if (fallbackEnabled && !options.disableProviderFallback && !requiresApprovedConfirmation) {
                 logger.warn('[chatwoot] Chatwoot token not configured yet; failing over to SHIPMENT_WHATSAPP (msg.target-kw.com)');
                 const whatsappIntegration = require('./whatsappIntegration.service');
                 const fallbackResults = [];
@@ -1642,8 +1746,8 @@ class ChatwootNotificationService {
                             recipientPhone: target.phone,
                             recipientCountryCode: target.countryCode,
                             recipientName: target.name,
-                            eventType,
-                            templateName: options.templateName,
+                            eventType: options.fallbackEventType || eventType,
+                            templateName: selectNotificationTemplate(eventType, target.role, options.templateName),
                             force: true,
                             provider: 'SHIPMENT_WHATSAPP'
                         });
@@ -1676,7 +1780,9 @@ class ChatwootNotificationService {
                 continue;
             }
 
-            const initialBuild = buildMessagePayload(eventType, context, target, options.templateName || null);
+            const selectedTemplate = selectNotificationTemplate(eventType, target.role, options.templateName);
+
+            const initialBuild = buildMessagePayload(eventType, context, target, selectedTemplate);
             let payload = initialBuild.payload;
             let templateName = initialBuild.templateName;
 
@@ -1693,15 +1799,27 @@ class ChatwootNotificationService {
             }
 
             if (templateName) {
-                const resolved = await this.resolveEffectiveTemplatePayload({
-                    eventType,
-                    context,
-                    target,
-                    chosenTemplate: templateName
-                });
-                if (resolved?.payload) {
-                    payload = resolved.payload;
-                    templateName = resolved.templateName || templateName;
+                try {
+                    const resolved = await this.resolveEffectiveTemplatePayload({
+                        eventType,
+                        context,
+                        target,
+                        chosenTemplate: templateName
+                    });
+                    if (resolved?.payload) {
+                        payload = resolved.payload;
+                        templateName = resolved.templateName || templateName;
+                    }
+                } catch (error) {
+                    const message = error.response?.data?.message || error.message;
+                    await this.updateLog(log.id, {
+                        status: 'failed',
+                        templateName,
+                        errorMessage: message,
+                        payloadJson: { reason: 'approved_template_unavailable' }
+                    });
+                    results.push({ target: target.role, status: 'failed', reason: 'approved_template_unavailable', error: message });
+                    continue;
                 }
             }
 
@@ -1731,7 +1849,7 @@ class ChatwootNotificationService {
                 const message = response?.message || response?.error || error.message;
                 logger.error(`[chatwoot] message failed ${eventType} ${shipment.trackingNumber} ${target.role} ${maskPhone(target.phone)}: ${message}`);
 
-                if (fallbackEnabled) {
+                if (fallbackEnabled && !options.disableProviderFallback && selectedTemplate !== 'shipment_confirmation_2') {
                     try {
                         logger.warn(`[chatwoot fallback] Failing over ${shipment.trackingNumber} (${eventType}) to SHIPMENT_WHATSAPP after Chatwoot error: ${message}`);
                         const whatsappIntegration = require('./whatsappIntegration.service');
@@ -1741,8 +1859,8 @@ class ChatwootNotificationService {
                             recipientPhone: target.phone,
                             recipientCountryCode: target.countryCode,
                             recipientName: target.name,
-                            eventType,
-                            templateName: options.templateName,
+                            eventType: options.fallbackEventType || eventType,
+                            templateName: selectedTemplate,
                             force: true,
                             provider: 'SHIPMENT_WHATSAPP',
                             existingLogId: log.id

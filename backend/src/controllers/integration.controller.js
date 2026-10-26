@@ -271,7 +271,7 @@ exports.previewChatwootShipmentMessage = async (req, res) => {
             return res.status(404).json({ success: false, error: 'Shipment not found' });
         }
 
-        const previews = chatwootNotificationService.buildShipmentNotificationPreview(eventType, shipment, recipientRole || null);
+        const previews = await chatwootNotificationService.buildShipmentNotificationPreview(eventType, shipment, recipientRole || null);
         return res.status(200).json({ success: true, data: previews });
     } catch (error) {
         logger.error('[chatwoot] preview message failed:', error);

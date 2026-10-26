@@ -15,6 +15,7 @@ const { prisma } = require('../src/config/database');
 const whatsappService = require('../src/services/whatsappIntegration.service');
 const chatwootService = require('../src/services/chatwootNotificationService');
 const whatsAppConfigService = require('../src/services/whatsAppConfig.service');
+const appConfig = require('../src/config/config');
 
 // Mock external HTTP requests: zero real customer messages and zero live network requests
 jest.mock('axios');
@@ -25,6 +26,7 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
     let mockMessages;
     let createdLogs;
     let updatedLogs;
+    let mockInboxTemplates;
 
     beforeEach(() => {
         jest.clearAllMocks();
@@ -34,11 +36,26 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
         mockMessages = [];
         createdLogs = [];
         updatedLogs = [];
+        mockInboxTemplates = [
+            { name: 'shipment_confirmation_2', status: 'APPROVED' },
+            { name: 'target_shipment_out_for_delivery', status: 'APPROVED' },
+            { name: 'target_shipment_delivered', status: 'APPROVED' },
+            { name: 'target_customs_exception_hold', status: 'APPROVED' }
+        ];
+        appConfig.chatwoot.enabled = true;
+        appConfig.chatwoot.baseUrl = 'https://inbox.mawthook.io';
+        appConfig.chatwoot.accountId = '1';
+        appConfig.chatwoot.inboxId = '1';
+        appConfig.chatwoot.apiAccessToken = 'test-chatwoot-token';
 
         // Setup mock axios adapter simulating Chatwoot API v1
         mockClientRequest = jest.fn().mockImplementation(async (reqConfig) => {
             const { method, url, data, params, headers } = reqConfig;
             const m = String(method).toLowerCase();
+
+            if (m === 'get' && url.includes('/inboxes')) {
+                return { data: { payload: [{ id: 1, message_templates: mockInboxTemplates }] } };
+            }
 
             // Contacts search
             if (m === 'get' && url.includes('/contacts/search')) {
@@ -173,6 +190,115 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
         jest.spyOn(prisma.shipmentNotificationLog, 'findFirst').mockResolvedValue(null);
         jest.spyOn(prisma.shipment, 'update').mockImplementation(async ({ where, data }) => ({ id: where.id, ...data }));
         jest.spyOn(whatsAppConfigService, '_computeQuietHours').mockReturnValue(false);
+        jest.spyOn(whatsAppConfigService, 'getConfig').mockResolvedValue({
+            provider: 'CHATWOOT',
+            fallbackProvider: 'SHIPMENT_WHATSAPP',
+            enabled: true
+        });
+        jest.spyOn(whatsAppConfigService, 'isEventEnabled').mockResolvedValue(true);
+    });
+
+    afterEach(() => {
+        appConfig.chatwoot.enabled = false;
+        appConfig.chatwoot.baseUrl = undefined;
+        appConfig.chatwoot.accountId = undefined;
+        appConfig.chatwoot.inboxId = undefined;
+        appConfig.chatwoot.apiAccessToken = undefined;
+    });
+
+    describe('approved shipment confirmation routing', () => {
+        const makeShipment = (destination = {}) => ({
+            id: 'confirmation-test-shipment',
+            trackingNumber: 'TRK-TEST-20261026',
+            status: 'created',
+            createdAt: new Date('2026-10-26T10:00:00.000Z'),
+            origin: { contactPerson: 'Sender Name', phone: '+96597959567' },
+            destination,
+            documents: {}
+        });
+
+        test('sends the approved confirmation to the shipper with receiver fields and no support footer', async () => {
+            const result = await chatwootService.sendShipmentNotification('shipment_created', makeShipment({
+                contactPerson: 'Receiver Name',
+                phone: '+97455123456'
+            }), { recipientRole: 'sender' });
+
+            expect(result.results).toEqual([expect.objectContaining({ target: 'sender', status: 'submitted' })]);
+            const messageCall = mockClientRequest.mock.calls.find(([req]) => req.method === 'post' && req.url.includes('/messages'));
+            expect(messageCall).toBeDefined();
+            const payload = messageCall[0].data;
+            expect(payload.template_params.name).toBe('shipment_confirmation_2');
+            expect(payload.template_params.parameters).toEqual(expect.arrayContaining(['Receiver Name', '97455123456']));
+            expect(payload.content).toContain('Receiver Name: Receiver Name');
+            expect(payload.content).toContain('Receiver Tel: 97455123456');
+            expect(payload.content).not.toContain('Shipment: TRK-TEST-20261026');
+            expect(payload.content).not.toContain('Support:');
+            expect(payload.content).not.toContain('wa.me/');
+            expect(axios.post).not.toHaveBeenCalled();
+        });
+
+        test('uses literal receiver placeholders when receiver details are absent', async () => {
+            await chatwootService.sendShipmentNotification('shipment_created', makeShipment(), { recipientRole: 'sender' });
+
+            const messageCall = mockClientRequest.mock.calls.find(([req]) => req.method === 'post' && req.url.includes('/messages'));
+            expect(messageCall[0].data.template_params.parameters).toEqual(expect.arrayContaining([
+                '[receiver name]',
+                '[receiver telephone]'
+            ]));
+        });
+
+        test('fails closed when the approved confirmation template is absent from the inbox', async () => {
+            mockInboxTemplates = [{ name: 'target_shipment_created', status: 'APPROVED' }];
+
+            const result = await chatwootService.sendShipmentNotification('shipment_created', makeShipment({
+                contactPerson: 'Receiver Name',
+                phone: '+97455123456'
+            }), { recipientRole: 'sender' });
+
+            expect(result.results[0].status).toBe('failed');
+            expect(result.results[0].reason).toBe('approved_template_unavailable');
+            expect(mockClientRequest.mock.calls.filter(([req]) => req.method === 'post' && req.url.includes('/messages'))).toHaveLength(0);
+            expect(axios.post).not.toHaveBeenCalled();
+        });
+
+        test('fails closed when the inbox template list cannot be verified', async () => {
+            mockInboxTemplates = null;
+            mockClientRequest.mockImplementation(async (reqConfig) => {
+                if (String(reqConfig.method).toLowerCase() === 'get' && reqConfig.url.includes('/inboxes')) {
+                    throw new Error('Chatwoot inbox request failed');
+                }
+                return { data: { success: true } };
+            });
+
+            const result = await chatwootService.sendShipmentNotification('shipment_created', makeShipment({
+                contactPerson: 'Receiver Name',
+                phone: '+97455123456'
+            }), { recipientRole: 'sender' });
+
+            expect(result.results[0].status).toBe('failed');
+            expect(result.results[0].reason).toBe('approved_template_unavailable');
+            expect(mockClientRequest.mock.calls.filter(([req]) => req.method === 'post' && req.url.includes('/messages'))).toHaveLength(0);
+        });
+
+        test('does not switch providers after a shipment confirmation Chatwoot send failure', async () => {
+            mockClientRequest.mockImplementation(async (reqConfig) => {
+                if (String(reqConfig.method).toLowerCase() === 'get' && reqConfig.url.includes('/inboxes')) {
+                    return { data: { payload: [{ id: 1, message_templates: mockInboxTemplates }] } };
+                }
+                if (String(reqConfig.method).toLowerCase() === 'post' && reqConfig.url.includes('/messages')) {
+                    throw new Error('Chatwoot send failed');
+                }
+                return { data: { success: true, payload: { id: 201, status: 'open' } } };
+            });
+
+            const result = await chatwootService.sendShipmentNotification('shipment_created', makeShipment({
+                contactPerson: 'Receiver Name',
+                phone: '+97455123456'
+            }), { recipientRole: 'sender' });
+
+            expect(result.results[0].status).toBe('failed');
+            expect(axios.post).not.toHaveBeenCalled();
+        });
     });
 
     // =========================================================================
