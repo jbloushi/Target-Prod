@@ -108,6 +108,13 @@ class WhatsAppQueueDrainerService {
                     }
 
                     if (SHIPMENT_LIFECYCLE_EVENTS.has(log.eventType)) {
+                        if (chatwootNotificationService.getNotificationTargets(log.eventType, shipment, 'sender').length === 0) {
+                            await prisma.shipmentNotificationLog.update({
+                                where: { id: log.id },
+                                data: { status: 'SKIPPED', errorMessage: 'SENDER_PHONE_NOT_FOUND' }
+                            });
+                            continue;
+                        }
                         await chatwootNotificationService.sendShipmentNotification(log.eventType, shipment, {
                             recipientRole: 'sender',
                             templateName: 'shipment_confirmation_2',
