@@ -344,13 +344,27 @@ async function sendShipmentWhatsApp(req, res) {
             return res.status(400).json({ error: 'Recipient phone number is missing' });
         }
 
+        const requestedEvent = eventType || 'out_for_delivery';
+        if (effectiveRole === 'sender' && chatwootNotificationService.isShipmentConfirmationEvent(requestedEvent)) {
+            if (recipientPhone || customMessage || (templateName && templateName !== 'shipment_confirmation_2')) {
+                return res.status(400).json({ error: 'Shipment confirmations use the approved shipper template and shipment phone' });
+            }
+            const result = await chatwootNotificationService.sendShipmentNotification(requestedEvent, shipment, {
+                recipientRole: 'sender',
+                templateName: 'shipment_confirmation_2',
+                disableProviderFallback: true,
+                force: Boolean(force)
+            });
+            return res.json({ success: true, result });
+        }
+
         const result = await whatsappService.sendNotification({
             shipment,
             recipientRole: effectiveRole,
             recipientPhone: targetPhone,
             recipientCountryCode: targetCountryCode,
             recipientName: recipientName || (effectiveRole === 'driver' ? shipment.driverName : (effectiveRole === 'sender' ? (shipment.origin?.contactPerson || shipment.origin?.name) : shipment.customerName)),
-            eventType: eventType || 'out_for_delivery',
+            eventType: requestedEvent,
             templateName,
             customMessage,
             force: Boolean(force)

@@ -58,12 +58,15 @@ describe('manual shipment WhatsApp access', () => {
         expect(whatsappService.sendNotification).not.toHaveBeenCalled();
     });
 
-    test('uses the shipment shipper phone for an ordinary authorized send', async () => {
+    test('uses the approved Chatwoot template for an ordinary sender lifecycle send', async () => {
+        chatwootNotificationService.isShipmentConfirmationEvent.mockReturnValue(true);
         const res = response();
         await sendShipmentWhatsApp({ params: { trackingNumber: 'TRK-1' }, body: { recipientRole: 'sender' }, user: { role: 'client' } }, res);
-        expect(whatsappService.sendNotification).toHaveBeenCalledWith(expect.objectContaining({
-            recipientRole: 'sender', recipientPhone: '+96590000001'
-        }));
+        expect(chatwootNotificationService.sendShipmentNotification).toHaveBeenCalledWith('out_for_delivery', shipment, {
+            recipientRole: 'sender', templateName: 'shipment_confirmation_2',
+            disableProviderFallback: true, force: false
+        });
+        expect(whatsappService.sendNotification).not.toHaveBeenCalled();
     });
 
     test('does not substitute the receiver phone when the shipper phone is missing', async () => {
