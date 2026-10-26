@@ -77,6 +77,11 @@ describe('WhatsApp queued shipment dispatch', () => {
 
         await drainer.drainQueue();
 
+        expect(prisma.shipmentNotificationLog.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({
+                OR: [{ shipmentId: shipment.id }, { trackingNumber: shipment.trackingNumber }]
+            })
+        }));
         expect(prisma.shipmentNotificationLog.update).toHaveBeenCalledWith({
             where: { id: 'log-3' },
             data: { status: 'SKIPPED', errorMessage: 'CONFIRMATION_ALREADY_SUBMITTED' }

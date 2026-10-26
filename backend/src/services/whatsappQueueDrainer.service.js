@@ -117,7 +117,10 @@ class WhatsAppQueueDrainerService {
                         }
                         const alreadySubmitted = await prisma.shipmentNotificationLog.findFirst({
                             where: {
-                                shipmentId: shipment.id,
+                                OR: [
+                                    { shipmentId: shipment.id },
+                                    { trackingNumber: shipment.trackingNumber }
+                                ],
                                 eventType: log.eventType,
                                 recipientRole: { in: ['sender', 'shipper', 'merchant'] },
                                 status: { in: ['submitted', 'SUBMITTED', 'SENT', 'sent', 'DELIVERED', 'delivered', 'READ', 'read'] },
