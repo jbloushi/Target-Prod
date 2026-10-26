@@ -115,6 +115,22 @@ class WhatsAppQueueDrainerService {
                             });
                             continue;
                         }
+                        const alreadySubmitted = await prisma.shipmentNotificationLog.findFirst({
+                            where: {
+                                shipmentId: shipment.id,
+                                eventType: log.eventType,
+                                recipientRole: { in: ['sender', 'shipper', 'merchant'] },
+                                status: { in: ['submitted', 'SUBMITTED', 'SENT', 'sent', 'DELIVERED', 'delivered', 'READ', 'read'] },
+                                id: { not: log.id }
+                            }
+                        });
+                        if (alreadySubmitted) {
+                            await prisma.shipmentNotificationLog.update({
+                                where: { id: log.id },
+                                data: { status: 'SKIPPED', errorMessage: 'CONFIRMATION_ALREADY_SUBMITTED' }
+                            });
+                            continue;
+                        }
                         await chatwootNotificationService.sendShipmentNotification(log.eventType, shipment, {
                             recipientRole: 'sender',
                             templateName: 'shipment_confirmation_2',

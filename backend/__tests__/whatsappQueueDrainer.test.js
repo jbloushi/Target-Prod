@@ -3,6 +3,7 @@ jest.mock('../src/config/database', () => ({
         shipmentNotificationLog: {
             updateMany: jest.fn(),
             findMany: jest.fn(),
+            findFirst: jest.fn(),
             update: jest.fn()
         },
         shipment: { findFirst: jest.fn() }
@@ -32,6 +33,7 @@ describe('WhatsApp queued shipment dispatch', () => {
         prisma.shipment.findFirst.mockResolvedValue(shipment);
         prisma.shipmentNotificationLog.updateMany.mockResolvedValue({ count: 0 });
         prisma.shipmentNotificationLog.update.mockResolvedValue({});
+        prisma.shipmentNotificationLog.findFirst.mockResolvedValue(null);
         chatwootNotificationService.getNotificationTargets.mockReturnValue([{ role: 'sender', phone: '+96590000000' }]);
         chatwootNotificationService.sendShipmentNotification.mockResolvedValue({ results: [{ status: 'submitted' }] });
     });
@@ -65,5 +67,20 @@ describe('WhatsApp queued shipment dispatch', () => {
         });
         expect(chatwootNotificationService.sendShipmentNotification).not.toHaveBeenCalled();
         expect(whatsappIntegration.sendNotification).not.toHaveBeenCalled();
+    });
+
+    test('does not resend a queued lifecycle row after another row was submitted', async () => {
+        prisma.shipmentNotificationLog.findMany.mockResolvedValue([{
+            id: 'log-3', shipmentId: shipment.id, eventType: 'delivered', recipientRole: 'sender'
+        }]);
+        prisma.shipmentNotificationLog.findFirst.mockResolvedValue({ id: 'already-submitted' });
+
+        await drainer.drainQueue();
+
+        expect(prisma.shipmentNotificationLog.update).toHaveBeenCalledWith({
+            where: { id: 'log-3' },
+            data: { status: 'SKIPPED', errorMessage: 'CONFIRMATION_ALREADY_SUBMITTED' }
+        });
+        expect(chatwootNotificationService.sendShipmentNotification).not.toHaveBeenCalled();
     });
 });
