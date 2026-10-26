@@ -3,6 +3,7 @@
  * getPublicShipment, updatePublicLocation, updatePublicSettings
  */
 const { prisma } = require('../config/database');
+const { randomInt, randomBytes } = require('crypto');
 const logger = require('../utils/logger');
 const CarrierFactory = require('../services/CarrierFactory');
 const { syncCarrierTrackingHistory, buildTrackingSyncDocuments, compactHistory, buildDisplayHistory, resolveCarrierTrackingNumber } = require('./shipment.helpers');
@@ -260,7 +261,7 @@ exports.sendReceiverLocationOtp = async (req, res) => {
         }
 
         // Generate 6-digit OTP
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otp = String(randomInt(100000, 1000000));
         const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
         locationOtpStore.set(trackingNumber, { otp, expiresAt, verified: false });
 
@@ -280,7 +281,7 @@ exports.sendReceiverLocationOtp = async (req, res) => {
             logger.warn(`[WhatsApp OTP Dispatch Warning] ${waErr.message}`);
         }
 
-        logger.info(`[Receiver OTP Generated] ${trackingNumber} -> ${otp}`);
+        logger.info(`[Receiver OTP Generated] Verification code issued for shipment ${trackingNumber}`);
         return res.json({
             success: true,
             message: `OTP sent via WhatsApp to registered receiver phone (${phone.slice(-4)})`,
@@ -307,7 +308,7 @@ exports.verifyReceiverLocationOtp = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Invalid 6-digit verification code' });
         }
 
-        const otpToken = `TOKEN_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+        const otpToken = `TOKEN_${Date.now()}_${randomBytes(8).toString('hex')}`;
         record.verified = true;
         record.otpToken = otpToken;
         locationOtpStore.set(trackingNumber, record);

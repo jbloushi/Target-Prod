@@ -14,6 +14,8 @@
   - Authentication codes (2FA / OTP) use the **AUTHENTICATION** category.
 - **Bilingual Coverage**:
   - All 17 templates are fully bilingual: English (`en_US`) and Kuwait Arabic (`ar`).
+- **Production addendum**:
+  - A live Chatwoot inbox export also confirmed `shipment_confirmation_2` in English (`en_US`). Its approved copy and variable mapping are recorded below; Arabic approval was not present in the supplied export.
 - **Variable Placeholders**:
   - Parameter placeholders in message bodies use sequential indexes starting at `{{1}}` without gaps.
   - Dynamic URL buttons that take a single variable use `{{1}}` representing the URL suffix or security token.
@@ -23,6 +25,37 @@
 ---
 
 ## 2. Template Specifications
+
+### Production addendum: `shipment_confirmation_2`
+- **Category:** `UTILITY`
+- **Use:** Automatic shipper lifecycle notifications (shipment creation and status milestones)
+- **Recipient:** Shipper (`sender`); receiver details below describe the shipment's destination party
+- **Language confirmed in production:** `en_US`
+- **Header:** Text `{{1}}` (Shipment tracking number)
+- **Approved English Body (`en_US`):**
+  ```text
+  Thank you for choosing us.
+
+  Invoice: {{1}}
+  Date: {{2}}
+
+  Receiver Name: {{3}}
+  Receiver Tel: {{4}}
+
+  Track Order: {{5}}
+
+  Target Logistics
+  www.target-kw.com | www.instagram.com/u_target
+  ```
+- **Variables:**
+  1. `{{1}}`: Invoice, bill, receipt, or tracking reference
+  2. `{{2}}`: Shipment creation date
+  3. `{{3}}`: Receiver name from explicit destination/receiver fields
+  4. `{{4}}`: Receiver phone from explicit destination/receiver fields
+  5. `{{5}}`: Public shipment tracking URL
+- **Header variable:** `{{1}}`: Shipment tracking number
+- **Content rule:** Chatwoot message content must mirror this approved copy. Do not append a Support link outside the template.
+- **Missing receiver data:** Send `[receiver name]` or `[receiver telephone]` for a missing field. Never substitute the shipper or fabricate a phone number.
 
 ### 1. `target_shipment_created`
 - **Category:** `UTILITY`

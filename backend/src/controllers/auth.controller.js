@@ -1,4 +1,5 @@
 const { prisma } = require('../config/database');
+const { randomInt } = require('crypto');
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
 const { hashPassword, comparePassword, generateUserApiKey } = require('../utils/security');
@@ -173,7 +174,7 @@ exports.requestOtp = async (req, res) => {
         });
 
         if (!user) {
-            logger.warn(`OTP request rejected: No registered account found for mobile digits ${cleanDigits}`);
+            logger.warn(`OTP request rejected: no registered account found for mobile ending ${cleanDigits.slice(-4)}`);
             return res.status(404).json({
                 success: false,
                 error: 'No registered user account found with this phone number. Please contact your administrator or sign up.'
@@ -181,7 +182,7 @@ exports.requestOtp = async (req, res) => {
         }
 
         // Generate 6-digit OTP code
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otp = String(randomInt(100000, 1000000));
         const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
 
         const userPhoneDigits = String(user.phone || '').replace(/\D/g, '');
@@ -210,7 +211,7 @@ exports.requestOtp = async (req, res) => {
             logger.warn(`[Auth OTP Dispatch note] ${msgErr.message}`);
         }
 
-        logger.info(`[Auth OTP Generated] Mobile: ${cleanDigits} (User: ${user.email}) -> Code: ${otp}`);
+        logger.info(`[Auth OTP Generated] Verification code issued for mobile ending ${cleanDigits.slice(-4)}`);
 
         return res.status(200).json({
             success: true,

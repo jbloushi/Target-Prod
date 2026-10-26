@@ -54,6 +54,11 @@ function normalizePhone(phone, phoneCountryCode = '965') {
     return null;
 }
 
+function maskPhoneForLog(phone) {
+    const digits = String(phone || '').replace(/\D/g, '');
+    return digits.length < 4 ? '****' : `${'*'.repeat(digits.length - 4)}${digits.slice(-4)}`;
+}
+
 const DEV_SAFE_PHONE = '+201040957289';
 
 function isDevMode() {
@@ -63,7 +68,7 @@ function isDevMode() {
 function resolveRecipientPhone(phone, phoneCountryCode = '965') {
     const normalized = normalizePhone(phone, phoneCountryCode);
     if (isDevMode()) {
-        logger.info(`[WhatsApp DEV Safe Routing] Intended recipient: ${normalized || phone} -> Overriding dispatch to developer: ${DEV_SAFE_PHONE}`);
+        logger.info(`[WhatsApp DEV Safe Routing] Intended recipient: ${maskPhoneForLog(normalized || phone)} -> Overriding dispatch to developer: ${maskPhoneForLog(DEV_SAFE_PHONE)}`);
         return DEV_SAFE_PHONE;
     }
     return normalized;
@@ -181,7 +186,10 @@ async function sendViaShipmentWhatsappMicroservice({ serviceUrl = 'https://msg.t
         ]
     };
 
-    logger.info(`[Shipment-WhatsApp Dispatch] URL: ${url} Template: ${templateName} [${lang}] Recipient: ${cleanPhone}`, payload);
+    const safeLogPayload = /otp/i.test(String(templateName || ''))
+        ? { templateName, language: lang, recipient: maskPhoneForLog(cleanPhone), rowCount: payload.rows.length }
+        : payload;
+    logger.info(`[Shipment-WhatsApp Dispatch] URL: ${url} Template: ${templateName} [${lang}] Recipient: ${maskPhoneForLog(cleanPhone)}`, safeLogPayload);
 
     let response;
     try {
@@ -409,7 +417,9 @@ function buildMetaMessagePayload(toPhone, eventType, context, templateNameOverri
     );
 
     const estDeliveryFormatted = formatLegibleDate(context.estimatedDeliveryDate);
-    const dateFormatted = context.updatedAt ? formatLegibleDate(context.updatedAt) : formatLegibleDate(new Date());
+    const dateFormatted = targetTemplateName === 'shipment_confirmation_2'
+        ? (context.shipmentDateDisplay || formatLegibleDate(context.shipment?.createdAt || context.updatedAt || new Date()))
+        : (context.updatedAt ? formatLegibleDate(context.updatedAt) : formatLegibleDate(new Date()));
     const timeFormatted = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
     const fullUpdatedText = `${dateFormatted} at ${timeFormatted}`;
     const trackingUrl = context.publicTrackingLink || `https://target-kw.com/track/${context.trackingNumber}`;
@@ -559,7 +569,7 @@ function buildMetaMessagePayload(toPhone, eventType, context, templateNameOverri
         ];
     } else if (targetTemplateName === 'shipment_confirmation_2') {
         const receiptNo = resolveInvoiceDetail(context.shipment || context, displayTracking);
-        const resolvedRecv = resolvePersonName([context.recipientName, context.consigneeName, context.customerName], 'Valued Customer');
+        const resolvedRecv = context.receiverName || '[receiver name]';
         components = [
             {
                 type: 'header',
@@ -571,7 +581,7 @@ function buildMetaMessagePayload(toPhone, eventType, context, templateNameOverri
                     { type: 'text', text: receiptNo },
                     { type: 'text', text: dateFormatted },
                     { type: 'text', text: resolvedRecv },
-                    { type: 'text', text: cleanPhone },
+                    { type: 'text', text: context.receiverPhone ? String(context.receiverPhone).replace(/\D/g, '') : '[receiver telephone]' },
                     { type: 'text', text: trackingUrl }
                 ]
             }
@@ -637,11 +647,33 @@ class WhatsAppIntegrationService {
 
         let chosenTemplate = templateName;
         if (!chosenTemplate) {
-            if (eventType === 'out_for_delivery') chosenTemplate = 'target_shipment_out_for_delivery';
-            else if (eventType === 'delivered') chosenTemplate = 'target_shipment_delivered';
-            else if (eventType === 'on_hold_customs_issue') chosenTemplate = 'target_customs_exception_hold';
-            else if (eventType === 'payment_link_ready') chosenTemplate = 'payment_request_v1';
-            else chosenTemplate = 'shipment_confirmation_2';
+            const shipmentLifecycleEvents = new Set([
+                'shipment_created',
+                'pickup_scheduled',
+                'received_at_hub',
+                'verified_and_dispatched',
+                'on_hold_customs_issue',
+                'documents_needed',
+                'delivery_attempt',
+                'out_for_delivery',
+                'delivered',
+                'rto_in_transit',
+                'returned',
+                'shipment_created_backfill'
+            ]);
+            if (role === 'sender' && shipmentLifecycleEvents.has(eventType)) {
+                chosenTemplate = 'shipment_confirmation_2';
+            } else if (eventType === 'out_for_delivery') {
+                chosenTemplate = 'target_shipment_out_for_delivery';
+            } else if (eventType === 'delivered') {
+                chosenTemplate = 'target_shipment_delivered';
+            } else if (eventType === 'on_hold_customs_issue') {
+                chosenTemplate = 'target_customs_exception_hold';
+            } else if (eventType === 'payment_link_ready') {
+                chosenTemplate = 'payment_request_v1';
+            } else {
+                chosenTemplate = 'shipment_confirmation_2';
+            }
         }
 
         // Token generation for out_for_delivery if missing or expired
@@ -859,20 +891,40 @@ class WhatsAppIntegrationService {
             shipment.origin?.phoneCountryCode || (role === 'sender' ? recipientCountryCode : '965')
         ) || phone;
 
-        const resolvedReceiverName = resolvePersonName([
+        const explicitReceiverName = resolvePersonName([
             shipment.destination?.contactPerson,
             shipment.destination?.consigneeName,
-            shipment.customer?.name,
-            shipment.customerName,
             shipment.documents?.receiverName,
-            (role === 'receiver' || role === 'customer' ? recipientName : null),
-            shipment.destination?.company,
-            shipment.destination?.name
-        ], 'Valued Customer');
-        const resolvedReceiverPhone = normalizePhone(
-            shipment.destination?.phone || shipment.customer?.phone || shipment.customerPhone || shipment.documents?.receiverPhone || (role === 'receiver' || role === 'customer' ? phone : ''),
-            shipment.destination?.phoneCountryCode || (role !== 'sender' ? recipientCountryCode : '965')
-        ) || phone;
+            shipment.destination?.name,
+            shipment.destination?.company
+        ], '[receiver name]');
+        const normalizedExplicitReceiverPhone = normalizePhone(
+            shipment.destination?.phone || shipment.documents?.receiverPhone,
+            shipment.destination?.phoneCountryCode || shipment.documents?.receiverPhoneCountryCode
+        );
+        const explicitReceiverPhone = normalizedExplicitReceiverPhone
+            ? normalizedExplicitReceiverPhone.replace(/\D/g, '')
+            : null;
+        const resolvedReceiverName = chosenTemplate === 'shipment_confirmation_2'
+            ? explicitReceiverName
+            : resolvePersonName([
+                shipment.destination?.contactPerson,
+                shipment.destination?.consigneeName,
+                shipment.customer?.name,
+                shipment.customerName,
+                shipment.documents?.receiverName,
+                (role === 'receiver' || role === 'customer' ? recipientName : null),
+                shipment.destination?.company,
+                shipment.destination?.name
+            ], 'Valued Customer');
+        const resolvedReceiverPhone = chosenTemplate === 'shipment_confirmation_2'
+            ? (explicitReceiverPhone || '[receiver telephone]')
+            : (normalizePhone(
+                shipment.destination?.phone || shipment.customer?.phone || shipment.customerPhone || shipment.documents?.receiverPhone || (role === 'receiver' || role === 'customer' ? phone : ''),
+                shipment.destination?.phoneCountryCode || (role !== 'sender' ? recipientCountryCode : '965')
+            ) || phone);
+        context.receiverName = resolvedReceiverName;
+        context.receiverPhone = resolvedReceiverPhone;
 
         const effectiveRecipientName = (role === 'sender') ? resolvedSenderName : resolvedReceiverName;
 
@@ -923,7 +975,9 @@ class WhatsAppIntegrationService {
         if (provider === 'SHIPMENT_WHATSAPP' || provider === 'TARGET_MSG') {
             const serviceUrl = settings.serviceUrl || 'https://msg.target-kw.com';
             const estDeliveryFormatted = formatLegibleDate(context.estimatedDeliveryDate);
-            const dateFormatted = context.updatedAt ? formatLegibleDate(context.updatedAt) : formatLegibleDate(new Date());
+            const dateFormatted = chosenTemplate === 'shipment_confirmation_2'
+                ? (context.shipmentDateDisplay || formatLegibleDate(shipment.createdAt || context.updatedAt || new Date()))
+                : (context.updatedAt ? formatLegibleDate(context.updatedAt) : formatLegibleDate(new Date()));
             const timeFormatted = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
             const fullUpdatedText = `${dateFormatted} at ${timeFormatted}`;
             const trackingUrl = context.publicTrackingLink || `https://target-kw.com/track/${context.trackingNumber}`;
@@ -1044,7 +1098,9 @@ class WhatsAppIntegrationService {
         if (provider === 'CHATWOOT' || (!['MOCK', 'META'].includes(provider))) {
             const displayTracking = shipment.dhlTrackingNumber || context.trackingNumber || shipment.trackingNumber;
             const estDeliveryFormatted = formatLegibleDate(context.estimatedDeliveryDate);
-            const dateFormatted = context.updatedAt ? formatLegibleDate(context.updatedAt) : formatLegibleDate(new Date());
+            const dateFormatted = chosenTemplate === 'shipment_confirmation_2'
+                ? (context.shipmentDateDisplay || formatLegibleDate(shipment.createdAt || context.updatedAt || new Date()))
+                : (context.updatedAt ? formatLegibleDate(context.updatedAt) : formatLegibleDate(new Date()));
             const timeFormatted = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
             const fullUpdatedText = `${dateFormatted} at ${timeFormatted}`;
             const trackingUrl = context.publicTrackingLink || `https://target-kw.com/track/${context.trackingNumber}`;
@@ -1573,7 +1629,7 @@ www.target-kw.com | +965 6965 6563`;
         if (!phone || !otp) return null;
         const resolvedPhone = resolveRecipientPhone(phone, '965');
         if (!resolvedPhone) {
-            logger.warn(`[WhatsApp OTP] Invalid phone number: ${phone}`);
+            logger.warn(`[WhatsApp OTP] Invalid phone number ending ${maskPhoneForLog(phone).slice(-4)}`);
             return null;
         }
 
@@ -1584,7 +1640,7 @@ www.target-kw.com | +965 6965 6563`;
         const langCode = 'en_US';
         const bodyText = `Please share code ${otp} with delivery agent after verifying the package.`;
 
-        logger.info(`[WhatsApp OTP Dispatch] Template: ${templateName} [${langCode}] Target: ${cleanPhone} (OTP: ${otp}) Provider: ${provider}`);
+        logger.info(`[WhatsApp OTP Dispatch] Template: ${templateName} [${langCode}] Target: ${maskPhoneForLog(cleanPhone)} Provider: ${provider}`);
 
         // 1. Direct Meta WhatsApp Business API Cloud Endpoint (Most accurate for Authentication / Custom templates)
         if (settings.accessToken && settings.phoneNumberId) {
@@ -1666,7 +1722,7 @@ www.target-kw.com | +965 6965 6563`;
                     });
 
                     const wamid = res.data?.messages?.[0]?.id || null;
-                    logger.info(`[WhatsApp Meta API OTP Sent] Successfully sent template '${templateName}' to ${cleanPhone} (Payload Set ${i + 1}). WAMID: ${wamid}`);
+                    logger.info(`[WhatsApp Meta API OTP Sent] Template '${templateName}' sent to ${maskPhoneForLog(cleanPhone)} (Payload Set ${i + 1}). WAMID: ${wamid}`);
                     return { status: 'SENT', externalMessageId: wamid, provider: 'META' };
                 } catch (metaErr) {
                     const errorDetail = metaErr.response?.data?.error?.message || metaErr.message;
