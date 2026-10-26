@@ -24,6 +24,7 @@ const EVENT_TARGETS = {
 
 const SHIPMENT_CONFIRMATION_EVENTS = new Set([
     'shipment_created',
+    'new_shipment_created',
     'pickup_scheduled',
     'received_at_hub',
     'verified_and_dispatched',
@@ -1966,6 +1967,7 @@ module.exports.buildShipmentNotificationContext = buildShipmentNotificationConte
 module.exports.buildPlainContent = buildPlainContent;
 module.exports.buildMessagePayload = buildMessagePayload;
 module.exports.getNotificationTargets = getNotificationTargets;
+module.exports.isShipmentConfirmationEvent = eventType => SHIPMENT_CONFIRMATION_EVENTS.has(eventType);
 module.exports.mapStatusToNotificationEvent = mapStatusToNotificationEvent;
 module.exports.maskPhone = maskPhone;
 module.exports.normalizePhone = normalizePhone;

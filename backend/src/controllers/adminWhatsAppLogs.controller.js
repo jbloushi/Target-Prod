@@ -1,6 +1,9 @@
 const { prisma } = require('../config/database');
 const whatsappService = require('../services/whatsappIntegration.service');
+const chatwootNotificationService = require('../services/chatwootNotificationService');
 const whatsAppConfigService = require('../services/whatsAppConfig.service');
+const { canAccessShipment } = require('../middleware/authorize.middleware');
+const { hasCapability } = require('../middleware/rbac.policy');
 const logger = require('../utils/logger');
 
 /**
@@ -225,18 +228,18 @@ async function resendNotification(req, res) {
         }
 
         if (!force) {
-            const isSender = (existing.recipientRole || '').toLowerCase() === 'sender';
+            const isSender = ['sender', 'shipper', 'merchant'].includes((existing.recipientRole || '').toLowerCase());
             const roleGroup = isSender ? ['sender'] : ['receiver', 'customer', 'consignee'];
 
             const anySent = await prisma.shipmentNotificationLog.findFirst({
                 where: {
                     trackingNumber: existing.trackingNumber,
                     recipientRole: { in: roleGroup },
-                    status: { in: ['SENT', 'DELIVERED', 'READ'] }
+                    status: { in: ['submitted', 'SUBMITTED', 'SENT', 'sent', 'DELIVERED', 'delivered', 'READ', 'read'] }
                 }
             });
 
-            if (anySent || ['SENT', 'DELIVERED', 'READ'].includes(existing.status)) {
+            if (anySent || ['SUBMITTED', 'SENT', 'DELIVERED', 'READ'].includes(String(existing.status || '').toUpperCase())) {
                 return res.status(400).json({ 
                     error: `A notification was already successfully delivered for shipment ${existing.trackingNumber} to ${isSender ? 'Sender' : 'Consignee'}. Resending is disabled to prevent duplicate customer messages.`,
                     alreadySent: true
@@ -252,16 +255,36 @@ async function resendNotification(req, res) {
             return res.status(404).json({ error: 'Associated shipment not found' });
         }
 
-        const result = await whatsappService.sendNotification({
-            shipment,
-            recipientRole: existing.recipientRole,
-            recipientPhone: existing.recipientPhone,
-            recipientName: existing.recipientName,
-            eventType: existing.eventType,
-            templateName: existing.templateName,
-            force,
-            existingLogId: existing.id
-        });
+        const role = String(existing.recipientRole || '').toLowerCase();
+        let result;
+        if (['sender', 'shipper', 'merchant'].includes(role) && chatwootNotificationService.isShipmentConfirmationEvent(existing.eventType)) {
+            result = await chatwootNotificationService.sendShipmentNotification(existing.eventType, shipment, {
+                recipientRole: 'sender',
+                templateName: 'shipment_confirmation_2',
+                disableProviderFallback: true,
+                existingLogId: existing.id,
+                force
+            });
+        } else {
+            const recipientPhone = ['sender', 'shipper', 'merchant'].includes(role)
+                ? (shipment.origin?.phone || shipment.shipperPhone || shipment.customerPhone)
+                : role === 'driver'
+                    ? shipment.driverPhone
+                    : (shipment.destination?.phone || shipment.receiverPhone || shipment.consigneePhone);
+            if (!recipientPhone) {
+                return res.status(400).json({ error: 'Recipient phone cannot be resolved from the shipment' });
+            }
+            result = await whatsappService.sendNotification({
+                shipment,
+                recipientRole: ['shipper', 'merchant'].includes(role) ? 'sender' : existing.recipientRole,
+                recipientPhone,
+                recipientName: existing.recipientName,
+                eventType: existing.eventType,
+                templateName: existing.templateName,
+                force,
+                existingLogId: existing.id
+            });
+        }
 
         return res.json({ success: true, result });
     } catch (err) {
@@ -287,21 +310,34 @@ async function sendShipmentWhatsApp(req, res) {
             return res.status(404).json({ error: 'Shipment not found' });
         }
 
+        if (!canAccessShipment(req, shipment)) {
+            return res.status(403).json({ error: 'Permission denied' });
+        }
+
+        const canCustomizeDispatch = ['BOOK_CARRIERS', 'MANAGE_USERS', 'MANAGE_SYSTEM_SETTINGS']
+            .some(capability => hasCapability(req.user.role, capability));
+        if (!canCustomizeDispatch && (recipientPhone || recipientName || templateName || customMessage || force)) {
+            return res.status(403).json({ error: 'Custom WhatsApp dispatch requires operational permission' });
+        }
+
         let targetPhone = recipientPhone;
         let targetCountryCode = null;
 
         const effectiveRole = recipientRole || 'sender';
+        if (!['sender', 'receiver', 'customer', 'consignee', 'driver'].includes(effectiveRole)) {
+            return res.status(400).json({ error: 'Invalid recipient role' });
+        }
 
         if (effectiveRole === 'sender') {
-            targetPhone = targetPhone || shipment.origin?.phone || shipment.shipperPhone || shipment.customerPhone || shipment.destination?.phone;
-            targetCountryCode = shipment.origin?.phoneCountryCode || shipment.shipperPhoneCountryCode || shipment.destination?.phoneCountryCode;
+            targetPhone = targetPhone || shipment.origin?.phone || shipment.shipperPhone || shipment.customerPhone;
+            targetCountryCode = shipment.origin?.phoneCountryCode || shipment.shipperPhoneCountryCode;
         } else if (effectiveRole === 'driver') {
             targetPhone = targetPhone || shipment.driverPhone;
             targetCountryCode = shipment.driverPhoneCountryCode;
         } else {
             // Customer / Receiver
-            targetPhone = targetPhone || shipment.destination?.phone || shipment.customerPhone || shipment.origin?.phone;
-            targetCountryCode = shipment.destination?.phoneCountryCode || shipment.customerPhoneCountryCode || shipment.origin?.phoneCountryCode;
+            targetPhone = targetPhone || shipment.destination?.phone || shipment.receiverPhone || shipment.consigneePhone;
+            targetCountryCode = shipment.destination?.phoneCountryCode || shipment.receiverPhoneCountryCode || shipment.consigneePhoneCountryCode;
         }
 
         if (!targetPhone) {
@@ -478,8 +514,9 @@ async function dispatchQueuedNotifications(req, res) {
             const anySent = await prisma.shipmentNotificationLog.findFirst({
                 where: {
                     trackingNumber: log.trackingNumber,
+                    eventType: log.eventType,
                     recipientRole: { in: roleGroup },
-                    status: { in: ['SENT', 'DELIVERED', 'READ'] },
+                    status: { in: ['submitted', 'SUBMITTED', 'SENT', 'sent', 'DELIVERED', 'delivered', 'READ', 'read'] },
                     id: { not: log.id }
                 }
             });
@@ -511,18 +548,40 @@ async function dispatchQueuedNotifications(req, res) {
             }
 
             try {
-                const sendResult = await whatsappService.sendNotification({
-                    shipment,
-                    recipientRole: 'sender',
-                    recipientPhone: log.recipientPhone,
-                    recipientName: log.recipientName,
-                    eventType: log.eventType,
-                    templateName: log.templateName,
-                    force: false,
-                    existingLogId: log.id
-                });
+                const sender = chatwootNotificationService.getNotificationTargets(log.eventType, shipment, 'sender')[0];
+                if (!sender?.phone) {
+                    await prisma.shipmentNotificationLog.update({
+                        where: { id: log.id },
+                        data: { status: 'SKIPPED', errorMessage: 'SENDER_PHONE_NOT_FOUND' }
+                    });
+                    skipped++;
+                    continue;
+                }
 
-                if (sendResult?.status === 'SENT') {
+                let sendStatus;
+                if (chatwootNotificationService.isShipmentConfirmationEvent(log.eventType)) {
+                    const result = await chatwootNotificationService.sendShipmentNotification(log.eventType, shipment, {
+                        recipientRole: 'sender',
+                        templateName: 'shipment_confirmation_2',
+                        disableProviderFallback: true,
+                        existingLogId: log.id
+                    });
+                    sendStatus = result?.results?.[0]?.status;
+                } else {
+                    const result = await whatsappService.sendNotification({
+                        shipment,
+                        recipientRole: 'sender',
+                        recipientPhone: sender.phone,
+                        recipientName: sender.name,
+                        eventType: log.eventType,
+                        templateName: log.templateName,
+                        force: false,
+                        existingLogId: log.id
+                    });
+                    sendStatus = result?.status;
+                }
+
+                if (['submitted', 'SENT', 'sent'].includes(sendStatus)) {
                     dispatched++;
                 } else {
                     skipped++;
