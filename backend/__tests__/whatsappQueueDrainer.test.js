@@ -46,7 +46,7 @@ describe('WhatsApp queued shipment dispatch', () => {
 
         expect(chatwootNotificationService.sendShipmentNotification).toHaveBeenCalledWith('delivered', shipment, {
             recipientRole: 'sender', templateName: 'shipment_confirmation_2',
-            disableProviderFallback: true, force: true
+            disableProviderFallback: true, existingLogId: 'log-1', force: true
         });
         expect(whatsappIntegration.sendNotification).not.toHaveBeenCalled();
     });

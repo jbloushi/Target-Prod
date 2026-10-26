@@ -119,6 +119,7 @@ class WhatsAppQueueDrainerService {
                             recipientRole: 'sender',
                             templateName: 'shipment_confirmation_2',
                             disableProviderFallback: true,
+                            existingLogId: log.id,
                             force: true
                         });
                     } else {

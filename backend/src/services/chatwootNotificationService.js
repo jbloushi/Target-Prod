@@ -806,7 +806,7 @@ class ChatwootNotificationService {
         );
     }
 
-    async createLog({ shipment, eventType, target, status = 'pending', errorMessage = null, force = false }) {
+    async createLog({ shipment, eventType, target, status = 'pending', errorMessage = null, force = false, existingLogId = null }) {
         const cw = getChatwootConfig();
         const data = {
             shipmentId: shipment.id,
@@ -821,6 +821,22 @@ class ChatwootNotificationService {
             status,
             errorMessage
         };
+
+        if (existingLogId) {
+            const queuedLog = await prisma.shipmentNotificationLog.findFirst({
+                where: {
+                    id: existingLogId,
+                    shipmentId: shipment.id,
+                    eventType,
+                    recipientRole: { in: target.role === 'sender' ? ['sender', 'shipper', 'merchant'] : [target.role] }
+                }
+            });
+            if (!queuedLog) throw new Error(`Queued notification log ${existingLogId} no longer matches its shipment and recipient`);
+            return prisma.shipmentNotificationLog.update({
+                where: { id: existingLogId },
+                data: { ...data, payloadJson: null, responseJson: null, sentAt: null }
+            });
+        }
 
         const existing = await prisma.shipmentNotificationLog.findFirst({
             where: {
@@ -1725,7 +1741,8 @@ class ChatwootNotificationService {
                 target,
                 status: 'skipped',
                 errorMessage: 'Chatwoot disabled',
-                force: options.force
+                force: options.force,
+                existingLogId: options.existingLogId
             }).catch(error => logger.warn(`[chatwoot] failed to log disabled skip: ${error.message}`))));
             return { skipped: true, reason: 'disabled' };
         }
@@ -1767,14 +1784,15 @@ class ChatwootNotificationService {
                 target,
                 status: 'skipped',
                 errorMessage: 'Chatwoot configuration incomplete',
-                force: options.force
+                force: options.force,
+                existingLogId: options.existingLogId
             }).catch(error => logger.warn(`[chatwoot] failed to log config skip: ${error.message}`))));
             return { skipped: true, reason: 'not_configured' };
         }
 
         const results = [];
         for (const target of targets) {
-            const log = await this.createLog({ shipment, eventType, target, force: options.force });
+            const log = await this.createLog({ shipment, eventType, target, force: options.force, existingLogId: options.existingLogId });
             if (!log) {
                 results.push({ target: target.role, status: 'skipped', reason: 'already_sent' });
                 continue;

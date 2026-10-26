@@ -218,6 +218,31 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
             documents: {}
         });
 
+        test('updates the exact queued log instead of a newer submitted log', async () => {
+            const shipment = makeShipment();
+            prisma.shipmentNotificationLog.findFirst.mockResolvedValueOnce({
+                id: 'queued-log', shipmentId: shipment.id, eventType: 'delivered',
+                recipientRole: 'sender', status: 'QUEUED'
+            });
+
+            await chatwootService.createLog({
+                shipment, eventType: 'delivered',
+                target: { role: 'sender', name: 'Sender Name', phone: '+96597959567' },
+                existingLogId: 'queued-log', force: true
+            });
+
+            expect(prisma.shipmentNotificationLog.findFirst).toHaveBeenCalledWith({
+                where: {
+                    id: 'queued-log', shipmentId: shipment.id, eventType: 'delivered',
+                    recipientRole: { in: ['sender', 'shipper', 'merchant'] }
+                }
+            });
+            expect(prisma.shipmentNotificationLog.update).toHaveBeenCalledWith(
+                expect.objectContaining({ where: { id: 'queued-log' } })
+            );
+            expect(prisma.shipmentNotificationLog.create).not.toHaveBeenCalled();
+        });
+
         test('sends the approved confirmation to the shipper with receiver fields and no support footer', async () => {
             const result = await chatwootService.sendShipmentNotification('shipment_created', makeShipment({
                 contactPerson: 'Receiver Name',
