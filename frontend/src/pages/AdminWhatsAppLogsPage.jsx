@@ -9,9 +9,12 @@ import NativeChatDrawer from '../components/support/NativeChatDrawer';
 export function formatExactMessageCopy(log) {
     if (!log) return '';
     const payload = log.payloadJson || {};
+    const recordedContent = payload.content || log.responseJson?.message?.content;
+    if (typeof recordedContent === 'string' && recordedContent.trim()) return recordedContent;
     const firstRow = payload.rows?.[0] || {};
-    const vars = firstRow.variables || payload.variables || [];
-    const headerVars = firstRow.headerVariables || payload.headerVariables || [];
+    const vars = firstRow.variables || payload.variables || payload.template_params?.parameters || [];
+    const headerVars = firstRow.headerVariables || payload.headerVariables ||
+        Object.values(payload.template_params?.processed_params?.header || {});
     const shipmentAwb = headerVars[0] || log.trackingNumber || log.shipment?.dhlTrackingNumber || log.shipment?.carrierShipmentId || '';
     const tmpl = String(log.templateName || payload.templateName || 'shipment_confirmation_2').toLowerCase();
 
@@ -884,10 +887,14 @@ export const AdminWhatsAppLogsPage = () => {
                         const payload = selectedLog.payloadJson || {};
                         const audit = payload.auditMetadata || {};
                         const firstRow = payload.rows?.[0] || {};
-                        const vars = firstRow.variables || payload.variables || [];
-                        const headerVars = firstRow.headerVariables || payload.headerVariables || [];
+                        const vars = firstRow.variables || payload.variables || payload.template_params?.parameters || [];
+                        const headerVars = firstRow.headerVariables || payload.headerVariables ||
+                            Object.values(payload.template_params?.processed_params?.header || {});
                         const prov = getProviderBadge(selectedLog.provider);
                         const cleanPhone = (selectedLog.recipientPhone || '').replace(/[^0-9]/g, '');
+                        const isShipmentConfirmation = selectedLog.templateName === 'shipment_confirmation_2';
+                        const consigneeName = isShipmentConfirmation ? vars[2] : null;
+                        const consigneePhone = isShipmentConfirmation ? vars[3] : null;
 
                         return (
                             <div className="py-4 space-y-4 text-xs">
@@ -923,7 +930,7 @@ export const AdminWhatsAppLogsPage = () => {
                                     </div>
                                     <div className="sm:col-span-3 pt-2 border-t border-base-200/60 flex items-center justify-between gap-2 flex-wrap">
                                         <div>
-                                            <span className="text-[10px] font-bold text-base-content/50 uppercase">{lang === 'ar' ? 'معرف الرسالة الخارجي (WAMID):' : 'External WAMID:'}</span>
+                                            <span className="text-[10px] font-bold text-base-content/50 uppercase">{selectedLog.provider?.toUpperCase() === 'CHATWOOT' ? (lang === 'ar' ? 'معرف رسالة Chatwoot:' : 'Chatwoot Message ID:') : (lang === 'ar' ? 'معرف الرسالة الخارجي (WAMID):' : 'External WAMID:')}</span>
                                             <div className="font-mono text-xs text-base-content/80 break-all">{selectedLog.chatwootMessageId || selectedLog.externalMessageId || (lang === 'ar' ? 'لا يوجد' : 'None')}</div>
                                         </div>
                                         <div>
@@ -982,11 +989,11 @@ export const AdminWhatsAppLogsPage = () => {
                                         <div className="space-y-1 text-[11px]">
                                             <div className="flex justify-between">
                                                 <span className="text-base-content/60">{lang === 'ar' ? 'الاسم:' : 'Name:'}</span>
-                                                <span className="font-bold text-base-content">{audit.consignee?.name || (!isSender ? selectedLog.recipientName : (vars[2] || '—'))}</span>
+                                                <span className="font-bold text-base-content">{consigneeName || audit.consignee?.name || (!isSender ? selectedLog.recipientName : '—')}</span>
                                             </div>
                                             <div className="flex justify-between">
                                                 <span className="text-base-content/60">{lang === 'ar' ? 'الهاتف:' : 'Phone:'}</span>
-                                                <span className="font-mono text-base-content" dir="ltr">{audit.consignee?.phone || (!isSender ? selectedLog.recipientPhone : (vars[3] || '—'))}</span>
+                                                <span className="font-mono text-base-content" dir="ltr">{consigneePhone || audit.consignee?.phone || (!isSender ? selectedLog.recipientPhone : '—')}</span>
                                             </div>
                                             {(audit.consignee?.destination || selectedLog.shipment?.destination?.city) && (
                                                 <div className="flex justify-between">
