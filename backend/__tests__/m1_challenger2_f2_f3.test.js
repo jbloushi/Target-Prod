@@ -639,8 +639,7 @@ describe('Milestone 1 Challenger 2: F2 & F3 Empirical Stress Suite', () => {
             }
         });
 
-        it('Adversarial Test: Chatwoot notification failure behavior in queue worker', async () => {
-            // Test how ChatwootNotificationService.processQueuedNotification behaves when targets fail
+        it('completes a queued lifecycle notification as skipped without attempting delivery', async () => {
             const shipment = {
                 id: 'ship-cw-fail',
                 trackingNumber: 'TRK-CW-FAIL',
@@ -649,45 +648,25 @@ describe('Milestone 1 Challenger 2: F2 & F3 Empirical Stress Suite', () => {
                 destination: { phone: '+96655555555', name: 'Receiver' }
             };
 
-            const originalSend = chatwootNotificationService.sendShipmentNotification;
-            
-            // Case A: When sendShipmentNotification returns failed results without throwing
-            chatwootNotificationService.sendShipmentNotification = jest.fn().mockResolvedValue({
-                skipped: false,
-                results: [
-                    { target: 'sender', status: 'failed', error: 'Chatwoot API 500 Internal Error' },
-                    { target: 'receiver', status: 'failed', error: 'Chatwoot API 500 Internal Error' }
-                ]
+            const findShipment = jest.spyOn(prisma.shipment, 'findUnique').mockResolvedValue(shipment);
+            const createLog = jest.spyOn(prisma.shipmentNotificationLog, 'create').mockImplementation(async ({ data }) => ({ id: 'skip-log', ...data }));
+            const result = await chatwootNotificationService.processQueuedNotification({
+                eventType: 'out_for_delivery',
+                shipment
             });
 
-            try {
-                const result = await chatwootNotificationService.processQueuedNotification({
-                    eventType: 'out_for_delivery',
-                    shipment
-                });
+            expect(result).toEqual(expect.objectContaining({ skipped: true, reason: 'MANUAL_DISPATCH_REQUIRED' }));
+            expect(createLog).toHaveBeenCalledWith(expect.objectContaining({
+                data: expect.objectContaining({ status: 'SKIPPED', errorMessage: 'MANUAL_DISPATCH_REQUIRED' })
+            }));
 
-                // Empirical observation: Does processQueuedNotification throw when results are failed?
-                // If it resolves without throwing, JobQueue marks it 'completed' instead of retrying!
-                expect(result.skipped).toBe(false);
-                expect(result.results.every(r => r.status === 'failed')).toBe(true);
+            const queue = new JobQueue();
+            queue.registerWorker('chatwoot_notify', payload => chatwootNotificationService.processQueuedNotification(payload));
+            const job = await queue.enqueue('chatwoot_notify', { eventType: 'out_for_delivery', shipment });
+            await queue.processPendingJobs();
 
-                // Now test what JobQueue does when worker handler returns this result
-                const queue = new JobQueue();
-                queue.registerWorker('chatwoot_notify', async (payload) => {
-                    return await chatwootNotificationService.processQueuedNotification(payload);
-                });
-
-                const job = await queue.enqueue('chatwoot_notify', { eventType: 'out_for_delivery', shipment });
-                await queue.processPendingJobs();
-
-                const jobStatus = await queue.getJobStatus(job.jobId);
-                // Documenting the empirical behavior:
-                // If sendShipmentNotification swallows target errors and does not re-throw,
-                // JobQueue considers the job 'completed'.
-                expect(jobStatus.status).toBe('completed');
-            } finally {
-                chatwootNotificationService.sendShipmentNotification = originalSend;
-            }
+            expect((await queue.getJobStatus(job.jobId)).status).toBe('completed');
+            expect(findShipment).toHaveBeenCalled();
         });
 
         it('JobQueue re-entrancy lock prevents concurrent execution cycles', async () => {
