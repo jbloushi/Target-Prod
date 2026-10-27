@@ -486,7 +486,7 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
     // Suite 1: Primary Chatwoot Outbound Dispatch
     // =========================================================================
     describe('Suite 1: Primary Chatwoot Outbound Dispatch', () => {
-        test('1.1 Outbound milestone template dispatches successfully via Chatwoot API', async () => {
+        test('1.1 Unapproved outbound milestone action is blocked before any provider call', async () => {
             const shipment = rememberShipment({
                 id: 'shp-m4-01',
                 trackingNumber: 'TRG-DISPATCH-01',

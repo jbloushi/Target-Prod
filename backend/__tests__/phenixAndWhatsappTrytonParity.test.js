@@ -4,8 +4,14 @@ const ShipmentLifecycleService = require('../src/services/ShipmentLifecycleServi
 const whatsappService = require('../src/services/whatsappIntegration.service');
 const chatwootService = require('../src/services/chatwootNotificationService');
 const { prisma } = require('../src/config/database');
+const { mockTrytonRpc } = require('../test-support/trytonRpcTestDouble');
 
 describe('Parity Verification: Phenix ERP Ingestion & WhatsApp Lifecycle Notifications in Tryton Migration', () => {
+    beforeEach(() => {
+        mockTrytonRpc(trytonClient);
+    });
+
+    afterEach(() => jest.restoreAllMocks());
 
     test('1. Phenix ERP shipment ingestion mirrors to Tryton stock.shipment.out with draft selling price and merchant party', async () => {
         const testBillId = `PHX-${Date.now().toString().slice(-6)}`;

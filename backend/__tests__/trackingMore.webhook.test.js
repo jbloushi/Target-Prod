@@ -446,7 +446,7 @@ describe('DHL Web Scraper Service Fallback & Code Parsing', () => {
 });
 
 describe('LogesTechs Dual Barcode / ID Lookup', () => {
-    const LogesTechsAdapter = require('../src/adapters/LogestechsAdapter');
+    const LogesTechsAdapter = require('../src/adapters/LogesTechsAdapter');
 
     afterEach(() => {
         jest.restoreAllMocks();

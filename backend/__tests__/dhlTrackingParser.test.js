@@ -332,6 +332,7 @@ describe('DHL Tracking Parser & Checkpoint Codes', () => {
 
         it('throws descriptive error when response contains empty shipments array', async () => {
             const axios = require('axios');
+            adapter.webScraper = { scrapeDhl: jest.fn().mockResolvedValue(null) };
             jest.spyOn(axios, 'get').mockResolvedValueOnce({ data: { shipments: [] } });
 
             await expect(adapter.getTracking('9999999999')).rejects.toThrow(

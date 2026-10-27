@@ -1,6 +1,7 @@
 const { prisma } = require('../src/config/database');
 const whatsAppConfigService = require('../src/services/whatsAppConfig.service');
 const whatsappService = require('../src/services/whatsappIntegration.service');
+const chatwootService = require('../src/services/chatwootNotificationService');
 
 describe('shipment WhatsApp send boundary', () => {
     const currentShipment = {
@@ -74,11 +75,12 @@ describe('shipment WhatsApp send boundary', () => {
     });
 
     test('manual shipment actions are not suppressed by disabled automatic event rules', async () => {
-        whatsAppConfigService.getConfig.mockResolvedValue({ enabled: false, provider: 'CHATWOOT' });
+        whatsAppConfigService.getConfig.mockResolvedValue({ enabled: true, provider: 'CHATWOOT' });
         jest.spyOn(whatsAppConfigService, 'isEventEnabled').mockResolvedValue(false);
         jest.spyOn(whatsAppConfigService, '_computeQuietHours').mockReturnValue(false);
         jest.spyOn(prisma.shipmentNotificationLog, 'findFirst').mockResolvedValue(null);
         jest.spyOn(prisma.shipmentNotificationLog, 'update').mockImplementation(async ({ where, data }) => ({ id: where.id, ...data }));
+        jest.spyOn(chatwootService, 'dispatchSingleNotification').mockResolvedValue({ status: 'submitted', messageId: 'cw-manual-1' });
 
         const result = await whatsappService.sendNotification({
             shipment: currentShipment,
@@ -89,7 +91,13 @@ describe('shipment WhatsApp send boundary', () => {
             manualDispatch: true
         });
 
-        expect(result).toEqual(expect.objectContaining({ status: 'SKIPPED', message: 'WhatsApp disabled in settings' }));
+        expect(result).toEqual(expect.objectContaining({ status: 'submitted', provider: 'chatwoot', externalMessageId: 'cw-manual-1' }));
         expect(whatsAppConfigService.isEventEnabled).not.toHaveBeenCalled();
+        expect(chatwootService.dispatchSingleNotification).toHaveBeenCalledWith(expect.objectContaining({
+            eventType: 'location_request',
+            templateName: 'location_request_v1',
+            recipientRole: 'receiver',
+            sourceRecipientPhone: currentShipment.destination.phone
+        }));
     });
 });

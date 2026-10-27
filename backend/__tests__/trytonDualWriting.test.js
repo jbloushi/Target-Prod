@@ -3,8 +3,16 @@ const { jobQueue } = require('../src/services/queue');
 const ShipmentLifecycleService = require('../src/services/ShipmentLifecycleService');
 const ShipmentDraftService = require('../src/services/ShipmentDraftService');
 const { prisma } = require('../src/config/database');
+const { mockTrytonRpc } = require('../test-support/trytonRpcTestDouble');
 
 describe('Ticket 07: Express Gateway JSON-RPC Client & Dual-Writing Queue', () => {
+    let transport;
+
+    beforeEach(() => {
+        transport = mockTrytonRpc(trytonClient);
+    });
+
+    afterEach(() => jest.restoreAllMocks());
 
     test('TrytonClient connects via JSON-RPC, logs in, and caches session', async () => {
         const version = await trytonClient.checkHealth();
@@ -36,10 +44,17 @@ describe('Ticket 07: Express Gateway JSON-RPC Client & Dual-Writing Queue', () =
             expiresAt: Date.now() + 100000
         };
 
+        transport.post.mockImplementationOnce(async () => {
+            const error = new Error('Session expired');
+            error.response = { status: 401 };
+            throw error;
+        });
+
         // Execution should catch the 401, re-login transparently, and succeed
         const parties = await trytonClient.modelCall('party.party', 'search', [], 0, 1, null);
         expect(Array.isArray(parties)).toBe(true);
         expect(trytonClient.cachedSession.userId).toBeGreaterThan(0);
+        expect(transport.post).toHaveBeenCalledTimes(3);
     });
 
     test('Primary write completes in sub-100ms while shadow dual-write is queued asynchronously', async () => {
