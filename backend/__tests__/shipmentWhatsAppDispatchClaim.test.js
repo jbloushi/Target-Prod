@@ -1,3 +1,10 @@
+// This test exercises dispatch-claim behavior, not feature-flag behavior.
+// Keep the Chatwoot client enabled and configured even in CI environments
+// that intentionally omit production integrations.
+process.env.CHATWOOT_ENABLED = 'true';
+process.env.CHATWOOT_API_ACCESS_TOKEN = 'test-chatwoot-token';
+process.env.CHATWOOT_BASE_URL = 'https://chatwoot.example.test';
+
 const { prisma } = require('../src/config/database');
 const whatsAppConfigService = require('../src/services/whatsAppConfig.service');
 const chatwootService = require('../src/services/chatwootNotificationService');
