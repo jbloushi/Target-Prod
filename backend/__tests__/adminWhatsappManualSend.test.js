@@ -1,6 +1,6 @@
 jest.mock('../src/config/database', () => ({ prisma: {
     shipment: { findFirst: jest.fn() },
-    shipmentNotificationLog: { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), update: jest.fn() }
+    shipmentNotificationLog: { create: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), update: jest.fn() }
 } }));
 jest.mock('../src/services/whatsappIntegration.service', () => ({ sendNotification: jest.fn() }));
 jest.mock('../src/services/chatwootNotificationService', () => ({
@@ -39,6 +39,7 @@ describe('manual shipment WhatsApp access', () => {
         canAccessShipment.mockReturnValue(true);
         hasCapability.mockReturnValue(false);
         prisma.shipmentNotificationLog.findFirst.mockResolvedValue(null);
+        prisma.shipmentNotificationLog.create.mockResolvedValue({ id: 'policy-log' });
         chatwootNotificationService.isShipmentConfirmationEvent.mockReturnValue(false);
         chatwootNotificationService.sendShipmentNotification.mockResolvedValue({ results: [{ status: 'submitted' }] });
     });
@@ -51,10 +52,11 @@ describe('manual shipment WhatsApp access', () => {
         expect(whatsappService.sendNotification).not.toHaveBeenCalled();
     });
 
-    test('denies a caller supplied phone without operational permission', async () => {
+    test('rejects caller supplied phone overrides', async () => {
         const res = response();
         await sendShipmentWhatsApp({ params: { trackingNumber: 'TRK-1' }, body: { recipientPhone: '+96591111111' }, user: { role: 'client' } }, res);
-        expect(res.status).toHaveBeenCalledWith(403);
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'UNTRUSTED_DISPATCH_OVERRIDE' }));
         expect(whatsappService.sendNotification).not.toHaveBeenCalled();
     });
 
@@ -62,9 +64,9 @@ describe('manual shipment WhatsApp access', () => {
         chatwootNotificationService.isShipmentConfirmationEvent.mockReturnValue(true);
         const res = response();
         await sendShipmentWhatsApp({ params: { trackingNumber: 'TRK-1' }, body: { recipientRole: 'sender' }, user: { role: 'client' } }, res);
-        expect(chatwootNotificationService.sendShipmentNotification).toHaveBeenCalledWith('out_for_delivery', shipment, {
+        expect(chatwootNotificationService.sendShipmentNotification).toHaveBeenCalledWith('shipment_created', shipment, {
             recipientRole: 'sender', templateName: 'shipment_confirmation_2',
-            disableProviderFallback: true, force: false
+            disableProviderFallback: true, manualDispatch: true
         });
         expect(whatsappService.sendNotification).not.toHaveBeenCalled();
     });
@@ -75,7 +77,7 @@ describe('manual shipment WhatsApp access', () => {
         });
         const res = response();
         await sendShipmentWhatsApp({ params: { trackingNumber: 'TRK-1' }, body: { recipientRole: 'sender' }, user: { role: 'client' } }, res);
-        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.status).toHaveBeenCalledWith(409);
         expect(whatsappService.sendNotification).not.toHaveBeenCalled();
     });
 });
@@ -84,6 +86,7 @@ describe('admin queued WhatsApp dispatch', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         prisma.shipmentNotificationLog.findFirst.mockResolvedValue(null);
+        prisma.shipmentNotificationLog.create.mockResolvedValue({ id: 'policy-log' });
         prisma.shipmentNotificationLog.update.mockResolvedValue({});
         chatwootNotificationService.getNotificationTargets.mockReturnValue([{
             role: 'sender', name: 'Shipper', phone: '+96590000001'
@@ -91,7 +94,7 @@ describe('admin queued WhatsApp dispatch', () => {
         chatwootNotificationService.sendShipmentNotification.mockResolvedValue({ results: [{ status: 'submitted' }] });
     });
 
-    test('sends a queued lifecycle log through the approved Chatwoot template', async () => {
+    test('closes a queued lifecycle log instead of replaying it', async () => {
         prisma.shipmentNotificationLog.findMany.mockResolvedValue([{
             id: 'log-4', trackingNumber: 'TRK-1', eventType: 'delivered',
             recipientRole: 'sender', recipientPhone: '***0001', templateName: 'new_shipment_created',
@@ -102,12 +105,13 @@ describe('admin queued WhatsApp dispatch', () => {
 
         await dispatchQueuedNotifications({ body: { limit: 1 } }, res);
 
-        expect(chatwootNotificationService.sendShipmentNotification).toHaveBeenCalledWith('delivered', expect.any(Object), {
-            recipientRole: 'sender', templateName: 'shipment_confirmation_2',
-            disableProviderFallback: true, existingLogId: 'log-4'
+        expect(prisma.shipmentNotificationLog.update).toHaveBeenCalledWith({
+            where: { id: 'log-4' },
+            data: { status: 'SKIPPED', errorMessage: 'AUTOMATIC_SHIPMENT_MESSAGES_DISABLED' }
         });
+        expect(chatwootNotificationService.sendShipmentNotification).not.toHaveBeenCalled();
         expect(whatsappService.sendNotification).not.toHaveBeenCalled();
-        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ dispatched: 1 }));
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ dispatched: 0, skipped: 1 }));
     });
 });
 
@@ -121,12 +125,13 @@ describe('admin WhatsApp resend', () => {
         jest.clearAllMocks();
         prisma.shipment.findFirst.mockResolvedValue(shipment);
         prisma.shipmentNotificationLog.findFirst.mockResolvedValue(null);
+        prisma.shipmentNotificationLog.create.mockResolvedValue({ id: 'policy-log' });
         chatwootNotificationService.sendShipmentNotification.mockResolvedValue({ results: [{ status: 'submitted' }] });
     });
 
     test('retries a legacy lifecycle log through the approved Chatwoot template', async () => {
         prisma.shipmentNotificationLog.findUnique.mockResolvedValue({
-            id: 'log-1', trackingNumber: 'TRK-1', eventType: 'delivered',
+            id: 'log-1', trackingNumber: 'TRK-1', eventType: 'shipment_created',
             recipientRole: 'sender', recipientPhone: '***0001',
             templateName: 'new_shipment_created', status: 'FAILED'
         });
@@ -135,9 +140,9 @@ describe('admin WhatsApp resend', () => {
 
         await resendNotification({ params: { id: 'log-1' }, body: {} }, res);
 
-        expect(chatwootNotificationService.sendShipmentNotification).toHaveBeenCalledWith('delivered', shipment, {
+        expect(chatwootNotificationService.sendShipmentNotification).toHaveBeenCalledWith('shipment_created', shipment, {
             recipientRole: 'sender', templateName: 'shipment_confirmation_2',
-            disableProviderFallback: true, existingLogId: 'log-1', force: false
+            disableProviderFallback: true, existingLogId: 'log-1', manualDispatch: true
         });
         expect(whatsappService.sendNotification).not.toHaveBeenCalled();
     });
@@ -163,11 +168,12 @@ describe('admin WhatsApp resend', () => {
             id: 'log-3', trackingNumber: 'TRK-1', eventType: 'delivered',
             recipientRole: 'sender', status: 'submitted'
         });
+        prisma.shipmentNotificationLog.findFirst.mockResolvedValue({ status: 'submitted' });
         const res = response();
 
         await resendNotification({ params: { id: 'log-3' }, body: {} }, res);
 
-        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.status).toHaveBeenCalledWith(409);
         expect(chatwootNotificationService.sendShipmentNotification).not.toHaveBeenCalled();
     });
 });

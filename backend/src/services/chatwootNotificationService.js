@@ -5,6 +5,11 @@ const logger = require('../utils/logger');
 const { STATUS_LABELS } = require('../constants/statusConstants');
 const shipmentWhatsAppPolicy = require('./shipmentWhatsAppPolicy.service');
 
+// Capability kept private to this module. Only the dedicated Phenix import
+// entry point can authorize the initial shipment-created template outside a
+// human-initiated action.
+const PHENIX_IMPORT_DISPATCH = Symbol('phenix-import-shipment-created');
+
 const PROVIDER = 'chatwoot';
 
 const EVENT_TARGETS = {
@@ -1867,6 +1872,15 @@ class ChatwootNotificationService {
         }));
     }
 
+    async sendPhenixImportConfirmation(shipment) {
+        return this.sendShipmentNotification('shipment_created', shipment, {
+            recipientRole: 'sender',
+            templateName: 'shipment_confirmation_2',
+            disableProviderFallback: true,
+            dispatchAuthorization: PHENIX_IMPORT_DISPATCH
+        });
+    }
+
     async sendShipmentNotification(eventType, shipment, options = {}) {
         const whatsAppConfigService = require('./whatsAppConfig.service');
         const { getSystemSettings } = require('./systemSettings.service');
@@ -1892,7 +1906,11 @@ class ChatwootNotificationService {
         const targets = [];
 
         targets.push(...allTargets);
-        if (!options.manualDispatch) {
+        const isAuthorizedPhenixCreate = options.dispatchAuthorization === PHENIX_IMPORT_DISPATCH
+            && eventType === 'shipment_created'
+            && options.recipientRole === 'sender'
+            && options.templateName === 'shipment_confirmation_2';
+        if (!options.manualDispatch && !isAuthorizedPhenixCreate) {
             const errorMessage = 'MANUAL_DISPATCH_REQUIRED';
             for (const target of targets) {
                 await this.recordPolicySkip({

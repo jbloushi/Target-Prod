@@ -32,60 +32,36 @@ describe('WhatsApp queued shipment dispatch', () => {
         whatsAppConfigService.isQuietHours.mockResolvedValue(false);
         prisma.shipment.findFirst.mockResolvedValue(shipment);
         prisma.shipmentNotificationLog.updateMany.mockResolvedValue({ count: 0 });
+        prisma.shipmentNotificationLog.findMany.mockResolvedValue([]);
         prisma.shipmentNotificationLog.update.mockResolvedValue({});
         prisma.shipmentNotificationLog.findFirst.mockResolvedValue(null);
         chatwootNotificationService.getNotificationTargets.mockReturnValue([{ role: 'sender', phone: '+96590000000' }]);
         chatwootNotificationService.sendShipmentNotification.mockResolvedValue({ results: [{ status: 'submitted' }] });
     });
 
-    test('replaces a queued legacy lifecycle template with the approved Chatwoot confirmation', async () => {
-        prisma.shipmentNotificationLog.findMany.mockResolvedValue([{
-            id: 'log-1', shipmentId: shipment.id, eventType: 'delivered',
-            recipientRole: 'sender', templateName: 'new_shipment_created'
-        }]);
-
+    test('closes a queued lifecycle notification without sending it', async () => {
         await drainer.drainQueue();
 
-        expect(chatwootNotificationService.sendShipmentNotification).toHaveBeenCalledWith('delivered', shipment, {
-            recipientRole: 'sender', templateName: 'shipment_confirmation_2',
-            disableProviderFallback: true, existingLogId: 'log-1', force: true
-        });
-        expect(whatsappIntegration.sendNotification).not.toHaveBeenCalled();
-    });
-
-    test('terminates a queued lifecycle row when the shipper has no phone', async () => {
-        prisma.shipmentNotificationLog.findMany.mockResolvedValue([{
-            id: 'log-2', shipmentId: shipment.id, eventType: 'delivered', recipientRole: 'sender'
-        }]);
-        chatwootNotificationService.getNotificationTargets.mockReturnValue([]);
-
-        await drainer.drainQueue();
-
-        expect(prisma.shipmentNotificationLog.update).toHaveBeenCalledWith({
-            where: { id: 'log-2' },
-            data: { status: 'SKIPPED', errorMessage: 'SENDER_PHONE_NOT_FOUND' }
-        });
+        expect(prisma.shipmentNotificationLog.updateMany).toHaveBeenNthCalledWith(1, expect.objectContaining({
+            where: expect.objectContaining({ eventType: { in: expect.arrayContaining(['delivered']) } }),
+            data: { status: 'SKIPPED', errorMessage: 'AUTOMATIC_SHIPMENT_MESSAGES_DISABLED' }
+        }));
         expect(chatwootNotificationService.sendShipmentNotification).not.toHaveBeenCalled();
         expect(whatsappIntegration.sendNotification).not.toHaveBeenCalled();
     });
 
-    test('does not resend a queued lifecycle row after another row was submitted', async () => {
-        prisma.shipmentNotificationLog.findMany.mockResolvedValue([{
-            id: 'log-3', shipmentId: shipment.id, eventType: 'delivered', recipientRole: 'sender'
-        }]);
-        prisma.shipmentNotificationLog.findFirst.mockResolvedValue({ id: 'already-submitted' });
-
+    test('does not attempt queued lifecycle delivery when the shipper has no phone', async () => {
         await drainer.drainQueue();
 
-        expect(prisma.shipmentNotificationLog.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-            where: expect.objectContaining({
-                OR: [{ shipmentId: shipment.id }, { trackingNumber: shipment.trackingNumber }]
-            })
-        }));
-        expect(prisma.shipmentNotificationLog.update).toHaveBeenCalledWith({
-            where: { id: 'log-3' },
-            data: { status: 'SKIPPED', errorMessage: 'CONFIRMATION_ALREADY_SUBMITTED' }
-        });
+        expect(chatwootNotificationService.getNotificationTargets).not.toHaveBeenCalled();
+        expect(chatwootNotificationService.sendShipmentNotification).not.toHaveBeenCalled();
+        expect(whatsappIntegration.sendNotification).not.toHaveBeenCalled();
+    });
+
+    test('does not inspect duplicate rows for a disabled lifecycle retry', async () => {
+        await drainer.drainQueue();
+
+        expect(prisma.shipmentNotificationLog.findFirst).not.toHaveBeenCalled();
         expect(chatwootNotificationService.sendShipmentNotification).not.toHaveBeenCalled();
     });
 });

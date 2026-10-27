@@ -14,53 +14,36 @@ describe('Phenix import hardening', () => {
         expect(validated.isComplete).toBe(true);
     });
 
-    test('uses strict Chatwoot dispatch and treats submitted logs as already processed', async () => {
-        const { prisma } = require('../src/config/database');
+    test('routes the new Phenix shipment confirmation through the approved Chatwoot template', async () => {
         const chatwoot = require('../src/services/chatwootNotificationService');
-        const whatsapp = require('../src/services/whatsappIntegration.service');
-        const item = {
-            shipment: { id: 'shipment-1', trackingNumber: 'TRK-1' },
-            v: { billId: null },
-            recipientName: 'Shipper',
-            recipientPhone: '+96590000000'
-        };
-        const findSpy = jest.spyOn(prisma.shipmentNotificationLog, 'findFirst')
-            .mockResolvedValueOnce({ id: 'submitted-log', status: 'submitted' })
-            .mockResolvedValueOnce(null);
-        const chatwootSpy = jest.spyOn(chatwoot, 'sendShipmentNotification')
+        const shipment = { id: 'shipment-1', trackingNumber: 'TRK-1' };
+        const dispatchSpy = jest.spyOn(chatwoot, 'sendShipmentNotification')
             .mockResolvedValue({ results: [{ status: 'submitted' }] });
-        const directSpy = jest.spyOn(whatsapp, 'sendNotification');
 
         try {
-            expect(await phenixSyncService.dispatchShipmentConfirmation(item)).toBe('skipped');
-            expect(await phenixSyncService.dispatchShipmentConfirmation(item)).toBe('submitted');
-            expect(chatwootSpy).toHaveBeenCalledTimes(1);
-            expect(chatwootSpy).toHaveBeenCalledWith('shipment_created', item.shipment, {
-                recipientRole: 'sender', disableProviderFallback: true
-            });
-            expect(directSpy).not.toHaveBeenCalled();
+            const result = await chatwoot.sendPhenixImportConfirmation(shipment);
+            expect(result.results[0].status).toBe('submitted');
+            expect(dispatchSpy).toHaveBeenCalledWith('shipment_created', shipment, expect.objectContaining({
+                recipientRole: 'sender',
+                templateName: 'shipment_confirmation_2',
+                disableProviderFallback: true
+            }));
         } finally {
-            findSpy.mockRestore();
-            chatwootSpy.mockRestore();
-            directSpy.mockRestore();
+            dispatchSpy.mockRestore();
         }
     });
 
-    test('does not count a failed Chatwoot result as a sent Phenix confirmation', async () => {
-        const { prisma } = require('../src/config/database');
+    test('does not treat a rejected Chatwoot Phenix confirmation as accepted', async () => {
         const chatwoot = require('../src/services/chatwootNotificationService');
-        const findSpy = jest.spyOn(prisma.shipmentNotificationLog, 'findFirst').mockResolvedValue(null);
-        const chatwootSpy = jest.spyOn(chatwoot, 'sendShipmentNotification')
+        const dispatchSpy = jest.spyOn(chatwoot, 'sendShipmentNotification')
             .mockResolvedValue({ results: [{ status: 'failed', error: 'Inbox unavailable' }] });
 
         try {
-            await expect(phenixSyncService.dispatchShipmentConfirmation({
-                shipment: { id: 'shipment-2', trackingNumber: 'TRK-2' },
-                v: { billId: null }
-            })).rejects.toThrow('Inbox unavailable');
+            const result = await chatwoot.sendPhenixImportConfirmation({ id: 'shipment-2', trackingNumber: 'TRK-2' });
+            expect(result.results[0].status).toBe('failed');
+            expect(dispatchSpy).toHaveBeenCalledTimes(1);
         } finally {
-            findSpy.mockRestore();
-            chatwootSpy.mockRestore();
+            dispatchSpy.mockRestore();
         }
     });
 

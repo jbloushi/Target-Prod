@@ -635,7 +635,7 @@ describe('Milestone 5: Backend Support Center & Chat Controller Suite', () => {
 
     describe('9. 1-Click Location Request Action (POST /api/support/actions/request-location)', () => {
         it('9.1 dispatches location pin request notification via WhatsApp integration service', async () => {
-            jest.spyOn(whatsappService, 'sendLocationRequestNotification').mockResolvedValue({ success: true });
+            jest.spyOn(whatsappService, 'sendLocationRequestNotification').mockResolvedValue({ status: 'submitted' });
 
             const res = await request(app)
                 .post('/api/support/actions/request-location')

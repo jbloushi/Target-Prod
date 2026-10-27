@@ -2,7 +2,7 @@
 
 Read this guide before changing WhatsApp shipment messages, recipient selection, templates, provider settings, retries, delivery webhooks, or message logs. It maps the production-matched application code and names the behavior that future changes must preserve or deliberately revise.
 
-Shipment-message dispatch is now **manual only**. Automatic shipment creation, milestone, Salla, Phenix-import, carrier-booking, and public-return triggers do not send WhatsApp. Shipment imports and operational status updates continue normally. Shipment confirmations can still be initiated manually to the shipper.
+Shipment messages use Chatwoot and approved templates. Initial shipment confirmations created by Phenix import are sent automatically to the shipper using `shipment_confirmation_2`. Status/milestone changes, Salla imports, carrier bookings, and public return requests do not trigger automatic messages; public returns require an operator to send `return_portal_v1` manually. Other shipment messages are operator-initiated.
 
 **Confirmed transport policy (2026-10-26):** every application-dispatched shipment message goes through Chatwoot. The manual shipment confirmation uses `shipment_confirmation_2` and targets the shipper. Payment, receiver location, return, engagement, and receiver-location OTP keep their own approved templates and recipients. User-opened `wa.me` links remain human handoffs; they are not sent or receipt-tracked by the application.
 
@@ -39,7 +39,7 @@ node scripts/resend-shipment-confirmations.js --from=2026-10-25 --to=2026-10-26 
 
 | Concern | Main implementation | Responsibility |
 | --- | --- | --- |
-| Shipment-event selection and Chatwoot path | `backend/src/services/chatwootNotificationService.js` | Manual action/template validation, terminal-state and duplicate guards, Chatwoot contact/conversation lookup, status log writes. Automatic trigger entry point is disabled. |
+| Shipment-event selection and Chatwoot path | `backend/src/services/chatwootNotificationService.js` | Manual action/template validation, the narrow Phenix-created shipment exception, terminal-state and duplicate guards, Chatwoot contact/conversation lookup, status log writes. Other automatic lifecycle triggers are disabled. |
 | Provider routing and shipment template variables | `backend/src/services/whatsappIntegration.service.js` | Forces shipment-bearing messages through Chatwoot, resolves the current shipment/recipient, validates the action contract, and builds template variables; non-shipment messages retain their separate provider routing. |
 | WhatsApp settings and event rules | `backend/src/services/whatsAppConfig.service.js` | Reads/writes database config and rules, masks API-returned secrets, evaluates quiet hours and per-role event rules. |
 | File-backed system settings | `backend/src/services/systemSettings.service.js`, `backend/src/controllers/settings.controller.js` | Legacy/provider settings, Meta credentials, webhook verification token, system-settings API. |
@@ -55,11 +55,11 @@ node scripts/resend-shipment-confirmations.js --from=2026-10-25 --to=2026-10-26 
 
 ## Message paths
 
-### Disabled automatic shipment triggers
+### Shipment trigger policy
 
-Shipment controllers, carrier synchronization, fleet workflows, booking, Salla, and public return workflows may still call `chatwootNotificationService.triggerShipmentNotification`. That entry point now returns `MANUAL_DISPATCH_REQUIRED` and does not send or enqueue a job. The same rule applies to legacy `chatwoot_notify` jobs: dispatch requires explicit manual authorization and terminal-state checks.
+Shipment controllers, carrier synchronization, fleet workflows, booking, Salla, and public return workflows may still call `chatwootNotificationService.triggerShipmentNotification`. That entry point returns `MANUAL_DISPATCH_REQUIRED` and does not send or enqueue a job. The only automatic shipment-message exception is the first non-terminal shipment creation by Phenix import, which calls the dedicated Chatwoot confirmation path. The same rule applies to legacy `chatwoot_notify` jobs: dispatch requires explicit manual authorization and terminal-state checks.
 
-Phenix import still creates/updates shipments. Its old Auto WhatsApp UI control is removed, the scheduled import passes `sendWhatsApp: false`, and the import service no longer dispatches or records an external autosend as if it were a local accepted message. Salla and carrier booking still complete their business workflows; only the notifier call is suppressed.
+Phenix import sends one initial shipper confirmation for a newly created, non-terminal shipment through Chatwoot. Updates and re-imports do not send another confirmation. Missing shipper details, terminal shipment status, duplicate accepted sends, unavailable approved templates, or Chatwoot errors prevent acceptance and are recorded. The standalone Phenix sender remains disabled; shipment messages are dispatched by the Target backend through Chatwoot. Salla import and carrier booking continue their business workflows without triggering shipment WhatsApp messages.
 
 The event-to-status mapping remains available for display/history logic, but it no longer initiates customer WhatsApp delivery.
 
@@ -99,9 +99,10 @@ The shared WhatsApp integration service also handles login OTPs, account stateme
 
 | Message class | Example entry points | Typical target |
 | --- | --- | --- |
-| Shipment created / reviewed | Shipment CRUD and booking/lifecycle callers | No WhatsApp dispatch. A shipment confirmation is a separate manual action to the shipper. |
+| Shipment created / reviewed | Shipment CRUD and booking/lifecycle callers | No automatic dispatch from ordinary UI creation or review. Phenix import has the separate initial-confirmation exception below. |
+| Phenix import creates a shipment | `phenixSync.service.js`, `phenixSyncCron.service.js` | Chatwoot sends the initial `shipment_confirmation_2` to the shipper; re-imports and updates do not resend. |
 | Shipment status milestone | `shipment-ops.controller.js`, `shipment-tracking.controller.js`, `carrierSyncCron.service.js`, `fleet.service.js` | No automatic WhatsApp dispatch; status updates still persist. |
-| Imported/commerce shipment | `phenixSync.service.js`, `sallaIntegration.service.js` | Imports continue; import-triggered WhatsApp dispatch is disabled. |
+| Salla/commerce shipment | `sallaIntegration.service.js` | Import continues; import-triggered WhatsApp dispatch is disabled. |
 | Manual shipment update/payment | `adminWhatsAppLogs.controller.js`, `shipment-ops.controller.js` | Approved event/template/role combinations only; current party phone is resolved on the server. |
 | Receiver self-service | `supportChat.controller.js`, `ShipmentDetailsPage.jsx` actions, `whatsappIntegration.service.js` helper methods | Receiver/consignee; approved template only and no terminal shipment. |
 | Finance/account | `finance.controller.js` → `sendStatementNotification` / `sendInvoiceNotification` | Organization billing contact. These are not shipment lifecycle notifications. |
@@ -137,7 +138,7 @@ The database secret fields are masked in GET responses but stored as ordinary fi
 | Chatwoot environment config | `CHATWOOT_ENABLED`, `CHATWOOT_BASE_URL`, `CHATWOOT_ACCOUNT_ID`, `CHATWOOT_INBOX_ID`, `CHATWOOT_API_ACCESS_TOKEN`, `CHATWOOT_ALLOW_PLAIN_TEXT_FALLBACK`, `CHATWOOT_TEMPLATE_CONFIG`, `CHATWOOT_WEBHOOK_SECRET`. |
 | Telemetry sync | `ADMIN_TOKEN` is read by the admin telemetry-sync controller for the remote microservice request. |
 
-The Settings page now shows shipment event rules as disabled/read-only. The send service enforces manual-only dispatch independently of historical `WhatsAppEventRule` rows, so old enabled rules cannot re-enable automatic shipment messages.
+The Settings page shows shipment event rules as disabled/read-only. The dispatch service enforces its source policy independently of historical `WhatsAppEventRule` rows: old enabled rules cannot re-enable automatic lifecycle messages, and only the dedicated Phenix initial-create capability can send automatically.
 
 ## Templates and payloads
 

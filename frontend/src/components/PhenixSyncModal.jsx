@@ -48,7 +48,7 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                 autoSyncEnabled: enabled,
                 carrier,
                 daysBack,
-                sendWhatsApp: false,
+                sendWhatsApp: true,
                 onlyComplete
             };
             await settingsService.updateSystemSettings({ phenixSync: updated });
