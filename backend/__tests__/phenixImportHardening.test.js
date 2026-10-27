@@ -1,6 +1,69 @@
 const phenixSyncService = require('../src/services/phenixSync.service');
 
 describe('Phenix import hardening', () => {
+    test('does not substitute the Target phone when the shipper phone is missing', () => {
+        const validated = phenixSyncService.validatePhenixRow({
+            bill_id: '46663',
+            bill_detailCustomField_1: '5864966450',
+            bill_detailCustomField_3: 'Receiver',
+            bill_detailCustomField_4: '971502789486',
+            Mcolor: 'UAE'
+        });
+
+        expect(validated.senderPhone).toBeFalsy();
+        expect(validated.isComplete).toBe(true);
+    });
+
+    test('uses strict Chatwoot dispatch and treats submitted logs as already processed', async () => {
+        const { prisma } = require('../src/config/database');
+        const chatwoot = require('../src/services/chatwootNotificationService');
+        const whatsapp = require('../src/services/whatsappIntegration.service');
+        const item = {
+            shipment: { id: 'shipment-1', trackingNumber: 'TRK-1' },
+            v: { billId: null },
+            recipientName: 'Shipper',
+            recipientPhone: '+96590000000'
+        };
+        const findSpy = jest.spyOn(prisma.shipmentNotificationLog, 'findFirst')
+            .mockResolvedValueOnce({ id: 'submitted-log', status: 'submitted' })
+            .mockResolvedValueOnce(null);
+        const chatwootSpy = jest.spyOn(chatwoot, 'sendShipmentNotification')
+            .mockResolvedValue({ results: [{ status: 'submitted' }] });
+        const directSpy = jest.spyOn(whatsapp, 'sendNotification');
+
+        try {
+            expect(await phenixSyncService.dispatchShipmentConfirmation(item)).toBe('skipped');
+            expect(await phenixSyncService.dispatchShipmentConfirmation(item)).toBe('submitted');
+            expect(chatwootSpy).toHaveBeenCalledTimes(1);
+            expect(chatwootSpy).toHaveBeenCalledWith('shipment_created', item.shipment, {
+                recipientRole: 'sender', disableProviderFallback: true
+            });
+            expect(directSpy).not.toHaveBeenCalled();
+        } finally {
+            findSpy.mockRestore();
+            chatwootSpy.mockRestore();
+            directSpy.mockRestore();
+        }
+    });
+
+    test('does not count a failed Chatwoot result as a sent Phenix confirmation', async () => {
+        const { prisma } = require('../src/config/database');
+        const chatwoot = require('../src/services/chatwootNotificationService');
+        const findSpy = jest.spyOn(prisma.shipmentNotificationLog, 'findFirst').mockResolvedValue(null);
+        const chatwootSpy = jest.spyOn(chatwoot, 'sendShipmentNotification')
+            .mockResolvedValue({ results: [{ status: 'failed', error: 'Inbox unavailable' }] });
+
+        try {
+            await expect(phenixSyncService.dispatchShipmentConfirmation({
+                shipment: { id: 'shipment-2', trackingNumber: 'TRK-2' },
+                v: { billId: null }
+            })).rejects.toThrow('Inbox unavailable');
+        } finally {
+            findSpy.mockRestore();
+            chatwootSpy.mockRestore();
+        }
+    });
+
     test('keeps the explicit Phenix country and records phone-country conflicts', () => {
         const signals = phenixSyncService.resolveDestinationSignals('KSA', '+96891234567');
 

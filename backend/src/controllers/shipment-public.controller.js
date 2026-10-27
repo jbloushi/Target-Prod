@@ -253,11 +253,19 @@ exports.sendReceiverLocationOtp = async (req, res) => {
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
-        const phone = shipment.destination?.phone || shipment.customerPhone || shipment.origin?.phone;
+        const phone = shipment.destination?.phone || shipment.customerPhone;
         const countryCode = shipment.destination?.phoneCountryCode || shipment.customerPhoneCountryCode || '20';
         
         if (!phone) {
-            return res.status(400).json({ success: false, error: 'No recipient phone number found on shipment' });
+            await require('../services/shipmentWhatsAppPolicy.service').recordSkippedAttempt({
+                shipment,
+                eventType: 'auth_otp',
+                templateName: 'otptargetlogin',
+                recipientRole: 'receiver',
+                recipientName: shipment.destination?.contactPerson || shipment.destination?.name || shipment.customerName,
+                reason: 'MISSING_RECIPIENT_PHONE'
+            });
+            return res.status(409).json({ success: false, code: 'MISSING_RECIPIENT_PHONE', error: 'No recipient phone number found on shipment' });
         }
 
         // Generate 6-digit OTP
@@ -268,17 +276,24 @@ exports.sendReceiverLocationOtp = async (req, res) => {
         // Dispatch OTP via WhatsApp
         try {
             const whatsappService = require('../services/whatsappIntegration.service');
-            await whatsappService.sendNotification({
+            const result = await whatsappService.sendNotification({
                 shipment,
-                recipientRole: 'customer',
+                recipientRole: 'receiver',
                 recipientPhone: phone,
                 recipientCountryCode: countryCode,
-                eventType: 'location_otp',
-                templateName: 'new_shipment_created',
-                customMessage: `Your Target Logistics Location Pin OTP is: ${otp}`
+                eventType: 'auth_otp',
+                templateName: 'otptargetlogin',
+                customMessage: { otp },
+                force: true,
+                manualDispatch: true
             });
+            if (!['SENT', 'SUBMITTED'].includes(String(result?.status || '').toUpperCase())) {
+                throw new Error(result?.message || `OTP dispatch was not accepted (${result?.status || 'unknown status'})`);
+            }
         } catch (waErr) {
-            logger.warn(`[WhatsApp OTP Dispatch Warning] ${waErr.message}`);
+            locationOtpStore.delete(trackingNumber);
+            logger.warn(`[WhatsApp OTP Dispatch Failed] ${waErr.message}`);
+            return res.status(502).json({ success: false, error: 'Unable to send verification code. Please try again.' });
         }
 
         logger.info(`[Receiver OTP Generated] Verification code issued for shipment ${trackingNumber}`);

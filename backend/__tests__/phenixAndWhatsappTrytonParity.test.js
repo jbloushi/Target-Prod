@@ -2,6 +2,7 @@ const trytonClient = require('../src/services/tryton/trytonClient');
 const { jobQueue } = require('../src/services/queue');
 const ShipmentLifecycleService = require('../src/services/ShipmentLifecycleService');
 const whatsappService = require('../src/services/whatsappIntegration.service');
+const chatwootService = require('../src/services/chatwootNotificationService');
 const { prisma } = require('../src/config/database');
 
 describe('Parity Verification: Phenix ERP Ingestion & WhatsApp Lifecycle Notifications in Tryton Migration', () => {
@@ -133,11 +134,8 @@ describe('Parity Verification: Phenix ERP Ingestion & WhatsApp Lifecycle Notific
         expect(Number(totalCredit.toFixed(3))).toBe(14.250);
     });
 
-    test('4. Warehouse hub scale verification triggers outbound WhatsApp notification to merchant', async () => {
-        const sendSpy = jest.spyOn(whatsappService, 'sendNotification').mockResolvedValue({
-            status: 'sent',
-            externalMessageId: 'wam-test-12345'
-        });
+    test('4. Warehouse review leaves WhatsApp dispatch to the controller to avoid duplicate sends', async () => {
+        const sendSpy = jest.spyOn(chatwootService, 'triggerShipmentNotification').mockImplementation(() => {});
 
         const mockShipment = {
             id: 'mock-shipment-wa-001',
@@ -174,15 +172,8 @@ describe('Parity Verification: Phenix ERP Ingestion & WhatsApp Lifecycle Notific
         expect(reviewResult).toBeDefined();
         expect(reviewResult.reviewCompleted).toBe(true);
 
-        // Verify WhatsApp notification was triggered
-        expect(sendSpy).toHaveBeenCalledWith(
-            expect.objectContaining({
-                recipientRole: 'sender',
-                recipientPhone: '+96597959567',
-                templateName: 'shipment_confirmation_2',
-                eventType: 'shipment_verified'
-            })
-        );
+        // processWarehouseScan triggers the single verified_and_dispatched event.
+        expect(sendSpy).not.toHaveBeenCalled();
 
         sendSpy.mockRestore();
         prisma.shipment.update.mockRestore();

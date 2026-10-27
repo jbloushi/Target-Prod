@@ -3,6 +3,7 @@ const { prisma } = require('../config/database');
 const config = require('../config/config');
 const logger = require('../utils/logger');
 const { STATUS_LABELS } = require('../constants/statusConstants');
+const shipmentWhatsAppPolicy = require('./shipmentWhatsAppPolicy.service');
 
 const PROVIDER = 'chatwoot';
 
@@ -189,6 +190,55 @@ function buildSyncedTemplatePayload(templateName, eventType, context, target, cu
     const updatedAt = context.currentStatusDatetimeDisplay || formatDisplayDate(new Date(), true);
     const trackingLink = context.publicTrackingLink || `https://target-kw.com/track/${context.trackingNumber}`;
     const displayTracking = String(context.trackingNumber || 'TRG-SHIPMENT');
+
+    const explicitTemplateValues = {
+        otptargetlogin: [String(customMessage?.otp || '')],
+        payment_request_v1: [
+            String(target?.name || 'Valued Customer'),
+            displayTracking,
+            String(customMessage?.amount || context.amountDue || '0.000 KWD'),
+            String(customMessage?.paymentLink || context.publicPaymentLink || '')
+        ],
+        location_request_v1: [
+            String(target?.name || 'Valued Customer'),
+            displayTracking,
+            String(customMessage?.locationUrl || trackingLink)
+        ],
+        return_portal_v1: [
+            String(target?.name || 'Valued Customer'),
+            displayTracking,
+            String(customMessage?.returnUrl || `https://target-kw.com/returns/${encodeURIComponent(displayTracking)}`)
+        ],
+        customer_inquiry_start: [
+            String(target?.name || 'Valued Customer'),
+            displayTracking
+        ]
+    }[templateName];
+
+    if (explicitTemplateValues) {
+        const body = Object.fromEntries(explicitTemplateValues.map((value, index) => [String(index + 1), value]));
+        let content;
+        if (templateName === 'otptargetlogin') {
+            content = `Your login code is ${explicitTemplateValues[0]}. No further action is needed if you didn’t request this.\nExpires in 3 minutes.`;
+        } else if (templateName === 'payment_request_v1') {
+            content = `Hello ${explicitTemplateValues[0]},\n\nPayment is requested for shipment ${displayTracking}.\n\nAmount due: ${explicitTemplateValues[2]}\nPayment link: ${explicitTemplateValues[3]}\n\nPlease use the secure link above to complete payment.`;
+        } else if (templateName === 'location_request_v1') {
+            content = `Hello *${explicitTemplateValues[0]}*,\n\nPlease confirm the delivery location for shipment *${displayTracking}* using this link:\n\n_${explicitTemplateValues[2]}_\n\nThank you`;
+        } else if (templateName === 'return_portal_v1') {
+            content = `Hello *${explicitTemplateValues[0]}*,\n\nThe return process for shipment * ${displayTracking} *has been started. Please use this link for the return details:\n\n_${explicitTemplateValues[2]}_\n\nThank You`;
+        } else {
+            content = `Hello *${explicitTemplateValues[0]}*,\n\nTarget Logistics is contacting you about shipment *${displayTracking}*. Please reply to this message to speak with`;
+        }
+
+        return {
+            name: templateName,
+            category: templateName === 'otptargetlogin' ? 'AUTHENTICATION' : 'UTILITY',
+            language: templateName === 'otptargetlogin' ? 'en_US' : 'en',
+            processed_params: { body },
+            parameters: explicitTemplateValues,
+            content
+        };
+    }
 
     if (templateName === 'shipment_confirmation_2') {
         const dateOnly = context.shipmentDateDisplay || formatDisplayDate(context.currentStatusDatetime || new Date(), false) || formatDisplayDate(new Date(), false);
@@ -383,22 +433,46 @@ function resolveUpgradedRole(existingRole, incomingRole) {
 
 function getPersonFromShipment(shipment, role) {
     const source = role === 'sender'
-        ? (shipment.origin || shipment.customer || {})
+        ? (shipment.origin || {})
         : (shipment.destination || {});
+    const documents = shipment.documents && typeof shipment.documents === 'object' ? shipment.documents : {};
     const fallbackPhone = role === 'sender'
-        ? (shipment.customer?.phone || shipment.user?.phone || shipment.organization?.phone || null)
-        : (shipment.customerPhone || null);
+        ? (shipment.shipperPhone || shipment.senderPhone || documents.senderPhone || null)
+        : (shipment.receiverPhone || shipment.consigneePhone || documents.receiverPhone || shipment.customerPhone || null);
+    const fallbackCountryCode = role === 'sender'
+        ? (shipment.shipperPhoneCountryCode || shipment.senderPhoneCountryCode || documents.senderPhoneCountryCode)
+        : (shipment.receiverPhoneCountryCode || shipment.consigneePhoneCountryCode || documents.receiverPhoneCountryCode);
+    const normalizedPhone = normalizePhone(source.phone || fallbackPhone, source.phoneCountryCode || fallbackCountryCode);
+    // Earlier Phenix imports stored Target's support number when no shipper phone
+    // existed. Do not use that legacy value as a destination for shipment data.
+    const phone = role === 'sender' && shipment.phenixSourceKey && normalizedPhone === '+96597691271'
+        ? null
+        : normalizedPhone;
     return {
         role,
-        name: source.contactPerson || source.name || source.company || (role === 'sender' ? (shipment.customer?.name || shipment.user?.name) : null),
-        email: source.email || (role === 'sender' ? (shipment.customer?.email || shipment.user?.email) : null),
+        name: source.contactPerson || source.name || source.company || (role === 'sender' ? (shipment.senderName || documents.senderName) : (documents.receiverName || shipment.customerName)),
+        email: source.email || null,
         countryCode: source.phoneCountryCode || null,
-        phone: normalizePhone(
-            source.phone || fallbackPhone,
-            source.phoneCountryCode
-        ),
+        phone,
         raw: source
     };
+}
+
+async function getDispatchBlockAtSendTime(shipment, target) {
+    const current = await prisma.shipment.findUnique({
+        where: { id: shipment.id },
+        include: { organization: true }
+    });
+    if (!current) return { code: 'SHIPMENT_NOT_FOUND', message: 'Shipment no longer exists' };
+    const terminalBlock = shipmentWhatsAppPolicy.terminalBlock(current);
+    if (terminalBlock) return terminalBlock;
+    if (shipment.updatedAt && current.updatedAt && new Date(shipment.updatedAt).getTime() !== new Date(current.updatedAt).getTime()) {
+        return { code: 'SHIPMENT_CHANGED_BEFORE_DISPATCH', message: 'Shipment changed while the message was being prepared; review and retry' };
+    }
+    const currentTarget = getPersonFromShipment(current, target.role);
+    if (!currentTarget.phone) return { code: 'MISSING_RECIPIENT_PHONE', message: 'Recipient phone is missing from the current shipment record' };
+    if (currentTarget.phone !== (target.sourcePhone || target.phone)) return { code: 'RECIPIENT_CHANGED_BEFORE_DISPATCH', message: 'Recipient phone changed while the message was being prepared; review and retry' };
+    return null;
 }
 
 function formatDateTime(value) {
@@ -664,6 +738,11 @@ function buildMessagePayload(eventType, context, target, customTemplateName = nu
 function sanitizeForLog(value) {
     if (!value || typeof value !== 'object') return value;
     const json = JSON.parse(JSON.stringify(value));
+    if (json?.template_params?.name === 'otptargetlogin') {
+        json.content = '[redacted authentication template content]';
+        json.template_params.processed_params = { body: { '1': '[redacted]' } };
+        json.template_params.parameters = ['[redacted]'];
+    }
     const scrub = (obj) => {
         if (!obj || typeof obj !== 'object') return;
         Object.keys(obj).forEach((key) => {
@@ -678,6 +757,16 @@ function sanitizeForLog(value) {
     };
     scrub(json);
     return json;
+}
+
+function assertShipmentDispatchSucceeded(result) {
+    const failedTargets = Array.isArray(result?.results)
+        ? result.results.filter(targetResult => String(targetResult?.status || '').toLowerCase() === 'failed')
+        : [];
+    if (failedTargets.length > 0) {
+        throw new Error('Chatwoot shipment notification failed for one or more recipients');
+    }
+    return result;
 }
 
 class ChatwootNotificationService {
@@ -704,7 +793,7 @@ class ChatwootNotificationService {
             const res = await this.request('get', `/api/v1/accounts/${cw.accountId}/inboxes`);
             const inboxes = res?.payload || res?.data?.payload || (Array.isArray(res) ? res : []);
             if (Array.isArray(inboxes) && inboxes.length > 0) {
-                const inbox = inboxes.find(i => String(i.id) === String(cw.inboxId)) || inboxes[0];
+                const inbox = inboxes.find(i => String(i.id) === String(cw.inboxId));
                 if (Array.isArray(inbox?.message_templates) && inbox.message_templates.length > 0) {
                     const approved = inbox.message_templates.filter(t => String(t.status || 'APPROVED').toUpperCase() === 'APPROVED');
                     cachedInboxTemplates = {
@@ -807,16 +896,18 @@ class ChatwootNotificationService {
         );
     }
 
-    async createLog({ shipment, eventType, target, status = 'pending', errorMessage = null, force = false, existingLogId = null }) {
+    async createLog({ shipment, eventType, target, status = 'pending', errorMessage = null, force = false, existingLogId = null, templateName = null }) {
         const cw = getChatwootConfig();
         const data = {
             shipmentId: shipment.id,
             trackingNumber: shipment.trackingNumber,
+            dispatchKey: shipmentWhatsAppPolicy.buildDispatchKey({ shipment, eventType, templateName, recipientRole: target.role, recipientPhone: target.phone }),
             eventType,
             recipientRole: target.role,
             recipientName: target.name || null,
             recipientPhone: maskPhone(target.phone),
             provider: PROVIDER,
+            templateName,
             chatwootAccountId: cw.accountId || null,
             chatwootInboxId: cw.inboxId || null,
             status,
@@ -829,21 +920,32 @@ class ChatwootNotificationService {
                     id: existingLogId,
                     shipmentId: shipment.id,
                     eventType,
-                    recipientRole: { in: target.role === 'sender' ? ['sender', 'shipper', 'merchant'] : [target.role] }
+                    templateName,
+                    recipientRole: { in: target.role === 'sender' ? ['sender', 'shipper', 'merchant'] : [target.role] },
+                    status: { in: ['FAILED', 'failed', 'SKIPPED', 'skipped', 'QUEUED', 'queued', 'PENDING', 'pending'] }
                 }
             });
             if (!queuedLog) throw new Error(`Queued notification log ${existingLogId} no longer matches its shipment and recipient`);
-            return prisma.shipmentNotificationLog.update({
-                where: { id: existingLogId },
-                data: { ...data, payloadJson: null, responseJson: null, sentAt: null }
+            const claim = await prisma.shipmentNotificationLog.updateMany({
+                where: {
+                    id: existingLogId,
+                    shipmentId: shipment.id,
+                    eventType,
+                    templateName,
+                    recipientRole: { in: target.role === 'sender' ? ['sender', 'shipper', 'merchant'] : [target.role] },
+                    status: { in: ['FAILED', 'failed', 'SKIPPED', 'skipped', 'QUEUED', 'queued', 'PENDING', 'pending'] }
+                },
+                data: { ...data, status: 'pending', payloadJson: null, responseJson: null, sentAt: null }
             });
+            return claim.count === 1 ? prisma.shipmentNotificationLog.findUnique({ where: { id: existingLogId } }) : null;
         }
 
         const existing = await prisma.shipmentNotificationLog.findFirst({
             where: {
                 shipmentId: shipment.id,
                 eventType,
-                recipientRole: target.role
+                recipientRole: target.role,
+                templateName
             },
             orderBy: { updatedAt: 'desc' }
         });
@@ -851,14 +953,19 @@ class ChatwootNotificationService {
         if (existing?.id) {
             const existingStatusUpper = String(existing.status || '').toUpperCase();
             const alreadySentEarlier = ['SENT', 'DELIVERED', 'READ', 'SUBMITTED'].includes(existingStatusUpper);
-            if (!force && alreadySentEarlier) {
+            const alreadyInFlight = ['QUEUED', 'PENDING', 'PROCESSING'].includes(existingStatusUpper);
+            if (alreadySentEarlier || alreadyInFlight) {
                 logger.info(`[chatwoot] skipped duplicate (already sent earlier) ${eventType} ${shipment.trackingNumber} ${target.role} ${maskPhone(target.phone)}`);
                 return null;
             }
-            return prisma.shipmentNotificationLog.update({
-                where: { id: existing.id },
-                data: { ...data, payloadJson: null, responseJson: null, sentAt: null }
+            const claim = await prisma.shipmentNotificationLog.updateMany({
+                where: {
+                    id: existing.id,
+                    status: { in: ['FAILED', 'failed', 'SKIPPED', 'skipped'] }
+                },
+                data: { ...data, status: 'pending', payloadJson: null, responseJson: null, sentAt: null }
             });
+            return claim.count === 1 ? prisma.shipmentNotificationLog.findUnique({ where: { id: existing.id } }) : null;
         }
 
         try {
@@ -869,12 +976,13 @@ class ChatwootNotificationService {
                     where: {
                         shipmentId: shipment.id,
                         eventType,
-                        recipientRole: target.role
+                        recipientRole: target.role,
+                        templateName
                     },
                     orderBy: { updatedAt: 'desc' }
                 });
                 const concurrentStatusUpper = String(concurrent?.status || '').toUpperCase();
-                if (!force && ['SENT', 'DELIVERED', 'READ', 'SUBMITTED'].includes(concurrentStatusUpper)) {
+                if (['SENT', 'DELIVERED', 'READ', 'SUBMITTED', 'QUEUED', 'PENDING', 'PROCESSING'].includes(concurrentStatusUpper)) {
                     logger.info(`[chatwoot] skipped duplicate ${eventType} ${shipment.trackingNumber} ${target.role} ${maskPhone(target.phone)}`);
                     return null;
                 }
@@ -895,6 +1003,33 @@ class ChatwootNotificationService {
         return prisma.shipmentNotificationLog.update({
             where: { id: logId },
             data: sanitizeForLog(data)
+        });
+    }
+
+    async recordPolicySkip({ shipment, eventType, target, templateName, reason, existingLogId = null }) {
+        const errorMessage = typeof reason === 'string' ? reason : reason.message;
+        if (existingLogId) {
+            const existing = await prisma.shipmentNotificationLog.findUnique({ where: { id: existingLogId } }).catch(() => null);
+            if (existing && !shipmentWhatsAppPolicy.isProviderAccepted(existing.status)) {
+                return prisma.shipmentNotificationLog.update({
+                    where: { id: existingLogId },
+                    data: { status: 'SKIPPED', errorMessage, templateName: templateName || existing.templateName }
+                });
+            }
+        }
+        return prisma.shipmentNotificationLog.create({
+            data: {
+                shipmentId: shipment.id,
+                trackingNumber: shipment.trackingNumber,
+                eventType,
+                recipientRole: target.role,
+                recipientName: target.name || null,
+                recipientPhone: maskPhone(target.phone),
+                provider: PROVIDER,
+                templateName,
+                status: 'SKIPPED',
+                errorMessage
+            }
         });
     }
 
@@ -1503,21 +1638,17 @@ class ChatwootNotificationService {
     async resolveEffectiveTemplatePayload({ eventType, context, target, chosenTemplate, customMessage }) {
         const syncedTemplates = await this.getInboxTemplates();
         let effectiveTemplateName = chosenTemplate;
+        const requiresExactTemplate = Boolean(effectiveTemplateName);
 
-        if (effectiveTemplateName === 'shipment_confirmation_2' && !Array.isArray(syncedTemplates)) {
-            throw new Error('Unable to verify approved Chatwoot template shipment_confirmation_2 for the configured inbox');
+        if (requiresExactTemplate && !Array.isArray(syncedTemplates)) {
+            throw new Error(`Unable to verify approved Chatwoot template ${effectiveTemplateName} for the configured inbox`);
         }
 
         if (Array.isArray(syncedTemplates)) {
-            const existsInInbox = syncedTemplates.some(t => t.name === effectiveTemplateName);
+            const existsInInbox = syncedTemplates.some(t => t.name === effectiveTemplateName &&
+                (!requiresExactTemplate || String(t.status || '').toUpperCase() === 'APPROVED'));
             if (!existsInInbox) {
-                if (effectiveTemplateName === 'shipment_confirmation_2') {
-                    throw new Error('Required approved Chatwoot template shipment_confirmation_2 is not available in the configured inbox');
-                } else if (syncedTemplates.some(t => t.name === 'new_shipment_created')) {
-                    effectiveTemplateName = 'new_shipment_created';
-                } else if (syncedTemplates.some(t => t.name === 'shipment_confirmation_2')) {
-                    effectiveTemplateName = 'shipment_confirmation_2';
-                }
+                throw new Error(`Required approved Chatwoot template ${effectiveTemplateName} is not available in the configured inbox`);
             }
         }
 
@@ -1534,6 +1665,33 @@ class ChatwootNotificationService {
                     private: false,
                     content: buildApprovedTemplateContent(effectiveTemplateName, context, syncedParams) || buildPlainContent(eventType, context, target),
                     template_params: syncedParams
+                }
+            };
+        }
+
+        const payloadMappedTemplates = new Set([
+            'payment_request_v1', 'location_request_v1', 'return_portal_v1',
+            'customer_inquiry_start', 'otptargetlogin'
+        ]);
+        if (!payloadMappedTemplates.has(effectiveTemplateName)) {
+            throw new Error(`No approved Chatwoot payload mapping is implemented for template ${effectiveTemplateName}`);
+        }
+
+        const explicitTemplatePayload = buildSyncedTemplatePayload(effectiveTemplateName, eventType, context, target, customMessage);
+        if (explicitTemplatePayload?.processed_params) {
+            return {
+                templateName: effectiveTemplateName,
+                payload: {
+                    message_type: 'outgoing',
+                    private: false,
+                    content: explicitTemplatePayload.content,
+                    template_params: {
+                        name: explicitTemplatePayload.name,
+                        category: explicitTemplatePayload.category,
+                        language: explicitTemplatePayload.language,
+                        processed_params: explicitTemplatePayload.processed_params,
+                        parameters: explicitTemplatePayload.parameters
+                    }
                 }
             };
         }
@@ -1569,12 +1727,14 @@ class ChatwootNotificationService {
         templateName,
         customMessage,
         buttonUrlParam,
-        logId
+        logId,
+        sourceRecipientPhone = null
     }) {
         const context = buildShipmentNotificationContext(shipment);
         const target = {
             role: recipientRole || 'receiver',
             phone: recipientPhone,
+            sourcePhone: sourceRecipientPhone,
             name: recipientName
         };
 
@@ -1584,6 +1744,17 @@ class ChatwootNotificationService {
         const chosenTemplate = templateName || CANONICAL_EVENT_TEMPLATES[eventType] || 'target_shipment_delivered';
         const contact = await this.findOrCreateContact(target, context);
         const conversation = await this.findOrCreateConversation(contact, target, context);
+        const sendTimeBlock = await getDispatchBlockAtSendTime(shipment, target);
+        if (sendTimeBlock) {
+            if (logId) {
+                await this.updateLog(logId, {
+                    status: 'skipped',
+                    errorMessage: sendTimeBlock.code,
+                    responseJson: { reason: sendTimeBlock.code }
+                });
+            }
+            return { status: 'skipped', reason: sendTimeBlock.code, message: sendTimeBlock.message };
+        }
 
         const { payload: effectivePayload, templateName: effectiveTemplateName } = await this.resolveEffectiveTemplatePayload({
             eventType,
@@ -1604,7 +1775,7 @@ class ChatwootNotificationService {
             await prisma.shipmentNotificationLog.update({
                 where: { id: logId },
                 data: {
-                    status: 'SENT',
+                    status: 'submitted',
                     provider: 'chatwoot',
                     isFallback: false,
                     fallbackReason: null,
@@ -1614,8 +1785,12 @@ class ChatwootNotificationService {
                     chatwootConversationId: conversation?.id ? String(conversation.id) : null,
                     chatwootMessageId: messageResponse?.id ? String(messageResponse.id) : null,
                     templateName: effectiveTemplateName || chosenTemplate,
-                    payloadJson: effectivePayload,
-                    responseJson: messageResponse,
+                    payloadJson: effectiveTemplateName === 'otptargetlogin'
+                        ? { templateName: effectiveTemplateName, category: 'AUTHENTICATION', redacted: true }
+                        : sanitizeForLog(effectivePayload),
+                    responseJson: effectiveTemplateName === 'otptargetlogin'
+                        ? { messageId: messageResponse?.id ? String(messageResponse.id) : null, redacted: true }
+                        : sanitizeForLog(messageResponse),
                     sentAt: new Date()
                 }
             });
@@ -1625,6 +1800,7 @@ class ChatwootNotificationService {
             messageId: messageResponse?.id ? String(messageResponse.id) : `cw_${Date.now()}`,
             contact,
             conversation,
+            status: 'submitted',
             response: messageResponse
         };
     }
@@ -1694,14 +1870,110 @@ class ChatwootNotificationService {
     async sendShipmentNotification(eventType, shipment, options = {}) {
         const whatsAppConfigService = require('./whatsAppConfig.service');
         const { getSystemSettings } = require('./systemSettings.service');
+        if (shipment?.id) {
+            const currentShipment = await prisma.shipment.findUnique({
+                where: { id: shipment.id },
+                include: { organization: true }
+            });
+            if (!currentShipment) {
+                return { skipped: true, reason: 'SHIPMENT_NOT_FOUND', results: [] };
+            }
+            shipment = currentShipment;
+        }
         const dbConfig = await whatsAppConfigService.getConfig({ internal: true }).catch(() => null);
         const systemSettings = dbConfig || getSystemSettings()?.whatsapp || {};
-        const activeProvider = systemSettings.provider || 'CHATWOOT';
+        const configuredProvider = systemSettings.provider || 'CHATWOOT';
+        const activeProvider = 'CHATWOOT';
+        if (String(configuredProvider).toUpperCase() !== 'CHATWOOT') {
+            logger.warn(`[chatwoot] Ignoring configured WhatsApp provider ${configuredProvider} for shipment messages; Chatwoot-only policy is active`);
+        }
         const allTargets = getNotificationTargets(eventType, shipment, options.recipientRole || null);
         const context = buildShipmentNotificationContext(shipment);
         const targets = [];
 
         targets.push(...allTargets);
+        if (!options.manualDispatch) {
+            const errorMessage = 'MANUAL_DISPATCH_REQUIRED';
+            for (const target of targets) {
+                await this.recordPolicySkip({
+                    shipment,
+                    eventType,
+                    target,
+                    templateName: selectNotificationTemplate(eventType, target.role, options.templateName),
+                    reason: errorMessage,
+                    existingLogId: options.existingLogId
+                });
+            }
+            return { skipped: true, reason: errorMessage, results: targets.map(target => ({ target: target.role, status: 'skipped', reason: errorMessage })) };
+        }
+
+        const terminalBlock = shipmentWhatsAppPolicy.terminalBlock(shipment);
+        if (terminalBlock) {
+            for (const target of targets) {
+                await this.recordPolicySkip({ shipment, eventType, target, templateName: selectNotificationTemplate(eventType, target.role, options.templateName), reason: `${terminalBlock.code}:${terminalBlock.status}`, existingLogId: options.existingLogId });
+            }
+            return { skipped: true, reason: terminalBlock.code, status: terminalBlock.status, results: targets.map(target => ({ target: target.role, status: 'skipped', reason: terminalBlock.code })) };
+        }
+
+        const invalidTargets = targets.filter(target => shipmentWhatsAppPolicy.validateManualAction({
+            eventType,
+            templateName: selectNotificationTemplate(eventType, target.role, options.templateName),
+            recipientRole: target.role
+        }));
+        if (invalidTargets.length) {
+            const validationError = shipmentWhatsAppPolicy.validateManualAction({
+                eventType,
+                templateName: selectNotificationTemplate(eventType, invalidTargets[0].role, options.templateName),
+                recipientRole: invalidTargets[0].role
+            });
+            for (const target of invalidTargets) {
+                await this.recordPolicySkip({ shipment, eventType, target, templateName: selectNotificationTemplate(eventType, target.role, options.templateName), reason: validationError.code, existingLogId: options.existingLogId });
+            }
+            return { skipped: true, reason: validationError.code, results: invalidTargets.map(target => ({ target: target.role, status: 'skipped', reason: validationError.code })) };
+        }
+        if (targets.length === 0) {
+            const roles = options.recipientRole ? [options.recipientRole] : (EVENT_TARGETS[eventType] || []);
+            if (roles.length === 0) {
+                logger.warn(`[chatwoot] unsupported shipment notification event ${eventType}`);
+                return { skipped: true, reason: 'unsupported_event', results: [] };
+            }
+            const errorMessage = 'Recipient phone missing from the shipment party record';
+            for (const role of roles) {
+                await this.createLog({
+                    shipment,
+                    eventType,
+                    target: { role, phone: null, name: null },
+                    status: 'skipped',
+                    errorMessage,
+                    force: false,
+                    existingLogId: options.existingLogId
+                });
+            }
+            return { skipped: true, reason: 'missing_recipient_phone', results: [] };
+        }
+
+        const requiresApprovedChatwoot = targets.some(target =>
+            selectNotificationTemplate(eventType, target.role, options.templateName) === 'shipment_confirmation_2'
+        );
+        if (requiresApprovedChatwoot && String(activeProvider).toUpperCase() !== 'CHATWOOT') {
+            const errorMessage = 'Approved shipment confirmation requires the CHATWOOT provider';
+            const results = [];
+            for (const target of targets) {
+                const log = await this.createLog({
+                    shipment,
+                    eventType,
+                    target,
+                    status: 'failed',
+                    errorMessage,
+                    force: false,
+                    existingLogId: options.existingLogId
+                });
+                results.push(log
+                    ? { target: target.role, status: 'failed', error: errorMessage }
+                    : { target: target.role, status: 'skipped', reason: 'already_sent' });
+            }
+            return { skipped: false, provider: activeProvider, results };
+        }
 
         // When provider is SHIPMENT_WHATSAPP, META, or MOCK, route directly to WhatsApp integration
         if (activeProvider === 'SHIPMENT_WHATSAPP' || activeProvider === 'TARGET_MSG' || activeProvider === 'META' || activeProvider === 'MOCK') {
@@ -1732,7 +2004,8 @@ class ChatwootNotificationService {
             await this.refreshDbCredentialsIfNeeded();
         }
         const cw = getChatwootConfig();
-        const fallbackEnabled = (systemSettings.fallbackProvider || 'SHIPMENT_WHATSAPP') === 'SHIPMENT_WHATSAPP';
+        // Shipment messages are Chatwoot-only; provider settings cannot route them to the remote sender.
+        const fallbackEnabled = false;
 
         if (!cw.enabled) {
             logger.info('[chatwoot] skipped disabled');
@@ -1793,13 +2066,19 @@ class ChatwootNotificationService {
 
         const results = [];
         for (const target of targets) {
-            const log = await this.createLog({ shipment, eventType, target, force: options.force, existingLogId: options.existingLogId });
+            const selectedTemplate = selectNotificationTemplate(eventType, target.role, options.templateName);
+            const log = await this.createLog({ shipment, eventType, target, force: options.force, existingLogId: options.existingLogId, templateName: selectedTemplate });
             if (!log) {
-                results.push({ target: target.role, status: 'skipped', reason: 'already_sent' });
+                const prior = await prisma.shipmentNotificationLog.findFirst({
+                    where: { shipmentId: shipment.id, eventType, recipientRole: target.role, templateName: selectedTemplate },
+                    orderBy: { updatedAt: 'desc' }
+                });
+                const inFlight = shipmentWhatsAppPolicy.isInFlight(prior?.status);
+                const reason = inFlight ? 'DISPATCH_ALREADY_IN_FLIGHT' : 'DUPLICATE_ALREADY_SUBMITTED';
+                await this.recordPolicySkip({ shipment, eventType, target, templateName: selectedTemplate, reason });
+                results.push({ target: target.role, status: 'skipped', reason: reason.toLowerCase() });
                 continue;
             }
-
-            const selectedTemplate = selectNotificationTemplate(eventType, target.role, options.templateName);
 
             const initialBuild = buildMessagePayload(eventType, context, target, selectedTemplate);
             let payload = initialBuild.payload;
@@ -1845,6 +2124,16 @@ class ChatwootNotificationService {
             try {
                 const contact = await this.findOrCreateContact(target, context);
                 const conversation = await this.findOrCreateConversation(contact, target, context);
+                const sendTimeBlock = await getDispatchBlockAtSendTime(shipment, target);
+                if (sendTimeBlock) {
+                    await this.updateLog(log.id, {
+                        status: 'skipped',
+                        errorMessage: sendTimeBlock.code,
+                        responseJson: { reason: sendTimeBlock.code }
+                    });
+                    results.push({ target: target.role, status: 'skipped', reason: sendTimeBlock.code });
+                    continue;
+                }
                 const messageResponse = await this.sendMessage(conversation.id, payload, { isTemplate: Boolean(templateName) });
 
                 await this.updateLog(log.id, {
@@ -1924,33 +2213,15 @@ class ChatwootNotificationService {
             logger.warn(`[chatwoot] Shipment not found for queued notification (${shipmentId || trackingNumber})`);
             return { skipped: true, reason: 'shipment_not_found' };
         }
-        return await this.sendShipmentNotification(eventType, shipment, options);
+        return assertShipmentDispatchSucceeded(await this.sendShipmentNotification(eventType, shipment, options));
     }
 
     /**
      * Enqueues and triggers an operational WhatsApp notification immediately
      */
     triggerShipmentNotification(eventType, shipment, options = {}) {
-        // Immediate dispatch in next tick for real-time customer messaging
-        setImmediate(async () => {
-            try {
-                await this.sendShipmentNotification(eventType, shipment, options);
-            } catch (err) {
-                logger.error(`[chatwoot] Immediate notification failed for ${shipment?.trackingNumber}: ${err.message}`);
-                // Fallback to durable queue on failure
-                try {
-                    const jobQueue = require('./queue/jobQueue');
-                    await jobQueue.enqueue('chatwoot_notify', {
-                        eventType,
-                        shipmentId: shipment?.id,
-                        trackingNumber: shipment?.trackingNumber,
-                        options
-                    }, { maxRetries: 3, backoffMs: 10000 });
-                } catch (qErr) {
-                    logger.error(`[chatwoot] Failed to enqueue fallback: ${qErr.message}`);
-                }
-            }
-        });
+        logger.info(`[chatwoot] Automatic shipment notification suppressed (${eventType}); manual dispatch is required`);
+        return { skipped: true, reason: 'MANUAL_DISPATCH_REQUIRED' };
     }
 }
 

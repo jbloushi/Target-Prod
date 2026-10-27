@@ -2,9 +2,24 @@
 
 Read this guide before changing WhatsApp shipment messages, recipient selection, templates, provider settings, retries, delivery webhooks, or message logs. It maps the production-matched application code and names the behavior that future changes must preserve or deliberately revise.
 
-The current automatic shipment-notification policy is **shipper-only**. A notification's delivery recipient and the shipment's sender/receiver party data are separate concepts: the shipper may receive a message whose contents identify the receiver and describe the shipment.
+Shipment-message dispatch is now **manual only**. Automatic shipment creation, milestone, Salla, Phenix-import, carrier-booking, and public-return triggers do not send WhatsApp. Shipment imports and operational status updates continue normally. Shipment confirmations can still be initiated manually to the shipper.
 
-All automatic shipper shipment lifecycle events use the approved `shipment_confirmation_2` template. OTP remains a separate authentication message and keeps its existing `otptargetlogin` template path. Login and receiver-location OTPs are generated with Node's cryptographic random generator; OTP values and full recipient numbers must not be written to logs. Development-only API responses can still include `devOtp`; production responses do not. The shipment confirmation uses receiver details from destination/receiver fields, with `[receiver name]` and `[receiver telephone]` as the explicit missing-value placeholders. If Chatwoot cannot verify that the approved template exists in the configured inbox, dispatch fails without plain-text or provider fallback.
+**Confirmed transport policy (2026-10-26):** every application-dispatched shipment message goes through Chatwoot. The manual shipment confirmation uses `shipment_confirmation_2` and targets the shipper. Payment, receiver location, return, engagement, and receiver-location OTP keep their own approved templates and recipients. User-opened `wa.me` links remain human handoffs; they are not sent or receipt-tracked by the application.
+
+**Confirmed send safeguards (2026-10-27):** do not dispatch or retry a shipment message after status `delivered`, `completed`, `cancelled`, or `returned`; block duplicate accepted or in-flight event/template/recipient attempts even when a caller asks to force a resend; re-resolve current shipment/recipient data immediately before dispatch; reject unapproved event/template/role combinations and caller-supplied phone overrides; and persist a `SKIPPED` log with a machine-readable reason for policy blocks. An accepted Chatwoot submission is not proof of handset delivery.
+
+**Production inbox verification (2026-10-26):** the `Target KW Logistics WhatsApp` inbox now reports the following four approved shipment templates, all language `en` and category `UTILITY`:
+
+| Template | Body parameter order | Button components |
+| --- | --- | --- |
+| `payment_request_v1` | Recipient name, tracking number, amount due, payment URL | None; URL appears in body. |
+| `location_request_v1` | Receiver name, tracking number, location URL | None; URL appears in body. |
+| `return_portal_v1` | Recipient name, tracking number, return URL | None; URL appears in body. |
+| `customer_inquiry_start` | Recipient name, tracking number | Static quick replies `Yes` and `No, thank you.` |
+
+`customer_inquiry_start`'s approved body ends with “Please reply to this message to speak with” before the quick reply buttons. Keep the content aligned with the approved component; edits require a new provider approval. The application must obtain the template list from the configured Chatwoot inbox, require the exact approved template, match the body parameter count, and fail without provider or template substitution. The support reply composer must use the same variable order. Application-initiated receiver location OTP uses `otptargetlogin` through Chatwoot and records only redacted OTP payload data in shipment logs; it does not use the location-request template.
+
+Manual shipper shipment confirmations use the approved `shipment_confirmation_2` template. OTP remains a separate authentication message and keeps its existing `otptargetlogin` template path. Login and receiver-location OTPs are generated with Node's cryptographic random generator; OTP values and full recipient numbers must not be written to logs. Development-only API responses can still include `devOtp`; production responses do not. The shipment confirmation uses receiver details from destination/receiver fields, with `[receiver name]` and `[receiver telephone]` as the explicit missing-value placeholders. If Chatwoot cannot verify that the approved template exists in the configured inbox, dispatch fails without plain-text or provider fallback.
 
 The guarded historical resend utility is `backend/scripts/resend-shipment-confirmations.js`. It filters `Shipment.createdAt` by inclusive Asia/Kuwait dates, skips shipments with a successful confirmation log or an in-flight confirmation, and defaults to read-only dry-run. Sending requires both the printed candidate count and an exact date-range confirmation token; it disables provider fallback.
 
@@ -24,8 +39,8 @@ node scripts/resend-shipment-confirmations.js --from=2026-10-25 --to=2026-10-26 
 
 | Concern | Main implementation | Responsibility |
 | --- | --- | --- |
-| Shipment-event selection and Chatwoot path | `backend/src/services/chatwootNotificationService.js` | Event mapping, automatic recipient roles, Chatwoot contact/conversation lookup, templates, message send, status log writes, retry enqueue. |
-| Provider routing and shipment template variables | `backend/src/services/whatsappIntegration.service.js` | Chooses microservice, Chatwoot, MOCK, or Meta path; normalizes recipient phone; builds provider template variables; creates shipment logs. |
+| Shipment-event selection and Chatwoot path | `backend/src/services/chatwootNotificationService.js` | Manual action/template validation, terminal-state and duplicate guards, Chatwoot contact/conversation lookup, status log writes. Automatic trigger entry point is disabled. |
+| Provider routing and shipment template variables | `backend/src/services/whatsappIntegration.service.js` | Forces shipment-bearing messages through Chatwoot, resolves the current shipment/recipient, validates the action contract, and builds template variables; non-shipment messages retain their separate provider routing. |
 | WhatsApp settings and event rules | `backend/src/services/whatsAppConfig.service.js` | Reads/writes database config and rules, masks API-returned secrets, evaluates quiet hours and per-role event rules. |
 | File-backed system settings | `backend/src/services/systemSettings.service.js`, `backend/src/controllers/settings.controller.js` | Legacy/provider settings, Meta credentials, webhook verification token, system-settings API. |
 | Admin settings UI | `frontend/src/pages/SettingsPage.jsx` | Provider and Chatwoot credentials, per-event/role rule editor, quiet hours. |
@@ -35,41 +50,60 @@ node scripts/resend-shipment-confirmations.js --from=2026-10-25 --to=2026-10-26 
 | WhatsApp status callbacks | `backend/src/controllers/whatsappWebhook.controller.js`, `backend/src/routes/whatsapp.routes.js` | Meta and microservice receipt parsing; updates shipment notification status. |
 | Chatwoot webhooks | `backend/src/controllers/integration.controller.js`, `backend/src/routes/integration.routes.js` | Signed Chatwoot event handling; distinct from Meta/microservice delivery-status callbacks. |
 | Durable job queue | `backend/src/services/queue/jobWorker.js`, `backend/src/services/chatwootNotificationService.js` | Retries `chatwoot_notify` jobs after immediate-dispatch exceptions. |
-| Legacy queued-log drain | `backend/src/services/whatsappQueueDrainer.service.js` | Periodically drains queued shipper notification logs. |
+| Legacy queued-log drain | `backend/src/services/whatsappQueueDrainer.service.js` | Closes legacy lifecycle queue rows; retries only approved explicit action templates after re-checking shipment state and duplicates. |
 | Template catalog and copy references | `docs/whatsapp-template-catalog.md`, `backend/src/services/whatsappIntegration.service.js`, `backend/src/services/chatwootNotificationService.js` | Provider-side names, languages, and variable ordering. The remote microservice also contains template behavior outside this repository. |
 
 ## Message paths
 
-### Automatic shipment lifecycle notifications
+### Disabled automatic shipment triggers
 
-Shipment controllers, carrier synchronization, fleet workflows, lifecycle services, and other integrations call `chatwootNotificationService.triggerShipmentNotification`. The service schedules an immediate dispatch. A thrown dispatch error is enqueued as `chatwoot_notify`; `jobWorker.js` reloads the shipment and retries through `sendShipmentNotification`.
+Shipment controllers, carrier synchronization, fleet workflows, booking, Salla, and public return workflows may still call `chatwootNotificationService.triggerShipmentNotification`. That entry point now returns `MANUAL_DISPATCH_REQUIRED` and does not send or enqueue a job. The same rule applies to legacy `chatwoot_notify` jobs: dispatch requires explicit manual authorization and terminal-state checks.
 
-`EVENT_TARGETS` in `chatwootNotificationService.js` currently maps the automatic lifecycle event types to `sender`. The `whatsappQueueDrainer.service.js` also only drains sender/shipper/merchant logs and suppresses other queued roles. Treat this as a policy that is implemented in more than one place.
+Phenix import still creates/updates shipments. Its old Auto WhatsApp UI control is removed, the scheduled import passes `sendWhatsApp: false`, and the import service no longer dispatches or records an external autosend as if it were a local accepted message. Salla and carrier booking still complete their business workflows; only the notifier call is suppressed.
 
-The event-to-status mapping is `mapStatusToNotificationEvent` in `chatwootNotificationService.js`. It maps status and description text to event types; an unrecognized status does not produce an automatic message there.
+The event-to-status mapping remains available for display/history logic, but it no longer initiates customer WhatsApp delivery.
+
+### Manual shipment actions
+
+The only allowed application dispatches are explicit UI/self-service actions with the matching approved template and recipient:
+
+| Action | Event/template | Recipient |
+| --- | --- | --- |
+| Shipment confirmation | `shipment_created` or guarded `shipment_created_backfill` / `shipment_confirmation_2` | Sender/shipper |
+| Payment request | `payment_link_ready` / `payment_request_v1` | Sender or receiver, explicitly selected |
+| Location request | `location_request` / `location_request_v1` | Receiver |
+| Return portal | `return_portal` / `return_portal_v1` | Receiver |
+| Customer engagement | `customer_engagement` / `customer_inquiry_start` | Receiver |
+| Receiver location verification | `auth_otp` / `otptargetlogin` | Receiver; OTP can be requested again |
+
+Other template, event, or recipient combinations are rejected and logged as skipped. The current shipment phone is resolved server-side; caller-supplied recipient phones are rejected. Terminal shipments and duplicate accepted/in-flight actions are blocked. A shipment reaching a terminal status while an explicit message is queued causes that queued message to be skipped at dispatch time.
 
 ### Provider routing
 
-`WhatsAppConfig` is loaded first by `whatsappIntegration.service.js`; its fields are merged over file-backed `systemSettings.whatsapp`. The selected provider sends through:
+`WhatsAppConfig` is loaded first by `whatsappIntegration.service.js`; its fields are merged over file-backed `systemSettings.whatsapp`. For non-shipment traffic, provider settings can select:
 
 1. `SHIPMENT_WHATSAPP` / `TARGET_MSG`: remote `msg.target-kw.com` service.
 2. `CHATWOOT`: Chatwoot API, with conditional fallback to the remote shipment WhatsApp service.
 3. `META`: direct Meta Cloud API.
 4. `MOCK`: synthetic local result.
 
-The Chatwoot event orchestrator also has provider-specific branches and fallback behavior. Trace both `chatwootNotificationService.sendShipmentNotification` and `whatsappIntegration.sendNotification` before changing provider routing. The remote `msg.target-kw.com` source is not part of this repository, so its runtime implementation cannot be verified here.
+Shipment-bearing sends bypass that provider selection and are forced through Chatwoot; configuration errors fail closed without provider fallback. Login OTP and finance/account messages remain separate flows. The remote `msg.target-kw.com` source is not part of this repository; the standalone Phenix sender is independently disabled in its local source and was reported stopped on the VPS with `AUTOSEND_ENABLED=false`.
+
+### Receipt webhook authentication
+
+The legacy WhatsApp status routes remain public because Meta and the external WhatsApp service call them, but they authenticate before looking up or changing a notification log. Meta callbacks require `X-Hub-Signature-256` over the exact raw request body using `WHATSAPP_META_APP_SECRET` (or the configured `whatsapp.metaAppSecret`). Legacy Evolution/microservice callbacks require `X-WhatsApp-Webhook-Secret` or `X-Webhook-Secret` matching `WHATSAPP_WEBHOOK_SHARED_SECRET`. Missing secrets fail closed with HTTP 401. Configure the corresponding secrets on the calling service before deployment. The GET Meta verification route requires an explicitly configured `WHATSAPP_WEBHOOK_VERIFY_TOKEN`; no built-in fallback token is accepted or logged. Receipt transitions use an atomic conditional database update: late or unknown provider states cannot downgrade or overwrite a later state, including when callbacks overlap.
 
 ### Separate, non-lifecycle message types
 
-The shared WhatsApp integration service also handles login OTPs, account statements, invoices, payment links, receiver location requests, return-portal links, and customer-engagement messages. Their callers include `auth.controller.js`, `finance.controller.js`, `shipment-ops.controller.js`, `supportChat.controller.js`, and `ShipmentDetailsPage.jsx` actions. These direct/one-off paths do not all pass through the lifecycle event target list, event rule checks, or the same shipment-log flow. Do not assume the shipper-only automatic policy covers an explicitly initiated receiver message.
+The shared WhatsApp integration service also handles login OTPs, account statements, invoices, payment links, receiver location requests, return-portal links, and customer-engagement messages. Their callers include `auth.controller.js`, `finance.controller.js`, `shipment-ops.controller.js`, `supportChat.controller.js`, and `ShipmentDetailsPage.jsx` actions. Shipment actions are manually initiated and pass the strict template/recipient contract; login OTP and finance/account messages remain separate flows.
 
 | Message class | Example entry points | Typical target |
 | --- | --- | --- |
-| Shipment created / reviewed | `ShipmentBookingService.js`, `ShipmentLifecycleService.js`, `shipment-public.controller.js` | Shipper for lifecycle notifications. |
-| Shipment status milestone | `shipment-ops.controller.js`, `shipment-tracking.controller.js`, `carrierSyncCron.service.js`, `fleet.service.js` | Shipper for automatic event notifications. |
-| Imported/commerce shipment | `phenixSync.service.js`, `sallaIntegration.service.js` | Integration-provided shipment party/phone; inspect each caller because some create notification logs/queues directly. |
-| Manual shipment update/payment | `adminWhatsAppLogs.controller.js`, `shipment-ops.controller.js` | Caller-selected role/phone, subject to endpoint permissions and service rules. |
-| Receiver self-service | `supportChat.controller.js`, `ShipmentDetailsPage.jsx` actions, `whatsappIntegration.service.js` helper methods | Receiver/consignee. |
+| Shipment created / reviewed | Shipment CRUD and booking/lifecycle callers | No WhatsApp dispatch. A shipment confirmation is a separate manual action to the shipper. |
+| Shipment status milestone | `shipment-ops.controller.js`, `shipment-tracking.controller.js`, `carrierSyncCron.service.js`, `fleet.service.js` | No automatic WhatsApp dispatch; status updates still persist. |
+| Imported/commerce shipment | `phenixSync.service.js`, `sallaIntegration.service.js` | Imports continue; import-triggered WhatsApp dispatch is disabled. |
+| Manual shipment update/payment | `adminWhatsAppLogs.controller.js`, `shipment-ops.controller.js` | Approved event/template/role combinations only; current party phone is resolved on the server. |
+| Receiver self-service | `supportChat.controller.js`, `ShipmentDetailsPage.jsx` actions, `whatsappIntegration.service.js` helper methods | Receiver/consignee; approved template only and no terminal shipment. |
 | Finance/account | `finance.controller.js` → `sendStatementNotification` / `sendInvoiceNotification` | Organization billing contact. These are not shipment lifecycle notifications. |
 | Login verification | `auth.controller.js` → `sendAuthOtp` | User phone. |
 
@@ -77,7 +111,7 @@ The shared WhatsApp integration service also handles login OTPs, account stateme
 
 Keep these values distinct throughout a change:
 
-- **Delivery recipient**: the phone and contact that receive the WhatsApp. Automatic lifecycle messages currently target the sender/shipper.
+- **Delivery recipient**: the phone and contact that receive the WhatsApp. Manual shipment confirmation targets the sender/shipper; the approved explicit actions target the selected sender or receiver as listed above.
 - **Shipper**: the shipment origin party (`shipment.origin`, with sender/account fallback fields).
 - **Receiver/consignee**: the shipment destination party (`shipment.destination`, plus explicit receiver fields where applicable).
 - **Template variable**: the semantic value expected in one particular approved template slot. It must be mapped by template contract, not inferred from the delivery recipient role.
@@ -99,11 +133,11 @@ The database secret fields are masked in GET responses but stored as ordinary fi
 | --- | --- |
 | Database `WhatsAppConfig` | `enabled`, `provider`, `fallbackProvider`, `serviceUrl`, `apiKey`, `phoneId`, `chatwootBaseUrl`, `chatwootAccountId`, `chatwootInboxId`, `chatwootApiToken`, `quietHoursEnabled`, `quietHoursStart`, `quietHoursEnd`, `quietHoursTimezone`, `allowDeliveryQuietHours`. |
 | Database `WhatsAppEventRule` | `eventType`, `recipientRole`, `templateName`, `enabled`, `allowQuietHoursBypass`. |
-| File/env-backed `systemSettings.whatsapp` | `enabled`, `provider`, `serviceUrl`, `phoneNumberId`, `businessAccountId`, `accessToken`, `webhookVerifyToken`, `metaAppId`, `metaAppSecret`; env names are `WHATSAPP_SERVICE_URL`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_WABA_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN`, `WHATSAPP_META_APP_ID`, and `WHATSAPP_META_APP_SECRET`. |
+| File/env-backed `systemSettings.whatsapp` | `enabled`, `provider`, `serviceUrl`, `phoneNumberId`, `businessAccountId`, `accessToken`, `webhookVerifyToken`, `metaAppId`, `metaAppSecret`; env names are `WHATSAPP_SERVICE_URL`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_WABA_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN`, `WHATSAPP_META_APP_ID`, `WHATSAPP_META_APP_SECRET`, and `WHATSAPP_WEBHOOK_SHARED_SECRET`. |
 | Chatwoot environment config | `CHATWOOT_ENABLED`, `CHATWOOT_BASE_URL`, `CHATWOOT_ACCOUNT_ID`, `CHATWOOT_INBOX_ID`, `CHATWOOT_API_ACCESS_TOKEN`, `CHATWOOT_ALLOW_PLAIN_TEXT_FALLBACK`, `CHATWOOT_TEMPLATE_CONFIG`, `CHATWOOT_WEBHOOK_SECRET`. |
 | Telemetry sync | `ADMIN_TOKEN` is read by the admin telemetry-sync controller for the remote microservice request. |
 
-The settings UI's `DEFAULT_WHATSAPP_RULES` includes receiver rules. The service's initial `DEFAULT_RULES`, the lifecycle `EVENT_TARGETS`, and the background drainer are sender-only. Existing database rules can therefore look different from code/UI fallbacks; inspect the persisted rows before diagnosing a live send.
+The Settings page now shows shipment event rules as disabled/read-only. The send service enforces manual-only dispatch independently of historical `WhatsAppEventRule` rows, so old enabled rules cannot re-enable automatic shipment messages.
 
 ## Templates and payloads
 
@@ -114,7 +148,7 @@ The same logical message can be assembled by more than one path:
 - Direct Meta uses `buildMetaMessagePayload` in `whatsappIntegration.service.js`.
 - Chatwoot's template resolution can substitute an inbox template when the requested template is unavailable. The confirmed shipper lifecycle template `shipment_confirmation_2` is strict: dispatch fails visibly if Chatwoot cannot return the inbox template list or if that list omits the approved template.
 
-The confirmed automatic shipper lifecycle path uses the approved Chatwoot template `shipment_confirmation_2` (`en_US`) for shipment creation and status milestones. The WhatsApp destination remains the shipper. Its header is the shipment tracking number; body variables are invoice/reference, shipment creation date, receiver name, receiver phone, and tracking URL. Resolve receiver fields only from explicit destination or receiver-document fields. If receiver name or phone is missing, send the literal placeholders `[receiver name]` or `[receiver telephone]`; never substitute the shipper's details or fabricate a phone. Render Chatwoot `content` to match the approved template copy; do not append a Support link outside the approved template.
+The manual shipper confirmation path uses the approved Chatwoot template `shipment_confirmation_2` (`en_US`). The WhatsApp destination is the shipper. Its header is the shipment tracking number; body variables are invoice/reference, shipment creation date, receiver name, receiver phone, and tracking URL. Resolve receiver fields only from explicit destination or receiver-document fields. If receiver name or phone is missing, send the literal placeholders `[receiver name]` or `[receiver telephone]`; never substitute the shipper's details or fabricate a phone. Render Chatwoot `content` to match the approved template copy; do not append a Support link outside the approved template.
 
 When editing a message, record a contract for each supported provider: event, template name/language, delivery recipient, each numbered variable's business meaning and source field, fallback behavior for missing receiver data, and the approved template version. Keep this contract aligned with `docs/whatsapp-template-catalog.md` and remote WhatsApp Business templates.
 
@@ -126,17 +160,17 @@ The admin API can:
 
 - query/filter logs and counts;
 - resend a selected log;
-- dispatch queued shipper records;
+- dispatch queued approved manual action records; legacy lifecycle rows are skipped;
 - sync recent remote microservice telemetry;
 - manually send a shipment notification/payment notice.
 
-There is also an automatic queue drainer. Before changing retries, check all three: `chatwoot_notify` durable jobs, queued `ShipmentNotificationLog` draining, and admin batch dispatch. Their duplicate guards, provider choice, role filtering, and `force` handling differ.
+Legacy background mechanisms still exist. `chatwoot_notify` jobs are blocked unless manually authorized; the queued-log drainer and admin batch processor skip lifecycle events and retry only approved explicit templates. Every send re-checks terminal shipment state and duplicate accepted/in-flight attempts. These separate queues should be retired or unified in a later queue/idempotency change.
 
-Queued shipper lifecycle rows are sent through `shipment_confirmation_2` with provider fallback disabled. The drainer updates the exact queued log ID, skips rows without a current shipper phone, and skips a queued event if another row for that shipment/event/shipper role has already been submitted or delivered. Admin batch dispatch and admin resend use the same approved template for lifecycle events; they resolve current phone data from the shipment instead of treating a masked log value as a destination. A submitted status means Chatwoot accepted the request, not handset delivery.
+Queued lifecycle rows are marked `SKIPPED` with `AUTOMATIC_SHIPMENT_MESSAGES_DISABLED`. Approved manual action queues resolve current party phone data from the shipment, and terminal or duplicate attempts are marked `SKIPPED` with a reason such as `SHIPMENT_TERMINAL`, `DUPLICATE_ALREADY_SUBMITTED`, or `DISPATCH_ALREADY_IN_FLIGHT`. A `submitted` status means Chatwoot accepted the request, not handset delivery.
 
 `ShipmentNotificationLog.payloadJson` and `responseJson` retain provider payloads and receipts. These can contain phone numbers, recipient/receiver details, template variables, provider contact/message objects, or failure data. The admin page shows payload and message previews to authorized users. Treat the fields as personal data and redact them from copied diagnostics.
 
-The schema's operational fields include `shipmentId`, `trackingNumber`, `eventType`, `recipientRole`, `recipientName`, `recipientPhone`, `provider`, `isFallback`, `fallbackReason`, Chatwoot account/inbox/contact/conversation/message IDs, `templateName`, `payloadJson`, `responseJson`, `status`, `errorMessage`, `sentAt`, and created/updated timestamps. The admin logs page exposes recipient filters, provider/status filters, payload/template previews, resend, queued dispatch, and telemetry sync. A sent-log search is not a full audit of OTP/account/finance traffic because those paths may not create `ShipmentNotificationLog` rows.
+The schema's operational fields include `shipmentId`, `trackingNumber`, `dispatchKey`, `eventType`, `recipientRole`, `recipientName`, `recipientPhone`, `provider`, `isFallback`, `fallbackReason`, Chatwoot account/inbox/contact/conversation/message IDs, `templateName`, `payloadJson`, `responseJson`, `status`, `errorMessage`, `sentAt`, and created/updated timestamps. `dispatchKey` is a unique SHA-256 key for one shipment/event/template/role/recipient and protects concurrent attempts; OTP attempts intentionally do not share that key. The admin logs page exposes recipient filters, provider/status filters, payload/template previews, resend, queued dispatch, and telemetry sync. A sent-log search is not a full audit of OTP/account/finance traffic because those paths may not create `ShipmentNotificationLog` rows.
 
 ## Webhooks and delivery receipts
 
@@ -154,4 +188,4 @@ For a delivery investigation, record the log ID, tracking number, recipient role
 
 ## Primary code tests
 
-Relevant existing test files include `backend/__tests__/chatwootOutboundDispatch.test.js`, `backend/__tests__/chatwootCrmSync.test.js`, `backend/__tests__/whatsappTemplateCatalogParity.test.js`, `backend/__tests__/whatsappTemplateCatalogAdversarial.test.js`, `backend/__tests__/whatsappRouter.test.js`, `backend/__tests__/whatsappRouterAdversarial.test.js`, and `backend/__tests__/whatsappChatwootGpsParity.test.js`. Read their assertions before changing behavior. This audit did not run tests.
+Relevant tests include `backend/__tests__/chatwootOutboundDispatch.test.js`, `backend/__tests__/shipmentWhatsAppPolicy.service.test.js`, `backend/__tests__/shipmentWhatsAppDispatch.test.js`, and `backend/__tests__/shipmentWhatsAppDispatchClaim.test.js`, plus the template/router parity suites listed above. On 2026-10-27, the three focused safeguards suites passed (21 tests) and the outbound-dispatch suite passed (38 tests); these tests mock the database/provider boundaries and send no live WhatsApp messages. Prisma schema validation also passed with a disposable, nonconnected MySQL URL. These checks do not rehearse the SQL migration or replace a full release-readiness review.

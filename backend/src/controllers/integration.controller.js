@@ -214,37 +214,36 @@ const VALID_EVENTS = [
 
 exports.sendChatwootTestMessage = async (req, res) => {
     try {
-        const { trackingNumber, eventType = 'shipment_created', recipientRole, force = false } = req.body || {};
+        const { trackingNumber, eventType = 'shipment_created', recipientRole = 'sender' } = req.body || {};
 
         if (!trackingNumber) {
             return res.status(400).json({ success: false, error: 'trackingNumber is required' });
         }
-        if (!VALID_EVENTS.includes(eventType)) {
-            return res.status(400).json({ success: false, error: `Invalid eventType. Valid: ${VALID_EVENTS.join(', ')}` });
-        }
-        if (recipientRole && !['sender', 'receiver'].includes(recipientRole)) {
-            return res.status(400).json({ success: false, error: 'recipientRole must be sender or receiver' });
+        if (eventType !== 'shipment_created' || recipientRole !== 'sender') {
+            return res.status(400).json({ success: false, code: 'UNAPPROVED_MANUAL_ACTION', error: 'Manual shipment confirmations are limited to shipment_created, shipment_confirmation_2, and the shipper' });
         }
 
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) {
             return res.status(404).json({ success: false, error: 'Shipment not found' });
         }
+        const { canAccessShipment } = require('../middleware/authorize.middleware');
+        if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
 
-        let shipmentForSend = shipment;
-        if (recipientRole) {
-            shipmentForSend = {
-                ...shipment,
-                origin: recipientRole === 'sender' ? shipment.origin : { ...(shipment.origin || {}), phone: null },
-                destination: recipientRole === 'receiver' ? shipment.destination : { ...(shipment.destination || {}), phone: null }
-            };
-        }
-
-        const result = await chatwootNotificationService.sendShipmentNotification(eventType, shipmentForSend, {
-            force: Boolean(force),
-            recipientRole: recipientRole || null
+        const result = await chatwootNotificationService.sendShipmentNotification(eventType, shipment, {
+            manualDispatch: true,
+            recipientRole,
+            templateName: 'shipment_confirmation_2'
         });
-        return res.status(200).json({ success: true, data: result });
+        const outcome = result?.results?.[0]?.status;
+        const accepted = ['submitted', 'sent', 'delivered', 'read'].includes(String(outcome || '').toLowerCase());
+        const skipped = result?.skipped || String(outcome || '').toLowerCase() === 'skipped';
+        return res.status(accepted ? 200 : skipped ? 409 : 502).json({
+            success: accepted,
+            code: accepted ? undefined : result?.reason || (skipped ? 'DISPATCH_SKIPPED' : 'DISPATCH_FAILED'),
+            error: accepted ? undefined : result?.results?.[0]?.error || result?.results?.[0]?.reason || result?.reason || 'Chatwoot did not accept the shipment message',
+            data: result
+        });
     } catch (error) {
         logger.error('[chatwoot] test message failed:', error);
         return res.status(500).json({ success: false, error: 'Failed to send Chatwoot test message' });
