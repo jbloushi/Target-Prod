@@ -6,6 +6,7 @@ const chatwootService = require('../services/chatwootNotificationService');
 const whatsappService = require('../services/whatsappIntegration.service');
 const userController = require('./user.controller');
 const supportEvents = require('../services/supportEvents');
+const { canAccessShipment } = require('../middleware/authorize.middleware');
 
 // Active Server-Sent Events clients
 const sseClients = new Set();
@@ -301,6 +302,7 @@ exports.sendMessage = async (req, res) => {
     try {
         const { id } = req.params;
         const { content, isTemplate, templateName, templateParams, language, isPrivate } = req.body;
+        let effectiveContent = content;
 
         // 1. Verify sending user has a configured Chatwoot token
         const user = await prisma.user.findUnique({
@@ -370,36 +372,46 @@ exports.sendMessage = async (req, res) => {
         if (effectiveIsTemplate) {
             let effectiveName = sanitizedTemplateName;
             let effectiveLang = language || 'en';
+            const suppliedParameters = Array.isArray(templateParams)
+                ? templateParams.map(value => String(value ?? ''))
+                : null;
             let effectiveProcessedParams = (templateParams && typeof templateParams === 'object' && !Array.isArray(templateParams))
                 ? templateParams
-                : {};
+                : suppliedParameters
+                    ? { body: Object.fromEntries(suppliedParameters.map((value, index) => [String(index + 1), value])) }
+                    : {};
 
             if (typeof chatwootService.getInboxTemplates === 'function') {
                 const synced = await chatwootService.getInboxTemplates();
-                if (Array.isArray(synced) && synced.length > 0 && !synced.some(t => t.name === effectiveName)) {
-                    if (synced.some(t => t.name === 'new_shipment_created')) {
-                        const arr = Array.isArray(templateParams) ? templateParams : [];
-                        const tracking = String(arr[1] || 'TRG-SHIPMENT');
-                        const dest = String(arr[2] || 'Kuwait');
-                        const statusNote = String(arr[3] || content || 'Customer Support Follow-up');
-                        effectiveName = 'new_shipment_created';
-                        effectiveLang = 'en';
-                        effectiveProcessedParams = {
-                            header: { '1': tracking },
-                            body: {
-                                '1': `Kuwait City, KW \u2192 ${dest}`,
-                                '2': 'Scheduled',
-                                '3': statusNote,
-                                '4': new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
-                                '5': `https://target-kw.com/track/${encodeURIComponent(tracking)}`
-                            }
-                        };
-                    }
+                const syncedTemplate = Array.isArray(synced) && synced.find(t =>
+                    t.name === effectiveName && String(t.status || '').toUpperCase() === 'APPROVED');
+                if (!syncedTemplate) {
+                    return res.status(400).json({
+                        success: false,
+                        code: 'TEMPLATE_UNAVAILABLE',
+                        error: `Approved template "${effectiveName}" is unavailable in the configured Chatwoot inbox.`
+                    });
+                }
+
+                const bodyText = syncedTemplate.components?.find(component => component.type === 'BODY')?.text;
+                const expectedBodyParams = [...String(bodyText || '').matchAll(/\{\{(\d+)\}\}/g)].length;
+                const actualBodyParams = suppliedParameters?.length ?? Object.keys(effectiveProcessedParams.body || {}).length;
+                if (expectedBodyParams !== actualBodyParams) {
+                    return res.status(400).json({
+                        success: false,
+                        code: 'TEMPLATE_PARAMETER_MISMATCH',
+                        error: `Template "${effectiveName}" requires ${expectedBodyParams} body parameters; received ${actualBodyParams}.`
+                    });
+                }
+
+                effectiveLang = syncedTemplate.language || syncedTemplate.language_code || effectiveLang;
+                if (bodyText && suppliedParameters) {
+                    effectiveContent = bodyText.replace(/\{\{(\d+)\}\}/g, (_, index) => suppliedParameters[Number(index) - 1] ?? '');
                 }
             }
 
             payload = {
-                content: content || `[Meta Template: ${effectiveName}]`,
+                content: effectiveContent || `[Meta Template: ${effectiveName}]`,
                 message_type: 'outgoing',
                 private: false,
                 template_params: {
@@ -407,7 +419,7 @@ exports.sendMessage = async (req, res) => {
                     category: 'UTILITY',
                     language: effectiveLang,
                     processed_params: Object.keys(effectiveProcessedParams).length > 0 ? effectiveProcessedParams : (templateParams || {}),
-                    parameters: templateParams || {}
+                    parameters: suppliedParameters || templateParams || {}
                 }
             };
         } else {
@@ -809,7 +821,7 @@ exports.updateLabels = async (req, res) => {
  */
 exports.requestLocation = async (req, res) => {
     try {
-        const { trackingNumber, phone, name } = req.body;
+        const { trackingNumber } = req.body;
         if (!trackingNumber) {
             return res.status(400).json({ success: false, error: 'Tracking number is required' });
         }
@@ -820,6 +832,22 @@ exports.requestLocation = async (req, res) => {
 
         if (!shipment) {
             return res.status(404).json({ success: false, error: 'Shipment not found' });
+        }
+
+        if (!canAccessShipment(req, shipment)) {
+            return res.status(403).json({ success: false, error: 'Permission denied' });
+        }
+
+        if (!shipment.destination?.phone && !shipment.customerPhone) {
+            await require('../services/shipmentWhatsAppPolicy.service').recordSkippedAttempt({
+                shipment,
+                eventType: 'location_request',
+                templateName: 'location_request_v1',
+                recipientRole: 'receiver',
+                recipientName: shipment.destination?.contactPerson || shipment.destination?.name || shipment.customerName,
+                reason: 'MISSING_RECIPIENT_PHONE'
+            });
+            return res.status(409).json({ success: false, code: 'MISSING_RECIPIENT_PHONE', error: 'Receiver phone number is missing from the shipment' });
         }
 
         // Generate locationToken if not present
@@ -835,15 +863,25 @@ exports.requestLocation = async (req, res) => {
             shipment.locationToken = locationToken;
         }
 
-        await whatsappService.sendLocationRequestNotification({
+        const dispatchResult = await whatsappService.sendLocationRequestNotification({
             shipment,
-            recipientPhone: phone || shipment.destination?.phone,
-            recipientName: name || shipment.destination?.contactPerson || shipment.destination?.name
+            recipientPhone: shipment.destination?.phone || shipment.customerPhone,
+            recipientName: shipment.destination?.contactPerson || shipment.destination?.name || shipment.customerName
         });
+        if (!['submitted', 'sent', 'delivered', 'read'].includes(String(dispatchResult?.status || '').toLowerCase())) {
+            const skipped = String(dispatchResult?.status || '').toLowerCase() === 'skipped';
+            return res.status(skipped ? 409 : 502).json({
+                success: false,
+                code: dispatchResult?.reason || (skipped ? 'DISPATCH_SKIPPED' : 'DISPATCH_FAILED'),
+                error: dispatchResult?.message || dispatchResult?.reason || 'Chatwoot did not accept the location request',
+                dispatchStatus: dispatchResult?.status || 'FAILED'
+            });
+        }
 
         return res.status(200).json({
             success: true,
-            message: 'Location request sent successfully',
+            message: 'Location request accepted by Chatwoot',
+            dispatchStatus: dispatchResult.status,
             locationToken: shipment.locationToken
         });
     } catch (err) {

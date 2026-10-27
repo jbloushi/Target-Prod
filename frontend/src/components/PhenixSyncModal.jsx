@@ -12,7 +12,6 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
 
     const [carrier, setCarrier] = useState('ALL');
     const [daysBack, setDaysBack] = useState(3);
-    const [sendWhatsApp, setSendWhatsApp] = useState(true);
     const [onlyComplete, setOnlyComplete] = useState(true);
 
     const [loading, setLoading] = useState(false);
@@ -49,7 +48,7 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                 autoSyncEnabled: enabled,
                 carrier,
                 daysBack,
-                sendWhatsApp,
+                sendWhatsApp: true,
                 onlyComplete
             };
             await settingsService.updateSystemSettings({ phenixSync: updated });
@@ -97,7 +96,6 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
             const res = await phenixService.syncShipments({
                 carrier,
                 daysBack,
-                sendWhatsApp,
                 onlyComplete
             });
             setSyncResult(res.data);
@@ -274,25 +272,6 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                             </label>
                         </div>
 
-                        {/* WhatsApp Toggle */}
-                        <div className="form-control justify-end">
-                            <label className="label cursor-pointer py-1.5 px-2 bg-base-100 rounded-lg border border-base-200">
-                                <div className="flex flex-col">
-                                    <span className="label-text text-xs font-bold text-base-content">
-                                        Auto WhatsApp
-                                    </span>
-                                    <span className="text-[10px] text-base-content/50">
-                                        Today's Orders (≤24h)
-                                    </span>
-                                </div>
-                                <input
-                                    type="checkbox"
-                                    checked={sendWhatsApp}
-                                    onChange={(e) => setSendWhatsApp(e.target.checked)}
-                                    className="toggle toggle-primary toggle-sm"
-                                />
-                            </label>
-                        </div>
                     </div>
 
                     {/* Notice Banner */}

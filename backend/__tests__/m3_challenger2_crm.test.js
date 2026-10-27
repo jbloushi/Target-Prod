@@ -30,6 +30,7 @@ describe('Empirical Challenger 2: Chatwoot CRM Synchronization & Reuse Adversari
     beforeEach(() => {
         jest.clearAllMocks();
         chatwootService.resetClient();
+        jest.spyOn(prisma.shipmentNotificationLog, 'findFirst').mockResolvedValue(null);
         mockContacts = [];
         mockConversations = [];
         mockMessages = [];

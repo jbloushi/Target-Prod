@@ -49,7 +49,7 @@ const DEFAULT_SETTINGS = {
         phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '109823471928374',
         businessAccountId: process.env.WHATSAPP_WABA_ID || '209384019283741',
         accessToken: process.env.WHATSAPP_ACCESS_TOKEN || '',
-        webhookVerifyToken: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || 'target_logistics_meta_verify_secret_2026',
+        webhookVerifyToken: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || null,
         metaAppId: process.env.WHATSAPP_META_APP_ID || '',
         metaAppSecret: process.env.WHATSAPP_META_APP_SECRET || ''
     },

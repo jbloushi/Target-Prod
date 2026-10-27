@@ -4,7 +4,6 @@ const { createHash } = require('crypto');
 const config = require('../config/config');
 const { prisma } = require('../config/database');
 const { syncCarrierTrackingHistory, buildTrackingSyncDocuments } = require('../controllers/shipment.helpers');
-const whatsappService = require('./whatsappIntegration.service');
 const financeLedgerService = require('./financeLedger.service');
 const SlaTrackerService = require('./slaTracker.service');
 const { jobQueue } = require('./queue');
@@ -693,7 +692,7 @@ function validatePhenixRow(row) {
     const rawSenderContact = String(row.billCustomField_2 || row.Sender || '').trim();
     const senderName = rawSenderContact || merchantName;
     const rawSenderPhone = String(row.billCustomField_1 || '').trim();
-    const senderPhone = normalizePhenixPhone(rawSenderPhone) || '+96597691271';
+    const senderPhone = normalizePhenixPhone(rawSenderPhone);
 
     // Consignee / Recipient info
     const receiverName = String(row.bill_detailCustomField_3 || '').trim();
@@ -974,7 +973,9 @@ class PhenixSyncService {
     async syncPhenixShipments(opts = {}) {
         const { rows, from, to } = await this.fetchPhenixReportData(opts);
         const targetCarrier = String(opts.carrier || 'ALL').toUpperCase();
-        const sendWhatsApp = opts.sendWhatsApp !== false; // default true: upcoming imports are automatically notified
+        // New Phenix imports retain their initial shipper confirmation. Other
+        // lifecycle changes and re-imports do not trigger shipment messages.
+        const sendWhatsApp = opts.sendWhatsApp !== false;
         const onlyComplete = opts.onlyComplete !== false; // default true
 
         // Resolve default admin / user for assigning shipment ownership
@@ -1380,18 +1381,9 @@ class PhenixSyncService {
                     }
                 }
 
-                if (sendWhatsApp && (wasCreated || needsFinancialSync) && !isTerminal) {
-                    const senderPhone = v.senderPhone || shipment.origin?.phone;
-                    if (senderPhone) {
-                        notificationsToSend.push({
-                            shipment,
-                            v,
-                            recipientRole: 'sender',
-                            recipientPhone: senderPhone,
-                            recipientName: v.senderName || v.merchantName || shipment.origin?.contactPerson || 'Shipper'
-                        });
-                    }
-                }
+                const whatsAppSkipReason = wasCreated
+                    ? (isTerminal ? `TERMINAL_SHIPMENT_STATUS:${shipment.status}` : sendWhatsApp ? null : 'PHENIX_AUTO_SEND_DISABLED')
+                    : null;
 
                 const resultIndex = summary.results.length;
                 resultIndexByShipmentId.set(shipment.id, resultIndex);
@@ -1417,6 +1409,7 @@ class PhenixSyncService {
                     action: wasCreated ? 'CREATED' : 'UPDATED',
                     carrierSynced: existingHistory.length > 0,
                     whatsAppSent: false,
+                    whatsAppSkipReason,
                     publicTrackingUrl: `https://target-kw.com/track/${shipment.trackingNumber}`
                 });
 
@@ -1434,6 +1427,10 @@ class PhenixSyncService {
                         shipmentId: shipment.id,
                         rawRow: row
                     });
+                }
+
+                if (wasCreated && sendWhatsApp && !isTerminal) {
+                    notificationsToSend.push({ shipment, resultIndex });
                 }
 
             } catch (itemErr) {
@@ -1527,78 +1524,43 @@ class PhenixSyncService {
         }
 
         if (notificationsToSend.length > 0) {
-            const dispatchWhatsAppBatch = async (items, isBackground = false) => {
+            const chatwootNotificationService = require('./chatwootNotificationService');
+            const dispatchPhenixConfirmations = async (items, isBackground = false) => {
                 for (const item of items) {
+                    const result = summary.results[item.resultIndex];
                     try {
-                        const isSender = item.recipientRole === 'sender';
-                        const roleGroup = isSender ? ['sender', 'shipper', 'merchant'] : ['receiver', 'customer', 'consignee'];
-
-                        const alreadyNotified = await prisma.shipmentNotificationLog.findFirst({
-                            where: {
-                                shipmentId: item.shipment.id,
-                                recipientRole: { in: roleGroup },
-                                status: { in: ['SENT', 'DELIVERED', 'READ'] }
-                            }
-                        });
-
-                        if (alreadyNotified) {
-                            continue;
+                        const outcome = await chatwootNotificationService.sendPhenixImportConfirmation(item.shipment);
+                        const accepted = (outcome?.results || []).some(entry =>
+                            ['submitted', 'sent', 'delivered', 'read'].includes(String(entry.status || '').toLowerCase())
+                        );
+                        result.whatsAppSent = accepted;
+                        result.whatsAppSkipReason = accepted ? null : outcome?.reason || outcome?.results?.[0]?.reason || 'CHATWOOT_NOT_ACCEPTED';
+                        if (accepted && !isBackground) summary.whatsAppSentCount++;
+                        if (!accepted) {
+                            const reason = result.whatsAppSkipReason;
+                            logger.warn(`[PhenixSync] Chatwoot confirmation not accepted for ${item.shipment.trackingNumber}: ${reason}`);
+                            if (!isBackground) summary.errors.push({ carrierTracking: item.shipment.trackingNumber, error: `WhatsApp dispatch failed: ${reason}` });
                         }
-
-                        const billId = item.v.billId;
-                        const microRole = isSender ? 'sender' : 'receiver';
-                        if (billId) {
-                            const microSent = await whatsappService.checkMicroserviceSent(billId, microRole);
-                            if (microSent?.sent) {
-                                logger.info(`[PhenixSync Background] Bill #${billId} (${microRole}) already messaged via msg.target-kw.com autosend (at ${microSent.sentAt}). Skipping dispatch and logging state.`);
-                                await prisma.shipmentNotificationLog.create({
-                                    data: {
-                                        shipmentId: item.shipment.id,
-                                        trackingNumber: item.shipment.trackingNumber,
-                                        eventType: 'shipment_created',
-                                        recipientRole: item.recipientRole,
-                                        recipientName: item.recipientName || null,
-                                        recipientPhone: item.recipientPhone,
-                                        provider: 'SHIPMENT_WHATSAPP',
-                                        templateName: 'shipment_confirmation_2',
-                                        status: 'SENT',
-                                        chatwootMessageId: `msg-autosend-${microSent.sentAt || Date.now()}`,
-                                        payloadJson: { source: 'MICROSERVICE_AUTOSEND', billId, role: microRole },
-                                        responseJson: { autoSent: true, sentAt: microSent.sentAt },
-                                        sentAt: microSent.sentAt ? new Date(microSent.sentAt) : new Date()
-                                    }
-                                });
-                                if (!isBackground) summary.whatsAppSentCount++;
-                                continue;
-                            }
-                        }
-
-                        await whatsappService.sendNotification({
-                            shipment: item.shipment,
-                            recipientRole: item.recipientRole,
-                            recipientPhone: item.recipientPhone,
-                            recipientName: item.recipientName,
-                            templateName: 'shipment_confirmation_2',
-                            eventType: 'shipment_created'
-                        });
-                        if (!isBackground) summary.whatsAppSentCount++;
-                    } catch (err) {
-                        if (!isBackground) {
-                            summary.errors.push({ billId: item.v.billId, carrierTracking: item.v.carrierTracking, error: `WhatsApp dispatch failed: ${err.message}` });
-                        }
-                        logger.warn(`[PhenixSync] WhatsApp dispatch failed for ${item.shipment.trackingNumber} to ${item.recipientRole}: ${err.message}`);
+                    } catch (error) {
+                        result.whatsAppSent = false;
+                        result.whatsAppSkipReason = 'CHATWOOT_DISPATCH_FAILED';
+                        logger.warn(`[PhenixSync] Chatwoot confirmation failed for ${item.shipment.trackingNumber}: ${error.message}`);
+                        if (!isBackground) summary.errors.push({ carrierTracking: item.shipment.trackingNumber, error: `WhatsApp dispatch failed: ${error.message}` });
                     }
+                    await new Promise(resolve => setTimeout(resolve, 250));
                 }
             };
 
             if (Date.now() > inlineDeadline || notificationsToSend.length > 10) {
-                logger.info(`[PhenixSync] Dispatching ${notificationsToSend.length} WhatsApp notifications asynchronously in background...`);
-                setImmediate(() => {
-                    dispatchWhatsAppBatch(notificationsToSend, true).catch(() => {});
-                });
+                logger.info(`[PhenixSync] Dispatching ${notificationsToSend.length} new-shipment confirmations through Chatwoot in the background`);
+                setImmediate(() => dispatchPhenixConfirmations(notificationsToSend, true).catch(error => {
+                    logger.error(`[PhenixSync] Background Chatwoot confirmation dispatch failed: ${error.message}`);
+                }));
+                for (const item of notificationsToSend) {
+                    summary.results[item.resultIndex].whatsAppSkipReason = 'CHATWOOT_DISPATCH_PENDING';
+                }
             } else {
-                logger.info(`[PhenixSync] Starting inline WhatsApp notification dispatch for ${notificationsToSend.length} recipients...`);
-                await dispatchWhatsAppBatch(notificationsToSend, false);
+                await dispatchPhenixConfirmations(notificationsToSend);
             }
         }
 

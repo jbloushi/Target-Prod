@@ -28,6 +28,12 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
     let createdLogs;
     let updatedLogs;
     let mockInboxTemplates;
+    let shipmentFixtures;
+
+    const rememberShipment = (shipment) => {
+        shipmentFixtures.set(shipment.id, shipment);
+        return shipment;
+    };
 
     beforeEach(() => {
         jest.clearAllMocks();
@@ -37,8 +43,13 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
         mockMessages = [];
         createdLogs = [];
         updatedLogs = [];
+        shipmentFixtures = new Map();
         mockInboxTemplates = [
             { name: 'shipment_confirmation_2', status: 'APPROVED' },
+            { name: 'payment_request_v1', status: 'APPROVED' },
+            { name: 'location_request_v1', status: 'APPROVED' },
+            { name: 'return_portal_v1', status: 'APPROVED' },
+            { name: 'customer_inquiry_start', status: 'APPROVED' },
             { name: 'target_shipment_out_for_delivery', status: 'APPROVED' },
             { name: 'target_shipment_delivered', status: 'APPROVED' },
             { name: 'target_customs_exception_hold', status: 'APPROVED' }
@@ -189,6 +200,9 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
         });
 
         jest.spyOn(prisma.shipmentNotificationLog, 'findFirst').mockResolvedValue(null);
+        jest.spyOn(prisma.shipmentNotificationLog, 'findUnique').mockImplementation(async ({ where }) => ({ id: where.id }));
+        jest.spyOn(prisma.shipmentNotificationLog, 'updateMany').mockResolvedValue({ count: 1 });
+        jest.spyOn(prisma.shipment, 'findUnique').mockImplementation(async ({ where }) => shipmentFixtures.get(where.id) || null);
         jest.spyOn(prisma.shipment, 'update').mockImplementation(async ({ where, data }) => ({ id: where.id, ...data }));
         jest.spyOn(whatsAppConfigService, '_computeQuietHours').mockReturnValue(false);
         jest.spyOn(whatsAppConfigService, 'getConfig').mockResolvedValue({
@@ -208,7 +222,7 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
     });
 
     describe('approved shipment confirmation routing', () => {
-        const makeShipment = (destination = {}) => ({
+        const makeShipment = (destination = {}) => rememberShipment({
             id: 'confirmation-test-shipment',
             trackingNumber: 'TRK-TEST-20261026',
             status: 'created',
@@ -234,11 +248,13 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
             expect(prisma.shipmentNotificationLog.findFirst).toHaveBeenCalledWith({
                 where: {
                     id: 'queued-log', shipmentId: shipment.id, eventType: 'delivered',
-                    recipientRole: { in: ['sender', 'shipper', 'merchant'] }
+                    templateName: null,
+                    recipientRole: { in: ['sender', 'shipper', 'merchant'] },
+                    status: { in: ['FAILED', 'failed', 'SKIPPED', 'skipped', 'QUEUED', 'queued', 'PENDING', 'pending'] }
                 }
             });
-            expect(prisma.shipmentNotificationLog.update).toHaveBeenCalledWith(
-                expect.objectContaining({ where: { id: 'queued-log' } })
+            expect(prisma.shipmentNotificationLog.updateMany).toHaveBeenCalledWith(
+                expect.objectContaining({ where: expect.objectContaining({ id: 'queued-log', templateName: null }) })
             );
             expect(prisma.shipmentNotificationLog.create).not.toHaveBeenCalled();
         });
@@ -247,7 +263,7 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
             const result = await chatwootService.sendShipmentNotification('shipment_created', makeShipment({
                 contactPerson: 'Receiver Name',
                 phone: '+97455123456'
-            }), { recipientRole: 'sender' });
+            }), { recipientRole: 'sender', manualDispatch: true });
 
             expect(result.results).toEqual([expect.objectContaining({ target: 'sender', status: 'submitted' })]);
             const messageCall = mockClientRequest.mock.calls.find(([req]) => req.method === 'post' && req.url.includes('/messages'));
@@ -264,7 +280,7 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
         });
 
         test('uses literal receiver placeholders when receiver details are absent', async () => {
-            await chatwootService.sendShipmentNotification('shipment_created', makeShipment(), { recipientRole: 'sender' });
+            await chatwootService.sendShipmentNotification('shipment_created', makeShipment(), { recipientRole: 'sender', manualDispatch: true });
 
             const messageCall = mockClientRequest.mock.calls.find(([req]) => req.method === 'post' && req.url.includes('/messages'));
             expect(messageCall[0].data.template_params.parameters).toEqual(expect.arrayContaining([
@@ -273,13 +289,75 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
             ]));
         });
 
+        test('does not treat a customer or account phone as the shipper phone', () => {
+            const shipment = {
+                ...makeShipment(),
+                origin: { contactPerson: 'Shipper without phone' },
+                customer: { phone: '+96590000001' },
+                user: { phone: '+96590000002' },
+                organization: { phone: '+96590000003' }
+            };
+
+            expect(chatwootService.getNotificationTargets('shipment_created', shipment)).toEqual([]);
+        });
+
+        test('blocks the legacy Target support number on Phenix shipments', () => {
+            const shipment = {
+                ...makeShipment(),
+                phenixSourceKey: 'legacy-phenix-source',
+                origin: { contactPerson: 'Unknown Shipper', phone: '+96597691271' }
+            };
+
+            expect(chatwootService.getNotificationTargets('shipment_created', shipment)).toEqual([]);
+        });
+
+        test('records a missing shipper phone instead of silently dropping the event', async () => {
+            const shipment = rememberShipment({ ...makeShipment(), origin: { contactPerson: 'Shipper without phone' } });
+
+            const result = await chatwootService.sendShipmentNotification('shipment_created', shipment, { manualDispatch: true });
+
+            expect(result).toEqual(expect.objectContaining({ skipped: true, reason: 'missing_recipient_phone' }));
+            expect(createdLogs).toEqual([expect.objectContaining({
+                eventType: 'shipment_created', recipientRole: 'sender', status: 'skipped',
+                errorMessage: expect.stringContaining('Recipient phone missing')
+            })]);
+            expect(mockClientRequest).not.toHaveBeenCalled();
+        });
+
+        test('reports unsupported notification events explicitly', async () => {
+            const result = await chatwootService.sendShipmentNotification('shipment_booked', makeShipment(), { manualDispatch: true });
+
+            expect(result).toEqual(expect.objectContaining({ skipped: true, reason: 'unsupported_event' }));
+            expect(createdLogs).toEqual([]);
+        });
+
+        test('forces Chatwoot when stored provider settings name another provider', async () => {
+            whatsAppConfigService.getConfig.mockReset().mockResolvedValue({
+                provider: 'SHIPMENT_WHATSAPP',
+                enabled: true
+            });
+
+            const result = await chatwootService.sendShipmentNotification('shipment_created', makeShipment(), {
+                recipientRole: 'sender', manualDispatch: true
+            });
+
+            expect(result.results).toEqual([expect.objectContaining({ target: 'sender', status: 'submitted' })]);
+            expect(prisma.shipmentNotificationLog.update).toHaveBeenCalledWith(expect.objectContaining({
+                data: expect.objectContaining({ status: 'submitted' })
+            }));
+            expect(mockClientRequest).toHaveBeenCalledWith(expect.objectContaining({
+                method: 'post', url: expect.stringContaining('/messages')
+            }));
+            expect(axios.post).not.toHaveBeenCalled();
+        });
+
         test('fails closed when the approved confirmation template is absent from the inbox', async () => {
             mockInboxTemplates = [{ name: 'target_shipment_created', status: 'APPROVED' }];
 
             const result = await chatwootService.sendShipmentNotification('shipment_created', makeShipment({
                 contactPerson: 'Receiver Name',
                 phone: '+97455123456'
-            }), { recipientRole: 'sender' });
+            }), { recipientRole: 'sender', manualDispatch: true });
 
             expect(result.results[0].status).toBe('failed');
             expect(result.results[0].reason).toBe('approved_template_unavailable');
@@ -299,11 +377,66 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
             const result = await chatwootService.sendShipmentNotification('shipment_created', makeShipment({
                 contactPerson: 'Receiver Name',
                 phone: '+97455123456'
-            }), { recipientRole: 'sender' });
+            }), { recipientRole: 'sender', manualDispatch: true });
 
             expect(result.results[0].status).toBe('failed');
             expect(result.results[0].reason).toBe('approved_template_unavailable');
             expect(mockClientRequest.mock.calls.filter(([req]) => req.method === 'post' && req.url.includes('/messages'))).toHaveLength(0);
+        });
+
+        test.each([
+            ['payment_link_ready', 'payment_request_v1'],
+            ['location_request', 'location_request_v1'],
+            ['return_portal', 'return_portal_v1'],
+            ['customer_engagement', 'customer_inquiry_start']
+        ])('requires exact approved Chatwoot template for %s', async (eventType, templateName) => {
+            mockInboxTemplates = [{ name: 'new_shipment_created', status: 'APPROVED' }];
+
+            await expect(whatsappService.sendNotification({
+                shipment: makeShipment({ contactPerson: 'Receiver', phone: '+97455123456' }),
+                recipientRole: 'receiver',
+                recipientPhone: '+97455123456',
+                eventType,
+                templateName,
+                force: true,
+                manualDispatch: true,
+                provider: 'SHIPMENT_WHATSAPP'
+            })).rejects.toThrow(`Required approved Chatwoot template ${templateName}`);
+
+            expect(mockClientRequest.mock.calls.filter(([req]) => req.method === 'post' && req.url.includes('/messages'))).toHaveLength(0);
+            expect(axios.post).not.toHaveBeenCalled();
+        });
+
+        test.each([
+            ['payment_link_ready', 'payment_request_v1', { amount: '25.250 KWD', paymentLink: 'https://pay.example.test/abc' }, ['Test Receiver', 'TRK-TEST-20261026', '25.250 KWD', 'https://pay.example.test/abc']],
+            ['location_request', 'location_request_v1', { locationUrl: 'https://target-kw.com/track/TRK-TEST-20261026/location' }, ['Test Receiver', 'TRK-TEST-20261026', 'https://target-kw.com/track/TRK-TEST-20261026/location']],
+            ['return_portal', 'return_portal_v1', { returnUrl: 'https://target-kw.com/returns/TRK-TEST-20261026' }, ['Test Receiver', 'TRK-TEST-20261026', 'https://target-kw.com/returns/TRK-TEST-20261026']],
+            ['customer_engagement', 'customer_inquiry_start', {}, ['Test Receiver', 'TRK-TEST-20261026']]
+        ])('sends %s with the synced template body parameters', async (eventType, templateName, customMessage, expectedParameters) => {
+            await whatsappService.sendNotification({
+                shipment: makeShipment({ contactPerson: 'Test Receiver', phone: '+97455123456' }),
+                recipientRole: 'receiver',
+                recipientPhone: '+97455123456',
+                recipientName: 'Test Receiver',
+                eventType,
+                templateName,
+                customMessage,
+                force: true,
+                manualDispatch: true,
+                provider: 'SHIPMENT_WHATSAPP'
+            });
+
+            const messageCall = mockClientRequest.mock.calls.find(([req]) => req.method === 'post' && req.url.includes('/messages'));
+            expect(messageCall[0].data.template_params).toEqual(expect.objectContaining({
+                name: templateName,
+                category: 'UTILITY',
+                language: 'en',
+                parameters: expectedParameters
+            }));
+            expect(messageCall[0].data.template_params.processed_params.body).toEqual(
+                Object.fromEntries(expectedParameters.map((value, index) => [String(index + 1), value]))
+            );
+            expect(axios.post).not.toHaveBeenCalled();
         });
 
         test('does not switch providers after a shipment confirmation Chatwoot send failure', async () => {
@@ -320,7 +453,7 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
             const result = await chatwootService.sendShipmentNotification('shipment_created', makeShipment({
                 contactPerson: 'Receiver Name',
                 phone: '+97455123456'
-            }), { recipientRole: 'sender' });
+            }), { recipientRole: 'sender', manualDispatch: true });
 
             expect(result.results[0].status).toBe('failed');
             expect(axios.post).not.toHaveBeenCalled();
@@ -353,8 +486,8 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
     // Suite 1: Primary Chatwoot Outbound Dispatch
     // =========================================================================
     describe('Suite 1: Primary Chatwoot Outbound Dispatch', () => {
-        test('1.1 Outbound milestone template dispatches successfully via Chatwoot API', async () => {
-            const shipment = {
+        test('1.1 Unapproved outbound milestone action is blocked before any provider call', async () => {
+            const shipment = rememberShipment({
                 id: 'shp-m4-01',
                 trackingNumber: 'TRG-DISPATCH-01',
                 destination: { contactPerson: 'Fatima Al-Sabah', phone: '+96599112233', city: 'Kuwait City', area: 'Dasman' },
@@ -363,37 +496,22 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
                 locationToken: 'loc_test_existing_token_123',
                 locationTokenExpiresAt: new Date(Date.now() + 40 * 3600 * 1000),
                 createdAt: new Date()
-            };
+            });
 
-            const result = await whatsappService.sendNotification({
+            await expect(whatsappService.sendNotification({
                 shipment,
                 eventType: 'out_for_delivery',
                 recipientRole: 'receiver',
                 recipientPhone: '+96599112233',
                 force: true,
+                manualDispatch: true,
                 provider: 'chatwoot'
-            });
+            })).resolves.toEqual(expect.objectContaining({ status: 'SKIPPED', reason: 'UNAPPROVED_MANUAL_ACTION' }));
 
-            expect(result.status).toBe('SENT');
-            expect(result.provider).toBe('chatwoot');
-            expect(result.isFallback).toBe(false);
-
-            // Verify Chatwoot POST was dispatched with the canonical template
+            // The production inbox does not have this template, so no message is sent.
             const messageCalls = mockClientRequest.mock.calls.filter(c => c[0].method === 'post' && c[0].url.includes('/messages'));
-            expect(messageCalls.length).toBe(1);
-            expect(messageCalls[0][0].data.template_params.name).toBe('target_shipment_out_for_delivery');
-
-            // Verify NO HTTP call made to microservice https://msg.target-kw.com
+            expect(messageCalls).toHaveLength(0);
             expect(axios.post).not.toHaveBeenCalled();
-
-            // Verify ShipmentNotificationLog updated with Chatwoot provider and no fallback
-            const latestUpdate = updatedLogs[updatedLogs.length - 1];
-            expect(latestUpdate).toBeDefined();
-            expect(latestUpdate.status).toBe('SENT');
-            expect(latestUpdate.provider).toBe('chatwoot');
-            expect(latestUpdate.isFallback).toBe(false);
-            expect(latestUpdate.fallbackReason).toBeNull();
-            expect(latestUpdate.templateName).toBe('target_shipment_out_for_delivery');
         });
 
         test('1.2 Milestone events map to authoritative Meta template names', () => {
@@ -552,13 +670,16 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
     });
 
     // =========================================================================
-    // Suite 3: Emergency Fallback Failover to msg.target-kw.com
+    // Suite 3: Shipment messages fail closed instead of falling back to another provider
     // =========================================================================
-    describe('Suite 3: Emergency Fallback Failover to msg.target-kw.com', () => {
-        test('3.1 Chatwoot HTTP 502 Bad Gateway triggers failover to msg.target-kw.com', async () => {
+    describe('Suite 3: Chatwoot shipment failure handling', () => {
+        test('3.1 Chatwoot HTTP 502 fails without external-provider fallback', async () => {
             // Mock Chatwoot message POST to reject with 502 Bad Gateway
             mockClientRequest.mockImplementation(async (reqConfig) => {
                 const { method, url } = reqConfig;
+                if (method.toLowerCase() === 'get' && url.includes('/inboxes')) {
+                    return { data: { payload: [{ id: 1, message_templates: mockInboxTemplates }] } };
+                }
                 if (method.toLowerCase() === 'post' && url.includes('/messages')) {
                     const err = new Error('Request failed with status code 502');
                     err.response = { status: 502, data: { error: 'Bad Gateway' } };
@@ -574,51 +695,36 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
                 data: { status: 'sent', messageId: 'wamid.SW_FALLBACK_502' }
             });
 
-            const shipment = {
+            const shipment = rememberShipment({
                 id: 'shp-failover-502',
                 trackingNumber: 'TRG-502-01',
                 destination: { contactPerson: 'Consignee', phone: '+96599112233' },
                 origin: { contactPerson: 'Shipper', phone: '+96597959567' },
                 createdAt: new Date()
-            };
-
-            const result = await whatsappService.sendNotification({
-                shipment,
-                eventType: 'delivered',
-                recipientRole: 'receiver',
-                recipientPhone: '+96599112233',
-                force: true,
-                provider: 'chatwoot'
             });
 
-            // Verify failover succeeded
-            expect(result.status).toBe('SENT');
-            expect(result.isFallback).toBe(true);
-            expect(result.provider).toBe('fallback');
-            expect(result.externalMessageId).toBe('wamid.SW_FALLBACK_502');
-            expect(result.fallbackReason).toContain('502');
-
-            // Verify microservice was called with msg.target-kw.com
-            expect(axios.post).toHaveBeenCalledWith(
-                expect.stringContaining('https://msg.target-kw.com/api/send'),
-                expect.objectContaining({
-                    templateName: 'target_shipment_delivered'
-                }),
-                expect.any(Object)
-            );
-
-            // Verify ShipmentNotificationLog persistence of fallback
+            await expect(whatsappService.sendNotification({
+                shipment,
+                eventType: 'shipment_created',
+                recipientRole: 'sender',
+                recipientPhone: '+96597959567',
+                templateName: 'shipment_confirmation_2',
+                force: true,
+                manualDispatch: true,
+                provider: 'chatwoot'
+            })).rejects.toThrow('Request failed with status code 502');
+            expect(axios.post).not.toHaveBeenCalled();
             const latestUpdate = updatedLogs[updatedLogs.length - 1];
-            expect(latestUpdate.status).toBe('SENT');
-            expect(latestUpdate.provider).toBe('fallback');
-            expect(latestUpdate.isFallback).toBe(true);
-            expect(latestUpdate.fallbackReason).toContain('502');
-            expect(latestUpdate.chatwootMessageId).toBe('wamid.SW_FALLBACK_502');
+            expect(latestUpdate.status).toBe('FAILED');
+            expect(latestUpdate.isFallback).not.toBe(true);
         });
 
-        test('3.2 Chatwoot request timeout (>15s / ECONNABORTED) triggers failover', async () => {
+        test('3.2 Chatwoot request timeout does not trigger external-provider fallback', async () => {
             mockClientRequest.mockImplementation(async (reqConfig) => {
                 const { method, url } = reqConfig;
+                if (method.toLowerCase() === 'get' && url.includes('/inboxes')) {
+                    return { data: { payload: [{ id: 1, message_templates: mockInboxTemplates }] } };
+                }
                 if (method.toLowerCase() === 'post' && url.includes('/messages')) {
                     const err = new Error('timeout of 15000ms exceeded');
                     err.code = 'ECONNABORTED';
@@ -633,37 +739,36 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
                 data: { status: 'sent', messageId: 'wamid.SW_FALLBACK_TIMEOUT' }
             });
 
-            const shipment = {
+            const shipment = rememberShipment({
                 id: 'shp-failover-timeout',
                 trackingNumber: 'TRG-TIMEOUT-01',
                 destination: { contactPerson: 'Consignee', phone: '+96599112233' },
                 origin: { contactPerson: 'Shipper', phone: '+96597959567' },
                 createdAt: new Date()
-            };
-
-            const result = await whatsappService.sendNotification({
-                shipment,
-                eventType: 'delivered',
-                recipientRole: 'receiver',
-                recipientPhone: '+96599112233',
-                force: true,
-                provider: 'chatwoot'
             });
 
-            expect(result.status).toBe('SENT');
-            expect(result.isFallback).toBe(true);
-            expect(result.provider).toBe('fallback');
-            expect(result.externalMessageId).toBe('wamid.SW_FALLBACK_TIMEOUT');
-            expect(result.fallbackReason).toMatch(/timeout|ECONNABORTED/i);
-
+            await expect(whatsappService.sendNotification({
+                shipment,
+                eventType: 'shipment_created',
+                recipientRole: 'sender',
+                recipientPhone: '+96597959567',
+                templateName: 'shipment_confirmation_2',
+                force: true,
+                manualDispatch: true,
+                provider: 'chatwoot'
+            })).rejects.toThrow(/timeout/i);
+            expect(axios.post).not.toHaveBeenCalled();
             const latestUpdate = updatedLogs[updatedLogs.length - 1];
-            expect(latestUpdate.isFallback).toBe(true);
-            expect(latestUpdate.provider).toBe('fallback');
+            expect(latestUpdate.status).toBe('FAILED');
+            expect(latestUpdate.isFallback).not.toBe(true);
         });
 
-        test('3.3 Chatwoot connection refused (ECONNREFUSED) triggers failover', async () => {
+        test('3.3 Chatwoot connection refusal does not trigger external-provider fallback', async () => {
             mockClientRequest.mockImplementation(async (reqConfig) => {
                 const { method, url } = reqConfig;
+                if (method.toLowerCase() === 'get' && url.includes('/inboxes')) {
+                    return { data: { payload: [{ id: 1, message_templates: mockInboxTemplates }] } };
+                }
                 if (method.toLowerCase() === 'post' && url.includes('/messages')) {
                     const err = new Error('connect ECONNREFUSED 127.0.0.1:443');
                     err.code = 'ECONNREFUSED';
@@ -678,34 +783,35 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
                 data: { status: 'sent', messageId: 'wamid.SW_FALLBACK_REFUSED' }
             });
 
-            const shipment = {
+            const shipment = rememberShipment({
                 id: 'shp-failover-refused',
                 trackingNumber: 'TRG-REFUSED-01',
                 destination: { contactPerson: 'Consignee', phone: '+96599112233' },
                 origin: { contactPerson: 'Shipper', phone: '+96597959567' },
                 createdAt: new Date()
-            };
-
-            const result = await whatsappService.sendNotification({
-                shipment,
-                eventType: 'delivered',
-                recipientRole: 'receiver',
-                recipientPhone: '+96599112233',
-                force: true,
-                provider: 'chatwoot'
             });
 
-            expect(result.status).toBe('SENT');
-            expect(result.isFallback).toBe(true);
-            expect(result.provider).toBe('fallback');
-            expect(result.externalMessageId).toBe('wamid.SW_FALLBACK_REFUSED');
-            expect(result.fallbackReason).toMatch(/ECONNREFUSED/i);
+            await expect(whatsappService.sendNotification({
+                shipment,
+                eventType: 'shipment_created',
+                recipientRole: 'sender',
+                recipientPhone: '+96597959567',
+                templateName: 'shipment_confirmation_2',
+                force: true,
+                manualDispatch: true,
+                provider: 'chatwoot'
+            })).rejects.toThrow(/ECONNREFUSED/i);
+            expect(axios.post).not.toHaveBeenCalled();
+            expect(updatedLogs[updatedLogs.length - 1].status).toBe('FAILED');
         });
 
-        test('3.4 Double failure: Chatwoot and fallback microservice failure records FAILED in log', async () => {
+        test('3.4 Template inventory failure records FAILED without trying the external service', async () => {
             // Chatwoot fails with 502
             mockClientRequest.mockImplementation(async (reqConfig) => {
                 const { method, url } = reqConfig;
+                if (method.toLowerCase() === 'get' && url.includes('/inboxes')) {
+                    return { data: { payload: [{ id: 1, message_templates: mockInboxTemplates }] } };
+                }
                 if (method.toLowerCase() === 'post' && url.includes('/messages')) {
                     const err = new Error('Chatwoot 502 Bad Gateway');
                     err.response = { status: 502 };
@@ -719,32 +825,33 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
             // Microservice also fails
             axios.post.mockRejectedValueOnce(new Error('WhatsApp microservice 500 downstream error'));
 
-            const shipment = {
+            const shipment = rememberShipment({
                 id: 'shp-double-fail',
                 trackingNumber: 'TRG-DOUBLE-FAIL-01',
                 destination: { phone: '+96599112233' },
                 origin: { phone: '+96597959567' },
                 createdAt: new Date()
-            };
+            });
 
             await expect(whatsappService.sendNotification({
                 shipment,
-                eventType: 'delivered',
-                recipientRole: 'receiver',
-                recipientPhone: '+96599112233',
+                eventType: 'shipment_created',
+                recipientRole: 'sender',
+                recipientPhone: '+96597959567',
+                templateName: 'shipment_confirmation_2',
                 force: true,
+                manualDispatch: true,
                 provider: 'chatwoot'
-            })).rejects.toThrow(/microservice/i);
+            })).rejects.toThrow(/Chatwoot 502/i);
 
             // Verify ShipmentNotificationLog was updated with FAILED and complete failure reason
             const latestUpdate = updatedLogs[updatedLogs.length - 1];
             expect(latestUpdate.status).toBe('FAILED');
-            expect(latestUpdate.isFallback).toBe(true);
-            expect(latestUpdate.provider).toBe('fallback');
-            expect(latestUpdate.fallbackReason).toMatch(/502.*downstream error/i);
+            expect(latestUpdate.isFallback).not.toBe(true);
+            expect(axios.post).not.toHaveBeenCalled();
         });
 
-        test('3.5 Explicit admin provider configuration SHIPMENT_WHATSAPP bypasses Chatwoot directly to microservice', async () => {
+        test('3.5 Explicit SHIPMENT_WHATSAPP setting still routes shipment through Chatwoot', async () => {
             jest.spyOn(whatsAppConfigService, 'getConfig').mockResolvedValueOnce({
                 provider: 'SHIPMENT_WHATSAPP',
                 serviceUrl: 'https://msg.target-kw.com',
@@ -755,42 +862,35 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
                 data: { status: 'sent', messageId: 'wamid.DIRECT_MICROSERVICE_999' }
             });
 
-            const shipment = {
+            const shipment = rememberShipment({
                 id: 'shp-direct-micro',
                 trackingNumber: 'TRG-DIRECT-01',
                 destination: { contactPerson: 'Consignee', phone: '+96599112233' },
                 origin: { contactPerson: 'Shipper', phone: '+96597959567' },
                 createdAt: new Date()
-            };
+            });
 
             const result = await whatsappService.sendNotification({
                 shipment,
-                eventType: 'delivered',
-                recipientRole: 'receiver',
-                recipientPhone: '+96599112233',
+                eventType: 'shipment_created',
+                recipientRole: 'sender',
+                recipientPhone: '+96597959567',
+                templateName: 'shipment_confirmation_2',
                 force: true,
+                manualDispatch: true,
                 provider: 'SHIPMENT_WHATSAPP'
             });
 
-            expect(result.status).toBe('SENT');
-            expect(result.provider).toBe('SHIPMENT_WHATSAPP');
+            expect(result.status).toBe('submitted');
+            expect(result.provider).toBe('chatwoot');
             expect(result.isFallback).toBe(false);
-            expect(result.externalMessageId).toBe('wamid.DIRECT_MICROSERVICE_999');
-
-            // Microservice was called directly
-            expect(axios.post).toHaveBeenCalledWith(
-                expect.stringContaining('https://msg.target-kw.com/api/send'),
-                expect.any(Object),
-                expect.any(Object)
-            );
-
-            // Chatwoot messages POST was NOT called
+            expect(axios.post).not.toHaveBeenCalled();
             const chatwootMsgCalls = mockClientRequest.mock.calls.filter(c => c[0].method === 'post' && c[0].url.includes('/messages'));
-            expect(chatwootMsgCalls.length).toBe(0);
+            expect(chatwootMsgCalls.length).toBe(1);
 
-            // DB log records provider as SHIPMENT_WHATSAPP and isFallback: false
+            // The dispatch log records Chatwoot acceptance distinctly from handset delivery.
             const latestUpdate = updatedLogs[updatedLogs.length - 1];
-            expect(latestUpdate.provider).toBe('SHIPMENT_WHATSAPP');
+            expect(latestUpdate.provider).toBe('chatwoot');
             expect(latestUpdate.isFallback).toBe(false);
             expect(latestUpdate.fallbackReason).toBeNull();
         });
@@ -801,12 +901,12 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
     // =========================================================================
     describe('Suite 4: Retention and Enforcement of All Core Safety Guards', () => {
         test('4.1 Quiet-hours window (22:00-08:00 Asia/Kuwait) suppresses notification', async () => {
-            const shipment = {
+            const shipment = rememberShipment({
                 id: 'shp-guard-quiet',
                 trackingNumber: 'TRG-QUIET-GUARD-01',
                 destination: { phone: '+96599112233' },
                 createdAt: new Date()
-            };
+            });
 
             jest.spyOn(whatsAppConfigService, '_computeQuietHours').mockReturnValueOnce(true);
             jest.spyOn(whatsAppConfigService, 'getRule').mockResolvedValueOnce({ allowQuietHoursBypass: false });
@@ -817,6 +917,7 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
                 recipientRole: 'receiver',
                 recipientPhone: '+96599112233',
                 force: false,
+                manualDispatch: true,
                 provider: 'chatwoot'
             });
 
@@ -830,42 +931,40 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
         });
 
         test('4.2 Quiet-hours bypass rule allows urgent customs notifications', async () => {
-            const shipment = {
+            const shipment = rememberShipment({
                 id: 'shp-guard-bypass',
                 trackingNumber: 'TRG-BYPASS-01',
                 destination: { contactPerson: 'Consignee', phone: '+96599112233' },
                 origin: { contactPerson: 'Shipper', phone: '+96597959567' },
                 createdAt: new Date()
-            };
+            });
 
             jest.spyOn(whatsAppConfigService, '_computeQuietHours').mockReturnValueOnce(true);
             jest.spyOn(whatsAppConfigService, 'getRule').mockResolvedValueOnce({ allowQuietHoursBypass: true });
 
-            const result = await whatsappService.sendNotification({
+            await expect(whatsappService.sendNotification({
                 shipment,
                 eventType: 'on_hold_customs_issue',
                 recipientRole: 'receiver',
                 recipientPhone: '+96599112233',
                 force: false,
+                manualDispatch: true,
                 provider: 'chatwoot'
-            });
-
-            expect(result.status).toBe('SENT');
-            expect(result.provider).toBe('chatwoot');
+            })).resolves.toEqual(expect.objectContaining({ status: 'SKIPPED', reason: 'UNAPPROVED_MANUAL_ACTION' }));
 
             const messageCalls = mockClientRequest.mock.calls.filter(c => c[0].method === 'post' && c[0].url.includes('/messages'));
-            expect(messageCalls.length).toBe(1);
-            expect(messageCalls[0][0].data.template_params.name).toBe('target_customs_exception_hold');
+            expect(messageCalls).toHaveLength(0);
+            expect(axios.post).not.toHaveBeenCalled();
         });
 
         test('4.3 36-hour age guard drops delivered historical shipments', async () => {
-            const shipment = {
+            const shipment = rememberShipment({
                 id: 'shp-guard-age',
                 trackingNumber: 'TRG-AGE-01',
                 status: 'delivered',
                 createdAt: new Date(Date.now() - 40 * 3600 * 1000), // 40h old (>36h)
                 destination: { phone: '+96599112233' }
-            };
+            });
 
             const result = await whatsappService.sendNotification({
                 shipment,
@@ -873,11 +972,12 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
                 recipientRole: 'receiver',
                 recipientPhone: '+96599112233',
                 force: false,
+                manualDispatch: true,
                 provider: 'chatwoot'
             });
 
             expect(result.status).toBe('SKIPPED');
-            expect(result.reason).toBe('HISTORICAL_SHIPMENT');
+            expect(result.reason).toBe('SHIPMENT_TERMINAL');
 
             // Verify zero HTTP dispatches
             expect(axios.post).not.toHaveBeenCalled();
@@ -886,12 +986,12 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
         });
 
         test('4.4 Recipient deduplication guard prevents duplicate sends', async () => {
-            const shipment = {
+            const shipment = rememberShipment({
                 id: 'shp-guard-dedup',
                 trackingNumber: 'TRG-DEDUP-01',
                 destination: { phone: '+96599112233' },
                 createdAt: new Date()
-            };
+            });
 
             // Mock existing log with SENT status
             jest.spyOn(prisma.shipmentNotificationLog, 'findFirst').mockResolvedValueOnce({
@@ -902,22 +1002,24 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
 
             const result = await whatsappService.sendNotification({
                 shipment,
-                eventType: 'out_for_delivery',
+                eventType: 'location_request',
                 recipientRole: 'receiver',
                 recipientPhone: '+96599112233',
+                templateName: 'location_request_v1',
                 force: false,
+                manualDispatch: true,
                 provider: 'chatwoot'
             });
 
             expect(result.status).toBe('SKIPPED');
-            expect(result.alreadySent).toBe(true);
+            expect(result.reason).toBe('DUPLICATE_ALREADY_SUBMITTED');
 
             expect(axios.post).not.toHaveBeenCalled();
             const messageCalls = mockClientRequest.mock.calls.filter(c => c[0].method === 'post' && c[0].url.includes('/messages'));
             expect(messageCalls.length).toBe(0);
         });
 
-        test('4.5 Developer-mode safe routing redirects recipient phone', async () => {
+        test('4.5 Developer-mode safe routing redirects the shipper recipient phone', async () => {
             const { DEV_SAFE_PHONE, resolveRecipientPhone } = whatsappService;
             expect(DEV_SAFE_PHONE).toBe('+201040957289');
 
@@ -925,20 +1027,22 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
             const redirected = resolveRecipientPhone('+96599112233');
             expect(redirected).toBe('+201040957289');
 
-            const shipment = {
+            const shipment = rememberShipment({
                 id: 'shp-guard-devphone',
                 trackingNumber: 'TRG-DEV-01',
                 destination: { contactPerson: 'Consignee', phone: '+96599112233' },
                 origin: { contactPerson: 'Shipper', phone: '+96597959567' },
                 createdAt: new Date()
-            };
+            });
 
             await whatsappService.sendNotification({
                 shipment,
-                eventType: 'delivered',
-                recipientRole: 'receiver',
-                recipientPhone: '+96599112233',
+                eventType: 'shipment_created',
+                recipientRole: 'sender',
+                recipientPhone: '+96597959567',
+                templateName: 'shipment_confirmation_2',
                 force: true,
+                manualDispatch: true,
                 provider: 'chatwoot'
             });
 
@@ -950,8 +1054,8 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
             expect(phoneUsed).toBe('+201040957289');
         });
 
-        test('4.6 Out-for-delivery generates locationToken for customer GPS pin CTA', async () => {
-            const shipmentWithoutToken = {
+        test('4.6 Out-for-delivery fails closed when no approved template mapping exists', async () => {
+            const shipmentWithoutToken = rememberShipment({
                 id: 'shp-guard-token-gen',
                 trackingNumber: 'TRG-TOKEN-01',
                 destination: { contactPerson: 'Consignee', phone: '+96599112233' },
@@ -959,38 +1063,21 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
                 locationToken: null,
                 locationTokenExpiresAt: null,
                 createdAt: new Date()
-            };
+            });
 
             const updateShipmentSpy = jest.spyOn(prisma.shipment, 'update');
 
-            await whatsappService.sendNotification({
+            await expect(whatsappService.sendNotification({
                 shipment: shipmentWithoutToken,
                 eventType: 'out_for_delivery',
                 recipientRole: 'receiver',
                 recipientPhone: '+96599112233',
                 force: true,
+                manualDispatch: true,
                 provider: 'chatwoot'
-            });
-
-            // Verify 32-byte (64 hex char) locationToken was generated and saved
-            expect(updateShipmentSpy).toHaveBeenCalledWith(expect.objectContaining({
-                where: { id: 'shp-guard-token-gen' },
-                data: expect.objectContaining({
-                    locationToken: expect.stringMatching(/^loc_[a-f0-9]{64}$/),
-                    locationTokenExpiresAt: expect.any(Date)
-                })
-            }));
-
-            // Verify buttonUrlParam was injected into Chatwoot payload
-            const msgCall = mockClientRequest.mock.calls.find(c => c[0].method === 'post' && c[0].url.includes('/messages'));
-            expect(msgCall).toBeDefined();
-            expect(msgCall[0].data.template_params.button_params).toEqual([
-                {
-                    type: 'url',
-                    index: '0',
-                    parameter: expect.stringMatching(/^loc_[a-f0-9]{64}$/)
-                }
-            ]);
+            })).resolves.toEqual(expect.objectContaining({ status: 'SKIPPED', reason: 'UNAPPROVED_MANUAL_ACTION' }));
+            expect(updateShipmentSpy).not.toHaveBeenCalled();
+            expect(axios.post).not.toHaveBeenCalled();
         });
     });
 });

@@ -307,11 +307,7 @@ describe('SupportCenterPage (Omnichannel Support Center)', () => {
         fireEvent.click(requestPinBtn);
 
         await waitFor(() => {
-            expect(mockSendLocationRequest).toHaveBeenCalledWith(
-                'TRG-KW-201',
-                '+965 99001122',
-                'Jasem Al-Khorafi'
-            );
+            expect(mockSendLocationRequest).toHaveBeenCalledWith('TRG-KW-201');
         });
     });
 

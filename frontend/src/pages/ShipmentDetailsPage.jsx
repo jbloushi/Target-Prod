@@ -519,8 +519,12 @@ const ShipmentDetailsPage = () => {
         if (!shipment?.trackingNumber) return;
         setSendingPaymentLink(true);
         try {
-            await shipmentService.sendPaymentLink(shipment.trackingNumber, { recipientRole });
-            enqueueSnackbar(isRTL ? 'تم إرسال رابط الدفع عبر واتساب للعميل' : 'WhatsApp Pay-by-Link sent to customer!', { variant: 'success' });
+            const response = await shipmentService.sendPaymentLink(shipment.trackingNumber, { recipientRole });
+            notifyWhatsAppOutcome(
+                response,
+                isRTL ? 'قبل Chatwoot رابط الدفع' : 'Chatwoot accepted the payment link message.',
+                isRTL ? 'تم وضع رابط الدفع في قائمة الانتظار' : 'Payment link message queued for Chatwoot.'
+            );
             await getShipment(shipment.trackingNumber);
         } catch (err) {
             enqueueSnackbar(err.response?.data?.error || err.message || 'Failed to send WhatsApp payment link', { variant: 'error' });
@@ -542,8 +546,12 @@ const ShipmentDetailsPage = () => {
         if (!shipment?.trackingNumber) return;
         setResendingUpdate(true);
         try {
-            await whatsappService.resendShipmentUpdate(shipment.trackingNumber);
-            enqueueSnackbar(isRTL ? 'تم إرسال تحديث الشحنة ورابط التتبع عبر واتساب للعميل' : 'Shipment update & tracking link sent via WhatsApp!', { variant: 'success' });
+            const response = await whatsappService.resendShipmentUpdate(shipment.trackingNumber);
+            notifyWhatsAppOutcome(
+                response,
+                isRTL ? 'قبل Chatwoot رسالة تأكيد الشحنة' : 'Chatwoot accepted the shipment confirmation.',
+                isRTL ? 'تم وضع رسالة تأكيد الشحنة في قائمة الانتظار' : 'Shipment confirmation queued for Chatwoot.'
+            );
             await getShipment(shipment.trackingNumber);
         } catch (err) {
             enqueueSnackbar(err.response?.data?.error || err.message || 'Failed to dispatch WhatsApp update', { variant: 'error' });
@@ -557,8 +565,12 @@ const ShipmentDetailsPage = () => {
         if (!shipment?.trackingNumber) return;
         setSendingLocationReq(true);
         try {
-            await whatsappService.sendLocationRequest(shipment.trackingNumber);
-            enqueueSnackbar(isRTL ? 'تم إرسال طلب تحديد الموقع (GPS) للمستلم عبر واتساب' : 'Location request template dispatched to consignee via WhatsApp!', { variant: 'success' });
+            const response = await whatsappService.sendLocationRequest(shipment.trackingNumber);
+            notifyWhatsAppOutcome(
+                response,
+                isRTL ? 'قبل Chatwoot طلب موقع المستلم' : 'Chatwoot accepted the receiver location request.',
+                isRTL ? 'تم وضع طلب الموقع في قائمة الانتظار' : 'Location request queued for Chatwoot.'
+            );
             await getShipment(shipment.trackingNumber);
         } catch (err) {
             enqueueSnackbar(err.response?.data?.error || err.message || 'Failed to send location request', { variant: 'error' });
@@ -572,8 +584,12 @@ const ShipmentDetailsPage = () => {
         if (!shipment?.trackingNumber) return;
         setSendingReturnPortal(true);
         try {
-            await whatsappService.sendReturnPortal(shipment.trackingNumber);
-            enqueueSnackbar(isRTL ? 'تم إرسال رابط بوابة المرتجعات للمستلم عبر واتساب' : 'Return portal template dispatched to consignee via WhatsApp!', { variant: 'success' });
+            const response = await whatsappService.sendReturnPortal(shipment.trackingNumber);
+            notifyWhatsAppOutcome(
+                response,
+                isRTL ? 'قبل Chatwoot رسالة بوابة المرتجعات' : 'Chatwoot accepted the receiver return portal message.',
+                isRTL ? 'تم وضع رسالة المرتجعات في قائمة الانتظار' : 'Return portal message queued for Chatwoot.'
+            );
             await getShipment(shipment.trackingNumber);
         } catch (err) {
             enqueueSnackbar(err.response?.data?.error || err.message || 'Failed to send return portal link', { variant: 'error' });
@@ -587,8 +603,12 @@ const ShipmentDetailsPage = () => {
         if (!shipment?.trackingNumber) return;
         setStartingEngagement(true);
         try {
-            await whatsappService.startCustomerEngagement(shipment.trackingNumber);
-            enqueueSnackbar(isRTL ? 'تم إرسال قالب بدء المحادثة لفتح نافذة التواصل (24 ساعة)' : 'Customer engagement template dispatched to open 24h window!', { variant: 'success' });
+            const response = await whatsappService.startCustomerEngagement(shipment.trackingNumber);
+            notifyWhatsAppOutcome(
+                response,
+                isRTL ? 'قبل Chatwoot رسالة بدء المحادثة' : 'Chatwoot accepted the customer engagement message.',
+                isRTL ? 'تم وضع رسالة بدء المحادثة في قائمة الانتظار' : 'Customer engagement message queued for Chatwoot.'
+            );
             await getShipment(shipment.trackingNumber);
         } catch (err) {
             enqueueSnackbar(err.response?.data?.error || err.message || 'Failed to start WhatsApp engagement', { variant: 'error' });
@@ -628,15 +648,14 @@ const ShipmentDetailsPage = () => {
     };
 
     // Send WhatsApp Event
-    const handleSendWhatsAppRole = async (recipientRole, eventType = 'shipment_created', forceSend = false) => {
+    const handleSendWhatsAppRole = async (recipientRole, eventType = 'shipment_created') => {
         if (!shipment?.trackingNumber || !recipientRole) return;
         setSendingWhatsAppRole(recipientRole);
         try {
             const res = await integrationService.sendChatwootTestMessage({
                 trackingNumber: shipment.trackingNumber,
                 eventType,
-                recipientRole,
-                force: Boolean(forceSend)
+                recipientRole
             });
             const data = res?.data || res;
             const targetResult = Array.isArray(data?.results)
@@ -660,13 +679,13 @@ const ShipmentDetailsPage = () => {
                 );
             } else {
                 enqueueSnackbar(
-                    isRTL ? `تم إرسال إشعار واتساب إلى ${recipientRole}` : `WhatsApp message sent to ${recipientRole}!`,
+                    isRTL ? `قبل Chatwoot إشعار واتساب إلى ${recipientRole}` : `Chatwoot accepted the WhatsApp message for ${recipientRole}.`,
                     { variant: 'success' }
                 );
             }
             await getShipment(shipment.trackingNumber);
         } catch (err) {
-            enqueueSnackbar(err.message || 'Failed to send WhatsApp message', { variant: 'error' });
+            enqueueSnackbar(err.response?.data?.error || err.response?.data?.code || err.message || 'Failed to send WhatsApp message', { variant: 'error' });
         } finally {
             setSendingWhatsAppRole(null);
         }
@@ -1135,6 +1154,36 @@ const ShipmentDetailsPage = () => {
     const publicTrackingUrl = `${window.location.origin}/track/${shipment.trackingNumber}`;
 
     const isStaff = !user || ['admin', 'staff', 'manager', 'accounting', 'org_manager', 'org_agent'].includes(user?.role) || (typeof can === 'function' && can('BOOK_CARRIERS'));
+    const isTerminalWhatsAppShipment = ['delivered', 'completed', 'cancelled', 'returned']
+        .includes(String(shipment?.status || '').toLowerCase());
+    const hasActiveWhatsAppAttempt = (templateName, recipientRole = null) =>
+        (shipment?.notificationLogs || []).some(log => {
+            const status = String(log.status || '').toLowerCase();
+            const aliases = ['sender', 'shipper', 'merchant'].includes(String(recipientRole || '').toLowerCase())
+                ? ['sender', 'shipper', 'merchant']
+                : ['receiver', 'consignee', 'customer'];
+            return log.templateName === templateName
+                && (!recipientRole || aliases.includes(String(log.recipientRole || '').toLowerCase()))
+                && ['submitted', 'sent', 'delivered', 'read', 'queued', 'pending', 'processing'].includes(status);
+        });
+    const notifyWhatsAppOutcome = (response, acceptedMessage, queuedMessage) => {
+        const status = String(
+            response?.dispatchStatus
+            || response?.result?.status
+            || response?.result?.results?.[0]?.status
+            || 'failed'
+        ).toLowerCase();
+        if (['submitted', 'sent', 'delivered', 'read'].includes(status)) {
+            enqueueSnackbar(acceptedMessage, { variant: 'success' });
+            return true;
+        }
+        if (status === 'queued') {
+            enqueueSnackbar(queuedMessage, { variant: 'info' });
+            return true;
+        }
+        enqueueSnackbar(response?.error || response?.message || 'Chatwoot did not accept the message', { variant: 'error' });
+        return false;
+    };
     const canEdit = isStaff || shipment.status === 'draft';
 
     const rawDocuments = Array.isArray(shipment.documents) ? shipment.documents : [];
@@ -1547,7 +1596,7 @@ const ShipmentDetailsPage = () => {
                         <button
                             type="button"
                             onClick={handleResendShipmentUpdateWhatsApp}
-                            disabled={resendingUpdate}
+                            disabled={resendingUpdate || isTerminalWhatsAppShipment || hasActiveWhatsAppAttempt('shipment_confirmation_2', 'sender')}
                             className="btn btn-sm bg-[#25D366] text-white hover:bg-[#1ebc57] border-none rounded-xl font-bold gap-1.5 text-xs shadow-sm"
                             title={isRTL ? 'إرسال آخر تحديث للشحنة ورابط التتبع عبر قالب واتساب المعتمد' : 'Resend latest shipment update & tracking link via WhatsApp template'}
                         >
@@ -2008,7 +2057,7 @@ const ShipmentDetailsPage = () => {
                                             <button
                                                 type="button"
                                                 onClick={handleStartWhatsAppEngagement}
-                                                disabled={startingEngagement}
+                                                disabled={startingEngagement || isTerminalWhatsAppShipment || hasActiveWhatsAppAttempt('customer_inquiry_start', 'receiver')}
                                                 className="btn btn-outline btn-success btn-xs font-bold rounded-lg gap-1"
                                                 title={isRTL ? 'بدء محادثة رسمية باستخدام قالب Meta المعتمد لفتح نافذة 24 ساعة' : 'Initiate formal chat using approved Meta template to open 24h window'}
                                             >
@@ -2377,7 +2426,7 @@ const ShipmentDetailsPage = () => {
                                     <button
                                         type="button"
                                         onClick={handleSendLocationPinRequestToConsignee}
-                                        disabled={sendingLocationReq}
+                                        disabled={sendingLocationReq || isTerminalWhatsAppShipment || hasActiveWhatsAppAttempt('location_request_v1', 'receiver')}
                                         className="btn btn-xs bg-[#25D366] text-white hover:bg-[#1ebc57] border-none font-bold gap-1 shadow-xs"
                                         title={isRTL ? 'إرسال طلب تحديد الموقع (GPS) للمستلم عبر قالب واتساب المعتمد' : 'Send Location Pin Request Template to Consignee via WhatsApp'}
                                     >
@@ -2466,7 +2515,7 @@ const ShipmentDetailsPage = () => {
                                     <button
                                         type="button"
                                         onClick={handleSendReturnPortalToConsignee}
-                                        disabled={sendingReturnPortal}
+                                        disabled={sendingReturnPortal || isTerminalWhatsAppShipment || hasActiveWhatsAppAttempt('return_portal_v1', 'receiver')}
                                         className="btn btn-xs bg-[#25D366] text-white hover:bg-[#1ebc57] border-none font-bold gap-1 shadow-xs"
                                         title={isRTL ? 'إرسال رابط بوابة المرتجعات والمستندات للمستلم عبر قالب واتساب المعتمد' : 'Send Return Portal & Paperwork Template to Consignee via WhatsApp'}
                                     >
@@ -2839,6 +2888,7 @@ const ShipmentDetailsPage = () => {
                                 <button
                                     type="button"
                                     onClick={() => setIsPaymentModalOpen(true)}
+                                    disabled={isTerminalWhatsAppShipment || hasActiveWhatsAppAttempt('payment_request_v1')}
                                     className="btn btn-primary btn-sm rounded-xl font-extrabold w-full gap-1.5 shadow-sm text-xs"
                                     data-testid="send-payment-link-btn"
                                 >
@@ -2905,6 +2955,7 @@ const ShipmentDetailsPage = () => {
                                     const logStatus = (latestLog?.status || '').toUpperCase();
                                     const isSent = ['SENT', 'DELIVERED', 'READ', 'SUBMITTED'].includes(logStatus);
                                     const isFailed = logStatus === 'FAILED';
+                                    const isInFlight = ['QUEUED', 'PENDING', 'PROCESSING'].includes(logStatus);
                                     const phone = latestLog?.recipientPhone || (isSenderRole ? sender.phone : receiver.phone) || '';
                                     const sentDate = latestLog?.sentAt ? new Date(latestLog.sentAt).toLocaleDateString() : '';
 
@@ -2913,11 +2964,11 @@ const ShipmentDetailsPage = () => {
                                             {/* Line 1: Role Title & optional Send button when not sent */}
                                             <div className="flex justify-between items-center gap-2">
                                                 <span className="font-extrabold text-xs text-base-content">{role.label}</span>
-                                                {!isSent ? (
+                                                {!isSent && isSenderRole && !isInFlight ? (
                                                     <button
                                                         type="button"
-                                                        onClick={() => handleSendWhatsAppRole(role.key, 'shipment_created', isFailed)}
-                                                        disabled={sendingWhatsAppRole === role.key}
+                                                        onClick={() => handleSendWhatsAppRole(role.key, 'shipment_created')}
+                                                        disabled={sendingWhatsAppRole === role.key || isTerminalWhatsAppShipment || hasActiveWhatsAppAttempt('shipment_confirmation_2', 'sender')}
                                                         className={`btn btn-xs h-6 min-h-6 text-[10.5px] px-2 rounded-lg font-bold gap-1 ${
                                                             isFailed 
                                                                 ? 'btn-outline btn-error' 
@@ -2935,6 +2986,12 @@ const ShipmentDetailsPage = () => {
                                                                     : (isRTL ? 'إرسال' : 'Send')}
                                                         </span>
                                                     </button>
+                                                ) : !isSent && isSenderRole ? (
+                                                    <span className="text-[10px] text-warning">{isRTL ? 'الإرسال قيد المعالجة' : 'Dispatch is already queued or in progress'}</span>
+                                                ) : !isSent ? (
+                                                    <span className="text-[10px] text-base-content/50">
+                                                        {isRTL ? 'الإرسال اليدوي متاح من إجراءات القالب المعتمدة فقط' : 'Use the approved receiver action buttons to send a message'}
+                                                    </span>
                                                 ) : (
                                                     <div className="flex items-center gap-1">
                                                         <button
