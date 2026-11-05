@@ -231,6 +231,7 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                             >
                                 <option value="ALL">All Carriers in Report</option>
                                 <option value="DHL">DHL Express (DGR)</option>
+                                <option value="SMSA">SMSA Express</option>
                                 <option value="ARAMEX">Aramex</option>
                                 <option value="FEDEX">FedEx</option>
                             </select>

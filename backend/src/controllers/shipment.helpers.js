@@ -639,7 +639,7 @@ const syncCarrierTrackingHistory = async (shipment) => {
         }
 
         if ((!tracking || !Array.isArray(tracking.events) || tracking.events.length === 0) && process.env.JEST_WORKER_ID === undefined) {
-            const cleanDigits = String(trackingNumber || '').replace(/^(?:TRK|ARM|DHL|DGR|FED|FDX|OTE)-/i, '').trim();
+            const cleanDigits = String(trackingNumber || '').replace(/^(?:TRK|ARM|DHL|DGR|FED|FDX|OTE|SMSA)-/i, '').trim();
             const universalTracking = require('../services/UniversalTrackingService');
             if (/^[345]\d{10}$/.test(cleanDigits)) {
                 tracking = await universalTracking.getTracking('ARAMEX', cleanDigits).catch(() => null);

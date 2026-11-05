@@ -269,6 +269,7 @@ export const PhenixAuditLogsPage = () => {
                         <option value="FEDEX">FedEx</option>
                         <option value="DHL">DHL / DGR</option>
                         <option value="OTE">LogesTechs / OTE</option>
+                        <option value="SMSA">SMSA Express</option>
                     </select>
 
                     {/* Window Filter */}

@@ -657,7 +657,7 @@ function deriveCarrier(costCenter, carrierTracking = '') {
     if (cc.includes('بري') || cc.includes('LAND')) {
         return 'LAND_FREIGHT';
     }
-    if (cc.includes('SMSA') || trk.startsWith('SMSA')) {
+    if (cc.includes('SMSA') || cc.includes('سمسا') || trk.startsWith('SMSA') || trk.startsWith('290') || (trk.length === 12 && (cc.includes('SAUDI') || cc.includes('سعودية')))) {
         return 'SMSA';
     }
     if (cc.includes('FEDEX') || cc.includes('FEEDEX') || cc.startsWith('FED') || trk.startsWith('FED') || (/^\d{12}$/.test(trk) && !cc.includes('ARAMEX') && !cc.includes('DHL'))) {
@@ -1145,7 +1145,7 @@ class PhenixSyncService {
                     origin: { countryCode: 'KW' },
                     destination: { countryCode: v.destCountryCode },
                     carrierCode: v.derivedCarrier,
-                    serviceCode: v.derivedCarrier === 'DGR' ? 'P' : 'STD'
+                    serviceCode: v.derivedCarrier === 'DGR' ? 'P' : (v.derivedCarrier === 'SMSA' ? 'DLV' : 'STD')
                 });
 
                 const phenixParcels = v.weightKg > 0 ? [{
@@ -1175,7 +1175,7 @@ class PhenixSyncService {
                             trackingNumber,
                             phenixSourceKey: sourceKey,
                             carrierCode: v.derivedCarrier,
-                            serviceCode: v.derivedCarrier === 'DGR' ? 'P' : 'STD',
+                            serviceCode: v.derivedCarrier === 'DGR' ? 'P' : (v.derivedCarrier === 'SMSA' ? 'DLV' : 'STD'),
                             shipmentType: 'package',
                             status: 'booked',
                             dhlTrackingNumber: v.carrierTracking || null,
