@@ -38,10 +38,7 @@ async function main() {
         createdAt: { gte: fromDate }
     };
     if (targetCarrier !== 'ALL') {
-        whereShipments.OR = [
-            { carrierCode: targetCarrier },
-            { carrier: targetCarrier }
-        ];
+        whereShipments.carrierCode = targetCarrier;
     }
 
     const dbShipments = await prisma.shipment.findMany({
@@ -119,8 +116,7 @@ async function main() {
                 id: { in: misclassifiedSmsa.map(s => s.id) }
             },
             data: {
-                carrierCode: 'SMSA',
-                carrier: 'SMSA'
+                carrierCode: 'SMSA'
             }
         });
         console.log(`✅ Updated ${misclassifiedSmsa.length} shipments to SMSA!`);

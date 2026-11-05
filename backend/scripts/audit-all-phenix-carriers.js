@@ -7,18 +7,40 @@ async function audit() {
     console.log('🔍 PHENIX ERP TOTAL CARRIER AUDIT & DISCOVERY');
     console.log('===============================================================\n');
 
-    const daysBack = parseInt(process.argv[2], 10) || 120;
-    console.log(`1. Fetching operational bills from Phenix ERP API (past ${daysBack} days)...`);
+    const totalDays = parseInt(process.argv[2], 10) || 60;
+    const CHUNK_SIZE = 60; // Max allowed by Phenix service is 62 days
+    console.log(`1. Fetching operational bills from Phenix ERP API (past ${totalDays} days in chunks)...`);
     
     let rawBills = [];
-    try {
-        const report = await phenixSync.fetchPhenixReportData({ daysBack });
-        rawBills = report.rows || [];
-        console.log(`✅ Received ${rawBills.length} total bills from Phenix ERP.`);
-    } catch (e) {
-        console.error(`❌ Failed to fetch from Phenix ERP API: ${e.message}`);
-        console.log('Attempting to audit existing shipments from database...');
+    const seenBillIds = new Set();
+
+    // Iterate in chunks of up to 60 days
+    for (let offset = 0; offset < totalDays; offset += CHUNK_SIZE) {
+        const chunkDays = Math.min(CHUNK_SIZE, totalDays - offset);
+        const anchorDate = new Date(Date.now() - offset * 24 * 60 * 60 * 1000);
+        console.log(`   Fetching chunk: days ${offset} to ${offset + chunkDays} ago...`);
+        try {
+            const report = await phenixSync.fetchPhenixReportData({
+                date: anchorDate,
+                daysBack: chunkDays
+            });
+            const rows = report.rows || [];
+            let added = 0;
+            for (const r of rows) {
+                const id = r.bill_id || r.bill_detailCustomField_1;
+                if (!seenBillIds.has(id)) {
+                    seenBillIds.add(id);
+                    rawBills.push(r);
+                    added++;
+                }
+            }
+            console.log(`   -> Found ${rows.length} rows (${added} unique added)`);
+        } catch (e) {
+            console.error(`   ⚠️ Failed to fetch chunk from Phenix ERP API: ${e.message}`);
+            break;
+        }
     }
+    console.log(`✅ Total distinct bills fetched: ${rawBills.length}`);
 
     if (rawBills.length > 0) {
         const costCenterCounts = {};
