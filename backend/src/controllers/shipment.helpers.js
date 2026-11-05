@@ -685,11 +685,11 @@ const syncCarrierTrackingHistory = async (shipment) => {
         sortedEvents.forEach((event) => {
             const rawStatus = event.statusCode || event.status || event.description || tracking?.status || 'transit';
             let normalizedStatus = normalizeCarrierStatus(event.status || event.description || rawStatus, carrierCode, event.statusCode);
-            if (normalizedStatus === 'in_transit' && event.description) {
-                const descNorm = normalizeStatus(event.description);
-                if (descNorm && descNorm !== 'in_transit') {
-                    normalizedStatus = descNorm;
-                }
+            const descNorm = event.description ? normalizeStatus(event.description) : null;
+            if (descNorm && ['exception', 'returned', 'cancelled'].includes(descNorm)) {
+                normalizedStatus = descNorm;
+            } else if (normalizedStatus === 'in_transit' && descNorm && descNorm !== 'in_transit') {
+                normalizedStatus = descNorm;
             }
 
             const historyEntry = {
@@ -747,10 +747,16 @@ const syncCarrierTrackingHistory = async (shipment) => {
 
         // Most recent chronological event
         const latestEvent = sortedEvents[sortedEvents.length - 1];
-        const latestDescIsException = latestEvent && (isNegativeOrExceptionPhrase(latestEvent.description) || normalizeStatus(latestEvent.description) === 'exception');
-        const latestDescIsDelivered = latestEvent && normalizeStatus(latestEvent.description) === 'delivered';
+        const descNorm = latestEvent?.description ? normalizeStatus(latestEvent.description) : null;
+        const latestDescIsNegativeOrTerminal = latestEvent && (
+            isNegativeOrExceptionPhrase(latestEvent.description) ||
+            ['exception', 'returned', 'cancelled'].includes(descNorm)
+        );
+        const latestDescIsDelivered = descNorm === 'delivered';
         const latestRaw = latestEvent 
-            ? (latestDescIsException ? latestEvent.description : (latestDescIsDelivered ? latestEvent.description : (latestEvent.statusCode || latestEvent.status || latestEvent.description))) 
+            ? (latestDescIsNegativeOrTerminal 
+                ? latestEvent.description 
+                : (latestDescIsDelivered ? latestEvent.description : (latestEvent.statusCode || latestEvent.status || latestEvent.description))) 
             : null;
         const latestRawNorm = latestRaw ? normalizeStatus(latestRaw) : null;
 
@@ -767,7 +773,19 @@ const syncCarrierTrackingHistory = async (shipment) => {
         const isCurrentlyTerminal = isTerminalStatus(currentStatus);
 
         if (!isCurrentlyTerminal) {
-            if (anyDelivered || latestCarrierStatus === 'delivered' || highestCarrierStatus === 'delivered') {
+            if (descNorm === 'returned' || latestCarrierStatus === 'returned') {
+                if (currentStatus !== 'returned') {
+                    logger.info(`Detected returned status for ${shipment.trackingNumber}: ${currentStatus} -> returned`);
+                    currentStatus = 'returned';
+                    hasUpdates = true;
+                }
+            } else if (descNorm === 'cancelled' || latestCarrierStatus === 'cancelled') {
+                if (currentStatus !== 'cancelled') {
+                    logger.info(`Detected cancelled status for ${shipment.trackingNumber}: ${currentStatus} -> cancelled`);
+                    currentStatus = 'cancelled';
+                    hasUpdates = true;
+                }
+            } else if (!latestDescIsNegativeOrTerminal && (anyDelivered || latestCarrierStatus === 'delivered' || highestCarrierStatus === 'delivered')) {
                 if (currentStatus !== 'delivered') {
                     logger.info(`Detected delivered status for ${shipment.trackingNumber}: ${currentStatus} -> delivered`);
                     currentStatus = 'delivered';

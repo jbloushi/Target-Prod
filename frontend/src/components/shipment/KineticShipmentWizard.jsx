@@ -208,12 +208,21 @@ const KNOWN_CARRIERS = {
   },
   SMSA: {
     code: 'SMSA',
-    name: 'SMSA Express',
-    badge: 'KSA E-commerce & COD',
-    color: '#059669',
-    bg: '#ECFDF5',
+    name: 'SMSA Express Saudi & GCC',
+    badge: 'Saudi & GCC Express',
+    color: '#FF6600',
+    bg: '#FFF7ED',
     icon: 'local_shipping',
-    desc: 'Saudi Arabia domestic and cross-border e-commerce delivery with COD support.'
+    desc: 'Premier express distribution, B2C e-commerce parcels, and last-mile logistics across Saudi Arabia and GCC.'
+  },
+  SMSAEXPRESS: {
+    code: 'SMSA',
+    name: 'SMSA Express Saudi & GCC',
+    badge: 'Saudi & GCC Express',
+    color: '#FF6600',
+    bg: '#FFF7ED',
+    icon: 'local_shipping',
+    desc: 'Premier express distribution, B2C e-commerce parcels, and last-mile logistics across Saudi Arabia and GCC.'
   },
   OTE: {
     code: 'OTE',

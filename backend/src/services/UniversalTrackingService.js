@@ -53,6 +53,29 @@ class UniversalTrackingService {
             }
         }
 
+        // 1b. SMSA: Official SMSA e-commerce API via SmsaAdapter
+        if (normalizedCarrier === 'SMSA' || normalizedCarrier === 'SMSAEXPRESS') {
+            try {
+                const { normalizeCarrierStatus } = require('../constants/statusConstants');
+                const SmsaAdapter = require('../adapters/SmsaAdapter');
+                const t = await new SmsaAdapter().getTracking(cleanTracking);
+                const events = (t.events || []).map(e => ({
+                    timestamp: e.timestamp,
+                    location: e.location,
+                    description: e.description,
+                    statusCode: e.status
+                }));
+                const last = (t.events || [])[(t.events || []).length - 1];
+                return withMeta({
+                    status: normalizeCarrierStatus(t.description, 'SMSA', t.status || last?.status),
+                    events
+                }, 'smsa_api');
+            } catch (smsaErr) {
+                logger.warn(`[UniversalTracking] SMSA API tracking error for ${cleanTracking}: ${smsaErr.message}`);
+                return withMeta(null, 'smsa_api', smsaErr.message);
+            }
+        }
+
         // 2. ARAMEX / OTE: Direct Public Web Scraper
         if (normalizedCarrier === 'ARAMEX' || normalizedCarrier === 'ARM' || normalizedCarrier === 'OTE') {
             try {

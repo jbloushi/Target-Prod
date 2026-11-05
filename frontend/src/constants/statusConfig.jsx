@@ -128,6 +128,74 @@ export const FEDEX_CHECKPOINT_MAP = {
     ca: 'cancelled',
 };
 
+// Exact SMSA Checkpoint Codes
+export const SMSA_CHECKPOINT_MAP = {
+    'data received': 'booked',
+    'data_rcvd': 'booked',
+    'datarcvd': 'booked',
+    'shipment created': 'booked',
+    'created': 'booked',
+    'b2c_created': 'booked',
+    'c2b_created': 'booked',
+    'order created': 'booked',
+    'manifest generated': 'booked',
+    'pickup scheduled': 'ready_for_pickup',
+    'pickupscheduled': 'ready_for_pickup',
+    'picked up': 'picked_up',
+    'picked': 'picked_up',
+    'collected': 'picked_up',
+    'pu': 'picked_up',
+    'arrived at facility': 'received_at_hub',
+    'arr_fac': 'received_at_hub',
+    'arrived at hub': 'received_at_hub',
+    'received at facility': 'received_at_hub',
+    'in sorting facility': 'received_at_hub',
+    'in transit': 'in_transit',
+    'in_transit': 'in_transit',
+    'intransit': 'in_transit',
+    'departed facility': 'in_transit',
+    'transferred': 'in_transit',
+    'customs clearance': 'in_transit',
+    'out for delivery': 'out_for_delivery',
+    'out_for_delivery': 'out_for_delivery',
+    'out_for_dlv': 'out_for_delivery',
+    'outfordelivery': 'out_for_delivery',
+    'with courier': 'out_for_delivery',
+    'with driver': 'out_for_delivery',
+    'delivered': 'delivered',
+    'dlv': 'delivered',
+    'pod': 'delivered',
+    'delivered to consignee': 'delivered',
+    'shipment delivered': 'delivered',
+    'exception': 'exception',
+    'failed_attempt': 'exception',
+    'delivery failed': 'exception',
+    'failed delivery': 'exception',
+    'undelivered': 'exception',
+    'not delivered': 'exception',
+    'on hold': 'exception',
+    'held': 'exception',
+    'held at customs': 'exception',
+    'premises closed': 'exception',
+    'consignee premises closed': 'exception',
+    'bad address': 'exception',
+    'incorrect address': 'exception',
+    'consignee unavailable': 'exception',
+    'refused': 'exception',
+    'damage': 'exception',
+    'cancelled': 'cancelled',
+    'canceled': 'cancelled',
+    'void': 'cancelled',
+    'returned': 'returned',
+    'return to origin': 'returned',
+    'return to shipper': 'returned',
+    'rto': 'returned',
+    'rto_in_transit': 'rto_in_transit'
+};
+
+export const SMSA_STATUS_MAP = SMSA_CHECKPOINT_MAP;
+
+
 // Maps LogesTechs/OTE status codes → platform status
 export const OTE_STATUS_MAP = {
     created: 'booked',
@@ -197,6 +265,7 @@ export function normalizeStatus(raw) {
     if (OTE_STATUS_MAP[s]) return OTE_STATUS_MAP[s];
     if (ARAMEX_CHECKPOINT_MAP[s]) return ARAMEX_CHECKPOINT_MAP[s];
     if (FEDEX_CHECKPOINT_MAP[s]) return FEDEX_CHECKPOINT_MAP[s];
+    if (SMSA_CHECKPOINT_MAP[s]) return SMSA_CHECKPOINT_MAP[s];
 
     const clean = s.replace(/_/g, ' ');
 
@@ -263,6 +332,8 @@ export function normalizeCarrierStatus(statusText, carrierCode, checkpointCode) 
             if (FEDEX_CHECKPOINT_MAP[c]) return FEDEX_CHECKPOINT_MAP[c];
         } else if (carrier === 'OTE' || carrier === 'LOGESTECHS') {
             if (OTE_STATUS_MAP[c]) return OTE_STATUS_MAP[c];
+        } else if (carrier === 'SMSA' || carrier === 'SMSAEXPRESS') {
+            if (SMSA_CHECKPOINT_MAP[c]) return SMSA_CHECKPOINT_MAP[c];
         }
     }
     return normalizeStatus(statusText || checkpointCode);

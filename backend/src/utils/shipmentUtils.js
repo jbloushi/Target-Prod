@@ -4,6 +4,8 @@ const TRACKING_PREFIXES = {
     INTERNAL: 'TGR',
     OTE: 'TRG',
     LOGESTECHS: 'TRG',
+    SMSA: 'SMS',
+    SMSAEXPRESS: 'SMS',
     DHL: 'DGR',
     DGR: 'DGR'
 };

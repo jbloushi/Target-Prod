@@ -19,6 +19,24 @@ const SERVICE_LABELS = {
     ARAMEX: {
         P: 'Aramex Priority'
     },
+    SMSA: {
+        DLV: 'SMSA Express Door-to-Door Delivery',
+        RTN: 'SMSA Reverse Pickup',
+        EDDL: 'SMSA Express Delivery',
+        EXP: 'SMSA Express Priority',
+        B2C: 'SMSA B2C Standard Delivery',
+        C2B: 'SMSA C2B Reverse Pickup',
+        DOM: 'Target Express (Domestic Delivery)'
+    },
+    SMSAEXPRESS: {
+        DLV: 'SMSA Express Door-to-Door Delivery',
+        RTN: 'SMSA Reverse Pickup',
+        EDDL: 'SMSA Express Delivery',
+        EXP: 'SMSA Express Priority',
+        B2C: 'SMSA B2C Standard Delivery',
+        C2B: 'SMSA C2B Reverse Pickup',
+        DOM: 'Target Express (Domestic Delivery)'
+    },
     OTE: {
         STD: 'OTE Standard',
         DOM: 'Target Express (Domestic Delivery)'
@@ -46,6 +64,7 @@ const getAvailableCarrierCodes = () => CarrierFactory
 const normalizeCarrier = (carrierCode) => {
     const normalized = String(carrierCode || DEFAULT_CARRIER).toUpperCase();
     if (normalized === 'LOGESTECHS') return 'OTE';
+    if (normalized === 'SMSA' || normalized === 'SMSAEXPRESS' || normalized === 'SMSA_EXPRESS') return 'SMSA';
     return normalized;
 };
 

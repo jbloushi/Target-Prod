@@ -174,6 +174,20 @@ class RateCardService {
                 }
             }
 
+            // Optional country->zone sheet (SMSA and other non-DHL carriers):
+            // a sheet named like 'Countries'/'Zones' with columns: Country (ISO-2), Zone.
+            const countryZones = {};
+            const zoneSheetName = workbook.SheetNames.slice(1).find(n => /countr|zone/i.test(n));
+            if (zoneSheetName) {
+                const zoneRows = XLSX.utils.sheet_to_json(workbook.Sheets[zoneSheetName], { header: 1, defval: null });
+                for (let r = 1; r < zoneRows.length; r++) {
+                    const [country, zone] = zoneRows[r] || [];
+                    const iso = String(country || '').trim().toUpperCase();
+                    const z = Number(zone);
+                    if (iso && Number.isFinite(z) && z > 0) countryZones[iso] = z;
+                }
+            }
+
             rateCardData = {
                 id: cleanId,
                 name: String(name).trim(),
@@ -184,6 +198,7 @@ class RateCardService {
                 weightStep: step,
                 brackets,
                 over30KgPerKgRate,
+                ...(Object.keys(countryZones).length ? { countryZones } : {}),
                 createdAt: new Date().toISOString()
             };
         } catch (parseError) {
@@ -321,12 +336,60 @@ class RateCardService {
     }
 
     /**
+     * Helper to normalize 2-letter / 3-letter country codes or country names
+     */
+    normalizeCountryCode(countryInput) {
+        if (!countryInput) return '';
+        const clean = String(countryInput).trim().toUpperCase();
+        const ISO_MAP = {
+            'SA': 'SA', 'SAU': 'SA', 'KSA': 'SA', 'SAUDI ARABIA': 'SA', 'SAUDI': 'SA',
+            'KW': 'KW', 'KWT': 'KW', 'KUWAIT': 'KW',
+            'AE': 'AE', 'ARE': 'AE', 'UAE': 'AE', 'UNITED ARAB EMIRATES': 'AE',
+            'BH': 'BH', 'BHR': 'BH', 'BAHRAIN': 'BH',
+            'QA': 'QA', 'QAT': 'QA', 'QATAR': 'QA',
+            'OM': 'OM', 'OMN': 'OM', 'OMAN': 'OM',
+            'US': 'US', 'USA': 'US', 'UNITED STATES': 'US',
+            'GB': 'GB', 'GBR': 'GB', 'UK': 'GB', 'UNITED KINGDOM': 'GB'
+        };
+        return ISO_MAP[clean] || clean;
+    }
+
+    /**
+     * Resolve SMSA domestic/regional, GCC, and international zones
+     * @param {string} countryInput
+     * @param {Object} [options={}]
+     * @returns {string|number}
+     */
+    resolveSmsaZone(countryInput, options = {}) {
+        const iso = this.normalizeCountryCode(countryInput);
+        const SAUDI_CODES = ['SA', 'SAU', 'KSA'];
+        const GCC_CODES = ['KW', 'KWT', 'AE', 'ARE', 'BH', 'BHR', 'QA', 'QAT', 'OM', 'OMN'];
+
+        const mode = options.mode || (options.numeric ? 'numeric' : (options.named ? 'named' : (options.short ? 'short' : 'named')));
+
+        if (SAUDI_CODES.includes(iso)) {
+            if (mode === 'numeric') return 1;
+            if (mode === 'short') return 'SA';
+            return 'ZONE_SA';
+        }
+        if (GCC_CODES.includes(iso)) {
+            if (mode === 'numeric') return 1;
+            if (mode === 'short') return 'GCC';
+            return 'ZONE_GCC';
+        }
+        if (mode === 'numeric') return 2;
+        if (mode === 'short') return 'INT';
+        return 'ZONE_INT';
+    }
+
+    /**
      * Resolve destination country to carrier zone
      * @param {string} carrierCode - e.g. 'DGR' or 'DHL'
      * @param {string} countryInput - ISO-2 code (e.g. 'US', 'SA') or country name
-     * @returns {number|null} Zone number (1 to 9) or default fallback zone
+     * @param {Object} [card=null] - Rate card definition (optional)
+     * @returns {number|string|null} Zone number or zone code
      */
-    resolveZone(carrierCode, countryInput) {
+    resolveZone(carrierCode, countryInput, card = null) {
         const normalizedCarrier = String(carrierCode || 'DGR').trim().toUpperCase();
         const input = String(countryInput || '').trim().toUpperCase();
         if (!input) return null;
@@ -351,6 +414,45 @@ class RateCardService {
 
             // Default fallback for international destinations if unmapped: Zone 8 (Rest of the World)
             return 8;
+        }
+
+        // SMSA Carrier Zone Resolution
+        if (normalizedCarrier === 'SMSA' || normalizedCarrier === 'SMSAEXPRESS') {
+            const cardZones = card?.countryZones || {};
+            const iso = this.normalizeCountryCode(input);
+
+            // 1. Direct card country mapping (exact or normalized ISO)
+            if (cardZones[input] !== undefined) {
+                const val = cardZones[input];
+                return Number.isFinite(Number(val)) ? Number(val) : val;
+            }
+            if (iso && cardZones[iso] !== undefined) {
+                const val = cardZones[iso];
+                return Number.isFinite(Number(val)) ? Number(val) : val;
+            }
+
+            // 2. Card defaultZone if specified
+            if (card?.defaultZone !== undefined && card?.defaultZone !== null) {
+                const defVal = card.defaultZone;
+                return Number.isFinite(Number(defVal)) ? Number(defVal) : defVal;
+            }
+
+            // 3. Check if card rates are keyed by named zones ('ZONE_SA', 'ZONE_GCC', etc.) or short codes ('SA', 'GCC')
+            const bracketRates = card?.brackets?.[0]?.rates || {};
+            const rateKeys = Object.keys(bracketRates);
+            const hasPrefixedZones = card?.namedZones === true || rateKeys.some(k => k.startsWith('ZONE_'));
+            const hasShortZones = rateKeys.some(k => ['SA', 'GCC', 'INT'].includes(k));
+
+            if (hasPrefixedZones) {
+                return this.resolveSmsaZone(input, { mode: 'named' });
+            }
+            if (hasShortZones) {
+                return this.resolveSmsaZone(input, { mode: 'short' });
+            }
+
+            // 4. Default fallback when no card / numeric default is needed
+            // Default numeric zone: GCC & domestic = 1 (matching backward-compatibility tests), international = 2
+            return this.resolveSmsaZone(input, { mode: 'numeric' });
         }
 
         return null;
@@ -429,7 +531,7 @@ class RateCardService {
             throw new Error(`Rate card '${rateCardId}' not found.`);
         }
 
-        const zone = this.resolveZone(card.carrierCode || carrierCode, countryCode);
+        const zone = this.resolveZone(card.carrierCode || carrierCode, countryCode, card);
         if (!zone) {
             throw new Error(`Could not resolve shipping zone for country '${countryCode}'.`);
         }

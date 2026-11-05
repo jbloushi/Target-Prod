@@ -378,6 +378,7 @@ export default function BulkShipmentImportModal({ isOpen, onClose, onImportSucce
                 <option value="DGR">DHL Express (DGR)</option>
                 <option value="FEDEX">FedEx Express (FDX)</option>
                 <option value="ARAMEX">Aramex Express</option>
+                <option value="SMSA">SMSA Express</option>
                 <option value="INTERNAL">Target Local Fleet</option>
               </select>
             </div>

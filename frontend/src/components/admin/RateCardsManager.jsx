@@ -495,6 +495,7 @@ export const RateCardsManager = () => {
                     <option value="DGR">DGR (DHL Express)</option>
                     <option value="DHL">DHL Direct</option>
                     <option value="ARAMEX">Aramex</option>
+                    <option value="SMSA">SMSA Express</option>
                     <option value="OTE">OTE / LogesTechs</option>
                     <option value="OTHER">Other Carrier</option>
                   </select>

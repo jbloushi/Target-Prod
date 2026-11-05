@@ -54,6 +54,11 @@ module.exports = {
   dhlTestAccountNumber: process.env.DHL_TEST_ACCOUNT_NUMBER || process.env.DHL_ACCOUNT_NUMBER,
   dhlTestApiUrl: process.env.DHL_TEST_API_URL || 'https://express.api.dhl.com/mydhlapi/test',
 
+  // SMSA Express (API key via env only; defaults to sandbox URL when testing)
+  smsaApiKey: process.env.SMSA_API_KEY,
+  smsaApiUrl: process.env.SMSA_API_URL || 'https://ecomapis.smsaexpress.com',
+  smsaTestApiKey: process.env.SMSA_TEST_API_KEY || process.env.SMSA_API_KEY,
+  smsaTestApiUrl: process.env.SMSA_TEST_API_URL || 'https://ecomapis-sandbox.azurewebsites.net',
   // LogesTechs / OTE Production & Test
   logesTechsShipmentBaseUrl: process.env.LOGESTECHS_SHIPMENT_BASE_URL || 'https://apisv2.logestechs.com/api',
   logesTechsFulfillmentBaseUrl: process.env.LOGESTECHS_FULFILLMENT_BASE_URL || 'https://apisv2.logestechs.com/api',

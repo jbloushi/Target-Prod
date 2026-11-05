@@ -18,6 +18,12 @@
       "badge": "GCC Express",
       "active": true
     },
+    "SMSA": {
+      "name": "Target KSA Express (SMSA)",
+      "description": "Saudi Arabia domestic and cross-border e-commerce parcels",
+      "badge": "KSA Express",
+      "active": true
+    },
     "ARAMEX": {
       "name": "Target Regional Express (Aramex)",
       "description": "Middle East regional parcels and express courier",
@@ -32,7 +38,8 @@
   },
   "carrierEnvironments": {
     "DHL": "test",
-    "OTE": "test"
+    "OTE": "test",
+    "SMSA": "test"
   },
   "whatsapp": {
     "enabled": true,

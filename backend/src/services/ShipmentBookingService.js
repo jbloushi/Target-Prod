@@ -371,7 +371,7 @@ class ShipmentBookingService {
                 if (!updateData.invoiceUrl) {
                     try {
                         const { generateCarrierInvoicePdf } = require('../utils/carrierPdfMock');
-                        const carrierName = carrierCode === 'DGR' ? 'DHL Express' : (carrierCode === 'FEDEX' ? 'FedEx' : (carrierCode === 'ARAMEX' ? 'Aramex' : carrierCode));
+                        const carrierName = carrierCode === 'DGR' ? 'DHL Express' : (carrierCode === 'FEDEX' ? 'FedEx' : (carrierCode === 'ARAMEX' ? 'Aramex' : (carrierCode === 'SMSA' ? 'SMSA Express' : carrierCode)));
                         const invBase64 = generateCarrierInvoicePdf(
                             { ...freshShipment, dhlTrackingNumber: carrierTrackingNumber, carrierShipmentId },
                             carrierName

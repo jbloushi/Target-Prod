@@ -556,6 +556,7 @@ const getOrganizationOverview = async (organizationId, creditLimit = 0, currency
         if (orgShipments.length > 0) {
             const carrierLabels = {
                 'ARAMEX': 'Aramex Express',
+                'SMSA': 'SMSA Express',
                 'DHL': 'DHL Express',
                 'DGR': 'DHL Express (DGR)',
                 'FEDEX': 'FedEx International',

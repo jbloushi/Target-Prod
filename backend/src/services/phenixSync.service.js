@@ -639,7 +639,7 @@ function normalizePhenixPhone(raw) {
  * Derive carrier code from Phenix Cost_Center and Tracking Number pattern
  * @param {string} costCenter
  * @param {string} [carrierTracking]
- * @returns {'DGR'|'ARAMEX'|'FEDEX'|'OTE'|'IW_EXPRESS'|'MANUAL'}
+ * @returns {'DGR'|'ARAMEX'|'FEDEX'|'OTE'|'SMSA'|'IW_EXPRESS'|'MANUAL'}
  */
 function deriveCarrier(costCenter, carrierTracking = '') {
     const cc = String(costCenter || '').toUpperCase().trim();
@@ -656,6 +656,9 @@ function deriveCarrier(costCenter, carrierTracking = '') {
     }
     if (cc.includes('بري') || cc.includes('LAND')) {
         return 'LAND_FREIGHT';
+    }
+    if (cc.includes('SMSA') || trk.startsWith('SMSA')) {
+        return 'SMSA';
     }
     if (cc.includes('FEDEX') || cc.includes('FEEDEX') || cc.startsWith('FED') || trk.startsWith('FED') || (/^\d{12}$/.test(trk) && !cc.includes('ARAMEX') && !cc.includes('DHL'))) {
         return 'FEDEX';
@@ -876,6 +879,7 @@ class PhenixSyncService {
                 if (targetCarrier === 'ARAMEX' && v.derivedCarrier !== 'ARAMEX') continue;
                 if (targetCarrier === 'FEDEX' && v.derivedCarrier !== 'FEDEX') continue;
                 if (targetCarrier === 'OTE' && v.derivedCarrier !== 'OTE') continue;
+                if (targetCarrier === 'SMSA' && v.derivedCarrier !== 'SMSA') continue;
             }
 
             totalMatched++;
@@ -1069,6 +1073,7 @@ class PhenixSyncService {
                 if (targetCarrier === 'ARAMEX' && v.derivedCarrier !== 'ARAMEX') continue;
                 if (targetCarrier === 'FEDEX' && v.derivedCarrier !== 'FEDEX') continue;
                 if (targetCarrier === 'OTE' && v.derivedCarrier !== 'OTE') continue;
+                if (targetCarrier === 'SMSA' && v.derivedCarrier !== 'SMSA') continue;
             }
 
             summary.matchedCount++;

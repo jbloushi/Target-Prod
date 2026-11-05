@@ -3,6 +3,7 @@ const FedexAdapter = require('../adapters/FedexAdapter');
 const AramexAdapter = require('../adapters/AramexAdapter');
 const LogesTechsAdapter = require('../adapters/LogesTechsAdapter');
 const InternalAdapter = require('../adapters/InternalAdapter');
+const SmsaAdapter = require('../adapters/SmsaAdapter');
 
 const INTERNAL_CAPABILITIES = InternalAdapter.capabilities;
 
@@ -14,7 +15,7 @@ const EXTERNAL_CAPABILITIES = (code) => ({
     supportsCancellation: false,
     supportsLabelGeneration: true,
     supportsExternalApi: true,
-    supportsConversionTarget: ['DGR', 'OTE', 'FEDEX', 'ARAMEX'].includes(String(code || '').toUpperCase())
+    supportsConversionTarget: ['DGR', 'OTE', 'FEDEX', 'ARAMEX', 'SMSA'].includes(String(code || '').toUpperCase())
 });
 
 const CARRIER_REGISTRY = [
@@ -54,6 +55,14 @@ const CARRIER_REGISTRY = [
         capabilities: EXTERNAL_CAPABILITIES('ARAMEX')
     },
     {
+        code: 'SMSA',
+        name: 'SMSA Express',
+        active: true,
+        trackingPrefix: 'SMSA',
+        defaultServiceCode: 'DLV',
+        capabilities: { ...EXTERNAL_CAPABILITIES('SMSA') }
+    },
+    {
         code: 'OTE',
         name: 'OTE',
         active: true,
@@ -86,6 +95,7 @@ const normalizeCarrierCode = (carrierCode) => {
     if (code === 'FDX') return 'FEDEX';
     if (code === 'ARM') return 'ARAMEX';
     if (code === 'LOGESTECHS') return 'OTE';
+    if (code === 'SMSA' || code === 'SMSAEXPRESS' || code === 'SMSA_EXPRESS') return 'SMSA';
     if (code === 'MAN' || code === 'MANUAL') return 'INTERNAL';
     return code;
 };
@@ -153,7 +163,7 @@ class CarrierFactory {
             try {
                 const { getSystemSettings } = require('./systemSettings.service');
                 const carrierEnvs = getSystemSettings()?.carrierEnvironments;
-                const envForCarrier = (code === 'OTE' || code === 'LOGESTECHS') ? carrierEnvs?.OTE : carrierEnvs?.DHL;
+                const envForCarrier = (code === 'OTE' || code === 'LOGESTECHS') ? carrierEnvs?.OTE : (code === 'SMSA' ? (carrierEnvs?.SMSA || carrierEnvs?.DHL) : carrierEnvs?.DHL);
                 if (envForCarrier) resolvedEnv = envForCarrier;
             } catch {
                 // fallback to production
@@ -173,6 +183,9 @@ class CarrierFactory {
 
             case 'ARAMEX':
                 return new AramexAdapter(resolvedConfig);
+
+            case 'SMSA':
+                return new SmsaAdapter(resolvedConfig);
 
             case 'OTE':
                 return new LogesTechsAdapter(resolvedConfig);

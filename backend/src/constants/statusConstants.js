@@ -106,7 +106,82 @@ const FEDEX_CHECKPOINT_MAP = {
     'ca': 'cancelled',
 };
 
-// Maps LogesTechs/OTE status codes → platform status
+// Maps SMSA checkpoint and status codes → platform status
+const SMSA_CHECKPOINT_MAP = {
+    // Booked / Created
+    'data received': 'booked',
+    'data_rcvd': 'booked',
+    'datarcvd': 'booked',
+    'shipment created': 'booked',
+    'created': 'booked',
+    'b2c_created': 'booked',
+    'c2b_created': 'booked',
+    'order created': 'booked',
+    'manifest generated': 'booked',
+    // Pickup
+    'pickup scheduled': 'ready_for_pickup',
+    'pickupscheduled': 'ready_for_pickup',
+    'picked up': 'picked_up',
+    'picked': 'picked_up',
+    'collected': 'picked_up',
+    'pu': 'picked_up',
+    // Received at hub
+    'arrived at facility': 'received_at_hub',
+    'arr_fac': 'received_at_hub',
+    'arrived at hub': 'received_at_hub',
+    'received at facility': 'received_at_hub',
+    'in sorting facility': 'received_at_hub',
+    // In transit
+    'in transit': 'in_transit',
+    'in_transit': 'in_transit',
+    'intransit': 'in_transit',
+    'departed facility': 'in_transit',
+    'transferred': 'in_transit',
+    'customs clearance': 'in_transit',
+    // Out for delivery
+    'out for delivery': 'out_for_delivery',
+    'out_for_delivery': 'out_for_delivery',
+    'out_for_dlv': 'out_for_delivery',
+    'outfordelivery': 'out_for_delivery',
+    'with courier': 'out_for_delivery',
+    'with driver': 'out_for_delivery',
+    // Delivered
+    'delivered': 'delivered',
+    'dlv': 'delivered',
+    'pod': 'delivered',
+    'delivered to consignee': 'delivered',
+    'shipment delivered': 'delivered',
+    // Exception
+    'exception': 'exception',
+    'failed_attempt': 'exception',
+    'delivery failed': 'exception',
+    'failed delivery': 'exception',
+    'undelivered': 'exception',
+    'not delivered': 'exception',
+    'on hold': 'exception',
+    'held': 'exception',
+    'held at customs': 'exception',
+    'premises closed': 'exception',
+    'consignee premises closed': 'exception',
+    'bad address': 'exception',
+    'incorrect address': 'exception',
+    'consignee unavailable': 'exception',
+    'refused': 'exception',
+    'damage': 'exception',
+    // Cancelled
+    'cancelled': 'cancelled',
+    'canceled': 'cancelled',
+    'void': 'cancelled',
+    // Returned
+    'returned': 'returned',
+    'return to origin': 'returned',
+    'return to shipper': 'returned',
+    'rto': 'returned',
+    'rto_in_transit': 'rto_in_transit'
+};
+
+const SMSA_STATUS_MAP = SMSA_CHECKPOINT_MAP;
+
 const OTE_STATUS_MAP = {
     'created': 'booked',
     'pending_customer_care_approval': 'booked',
@@ -143,14 +218,16 @@ const LEGACY_STATUS_MAP = {
 };
 
 const EXCEPTION_KEYWORDS = [
-    'undeliver', 'not delivered', 'failed', 'premises closed', 'consignee premises closed',
+    'undeliver', 'not delivered', 'unsuccessful', 'failed', 'premises closed', 'consignee premises closed',
     'on hold', 'held', 'delay', 'incomplete', 'damage', 'clearance delay',
     'contacted consignee', 'consignee unavailable', 'consignee not available', 'not available',
-    'consignee refused', 'refused',
+    'consignee refused', 'refused', 'rejected', 'customer rejected',
     'bad address', 'address incorrect', 'incorrect address', 'incorrect delivery address',
     'updated delivery address required',
     'not at home', 'customer not home', 'consignee not home',
-    'delivery attempt failed', 'rescheduled', 'reschedule', 'rescheduling',
+    'delivery attempt failed', 'delivery attempt could not', 'could not deliver', 'unable to deliver',
+    'delivery postponed', 'postponed', 'aborted', 'delivery aborted', 'shipment lost',
+    'rescheduled', 'reschedule', 'rescheduling',
     'action required', 'emergency',
     'delivery exception', 'exception', 'failure',
     'unreachable', 'not reachable', 'unable to access', 'premises locked',
@@ -158,7 +235,7 @@ const EXCEPTION_KEYWORDS = [
     'not signed', 'unable to sign', 'unable to obtain signature', 'no signature',
     'delivery attempted', 'attempted delivery', 'notice left', 'consignee moved',
     'consignee has moved', 'moved from the address', 'further consignee information',
-    'delivery attempt could not', 'could not be completed',
+    'could not be completed',
     'payment pending', 'requested hold', 'hold requested', 'hold at location',
     'later delivery', 'customs delay'
 ];
@@ -211,7 +288,12 @@ function normalizeStatus(raw) {
         return 'returned';
     }
 
-    // 3. POSITIVE MILESTONES (STRICT WORD MATCHING)
+    // 3. CANCEL PHRASES
+    if (clean.includes('cancel')) {
+        return 'cancelled';
+    }
+
+    // 4. POSITIVE MILESTONES (STRICT WORD MATCHING)
     if (clean.includes('out for delivery') || clean.includes('for delivery') || clean.includes('with courier') || clean.includes('with driver') || clean.includes('delivery champion') || s === 'od') {
         return 'out_for_delivery';
     }
@@ -239,11 +321,8 @@ function normalizeStatus(raw) {
     if (clean.includes('picked up') || clean.includes('picked') || clean.includes('collected') || s === 'pu') {
         return 'picked_up';
     }
-    if (clean.includes('in transit') || clean.includes('transit') || clean.includes('flight') || clean.includes('transferred') || s === 'sh' || clean.includes('custom')) {
+    if (clean.includes('in transit') || clean.includes('transit') || clean.includes('flight') || clean.includes('transferred') || s === 'sh' || /\bcustoms?\b/i.test(clean)) {
         return 'in_transit';
-    }
-    if (clean.includes('cancel')) {
-        return 'cancelled';
     }
     if (clean.includes('book') || clean.includes('creat')) {
         return 'booked';
@@ -257,16 +336,35 @@ function normalizeStatus(raw) {
  */
 function normalizeCarrierStatus(statusText, carrierCode, checkpointCode) {
     const carrier = String(carrierCode || '').toUpperCase();
-    if (checkpointCode) {
-        const c = String(checkpointCode).toLowerCase().trim();
+    const rawCheckpoint = checkpointCode ? String(checkpointCode).toLowerCase().trim() : '';
+    const rawText = statusText ? String(statusText).toLowerCase().trim() : '';
+    const combined = `${rawText} ${rawCheckpoint}`.trim();
+
+    // Strict exception precedence: negative phrases like undelivered, not delivered, failed, held, returned
+    // evaluate to exception or returned and NEVER to delivered.
+    if (isNegativeOrExceptionPhrase(combined)) {
+        return 'exception';
+    }
+    if (combined.includes('returned') || combined.includes('return to origin') || combined.includes('return to shipper') || /\brto\b/i.test(combined)) {
+        return 'returned';
+    }
+    if (combined.includes('cancel')) {
+        return 'cancelled';
+    }
+
+    if (rawCheckpoint) {
         if (carrier === 'DGR' || carrier === 'DHL') {
-            if (DHL_CHECKPOINT_MAP[c]) return DHL_CHECKPOINT_MAP[c];
+            if (DHL_CHECKPOINT_MAP[rawCheckpoint]) return DHL_CHECKPOINT_MAP[rawCheckpoint];
         } else if (carrier === 'ARAMEX') {
-            if (ARAMEX_CHECKPOINT_MAP[c]) return ARAMEX_CHECKPOINT_MAP[c];
+            if (ARAMEX_CHECKPOINT_MAP[rawCheckpoint]) return ARAMEX_CHECKPOINT_MAP[rawCheckpoint];
         } else if (carrier === 'FEDEX') {
-            if (FEDEX_CHECKPOINT_MAP[c]) return FEDEX_CHECKPOINT_MAP[c];
+            if (FEDEX_CHECKPOINT_MAP[rawCheckpoint]) return FEDEX_CHECKPOINT_MAP[rawCheckpoint];
+        } else if (carrier === 'SMSA' || carrier === 'SMSAEXPRESS') {
+            if (SMSA_CHECKPOINT_MAP[rawCheckpoint]) return SMSA_CHECKPOINT_MAP[rawCheckpoint];
+            const cleanCp = rawCheckpoint.replace(/_/g, ' ');
+            if (SMSA_CHECKPOINT_MAP[cleanCp]) return SMSA_CHECKPOINT_MAP[cleanCp];
         } else if (carrier === 'OTE' || carrier === 'LOGESTECHS') {
-            if (OTE_STATUS_MAP[c]) return OTE_STATUS_MAP[c];
+            if (OTE_STATUS_MAP[rawCheckpoint]) return OTE_STATUS_MAP[rawCheckpoint];
         }
     }
     return normalizeStatus(statusText || checkpointCode);
@@ -317,6 +415,8 @@ module.exports = {
     ARAMEX_CHECKPOINT_MAP,
     FEDEX_CHECKPOINT_MAP,
     OTE_STATUS_MAP,
+    SMSA_CHECKPOINT_MAP,
+    SMSA_STATUS_MAP,
     LEGACY_STATUS_MAP,
     normalizeStatus,
     normalizeCarrierStatus,

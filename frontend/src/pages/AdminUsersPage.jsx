@@ -24,6 +24,10 @@ const CARRIER_SERVICE_OPTIONS = {
     ],
     OTE: [
         { serviceCode: 'STD', serviceName: 'OTE Standard' }
+    ],
+    SMSA: [
+        { serviceCode: 'DLV', serviceName: 'SMSA Express Delivery', value: 'DLV', label: 'SMSA Express Delivery' },
+        { serviceCode: 'RTN', serviceName: 'SMSA Reverse Return', value: 'RTN', label: 'SMSA Reverse Return' }
     ]
 };
 
@@ -1208,7 +1212,8 @@ const AdminUsersPage = () => {
                                                     { code: 'MANUAL', name: 'Manual Shipment', active: true },
                                                     { code: 'DGR', name: 'DHL Express (DGR)', active: true },
                                                     { code: 'ARAMEX', name: 'Aramex', active: true },
-                                                    { code: 'OTE', name: 'LogesTechs (OTE)', active: true }
+                                                    { code: 'OTE', name: 'LogesTechs (OTE)', active: true },
+                                                    { code: 'SMSA', name: 'SMSA Express', active: true }
                                                 ]).map(carrier => (
                                                     <option key={carrier.code} value={carrier.code}>
                                                         {carrier.code === 'MANUAL' ? 'Manual Shipment' : carrier.name}

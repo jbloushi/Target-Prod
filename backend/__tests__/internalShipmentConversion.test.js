@@ -75,11 +75,14 @@ describe('Internal shipment conversion service', () => {
         expect(CarrierFactory.getCarrierCapabilities('OTE')).toEqual(expect.objectContaining({
             supportsConversionTarget: true
         }));
+        expect(CarrierFactory.getCarrierCapabilities('SMSA')).toEqual(expect.objectContaining({
+            supportsConversionTarget: true
+        }));
         expect(CarrierFactory.getCarrierCapabilities('INTERNAL')).toEqual(expect.objectContaining({
             supportsConversionTarget: false
         }));
 
-        expect(InternalShipmentConversionService.getConversionTargetCarriers().map(carrier => carrier.code)).toEqual(['DGR', 'FEDEX', 'ARAMEX', 'OTE']);
+        expect(InternalShipmentConversionService.getConversionTargetCarriers().map(carrier => carrier.code)).toEqual(['DGR', 'FEDEX', 'ARAMEX', 'SMSA', 'OTE']);
     });
 
     it('converts an internal shipment in place without booking the carrier', async () => {

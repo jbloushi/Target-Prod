@@ -9,8 +9,10 @@ const CARRIERS_CONFIG = [
     { code: 'DGR', name: 'DHL Express (DGR)' },
     { code: 'FEDEX', name: 'FedEx Express (FDX)' },
     { code: 'ARAMEX', name: 'Aramex Express' },
-    { code: 'INTERNAL', name: 'Target Local Fleet' }
+    { code: 'INTERNAL', name: 'Target Local Fleet' },
+    { code: 'SMSA', name: 'SMSA Express', defaultServices: ['DLV', 'RTN'], trackingUrl: 'https://www.smsaexpress.com/track/{trackingNumber}' }
 ];
+CARRIERS_CONFIG.SMSA = { name: 'SMSA Express', defaultServices: ['DLV', 'RTN'], trackingUrl: 'https://www.smsaexpress.com/track/{trackingNumber}' };
 
 const AdminOrganizationsPage = () => {
     const navigate = useNavigate();
@@ -44,7 +46,7 @@ const AdminOrganizationsPage = () => {
         creditLimit: 0,
         active: true,
         markup: { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 },
-        allowedCarriers: { allowed: ['DGR', 'FEDEX', 'ARAMEX', 'INTERNAL'], defaultCarrier: 'DGR' }
+        allowedCarriers: { allowed: ['DGR', 'FEDEX', 'ARAMEX', 'INTERNAL', 'SMSA'], defaultCarrier: 'DGR' }
     });
 
     const [selectedMemberToAdd, setSelectedMemberToAdd] = useState('');
@@ -682,7 +684,7 @@ const AdminOrganizationsPage = () => {
                             </div>
                             <div className="grid grid-cols-2 gap-2 text-xs">
                                 {CARRIERS_CONFIG.map((c) => {
-                                    const currentAllowed = formData.allowedCarriers?.allowed || ['DGR', 'FEDEX', 'ARAMEX', 'INTERNAL'];
+                                    const currentAllowed = formData.allowedCarriers?.allowed || ['DGR', 'FEDEX', 'ARAMEX', 'INTERNAL', 'SMSA'];
                                     const isChecked = currentAllowed.includes(c.code);
                                     return (
                                         <label key={c.code} className="flex items-center gap-2 cursor-pointer p-1.5 rounded-lg hover:bg-base-200/80">

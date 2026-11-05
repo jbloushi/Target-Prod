@@ -15,7 +15,7 @@ class CarrierReconciliationService {
         }
 
         const trackingNumbers = records
-            .map(r => (r.trackingNumber || r.awb || '').trim())
+            .map(r => (r.trackingNumber || r.carrierShipmentId || r.waybillNumber || r.awb || '').trim())
             .filter(Boolean);
 
         if (trackingNumbers.length === 0) {
@@ -69,7 +69,7 @@ class CarrierReconciliationService {
         const results = [];
 
         for (const record of records) {
-            const rawAwb = (record.trackingNumber || record.awb || '').trim();
+            const rawAwb = (record.trackingNumber || record.carrierShipmentId || record.waybillNumber || record.awb || '').trim();
             const billedAmount = parseFloat(record.billedAmount || record.amount || 0);
             const billedWeight = record.billedWeight ? parseFloat(record.billedWeight) : null;
             const currency = record.currency || 'KWD';

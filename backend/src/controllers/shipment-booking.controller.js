@@ -82,8 +82,8 @@ exports.getQuotes = async (req, res) => {
                         packages: req.body.packages
                     });
                     rawQuotes = [{
-                        serviceName: `DHL Express Worldwide (${rateCardResult.rateCardName})`,
-                        serviceCode: serviceCode || 'P',
+                        serviceName: ` (${rateCardResult.rateCardName})`,
+                        serviceCode: serviceCode || (carrierCode === 'SMSA' ? 'EDDL' : 'P'),
                         carrierCode,
                         totalPrice: rateCardResult.totalPrice,
                         currency: rateCardResult.currency || 'KWD',

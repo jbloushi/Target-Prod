@@ -59,6 +59,20 @@ const renderCarrierLogo = (carrier) => {
         );
     }
 
+    // SMSA Express
+    if (code === 'SMSA' || code === 'SMSAEXPRESS' || name.includes('smsa')) {
+        return (
+            <div className="w-12 h-12 bg-[#ea580c] rounded-xl flex flex-col items-center justify-center p-1 shadow-xs shrink-0 select-none">
+                <span className="text-white font-black text-sm tracking-tighter uppercase font-sans">
+                    SMSA
+                </span>
+                <span className="text-white/90 text-[7px] font-bold tracking-widest uppercase">
+                    Express
+                </span>
+            </div>
+        );
+    }
+
     // Internal Fleet / Target Network
     if (code === 'MAN' || code === 'INTERNAL' || name.includes('internal') || name.includes('fleet')) {
         return (
@@ -92,6 +106,9 @@ const getCarrierBarGradient = (carrier) => {
     }
     if (code === 'PST' || code === 'POSTA' || name.includes('posta')) {
         return 'bg-gradient-to-r from-[#0284c7] to-[#0ea5e9]';
+    }
+    if (code === 'SMSA' || code === 'SMSAEXPRESS' || name.includes('smsa')) {
+        return 'bg-gradient-to-r from-[#ea580c] to-[#f97316]';
     }
     if (code === 'MAN' || code === 'INTERNAL' || name.includes('internal')) {
         return 'bg-gradient-to-r from-emerald-600 to-teal-500';

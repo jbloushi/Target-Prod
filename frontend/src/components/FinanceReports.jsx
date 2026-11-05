@@ -1208,6 +1208,7 @@ const FinanceReports = ({ ledger = [], shipments = [], organizations = [], onOpe
                                 <option value="DHL">DHL Express (شحن جوي دولي)</option>
                                 <option value="FEDEX">FedEx Express (فيديكس إكسبريس)</option>
                                 <option value="ARAMEX">Aramex (أرامكس)</option>
+                                <option value="SMSA">SMSA Express (سمسا إكسبريس)</option>
                                 <option value="DGR">DGR Logistics (شحن بضائع خطرة)</option>
                                 <option value="GENERIC">{lang === 'ar' ? 'ناقل آخر' : 'Generic / Other Carrier'}</option>
                             </select>

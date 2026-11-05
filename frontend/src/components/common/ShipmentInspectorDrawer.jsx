@@ -12,6 +12,8 @@ const CARRIER_INFO_MAP = {
     'DHL': { name: 'DHL Express', nameAr: 'دي إتش إل إكسبريس', badge: 'badge-error' },
     'ARM': { name: 'Aramex', nameAr: 'أرامكس', badge: 'badge-warning' },
     'ARAMEX': { name: 'Aramex', nameAr: 'أرامكس', badge: 'badge-warning' },
+    'SMSA': { name: 'SMSA Express', nameAr: 'سمسا إكسبريس', badge: 'badge-warning' },
+    'SMSAEXPRESS': { name: 'SMSA Express', nameAr: 'سمسا إكسبريس', badge: 'badge-warning' },
     'FDX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'badge-secondary' },
     'FEDEX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'badge-secondary' },
     'OTE': { name: 'OTE Logistics', nameAr: 'أو تي إي', badge: 'badge-info' },

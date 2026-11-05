@@ -40,6 +40,13 @@ const STANDARD_ACCOUNTS = [
   { code: '7010', name: 'Foreign Exchange Gain / Loss (IAS 21)', type: 'REVENUE', subType: 'FX', currency: 'KWD', isSystem: true, description: 'Realized and unrealized currency conversion variance' }
 ];
 
+const VENDORS = [
+  { name: 'DHL Express Kuwait', code: 'DHL', carrierCode: 'DGR', currency: 'KWD', contactPerson: 'DHL Corporate Accounts', email: 'billing@dhl.com', termsDays: 30 },
+  { name: 'LogesTechs Last-Mile Fleet', code: 'LOGESTECHS', carrierCode: 'OTE', currency: 'KWD', contactPerson: 'LogesTechs Billing', email: 'finance@logestechs.com', termsDays: 15 },
+  { name: 'Target Internal Courier Fleet', code: 'TARGET_INTERNAL', carrierCode: 'INTERNAL', currency: 'KWD', contactPerson: 'Dispatch Ops', email: 'fleet@target-kw.com', termsDays: 0 },
+  { name: 'SMSA Express', code: 'SMSA', carrierCode: 'SMSA', currency: 'KWD', contactPerson: 'SMSA Corporate Accounts', email: 'billing@smsaexpress.com', termsDays: 30 }
+];
+
 async function seedAccounting() {
   console.log('🌱 Starting Enterprise Accounting Seed...');
   await prisma.$connect();
@@ -86,11 +93,6 @@ async function seedAccounting() {
 
   // 3. Seed Default Carriers as Vendors
   console.log('🚚 Seeding Carrier Vendors...');
-  const VENDORS = [
-    { name: 'DHL Express Kuwait', code: 'DHL', carrierCode: 'DGR', currency: 'KWD', contactPerson: 'DHL Corporate Accounts', email: 'billing@dhl.com', termsDays: 30 },
-    { name: 'LogesTechs Last-Mile Fleet', code: 'LOGESTECHS', carrierCode: 'OTE', currency: 'KWD', contactPerson: 'LogesTechs Billing', email: 'finance@logestechs.com', termsDays: 15 },
-    { name: 'Target Internal Courier Fleet', code: 'TARGET_INTERNAL', carrierCode: 'INTERNAL', currency: 'KWD', contactPerson: 'Dispatch Ops', email: 'fleet@target-kw.com', termsDays: 0 }
-  ];
 
   for (const v of VENDORS) {
     await prisma.vendor.upsert({
@@ -106,7 +108,7 @@ async function seedAccounting() {
       create: v
     });
   }
-  console.log('✅ Seeded Carrier Vendors (DHL, LogesTechs, Fleet).');
+  console.log('✅ Seeded Carrier Vendors (DHL, LogesTechs, Fleet, SMSA).');
 
   // 4. Seed Current Open Accounting Period
   console.log('📅 Seeding Current Accounting Period...');
@@ -149,4 +151,4 @@ if (require.main === module) {
     .finally(() => prisma.$disconnect());
 }
 
-module.exports = { seedAccounting, STANDARD_ACCOUNTS };
+module.exports = { seedAccounting, STANDARD_ACCOUNTS, VENDORS };
