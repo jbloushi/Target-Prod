@@ -657,10 +657,10 @@ function deriveCarrier(costCenter, carrierTracking = '') {
     if (cc.includes('بري') || cc.includes('LAND')) {
         return 'LAND_FREIGHT';
     }
-    if (cc.includes('SMSA') || cc.includes('سمسا') || trk.startsWith('SMSA') || trk.startsWith('290') || (trk.length === 12 && (cc.includes('SAUDI') || cc.includes('سعودية')))) {
+    if (cc.includes('SMSA') || cc.includes('سمسا') || trk.startsWith('SMSA') || /^29\d{10}$/.test(trk) || trk.startsWith('29') || (trk.length === 12 && (cc.includes('SAUDI') || cc.includes('سعودية')))) {
         return 'SMSA';
     }
-    if (cc.includes('FEDEX') || cc.includes('FEEDEX') || cc.startsWith('FED') || trk.startsWith('FED') || (/^\d{12}$/.test(trk) && !cc.includes('ARAMEX') && !cc.includes('DHL'))) {
+    if (cc.includes('FEDEX') || cc.includes('FEEDEX') || cc.startsWith('FED') || trk.startsWith('FED') || (/^\d{12}$/.test(trk) && !trk.startsWith('29') && !cc.includes('ARAMEX') && !cc.includes('DHL') && !cc.includes('SMSA'))) {
         return 'FEDEX';
     }
     if (cc.includes('ARAMEX') || cc.includes('ARM') || (trk.startsWith('38') && (trk.length === 10 || trk.length === 11))) {

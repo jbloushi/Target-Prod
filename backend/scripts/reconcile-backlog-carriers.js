@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { prisma } = require('../src/config/database');
 const phenixSyncService = require('../src/services/phenixSync.service');
-const { syncCarrierTrackingHistory, resolveCarrierTrackingNumber } = require('../controllers/shipment.helpers');
+const { syncCarrierTrackingHistory, resolveCarrierTrackingNumber } = require('../src/controllers/shipment.helpers');
 
 async function main() {
     const isDryRun = !process.argv.includes('--apply');
@@ -102,6 +102,30 @@ async function main() {
 
     // 3. Live Apply
     console.log('\n⚡ LIVE EXECUTION: Synchronizing Phenix bills and updating live carrier checkpoints...');
+    // Also repair any previously imported 29... shipments misclassified as FEDEX:
+    const misclassifiedSmsa = await prisma.shipment.findMany({
+        where: {
+            OR: [
+                { dhlTrackingNumber: { startsWith: '29' } },
+                { trackingNumber: { startsWith: '29' } }
+            ],
+            carrierCode: { not: 'SMSA' }
+        }
+    });
+    if (misclassifiedSmsa.length > 0) {
+        console.log(`🔄 Re-classifying ${misclassifiedSmsa.length} shipments with 29... tracking from ${misclassifiedSmsa[0].carrierCode} to SMSA...`);
+        await prisma.shipment.updateMany({
+            where: {
+                id: { in: misclassifiedSmsa.map(s => s.id) }
+            },
+            data: {
+                carrierCode: 'SMSA',
+                carrier: 'SMSA'
+            }
+        });
+        console.log(`✅ Updated ${misclassifiedSmsa.length} shipments to SMSA!`);
+    }
+
     const syncResult = await phenixSyncService.syncPhenixShipments({
         daysBack,
         carrier: targetCarrier,
