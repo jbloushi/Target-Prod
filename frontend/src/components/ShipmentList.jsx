@@ -92,11 +92,17 @@ const toRowShape = (s) => {
   };
 
   const resolveCarrierCode = () => {
-    if (s.carrierCode) return s.carrierCode.toUpperCase();
-    if (s.carrier) return s.carrier.toUpperCase();
-    if (s.dhlTrackingNumber || s.serviceType?.toLowerCase().includes('dhl') || s.service?.toLowerCase().includes('dhl')) return 'DHL';
-    if (s.serviceType?.toLowerCase().includes('aramex') || s.service?.toLowerCase().includes('aramex')) return 'ARM';
-    if (s.serviceType?.toLowerCase().includes('fedex') || s.service?.toLowerCase().includes('fedex')) return 'FDX';
+    const raw = (s.carrierCode || s.carrier || '').toUpperCase().trim();
+    if (raw) return raw;
+    const trk = String(s.dhlTrackingNumber || s.trackingNumber || '').replace(/^(?:TRK|ARM|DHL|DGR|FED|FDX|OTE|SMSA)-/i, '').trim();
+    if (/^29\d{10}$/.test(trk) || trk.startsWith('SMSA') || trk.startsWith('29')) return 'SMSA';
+    if (/^[345]\d{9,11}$/.test(trk) || s.serviceType?.toLowerCase().includes('aramex') || s.service?.toLowerCase().includes('aramex')) return 'ARAMEX';
+    if (/^\d{12}$/.test(trk) || s.serviceType?.toLowerCase().includes('fedex') || s.service?.toLowerCase().includes('fedex')) return 'FEDEX';
+    if (/^\d{10}$/.test(trk) || s.serviceType?.toLowerCase().includes('dhl') || s.service?.toLowerCase().includes('dhl')) return 'DHL';
+    if (/^PP/i.test(trk)) return 'POSTA_PLUS';
+    if (/^IW/i.test(trk)) return 'IW_EXPRESS';
+    if (/^TRG/i.test(trk) || /^OTE/i.test(trk)) return 'OTE';
+    if (/^TKW/i.test(trk)) return 'INTERNAL';
     return null;
   };
 

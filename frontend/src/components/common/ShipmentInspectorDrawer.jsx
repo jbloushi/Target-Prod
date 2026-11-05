@@ -8,18 +8,22 @@ import { dedupeTrackingEvents } from '../../utils/dedupeTrackingEvents';
 import NativeChatDrawer from '../support/NativeChatDrawer';
 
 const CARRIER_INFO_MAP = {
-    'DGR': { name: 'DHL Express', nameAr: 'دي إتش إل إكسبريس', badge: 'badge-error' },
-    'DHL': { name: 'DHL Express', nameAr: 'دي إتش إل إكسبريس', badge: 'badge-error' },
-    'ARM': { name: 'Aramex', nameAr: 'أرامكس', badge: 'badge-warning' },
-    'ARAMEX': { name: 'Aramex', nameAr: 'أرامكس', badge: 'badge-warning' },
-    'SMSA': { name: 'SMSA Express', nameAr: 'سمسا إكسبريس', badge: 'badge-warning' },
-    'SMSAEXPRESS': { name: 'SMSA Express', nameAr: 'سمسا إكسبريس', badge: 'badge-warning' },
-    'FDX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'badge-secondary' },
-    'FEDEX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'badge-secondary' },
-    'OTE': { name: 'OTE Logistics', nameAr: 'أو تي إي', badge: 'badge-info' },
-    'LOGESTECHS': { name: 'OTE Logistics', nameAr: 'أو تي إي', badge: 'badge-info' },
-    'MAN': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'badge-primary' },
-    'INTERNAL': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'badge-primary' },
+    'DGR': { name: 'DHL Express', nameAr: 'دي إتش إل إكسبريس', badge: 'bg-amber-100 text-amber-950 border border-amber-300' },
+    'DHL': { name: 'DHL Express', nameAr: 'دي إتش إل إكسبريس', badge: 'bg-amber-100 text-amber-950 border border-amber-300' },
+    'ARM': { name: 'Aramex', nameAr: 'أرامكس', badge: 'bg-rose-100 text-rose-950 border border-rose-300' },
+    'ARAMEX': { name: 'Aramex', nameAr: 'أرامكس', badge: 'bg-rose-100 text-rose-950 border border-rose-300' },
+    'SMSA': { name: 'SMSA Express', nameAr: 'سمسا إكسبريس', badge: 'bg-orange-100 text-orange-950 border border-orange-300' },
+    'SMSAEXPRESS': { name: 'SMSA Express', nameAr: 'سمسا إكسبريس', badge: 'bg-orange-100 text-orange-950 border border-orange-300' },
+    'FDX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'bg-purple-100 text-purple-950 border border-purple-300' },
+    'FEDEX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'bg-purple-100 text-purple-950 border border-purple-300' },
+    'OTE': { name: 'Target GCC (OTE)', nameAr: 'تارجت الخليج (OTE)', badge: 'bg-sky-100 text-sky-950 border border-sky-300' },
+    'LOGESTECHS': { name: 'Target GCC (OTE)', nameAr: 'تارجت الخليج (OTE)', badge: 'bg-sky-100 text-sky-950 border border-sky-300' },
+    'POSTA_PLUS': { name: 'Posta Plus', nameAr: 'بوستا بلس', badge: 'bg-teal-100 text-teal-950 border border-teal-300' },
+    'POSTAPLUS': { name: 'Posta Plus', nameAr: 'بوستا بلس', badge: 'bg-teal-100 text-teal-950 border border-teal-300' },
+    'IW_EXPRESS': { name: 'IW Express', nameAr: 'آي دبليو إكسبريس', badge: 'bg-emerald-100 text-emerald-950 border border-emerald-300' },
+    'IWEXPRESS': { name: 'IW Express', nameAr: 'آي دبليو إكسبريس', badge: 'bg-emerald-100 text-emerald-950 border border-emerald-300' },
+    'MAN': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'bg-indigo-100 text-indigo-950 border border-indigo-300' },
+    'INTERNAL': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'bg-indigo-100 text-indigo-950 border border-indigo-300' },
 };
 
 /**
@@ -51,7 +55,20 @@ export const ShipmentInspectorDrawer = ({
     const trackingNumber = shipment.trackingNumber || '—';
     const rawStatus = shipment.status || 'draft';
     const status = normalizeStatus(rawStatus);
-    const carrierCode = shipment.carrierCode || shipment.carrier || (shipment.serviceType?.toLowerCase().includes('dhl') ? 'DHL' : shipment.serviceType?.toLowerCase().includes('fedex') ? 'FEDEX' : shipment.serviceType?.toLowerCase().includes('aramex') ? 'ARAMEX' : null);
+    const carrierCode = (() => {
+        const raw = (shipment.carrierCode || shipment.carrier || '').toUpperCase().trim();
+        if (raw) return raw;
+        const trk = String(shipment.dhlTrackingNumber || shipment.trackingNumber || '').replace(/^(?:TRK|ARM|DHL|DGR|FED|FDX|OTE|SMSA)-/i, '').trim();
+        if (/^29\d{10}$/.test(trk) || trk.startsWith('SMSA') || trk.startsWith('29')) return 'SMSA';
+        if (/^[345]\d{9,11}$/.test(trk) || shipment.serviceType?.toLowerCase().includes('aramex') || shipment.service?.toLowerCase().includes('aramex')) return 'ARAMEX';
+        if (/^\d{12}$/.test(trk) || shipment.serviceType?.toLowerCase().includes('fedex') || shipment.service?.toLowerCase().includes('fedex')) return 'FEDEX';
+        if (/^\d{10}$/.test(trk) || shipment.serviceType?.toLowerCase().includes('dhl') || shipment.service?.toLowerCase().includes('dhl')) return 'DHL';
+        if (/^PP/i.test(trk)) return 'POSTA_PLUS';
+        if (/^IW/i.test(trk)) return 'IW_EXPRESS';
+        if (/^TRG/i.test(trk) || /^OTE/i.test(trk)) return 'OTE';
+        if (/^TKW/i.test(trk)) return 'INTERNAL';
+        return null;
+    })();
     const origin = shipment.origin || { city: shipment.originCity || 'Kuwait City', country: shipment.originCountry || 'KW' };
     const destination = shipment.destination || { city: shipment.destCity || 'Riyadh', country: shipment.destCountry || 'SA' };
     const originCityLabel = origin?.city || origin?.formattedAddress || (isRTL ? 'مركز الانطلاق' : 'Origin Hub');

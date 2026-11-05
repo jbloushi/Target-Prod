@@ -1029,6 +1029,10 @@ exports.getAllShipments = async (req, res) => {
             shipmentListQuery.select = {
                 id: true,
                 trackingNumber: true,
+                dhlTrackingNumber: true,
+                carrierCode: true,
+                serviceType: true,
+                serviceCode: true,
                 status: true,
                 createdAt: true,
                 estimatedDelivery: true,
@@ -1038,6 +1042,9 @@ exports.getAllShipments = async (req, res) => {
                 paid: true,
                 totalPaid: true,
                 price: true,
+                documents: true,
+                history: true,
+                pricingSnapshot: true,
                 user: { select: { id: true, name: true, email: true, role: true } },
                 organization: { select: { id: true, name: true } }
             };
