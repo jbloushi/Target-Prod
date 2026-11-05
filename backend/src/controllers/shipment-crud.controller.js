@@ -1031,7 +1031,6 @@ exports.getAllShipments = async (req, res) => {
                 trackingNumber: true,
                 dhlTrackingNumber: true,
                 carrierCode: true,
-                serviceType: true,
                 serviceCode: true,
                 status: true,
                 createdAt: true,
