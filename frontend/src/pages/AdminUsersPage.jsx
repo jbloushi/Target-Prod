@@ -321,6 +321,17 @@ const AdminUsersPage = () => {
                 delete payload.carrierConfig.pricingByCarrier.DGR;
             }
 
+            const currentSmsaPricing = payload.carrierConfig.pricingByCarrier.SMSA || {};
+            if (currentSmsaPricing.pricingModel === 'RATE_CARD' && currentSmsaPricing.rateCardId) {
+                payload.carrierConfig.pricingByCarrier.SMSA = {
+                    pricingModel: 'RATE_CARD',
+                    rateCardId: String(currentSmsaPricing.rateCardId).toUpperCase(),
+                    currency: 'SAR'
+                };
+            } else {
+                delete payload.carrierConfig.pricingByCarrier.SMSA;
+            }
+
             if (editingUser?.id) {
                 const userUpdatePayload = { ...payload };
                 const rawPassword = userUpdatePayload.password ? String(userUpdatePayload.password).trim() : '';
@@ -1318,6 +1329,73 @@ const AdminUsersPage = () => {
                                                                 {card.name} ({card.carrierCode || 'DGR'})
                                                             </option>
                                                         ))}
+                                                    </select>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {(formData.shippingAccess?.carrierCode === 'SMSA' || formData.carrierConfig?.preferredCarrier === 'SMSA') && (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                            <div>
+                                                <label className="text-[11px] font-bold text-base-content/60 block mb-1">
+                                                    {lang === 'ar' ? 'طريقة التسعير' : 'Pricing Model'}
+                                                </label>
+                                                <select
+                                                    value={formData.carrierConfig?.pricingByCarrier?.SMSA?.pricingModel || (formData.carrierConfig?.pricingByCarrier?.SMSA?.rateCardId ? 'RATE_CARD' : 'STANDARD')}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        const nextSmsa = { ...(formData.carrierConfig?.pricingByCarrier?.SMSA || {}) };
+                                                        nextSmsa.pricingModel = val;
+                                                        if (val === 'STANDARD') {
+                                                            nextSmsa.rateCardId = null;
+                                                        } else if (val === 'RATE_CARD' && !nextSmsa.rateCardId) {
+                                                            const firstSmsa = availableRateCards.find(c => (c.carrierCode || '').toUpperCase() === 'SMSA');
+                                                            nextSmsa.rateCardId = firstSmsa ? firstSmsa.id : '';
+                                                        }
+                                                        updateNested('carrierConfig', 'pricingByCarrier', {
+                                                            ...(formData.carrierConfig?.pricingByCarrier || {}),
+                                                            SMSA: nextSmsa
+                                                        });
+                                                    }}
+                                                    className="select select-sm select-bordered w-full text-xs font-semibold"
+                                                >
+                                                    <option value="STANDARD">{lang === 'ar' ? 'تسعير مباشر (API) + هامش ربح' : 'Live Carrier API + Markup'}</option>
+                                                    <option value="RATE_CARD">{lang === 'ar' ? 'جدول أسعار تعاقدي (Rate Card)' : 'Contract Rate Card (Selling Price)'}</option>
+                                                </select>
+                                            </div>
+                                            {(formData.carrierConfig?.pricingByCarrier?.SMSA?.pricingModel === 'RATE_CARD' || formData.carrierConfig?.pricingByCarrier?.SMSA?.rateCardId) && (
+                                                <div>
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <label className="text-[11px] font-bold text-base-content/60">
+                                                            {lang === 'ar' ? 'جدول الأسعار المعتمد' : 'Assigned Rate Card'}
+                                                        </label>
+                                                        <a href="/settings?tab=ratecards" target="_blank" rel="noreferrer" className="text-[10px] text-primary hover:underline">
+                                                            {lang === 'ar' ? 'إدارة البطاقات ↗' : 'Manage Cards ↗'}
+                                                        </a>
+                                                    </div>
+                                                    <select
+                                                        value={formData.carrierConfig?.pricingByCarrier?.SMSA?.rateCardId || (availableRateCards.find(c => (c.carrierCode || '').toUpperCase() === 'SMSA')?.id || '')}
+                                                        onChange={(e) => {
+                                                            const nextSmsa = { ...(formData.carrierConfig?.pricingByCarrier?.SMSA || {}) };
+                                                            nextSmsa.rateCardId = e.target.value;
+                                                            nextSmsa.pricingModel = 'RATE_CARD';
+                                                            updateNested('carrierConfig', 'pricingByCarrier', {
+                                                                ...(formData.carrierConfig?.pricingByCarrier || {}),
+                                                                SMSA: nextSmsa
+                                                            });
+                                                        }}
+                                                        className="select select-sm select-bordered w-full text-xs font-semibold text-primary"
+                                                    >
+                                                        {availableRateCards.filter(c => !c.carrierCode || c.carrierCode.toUpperCase() === 'SMSA').length > 0 ? (
+                                                            availableRateCards.filter(c => !c.carrierCode || c.carrierCode.toUpperCase() === 'SMSA').map(card => (
+                                                                <option key={card.id} value={card.id}>
+                                                                    {card.name} ({card.carrierCode || 'SMSA'})
+                                                                </option>
+                                                            ))
+                                                        ) : (
+                                                            <option value="">{lang === 'ar' ? 'لا توجد بطاقات أسعار لـ SMSA' : 'No SMSA Rate Cards Found'}</option>
+                                                        )}
                                                     </select>
                                                 </div>
                                             )}
