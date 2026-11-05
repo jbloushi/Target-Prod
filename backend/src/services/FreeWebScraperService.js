@@ -186,6 +186,18 @@ class FreeWebScraperService {
             logger.warn(`[FreeWebScraper] Aramex scrape failed for ${cleanAwb}: ${err.message}`);
         }
 
+        // If HTTP/HTML scrape did not find checkpoints (e.g. Akamai bot protection or SPA rendering),
+        // invoke the headless browser fallback which navigates and intercepts the internal search JSON API
+        try {
+            const AramexHeadlessScraper = require('./AramexHeadlessScraper');
+            const headlessResult = await AramexHeadlessScraper.scrapeAwb(cleanAwb);
+            if (headlessResult && headlessResult.events && headlessResult.events.length > 0) {
+                return headlessResult;
+            }
+        } catch (hErr) {
+            logger.debug(`[FreeWebScraper] Aramex headless scraper fallback note: ${hErr.message}`);
+        }
+
         return {
             status: 'in_transit',
             events: []

@@ -59,6 +59,9 @@
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.3",
     "mathjs": "^15.1.1",
+    "puppeteer-core": "^25.16.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "uuid": "^13.0.0",
     "winston": "^3.17.0",
     "xlsx": "^0.18.5"
