@@ -434,7 +434,13 @@ class SmsaAdapter extends CarrierAdapter {
     async getTracking(trackingNumber) {
         this._requireValue(trackingNumber, 'trackingNumber');
         const cleanAwb = String(trackingNumber).replace(/^SMSA-?/i, '').trim();
-        const data = await this.trackSingle(cleanAwb);
+        let data = null;
+        try {
+            data = await this.queryB2CShipment(cleanAwb);
+        } catch (queryErr) {
+            data = await this.trackSingle(cleanAwb).catch(() => null);
+            if (!data && queryErr) throw queryErr;
+        }
         const history = Array.isArray(data?.history) ? data.history : (Array.isArray(data?.events) ? data.events : []);
 
         const events = history.filter(h => h && typeof h === 'object').map((h) => {
