@@ -262,7 +262,7 @@ export const TargetLogisticsWizard = ({
         carrierCode: carrier,
         carrierId: carrier,
         serviceCode: sCode,
-        serviceName: sCode === 'Y' ? 'DHL Express 12:00' : (carrier === 'INTERNAL' ? 'Target Dedicated Fleet' : 'DHL Express Global'),
+        serviceName: sCode === 'Y' ? 'DHL Express 12:00' : (carrier === 'INTERNAL' ? 'Target Dedicated Fleet' : (['SMSA', 'SMSAEXPRESS'].includes(carrier) ? 'SMSA Express Saudi & GCC' : 'DHL Express Global')),
         quotedPrice: shipment.price || 18.5,
         currency: shipment.currency || 'KWD',
         selectedAddons: activeAddons,
@@ -276,7 +276,7 @@ export const TargetLogisticsWizard = ({
       carrierCode: assignedCarrier,
       carrierId: assignedCarrier,
       serviceCode: assignedService,
-      serviceName: assignedService === 'Y' ? 'DHL Express 12:00' : (assignedCarrier === 'INTERNAL' ? 'Target Dedicated Fleet' : 'DHL Express Global'),
+      serviceName: assignedService === 'Y' ? 'DHL Express 12:00' : (assignedCarrier === 'INTERNAL' ? 'Target Dedicated Fleet' : (['SMSA', 'SMSAEXPRESS'].includes(assignedCarrier) ? 'SMSA Express Saudi & GCC' : 'DHL Express Global')),
       quotedPrice: 18.5,
       currency: 'KWD',
       selectedAddons: [],
@@ -406,7 +406,7 @@ export const TargetLogisticsWizard = ({
           carrierCode: clientCarrier || prev.carrierCode,
           carrierId: clientCarrier || prev.carrierId,
           serviceCode: clientService || prev.serviceCode,
-          serviceName: clientService === 'Y' ? 'DHL Express 12:00' : (clientCarrier === 'INTERNAL' ? 'Target Dedicated Fleet' : 'DHL Express Global')
+          serviceName: clientService === 'Y' ? 'DHL Express 12:00' : (clientCarrier === 'INTERNAL' ? 'Target Dedicated Fleet' : (['SMSA', 'SMSAEXPRESS'].includes(clientCarrier) ? 'SMSA Express Saudi & GCC' : 'DHL Express Global'))
         }));
       }
     }
@@ -440,7 +440,7 @@ export const TargetLogisticsWizard = ({
           carrierCode: orgCarrier || prev.carrierCode,
           carrierId: orgCarrier || prev.carrierId,
           serviceCode: orgService || prev.serviceCode,
-          serviceName: orgService === 'Y' ? 'DHL Express 12:00' : (orgCarrier === 'INTERNAL' ? 'Target Dedicated Fleet' : 'DHL Express Global')
+          serviceName: orgService === 'Y' ? 'DHL Express 12:00' : (orgCarrier === 'INTERNAL' ? 'Target Dedicated Fleet' : (['SMSA', 'SMSAEXPRESS'].includes(orgCarrier) ? 'SMSA Express Saudi & GCC' : 'DHL Express Global'))
         }));
       }
     }
@@ -928,6 +928,7 @@ export const TargetLogisticsWizard = ({
     if (service.carrierCode === 'INTERNAL') return 4.5;
     if (service.carrierCode === 'FEDEX') return 21.75;
     if (service.carrierCode === 'ARAMEX') return 14.25;
+    if (service.carrierCode === 'SMSA' || service.carrierCode === 'SMSAEXPRESS') return 12.5;
     return 18.5; // Fallback default when live quote is unavailable
   }, [service.carrierCode, quoteRates]);
 
@@ -3016,6 +3017,7 @@ export const TargetLogisticsWizard = ({
                     { id: 'DGR', name: 'DHL Express Global', desc: 'Worldwide express air · door-to-door delivery · full IATA DGR dangerous goods handling', price: '18.500', time: '1–3 business days', icon: 'flight_takeoff', color: '#D40511', bg: '#fef2f2' },
                     { id: 'FEDEX', name: 'FedEx Express Global', desc: 'Global priority air · automated customs clearance · worldwide coverage', price: '21.750', time: '2–4 business days', icon: 'flight', color: '#4D148C', bg: '#f5f3ff' },
                     { id: 'ARAMEX', name: 'Aramex Priority', desc: 'Regional express & GCC ground network · reliable door-to-door delivery', price: '14.250', time: '2–4 business days', icon: 'local_shipping', color: '#E31837', bg: '#fff1f2' },
+                    { id: 'SMSA', name: 'SMSA Express Saudi & GCC', desc: 'Premier express distribution, B2C e-commerce parcels, & GCC last-mile network', price: '12.500', time: '2–3 business days', icon: 'local_shipping', color: '#FF6600', bg: '#FFF7ED' },
                     { id: 'INTERNAL', name: 'Target Dedicated Fleet', desc: 'Domestic same-day courier dispatch · Kuwait nationwide delivery network', price: '4.500', time: 'Same day delivery', icon: 'electric_rickshaw', color: '#059669', bg: '#ecfdf5' }
                   ].map(c => {
                     const isSelected = service.carrierCode === c.id;
