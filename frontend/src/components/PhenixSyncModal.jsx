@@ -235,6 +235,8 @@ const PhenixSyncModal = ({ isOpen, onClose, onSyncSuccess }) => {
                                 <option value="ARAMEX">Aramex</option>
                                 <option value="FEDEX">FedEx</option>
                                 <option value="OTE">LogesTechs (OTE)</option>
+                                <option value="POSTA_PLUS">Posta Plus</option>
+                                <option value="IW_EXPRESS">IW Express</option>
                             </select>
                         </div>
 

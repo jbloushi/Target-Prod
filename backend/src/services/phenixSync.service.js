@@ -645,7 +645,7 @@ function deriveCarrier(costCenter, carrierTracking = '') {
     const cc = String(costCenter || '').toUpperCase().trim();
     const trk = String(carrierTracking || '').trim().toUpperCase();
 
-    if (cc.includes('POSTA PLUS') || cc.includes('POSTAPLUS') || trk.startsWith('PP')) {
+    if (cc.includes('POSTA PLUS') || cc.includes('POSTAPLUS') || cc.includes('بوستا') || cc.includes('POSTA') || trk.startsWith('PP')) {
         return 'POSTA_PLUS';
     }
     if (cc.includes('TKW') || trk.startsWith('TKW')) {
@@ -672,7 +672,7 @@ function deriveCarrier(costCenter, carrierTracking = '') {
     if (cc.includes('OTE') || cc.includes('LOGESTECHS')) {
         return 'OTE';
     }
-    if (cc.includes('IW.EXPRESS') || cc.includes('IW EXPRESS')) {
+    if (cc.includes('IW.EXPRESS') || cc.includes('IW EXPRESS') || cc.includes('IW') || cc.includes('اي دبليو') || trk.startsWith('IW')) {
         return 'IW_EXPRESS';
     }
     return 'DGR';
@@ -880,6 +880,8 @@ class PhenixSyncService {
                 if (targetCarrier === 'FEDEX' && v.derivedCarrier !== 'FEDEX') continue;
                 if (targetCarrier === 'OTE' && v.derivedCarrier !== 'OTE') continue;
                 if (targetCarrier === 'SMSA' && v.derivedCarrier !== 'SMSA') continue;
+                if ((targetCarrier === 'POSTA_PLUS' || targetCarrier === 'POSTAPLUS') && v.derivedCarrier !== 'POSTA_PLUS') continue;
+                if ((targetCarrier === 'IW_EXPRESS' || targetCarrier === 'IW') && v.derivedCarrier !== 'IW_EXPRESS') continue;
             }
 
             totalMatched++;
@@ -1074,6 +1076,8 @@ class PhenixSyncService {
                 if (targetCarrier === 'FEDEX' && v.derivedCarrier !== 'FEDEX') continue;
                 if (targetCarrier === 'OTE' && v.derivedCarrier !== 'OTE') continue;
                 if (targetCarrier === 'SMSA' && v.derivedCarrier !== 'SMSA') continue;
+                if ((targetCarrier === 'POSTA_PLUS' || targetCarrier === 'POSTAPLUS') && v.derivedCarrier !== 'POSTA_PLUS') continue;
+                if ((targetCarrier === 'IW_EXPRESS' || targetCarrier === 'IW') && v.derivedCarrier !== 'IW_EXPRESS') continue;
             }
 
             summary.matchedCount++;
