@@ -122,19 +122,57 @@ async function main() {
         console.log(`✅ Updated ${misclassifiedSmsa.length} shipments to SMSA!`);
     }
 
-    const syncResult = await phenixSyncService.syncPhenixShipments({
-        daysBack,
-        carrier: targetCarrier,
-        sendWhatsApp: false, // do not spam historical recipients
-        onlyComplete: true
+    // 3b. Attempt Phenix sync if Phenix ERP is reachable, gracefully continue if down
+    try {
+        const syncResult = await phenixSyncService.syncPhenixShipments({
+            daysBack,
+            carrier: targetCarrier,
+            sendWhatsApp: false,
+            onlyComplete: true
+        });
+        console.log('\n✅ Ingestion Results:');
+        console.log('   - New Shipments Created: ' + syncResult.createdCount);
+        console.log('   - Existing Shipments Updated: ' + syncResult.updatedCount);
+        console.log('   - Carrier Checkpoints Synced: ' + syncResult.carrierSyncedCount);
+    } catch (phenixErr) {
+        console.warn('\n⚠️ Phenix ERP server unreachable (' + phenixErr.message + '). Continuing to direct carrier sync...');
+    }
+
+    // 4. Synchronize carrier tracking history directly from carrier APIs for shipments in database
+    console.log('\n📡 Synchronizing carrier tracking history directly from carrier APIs/scrapers...');
+    const shipmentsToSync = await prisma.shipment.findMany({
+        where: whereShipments,
+        orderBy: { createdAt: 'desc' },
+        take: 300
     });
 
-    console.log(`\n✅ Ingestion Results:`);
-    console.log(`   - New Shipments Created: ${syncResult.createdCount}`);
-    console.log(`   - Existing Shipments Updated: ${syncResult.updatedCount}`);
-    console.log(`   - Carrier Checkpoints Synced: ${syncResult.carrierSyncedCount}`);
+    let syncedCount = 0;
+    let failedCount = 0;
 
-    console.log('\n===============================================================');
+    for (const sh of shipmentsToSync) {
+        const trk = resolveCarrierTrackingNumber(sh);
+        if (!trk) continue;
+        try {
+            const updates = await syncCarrierTrackingHistory(sh);
+            if (updates && updates.history && updates.history.length > 0) {
+                await prisma.shipment.update({
+                    where: { id: sh.id },
+                    data: {
+                        status: updates.status || sh.status,
+                        history: updates.history
+                    }
+                });
+                syncedCount++;
+                console.log('   [' + (sh.carrierCode || 'CARRIER') + '] ' + sh.trackingNumber + ' (' + trk + ') -> ' + updates.status + ' (' + updates.history.length + ' checkpoints)');
+            }
+        } catch (e) {
+            failedCount++;
+            console.log('   [' + (sh.carrierCode || 'CARRIER') + '] ' + sh.trackingNumber + ' sync note: ' + e.message);
+        }
+    }
+    console.log('\n📊 Checkpoints Sync Summary: ' + syncedCount + ' shipments updated with live tracking, ' + failedCount + ' errors/pending.\n');
+
+    console.log('===============================================================');
     console.log('🎉 LIVE RECONCILIATION COMPLETE');
     console.log('===============================================================\n');
 }

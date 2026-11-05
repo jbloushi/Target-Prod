@@ -434,38 +434,70 @@ class SmsaAdapter extends CarrierAdapter {
     async getTracking(trackingNumber) {
         this._requireValue(trackingNumber, 'trackingNumber');
         const cleanAwb = String(trackingNumber).replace(/^SMSA-?/i, '').trim();
-        let data = null;
-        try {
-            data = await this.queryB2CShipment(cleanAwb);
-        } catch (queryErr) {
-            data = await this.trackSingle(cleanAwb).catch(() => null);
-            if (!data && queryErr) throw queryErr;
-        }
-        const history = Array.isArray(data?.history) ? data.history : (Array.isArray(data?.events) ? data.events : []);
+        let trackData = null;
+        let b2cData = null;
 
-        const events = history.filter(h => h && typeof h === 'object').map((h) => {
-            const code = h.checkpointCode || h.statusCode || h.status || '';
-            const desc = h.checkpointDescription || h.description || h.statusDescription || '';
-            const ts = h.timestamp || h.Date || new Date().toISOString();
+        // 1. Try trackSingle first - SMSA returns full Scans array with chronological checkpoints
+        try {
+            trackData = await this.trackSingle(cleanAwb);
+        } catch (tErr) {
+            // trackSingle may fail if not manifested yet
+        }
+
+        // 2. Query B2C as well for additional metadata (like waybill files/parcels) or fallback
+        try {
+            b2cData = await this.queryB2CShipment(cleanAwb);
+        } catch (b2cErr) {
+            // queryB2C may fail for C2B or reverse
+        }
+
+        if (!trackData && !b2cData) {
+            throw new Error('SMSA tracking failed for AWB #' + cleanAwb + ': no tracking or shipment record found');
+        }
+
+        // Parse scans / history events from trackData (Scans) or b2cData
+        const rawScans = Array.isArray(trackData?.Scans) ? trackData.Scans : (
+            Array.isArray(trackData?.history) ? trackData.history : (
+                Array.isArray(b2cData?.history) ? b2cData.history : (
+                    Array.isArray(b2cData?.events) ? b2cData.events : []
+                )
+            )
+        );
+
+        const events = rawScans.filter(h => h && typeof h === 'object').map((h) => {
+            const code = h.ScanType || h.checkpointCode || h.statusCode || h.status || '';
+            const desc = (h.ScanDescription || h.checkpointDescription || h.description || h.statusDescription || '').trim();
+            const ts = h.ScanDateTime || h.timestamp || h.Date || new Date().toISOString();
+            const loc = (h.City || h.location || h.city || '').trim();
             return {
                 statusCode: code,
                 status: code,
                 description: desc,
                 timestamp: ts,
                 localTimestamp: h.localTimestamp || ts,
-                timezoneOffset: h.timezoneOffset || '+03:00',
-                location: h.location || h.city || ''
+                timezoneOffset: h.ScanTimeZone || h.timezoneOffset || '+03:00',
+                location: loc
             };
         });
 
+        // Chronological sort: newest first for display or oldest first
+        const latestScan = events[0] || events[events.length - 1];
+        const statusDesc = latestScan?.description || trackData?.statusDescription || b2cData?.statusDescription || 'Active';
+        const statusCode = latestScan?.statusCode || trackData?.statusCode || 'IN_TRANSIT';
+
         return {
-            status: data?.statusCode || data?.status || 'UNKNOWN',
-            description: data?.statusDescription || data?.description || data?.status || 'No status description',
+            status: statusCode,
+            description: statusDesc,
             carrierCode: this.code,
             trackingNumber: cleanAwb,
-            estimatedDelivery: data?.estimatedDeliveryDate ? new Date(data.estimatedDeliveryDate) : (data?.estimatedDelivery || null),
-            carrierWeight: data?.carrierWeight ?? data?.weight ?? undefined,
-            carrierPieces: data?.carrierPieces ?? data?.parcels ?? data?.pieces ?? undefined,
+            estimatedDelivery: trackData?.estimatedDeliveryDate ? new Date(trackData.estimatedDeliveryDate) : (trackData?.estimatedDelivery || null),
+            carrierWeight: trackData?.weight ?? trackData?.carrierWeight ?? b2cData?.carrierWeight ?? undefined,
+            carrierPieces: trackData?.Pieces ?? trackData?.carrierPieces ?? b2cData?.shipmentParcelsCount ?? undefined,
+            recipientName: trackData?.RecipientName?.trim() || undefined,
+            destinationCity: trackData?.DesinationCity || undefined,
+            destinationCountry: trackData?.DesinationCountry || undefined,
+            originCity: trackData?.OriginCity || undefined,
+            originCountry: trackData?.OriginCountry || undefined,
             events
         };
     }
