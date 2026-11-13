@@ -197,6 +197,7 @@ async function main() {
                 recipientRole: 'sender',
                 templateName: 'shipment_confirmation_2',
                 fallbackEventType: 'shipment_created',
+                manualDispatch: true,
                 disableProviderFallback: true
             });
             const status = result?.results?.[0]?.status || (result?.skipped ? 'skipped' : 'failed');

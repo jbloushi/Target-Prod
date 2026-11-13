@@ -702,13 +702,12 @@ export const integrationService = {
     }
   },
 
-  sendChatwootTestMessage: async ({ trackingNumber, eventType = 'shipment_created', recipientRole, force = true }) => {
+  sendChatwootTestMessage: async ({ trackingNumber, eventType = 'shipment_created', recipientRole = 'sender' }) => {
     try {
       const response = await api.post('integrations/chatwoot/test-message', {
         trackingNumber,
         eventType,
-        recipientRole,
-        force
+        recipientRole
       });
       return response.data;
     } catch (error) {
@@ -1587,8 +1586,7 @@ export const whatsappService = {
     try {
       const response = await api.post(`shipments/${trackingNumber}/whatsapp/send`, {
         eventType: 'shipment_created',
-        templateName: 'shipment_confirmation_2',
-        force: true
+        templateName: 'shipment_confirmation_2'
       });
       return response.data;
     } catch (error) {
@@ -1603,7 +1601,6 @@ export const whatsappService = {
         eventType: 'location_request',
         templateName: 'location_request_v1',
         recipientRole: 'receiver',
-        force: true,
         ...payload
       });
       return response.data;
@@ -1619,7 +1616,6 @@ export const whatsappService = {
         eventType: 'return_portal',
         templateName: 'return_portal_v1',
         recipientRole: 'receiver',
-        force: true,
         ...payload
       });
       return response.data;
@@ -1635,7 +1631,6 @@ export const whatsappService = {
         eventType: 'customer_engagement',
         templateName: 'customer_inquiry_start',
         recipientRole: 'receiver',
-        force: true,
         ...payload
       });
       return response.data;

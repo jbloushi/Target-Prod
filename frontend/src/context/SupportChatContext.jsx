@@ -381,9 +381,9 @@ export const SupportChatProvider = ({ children }) => {
     /**
      * 1-Click action: Send customer GPS pin location request
      */
-    const sendLocationRequest = useCallback(async (trackingNumber, phone, name) => {
+    const sendLocationRequest = useCallback(async (trackingNumber) => {
         try {
-            const res = await supportChatService.requestLocation({ trackingNumber, phone, name });
+            const res = await supportChatService.requestLocation({ trackingNumber });
             if (res?.success) {
                 // Refresh active thread to show newly dispatched template message
                 if (activeConvRef.current?.id) {

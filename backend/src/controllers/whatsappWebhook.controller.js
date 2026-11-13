@@ -1,8 +1,79 @@
 const { getSystemSettings } = require('../services/systemSettings.service');
+const crypto = require('crypto');
 const { prisma } = require('../config/database');
 const whatsappService = require('../services/whatsappIntegration.service');
 const supportEvents = require('../services/supportEvents');
 const logger = require('../utils/logger');
+const LEGACY_VERIFY_TOKENS = new Set([
+    'target_logistics_meta_verify_secret_2026',
+    'change-me-verify-token'
+]);
+const RECEIPT_STATUS_RANK = Object.freeze({
+    PENDING: 0,
+    QUEUED: 0,
+    PROCESSING: 0,
+    SUBMITTED: 1,
+    SENT: 2,
+    FAILED: 3,
+    DELIVERED: 4,
+    READ: 5
+});
+
+function normalizeReceiptStatus(rawStatus) {
+    const raw = String(rawStatus || '').toUpperCase();
+    if (raw.includes('READ')) return 'READ';
+    if (raw.includes('DELIVER') || raw === 'DELIVERY_ACK') return 'DELIVERED';
+    if (raw.includes('FAIL') || raw.includes('ERROR')) return 'FAILED';
+    if (raw.includes('SENT') || raw.includes('SERVER_ACK') || raw.includes('SUBMIT')) return 'SENT';
+    return null;
+}
+
+function canAdvanceReceiptStatus(currentStatus, incomingStatus) {
+    const current = String(currentStatus || '').toUpperCase();
+    if (current === incomingStatus) return true;
+    const currentRank = RECEIPT_STATUS_RANK[current];
+    const incomingRank = RECEIPT_STATUS_RANK[incomingStatus];
+    if (incomingRank === undefined) return false;
+    if (currentRank === undefined) return true;
+    return incomingRank > currentRank;
+}
+
+function statusesThatCanAdvanceTo(incomingStatus) {
+    const incomingRank = RECEIPT_STATUS_RANK[incomingStatus];
+    if (incomingRank === undefined) return [];
+    return Object.entries(RECEIPT_STATUS_RANK)
+        .filter(([, rank]) => rank <= incomingRank)
+        .flatMap(([status]) => [status, status.toLowerCase()]);
+}
+
+function constantTimeEqual(actual, expected) {
+    if (typeof actual !== 'string' || typeof expected !== 'string' || !actual || !expected) return false;
+    const actualBuffer = Buffer.from(actual);
+    const expectedBuffer = Buffer.from(expected);
+    return actualBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+function isValidMetaSignature(req, secret) {
+    if (!secret || !Buffer.isBuffer(req.rawBody)) return false;
+    const provided = req.headers?.['x-hub-signature-256'];
+    if (typeof provided !== 'string' || !provided.startsWith('sha256=')) return false;
+    const expected = `sha256=${crypto.createHmac('sha256', secret).update(req.rawBody).digest('hex')}`;
+    return constantTimeEqual(provided, expected);
+}
+
+function isValidServiceSecret(req, secret) {
+    if (!secret) return false;
+    const provided = req.headers?.['x-whatsapp-webhook-secret'] || req.headers?.['x-webhook-secret'];
+    return constantTimeEqual(provided, secret);
+}
+
+function authenticateStatusWebhook(req, body) {
+    const settings = getSystemSettings()?.whatsapp || {};
+    if (body.object === 'whatsapp_business_account' || body.object === 'whatsapp_account') {
+        return isValidMetaSignature(req, settings.metaAppSecret || process.env.WHATSAPP_META_APP_SECRET);
+    }
+    return isValidServiceSecret(req, process.env.WHATSAPP_WEBHOOK_SHARED_SECRET);
+}
 
 /**
  * GET /api/integrations/whatsapp/webhook
@@ -15,19 +86,14 @@ async function verifyWebhook(req, res) {
         const challenge = req.query['hub.challenge'];
 
         const settings = getSystemSettings()?.whatsapp || {};
-        const validTokens = [
-            settings.webhookVerifyToken,
-            process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN,
-            'target_logistics_meta_verify_secret_2026',
-            'change-me-verify-token'
-        ].filter(Boolean);
+        const expectedToken = settings.webhookVerifyToken || process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
 
-        if (mode === 'subscribe' && token && validTokens.includes(token)) {
-            logger.info(`[Meta Webhook Verified] Successfully responded to Meta hub challenge (token: ${token})`);
+        if (mode === 'subscribe' && !LEGACY_VERIFY_TOKENS.has(token) && constantTimeEqual(token, expectedToken)) {
+            logger.info('[Meta Webhook Verified] Successfully responded to Meta hub challenge');
             return res.status(200).send(challenge);
         }
 
-        logger.warn(`[Meta Webhook Verification Failed] Invalid token supplied: ${token}`);
+        logger.warn('[Meta Webhook Verification Failed] Invalid or unconfigured verification token');
         return res.status(403).json({ error: 'Verification token mismatch' });
     } catch (err) {
         logger.error(`[Webhook Verification Error] ${err.message}`);
@@ -42,6 +108,11 @@ async function verifyWebhook(req, res) {
 async function handleWebhookEvent(req, res) {
     try {
         const body = req.body || {};
+
+        if (!authenticateStatusWebhook(req, body)) {
+            logger.warn('[WhatsApp Status Webhook] Rejected unauthenticated receipt callback');
+            return res.status(401).json({ error: 'Invalid WhatsApp webhook signature or shared secret' });
+        }
 
         // Immediately respond 200 OK to gateway to avoid retries
         res.status(200).json({ status: 'EVENT_RECEIVED' });
@@ -108,12 +179,11 @@ async function handleWebhookEvent(req, res) {
 
         // Apply extracted status updates to Prisma database
         for (const update of statusUpdates) {
-            const raw = String(update.rawStatus || '').toUpperCase();
-            let normalizedStatus = 'SENT';
-            if (raw.includes('READ')) normalizedStatus = 'READ';
-            else if (raw.includes('DELIVER') || raw === 'DELIVERY_ACK') normalizedStatus = 'DELIVERED';
-            else if (raw.includes('FAIL') || raw.includes('ERROR')) normalizedStatus = 'FAILED';
-            else if (raw.includes('SENT') || raw.includes('SERVER_ACK') || raw.includes('SUBMIT')) normalizedStatus = 'SENT';
+            const normalizedStatus = normalizeReceiptStatus(update.rawStatus);
+            if (!normalizedStatus) {
+                logger.info('[WhatsApp Status Webhook] Ignored unrecognized provider receipt status');
+                continue;
+            }
 
             logger.info(`[WhatsApp Status Webhook] Processing receipt: id=${update.id} status=${normalizedStatus}`);
 
@@ -127,8 +197,9 @@ async function handleWebhookEvent(req, res) {
             });
 
             if (existingLog) {
-                // Do not downgrade READ back to DELIVERED or SENT
-                if (existingLog.status === 'READ' && normalizedStatus !== 'READ') {
+                // Provider receipts may arrive out of order; never downgrade progress.
+                if (!canAdvanceReceiptStatus(existingLog.status, normalizedStatus)) {
+                    logger.info(`[WhatsApp Status Webhook] Ignored regressive receipt for log ${existingLog.id}`);
                     continue;
                 }
 
@@ -151,14 +222,22 @@ async function handleWebhookEvent(req, res) {
                     }
                 }
 
-                await prisma.shipmentNotificationLog.update({
-                    where: { id: existingLog.id },
+                const updateResult = await prisma.shipmentNotificationLog.updateMany({
+                    where: {
+                        id: existingLog.id,
+                        status: { in: statusesThatCanAdvanceTo(normalizedStatus) }
+                    },
                     data: {
                         status: normalizedStatus,
                         errorMessage: update.error || existingLog.errorMessage,
                         responseJson
                     }
                 });
+
+                if (updateResult.count === 0) {
+                    logger.info(`[WhatsApp Status Webhook] Ignored concurrent regressive receipt for log ${existingLog.id}`);
+                    continue;
+                }
 
                 supportEvents.broadcastUnreadUpdate({
                     logId: existingLog.id,

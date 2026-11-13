@@ -410,7 +410,11 @@ exports.uploadShipmentDocument = async (req, res) => {
 exports.sendPaymentLink = async (req, res) => {
     try {
         const { trackingNumber } = req.params;
-        const { recipientRole = 'sender' } = req.body || {};
+        const requestedRole = String(req.body?.recipientRole || 'sender').toLowerCase();
+        if (!['sender', 'receiver'].includes(requestedRole)) {
+            return res.status(400).json({ success: false, error: 'recipientRole must be sender or receiver' });
+        }
+        const recipientRole = requestedRole;
 
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
@@ -422,6 +426,30 @@ exports.sendPaymentLink = async (req, res) => {
         const name = recipientRole === 'receiver'
             ? (shipment.destination?.contactPerson || shipment.destination?.name || shipment.customerName)
             : (shipment.origin?.contactPerson || shipment.customerName);
+
+        const notificationPolicy = require('../services/shipmentWhatsAppPolicy.service');
+        const terminalBlock = notificationPolicy.terminalBlock(shipment);
+        if (terminalBlock) {
+            await notificationPolicy.recordSkippedAttempt({ shipment, eventType: 'payment_link_ready', templateName: 'payment_request_v1', recipientRole, recipientName: name, recipientPhone: phone, reason: `${terminalBlock.code}:${terminalBlock.status}` });
+            return res.status(409).json({ success: false, code: terminalBlock.code, error: terminalBlock.message, dispatchStatus: 'SKIPPED' });
+        }
+
+        const existingAttempt = await prisma.shipmentNotificationLog.findFirst({
+            where: {
+                shipmentId: shipment.id,
+                eventType: 'payment_link_ready',
+                templateName: 'payment_request_v1',
+                recipientRole: recipientRole === 'sender' ? { in: ['sender', 'shipper', 'merchant'] } : { in: ['receiver', 'consignee', 'customer'] },
+                status: { in: ['submitted', 'SUBMITTED', 'SENT', 'sent', 'DELIVERED', 'delivered', 'READ', 'read', 'QUEUED', 'queued', 'PENDING', 'pending', 'PROCESSING', 'processing'] }
+            },
+            orderBy: { updatedAt: 'desc' }
+        });
+        if (existingAttempt) {
+            const accepted = notificationPolicy.isProviderAccepted(existingAttempt.status);
+            const reason = accepted ? 'DUPLICATE_ALREADY_SUBMITTED' : 'DISPATCH_ALREADY_IN_FLIGHT';
+            await notificationPolicy.recordSkippedAttempt({ shipment, eventType: 'payment_link_ready', templateName: 'payment_request_v1', recipientRole, recipientName: name, recipientPhone: phone, reason });
+            return res.status(409).json({ success: false, code: reason, error: accepted ? 'A payment request was already accepted for this recipient.' : 'A payment request is already queued or in progress.', dispatchStatus: 'SKIPPED' });
+        }
 
         // 1. Generate dynamic Ottu payment session link (or fallback)
         const ottuService = require('../services/ottuPayment.service');
@@ -445,13 +473,18 @@ exports.sendPaymentLink = async (req, res) => {
             currency: ottuSession.currency
         });
 
-        logger.info(`[PaymentLink] Dispatched Ottu payment link (${paymentLink}) for ${trackingNumber} to ${recipientRole} via WhatsApp (Gateway: ${ottuSession.gateway})`);
-        res.status(200).json({
-            success: true,
-            message: 'Payment link dispatched via WhatsApp successfully',
-            paymentLink,
-            gateway: ottuSession.gateway,
-            dispatchStatus: sendResult?.status || 'SENT'
+        const dispatchStatus = String(sendResult?.status || '').toLowerCase();
+        const accepted = ['submitted', 'sent', 'delivered', 'read'].includes(dispatchStatus);
+        const queued = dispatchStatus === 'queued';
+        const skipped = dispatchStatus === 'skipped';
+        if (accepted) logger.info(`[PaymentLink] Chatwoot accepted the payment template for ${trackingNumber} (${recipientRole})`);
+        return res.status(accepted || queued ? 200 : skipped ? 409 : 502).json({
+            success: accepted || queued,
+            code: accepted || queued ? undefined : sendResult?.reason || 'DISPATCH_FAILED',
+            message: accepted ? 'Payment link notification accepted by Chatwoot' : queued ? 'Payment link notification queued' : sendResult?.message || sendResult?.reason || 'Chatwoot did not accept the payment notification',
+            paymentLink: accepted || queued ? paymentLink : undefined,
+            gateway: accepted || queued ? ottuSession.gateway : undefined,
+            dispatchStatus: sendResult?.status || 'FAILED'
         });
     } catch (error) {
         logger.error('Error sending payment link:', error);

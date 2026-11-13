@@ -1,6 +1,52 @@
 const phenixSyncService = require('../src/services/phenixSync.service');
 
 describe('Phenix import hardening', () => {
+    test('does not substitute the Target phone when the shipper phone is missing', () => {
+        const validated = phenixSyncService.validatePhenixRow({
+            bill_id: '46663',
+            bill_detailCustomField_1: '5864966450',
+            bill_detailCustomField_3: 'Receiver',
+            bill_detailCustomField_4: '971502789486',
+            Mcolor: 'UAE'
+        });
+
+        expect(validated.senderPhone).toBeFalsy();
+        expect(validated.isComplete).toBe(true);
+    });
+
+    test('routes the new Phenix shipment confirmation through the approved Chatwoot template', async () => {
+        const chatwoot = require('../src/services/chatwootNotificationService');
+        const shipment = { id: 'shipment-1', trackingNumber: 'TRK-1' };
+        const dispatchSpy = jest.spyOn(chatwoot, 'sendShipmentNotification')
+            .mockResolvedValue({ results: [{ status: 'submitted' }] });
+
+        try {
+            const result = await chatwoot.sendPhenixImportConfirmation(shipment);
+            expect(result.results[0].status).toBe('submitted');
+            expect(dispatchSpy).toHaveBeenCalledWith('shipment_created', shipment, expect.objectContaining({
+                recipientRole: 'sender',
+                templateName: 'shipment_confirmation_2',
+                disableProviderFallback: true
+            }));
+        } finally {
+            dispatchSpy.mockRestore();
+        }
+    });
+
+    test('does not treat a rejected Chatwoot Phenix confirmation as accepted', async () => {
+        const chatwoot = require('../src/services/chatwootNotificationService');
+        const dispatchSpy = jest.spyOn(chatwoot, 'sendShipmentNotification')
+            .mockResolvedValue({ results: [{ status: 'failed', error: 'Inbox unavailable' }] });
+
+        try {
+            const result = await chatwoot.sendPhenixImportConfirmation({ id: 'shipment-2', trackingNumber: 'TRK-2' });
+            expect(result.results[0].status).toBe('failed');
+            expect(dispatchSpy).toHaveBeenCalledTimes(1);
+        } finally {
+            dispatchSpy.mockRestore();
+        }
+    });
+
     test('keeps the explicit Phenix country and records phone-country conflicts', () => {
         const signals = phenixSyncService.resolveDestinationSignals('KSA', '+96891234567');
 

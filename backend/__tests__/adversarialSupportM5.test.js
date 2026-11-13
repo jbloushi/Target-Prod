@@ -109,6 +109,18 @@ describe('Adversarial M5 Challenge: 24h Window Bypasses, Boundary Conditions & T
             const { method, url, data } = reqConfig;
             const m = String(method).toLowerCase();
 
+            if (m === 'get' && url.endsWith('/inboxes')) {
+                return { data: { payload: [{
+                    id: 1,
+                    message_templates: [{
+                        name: 'customer_inquiry_start',
+                        status: 'APPROVED',
+                        language: 'en',
+                        components: [{ type: 'BODY', text: 'Hello {{1}}, shipment {{2}}' }]
+                    }]
+                }] } };
+            }
+
             // GET messages
             if (m === 'get' && url.match(/\/conversations\/\d+\/messages/)) {
                 return { data: { payload: currentMockMessages } };
@@ -272,8 +284,8 @@ describe('Adversarial M5 Challenge: 24h Window Bypasses, Boundary Conditions & T
                 .set('Authorization', `Bearer ${testAuthTokenValid}`)
                 .send({
                     isTemplate: true,
-                    templateName: 'target_shipment_out_for_delivery',
-                    templateParams: ['Customer Name', 'TRG-ACT-1001', 'Kuwait City']
+                    templateName: 'customer_inquiry_start',
+                    templateParams: ['Customer Name', 'TRG-ACT-1001']
                 });
 
             expect(res.status).toBe(201);
@@ -282,7 +294,7 @@ describe('Adversarial M5 Challenge: 24h Window Bypasses, Boundary Conditions & T
             // Check that Chatwoot received the template params
             const postCall = capturedAxiosCalls.find(c => c.method === 'post' && c.url.includes('/messages'));
             expect(postCall).toBeDefined();
-            expect(postCall.data.template_params.name).toBe('target_shipment_out_for_delivery');
+            expect(postCall.data.template_params.name).toBe('customer_inquiry_start');
         });
 
         it('ADV-1.6: Supports Unix seconds timestamps vs milliseconds timestamps in Chatwoot messages', async () => {

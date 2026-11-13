@@ -109,7 +109,7 @@ export const AdminWhatsAppLogsPage = () => {
         totalRead: 0,
         totalFailed: 0,
         totalQueued: 0,
-        deliveryRate: 100
+        deliveryRate: null
     });
     const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 1 });
     const [loading, setLoading] = useState(false);
@@ -191,7 +191,7 @@ export const AdminWhatsAppLogsPage = () => {
                     totalRead: 0,
                     totalFailed: 0,
                     totalQueued: 0,
-                    deliveryRate: 100
+                    deliveryRate: null
                 });
                 setPagination(data.pagination || { page: 1, limit: 20, total: 0, pages: 1 });
             }
@@ -387,13 +387,13 @@ export const AdminWhatsAppLogsPage = () => {
                             <span className="material-symbols-outlined text-3xl">done_all</span>
                         </div>
                         <div className="stat-title text-xs font-bold text-base-content/60 uppercase">
-                            {lang === 'ar' ? 'معدل نجاح الإرسال' : 'Delivery Success Rate'}
+                            {lang === 'ar' ? 'معدل التوصيل المؤكد' : 'Confirmed Delivery Rate'}
                         </div>
                         <div className="stat-value text-2xl font-black text-success font-mono mt-0.5">
-                            {stats.deliveryRate ?? 100}%
+                            {stats.deliveryRate == null ? '—' : `${stats.deliveryRate}%`}
                         </div>
                         <div className="stat-desc text-[11px] text-base-content/50">
-                            {stats.totalDelivered > 0 ? `${stats.totalDelivered} handset confirmed` : `${stats.totalDispatched || 0} accepted by gateway`}
+                            {stats.totalDelivered || 0} handset confirmed · {stats.totalDispatched || 0} accepted by gateway
                         </div>
                     </div>
                 </div>

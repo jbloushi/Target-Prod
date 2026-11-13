@@ -9,51 +9,31 @@ const APPROVED_META_TEMPLATES = [
         name: 'customer_inquiry_start',
         titleEn: 'Customer Support Engagement (General)',
         titleAr: 'بدء استفسار دعم العملاء',
-        bodyEn: 'Hello {{1}}, we are contacting you regarding your Target Logistics shipment {{2}}. How can we assist you today?',
-        bodyAr: 'مرحباً {{1}}، نتواصل معك بخصوص شحنتك رقم {{2}} مع تارجت للخدمات اللوجستية. كيف يمكننا مساعدتك اليوم؟'
+        bodyEn: 'Hello *{{1}}*,\n\nTarget Logistics is contacting you about shipment *{{2}}*. Please reply to this message to speak with',
+        buttons: ['Yes', 'No, thank you.'],
+        parameterCount: 2
     },
     {
         name: 'location_request_v1',
         titleEn: 'Request GPS Location Pin (Delivery)',
         titleAr: 'طلب تحديد موقع التوصيل (GPS Pin)',
-        bodyEn: 'Hello {{1}}, your shipment {{2}} is out for delivery. Please tap below to confirm your exact delivery map pin location.',
-        bodyAr: 'مرحباً {{1}}، شحنتك رقم {{2}} خرجت للتوصيل. يرجى الضغط أدناه لتأكيد موقعك الدقيق على الخريطة.'
+        bodyEn: 'Hello *{{1}}*,\n\nPlease confirm the delivery location for shipment *{{2}}* using this link:\n\n_{{3}}_\n\nThank you',
+        parameterCount: 3
     },
     {
         name: 'payment_request_v1',
         titleEn: 'Payment Request & Checkout Link',
         titleAr: 'رابط دفع وتأكيد الفاتورة',
-        bodyEn: 'Hello {{1}}, your invoice for shipment {{2}} is ready (Amount: {{3}}). Please complete payment via our secure portal.',
-        bodyAr: 'مرحباً {{1}}، فاتورة شحنتك رقم {{2}} جاهزة بمبلغ {{3}}. يرجى إتمام الدفع عبر البوابة الآمنة.'
+        bodyEn: 'Hello {{1}},\n\nPayment is requested for shipment {{2}}.\n\nAmount due: {{3}}\nPayment link: {{4}}\n\nPlease use the secure link above to complete payment.',
+        parameterCount: 4
     },
     {
-        name: 'target_documents_needed',
-        titleEn: 'Customs Documents Required (Civil ID)',
-        titleAr: 'طلب مستندات جمركية (البطاقة المدنية)',
-        bodyEn: 'Dear {{1}}, customs clearance for shipment {{2}} requires a copy of your Civil ID. Please share a photo or scan.',
-        bodyAr: 'عزيزي {{1}}، التخليص الجمركي للشحنة {{2}} يتطلب صورة من البطاقة المدنية. يرجى تزويدنا بها لمتابعة التخليص.'
+        name: 'return_portal_v1',
+        titleEn: 'Return Portal',
+        titleAr: 'بوابة الإرجاع',
+        bodyEn: 'Hello *{{1}}*,\n\nThe return process for shipment * {{2}} *has been started. Please use this link for the return details:\n\n_{{3}}_\n\nThank You',
+        parameterCount: 3
     },
-    {
-        name: 'target_shipment_out_for_delivery',
-        titleEn: 'Out for Delivery Notice',
-        titleAr: 'إشعار الخروج للتوصيل',
-        bodyEn: 'Hello {{1}}, parcel {{2}} is with your courier {{3}} and out for delivery today to {{4}}.',
-        bodyAr: 'مرحباً {{1}}، طردك رقم {{2}} مع المندوب {{3}} وخرج للتوصيل اليوم إلى {{4}}.'
-    },
-    {
-        name: 'target_delivery_attempt',
-        titleEn: 'Delivery Reschedule Notice',
-        titleAr: 'إشعار محاولة تسليم وإعادة جدولة',
-        bodyEn: 'Hello {{1}}, we attempted delivery of {{2}} today but could not reach you. Please reply to reschedule delivery.',
-        bodyAr: 'مرحباً {{1}}، حاولنا تسليم شحنتك {{2}} اليوم ولم نتمكن من الوصول إليك. يرجى الرد لتحديد موعد جديد.'
-    },
-    {
-        name: 'target_customs_exception_hold',
-        titleEn: 'Customs Hold Alert',
-        titleAr: 'إشعار احتجاز جمركي',
-        bodyEn: 'Notice: Shipment {{1}} is currently on hold at customs clearance in {{2}}. Reason: {{3}}.',
-        bodyAr: 'تنبيه: الشحنة {{1}} محتجزة حالياً لدى الجمارك في {{2}}. السبب: {{3}}.'
-    }
 ];
 
 export const ReplyComposer = ({
@@ -122,19 +102,25 @@ export const ReplyComposer = ({
         try {
             if (composerMode === 'template' || !windowStatus.inside24hWindow) {
                 const tmpl = APPROVED_META_TEMPLATES.find(t => t.name === selectedTemplateName) || APPROVED_META_TEMPLATES[0];
-                const params = [
-                    customerName,
-                    trackingNumber,
-                    customParam || activeShipment?.destination || 'Kuwait',
-                    'Target Courier'
-                ];
+                const baseUrl = 'https://target-kw.com';
+                const paymentAmount = Number(activeShipment?.remainingBalance ?? activeShipment?.price ?? 0).toFixed(3);
+                const paramsByTemplate = {
+                    customer_inquiry_start: [customerName, trackingNumber],
+                    location_request_v1: [customerName, trackingNumber, customParam || `${baseUrl}/track/${encodeURIComponent(trackingNumber)}/location`],
+                    payment_request_v1: [customerName, trackingNumber, `${paymentAmount} ${activeShipment?.currency || 'KWD'}`, customParam || activeShipment?.paymentUrl || `${baseUrl}/pay/${encodeURIComponent(trackingNumber)}`],
+                    return_portal_v1: [customerName, trackingNumber, customParam || `${baseUrl}/returns/${encodeURIComponent(trackingNumber)}`]
+                };
+                const params = paramsByTemplate[tmpl.name];
+                if (tmpl.name === 'payment_request_v1' && !(Number(activeShipment?.remainingBalance ?? activeShipment?.price ?? 0) > 0)) {
+                    throw new Error('A positive amount due is required before sending a payment request.');
+                }
 
                 await sendMessage({
-                    content: isRTL ? tmpl.bodyAr : tmpl.bodyEn,
+                    content: tmpl.bodyEn,
                     isTemplate: true,
                     templateName: tmpl.name,
                     templateParams: params,
-                    language: isRTL ? 'ar' : 'en'
+                    language: 'en'
                 });
             } else {
                 if (!freeText.trim()) return;
@@ -160,11 +146,13 @@ export const ReplyComposer = ({
     };
 
     const currentTemplate = APPROVED_META_TEMPLATES.find(t => t.name === selectedTemplateName) || APPROVED_META_TEMPLATES[0];
-    const previewBody = (isRTL ? currentTemplate.bodyAr : currentTemplate.bodyEn)
-        .replace('{{1}}', customerName)
-        .replace('{{2}}', trackingNumber)
-        .replace('{{3}}', customParam || 'Kuwait')
-        .replace('{{4}}', 'Kuwait');
+    const previewParams = {
+        customer_inquiry_start: [customerName, trackingNumber],
+        location_request_v1: [customerName, trackingNumber, customParam || `https://target-kw.com/track/${encodeURIComponent(trackingNumber)}/location`],
+        payment_request_v1: [customerName, trackingNumber, `${Number(activeShipment?.remainingBalance ?? activeShipment?.price ?? 0).toFixed(3)} ${activeShipment?.currency || 'KWD'}`, customParam || activeShipment?.paymentUrl || `https://target-kw.com/pay/${encodeURIComponent(trackingNumber)}`],
+        return_portal_v1: [customerName, trackingNumber, customParam || `https://target-kw.com/returns/${encodeURIComponent(trackingNumber)}`]
+    }[currentTemplate.name] || [];
+    const previewBody = currentTemplate.bodyEn.replace(/\{\{(\d+)\}\}/g, (_, index) => previewParams[Number(index) - 1] || '');
 
     return (
         <div data-testid="reply-composer-pane" className="border-t border-base-200 bg-base-100 p-3.5 space-y-2 shrink-0">
@@ -335,17 +323,21 @@ export const ReplyComposer = ({
 
                     {/* Template Parameter Input if needed */}
                     <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-base-content/60">
-                            {isRTL ? 'تفاصيل إضافية / الملاحظات للمتغيرات' : 'Custom Variable Parameter'}
-                        </label>
-                        <input
-                            type="text"
-                            data-testid="template-custom-param-input"
-                            value={customParam}
-                            onChange={(e) => setCustomParam(e.target.value)}
-                            placeholder={isRTL ? 'مثال: رابط الدفع، اسم المنطقة، أو ملاحظة...' : 'e.g. Payment URL, area name, or custom note...'}
-                            className="input input-sm input-bordered w-full text-xs rounded-xl bg-base-200/50"
-                        />
+                        {currentTemplate.name !== 'customer_inquiry_start' && (
+                            <>
+                                <label className="text-[10px] font-bold text-base-content/60">
+                                    {currentTemplate.name === 'payment_request_v1' ? 'Payment URL' : currentTemplate.name === 'location_request_v1' ? 'Location URL' : 'Return URL'}
+                                </label>
+                                <input
+                                    type="url"
+                                    data-testid="template-custom-param-input"
+                                    value={customParam}
+                                    onChange={(e) => setCustomParam(e.target.value)}
+                                    placeholder="Leave blank to use the shipment link"
+                                    className="input input-sm input-bordered w-full text-xs rounded-xl bg-base-200/50"
+                                />
+                            </>
+                        )}
                     </div>
 
                     {/* Live Preview Card */}
@@ -357,6 +349,11 @@ export const ReplyComposer = ({
                         <p className="text-xs text-base-content leading-relaxed font-medium whitespace-pre-wrap">
                             {previewBody}
                         </p>
+                        {currentTemplate.buttons?.length > 0 && (
+                            <div className="flex gap-2 pt-2">
+                                {currentTemplate.buttons.map(button => <span key={button} className="badge badge-outline">{button}</span>)}
+                            </div>
+                        )}
                     </div>
 
                     <div className="flex justify-end pt-1">

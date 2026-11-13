@@ -450,6 +450,7 @@ model ShipmentNotificationLog {
   shipmentId             String
   shipment               Shipment  @relation(fields: [shipmentId], references: [id])
   trackingNumber         String
+  dispatchKey            String?   @unique(map: "ShipmentNotificationLog_dispatchKey_key")
   eventType              String
   recipientRole          String
   recipientName          String?
@@ -472,6 +473,7 @@ model ShipmentNotificationLog {
   updatedAt              DateTime  @updatedAt
 
   @@index([trackingNumber], map: "ShipmentNotification_tracking_idx")
+  @@index([shipmentId], map: "ShipmentNotificationLog_shipmentId_fkey")
   @@index([eventType, status, createdAt], map: "ShipmentNotification_event_status_created_idx")
   @@index([provider, status, createdAt], map: "ShipmentNotification_provider_status_created_idx")
   @@index([isFallback, createdAt], map: "ShipmentNotification_fallback_created_idx")

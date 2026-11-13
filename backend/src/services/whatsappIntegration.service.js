@@ -1,11 +1,11 @@
 const axios = require('axios');
-const crypto = require('crypto');
 const { prisma } = require('../config/database');
 const { getSystemSettings } = require('./systemSettings.service');
 const whatsAppConfigService = require('./whatsAppConfig.service');
 const chatwootService = require('./chatwootNotificationService');
 const logger = require('../utils/logger');
 const { normalizeStatus } = require('../constants/statusConstants');
+const shipmentWhatsAppPolicy = require('./shipmentWhatsAppPolicy.service');
 
 function normalizePhone(phone, phoneCountryCode = '965') {
     if (!phone) return null;
@@ -624,7 +624,44 @@ class WhatsAppIntegrationService {
     /**
      * Send automatic or manual shipment event notification via WhatsApp
      */
-    async sendNotification({ shipment, recipientRole, recipientPhone, recipientCountryCode, recipientName, eventType, templateName, customMessage, force = false, existingLogId = null, bypassAgeGuard = false, provider: optionsProvider = null }) {
+    async sendNotification({ shipment, recipientRole, recipientPhone, recipientCountryCode, recipientName, eventType, templateName, customMessage, force = false, existingLogId = null, bypassAgeGuard = false, provider: optionsProvider = null, manualDispatch = false }) {
+        if (shipment?.id || shipment?.trackingNumber) {
+            const currentShipment = await prisma.shipment.findUnique({
+                where: shipment.id ? { id: shipment.id } : { trackingNumber: shipment.trackingNumber },
+                include: { organization: true }
+            });
+            if (!currentShipment) {
+                return { status: 'SKIPPED', reason: 'SHIPMENT_NOT_FOUND', message: 'Shipment no longer exists' };
+            }
+            shipment = currentShipment;
+            const currentParty = recipientRole === 'sender' ? (shipment.origin || {}) : (shipment.destination || {});
+            const documents = shipment.documents && typeof shipment.documents === 'object' ? shipment.documents : {};
+            const canonicalPhone = currentParty.phone || (recipientRole === 'sender'
+                ? (shipment.shipperPhone || shipment.senderPhone || documents.senderPhone)
+                : (shipment.receiverPhone || shipment.consigneePhone || documents.receiverPhone || shipment.customerPhone)) || null;
+            const canonicalCountryCode = currentParty.phoneCountryCode || (recipientRole === 'sender'
+                ? (shipment.shipperPhoneCountryCode || shipment.senderPhoneCountryCode || documents.senderPhoneCountryCode)
+                : (shipment.receiverPhoneCountryCode || shipment.consigneePhoneCountryCode || documents.receiverPhoneCountryCode)) || '965';
+            const suppliedPhone = normalizePhone(recipientPhone, canonicalCountryCode);
+            const currentPhone = normalizePhone(canonicalPhone, canonicalCountryCode);
+            if (recipientPhone && suppliedPhone !== currentPhone) {
+                await shipmentWhatsAppPolicy.recordSkippedAttempt({
+                    shipment,
+                    eventType,
+                    templateName,
+                    recipientRole: recipientRole || 'customer',
+                    recipientName,
+                    recipientPhone,
+                    reason: 'RECIPIENT_OVERRIDE_NOT_ALLOWED'
+                });
+                return { status: 'SKIPPED', reason: 'RECIPIENT_OVERRIDE_NOT_ALLOWED', message: 'Shipment recipient phone must come from the current shipment record' };
+            }
+            recipientPhone = canonicalPhone;
+            recipientCountryCode = canonicalCountryCode;
+            recipientName = currentParty.contactPerson || currentParty.name || currentParty.company || (recipientRole === 'sender'
+                ? (shipment.senderName || documents.senderName)
+                : (documents.receiverName || shipment.customerName)) || recipientName;
+        }
         const dbConfig = await whatsAppConfigService.getConfig({ internal: true }).catch(() => null);
         const sysSettings = getSystemSettings()?.whatsapp || {};
         const settings = {
@@ -632,17 +669,41 @@ class WhatsAppIntegrationService {
             ...(dbConfig || {}),
             enabled: dbConfig?.enabled !== undefined ? dbConfig.enabled : (sysSettings.enabled ?? true)
         };
+        const sourceRecipientPhone = normalizePhone(recipientPhone, recipientCountryCode || '965');
         const phone = resolveRecipientPhone(recipientPhone, recipientCountryCode || '965');
+        const role = recipientRole || 'customer';
 
         if (!phone) {
+            if (shipment?.id && shipment?.trackingNumber) {
+                await prisma.shipmentNotificationLog.create({
+                    data: {
+                        shipmentId: shipment.id,
+                        trackingNumber: shipment.trackingNumber,
+                        eventType: eventType || 'manual_trigger',
+                        recipientRole: role,
+                        recipientName: recipientName || null,
+                        recipientPhone: null,
+                        provider: 'CHATWOOT',
+                        templateName: templateName || null,
+                        status: 'SKIPPED',
+                        errorMessage: 'MISSING_RECIPIENT_PHONE'
+                    }
+                });
+                return { status: 'SKIPPED', reason: 'MISSING_RECIPIENT_PHONE', message: 'Recipient phone number is missing from the shipment record' };
+            }
             throw new Error('Recipient phone number is required and must be valid');
         }
 
         const billId = shipment?.documents?.phenixBillId || null;
-        const role = recipientRole || 'customer';
         const roleGroup = (role === 'sender') ? ['sender'] : ['receiver', 'customer'];
         const microRole = (role === 'sender') ? 'sender' : 'receiver';
-        const rawProvider = optionsProvider || settings.provider || 'chatwoot';
+        const chatwootOnlyTemplates = new Set([
+            'payment_request_v1', 'location_request_v1', 'return_portal_v1', 'customer_inquiry_start', 'otptargetlogin'
+        ]);
+        const isShipmentMessage = Boolean(shipment?.id || shipment?.trackingNumber) || chatwootOnlyTemplates.has(templateName) || [
+            'payment_link_ready', 'location_request', 'return_portal', 'customer_engagement', 'auth_otp'
+        ].includes(eventType);
+        const rawProvider = isShipmentMessage ? 'CHATWOOT' : (optionsProvider || settings.provider || 'chatwoot');
         const provider = String(rawProvider).toUpperCase();
 
         let chosenTemplate = templateName;
@@ -676,31 +737,77 @@ class WhatsAppIntegrationService {
             }
         }
 
-        // Token generation for out_for_delivery if missing or expired
-        let buttonUrlParam = null;
-        if (chosenTemplate === 'target_shipment_out_for_delivery' || eventType === 'out_for_delivery') {
-            const isExpired = !shipment.locationTokenExpiresAt || new Date(shipment.locationTokenExpiresAt).getTime() < Date.now();
-            if (!shipment.locationToken || isExpired) {
-                const token = `loc_${crypto.randomBytes(32).toString('hex')}`;
-                const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
-                try {
-                    if (shipment.id) {
-                        await prisma.shipment.update({
-                            where: { id: shipment.id },
-                            data: {
-                                locationToken: token,
-                                locationTokenExpiresAt: expiresAt
-                            }
-                        });
-                    }
-                } catch (tokErr) {
-                    logger.warn(`[WhatsApp] Failed to save locationToken on shipment: ${tokErr.message}`);
+        if (shipment) {
+            const terminalBlock = shipmentWhatsAppPolicy.terminalBlock(shipment);
+            const actionBlock = shipmentWhatsAppPolicy.validateManualAction({ eventType, templateName: chosenTemplate, recipientRole: role });
+            const reason = !manualDispatch
+                ? { code: 'MANUAL_DISPATCH_REQUIRED', message: 'MANUAL_DISPATCH_REQUIRED' }
+                : terminalBlock
+                    ? { code: terminalBlock.code, message: `${terminalBlock.code}:${terminalBlock.status}` }
+                    : actionBlock;
+            if (reason) {
+                const data = {
+                    shipmentId: shipment.id,
+                    trackingNumber: shipment.trackingNumber,
+                    eventType: eventType || 'manual_trigger',
+                    recipientRole: role,
+                    recipientName: recipientName || null,
+                    recipientPhone: chosenTemplate === 'otptargetlogin' ? chatwootService.maskPhone(phone) : phone,
+                    provider: 'CHATWOOT',
+                    templateName: chosenTemplate,
+                    status: 'SKIPPED',
+                    errorMessage: reason.message
+                };
+                const oldLog = existingLogId
+                    ? await prisma.shipmentNotificationLog.findUnique({ where: { id: existingLogId } }).catch(() => null)
+                    : null;
+                if (oldLog && !shipmentWhatsAppPolicy.isProviderAccepted(oldLog.status)) {
+                    await prisma.shipmentNotificationLog.update({ where: { id: existingLogId }, data: { status: 'SKIPPED', errorMessage: reason.message } });
+                } else {
+                    await prisma.shipmentNotificationLog.create({ data });
                 }
-                shipment.locationToken = token;
-                shipment.locationTokenExpiresAt = expiresAt;
+                return { status: 'SKIPPED', reason: reason.code, message: reason.message };
             }
-            buttonUrlParam = shipment.locationToken;
+
+            const blockingStatuses = ['submitted', 'sent', 'delivered', 'read', 'queued', 'pending', 'processing'];
+            if (eventType !== 'auth_otp') {
+                const duplicateWhere = {
+                    shipmentId: shipment.id,
+                    eventType,
+                    recipientRole: { in: role === 'sender' ? ['sender', 'shipper', 'merchant'] : [role] },
+                    templateName: chosenTemplate,
+                    status: { in: blockingStatuses.flatMap(value => [value, value.toUpperCase()]) },
+                    ...(existingLogId ? { id: { not: existingLogId } } : {})
+                };
+                const duplicate = await prisma.shipmentNotificationLog.findFirst({ where: duplicateWhere, orderBy: { updatedAt: 'desc' } });
+                const oldLog = existingLogId
+                    ? await prisma.shipmentNotificationLog.findUnique({ where: { id: existingLogId } }).catch(() => null)
+                    : null;
+                if (duplicate || (oldLog && shipmentWhatsAppPolicy.isProviderAccepted(oldLog.status))) {
+                    const inFlight = duplicate && shipmentWhatsAppPolicy.isInFlight(duplicate.status);
+                    const reason = inFlight ? 'DISPATCH_ALREADY_IN_FLIGHT' : 'DUPLICATE_ALREADY_SUBMITTED';
+                    await shipmentWhatsAppPolicy.recordSkippedAttempt({
+                        shipment,
+                        eventType,
+                        templateName: chosenTemplate,
+                        recipientRole: role,
+                        recipientName,
+                        recipientPhone: phone,
+                        reason
+                    });
+                    return {
+                        status: 'SKIPPED',
+                        reason,
+                        logId: duplicate?.id || oldLog?.id
+                    };
+                }
+            }
         }
+
+        // Dynamic URL buttons are not generated for templates that are not
+        // present in the production Chatwoot inbox. The approved location
+        // request template carries its full link as a body parameter.
+        let buttonUrlParam = null;
 
         // Check quiet hours suppression
         const isQuiet = whatsAppConfigService._computeQuietHours(settings);
@@ -750,7 +857,7 @@ class WhatsAppIntegrationService {
         }
 
         // Check event enabled rule
-        if (!force && eventType) {
+        if (!force && eventType && !isShipmentMessage) {
             const isEnabled = await whatsAppConfigService.isEventEnabled(eventType, role);
             if (!isEnabled) {
                 logger.info(`[WhatsApp Event Rule] Event ${eventType} is disabled for role ${role}. Skipping dispatch.`);
@@ -762,10 +869,13 @@ class WhatsAppIntegrationService {
             }
         }
 
-        // Keep the age guard for delivered shipments, but allow notifications for
-        // older shipments while they are still moving through the lifecycle.
+        // Keep the historical-age guard for old delivered shipment records.
         if (!force) {
-            // Do not send stale notifications for shipments already delivered.
+            // Never send shipment messages after a shipment reaches a terminal state.
+            const terminalBlock = shipmentWhatsAppPolicy.terminalBlock(shipment);
+            if (terminalBlock) {
+                return { status: 'SKIPPED', reason: terminalBlock.code, message: terminalBlock.message };
+            }
             const shipmentDateRaw = shipment?.documents?.rawDate || shipment?.createdAt;
             if (shipmentDateRaw && !bypassAgeGuard && normalizeStatus(shipment?.status) === 'delivered') {
                 let sDate = new Date(shipmentDateRaw);
@@ -931,33 +1041,93 @@ class WhatsAppIntegrationService {
         // Initial DB log creation or update existing log
         let log;
         if (existingLogId) {
+            const claim = await prisma.shipmentNotificationLog.updateMany({
+                where: {
+                    id: existingLogId,
+                    shipmentId: shipment.id,
+                    status: { in: ['FAILED', 'failed', 'SKIPPED', 'skipped', 'QUEUED', 'queued'] }
+                },
+                data: { status: 'PROCESSING' }
+            });
+            if (claim.count !== 1) {
+                return { status: 'SKIPPED', reason: 'DISPATCH_ALREADY_IN_FLIGHT', message: 'Another worker already claimed this notification' };
+            }
             log = await prisma.shipmentNotificationLog.update({
                 where: { id: existingLogId },
                 data: {
                     recipientName: effectiveRecipientName,
-                    recipientPhone: phone,
+                    recipientPhone: chosenTemplate === 'otptargetlogin' ? chatwootService.maskPhone(phone) : phone,
                     provider: rawProvider,
                     templateName: chosenTemplate,
-                    status: 'QUEUED',
+                    status: 'PROCESSING',
                     errorMessage: null,
                     sentAt: new Date()
                 }
             });
         } else {
-            log = await prisma.shipmentNotificationLog.create({
-                data: {
+            const priorLog = eventType === 'auth_otp' ? null : await prisma.shipmentNotificationLog.findFirst({
+                where: {
                     shipmentId: shipment.id,
-                    trackingNumber: shipment.trackingNumber,
                     eventType: eventType || 'manual_trigger',
-                    recipientRole: role,
-                    recipientName: effectiveRecipientName,
-                    recipientPhone: phone,
-                    provider: rawProvider,
-                    templateName: chosenTemplate,
-                    status: 'QUEUED',
-                    sentAt: new Date()
-                }
+                    recipientRole: { in: role === 'sender' ? ['sender', 'shipper', 'merchant'] : [role] },
+                    templateName: chosenTemplate
+                },
+                orderBy: { updatedAt: 'desc' }
             });
+            if (priorLog) {
+                const retryStatuses = ['FAILED', 'failed', 'SKIPPED', 'skipped'];
+                const claim = await prisma.shipmentNotificationLog.updateMany({
+                    where: {
+                        id: priorLog.id,
+                        status: { in: retryStatuses }
+                    },
+                    data: {
+                        status: 'PROCESSING',
+                        dispatchKey: shipmentWhatsAppPolicy.buildDispatchKey({ shipment, eventType, templateName: chosenTemplate, recipientRole: role, recipientPhone: phone }),
+                        recipientName: effectiveRecipientName,
+                        recipientPhone: chosenTemplate === 'otptargetlogin' ? chatwootService.maskPhone(phone) : phone,
+                        provider: rawProvider,
+                        errorMessage: null,
+                        sentAt: new Date()
+                    }
+                });
+                if (claim.count !== 1) {
+                    return { status: 'SKIPPED', reason: 'DISPATCH_ALREADY_IN_FLIGHT', message: 'An accepted or in-flight attempt already exists' };
+                }
+                log = await prisma.shipmentNotificationLog.findUnique({ where: { id: priorLog.id } });
+            } else {
+                try {
+                    log = await prisma.shipmentNotificationLog.create({
+                        data: {
+                            shipmentId: shipment.id,
+                            trackingNumber: shipment.trackingNumber,
+                            dispatchKey: shipmentWhatsAppPolicy.buildDispatchKey({ shipment, eventType, templateName: chosenTemplate, recipientRole: role, recipientPhone: phone }),
+                            eventType: eventType || 'manual_trigger',
+                            recipientRole: role,
+                            recipientName: effectiveRecipientName,
+                            recipientPhone: chosenTemplate === 'otptargetlogin' ? chatwootService.maskPhone(phone) : phone,
+                            provider: rawProvider,
+                            templateName: chosenTemplate,
+                            status: 'PROCESSING',
+                            sentAt: new Date()
+                        }
+                    });
+                } catch (error) {
+                    if (error.code === 'P2002') {
+                        await shipmentWhatsAppPolicy.recordSkippedAttempt({
+                            shipment,
+                            eventType,
+                            templateName: chosenTemplate,
+                            recipientRole: role,
+                            recipientName: effectiveRecipientName,
+                            recipientPhone: phone,
+                            reason: 'DISPATCH_ALREADY_IN_FLIGHT'
+                        }).catch(logError => logger.warn(`[WhatsApp] Could not record concurrent dispatch skip: ${logError.message}`));
+                        return { status: 'SKIPPED', reason: 'DISPATCH_ALREADY_IN_FLIGHT', message: 'An attempt for this shipment action was claimed concurrently' };
+                    }
+                    throw error;
+                }
+            }
         }
 
         if (settings.enabled === false) {
@@ -1111,6 +1281,7 @@ class WhatsAppIntegrationService {
                     eventType,
                     recipientRole: role,
                     recipientPhone: phone,
+                    sourceRecipientPhone,
                     recipientName: effectiveRecipientName,
                     templateName: chosenTemplate,
                     customMessage,
@@ -1119,7 +1290,7 @@ class WhatsAppIntegrationService {
                 });
 
                 return {
-                    status: 'SENT',
+                    status: chatwootResult.status || 'submitted',
                     logId: log.id,
                     externalMessageId: chatwootResult.messageId,
                     provider: 'chatwoot',
@@ -1141,7 +1312,7 @@ class WhatsAppIntegrationService {
                                         chatwootErr.message?.includes('is not a function') ||
                                         !chatwootService.isConfigured();
 
-                if (is5xx || isTimeout || isNetwork || isConfigMissing) {
+                if (!isShipmentMessage && (is5xx || isTimeout || isNetwork || isConfigMissing)) {
                     const fallbackReason = `Chatwoot dispatch failed (${chatwootErr.response?.status || chatwootErr.status || chatwootErr.code || chatwootErr.message})`;
                     logger.warn(`[chatwoot fallback] ${fallbackReason} for ${shipment.trackingNumber} to ${role}. Failing over to msg.target-kw.com`);
 
@@ -1258,14 +1429,20 @@ class WhatsAppIntegrationService {
                 }
 
                 // Non-fallback error (e.g. 400 validation error like OUTSIDE_24H_WINDOW)
+                const safeErrorMessage = chosenTemplate === 'otptargetlogin'
+                    ? 'Authentication template dispatch failed'
+                    : chatwootErr.message;
                 await prisma.shipmentNotificationLog.update({
                     where: { id: log.id },
                     data: {
                         status: 'FAILED',
-                        errorMessage: chatwootErr.message,
-                        responseJson: chatwootErr.response?.data || { error: chatwootErr.message, code: chatwootErr.code }
+                        errorMessage: safeErrorMessage,
+                        responseJson: chosenTemplate === 'otptargetlogin'
+                            ? { error: safeErrorMessage, code: chatwootErr.code || null, redacted: true }
+                            : (chatwootErr.response?.data || { error: chatwootErr.message, code: chatwootErr.code })
                     }
                 });
+                if (chosenTemplate === 'otptargetlogin') throw new Error(safeErrorMessage);
                 throw chatwootErr;
             }
         }
@@ -1787,7 +1964,8 @@ www.target-kw.com | +965 6965 6563`;
                 paymentLink,
                 amount: formattedAmount
             },
-            force: true
+            force: false,
+            manualDispatch: true
         });
     }
 
@@ -1810,7 +1988,8 @@ www.target-kw.com | +965 6965 6563`;
             customMessage: {
                 locationUrl: url
             },
-            force: true
+            force: false,
+            manualDispatch: true
         });
     }
 
@@ -1833,7 +2012,8 @@ www.target-kw.com | +965 6965 6563`;
             customMessage: {
                 returnUrl: url
             },
-            force: true
+            force: false,
+            manualDispatch: true
         });
     }
 
@@ -1851,7 +2031,8 @@ www.target-kw.com | +965 6965 6563`;
             recipientName: name,
             eventType: 'customer_engagement',
             templateName: 'customer_inquiry_start',
-            force: true
+            force: false,
+            manualDispatch: true
         });
     }
 }

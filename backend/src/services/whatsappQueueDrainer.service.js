@@ -1,6 +1,10 @@
 const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
 const whatsAppConfigService = require('./whatsAppConfig.service');
+const shipmentWhatsAppPolicy = require('./shipmentWhatsAppPolicy.service');
+
+const MANUAL_RETRY_TEMPLATES = ['payment_request_v1', 'location_request_v1', 'return_portal_v1', 'customer_inquiry_start'];
+const QUEUED_STATUSES = ['QUEUED', 'queued', 'pending', 'PENDING'];
 
 const SHIPMENT_LIFECYCLE_EVENTS = new Set([
     'shipment_created',
@@ -52,15 +56,25 @@ class WhatsAppQueueDrainerService {
         if (this.isDraining) return;
         this.isDraining = true;
         try {
-            // 1. Clean up any queued receiver records immediately — auto WhatsApp is strictly shipper-only
+            // Shipment lifecycle sends are manual-only. Close legacy auto-created
+            // queue entries instead of replaying stale milestone notifications.
             await prisma.shipmentNotificationLog.updateMany({
                 where: {
-                    status: { in: ['QUEUED', 'queued', 'pending', 'PENDING'] },
-                    recipientRole: { notIn: ['sender', 'shipper', 'merchant'] }
+                    status: { in: QUEUED_STATUSES },
+                    eventType: { in: [...SHIPMENT_LIFECYCLE_EVENTS] }
+                },
+                data: { status: 'SKIPPED', errorMessage: 'AUTOMATIC_SHIPMENT_MESSAGES_DISABLED' }
+            });
+
+            // These rows predate the current approved manual action contract.
+            await prisma.shipmentNotificationLog.updateMany({
+                where: {
+                    status: { in: QUEUED_STATUSES },
+                    templateName: { notIn: MANUAL_RETRY_TEMPLATES }
                 },
                 data: {
                     status: 'SKIPPED',
-                    errorMessage: 'AUTOMATED_CONSIGNEE_SUPPRESSED'
+                    errorMessage: 'UNAPPROVED_QUEUED_SHIPMENT_ACTION'
                 }
             });
 
@@ -71,14 +85,16 @@ class WhatsAppQueueDrainerService {
                 return;
             }
 
-            // 3. Find queued sender notifications
+            // Only explicit payment/location/return/engagement actions can be
+            // retried in the background. Lifecycle confirmations are manual-only.
             const queued = await prisma.shipmentNotificationLog.findMany({
                 where: {
-                    status: { in: ['QUEUED', 'queued', 'pending', 'PENDING'] },
-                    recipientRole: { in: ['sender', 'shipper', 'merchant'] }
+                    status: { in: QUEUED_STATUSES },
+                    templateName: { in: MANUAL_RETRY_TEMPLATES }
                 },
                 take: options.maxBatch || 50,
-                orderBy: { createdAt: 'asc' }
+                orderBy: { createdAt: 'asc' },
+                include: { shipment: true }
             });
 
             if (queued.length === 0) return;
@@ -89,7 +105,7 @@ class WhatsAppQueueDrainerService {
 
             for (const log of queued) {
                 try {
-                    const shipment = await prisma.shipment.findFirst({
+                    const shipment = log.shipment || await prisma.shipment.findFirst({
                         where: {
                             OR: [
                                 ...(log.shipmentId ? [{ id: log.shipmentId }] : []),
@@ -107,52 +123,57 @@ class WhatsAppQueueDrainerService {
                         continue;
                     }
 
-                    if (SHIPMENT_LIFECYCLE_EVENTS.has(log.eventType)) {
-                        if (chatwootNotificationService.getNotificationTargets(log.eventType, shipment, 'sender').length === 0) {
-                            await prisma.shipmentNotificationLog.update({
-                                where: { id: log.id },
-                                data: { status: 'SKIPPED', errorMessage: 'SENDER_PHONE_NOT_FOUND' }
-                            });
-                            continue;
-                        }
-                        const alreadySubmitted = await prisma.shipmentNotificationLog.findFirst({
-                            where: {
-                                OR: [
-                                    { shipmentId: shipment.id },
-                                    { trackingNumber: shipment.trackingNumber }
-                                ],
-                                eventType: log.eventType,
-                                recipientRole: { in: ['sender', 'shipper', 'merchant'] },
-                                status: { in: ['submitted', 'SUBMITTED', 'SENT', 'sent', 'DELIVERED', 'delivered', 'READ', 'read'] },
-                                id: { not: log.id }
-                            }
+                    const role = ['sender', 'shipper', 'merchant'].includes(String(log.recipientRole || '').toLowerCase()) ? 'sender' : 'receiver';
+                    const policyBlock = shipmentWhatsAppPolicy.terminalBlock(shipment)
+                        || shipmentWhatsAppPolicy.validateManualAction({ eventType: log.eventType, templateName: log.templateName, recipientRole: role });
+                    if (policyBlock) {
+                        await prisma.shipmentNotificationLog.update({
+                            where: { id: log.id },
+                            data: { status: 'SKIPPED', errorMessage: policyBlock.code ? `${policyBlock.code}${policyBlock.status ? `:${policyBlock.status}` : ''}` : policyBlock.message }
                         });
-                        if (alreadySubmitted) {
-                            await prisma.shipmentNotificationLog.update({
-                                where: { id: log.id },
-                                data: { status: 'SKIPPED', errorMessage: 'CONFIRMATION_ALREADY_SUBMITTED' }
-                            });
-                            continue;
-                        }
-                        await chatwootNotificationService.sendShipmentNotification(log.eventType, shipment, {
-                            recipientRole: 'sender',
-                            templateName: 'shipment_confirmation_2',
-                            disableProviderFallback: true,
-                            existingLogId: log.id,
-                            force: true
-                        });
-                    } else {
-                        await whatsappIntegration.sendNotification({
-                            shipment,
-                            recipientRole: 'sender',
-                            recipientPhone: log.recipientPhone,
-                            recipientName: log.recipientName,
+                        continue;
+                    }
+
+                    const acceptedStatuses = ['submitted', 'SUBMITTED', 'SENT', 'sent', 'DELIVERED', 'delivered', 'READ', 'read'];
+                    const activeStatuses = [...acceptedStatuses, 'QUEUED', 'queued', 'PENDING', 'pending', 'PROCESSING', 'processing'];
+                    const duplicate = await prisma.shipmentNotificationLog.findFirst({
+                        where: {
+                            shipmentId: shipment.id,
                             eventType: log.eventType,
                             templateName: log.templateName,
-                            force: true, // Bypass quiet hours check since we verified not quiet hours
-                            existingLogId: log.id,
-                            provider: 'chatwoot'
+                            recipientRole: { in: role === 'sender' ? ['sender', 'shipper', 'merchant'] : ['receiver', 'consignee', 'customer'] },
+                            status: { in: activeStatuses },
+                            id: { not: log.id }
+                        }
+                    });
+                    if (duplicate) {
+                        const alreadyAccepted = acceptedStatuses.includes(duplicate.status);
+                        await prisma.shipmentNotificationLog.update({
+                            where: { id: log.id },
+                            data: { status: 'SKIPPED', errorMessage: alreadyAccepted ? 'DUPLICATE_ALREADY_SUBMITTED' : 'DISPATCH_ALREADY_IN_FLIGHT' }
                         });
+                        continue;
+                    }
+
+                    const target = chatwootNotificationService.getNotificationTargets(log.eventType, shipment, role)[0];
+                    if (!target?.phone) {
+                        await prisma.shipmentNotificationLog.update({ where: { id: log.id }, data: { status: 'SKIPPED', errorMessage: 'MISSING_RECIPIENT_PHONE' } });
+                        continue;
+                    }
+                    const result = await whatsappIntegration.sendNotification({
+                        shipment,
+                        recipientRole: role,
+                        recipientPhone: target.phone,
+                        recipientName: target.name,
+                        eventType: log.eventType,
+                        templateName: log.templateName,
+                        force: false,
+                        manualDispatch: true,
+                        existingLogId: log.id,
+                        provider: 'chatwoot'
+                    });
+                    if (!['submitted', 'sent', 'delivered', 'read'].includes(String(result?.status || '').toLowerCase())) {
+                        logger.info(`[WhatsAppQueueDrainer] Notification ${log.id} ended as ${result?.status || 'unknown'} (${result?.reason || 'no reason'})`);
                     }
 
                     // Throttle 250ms between sends to protect API rate limits

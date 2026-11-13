@@ -75,7 +75,7 @@ export const CustomerContextPanel = ({
         setLocationRequestLoading(true);
         setLocationSuccessMsg('');
         try {
-            await sendLocationRequest(shp.trackingNumber, customerPhone, customerName);
+            await sendLocationRequest(shp.trackingNumber);
             setLocationSuccessMsg(
                 isRTL
                     ? `تم إرسال طلب موقع GPS للشحنة ${shp.trackingNumber}`

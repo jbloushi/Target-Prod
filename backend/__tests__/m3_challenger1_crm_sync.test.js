@@ -40,6 +40,7 @@ describe('Milestone 3 Challenger 1: Adversarial Verification Suite', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         chatwootService.resetClient();
+        jest.spyOn(prisma.shipmentNotificationLog, 'findFirst').mockResolvedValue(null);
         mockContacts = [];
         mockConversations = [];
         mockMessages = [];

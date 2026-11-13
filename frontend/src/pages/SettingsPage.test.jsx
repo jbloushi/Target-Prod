@@ -45,13 +45,12 @@ describe('SettingsPage WhatsApp & Milestone Event Configuration', () => {
     expect(roles).toContain('sender');
   });
 
-  it('sets quiet-hours bypass flag for critical customs exceptions', () => {
-    const customsRules = DEFAULT_WHATSAPP_RULES.filter(
-      (r) => r.eventType === 'on_hold_customs_issue'
-    );
+  it('keeps automatic customs notifications and quiet-hours bypass disabled by default', () => {
+    const customsRules = DEFAULT_WHATSAPP_RULES.filter(rule => rule.eventType === 'on_hold_customs_issue');
     expect(customsRules.length).toBeGreaterThan(0);
-    customsRules.forEach((rule) => {
-      expect(rule.allowQuietHoursBypass).toBe(true);
+    customsRules.forEach(rule => {
+      expect(rule.enabled).toBe(false);
+      expect(rule.allowQuietHoursBypass).toBe(false);
     });
   });
 

@@ -102,6 +102,7 @@ describe('Milestone 5: Backend Support Center & Chat Controller Suite', () => {
         testShipmentActive = {
             id: 'shp-active-001',
             trackingNumber: 'TRG-ACT-1001',
+            assignedStaffId: 'user-support-agent-01',
             status: 'out_for_delivery',
             carrierCode: 'DGR',
             price: 5.5,
@@ -230,6 +231,26 @@ describe('Milestone 5: Backend Support Center & Chat Controller Suite', () => {
         mockClientRequest = jest.fn().mockImplementation(async (reqConfig) => {
             const { method, url, data, params, headers } = reqConfig;
             const m = String(method).toLowerCase();
+
+            if (m === 'get' && url.includes('/inboxes')) {
+                return {
+                    data: {
+                        payload: [{
+                            id: 1,
+                            message_templates: [{
+                                name: 'customer_inquiry_start',
+                                status: 'APPROVED',
+                                language: 'en',
+                                category: 'UTILITY',
+                                components: [{
+                                    type: 'BODY',
+                                    text: 'Hello *{{1}}*,\n\nTarget Logistics is contacting you about shipment *{{2}}*. Please reply to this message to speak with'
+                                }]
+                            }]
+                        }]
+                    }
+                };
+            }
 
             // GET /api/v1/accounts/:accountId/conversations
             // Contact conversations
@@ -491,8 +512,8 @@ describe('Milestone 5: Backend Support Center & Chat Controller Suite', () => {
                 .set('Authorization', `Bearer ${testAuthTokenWithToken}`)
                 .send({
                     isTemplate: true,
-                    templateName: 'target_shipment_out_for_delivery',
-                    templateParams: ['Fahad', 'TRG-ACT-1001', 'Hawally']
+                    templateName: 'customer_inquiry_start',
+                    templateParams: ['Fahad', 'TRG-ACT-1001']
                 });
 
             expect(res.status).toBe(201);
@@ -502,7 +523,10 @@ describe('Milestone 5: Backend Support Center & Chat Controller Suite', () => {
                     method: 'post',
                     data: expect.objectContaining({
                         template_params: expect.objectContaining({
-                            name: 'target_shipment_out_for_delivery'
+                            name: 'customer_inquiry_start',
+                            language: 'en',
+                            processed_params: { body: { '1': 'Fahad', '2': 'TRG-ACT-1001' } },
+                            parameters: ['Fahad', 'TRG-ACT-1001']
                         })
                     })
                 })
@@ -611,15 +635,15 @@ describe('Milestone 5: Backend Support Center & Chat Controller Suite', () => {
 
     describe('9. 1-Click Location Request Action (POST /api/support/actions/request-location)', () => {
         it('9.1 dispatches location pin request notification via WhatsApp integration service', async () => {
-            jest.spyOn(whatsappService, 'sendLocationRequestNotification').mockResolvedValue({ success: true });
+            jest.spyOn(whatsappService, 'sendLocationRequestNotification').mockResolvedValue({ status: 'submitted' });
 
             const res = await request(app)
                 .post('/api/support/actions/request-location')
                 .set('Authorization', `Bearer ${testAuthTokenWithToken}`)
                 .send({
                     trackingNumber: 'TRG-ACT-1001',
-                    phone: '+96599112233',
-                    name: 'Fahad Al-Mutawa'
+                    phone: '+96500000000',
+                    name: 'Untrusted Caller Name'
                 });
 
             expect(res.status).toBe(200);

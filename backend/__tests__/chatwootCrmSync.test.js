@@ -26,6 +26,7 @@ describe('Milestone 3: Chatwoot CRM Sync & History Backfill Suite', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         chatwootService.resetClient();
+        jest.spyOn(prisma.shipmentNotificationLog, 'findFirst').mockResolvedValue(null);
         mockContacts = [];
         mockConversations = [];
         mockMessages = [];

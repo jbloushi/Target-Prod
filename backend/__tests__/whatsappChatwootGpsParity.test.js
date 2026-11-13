@@ -1630,7 +1630,7 @@ describe('End-to-End WhatsApp, Chatwoot Live Support & Customer GPS Parity Suite
         // Meta Utility Templates & Token Generation in Service
         // ---------------------------------------------------------------------
         describe('Meta Utility Templates & Dispatch Integration', () => {
-            test('M2.6 target_shipment_out_for_delivery generates 32-byte location token with 48h expiry if missing', async () => {
+            test('M2.6 automatic out-for-delivery updates are blocked without generating a location token', async () => {
                 const shipmentWithoutToken = {
                     id: 'shp-no-tok-1',
                     trackingNumber: 'TRG-GEN-TOKEN',
@@ -1647,6 +1647,7 @@ describe('End-to-End WhatsApp, Chatwoot Live Support & Customer GPS Parity Suite
                     locationToken: 'loc_abc123',
                     locationTokenExpiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000)
                 });
+                jest.spyOn(prisma.shipment, 'findUnique').mockResolvedValue(shipmentWithoutToken);
                 jest.spyOn(prisma.shipmentNotificationLog, 'create').mockResolvedValueOnce({ id: 'log-tok-1' });
                 jest.spyOn(prisma.shipmentNotificationLog, 'update').mockResolvedValueOnce({ id: 'log-tok-1', status: 'SENT' });
                 jest.spyOn(prisma.shipmentNotificationLog, 'findFirst').mockResolvedValue(null);
@@ -1655,7 +1656,7 @@ describe('End-to-End WhatsApp, Chatwoot Live Support & Customer GPS Parity Suite
                     data: { status: 'sent', messageId: 'wamid.HBgLMTIz' }
                 });
 
-                await whatsappService.sendNotification({
+                const result = await whatsappService.sendNotification({
                     shipment: shipmentWithoutToken,
                     eventType: 'out_for_delivery',
                     recipientRole: 'receiver',
@@ -1663,16 +1664,12 @@ describe('End-to-End WhatsApp, Chatwoot Live Support & Customer GPS Parity Suite
                     force: true
                 });
 
-                expect(updateShipmentSpy).toHaveBeenCalledWith(expect.objectContaining({
-                    where: { id: 'shp-no-tok-1' },
-                    data: expect.objectContaining({
-                        locationToken: expect.stringMatching(/^loc_[a-f0-9]{64}$/),
-                        locationTokenExpiresAt: expect.any(Date)
-                    })
-                }));
+                expect(result).toEqual(expect.objectContaining({ status: 'SKIPPED', reason: 'MANUAL_DISPATCH_REQUIRED' }));
+                expect(updateShipmentSpy).not.toHaveBeenCalled();
+                expect(axios.post).not.toHaveBeenCalled();
             });
 
-            test('M2.7 Quiet-hours suppression marks log QUEUED with QUIET_HOURS_SUPPRESSED when not bypassed', async () => {
+            test('M2.7 approved manual payment requests remain queued during quiet hours', async () => {
                 const shipment = {
                     id: 'shp-quiet-1',
                     trackingNumber: 'TRG-QUIET-01',
@@ -1680,6 +1677,7 @@ describe('End-to-End WhatsApp, Chatwoot Live Support & Customer GPS Parity Suite
                     origin: { phone: '+96597959567' },
                     createdAt: new Date()
                 };
+                jest.spyOn(prisma.shipment, 'findUnique').mockResolvedValue(shipment);
 
                 // Mock config with quiet hours active right now
                 jest.spyOn(whatsAppConfigService, 'getConfig').mockResolvedValue({
@@ -1701,9 +1699,11 @@ describe('End-to-End WhatsApp, Chatwoot Live Support & Customer GPS Parity Suite
                 const result = await whatsappService.sendNotification({
                     shipment,
                     eventType: 'payment_link_ready',
+                    templateName: 'payment_request_v1',
                     recipientRole: 'receiver',
                     recipientPhone: '+96599112233',
-                    force: false
+                    force: false,
+                    manualDispatch: true
                 });
 
                 expect(result.status).toBe('QUEUED');
@@ -1741,7 +1741,8 @@ describe('End-to-End WhatsApp, Chatwoot Live Support & Customer GPS Parity Suite
                 expect(sendNotifSpy).toHaveBeenCalledWith(expect.objectContaining({
                     eventType: 'payment_link_ready',
                     templateName: 'payment_request_v1',
-                    force: true,
+                    force: false,
+                    manualDispatch: true,
                     customMessage: {
                         paymentLink: 'https://target.ottu.com/checkout/tok_test',
                         amount: '15.500 KWD'
@@ -1882,7 +1883,7 @@ describe('End-to-End WhatsApp, Chatwoot Live Support & Customer GPS Parity Suite
 
                 expect(res.statusCode).toBe(200);
                 expect(res.body.success).toBe(true);
-                expect(res.body.message).toContain('Payment link notification dispatched');
+                expect(res.body.message).toContain('Payment link notification accepted by Chatwoot');
             });
         });
     });

@@ -3,7 +3,6 @@ const whatsappService = require('../services/whatsappIntegration.service');
 const chatwootNotificationService = require('../services/chatwootNotificationService');
 const whatsAppConfigService = require('../services/whatsAppConfig.service');
 const { canAccessShipment } = require('../middleware/authorize.middleware');
-const { hasCapability } = require('../middleware/rbac.policy');
 const logger = require('../utils/logger');
 
 /**
@@ -31,8 +30,10 @@ async function getNotificationLogs(req, res) {
                 where.status = { in: ['READ', 'read'] };
             } else if (s === 'FAILED') {
                 where.status = { in: ['FAILED', 'failed'] };
-            } else if (s === 'QUEUED' || s === 'PENDING') {
-                where.status = { in: ['PENDING', 'pending', 'queued', 'QUEUED', 'SKIPPED', 'skipped'] };
+            } else if (s === 'QUEUED') {
+                where.status = { in: ['QUEUED', 'queued'] };
+            } else if (s === 'PENDING') {
+                where.status = { in: ['PENDING', 'pending'] };
             } else {
                 where.status = status;
             }
@@ -174,14 +175,13 @@ async function getNotificationLogs(req, res) {
             }),
             prisma.shipmentNotificationLog.count({
                 where: {
-                    status: { in: ['PENDING', 'pending', 'queued', 'QUEUED'] },
-                    recipientRole: { in: ['sender', 'shipper', 'merchant'] }
+                    status: { in: ['PENDING', 'pending', 'queued', 'QUEUED'] }
                 }
             })
         ]);
 
         const totalAttempts = totalDispatched + totalFailed;
-        const deliveryRate = totalAttempts > 0 ? Math.round(((totalDelivered || totalDispatched) / totalAttempts) * 100) : 100;
+        const deliveryRate = totalAttempts > 0 ? Math.round((totalDelivered / totalAttempts) * 100) : null;
 
         return res.json({
             success: true,
@@ -217,8 +217,6 @@ async function getNotificationLogs(req, res) {
 async function resendNotification(req, res) {
     try {
         const { id } = req.params;
-        const force = Boolean(req.body?.force);
-
         const existing = await prisma.shipmentNotificationLog.findUnique({
             where: { id }
         });
@@ -227,24 +225,37 @@ async function resendNotification(req, res) {
             return res.status(404).json({ error: 'Notification log entry not found' });
         }
 
-        if (!force) {
-            const isSender = ['sender', 'shipper', 'merchant'].includes((existing.recipientRole || '').toLowerCase());
-            const roleGroup = isSender ? ['sender'] : ['receiver', 'customer', 'consignee'];
-
-            const anySent = await prisma.shipmentNotificationLog.findFirst({
-                where: {
-                    trackingNumber: existing.trackingNumber,
-                    recipientRole: { in: roleGroup },
-                    status: { in: ['submitted', 'SUBMITTED', 'SENT', 'sent', 'DELIVERED', 'delivered', 'READ', 'read'] }
-                }
-            });
-
-            if (anySent || ['SUBMITTED', 'SENT', 'DELIVERED', 'READ'].includes(String(existing.status || '').toUpperCase())) {
-                return res.status(400).json({ 
-                    error: `A notification was already successfully delivered for shipment ${existing.trackingNumber} to ${isSender ? 'Sender' : 'Consignee'}. Resending is disabled to prevent duplicate customer messages.`,
-                    alreadySent: true
-                });
+        const isSender = ['sender', 'shipper', 'merchant'].includes((existing.recipientRole || '').toLowerCase());
+        const roleGroup = isSender ? ['sender', 'shipper', 'merchant'] : ['receiver', 'customer', 'consignee'];
+        const blockingStatuses = ['submitted', 'SUBMITTED', 'SENT', 'sent', 'DELIVERED', 'delivered', 'READ', 'read', 'QUEUED', 'queued', 'PENDING', 'pending', 'PROCESSING', 'processing'];
+        const anyBlocked = await prisma.shipmentNotificationLog.findFirst({
+            where: {
+                trackingNumber: existing.trackingNumber,
+                recipientRole: { in: roleGroup },
+                templateName: existing.templateName,
+                status: { in: blockingStatuses }
             }
+        });
+
+        if (anyBlocked) {
+            const accepted = ['submitted', 'sent', 'delivered', 'read'].includes(String(anyBlocked.status || '').toLowerCase());
+            await require('../services/shipmentWhatsAppPolicy.service').recordSkippedAttempt({
+                shipment: { id: existing.shipmentId, trackingNumber: existing.trackingNumber },
+                eventType: existing.eventType,
+                templateName: existing.templateName,
+                recipientRole: existing.recipientRole,
+                recipientName: existing.recipientName,
+                recipientPhone: existing.recipientPhone,
+                reason: accepted ? 'DUPLICATE_ALREADY_SUBMITTED' : 'DISPATCH_ALREADY_IN_FLIGHT'
+            });
+            return res.status(409).json({
+                success: false,
+                code: accepted ? 'DUPLICATE_ALREADY_SUBMITTED' : 'DISPATCH_ALREADY_IN_FLIGHT',
+                error: accepted
+                    ? `This approved message was already accepted for shipment ${existing.trackingNumber}. Resend is blocked to prevent duplicates.`
+                    : 'This approved message already has an active queued or pending attempt.',
+                alreadySent: accepted
+            });
         }
 
         const shipment = await prisma.shipment.findFirst({
@@ -255,15 +266,34 @@ async function resendNotification(req, res) {
             return res.status(404).json({ error: 'Associated shipment not found' });
         }
 
+        const terminalBlock = require('../services/shipmentWhatsAppPolicy.service').terminalBlock(shipment);
+        if (terminalBlock) {
+            await prisma.shipmentNotificationLog.create({
+                data: {
+                    shipmentId: shipment.id,
+                    trackingNumber: shipment.trackingNumber,
+                    eventType: existing.eventType,
+                    recipientRole: existing.recipientRole,
+                    recipientName: existing.recipientName,
+                    recipientPhone: existing.recipientPhone,
+                    provider: 'chatwoot',
+                    templateName: existing.templateName,
+                    status: 'SKIPPED',
+                    errorMessage: `${terminalBlock.code}:${terminalBlock.status}`
+                }
+            });
+            return res.status(409).json({ success: false, code: terminalBlock.code, error: terminalBlock.message });
+        }
+
         const role = String(existing.recipientRole || '').toLowerCase();
         let result;
         if (['sender', 'shipper', 'merchant'].includes(role) && chatwootNotificationService.isShipmentConfirmationEvent(existing.eventType)) {
             result = await chatwootNotificationService.sendShipmentNotification(existing.eventType, shipment, {
                 recipientRole: 'sender',
                 templateName: 'shipment_confirmation_2',
+                manualDispatch: true,
                 disableProviderFallback: true,
-                existingLogId: existing.id,
-                force
+                existingLogId: existing.id
             });
         } else {
             const recipientPhone = ['sender', 'shipper', 'merchant'].includes(role)
@@ -278,15 +308,28 @@ async function resendNotification(req, res) {
                 shipment,
                 recipientRole: ['shipper', 'merchant'].includes(role) ? 'sender' : existing.recipientRole,
                 recipientPhone,
-                recipientName: existing.recipientName,
+                recipientName: ['sender', 'shipper', 'merchant'].includes(role)
+                    ? (shipment.origin?.contactPerson || shipment.origin?.name || shipment.senderName)
+                    : (shipment.destination?.contactPerson || shipment.destination?.name || shipment.customerName),
                 eventType: existing.eventType,
                 templateName: existing.templateName,
-                force,
+                force: false,
+                manualDispatch: true,
                 existingLogId: existing.id
             });
         }
 
-        return res.json({ success: true, result });
+        const outcome = result?.status || result?.results?.[0]?.status;
+        const normalizedOutcome = String(outcome || '').toLowerCase();
+        const accepted = ['submitted', 'sent', 'delivered', 'read'].includes(normalizedOutcome);
+        const queued = normalizedOutcome === 'queued';
+        const skipped = result?.skipped || normalizedOutcome === 'skipped';
+        return res.status(accepted || queued ? 200 : skipped ? 409 : 502).json({
+            success: accepted || queued,
+            code: accepted || queued ? undefined : result?.reason || result?.results?.[0]?.reason || 'DISPATCH_FAILED',
+            error: accepted || queued ? undefined : result?.message || result?.results?.[0]?.error || result?.results?.[0]?.reason || result?.reason || 'Chatwoot did not accept the notification',
+            result
+        });
     } catch (err) {
         logger.error(`[Admin WhatsApp Resend Error] ${err.message}`);
         return res.status(500).json({ error: err.message });
@@ -300,7 +343,7 @@ async function resendNotification(req, res) {
 async function sendShipmentWhatsApp(req, res) {
     try {
         const { trackingNumber } = req.params;
-        const { recipientRole, recipientPhone, recipientName, eventType, templateName, customMessage, force } = req.body;
+        const { recipientRole = 'sender', recipientPhone, recipientName, eventType = 'shipment_created', templateName = 'shipment_confirmation_2', customMessage, force } = req.body;
 
         const shipment = await prisma.shipment.findFirst({
             where: { trackingNumber }
@@ -314,17 +357,15 @@ async function sendShipmentWhatsApp(req, res) {
             return res.status(403).json({ error: 'Permission denied' });
         }
 
-        const canCustomizeDispatch = ['BOOK_CARRIERS', 'MANAGE_USERS', 'MANAGE_SYSTEM_SETTINGS']
-            .some(capability => hasCapability(req.user.role, capability));
-        if (!canCustomizeDispatch && (recipientPhone || recipientName || templateName || customMessage || force)) {
-            return res.status(403).json({ error: 'Custom WhatsApp dispatch requires operational permission' });
+        if (recipientPhone || recipientName || customMessage || force) {
+            return res.status(400).json({ success: false, code: 'UNTRUSTED_DISPATCH_OVERRIDE', error: 'Manual shipment dispatch uses the current shipment party details and the approved template; caller overrides are disabled.' });
         }
 
         let targetPhone = recipientPhone;
         let targetCountryCode = null;
 
-        const effectiveRole = recipientRole || 'sender';
-        if (!['sender', 'receiver', 'customer', 'consignee', 'driver'].includes(effectiveRole)) {
+        const effectiveRole = recipientRole;
+        if (!['sender', 'receiver'].includes(effectiveRole)) {
             return res.status(400).json({ error: 'Invalid recipient role' });
         }
 
@@ -341,21 +382,34 @@ async function sendShipmentWhatsApp(req, res) {
         }
 
         if (!targetPhone) {
-            return res.status(400).json({ error: 'Recipient phone number is missing' });
+            await require('../services/shipmentWhatsAppPolicy.service').recordSkippedAttempt({
+                shipment,
+                eventType,
+                templateName,
+                recipientRole: effectiveRole,
+                recipientName: effectiveRole === 'sender'
+                    ? (shipment.origin?.contactPerson || shipment.origin?.name || shipment.senderName)
+                    : (shipment.destination?.contactPerson || shipment.destination?.name || shipment.customerName),
+                reason: 'MISSING_RECIPIENT_PHONE'
+            });
+            return res.status(409).json({ success: false, code: 'MISSING_RECIPIENT_PHONE', error: 'Recipient phone number is missing from the shipment record' });
         }
 
-        const requestedEvent = eventType || 'out_for_delivery';
+        const requestedEvent = eventType;
         if (effectiveRole === 'sender' && chatwootNotificationService.isShipmentConfirmationEvent(requestedEvent)) {
-            if (recipientPhone || customMessage || (templateName && templateName !== 'shipment_confirmation_2')) {
+            if (requestedEvent !== 'shipment_created' || templateName !== 'shipment_confirmation_2') {
                 return res.status(400).json({ error: 'Shipment confirmations use the approved shipper template and shipment phone' });
             }
             const result = await chatwootNotificationService.sendShipmentNotification(requestedEvent, shipment, {
                 recipientRole: 'sender',
                 templateName: 'shipment_confirmation_2',
+                manualDispatch: true,
                 disableProviderFallback: true,
-                force: Boolean(force)
             });
-            return res.json({ success: true, result });
+            const outcome = result?.results?.[0]?.status;
+            const accepted = ['submitted', 'sent', 'delivered', 'read'].includes(String(outcome || '').toLowerCase());
+            const skipped = result?.skipped || String(outcome || '').toLowerCase() === 'skipped';
+            return res.status(accepted ? 200 : skipped ? 409 : 502).json({ success: accepted, code: accepted ? undefined : result?.reason || 'DISPATCH_FAILED', error: accepted ? undefined : result?.results?.[0]?.error || result?.results?.[0]?.reason || result?.reason || 'Chatwoot did not accept the shipment message', result });
         }
 
         const result = await whatsappService.sendNotification({
@@ -363,14 +417,16 @@ async function sendShipmentWhatsApp(req, res) {
             recipientRole: effectiveRole,
             recipientPhone: targetPhone,
             recipientCountryCode: targetCountryCode,
-            recipientName: recipientName || (effectiveRole === 'driver' ? shipment.driverName : (effectiveRole === 'sender' ? (shipment.origin?.contactPerson || shipment.origin?.name) : shipment.customerName)),
+            recipientName: effectiveRole === 'sender' ? (shipment.origin?.contactPerson || shipment.origin?.name) : (shipment.destination?.contactPerson || shipment.destination?.name || shipment.customerName),
             eventType: requestedEvent,
             templateName,
-            customMessage,
-            force: Boolean(force)
+            manualDispatch: true,
+            force: false
         });
-
-        return res.json({ success: true, result });
+        const accepted = ['submitted', 'sent', 'delivered', 'read'].includes(String(result?.status || '').toLowerCase());
+        const queued = String(result?.status || '').toLowerCase() === 'queued';
+        const skipped = String(result?.status || '').toLowerCase() === 'skipped';
+        return res.status(accepted || queued ? 200 : skipped ? 409 : 502).json({ success: accepted || queued, code: accepted || queued ? undefined : result?.reason || 'DISPATCH_FAILED', error: accepted || queued ? undefined : result?.message || result?.reason || 'Chatwoot did not accept the shipment message', result });
     } catch (err) {
         logger.error(`[Shipment WhatsApp Send Error] ${err.message}`);
         return res.status(500).json({ error: err.message });
@@ -496,8 +552,7 @@ async function dispatchQueuedNotifications(req, res) {
         const limit = Math.min(300, Math.max(1, parseInt(req.body?.limit || '200', 10)));
         const queuedLogs = await prisma.shipmentNotificationLog.findMany({
             where: {
-                status: { in: ['QUEUED', 'queued', 'pending', 'PENDING'] },
-                recipientRole: { in: ['sender', 'shipper', 'merchant'] }
+                status: { in: ['QUEUED', 'queued', 'pending', 'PENDING'] }
             },
             include: {
                 shipment: true
@@ -520,34 +575,11 @@ async function dispatchQueuedNotifications(req, res) {
         let dispatched = 0;
         let skipped = 0;
         let failed = 0;
+        let queued = 0;
+        const allowedRetryTemplates = ['payment_request_v1', 'location_request_v1', 'return_portal_v1', 'customer_inquiry_start'];
+        const policy = require('../services/shipmentWhatsAppPolicy.service');
 
         for (const log of queuedLogs) {
-            const roleGroup = ['sender', 'shipper', 'merchant'];
-
-            // 1. Strict Deduplication Check: Local DB
-            const anySent = await prisma.shipmentNotificationLog.findFirst({
-                where: {
-                    trackingNumber: log.trackingNumber,
-                    eventType: log.eventType,
-                    recipientRole: { in: roleGroup },
-                    status: { in: ['submitted', 'SUBMITTED', 'SENT', 'sent', 'DELIVERED', 'delivered', 'READ', 'read'] },
-                    id: { not: log.id }
-                }
-            });
-
-            if (anySent) {
-                await prisma.shipmentNotificationLog.update({
-                    where: { id: log.id },
-                    data: {
-                        status: 'SKIPPED',
-                        errorMessage: `Notification already delivered for this recipient role (Log ${anySent.id})`
-                    }
-                });
-                skipped++;
-                continue;
-            }
-
-            // 2. Fetch associated shipment if not eager-loaded
             const shipment = log.shipment || await prisma.shipment.findFirst({
                 where: { trackingNumber: log.trackingNumber }
             });
@@ -561,42 +593,68 @@ async function dispatchQueuedNotifications(req, res) {
                 continue;
             }
 
+            const lifecycle = chatwootNotificationService.isShipmentConfirmationEvent(log.eventType);
+            const recipientRole = ['sender', 'shipper', 'merchant'].includes(String(log.recipientRole || '').toLowerCase()) ? 'sender' : 'receiver';
+            const terminalBlock = policy.terminalBlock(shipment);
+            const actionBlock = policy.validateManualAction({ eventType: log.eventType, templateName: log.templateName, recipientRole });
+            const block = lifecycle
+                ? { code: 'AUTOMATIC_SHIPMENT_MESSAGES_DISABLED' }
+                : terminalBlock || actionBlock || (!allowedRetryTemplates.includes(log.templateName) ? { code: 'UNAPPROVED_QUEUED_SHIPMENT_ACTION' } : null);
+            if (block) {
+                await prisma.shipmentNotificationLog.update({
+                    where: { id: log.id },
+                    data: { status: 'SKIPPED', errorMessage: `${block.code}${block.status ? `:${block.status}` : ''}` }
+                });
+                skipped++;
+                continue;
+            }
+
+            const target = chatwootNotificationService.getNotificationTargets(log.eventType, shipment, recipientRole)[0];
+            if (!target?.phone) {
+                await prisma.shipmentNotificationLog.update({ where: { id: log.id }, data: { status: 'SKIPPED', errorMessage: 'MISSING_RECIPIENT_PHONE' } });
+                skipped++;
+                continue;
+            }
+
+            const activeStatuses = ['submitted', 'SUBMITTED', 'SENT', 'sent', 'DELIVERED', 'delivered', 'READ', 'read', 'QUEUED', 'queued', 'PENDING', 'pending', 'PROCESSING', 'processing'];
+            const duplicate = await prisma.shipmentNotificationLog.findFirst({
+                where: {
+                    shipmentId: shipment.id,
+                    eventType: log.eventType,
+                    templateName: log.templateName,
+                    recipientRole: { in: recipientRole === 'sender' ? ['sender', 'shipper', 'merchant'] : ['receiver', 'consignee', 'customer'] },
+                    status: { in: activeStatuses },
+                    id: { not: log.id }
+                }
+            });
+            if (duplicate) {
+                const wasAccepted = policy.isProviderAccepted(duplicate.status);
+                await prisma.shipmentNotificationLog.update({
+                    where: { id: log.id },
+                    data: { status: 'SKIPPED', errorMessage: wasAccepted ? 'DUPLICATE_ALREADY_SUBMITTED' : 'DISPATCH_ALREADY_IN_FLIGHT' }
+                });
+                skipped++;
+                continue;
+            }
+
             try {
-                const sender = chatwootNotificationService.getNotificationTargets(log.eventType, shipment, 'sender')[0];
-                if (!sender?.phone) {
-                    await prisma.shipmentNotificationLog.update({
-                        where: { id: log.id },
-                        data: { status: 'SKIPPED', errorMessage: 'SENDER_PHONE_NOT_FOUND' }
-                    });
-                    skipped++;
-                    continue;
-                }
-
-                let sendStatus;
-                if (chatwootNotificationService.isShipmentConfirmationEvent(log.eventType)) {
-                    const result = await chatwootNotificationService.sendShipmentNotification(log.eventType, shipment, {
-                        recipientRole: 'sender',
-                        templateName: 'shipment_confirmation_2',
-                        disableProviderFallback: true,
-                        existingLogId: log.id
-                    });
-                    sendStatus = result?.results?.[0]?.status;
-                } else {
-                    const result = await whatsappService.sendNotification({
-                        shipment,
-                        recipientRole: 'sender',
-                        recipientPhone: sender.phone,
-                        recipientName: sender.name,
-                        eventType: log.eventType,
-                        templateName: log.templateName,
-                        force: false,
-                        existingLogId: log.id
-                    });
-                    sendStatus = result?.status;
-                }
-
-                if (['submitted', 'SENT', 'sent'].includes(sendStatus)) {
+                const result = await whatsappService.sendNotification({
+                    shipment,
+                    recipientRole,
+                    recipientPhone: target.phone,
+                    recipientName: target.name,
+                    eventType: log.eventType,
+                    templateName: log.templateName,
+                    force: false,
+                    manualDispatch: true,
+                    existingLogId: log.id,
+                    provider: 'chatwoot'
+                });
+                const sendStatus = String(result?.status || '').toLowerCase();
+                if (['submitted', 'sent', 'delivered', 'read'].includes(sendStatus)) {
                     dispatched++;
+                } else if (sendStatus === 'queued') {
+                    queued++;
                 } else {
                     skipped++;
                 }
@@ -615,7 +673,8 @@ async function dispatchQueuedNotifications(req, res) {
             dispatched,
             skipped,
             failed,
-            message: `Batch processed: ${dispatched} sent, ${skipped} skipped (duplicates), ${failed} failed.`
+            queued,
+            message: `Batch processed: ${dispatched} accepted, ${queued} queued, ${skipped} skipped, ${failed} failed.`
         });
     } catch (err) {
         logger.error(`[Dispatch Queued Error] ${err.message}`);
@@ -682,7 +741,7 @@ async function updateWhatsAppConfig(req, res) {
 async function sendManualPaymentLinkNotice(req, res) {
     try {
         const { trackingNumber } = req.params;
-        const { customPaymentUrl, paymentUrl, amount, recipientRole, recipientPhone, currency = 'KWD' } = req.body || {};
+        const { customPaymentUrl, paymentUrl, amount, recipientRole = 'sender', recipientPhone, currency = 'KWD' } = req.body || {};
 
         const effectivePaymentUrl = customPaymentUrl || paymentUrl;
 
@@ -730,21 +789,31 @@ async function sendManualPaymentLinkNotice(req, res) {
             return res.status(404).json({ success: false, error: 'Shipment not found' });
         }
 
-        const role = (recipientRole === 'sender' || recipientRole === 'shipper') ? 'sender' : 'receiver';
+        if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
+        if (recipientPhone) return res.status(400).json({ success: false, code: 'UNTRUSTED_DISPATCH_OVERRIDE', error: 'Payment notices use the current shipment party phone; caller phone overrides are disabled.' });
+        if (!['sender', 'shipper', 'receiver', 'consignee', 'customer'].includes(String(recipientRole).toLowerCase())) {
+            return res.status(400).json({ success: false, error: 'Invalid recipient role' });
+        }
+
+        const role = ['sender', 'shipper'].includes(String(recipientRole).toLowerCase()) ? 'sender' : 'receiver';
         const finalAmount = effectiveAmount || Number(shipment.remainingBalance || shipment.price || 0).toFixed(3);
 
         const result = await whatsappService.sendPaymentLinkNotification({
             shipment,
             recipientRole: role,
-            recipientPhone,
+            recipientPhone: null,
             paymentLink: trimmedUrl,
             amount: finalAmount,
             currency: shipment.currency || currency
         });
 
-        return res.json({
-            success: true,
-            message: 'Payment link notification dispatched',
+        const accepted = ['submitted', 'sent', 'delivered', 'read'].includes(String(result?.status || '').toLowerCase());
+        const queued = String(result?.status || '').toLowerCase() === 'queued';
+        const skipped = String(result?.status || '').toLowerCase() === 'skipped';
+        return res.status(accepted || queued ? 200 : skipped ? 409 : 502).json({
+            success: accepted || queued,
+            code: accepted || queued ? undefined : result?.reason || 'DISPATCH_FAILED',
+            message: accepted ? 'Payment link notification accepted by Chatwoot' : queued ? 'Payment link notification queued' : result?.message || result?.reason || 'Payment link notification was not accepted',
             data: result
         });
     } catch (err) {

@@ -21,15 +21,15 @@ const ROLE_DISPLAY_NAMES = {
 const SUPERADMIN_TAB_IDS = new Set(['fleet', 'ratecards', 'phenix', 'whatsapp', 'notifications', 'routing']);
 
 export const DEFAULT_WHATSAPP_RULES = [
-  { eventType: 'out_for_delivery', recipientRole: 'receiver', templateName: 'target_shipment_out_for_delivery', enabled: true, allowQuietHoursBypass: false },
-  { eventType: 'delivered', recipientRole: 'receiver', templateName: 'target_shipment_delivered', enabled: true, allowQuietHoursBypass: false },
-  { eventType: 'delivered', recipientRole: 'sender', templateName: 'target_shipment_delivered', enabled: true, allowQuietHoursBypass: false },
-  { eventType: 'on_hold_customs_issue', recipientRole: 'receiver', templateName: 'target_customs_exception_hold', enabled: true, allowQuietHoursBypass: true },
-  { eventType: 'on_hold_customs_issue', recipientRole: 'sender', templateName: 'target_customs_exception_hold', enabled: true, allowQuietHoursBypass: true },
-  { eventType: 'payment_link_ready', recipientRole: 'receiver', templateName: 'payment_request_v1', enabled: true, allowQuietHoursBypass: false },
-  { eventType: 'payment_link_ready', recipientRole: 'sender', templateName: 'payment_request_v1', enabled: true, allowQuietHoursBypass: false },
-  { eventType: 'shipment_created', recipientRole: 'receiver', templateName: 'shipment_confirmation_2', enabled: true, allowQuietHoursBypass: false },
-  { eventType: 'shipment_created', recipientRole: 'sender', templateName: 'shipment_confirmation_2', enabled: true, allowQuietHoursBypass: false },
+  { eventType: 'out_for_delivery', recipientRole: 'receiver', templateName: 'target_shipment_out_for_delivery', enabled: false, allowQuietHoursBypass: false },
+  { eventType: 'delivered', recipientRole: 'receiver', templateName: 'target_shipment_delivered', enabled: false, allowQuietHoursBypass: false },
+  { eventType: 'delivered', recipientRole: 'sender', templateName: 'target_shipment_delivered', enabled: false, allowQuietHoursBypass: false },
+  { eventType: 'on_hold_customs_issue', recipientRole: 'receiver', templateName: 'target_customs_exception_hold', enabled: false, allowQuietHoursBypass: false },
+  { eventType: 'on_hold_customs_issue', recipientRole: 'sender', templateName: 'target_customs_exception_hold', enabled: false, allowQuietHoursBypass: false },
+  { eventType: 'payment_link_ready', recipientRole: 'receiver', templateName: 'payment_request_v1', enabled: false, allowQuietHoursBypass: false },
+  { eventType: 'payment_link_ready', recipientRole: 'sender', templateName: 'payment_request_v1', enabled: false, allowQuietHoursBypass: false },
+  { eventType: 'shipment_created', recipientRole: 'receiver', templateName: 'shipment_confirmation_2', enabled: false, allowQuietHoursBypass: false },
+  { eventType: 'shipment_created', recipientRole: 'sender', templateName: 'shipment_confirmation_2', enabled: false, allowQuietHoursBypass: false },
 ];
 
 export const EVENT_METRIC_CONFIG = {
@@ -242,7 +242,7 @@ export const SettingsPage = () => {
           }));
         }
         if (Array.isArray(res.data.rules) && res.data.rules.length > 0) {
-          setWhatsAppRules(res.data.rules);
+          setWhatsAppRules((res.data.rules || []).map(rule => ({ ...rule, enabled: false, allowQuietHoursBypass: false })));
         } else {
           setWhatsAppRules(DEFAULT_WHATSAPP_RULES);
         }
@@ -264,7 +264,8 @@ export const SettingsPage = () => {
   const handleSaveWhatsApp = async () => {
     try {
       setSavingWhatsApp(true);
-      const currentRules = whatsAppRules.length > 0 ? whatsAppRules : DEFAULT_WHATSAPP_RULES;
+      const currentRules = (whatsAppRules.length > 0 ? whatsAppRules : DEFAULT_WHATSAPP_RULES)
+        .map(rule => ({ ...rule, enabled: false, allowQuietHoursBypass: false }));
       const payload = {
         config: { ...whatsAppConfig },
         rules: currentRules,
@@ -281,7 +282,7 @@ export const SettingsPage = () => {
           }));
         }
         if (Array.isArray(res.data.rules)) {
-          setWhatsAppRules(res.data.rules);
+          setWhatsAppRules((res.data.rules || []).map(rule => ({ ...rule, enabled: false, allowQuietHoursBypass: false })));
         }
         enqueueSnackbar(
           lang === 'ar' ? 'تم حفظ إعدادات واتساب وشات ووت بنجاح' : 'WhatsApp and Chatwoot settings updated successfully',
@@ -299,12 +300,6 @@ export const SettingsPage = () => {
     } finally {
       setSavingWhatsApp(false);
     }
-  };
-
-  const handleRuleChange = (index, field, value) => {
-    const list = whatsAppRules.length > 0 ? [...whatsAppRules] : [...DEFAULT_WHATSAPP_RULES];
-    list[index] = { ...list[index], [field]: value };
-    setWhatsAppRules(list);
   };
 
   const generateNewKey = async () => {
@@ -1767,6 +1762,15 @@ export const SettingsPage = () => {
                     </div>
                   </div>
 
+                  <div className="alert alert-info text-xs" role="status">
+                    <span className="material-symbols-outlined">info</span>
+                    <span>
+                      {lang === 'ar'
+                        ? 'إشعارات الشحن التلقائية معطلة. تُرسل رسائل الشحن من أزرار الإجراءات اليدوية المعتمدة فقط.'
+                        : 'Automatic shipment notifications are disabled. Shipment messages can only be started from approved manual actions.'}
+                    </span>
+                  </div>
+
                   <div className="overflow-x-auto border border-base-200 rounded-xl">
                     <table className="table table-sm w-full" data-testid="whatsapp-rules-table">
                       <thead>
@@ -1823,7 +1827,7 @@ export const SettingsPage = () => {
                                 <input
                                   type="text"
                                   value={rule.templateName || ''}
-                                  onChange={(e) => handleRuleChange(idx, 'templateName', e.target.value)}
+                                  disabled
                                   className="input input-xs input-bordered w-full max-w-xs font-mono text-[11px] focus:input-primary"
                                 />
                               </td>
@@ -1831,8 +1835,8 @@ export const SettingsPage = () => {
                               <td className="text-center">
                                 <input
                                   type="checkbox"
-                                  checked={Boolean(rule.enabled)}
-                                  onChange={(e) => handleRuleChange(idx, 'enabled', e.target.checked)}
+                                  checked={false}
+                                  disabled
                                   className="toggle toggle-primary toggle-sm"
                                   data-testid={`toggle-rule-enabled-${rule.eventType}-${rule.recipientRole}`}
                                 />
@@ -1841,8 +1845,8 @@ export const SettingsPage = () => {
                               <td className="text-center">
                                 <input
                                   type="checkbox"
-                                  checked={Boolean(rule.allowQuietHoursBypass)}
-                                  onChange={(e) => handleRuleChange(idx, 'allowQuietHoursBypass', e.target.checked)}
+                                  checked={false}
+                                  disabled
                                   className="toggle toggle-warning toggle-sm"
                                   data-testid={`toggle-rule-bypass-${rule.eventType}-${rule.recipientRole}`}
                                 />

@@ -47,7 +47,9 @@ describe('shipment operations lifecycle characterization baseline', () => {
         };
         const updated = { ...shipment, status: 'picked_up' };
         mockPrisma.shipment.findUnique.mockResolvedValue(shipment);
-        mockPrisma.shipment.update.mockResolvedValue(updated);
+        mockPrisma.shipment.update
+            .mockResolvedValueOnce({ ...shipment, assignedDriverId: 'driver-1' })
+            .mockResolvedValueOnce(updated);
         const res = responseDouble();
 
         await shipmentOpsController.pickupShipment({
@@ -55,7 +57,11 @@ describe('shipment operations lifecycle characterization baseline', () => {
             user: { id: 'driver-1', role: 'driver', name: 'Driver' }
         }, res);
 
-        expect(mockPrisma.shipment.update).toHaveBeenCalledWith(expect.objectContaining({
+        expect(mockPrisma.shipment.update).toHaveBeenNthCalledWith(1, expect.objectContaining({
+            where: { id: 'shipment-1' },
+            data: { assignedDriverId: 'driver-1' }
+        }));
+        expect(mockPrisma.shipment.update).toHaveBeenNthCalledWith(2, expect.objectContaining({
             where: { id: 'shipment-1' },
             data: expect.objectContaining({
                 status: 'picked_up',

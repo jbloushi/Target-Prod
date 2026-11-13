@@ -138,7 +138,7 @@ describe('CHALLENGER_2 Empirical Adversarial Test Suite', () => {
             expect(diff).toBeLessThanOrEqual(expectedMs + (after - before) + 2000);
         });
 
-        test('1.5 Out-for-delivery dispatch creates and saves 32-byte location token and 48h expiry on unprovisioned shipment', async () => {
+        test('1.5 automatic out-for-delivery dispatch is blocked without creating a location token', async () => {
             const shipment = {
                 id: 'shp-emp-1',
                 trackingNumber: 'TRG-EMP-TOK-01',
@@ -147,11 +147,13 @@ describe('CHALLENGER_2 Empirical Adversarial Test Suite', () => {
                 destination: { phone: '+96599112233' }
             };
 
+            jest.spyOn(prisma.shipment, 'findUnique').mockResolvedValue(shipment);
             const updateSpy = jest.spyOn(prisma.shipment, 'update').mockResolvedValueOnce({
                 ...shipment,
                 locationToken: 'loc_mocked',
                 locationTokenExpiresAt: new Date(Date.now() + 48 * 3600000)
             });
+            const logCreateSpy = jest.spyOn(prisma.shipmentNotificationLog, 'create').mockResolvedValue({ id: 'log-suppressed' });
 
             jest.spyOn(whatsAppConfigService, 'getConfig').mockResolvedValue({
                 id: 'cfg-test',
@@ -163,7 +165,7 @@ describe('CHALLENGER_2 Empirical Adversarial Test Suite', () => {
             jest.spyOn(prisma.shipmentNotificationLog, 'update').mockResolvedValue({ id: 'log-1', status: 'SENT' });
             axios.post.mockResolvedValue({ data: { status: 'sent', messageId: 'wamid.123' } });
 
-            await whatsappService.sendNotification({
+            const result = await whatsappService.sendNotification({
                 shipment,
                 eventType: 'out_for_delivery',
                 recipientRole: 'receiver',
@@ -171,19 +173,14 @@ describe('CHALLENGER_2 Empirical Adversarial Test Suite', () => {
                 force: true
             });
 
-            expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({
-                where: { id: 'shp-emp-1' },
-                data: expect.objectContaining({
-                    locationToken: expect.stringMatching(/^loc_[0-9a-f]{64}$/),
-                    locationTokenExpiresAt: expect.any(Date)
-                })
+            expect(result).toEqual(expect.objectContaining({ status: 'SKIPPED', reason: 'MANUAL_DISPATCH_REQUIRED' }));
+            expect(updateSpy).not.toHaveBeenCalled();
+            expect(logCreateSpy).toHaveBeenCalledWith(expect.objectContaining({
+                data: expect.objectContaining({ status: 'SKIPPED', errorMessage: 'MANUAL_DISPATCH_REQUIRED' })
             }));
-
-            expect(shipment.locationToken).toMatch(/^loc_[0-9a-f]{64}$/);
-            expect(shipment.locationTokenExpiresAt.getTime()).toBeGreaterThan(Date.now() + 47 * 3600000);
         });
 
-        test('1.6 Active unexpired location token is preserved and NOT overwritten on repeat notification dispatch', async () => {
+        test('1.6 automatic out-for-delivery updates do not change an existing location token', async () => {
             const existingToken = `loc_${crypto.randomBytes(32).toString('hex')}`;
             const existingExpiry = new Date(Date.now() + 30 * 3600000); // 30h remaining
 
@@ -195,7 +192,9 @@ describe('CHALLENGER_2 Empirical Adversarial Test Suite', () => {
                 destination: { phone: '+96599112233' }
             };
 
+            jest.spyOn(prisma.shipment, 'findUnique').mockResolvedValue(shipment);
             const updateSpy = jest.spyOn(prisma.shipment, 'update');
+            jest.spyOn(prisma.shipmentNotificationLog, 'create').mockResolvedValue({ id: 'log-p1' });
 
             jest.spyOn(whatsAppConfigService, 'getConfig').mockResolvedValue({ quietHoursEnabled: false });
             jest.spyOn(whatsAppConfigService, '_computeQuietHours').mockReturnValue(false);
@@ -204,7 +203,7 @@ describe('CHALLENGER_2 Empirical Adversarial Test Suite', () => {
             jest.spyOn(prisma.shipmentNotificationLog, 'update').mockResolvedValue({ id: 'log-p1', status: 'SENT' });
             axios.post.mockResolvedValue({ data: { status: 'sent' } });
 
-            await whatsappService.sendNotification({
+            const result = await whatsappService.sendNotification({
                 shipment,
                 eventType: 'out_for_delivery',
                 recipientRole: 'receiver',
@@ -212,13 +211,13 @@ describe('CHALLENGER_2 Empirical Adversarial Test Suite', () => {
                 force: true
             });
 
-            // prisma.shipment.update should NOT be called to regenerate token
+            expect(result).toEqual(expect.objectContaining({ status: 'SKIPPED', reason: 'MANUAL_DISPATCH_REQUIRED' }));
             expect(updateSpy).not.toHaveBeenCalled();
             expect(shipment.locationToken).toBe(existingToken);
             expect(shipment.locationTokenExpiresAt).toBe(existingExpiry);
         });
 
-        test('1.7 Expired location token is renewed with a fresh 32-byte hex token and fresh 48h expiration', async () => {
+        test('1.7 automatic out-for-delivery updates do not renew an expired location token', async () => {
             const expiredToken = `loc_old_expired_${crypto.randomBytes(26).toString('hex')}`;
             const pastExpiry = new Date(Date.now() - 3600000); // expired 1h ago
 
@@ -230,7 +229,9 @@ describe('CHALLENGER_2 Empirical Adversarial Test Suite', () => {
                 destination: { phone: '+96599112233' }
             };
 
+            jest.spyOn(prisma.shipment, 'findUnique').mockResolvedValue(shipment);
             const updateSpy = jest.spyOn(prisma.shipment, 'update').mockResolvedValue({ id: 'shp-emp-renew' });
+            jest.spyOn(prisma.shipmentNotificationLog, 'create').mockResolvedValue({ id: 'log-r1' });
 
             jest.spyOn(whatsAppConfigService, 'getConfig').mockResolvedValue({ quietHoursEnabled: false });
             jest.spyOn(whatsAppConfigService, '_computeQuietHours').mockReturnValue(false);
@@ -239,7 +240,7 @@ describe('CHALLENGER_2 Empirical Adversarial Test Suite', () => {
             jest.spyOn(prisma.shipmentNotificationLog, 'update').mockResolvedValue({ id: 'log-r1', status: 'SENT' });
             axios.post.mockResolvedValue({ data: { status: 'sent' } });
 
-            await whatsappService.sendNotification({
+            const result = await whatsappService.sendNotification({
                 shipment,
                 eventType: 'out_for_delivery',
                 recipientRole: 'receiver',
@@ -247,17 +248,10 @@ describe('CHALLENGER_2 Empirical Adversarial Test Suite', () => {
                 force: true
             });
 
-            expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({
-                where: { id: 'shp-emp-renew' },
-                data: expect.objectContaining({
-                    locationToken: expect.stringMatching(/^loc_[0-9a-f]{64}$/),
-                    locationTokenExpiresAt: expect.any(Date)
-                })
-            }));
-
-            expect(shipment.locationToken).not.toBe(expiredToken);
-            expect(shipment.locationToken).toMatch(/^loc_[0-9a-f]{64}$/);
-            expect(shipment.locationTokenExpiresAt.getTime()).toBeGreaterThan(Date.now() + 47 * 3600000);
+            expect(result).toEqual(expect.objectContaining({ status: 'SKIPPED', reason: 'MANUAL_DISPATCH_REQUIRED' }));
+            expect(updateSpy).not.toHaveBeenCalled();
+            expect(shipment.locationToken).toBe(expiredToken);
+            expect(shipment.locationTokenExpiresAt).toBe(pastExpiry);
         });
     });
 
