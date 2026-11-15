@@ -158,17 +158,28 @@ export const ApiDocsPage = () => {
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 font-sans">
       <PageHeader
         title={lang === 'ar' ? 'توثيق واجهة برمجة التطبيقات' : 'API Documentation'}
-        subtitle="Developer reference for rates, shipment creation, tracking, pickups, and integrations."
-      >
-        <a
-          href="/postman_collection.json"
-          download="target-logistics-api.postman_collection.json"
-          className="btn btn-outline border-base-300 btn-sm font-bold text-xs gap-1.5"
-        >
-          <span className="material-symbols-outlined text-sm">download</span>
-          <span>Postman Collection</span>
-        </a>
-      </PageHeader>
+        description="Developer reference for rates, shipment creation, tracking, pickups, and integrations."
+        secondaryAction={
+          <a
+            href="/postman_collection.json"
+            download="target-logistics-api.postman_collection.json"
+            className="btn btn-outline border-base-300 btn-sm font-bold text-xs gap-1.5"
+          >
+            <span className="material-symbols-outlined text-sm">download</span>
+            <span>Postman Collection</span>
+          </a>
+        }
+        action={
+          <a
+            href="/Target_Logistics_Client_API_Documentation.pdf"
+            download="Target_Logistics_Client_API_Documentation.pdf"
+            className="btn btn-primary btn-sm font-bold text-xs gap-1.5"
+          >
+            <span className="material-symbols-outlined text-sm">picture_as_pdf</span>
+            <span>Download PDF Guide</span>
+          </a>
+        }
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Sticky Left Nav */}
