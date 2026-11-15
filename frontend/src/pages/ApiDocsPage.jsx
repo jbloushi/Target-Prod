@@ -160,14 +160,25 @@ export const ApiDocsPage = () => {
         title={lang === 'ar' ? 'توثيق واجهة برمجة التطبيقات' : 'API Documentation'}
         description="Developer reference for rates, shipment creation, tracking, pickups, and integrations."
         secondaryAction={
-          <a
-            href="/postman_collection.json"
-            download="target-logistics-api.postman_collection.json"
-            className="btn btn-outline border-base-300 btn-sm font-bold text-xs gap-1.5"
-          >
-            <span className="material-symbols-outlined text-sm">download</span>
-            <span>Postman Collection</span>
-          </a>
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href="/api-docs.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-outline border-base-300 btn-sm font-bold text-xs gap-1.5"
+            >
+              <span className="material-symbols-outlined text-sm">open_in_new</span>
+              <span>Interactive Guide</span>
+            </a>
+            <a
+              href="/postman_collection.json"
+              download="target-logistics-api.postman_collection.json"
+              className="btn btn-outline border-base-300 btn-sm font-bold text-xs gap-1.5"
+            >
+              <span className="material-symbols-outlined text-sm">download</span>
+              <span>Postman Collection</span>
+            </a>
+          </div>
         }
         action={
           <a

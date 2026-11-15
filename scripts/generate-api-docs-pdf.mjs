@@ -18,6 +18,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, '..');
 
 const HTML_PATH = path.join(ROOT_DIR, 'docs', 'branding', 'Target_Logistics_Client_API_Documentation.html');
+const INTERACTIVE_HTML_PATH = path.join(ROOT_DIR, 'docs', 'branding', 'Target_Logistics_Client_API_Documentation_Interactive.html');
+const PUBLIC_INTERACTIVE_HTML_PATH = path.join(ROOT_DIR, 'frontend', 'public', 'api-docs.html');
 const PDF_TARGETS = [
   path.join(ROOT_DIR, 'Target_Logistics_Client_API_Documentation.pdf'),
   path.join(ROOT_DIR, 'docs', 'Target_Logistics_Client_API_Documentation.pdf'),
@@ -28,6 +30,8 @@ const ASSET_FILES = {
   'target-logo@2x.png': path.join(ROOT_DIR, 'frontend', 'public', 'images', 'target-logo@2x.png'),
   'target-logo-white@2x.png': path.join(ROOT_DIR, 'frontend', 'public', 'images', 'target-logo-white@2x.png'),
   'target-icon-white.png': path.join(ROOT_DIR, 'frontend', 'public', 'images', 'target-icon-white.png'),
+  'target-pattern.svg': path.join(ROOT_DIR, 'frontend', 'public', 'images', 'target-pattern.svg'),
+  'target-pattern-dark.svg': path.join(ROOT_DIR, 'frontend', 'public', 'images', 'target-pattern-dark.svg'),
   'pattern-triangle-cluster.png': path.join(ROOT_DIR, 'docs', 'branding', 'Brand guidelines', 'assets', 'pattern-triangle-cluster.png'),
   'doodle-light.png': path.join(ROOT_DIR, 'docs', 'branding', 'Brand guidelines', 'assets', 'doodle-light.png'),
 };
@@ -42,31 +46,27 @@ function toDataUri(filePath) {
   return `data:${mime};base64,${b64}`;
 }
 
-function embedAssetsInHtml() {
-  const dataUris = {};
-  for (const [name, fullPath] of Object.entries(ASSET_FILES)) {
-    dataUris[name] = toDataUri(fullPath);
-  }
+function embedAssetsInHtmlFile(targetHtmlPath, dataUris) {
+  let html = fs.readFileSync(targetHtmlPath, 'utf8');
 
-  let html = fs.readFileSync(HTML_PATH, 'utf8');
-
-  // 1. Replace CSS custom property block idempotently
+  // 1. Replace CSS custom property block idempotently if present
   const cssMarkerRegex = /\/\* BRAND-ASSETS-CSS-START \*\/[\s\S]*?\/\* BRAND-ASSETS-CSS-END \*\//;
-  if (!cssMarkerRegex.test(html)) {
-    throw new Error('Could not find BRAND-ASSETS-CSS markers in HTML template.');
+  if (cssMarkerRegex.test(html)) {
+    const cssReplacement = [
+      '/* BRAND-ASSETS-CSS-START */',
+      `      --asset-triangle-cluster: url('${dataUris['pattern-triangle-cluster.png']}');`,
+      `      --asset-doodle-light: url('${dataUris['doodle-light.png']}');`,
+      `      --asset-target-pattern: url('${dataUris['target-pattern.svg']}');`,
+      `      --asset-target-pattern-dark: url('${dataUris['target-pattern-dark.svg']}');`,
+      '      /* BRAND-ASSETS-CSS-END */',
+    ].join('\n');
+    html = html.replace(cssMarkerRegex, cssReplacement);
   }
-  const cssReplacement = [
-    '/* BRAND-ASSETS-CSS-START */',
-    `      --asset-triangle-cluster: url('${dataUris['pattern-triangle-cluster.png']}');`,
-    `      --asset-doodle-light: url('${dataUris['doodle-light.png']}');`,
-    '      /* BRAND-ASSETS-CSS-END */',
-  ].join('\n');
-  html = html.replace(cssMarkerRegex, cssReplacement);
 
   // 2. Replace <img data-brand-asset="..." src="..."> idempotently
   html = html.replace(
     /(<img\b[^>]*\bdata-brand-asset="([^"]+)"[^>]*\bsrc=")([^"]*)(")/g,
-    (match, prefix, assetKey, _oldSrc, suffix) => {
+    (_match, prefix, assetKey, _oldSrc, suffix) => {
       if (!dataUris[assetKey]) {
         throw new Error(`Unknown brand asset referenced in HTML: ${assetKey}`);
       }
@@ -74,8 +74,37 @@ function embedAssetsInHtml() {
     },
   );
 
-  fs.writeFileSync(HTML_PATH, html, 'utf8');
-  console.log(`Embedded ${Object.keys(dataUris).length} brand assets into ${path.relative(ROOT_DIR, HTML_PATH)}`);
+  // 3. Replace data-brand-bg="..." elements by setting inline background-image idempotently
+  html = html.replace(
+    /<([a-zA-Z0-9]+)\b([^>]*\bdata-brand-bg="([^"]+)"[^>]*)>/g,
+    (fullTag, tagName, attrs, assetKey) => {
+      if (!dataUris[assetKey]) {
+        throw new Error(`Unknown brand background asset referenced in HTML: ${assetKey}`);
+      }
+      const bgStyle = `background-image: url('${dataUris[assetKey]}');`;
+      const cleanedAttrs = attrs.replace(/\s*style="[^"]*"/g, '');
+      return `<${tagName}${cleanedAttrs} style="${bgStyle}">`;
+    },
+  );
+
+  fs.writeFileSync(targetHtmlPath, html, 'utf8');
+  console.log(`Embedded ${Object.keys(dataUris).length} brand assets into ${path.relative(ROOT_DIR, targetHtmlPath)}`);
+}
+
+function embedAssetsInHtml() {
+  const dataUris = {};
+  for (const [name, fullPath] of Object.entries(ASSET_FILES)) {
+    dataUris[name] = toDataUri(fullPath);
+  }
+
+  embedAssetsInHtmlFile(HTML_PATH, dataUris);
+
+  if (fs.existsSync(INTERACTIVE_HTML_PATH)) {
+    embedAssetsInHtmlFile(INTERACTIVE_HTML_PATH, dataUris);
+    fs.mkdirSync(path.dirname(PUBLIC_INTERACTIVE_HTML_PATH), { recursive: true });
+    fs.copyFileSync(INTERACTIVE_HTML_PATH, PUBLIC_INTERACTIVE_HTML_PATH);
+    console.log(`Synced interactive guide to ${path.relative(ROOT_DIR, PUBLIC_INTERACTIVE_HTML_PATH)}`);
+  }
 }
 
 function findBrowserExecutable() {
