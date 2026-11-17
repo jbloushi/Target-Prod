@@ -159,12 +159,9 @@ const ShipmentsPage = () => {
                             <h1 className="text-xl sm:text-2xl font-black tracking-tight text-base-content">
                                 {t('shipments_title', 'Consignment & Dispatch Center')}
                             </h1>
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-blue-100 text-blue-950 border border-blue-300">
+                            <span className="badge badge-sm badge-neutral font-medium">
                                 {getRoleLabel(userRole)}
                             </span>
-                            {isSuperadmin && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-slate-100 text-slate-800 border border-slate-300">Admin Clearance</span>}
-                            {isTargetOwner && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-amber-100 text-amber-950 border border-amber-300">Executive Authority</span>}
-                            {isTargetAccounting && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-emerald-100 text-emerald-950 border border-emerald-300">Finance Controller</span>}
                         </div>
                         <p className="text-xs text-base-content/60 font-semibold mt-0.5">
                             {t('shipments_subtitle', 'Manage end-to-end consignment manifests, dual-carrier trade routes, and delivery triage.')}
@@ -204,16 +201,16 @@ const ShipmentsPage = () => {
                                 <button
                                     type="button"
                                     onClick={() => setIsUndeliveredModalOpen(true)}
-                                    className="btn btn-outline btn-primary btn-sm rounded-xl font-bold flex-1 sm:flex-initial gap-1.5"
+                                    className="btn btn-outline btn-sm rounded-xl font-medium border-base-300 text-base-content hover:bg-base-200 flex-1 sm:flex-initial gap-1.5"
                                     title={isRTL ? 'سجل تتبع ومراقبة وتصدير الشحنات غير المسلمة' : 'Export & monitor undelivered consignments log'}
                                 >
                                     <span className="material-symbols-outlined text-xs">monitoring</span>
-                                    {t('undelivered_log', isRTL ? 'سجل غير المسلم' : 'Undelivered Log')}
+                                    {t('undelivered_log', isRTL ? 'سجل غير المسلم' : 'Undelivered')}
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => setIsPhenixModalOpen(true)}
-                                    className="btn btn-outline btn-accent btn-sm rounded-xl font-bold flex-1 sm:flex-initial gap-1.5"
+                                    className="btn btn-outline btn-sm rounded-xl font-medium border-base-300 text-base-content hover:bg-base-200 flex-1 sm:flex-initial gap-1.5"
                                 >
                                     <span className="material-symbols-outlined text-xs">sync_alt</span>
                                     {t('sync_phenix_erp', 'Sync Phenix')}
@@ -223,15 +220,15 @@ const ShipmentsPage = () => {
                         <button
                             type="button"
                             onClick={() => setIsBulkModalOpen(true)}
-                            className="btn btn-outline btn-sm rounded-xl font-bold flex-1 sm:flex-initial gap-1.5"
+                            className="btn btn-outline btn-sm rounded-xl font-medium border-base-300 text-base-content hover:bg-base-200 flex-1 sm:flex-initial gap-1.5"
                         >
-                            <span className="material-symbols-outlined text-xs text-primary">upload_file</span>
+                            <span className="material-symbols-outlined text-xs">upload_file</span>
                             {t('bulk_import_csv', 'Bulk Import')}
                         </button>
                         <button
                             type="button"
                             onClick={() => navigate('/shipment/new')}
-                            className="btn btn-primary btn-sm rounded-xl font-extrabold shadow-sm flex-1 sm:flex-initial gap-1.5"
+                            className="btn btn-primary btn-sm rounded-xl font-bold shadow-sm flex-1 sm:flex-initial gap-1.5"
                         >
                             <span className="material-symbols-outlined text-xs">add_circle</span>
                             {t('new_shipment', 'New Shipment')}
@@ -251,7 +248,7 @@ const ShipmentsPage = () => {
                             <span className="text-xs font-black uppercase tracking-wider text-base-content">
                                 {isRTL ? 'نطاق الفترة الزمنية للشحنات' : 'Consignment Manifest Period'}
                             </span>
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-950 border border-blue-200">
+                            <span className="badge badge-sm badge-ghost border-base-300 font-bold">
                                 {selectedPeriod === 'today' && (isRTL ? 'اليوم' : 'Today')}
                                 {selectedPeriod === '7days' && (isRTL ? 'آخر 7 أيام' : 'Past 7 Days')}
                                 {selectedPeriod === 'this_month' && (isRTL ? 'هذا الشهر' : 'This Month')}

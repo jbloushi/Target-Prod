@@ -578,13 +578,13 @@ export const FallbackPricingManager = () => {
 
         <div className="overflow-x-auto max-h-[500px]">
           <table className="table table-sm table-zebra w-full text-center">
-            <thead className="bg-base-200/60 sticky top-0 z-10 text-xs">
+            <thead className="bg-base-200/90 sticky top-0 z-20 text-xs">
               <tr>
-                <th className="font-black text-base-content">{lang === 'ar' ? 'الوزن (كجم)' : 'Weight (kg)'}</th>
-                <th className="text-primary font-bold">
+                <th className="font-black text-base-content sticky left-0 bg-base-200 z-30 shadow-xs">{lang === 'ar' ? 'الوزن (كجم)' : 'Weight (kg)'}</th>
+                <th className="text-base-content font-bold">
                   {lang === 'ar' ? 'اقتصادي - الخليج' : 'Economy | Gulf (GCC)'}
                 </th>
-                <th className="text-secondary font-bold">
+                <th className="text-base-content font-bold">
                   {lang === 'ar' ? 'أرامكس - الخليج' : 'Aramex | Gulf (GCC)'}
                 </th>
                 <th className="text-base-content font-bold">
@@ -593,22 +593,27 @@ export const FallbackPricingManager = () => {
                 <th className="text-base-content font-bold">
                   {lang === 'ar' ? 'DHL - المنطقة 4 (أوروبا)' : 'DHL | Zone 4 (Europe)'}
                 </th>
-                <th className="text-accent font-bold">
+                <th className="text-base-content font-bold">
                   {lang === 'ar' ? 'DHL - المنطقة 6 (أمريكا)' : 'DHL | Zone 6 (USA)'}
                 </th>
               </tr>
             </thead>
             <tbody className="font-mono text-xs">
-              {filteredMatrix.map((row) => (
-                <tr key={row.weight} className="hover">
-                  <td className="font-bold text-base-content">{row.weight.toFixed(1)} kg</td>
-                  <td className="text-primary font-bold">{row.economy.toFixed(3)}</td>
-                  <td className="text-secondary font-bold">{row.aramex.toFixed(3)}</td>
-                  <td className="text-base-content">{row.dhlZ1.toFixed(3)}</td>
-                  <td className="text-base-content">{row.dhlZ4.toFixed(3)}</td>
-                  <td className="text-accent font-bold">{row.dhlZ6.toFixed(3)}</td>
-                </tr>
-              ))}
+              {filteredMatrix.map((row) => {
+                const isHighlighted = simResult && Math.abs(simResult.weight - row.weight) < 0.01;
+                return (
+                  <tr key={row.weight} className={isHighlighted ? 'bg-primary/10 font-bold' : 'hover'}>
+                    <td className={`font-bold text-base-content sticky left-0 z-10 shadow-xs ${isHighlighted ? 'bg-primary/10' : 'bg-base-100'}`}>
+                      {row.weight.toFixed(1)} kg
+                    </td>
+                    <td className="text-base-content font-semibold">{row.economy.toFixed(3)}</td>
+                    <td className="text-base-content font-semibold">{row.aramex.toFixed(3)}</td>
+                    <td className="text-base-content font-medium">{row.dhlZ1.toFixed(3)}</td>
+                    <td className="text-base-content font-medium">{row.dhlZ4.toFixed(3)}</td>
+                    <td className="text-base-content font-medium">{row.dhlZ6.toFixed(3)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

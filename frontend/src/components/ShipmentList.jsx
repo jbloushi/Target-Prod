@@ -17,25 +17,25 @@ import {
   getShipmentDeleteErrorMessage
 } from '../utils/shipmentDeletionPolicy';
 
-// Carrier display helper metadata with high contrast tokens
+// Carrier display helper metadata with clean, subdued neutral tokens
 const CARRIER_INFO_MAP = {
-  'DGR': { name: 'DHL Express', nameAr: 'دي إتش إل إكسبريس', badge: 'bg-amber-100 text-amber-950 border border-amber-300' },
-  'DHL': { name: 'DHL Express', nameAr: 'دي إتش إل إكسبريس', badge: 'bg-amber-100 text-amber-950 border border-amber-300' },
-  'ARM': { name: 'Aramex', nameAr: 'أرامكس', badge: 'bg-rose-100 text-rose-950 border border-rose-300' },
-  'ARAMEX': { name: 'Aramex', nameAr: 'أرامكس', badge: 'bg-rose-100 text-rose-950 border border-rose-300' },
-  'SMSA': { name: 'SMSA Express', nameAr: 'سمسا إكسبريس', badge: 'bg-orange-100 text-orange-950 border border-orange-300' },
-  'SMSAEXPRESS': { name: 'SMSA Express', nameAr: 'سمسا إكسبريس', badge: 'bg-orange-100 text-orange-950 border border-orange-300' },
-  'FDX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'bg-purple-100 text-purple-950 border border-purple-300' },
-  'FEDEX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'bg-purple-100 text-purple-950 border border-purple-300' },
-  'OTE': { name: 'Target GCC (OTE)', nameAr: 'تارجت الخليج (OTE)', badge: 'bg-sky-100 text-sky-950 border border-sky-300' },
-  'LOGESTECHS': { name: 'Target GCC (OTE)', nameAr: 'تارجت الخليج (OTE)', badge: 'bg-sky-100 text-sky-950 border border-sky-300' },
-  'POSTA_PLUS': { name: 'Posta Plus', nameAr: 'بوستا بلس', badge: 'bg-teal-100 text-teal-950 border border-teal-300' },
-  'POSTAPLUS': { name: 'Posta Plus', nameAr: 'بوستا بلس', badge: 'bg-teal-100 text-teal-950 border border-teal-300' },
-  'SEA_FREIGHT': { name: 'Sea Freight', nameAr: 'شحن بحري', badge: 'bg-blue-100 text-blue-950 border border-blue-300' },
-  'LAND_FREIGHT': { name: 'Land Freight', nameAr: 'شحن بري', badge: 'bg-emerald-100 text-emerald-950 border border-emerald-300' },
-  'MAN': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'bg-indigo-100 text-indigo-950 border border-indigo-300' },
-  'MANUAL': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'bg-indigo-100 text-indigo-950 border border-indigo-300' },
-  'INTERNAL': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'bg-indigo-100 text-indigo-950 border border-indigo-300' },
+  'DGR': { name: 'DHL Express', nameAr: 'دي إتش إل إكسبريس', badge: 'bg-base-200 text-base-content border border-base-300' },
+  'DHL': { name: 'DHL Express', nameAr: 'دي إتش إل إكسبريس', badge: 'bg-base-200 text-base-content border border-base-300' },
+  'ARM': { name: 'Aramex', nameAr: 'أرامكس', badge: 'bg-base-200 text-base-content border border-base-300' },
+  'ARAMEX': { name: 'Aramex', nameAr: 'أرامكس', badge: 'bg-base-200 text-base-content border border-base-300' },
+  'SMSA': { name: 'SMSA Express', nameAr: 'سمسا إكسبريس', badge: 'bg-base-200 text-base-content border border-base-300' },
+  'SMSAEXPRESS': { name: 'SMSA Express', nameAr: 'سمسا إكسبريس', badge: 'bg-base-200 text-base-content border border-base-300' },
+  'FDX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'bg-base-200 text-base-content border border-base-300' },
+  'FEDEX': { name: 'FedEx Express', nameAr: 'فيديكس إكسبريس', badge: 'bg-base-200 text-base-content border border-base-300' },
+  'OTE': { name: 'Target GCC (OTE)', nameAr: 'تارجت الخليج (OTE)', badge: 'bg-base-200 text-base-content border border-base-300' },
+  'LOGESTECHS': { name: 'Target GCC (OTE)', nameAr: 'تارجت الخليج (OTE)', badge: 'bg-base-200 text-base-content border border-base-300' },
+  'POSTA_PLUS': { name: 'Posta Plus', nameAr: 'بوستا بلس', badge: 'bg-teal-50 text-teal-900 border border-teal-200 dark:bg-base-200 dark:text-base-content' },
+  'POSTAPLUS': { name: 'Posta Plus', nameAr: 'بوستا بلس', badge: 'bg-teal-50 text-teal-900 border border-teal-200 dark:bg-base-200 dark:text-base-content' },
+  'SEA_FREIGHT': { name: 'Sea Freight', nameAr: 'شحن بحري', badge: 'bg-base-200 text-base-content border border-base-300' },
+  'LAND_FREIGHT': { name: 'Land Freight', nameAr: 'شحن بري', badge: 'bg-base-200 text-base-content border border-base-300' },
+  'MAN': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'bg-base-200 text-base-content border border-base-300' },
+  'MANUAL': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'bg-base-200 text-base-content border border-base-300' },
+  'INTERNAL': { name: 'Internal Fleet', nameAr: 'الأسطول الداخلي', badge: 'bg-base-200 text-base-content border border-base-300' },
 };
 
 const CARRIER_OPTIONS = [
@@ -236,13 +236,13 @@ export const ShipmentList = ({
     const activeTransitCount = (stats.inTransit || 0) + (stats.pickedUp || 0);
 
     return [
-      { key: 'all', label: t('filter_all', 'All'), count: stats.total || 0, badgeStyle: 'bg-blue-100 text-blue-950 border-blue-300', badgeLabel: 'ALL', border: 'border-primary' },
-      { key: 'pendingApproval', label: t('filter_pending_approval', 'Pending Approval'), count: stats.pendingApproval || 0, badgeStyle: 'bg-purple-100 text-purple-950 border-purple-300', badgeLabel: 'APPROVAL', border: 'border-purple-400' },
-      { key: 'readyForPickup', label: t('filter_ready_for_pickup', 'Ready for Pickup'), count: readyPickupCount, badgeStyle: 'bg-slate-100 text-slate-900 border-slate-300', badgeLabel: 'READY PICKUP', border: 'border-base-300' },
-      { key: 'active', label: t('filter_in_transit', 'In Transit'), count: activeTransitCount, badgeStyle: 'bg-sky-100 text-sky-950 border-sky-300', badgeLabel: 'ACTIVE', border: 'border-info' },
-      { key: 'outForDelivery', label: t('filter_out_for_delivery', 'Out for Delivery'), count: stats.outForDelivery || 0, badgeStyle: 'bg-amber-100 text-amber-950 border-amber-300', badgeLabel: 'OUT FOR DELIVERY', border: 'border-warning' },
-      { key: 'delivered', label: t('filter_delivered', 'Delivered'), count: stats.delivered || 0, badgeStyle: 'bg-emerald-100 text-emerald-950 border-emerald-300', badgeLabel: 'DELIVERED', border: 'border-success' },
-      { key: 'exceptions', label: t('filter_exceptions', 'Triage / Holds'), count: stats.exceptions || 0, badgeStyle: 'bg-rose-100 text-rose-950 border-rose-300', badgeLabel: 'EXCEPTIONS', border: 'border-error', isTriage: true },
+      { key: 'all', label: t('filter_all', 'All'), count: stats.total || 0 },
+      { key: 'pendingApproval', label: t('filter_pending_approval', 'Pending Approval'), count: stats.pendingApproval || 0 },
+      { key: 'readyForPickup', label: t('filter_ready_for_pickup', 'Ready for Pickup'), count: readyPickupCount },
+      { key: 'active', label: t('filter_in_transit', 'In Transit'), count: activeTransitCount },
+      { key: 'outForDelivery', label: t('filter_out_for_delivery', 'Out for Delivery'), count: stats.outForDelivery || 0 },
+      { key: 'delivered', label: t('filter_delivered', 'Delivered'), count: stats.delivered || 0 },
+      { key: 'exceptions', label: t('filter_exceptions', 'Triage / Holds'), count: stats.exceptions || 0, isTriage: true },
     ];
   }, [stats, t]);
 
@@ -392,15 +392,16 @@ export const ShipmentList = ({
                   {tab.count.toLocaleString()}
                 </span>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  {tab.isTriage && tab.count > 0 && (
-                    <span className="relative flex h-2 w-2 shrink-0">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-500 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600"></span>
+                  {tab.isTriage && tab.count > 0 ? (
+                    <span className="badge badge-sm badge-error text-white font-bold gap-1 shadow-xs">
+                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
+                      {isRTL ? 'تنبيه' : 'HOLD'}
                     </span>
-                  )}
-                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-black tracking-wider uppercase border shadow-2xs ${tab.badgeStyle}`}>
-                    {tab.badgeLabel || tab.key.toUpperCase()}
-                  </span>
+                  ) : tab.key === 'delivered' && tab.count > 0 ? (
+                    <span className="badge badge-sm badge-ghost text-success font-semibold border-base-300">
+                      <span className="material-symbols-outlined text-xs">check_circle</span>
+                    </span>
+                  ) : null}
                 </div>
               </div>
               <div className="text-xs font-bold uppercase tracking-wider text-base-content/60 mt-1.5">
@@ -482,7 +483,7 @@ export const ShipmentList = ({
                 <span className="font-bold text-base-content">
                   {isRTL ? 'الناقل:' : 'Carrier:'}
                 </span>
-                <span className={`badge ${CARRIER_INFO_MAP[carrierParam.toUpperCase()]?.badge || 'badge-primary'} badge-xs font-black uppercase`}>
+                <span className="badge badge-neutral badge-xs font-bold uppercase">
                   {isRTL 
                     ? (CARRIER_INFO_MAP[carrierParam.toUpperCase()]?.nameAr || carrierParam)
                     : (CARRIER_INFO_MAP[carrierParam.toUpperCase()]?.name || carrierParam)}
@@ -618,14 +619,14 @@ export const ShipmentList = ({
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-mono hover:text-primary transition-colors">{s.trackingNumber}</span>
                             {s.carrierCode && (
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-black uppercase ${CARRIER_INFO_MAP[s.carrierCode]?.badge || 'bg-slate-100 text-slate-800 border border-slate-300'}`}>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-base-200 text-base-content border border-base-300">
                                 {isRTL 
                                   ? (CARRIER_INFO_MAP[s.carrierCode]?.nameAr || s.carrierCode) 
                                   : (CARRIER_INFO_MAP[s.carrierCode]?.name || s.carrierCode)}
                               </span>
                             )}
                             {s.isTest && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-black uppercase bg-amber-100 text-amber-950 border border-amber-300">
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-base-200 text-base-content/70 border border-base-300">
                                 TEST
                               </span>
                             )}
