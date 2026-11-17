@@ -13,7 +13,8 @@ const { handleControllerError } = require('../utils/controllerError');
 const {
     getAssignedShippingAccess,
     assertRequestedAccessAllowed,
-    normalizeCarrier
+    normalizeCarrier,
+    shouldEnforceAssignedAccess
 } = require('../services/shippingAccess.service');
 
 const escapeHtml = (unsafe) => {
