@@ -3,7 +3,7 @@ const router = express.Router();
 const authController = require('../controllers/auth.controller');
 const settingsController = require('../controllers/settings.controller');
 const adminWhatsAppLogs = require('../controllers/adminWhatsAppLogs.controller');
-const { authorize } = require('../middleware/authorize.middleware');
+const { authorize, authorizeAny } = require('../middleware/authorize.middleware');
 
 // Admin WhatsApp Settings
 router.get(
