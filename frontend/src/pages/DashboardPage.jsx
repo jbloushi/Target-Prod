@@ -8,6 +8,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { STATUS_CONFIG } from '../tokens/kineticHorizon';
 import { getRoleLabel } from '../utils/roleLabels';
 import { organizationService } from '../services/api';
+import { CAPABILITIES, hasCapability } from '../utils/capabilities';
 import VolumeBarChart from '../components/charts/VolumeBarChart';
 import TradeLaneBarChart from '../components/charts/TradeLaneBarChart';
 import CarrierNetworkHealth from '../components/CarrierNetworkHealth';
@@ -84,6 +85,7 @@ const DashboardPage = () => {
     const isTargetManagement = ['admin', 'manager', 'accounting', 'staff'].includes(userRole);
     const isClientUser = ['org_manager', 'org_agent', 'client'].includes(userRole);
     const canViewFinancials = ['admin', 'manager', 'accounting'].includes(userRole);
+    const canViewCostData = hasCapability(userRole, CAPABILITIES.VIEW_COST_DATA);
 
     // Context & Perspective State
     const [perspective, setPerspective] = useState(isClientUser ? 'client' : isTargetAccounting ? 'accounting' : 'target');
@@ -982,7 +984,7 @@ const DashboardPage = () => {
                                 )}
                             </div>
 
-                            {financials.totalCost && (
+                            {canViewCostData && financials.totalCost && (
                                 <div className="p-3 bg-base-200/40 rounded-xl border border-base-200 space-y-2 text-xs">
                                     <div className="flex justify-between items-center font-semibold">
                                         <span className="text-base-content/60">{isRTL ? 'تكلفة الناقلين:' : 'Carrier Cost:'}</span>

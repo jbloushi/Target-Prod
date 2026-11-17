@@ -218,6 +218,7 @@ module.exports = {
     authorizeAny,
     scopeToOrg,
     scopeShipmentWhere,
+    mergeScope,
     canAccessShipment,
     canAccessOrganization,
     canCreateShipmentForUser,

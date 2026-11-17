@@ -7,7 +7,7 @@ const logger = require('../utils/logger');
 const ShipmentLifecycleService = require('../services/ShipmentLifecycleService');
 const { handleControllerError } = require('../utils/controllerError');
 const { hasCapability, isPlatformRole } = require('../middleware/rbac.policy');
-const { canAccessShipment, scopeShipmentWhere } = require('../middleware/authorize.middleware');
+const { canAccessShipment, scopeShipmentWhere, mergeScope } = require('../middleware/authorize.middleware');
 const { INTERNAL_SHIPMENT_STATUSES, SHIPMENT_STATUSES, normalizeStatus, isNegativeOrExceptionPhrase } = require('../constants/statusConstants');
 const { DELETABLE_SHIPMENT_STATUSES, buildShipmentDeleteBlockedMessage, hasCarrierBooking, canDeleteShipment } = require('../utils/shipmentDeletionPolicy');
 const { syncCarrierTrackingHistory, buildTrackingSyncDocuments, hasCriticalChanges, canUpdateShipmentStatus, isInternalShipment, buildDisplayHistory, autoHealAllResolvedExceptions, autoHealResolvedShipment, getResolvedExceptionStatus, autoSyncAllExceptions, resolveCarrierTrackingNumber, getShipmentPollingTier } = require('./shipment.helpers');
@@ -81,14 +81,14 @@ function resolveDateRange({ startDate, endDate, from, to, period }) {
 exports.getShipmentStats = async (req, res) => {
     try {
         const { organizationId, startDate, endDate, from, to, period, carrier, carrierCode } = req.query;
-        const where = {};
+        let where = {};
 
         if (isPlatformRole(req.user.role)) {
             if (organizationId && organizationId !== 'all') {
                 where.organizationId = organizationId === 'none' ? null : organizationId;
             }
         } else {
-            scopeShipmentWhere(req, where);
+            where = scopeShipmentWhere(req, where);
         }
 
         // Apply Date Range Filter if provided
@@ -509,14 +509,14 @@ exports.getShipmentStats = async (req, res) => {
 exports.getTriageShipments = async (req, res) => {
     try {
         const { organizationId } = req.query;
-        const where = {};
+        let where = {};
 
         if (isPlatformRole(req.user.role)) {
             if (organizationId && organizationId !== 'all') {
                 where.organizationId = organizationId === 'none' ? null : organizationId;
             }
         } else {
-            scopeShipmentWhere(req, where);
+            where = scopeShipmentWhere(req, where);
         }
 
         // Auto-sync any hold/exception states from recent checkpoint events
@@ -524,8 +524,7 @@ exports.getTriageShipments = async (req, res) => {
             await autoSyncAllExceptions(prisma);
         } catch (_) {}
 
-        const triageWhere = {
-            ...where,
+        const triageWhere = mergeScope({ ...where }, {
             OR: [
                 { status: { in: ['exception', 'failed', 'cancelled', 'returned'] } },
                 {
@@ -540,7 +539,7 @@ exports.getTriageShipments = async (req, res) => {
                     ]
                 }
             ]
-        };
+        });
 
         const triageShipments = await prisma.shipment.findMany({
             where: triageWhere,
@@ -883,7 +882,7 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
 exports.getAllShipments = async (req, res) => {
     try {
         const { status, statusIn, q, sortBy, sortOrder, limit = 50, page = 1, organizationId, orgId, paid, paymentStatus, payment_status, summary, startDate, endDate, from, to, period, carrier, carrierCode, destinationCountry, destCountry } = req.query;
-        const where = {};
+        let where = {};
 
         // 1. Status Filters
         if (status) {
@@ -1015,7 +1014,7 @@ exports.getAllShipments = async (req, res) => {
             where.OR = orConditions;
         }
 
-        scopeShipmentWhere(req, where);
+        where = scopeShipmentWhere(req, where);
 
         // 5. Pagination & Sorting
         const parsedLimit = Math.min(Math.max(parseInt(limit) || 50, 1), 1000);
@@ -1774,14 +1773,14 @@ exports.bulkImportShipments = async (req, res) => {
 exports.exportUndeliveredShipmentsLog = async (req, res) => {
     try {
         const { organizationId, carrier, carrierCode, status, tier } = req.query;
-        const where = {};
+        let where = {};
 
         if (isPlatformRole(req.user?.role)) {
             if (organizationId && organizationId !== 'all') {
                 where.organizationId = organizationId === 'none' ? null : organizationId;
             }
         } else {
-            scopeShipmentWhere(req, where);
+            where = scopeShipmentWhere(req, where);
         }
 
         const terminalStatuses = ['delivered', 'cancelled', 'returned'];
