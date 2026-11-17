@@ -59,11 +59,39 @@ exports.createShipment = async (req, res) => {
         if (!apiUser) return res.status(404).json({ success: false, error: 'User not found' });
 
         const assignedAccess = getAssignedShippingAccess(apiUser);
+        const enforceAssignedAccess = shouldEnforceAssignedAccess(apiUser);
 
         const sCountry = shipmentData.sender?.countryCode || shipmentData.origin?.countryCode;
         const rCountry = shipmentData.receiver?.countryCode || shipmentData.destination?.countryCode;
         const isExplicitDomestic = Boolean(sCountry && rCountry && String(sCountry).toUpperCase() === String(rCountry).toUpperCase());
         const requestedCarrier = carrierCode ? normalizeCarrier(carrierCode) : null;
+
+        // Manual Shipment Mode: User is configured for Manual Mode or explicitly requested MANUAL
+        if (assignedAccess.carrierCode === 'MANUAL' || requestedCarrier === 'MANUAL') {
+            if (enforceAssignedAccess) {
+                assertRequestedAccessAllowed(assignedAccess, { carrierCode, serviceCode });
+            }
+
+            const shipment = await ShipmentLifecycleService.submitShipment({
+                ...shipmentData,
+                carrierCode: 'MANUAL',
+                serviceCode: null,
+                status: 'draft',
+                price: 0
+            }, apiUser);
+
+            return res.status(201).json({
+                success: true,
+                data: {
+                    trackingNumber: shipment.trackingNumber,
+                    carrier: 'MANUAL',
+                    serviceCode: null,
+                    status: 'draft',
+                    price: '0',
+                    currency: shipment.currency || 'KWD'
+                }
+            });
+        }
 
         if (assignedAccess.carrierCode === 'INTERNAL' || requestedCarrier === 'INTERNAL' || isExplicitDomestic || serviceCode === 'DOM') {
             const shipment = await ShipmentLifecycleService.submitShipment({
@@ -104,10 +132,14 @@ exports.createShipment = async (req, res) => {
             });
         }
 
-        assertRequestedAccessAllowed(assignedAccess, { carrierCode, serviceCode });
+        if (enforceAssignedAccess) {
+            assertRequestedAccessAllowed(assignedAccess, { carrierCode, serviceCode });
+        }
 
-        const resolvedCarrierCode = assignedAccess.carrierCode;
-        const resolvedServiceCode = assignedAccess.serviceCode || serviceCode || null;
+        const resolvedCarrierCode = enforceAssignedAccess ? assignedAccess.carrierCode : (requestedCarrier || assignedAccess.carrierCode);
+        const resolvedServiceCode = enforceAssignedAccess
+            ? (assignedAccess.serviceCode || serviceCode || null)
+            : (serviceCode || assignedAccess.serviceCode || null);
         const carrierCapabilities = typeof CarrierFactory.getCarrierCapabilities === 'function'
             ? (CarrierFactory.getCarrierCapabilities(resolvedCarrierCode) || {})
             : { supportsExternalApi: true };
@@ -541,39 +573,73 @@ exports.trackShipment = async (req, res) => {
 exports.updateShipment = async (req, res) => {
     try {
         const { number } = req.params;
-        const updates = req.body;
+        const updates = req.body || {};
+
+        const userRole = String(req.user.role || '').toLowerCase();
+        const isStaff = ['admin', 'superadmin', 'super_admin', 'dispatcher', 'staff', 'manager'].includes(userRole);
 
         const shipment = await prisma.shipment.findFirst({
-            where: { trackingNumber: number, userId: req.user.id },
+            where: isStaff ? { trackingNumber: number } : { trackingNumber: number, userId: req.user.id },
             include: { user: { include: { organization: true } } }
         });
 
-        if (!shipment) return res.status(404).json({ success: false, error: 'Not found' });
+        if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
         const editableStatuses = ['draft', 'pending', 'booked', 'exception', 'ready_for_pickup'];
         if (!editableStatuses.includes(shipment.status)) {
             return res.status(400).json({ success: false, error: 'Cannot update in current status' });
         }
 
-        const allowedFields = [
+        // Support sender / receiver aliases
+        if (updates.sender && !updates.origin) updates.origin = updates.sender;
+        if (updates.receiver && !updates.destination) updates.destination = updates.receiver;
+
+        const allowedPrismaFields = [
             'destination', 'origin', 'items', 'parcels', 'incoterm',
-            'currency', 'dangerousGoods', 'customer',
-            'reference', 'remarks'
+            'currency', 'customer', 'packagingType'
         ];
 
+        const nextOrigin = (shipment.origin && typeof shipment.origin === 'object') ? { ...shipment.origin } : {};
+        if (updates.origin && typeof updates.origin === 'object') Object.assign(nextOrigin, updates.origin);
+        if (updates.remarks !== undefined) nextOrigin.remarks = updates.remarks;
+        if (updates.reference !== undefined) nextOrigin.reference = updates.reference;
+        if (updates.dangerousGoods !== undefined) nextOrigin.dangerousGoods = updates.dangerousGoods;
+
+        const nextCustomer = (shipment.customer && typeof shipment.customer === 'object') ? { ...shipment.customer } : {};
+        if (updates.customer && typeof updates.customer === 'object') Object.assign(nextCustomer, updates.customer);
+        if (updates.reference !== undefined) nextCustomer.reference = updates.reference;
+        if (updates.remarks !== undefined) nextCustomer.remarks = updates.remarks;
+
         const criticalChanges = hasCriticalChanges(shipment, updates);
-        const isBooked = shipment.dhlConfirmed === true;
 
         let finalPrice = Number(shipment.price);
         let finalSnapshot = shipment.pricingSnapshot;
 
         if (criticalChanges) {
-            // Re-rating logic
-            const tempState = { ...shipment, ...updates };
+            // Re-rating logic with normalized package schema
+            const tempState = { ...shipment, ...updates, origin: nextOrigin };
+            if (!tempState.packages && tempState.parcels) {
+                tempState.packages = (Array.isArray(tempState.parcels) ? tempState.parcels : []).map(p => ({
+                    weight: Number(p.weight?.value || p.weight || 1),
+                    dimensions: {
+                        length: Number(p.length || 10),
+                        width: Number(p.width || 10),
+                        height: Number(p.height || 10)
+                    }
+                }));
+            }
+
             const isTest = shipment.pricingSnapshot?.isTest === true || shipment.pricingSnapshot?.environment === 'test';
             const environment = isTest ? 'test' : (shipment.pricingSnapshot?.environment || 'production');
             const adapter = CarrierFactory.getAdapter(tempState.carrierCode || 'DGR', { isTest, environment });
-            const quotes = await adapter.getRates({ ...tempState, sender: tempState.origin, receiver: tempState.destination, isTest, environment });
+            const quotes = await adapter.getRates({
+                ...tempState,
+                sender: tempState.origin,
+                receiver: tempState.destination,
+                packages: tempState.packages,
+                isTest,
+                environment
+            });
 
             if (!quotes || quotes.length === 0) throw new Error('Re-rating failed');
 
@@ -607,25 +673,34 @@ exports.updateShipment = async (req, res) => {
             }
         }
 
-        // Apply Updates
+        // Apply Updates to valid Prisma fields only
         const filteredUpdates = {};
         Object.keys(updates).forEach(key => {
-            if (allowedFields.includes(key)) filteredUpdates[key] = updates[key];
+            if (allowedPrismaFields.includes(key)) filteredUpdates[key] = updates[key];
         });
+
+        // Safely append to MySQL JSON history array
+        const currentHistory = Array.isArray(shipment.history)
+            ? shipment.history
+            : (typeof shipment.history === 'string' ? JSON.parse(shipment.history) : []);
+        const updatedHistory = [
+            ...currentHistory,
+            {
+                status: 'updated',
+                description: `API Update. New price: ${finalPrice}`,
+                timestamp: new Date().toISOString()
+            }
+        ];
 
         const updated = await prisma.shipment.update({
             where: { id: shipment.id },
             data: {
                 ...filteredUpdates,
+                origin: nextOrigin,
+                customer: nextCustomer,
                 price: finalPrice,
                 pricingSnapshot: finalSnapshot,
-                history: {
-                    push: {
-                        status: 'updated',
-                        description: `API Update. New price: ${finalPrice}`,
-                        timestamp: new Date().toISOString()
-                    }
-                }
+                history: updatedHistory
             }
         });
 
@@ -657,6 +732,22 @@ exports.getQuotation = async (req, res) => {
         if (!user) return res.status(404).json({ success: false, error: 'User not found' });
 
         const assignedAccess = getAssignedShippingAccess(user);
+        const enforceAssignedAccess = shouldEnforceAssignedAccess(user);
+
+        // Manual Shipment Mode: Return the standard manual quote placeholder
+        if (assignedAccess.carrierCode === 'MANUAL' || carrierCode === 'MANUAL') {
+            return res.status(200).json({
+                success: true,
+                data: [{
+                    serviceName: 'Manual Shipment',
+                    serviceCode: null,
+                    carrier: 'MANUAL',
+                    totalPrice: 0,
+                    currency: req.body.currency || 'KWD',
+                    estimatedDelivery: null
+                }]
+            });
+        }
 
         const normalized = normalizeShipment(req.body);
         const senderCountry = String(normalized.sender?.countryCode || normalized.sender?.country || 'KW').toUpperCase();
@@ -694,10 +785,14 @@ exports.getQuotation = async (req, res) => {
             });
         }
 
-        assertRequestedAccessAllowed(assignedAccess, { carrierCode, serviceCode });
+        if (enforceAssignedAccess) {
+            assertRequestedAccessAllowed(assignedAccess, { carrierCode, serviceCode });
+        }
 
-        const resolvedCarrierCode = assignedAccess.carrierCode;
-        const resolvedServiceCode = assignedAccess.serviceCode || serviceCode || null;
+        const resolvedCarrierCode = enforceAssignedAccess ? assignedAccess.carrierCode : (carrierCode ? normalizeCarrier(carrierCode) : assignedAccess.carrierCode);
+        const resolvedServiceCode = enforceAssignedAccess
+            ? (assignedAccess.serviceCode || serviceCode || null)
+            : (serviceCode || assignedAccess.serviceCode || null);
         normalized.serviceCode = resolvedServiceCode;
 
         const policy = typeof PricingService.resolveCarrierPricingPolicy === 'function'
@@ -796,23 +891,46 @@ exports.getQuotation = async (req, res) => {
  * Address Management
  */
 exports.getAddresses = async (req, res) => {
-    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
-    res.status(200).json({ success: true, data: user.addresses || [] });
+    try {
+        const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+        res.status(200).json({ success: true, data: user?.addresses || [] });
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Failed to retrieve addresses' });
+    }
 };
 
 exports.addAddress = async (req, res) => {
     try {
         const user = await prisma.user.findUnique({ where: { id: req.user.id } });
-        const addresses = user.addresses || [];
-        const { label, company, contactPerson, phone, email, streetLines, city, postalCode, countryCode, state, taxId, vatNumber, eoriNumber } = req.body;
-        addresses.push({ label, company, contactPerson, phone, email, streetLines, city, postalCode, countryCode, state, taxId, vatNumber, eoriNumber });
+        const addresses = Array.isArray(user?.addresses) ? [...user.addresses] : [];
+        const { id, label, company, contactPerson, phone, phoneCountryCode, email, streetLines, city, postalCode, countryCode, state, taxId, vatNumber, eoriNumber } = req.body;
+        
+        const newAddress = {
+            id: id || require('crypto').randomUUID(),
+            label: label || 'Default',
+            company: company || '',
+            contactPerson: contactPerson || '',
+            phone: phone || '',
+            phoneCountryCode: phoneCountryCode || '+965',
+            email: email || '',
+            streetLines: Array.isArray(streetLines) ? streetLines : (streetLines ? [streetLines] : []),
+            city: city || '',
+            postalCode: postalCode || '',
+            countryCode: countryCode ? String(countryCode).toUpperCase() : 'KW',
+            state: state || '',
+            taxId: taxId || '',
+            vatNumber: vatNumber || '',
+            eoriNumber: eoriNumber || ''
+        };
+
+        addresses.push(newAddress);
 
         await prisma.user.update({
             where: { id: req.user.id },
             data: { addresses }
         });
 
-        res.status(201).json({ success: true, data: req.body });
+        res.status(201).json({ success: true, data: newAddress });
     } catch (error) {
         res.status(400).json({ success: false, error: 'Failed to add address' });
     }
@@ -822,13 +940,12 @@ exports.updateAddress = async (req, res) => {
     try {
         const { id } = req.params;
         const user = await prisma.user.findUnique({ where: { id: req.user.id } });
-        const addresses = user.addresses || [];
+        const addresses = Array.isArray(user?.addresses) ? [...user.addresses] : [];
 
-        // Match by some criteria since MySQL JSON doesn't have .id() helper
-        const index = addresses.findIndex(a => a.id === id || a.label === id);
-        if (index === -1) return res.status(404).json({ success: false, error: 'Not found' });
+        const index = addresses.findIndex(a => String(a.id) === String(id) || String(a.label).toLowerCase() === String(id).toLowerCase());
+        if (index === -1) return res.status(404).json({ success: false, error: 'Address not found' });
 
-        addresses[index] = { ...addresses[index], ...req.body };
+        addresses[index] = { ...addresses[index], ...req.body, id: addresses[index].id || id };
 
         await prisma.user.update({
             where: { id: req.user.id },
@@ -837,7 +954,7 @@ exports.updateAddress = async (req, res) => {
 
         res.status(200).json({ success: true, data: addresses[index] });
     } catch (error) {
-        res.status(500).json({ success: false, error: 'Failed' });
+        res.status(500).json({ success: false, error: 'Failed to update address' });
     }
 };
 
@@ -853,15 +970,16 @@ exports.getShipmentLabel = async (req, res) => {
         });
 
         if (!shipment) {
-            return res.status(404).send('Shipment not found');
+            return res.status(404).json({ success: false, error: 'Shipment not found' });
         }
 
-        // Authorize: user must own shipment or belong to same organization or be admin
-        const isAdmin = ['ADMIN', 'SUPER_ADMIN', 'DISPATCHER'].includes(req.user.role);
+        // Authorize: user must own shipment or belong to same organization or be admin/staff
+        const userRole = String(req.user.role || '').toLowerCase();
+        const isAdmin = ['admin', 'superadmin', 'super_admin', 'dispatcher', 'staff', 'manager'].includes(userRole);
         const isOwner = shipment.userId === req.user.id;
         const isSameOrg = req.user.organizationId && shipment.organizationId === req.user.organizationId;
         if (!isAdmin && !isOwner && !isSameOrg) {
-            return res.status(403).send('Permission denied');
+            return res.status(403).json({ success: false, error: 'Permission denied' });
         }
 
         const safeTrackingNumber = escapeHtml(number);
@@ -911,6 +1029,6 @@ exports.getShipmentLabel = async (req, res) => {
         return res.send(pdfBuffer);
     } catch (error) {
         logger.error('Error generating API shipment label PDF:', error);
-        res.status(500).send('Failed to generate shipment label PDF');
+        res.status(500).json({ success: false, error: 'Failed to generate shipment label PDF' });
     }
 };

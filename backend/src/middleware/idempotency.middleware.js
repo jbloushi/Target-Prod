@@ -39,17 +39,22 @@ const createIdempotencyHandler = (options = {}) => {
             const existing = await prisma.idempotencyKey.findUnique({ where: { key: scopedKey } });
 
             if (existing) {
-                logger.info(`Idempotency cache hit for key: ${scopedKey}`);
+                // If the key has expired, clean it up and treat as new
+                if (existing.expiresAt && new Date(existing.expiresAt) < new Date()) {
+                    await prisma.idempotencyKey.delete({ where: { key: scopedKey } }).catch(() => {});
+                } else {
+                    logger.info(`Idempotency cache hit for key: ${scopedKey}`);
 
-                if (existing.status === 'PROCESSING') {
-                    return res.status(409).json({
-                        success: false,
-                        error: 'A request with this Idempotency-Key is currently being processed.'
-                    });
+                    if (existing.status === 'PROCESSING') {
+                        return res.status(409).json({
+                            success: false,
+                            error: 'A request with this Idempotency-Key is currently being processed.'
+                        });
+                    }
+
+                    // Replay the previous response exactly
+                    return res.status(existing.responseStatus).json(existing.responseBody);
                 }
-
-                // Replay the previous response exactly
-                return res.status(existing.responseStatus).json(existing.responseBody);
             }
 
             // 1. Create the PROCESSING lock
@@ -61,21 +66,33 @@ const createIdempotencyHandler = (options = {}) => {
                 }
             });
 
+            // Clean up key if request closes without completing or with 5xx
+            res.on('close', () => {
+                if (res.statusCode >= 500 || !res.writableEnded) {
+                    prisma.idempotencyKey.delete({ where: { key: scopedKey } }).catch(() => {});
+                }
+            });
+
             // 2. Intercept the eventual Express res.json call to store the result
             const originalJson = res.json.bind(res);
             res.json = function (body) {
                 // Restore original to prevent recursion
                 res.json = originalJson;
 
-                // Fire-and-forget update to mark as completed.
-                prisma.idempotencyKey.update({
-                    where: { key: scopedKey },
-                    data: {
-                        status: 'COMPLETED',
-                        responseStatus: res.statusCode,
-                        responseBody: body
-                    }
-                }).catch(err => logger.error(`Failed to update IdempotencyKey ${scopedKey}:`, err));
+                // Transient 5xx server errors must not be cached as COMPLETED, allowing safe retry
+                if (res.statusCode >= 500) {
+                    prisma.idempotencyKey.delete({ where: { key: scopedKey } })
+                        .catch(err => logger.error(`Failed to delete failed IdempotencyKey ${scopedKey}:`, err));
+                } else {
+                    prisma.idempotencyKey.update({
+                        where: { key: scopedKey },
+                        data: {
+                            status: 'COMPLETED',
+                            responseStatus: res.statusCode,
+                            responseBody: body
+                        }
+                    }).catch(err => logger.error(`Failed to update IdempotencyKey ${scopedKey}:`, err));
+                }
 
                 // Forward the payload back to the client natively
                 return originalJson(body);

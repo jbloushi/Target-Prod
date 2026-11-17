@@ -100,7 +100,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Authorization', 'Content-Type', 'Accept', 'Origin', 'Idempotency-Key', 'X-Requested-With'],
+  allowedHeaders: ['Authorization', 'Content-Type', 'Accept', 'Origin', 'Idempotency-Key', 'X-Requested-With', 'x-api-key', 'X-Api-Key', 'ApiKey'],
   optionsSuccessStatus: 204
 };
 
@@ -114,7 +114,7 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, Accept, Origin, Idempotency-Key, X-Requested-With');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, Accept, Origin, Idempotency-Key, X-Requested-With, x-api-key, X-Api-Key, ApiKey');
   }
   if (req.method === 'OPTIONS') {
     return res.sendStatus(204);
@@ -170,7 +170,14 @@ if (rateLimitEnabled) {
   const externalApiLimiter = rateLimit({
     windowMs: 60 * 1000, // 1 minute
     max: 60, // 60 requests per minute per API key
-    keyGenerator: (req) => req.headers['x-api-key'] || req.ip || 'no-key',
+    keyGenerator: (req) => {
+      return req.headers['x-api-key'] ||
+        (req.headers['authorization']?.startsWith('ApiKey ') ? req.headers['authorization'].slice(7).trim() : null) ||
+        req.query?.api_key ||
+        req.query?.apiKey ||
+        req.ip ||
+        'no-key';
+    },
     validate: false,
     message: { success: false, error: 'External API rate limit reached.' },
     standardHeaders: true,
@@ -179,6 +186,8 @@ if (rateLimitEnabled) {
   });
   app.use('/api/client', externalApiLimiter);
   app.use('/api/v1', externalApiLimiter);
+  app.use('/client', externalApiLimiter);
+  app.use('/v1', externalApiLimiter);
 } else {
   logger.info('Rate limiting is disabled');
 }

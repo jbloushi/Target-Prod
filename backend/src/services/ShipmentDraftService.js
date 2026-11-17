@@ -34,6 +34,20 @@ const buildInternalPricingSnapshot = (currency = 'KWD') => ({
     expiresAt: new Date(Date.now() + 86400000)
 });
 
+const buildManualPricingSnapshot = (currency = 'KWD') => ({
+    carrierRate: 0,
+    markup: 0,
+    totalPrice: 0,
+    currency,
+    billingCurrency: currency,
+    policySource: 'manual',
+    rulesVersion: 'manual-pricing-scaffold',
+    rateType: 'MANUAL',
+    requiresManualPricing: true,
+    internallyManaged: false,
+    expiresAt: new Date(Date.now() + 86400000)
+});
+
 class ShipmentDraftService {
 
     /**
@@ -79,9 +93,11 @@ class ShipmentDraftService {
                 carrierCode: cleanData.carrierCode,
                 serviceCode: cleanData.serviceCode
             });
-            cleanData.carrierCode = assignedAccess.carrierCode;
-            cleanData.serviceCode = assignedAccess.serviceCode;
-            cleanData.internallyManaged = assignedAccess.carrierCode === 'INTERNAL';
+            if (cleanData.carrierCode !== 'INTERNAL') {
+                cleanData.carrierCode = assignedAccess.carrierCode;
+                cleanData.serviceCode = assignedAccess.serviceCode;
+            }
+            cleanData.internallyManaged = cleanData.carrierCode === 'INTERNAL' || assignedAccess.carrierCode === 'INTERNAL';
         }
 
         const carrierCode = String(cleanData.carrierCode || assignedAccess.carrierCode || '').toUpperCase();
@@ -98,12 +114,14 @@ class ShipmentDraftService {
         }
 
         let snapshot;
-        const needsCarrier = !isInternalShipment && carrierCapabilities.supportsRating && serviceCode;
+        const needsCarrier = !isInternalShipment && carrierCode !== 'MANUAL' && carrierCapabilities.supportsRating && serviceCode;
 
         const isPlatformStaff = ['admin', 'staff', 'accounting'].includes(String(user?.role || '').toLowerCase());
 
         if (isInternalShipment) {
             snapshot = buildInternalPricingSnapshot(data.currency || 'KWD');
+        } else if (carrierCode === 'MANUAL') {
+            snapshot = buildManualPricingSnapshot(data.currency || 'KWD');
         } else if (needsCarrier) {
             try {
                 snapshot = await this.getSecurePricing(cleanData, targetUser);
@@ -175,7 +193,7 @@ class ShipmentDraftService {
                                  Number(targetUser.organization?.creditLimit || 0) > 0 ||
                                  targetUser.organization?.type === 'CREDIT' ||
                                  targetUser.paymentMethod === 'CREDIT';
-        const defaultInitialStatus = isInternalShipment
+        const defaultInitialStatus = (isInternalShipment || carrierCode === 'MANUAL')
             ? 'draft'
             : (hasCreditAccount && hasSufficientCredit ? 'ready_for_pickup' : 'pending');
         const requestedStatus = cleanData.status || defaultInitialStatus;

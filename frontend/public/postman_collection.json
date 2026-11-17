@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "Target Logistics API",
-    "description": "Live-verified API collection for Target Logistics. Supports carrier-backed quote + shipment flow and manual shipment flow. Set the `api_key` variable before use.",
+    "name": "Target Logistics Client API",
+    "description": "Production Postman Collection for Target Logistics REST API (v2.2). Covers all 13 client endpoints including rate quoting, idempotent shipment booking, PDF waybill streaming, unified telemetry, courier pickups, and address management.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "version": "2.2.0"
   },
@@ -17,7 +17,7 @@
     {
       "key": "base_url",
       "value": "https://api.target-kw.com/api",
-      "description": "Production API base URL"
+      "description": "Target Logistics production API base URL"
     },
     {
       "key": "api_key",
@@ -27,26 +27,31 @@
     {
       "key": "tracking_number",
       "value": "2042595203",
-      "description": "Replace with a real shipment tracking number"
+      "description": "Active shipment tracking number"
     },
     {
-      "key": "manual_tracking_number",
-      "value": "MAN-OYXH39LR",
-      "description": "Replace with a real manual shipment tracking number"
+      "key": "pickup_id",
+      "value": "pickup_9a23f10b",
+      "description": "Active pickup request ID"
+    },
+    {
+      "key": "address_id",
+      "value": "Main Warehouse",
+      "description": "Saved address ID or label"
     },
     {
       "key": "carrier_service_code",
       "value": "P",
-      "description": "Use the serviceCode returned from /v1/quotes"
+      "description": "Carrier service tier returned from /v1/quotes (e.g. P, DOM)"
     }
   ],
   "item": [
     {
-      "name": "Carrier Flow (Quote First)",
-      "description": "Use this flow for carrier-backed API users. Quote first, then create shipment using the returned serviceCode.",
+      "name": "01 - Rate Quoting",
+      "description": "Compute live multi-carrier airfreight tariffs, domestic fixed rates, or manual placeholders before booking.",
       "item": [
         {
-          "name": "Get Rate Quote (KW to AE - verified)",
+          "name": "1. Live Carrier Quote (KW to AE - International)",
           "request": {
             "method": "POST",
             "header": [
@@ -63,16 +68,44 @@
               "raw": "{\n  \"sender\": {\n    \"company\": \"My Warehouse Co.\",\n    \"contactPerson\": \"Ahmed Al-Rashid\",\n    \"phone\": \"96512345678\",\n    \"phoneCountryCode\": \"+965\",\n    \"email\": \"warehouse@mycompany.com\",\n    \"countryCode\": \"KW\",\n    \"city\": \"Kuwait City\",\n    \"postalCode\": \"13001\",\n    \"streetLines\": [\"Industrial Area, Block 4\"]\n  },\n  \"receiver\": {\n    \"contactPerson\": \"Sara Al-Mutairi\",\n    \"phone\": \"96598765432\",\n    \"phoneCountryCode\": \"+965\",\n    \"email\": \"sara@gmail.com\",\n    \"countryCode\": \"AE\",\n    \"city\": \"Dubai\",\n    \"postalCode\": \"00000\",\n    \"streetLines\": [\"Dubai Marina, Tower 5\"]\n  },\n  \"parcels\": [\n    { \"weight\": 5.0, \"length\": 40, \"width\": 30, \"height\": 20, \"description\": \"Clothing Box\" }\n  ],\n  \"items\": [\n    {\n      \"description\": \"Clothing\",\n      \"quantity\": 3,\n      \"unitValue\": 50,\n      \"currency\": \"KWD\",\n      \"countryOfOrigin\": \"KW\",\n      \"hsCode\": \"610910\",\n      \"weight\": 5.0\n    }\n  ],\n  \"currency\": \"KWD\"\n}",
               "options": { "raw": { "language": "json" } }
             },
-            "description": "Live-verified quote example. Returns DGR/P for KW -> AE under the tested API configuration. Always quote first for carrier-backed shipments."
+            "description": "Request live rates across authorized international 3PL carriers (e.g. DGR, SMSA, ARAMEX, OTE, FEDEX)."
           }
         },
         {
-          "name": "Create Shipment (KW to AE - verified)",
+          "name": "2. Domestic Quote (KW to KW - Target Express)",
           "request": {
             "method": "POST",
             "header": [
               { "key": "Content-Type", "value": "application/json" },
               { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/quotes",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "quotes"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sender\": {\n    \"countryCode\": \"KW\",\n    \"city\": \"Kuwait City\",\n    \"streetLines\": [\"Industrial Area, Block 4\"]\n  },\n  \"receiver\": {\n    \"countryCode\": \"KW\",\n    \"city\": \"Salmiya\",\n    \"streetLines\": [\"Block 12, Building 45\"]\n  },\n  \"parcels\": [\n    { \"weight\": 2.0, \"length\": 25, \"width\": 20, \"height\": 10 }\n  ],\n  \"currency\": \"KWD\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Same-country domestic delivery automatically resolves to Target Express (INTERNAL / DOM)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Consignment Booking",
+      "description": "Book carrier-backed shipments, domestic deliveries, and manual consignments with mandatory Idempotency-Key protection.",
+      "item": [
+        {
+          "name": "1. Book Carrier Shipment (POST /v1/shipments)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{api_key}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
             ],
             "url": {
               "raw": "{{base_url}}/v1/shipments",
@@ -81,25 +114,20 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"carrierCode\": \"DGR\",\n  \"serviceCode\": \"{{carrier_service_code}}\",\n  \"sender\": {\n    \"company\": \"My Warehouse Co.\",\n    \"contactPerson\": \"Ahmed Al-Rashid\",\n    \"phone\": \"96512345678\",\n    \"phoneCountryCode\": \"+965\",\n    \"email\": \"warehouse@mycompany.com\",\n    \"countryCode\": \"KW\",\n    \"city\": \"Kuwait City\",\n    \"postalCode\": \"13001\",\n    \"streetLines\": [\"Industrial Area, Block 4\"]\n  },\n  \"receiver\": {\n    \"contactPerson\": \"Sara Al-Mutairi\",\n    \"phone\": \"96598765432\",\n    \"phoneCountryCode\": \"+965\",\n    \"email\": \"sara@gmail.com\",\n    \"countryCode\": \"AE\",\n    \"city\": \"Dubai\",\n    \"postalCode\": \"00000\",\n    \"streetLines\": [\"Dubai Marina, Tower 5\"]\n  },\n  \"parcels\": [\n    { \"weight\": 5.0, \"length\": 40, \"width\": 30, \"height\": 20, \"description\": \"Clothing Box\" }\n  ],\n  \"items\": [\n    {\n      \"description\": \"Clothing\",\n      \"quantity\": 3,\n      \"unitValue\": 50,\n      \"currency\": \"KWD\",\n      \"countryOfOrigin\": \"KW\",\n      \"hsCode\": \"610910\",\n      \"weight\": 5.0\n    }\n  ],\n  \"currency\": \"KWD\",\n  \"incoterm\": \"DAP\",\n  \"exportReason\": \"Sale\",\n  \"remarks\": \"Handle with care\",\n  \"reference\": \"ORDER-2026-001\"\n}",
+              "raw": "{\n  \"carrierCode\": \"DGR\",\n  \"serviceCode\": \"{{carrier_service_code}}\",\n  \"sender\": {\n    \"company\": \"My Warehouse Co.\",\n    \"contactPerson\": \"Ahmed Al-Rashid\",\n    \"phone\": \"96512345678\",\n    \"phoneCountryCode\": \"+965\",\n    \"email\": \"warehouse@mycompany.com\",\n    \"countryCode\": \"KW\",\n    \"city\": \"Kuwait City\",\n    \"postalCode\": \"13001\",\n    \"streetLines\": [\"Industrial Area, Block 4\"]\n  },\n  \"receiver\": {\n    \"contactPerson\": \"Sara Al-Mutairi\",\n    \"phone\": \"96598765432\",\n    \"phoneCountryCode\": \"+965\",\n    \"email\": \"sara@gmail.com\",\n    \"countryCode\": \"AE\",\n    \"city\": \"Dubai\",\n    \"postalCode\": \"00000\",\n    \"streetLines\": [\"Dubai Marina, Tower 5\"]\n  },\n  \"parcels\": [\n    { \"weight\": 5.0, \"length\": 40, \"width\": 30, \"height\": 20, \"description\": \"Clothing Box\" }\n  ],\n  \"items\": [\n    {\n      \"description\": \"Clothing\",\n      \"quantity\": 3,\n      \"unitValue\": 50,\n      \"currency\": \"KWD\",\n      \"countryOfOrigin\": \"KW\",\n      \"hsCode\": \"610910\",\n      \"weight\": 5.0\n    }\n  ],\n  \"currency\": \"KWD\",\n  \"incoterm\": \"DAP\",\n  \"exportReason\": \"Sale\",\n  \"reference\": \"ORDER-2026-001\",\n  \"remarks\": \"Handle with care\"\n}",
               "options": { "raw": { "language": "json" } }
             },
-            "description": "Live-verified shipment creation example. Use the serviceCode returned from the quote response for the same route."
+            "description": "Create live carrier consignment. Requires a unique UUIDv4 Idempotency-Key per order."
           }
-        }
-      ]
-    },
-    {
-      "name": "Manual Flow",
-      "description": "Use this only when the API user is configured in Manual Shipment mode. No carrier quote or booking occurs.",
-      "item": [
+        },
         {
-          "name": "Create Manual Shipment (verified)",
+          "name": "2. Book Manual Shipment (POST /v1/shipments)",
           "request": {
             "method": "POST",
             "header": [
               { "key": "Content-Type", "value": "application/json" },
-              { "key": "x-api-key", "value": "{{api_key}}" }
+              { "key": "x-api-key", "value": "{{api_key}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
             ],
             "url": {
               "raw": "{{base_url}}/v1/shipments",
@@ -108,60 +136,62 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"sender\": {\n    \"company\": \"My Warehouse Co.\",\n    \"contactPerson\": \"Ahmed Al-Rashid\",\n    \"phone\": \"96512345678\",\n    \"email\": \"warehouse@mycompany.com\",\n    \"countryCode\": \"KW\",\n    \"city\": \"Kuwait City\",\n    \"postalCode\": \"13001\",\n    \"streetLines\": [\"Industrial Area, Block 4, Street 12\"]\n  },\n  \"receiver\": {\n    \"contactPerson\": \"Sara Al-Mutairi\",\n    \"phone\": \"96598765432\",\n    \"email\": \"sara@gmail.com\",\n    \"countryCode\": \"KW\",\n    \"city\": \"Salmiya\",\n    \"postalCode\": \"22001\",\n    \"streetLines\": [\"Block 12, Building 45, Apartment 3\"]\n  },\n  \"parcels\": [\n    {\n      \"weight\": 2.5,\n      \"length\": 30,\n      \"width\": 20,\n      \"height\": 10,\n      \"description\": \"Manual shipment box\"\n    }\n  ],\n  \"items\": [\n    {\n      \"description\": \"Manual shipment item\",\n      \"quantity\": 1,\n      \"unitValue\": 25,\n      \"currency\": \"KWD\"\n    }\n  ],\n  \"currency\": \"KWD\",\n  \"reference\": \"MANUAL-ORDER-001\",\n  \"remarks\": \"Create internal shipment only\"\n}",
+              "raw": "{\n  \"sender\": {\n    \"company\": \"My Warehouse Co.\",\n    \"contactPerson\": \"Ahmed Al-Rashid\",\n    \"phone\": \"96512345678\",\n    \"email\": \"warehouse@mycompany.com\",\n    \"countryCode\": \"KW\",\n    \"city\": \"Kuwait City\",\n    \"postalCode\": \"13001\",\n    \"streetLines\": [\"Industrial Area, Block 4, Street 12\"]\n  },\n  \"receiver\": {\n    \"contactPerson\": \"Sara Al-Mutairi\",\n    \"phone\": \"96598765432\",\n    \"email\": \"sara@gmail.com\",\n    \"countryCode\": \"KW\",\n    \"city\": \"Salmiya\",\n    \"postalCode\": \"22001\",\n    \"streetLines\": [\"Block 12, Building 45, Apartment 3\"]\n  },\n  \"parcels\": [\n    { \"weight\": 2.5, \"length\": 30, \"width\": 20, \"height\": 10, \"description\": \"Manual shipment box\" }\n  ],\n  \"items\": [\n    { \"description\": \"Manual shipment item\", \"quantity\": 1, \"unitValue\": 25, \"currency\": \"KWD\" }\n  ],\n  \"currency\": \"KWD\",\n  \"reference\": \"MANUAL-ORDER-001\",\n  \"remarks\": \"Create internal shipment only\"\n}",
               "options": { "raw": { "language": "json" } }
             },
-            "description": "Live-verified manual shipment example. Requires the API user to be assigned to Manual Shipment mode. No carrier quotation or carrier booking is performed."
+            "description": "Creates a draft consignment under Manual Shipment mode. Generates MAN-* tracking number."
+          }
+        },
+        {
+          "name": "3. Update Consignment (PUT /v1/shipments/:trackingNumber)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/shipments/{{tracking_number}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "shipments", "{{tracking_number}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"remarks\": \"Call recipient 30 minutes before arrival\",\n  \"reference\": \"ORDER-2026-001-REV2\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Modify editable consignment fields prior to physical driver pickup."
           }
         }
       ]
     },
     {
-      "name": "Address Book",
+      "name": "03 - Waybills & Labels",
+      "description": "Stream printable Air Waybill PDFs and barcode labels.",
       "item": [
         {
-          "name": "List Addresses",
+          "name": "1. Download Waybill Label PDF (GET label)",
           "request": {
             "method": "GET",
             "header": [
               { "key": "x-api-key", "value": "{{api_key}}" }
             ],
             "url": {
-              "raw": "{{base_url}}/v1/addresses",
+              "raw": "{{base_url}}/v1/shipments/{{tracking_number}}/label",
               "host": ["{{base_url}}"],
-              "path": ["v1", "addresses"]
+              "path": ["v1", "shipments", "{{tracking_number}}", "label"]
             },
-            "description": "Returns all addresses saved in your account's address book. Verified working."
-          }
-        },
-        {
-          "name": "Add Address",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "x-api-key", "value": "{{api_key}}" }
-            ],
-            "url": {
-              "raw": "{{base_url}}/v1/addresses",
-              "host": ["{{base_url}}"],
-              "path": ["v1", "addresses"]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"label\": \"Main Warehouse\",\n  \"company\": \"My Warehouse Co.\",\n  \"contactPerson\": \"Ahmed Al-Rashid\",\n  \"phone\": \"96512345678\",\n  \"email\": \"warehouse@mycompany.com\",\n  \"streetLines\": [\"Industrial Area, Block 4, Street 12\"],\n  \"city\": \"Kuwait City\",\n  \"postalCode\": \"13001\",\n  \"countryCode\": \"KW\",\n  \"taxId\": \"\",\n  \"vatNumber\": \"\",\n  \"eoriNumber\": \"\"\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "description": "Add a new address to your account's address book."
+            "description": "Streams ready-to-print official carrier AWB or Target Express vector PDF waybill."
           }
         }
       ]
     },
     {
-      "name": "Tracking",
+      "name": "04 - Tracking & Telemetry",
+      "description": "Real-time shipment tracking across private back-office, unified carrier feeds, and customer-facing storefronts.",
       "item": [
         {
-          "name": "Track Shipment (v1)",
+          "name": "1. Private Shipment Tracking (GET /v1/tracking/:trackingNumber)",
           "request": {
             "method": "GET",
             "header": [
@@ -172,11 +202,41 @@
               "host": ["{{base_url}}"],
               "path": ["v1", "tracking", "{{tracking_number}}"]
             },
-            "description": "Get status and history of a shipment using the internal tracking number."
+            "description": "Returns persisted internal status, carrier metadata, COD state, and chronological milestone history."
           }
         },
         {
-          "name": "Public Shipment Tracking",
+          "name": "2. Unified Shipment Summary (GET /client/shipments/:trackingNumber)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/client/shipments/{{tracking_number}}",
+              "host": ["{{base_url}}"],
+              "path": ["client", "shipments", "{{tracking_number}}"]
+            },
+            "description": "Returns top-level shipment status, current location, estimated delivery, and carrier tracking number."
+          }
+        },
+        {
+          "name": "3. Merged Carrier Timeline (GET /client/shipments/:trackingNumber/tracking)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/client/shipments/{{tracking_number}}/tracking",
+              "host": ["{{base_url}}"],
+              "path": ["client", "shipments", "{{tracking_number}}", "tracking"]
+            },
+            "description": "Merges internal Target Logistics hub scans with live 3PL checkpoints sorted newest-first."
+          }
+        },
+        {
+          "name": "4. Public Storefront Tracking (GET /public/shipments/:trackingNumber)",
           "request": {
             "method": "GET",
             "header": [],
@@ -185,7 +245,113 @@
               "host": ["{{base_url}}"],
               "path": ["public", "shipments", "{{tracking_number}}"]
             },
-            "description": "Public tracking endpoint. No authentication required. Use a real tracking number."
+            "description": "Public unauthenticated tracking feed safe for embedding in customer storefronts and order status widgets."
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Pickup Requests",
+      "description": "Schedule courier collections and inspect driver dispatch status.",
+      "item": [
+        {
+          "name": "1. Schedule Courier Pickup (POST /client/pickups)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{api_key}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/client/pickups",
+              "host": ["{{base_url}}"],
+              "path": ["client", "pickups"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sender\": {\n    \"company\": \"My Warehouse Co.\",\n    \"contactPerson\": \"Ahmed Al-Rashid\",\n    \"phone\": \"96512345678\",\n    \"city\": \"Kuwait City\",\n    \"countryCode\": \"KW\",\n    \"streetLines\": [\"Industrial Area, Block 4\"]\n  },\n  \"receiver\": {\n    \"contactPerson\": \"Sara Al-Mutairi\",\n    \"phone\": \"96598765432\",\n    \"city\": \"Dubai\",\n    \"countryCode\": \"AE\"\n  },\n  \"parcels\": [\n    { \"weight\": 3.0, \"length\": 30, \"width\": 20, \"height\": 15 }\n  ],\n  \"requestedPickupDate\": \"2026-11-20T10:00:00.000Z\",\n  \"pickupInstructions\": \"Gate 2 loading bay\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Dispatch a courier driver to collect prepared packages from your warehouse."
+          }
+        },
+        {
+          "name": "2. Check Pickup Status (GET /client/pickups/:id)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/client/pickups/{{pickup_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["client", "pickups", "{{pickup_id}}"]
+            },
+            "description": "Inspect pickup approval status, driver dispatch, and linked waybill number."
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 - Address Book",
+      "description": "Manage origin profiles and verify API key connectivity.",
+      "item": [
+        {
+          "name": "1. List Addresses & Smoke Test (GET /v1/addresses)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/addresses",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "addresses"]
+            },
+            "description": "Returns all saved warehouse and origin addresses. Recommended API key connectivity test."
+          }
+        },
+        {
+          "name": "2. Save New Address Profile (POST /v1/addresses)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/addresses",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "addresses"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Main Warehouse\",\n  \"company\": \"My Warehouse Co.\",\n  \"contactPerson\": \"Ahmed Al-Rashid\",\n  \"phone\": \"96512345678\",\n  \"phoneCountryCode\": \"+965\",\n  \"email\": \"warehouse@mycompany.com\",\n  \"streetLines\": [\"Industrial Area, Block 4, Street 12\"],\n  \"city\": \"Kuwait City\",\n  \"postalCode\": \"13001\",\n  \"countryCode\": \"KW\",\n  \"taxId\": \"\",\n  \"vatNumber\": \"\",\n  \"eoriNumber\": \"\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Store a reusable warehouse or pickup location in your address book."
+          }
+        },
+        {
+          "name": "3. Update Saved Address (PUT /v1/addresses/:id)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/addresses/{{address_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "addresses", "{{address_id}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contactPerson\": \"Mohammed Al-Otaibi\",\n  \"phone\": \"96587654321\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Update an existing saved address profile by ID or label."
           }
         }
       ]
