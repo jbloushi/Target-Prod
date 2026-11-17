@@ -87,6 +87,15 @@ const DEFAULT_SETTINGS = {
         autoAssignZone: true,
         codAutoReconciliation: true,
         maxActiveRunsPerDriver: 2
+    },
+    fallbackPricing: {
+        enabled: true,
+        economyRateCardId: 'FALLBACK_ECONOMY_GCC',
+        aramexRateCardId: 'FALLBACK_ARAMEX_GCC',
+        dhlRateCardId: 'FALLBACK_DHL_EXPORT',
+        triggerOnZeroRate: true,
+        triggerOnCarrierError: true,
+        applyMarkupToFallback: false
     }
 };
 
@@ -136,6 +145,10 @@ function getSystemSettings() {
             fleet: {
                 ...DEFAULT_SETTINGS.fleet,
                 ...(parsed.fleet || {})
+            },
+            fallbackPricing: {
+                ...DEFAULT_SETTINGS.fallbackPricing,
+                ...(parsed.fallbackPricing || {})
             }
         };
     } catch (err) {
@@ -178,6 +191,10 @@ function updateSystemSettings(updates) {
             fleet: {
                 ...current.fleet,
                 ...(updates.fleet || {})
+            },
+            fallbackPricing: {
+                ...(current.fallbackPricing || DEFAULT_SETTINGS.fallbackPricing),
+                ...(updates.fallbackPricing || {})
             }
         };
         fs.writeFileSync(SETTINGS_FILE_PATH, JSON.stringify(next, null, 2), 'utf8');

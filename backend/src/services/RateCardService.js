@@ -390,9 +390,22 @@ class RateCardService {
      * @returns {number|string|null} Zone number or zone code
      */
     resolveZone(carrierCode, countryInput, card = null) {
-        const normalizedCarrier = String(carrierCode || 'DGR').trim().toUpperCase();
+        const normalizedCarrier = String(carrierCode || card?.carrierCode || 'DGR').trim().toUpperCase();
         const input = String(countryInput || '').trim().toUpperCase();
         if (!input) return null;
+
+        const iso = this.normalizeCountryCode(input);
+
+        // 0. Card-level explicit country mapping takes highest precedence
+        const cardZones = card?.countryZones || {};
+        if (cardZones[input] !== undefined) {
+            const val = cardZones[input];
+            return Number.isFinite(Number(val)) ? Number(val) : val;
+        }
+        if (iso && cardZones[iso] !== undefined) {
+            const val = cardZones[iso];
+            return Number.isFinite(Number(val)) ? Number(val) : val;
+        }
 
         if (normalizedCarrier === 'DGR' || normalizedCarrier === 'DHL') {
             // 1. Direct ISO code match
@@ -453,6 +466,11 @@ class RateCardService {
             // 4. Default fallback when no card / numeric default is needed
             // Default numeric zone: GCC & domestic = 1 (matching backward-compatibility tests), international = 2
             return this.resolveSmsaZone(input, { mode: 'numeric' });
+        }
+
+        if (card?.defaultZone !== undefined && card?.defaultZone !== null) {
+            const defVal = card.defaultZone;
+            return Number.isFinite(Number(defVal)) ? Number(defVal) : defVal;
         }
 
         return null;

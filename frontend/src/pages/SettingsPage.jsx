@@ -6,6 +6,7 @@ import { useSnackbar } from 'notistack';
 import api, { settingsService } from '../services/api';
 import PageHeader from '../components/common/PageHeader';
 import RateCardsManager from '../components/admin/RateCardsManager';
+import FallbackPricingManager from '../components/admin/FallbackPricingManager';
 
 const ROLE_DISPLAY_NAMES = {
   admin: 'Superadmin (Full Control)',
@@ -18,7 +19,7 @@ const ROLE_DISPLAY_NAMES = {
   client: 'Direct Shipper',
 };
 
-const SUPERADMIN_TAB_IDS = new Set(['fleet', 'ratecards', 'phenix', 'whatsapp', 'notifications', 'routing']);
+const SUPERADMIN_TAB_IDS = new Set(['fleet', 'ratecards', 'fallback', 'phenix', 'whatsapp', 'notifications', 'routing']);
 
 export const DEFAULT_WHATSAPP_RULES = [
   { eventType: 'out_for_delivery', recipientRole: 'receiver', templateName: 'target_shipment_out_for_delivery', enabled: true, allowQuietHoursBypass: false },
@@ -47,6 +48,7 @@ export const getTabs = (lang, isSuperadmin) => [
   ...(isSuperadmin ? [
     { id: 'fleet', label: lang === 'ar' ? 'الأسطول والاشتراكات (Paywall)' : 'Fleet & Paywall Controls', icon: 'local_shipping' },
     { id: 'ratecards', label: lang === 'ar' ? 'بطاقات الأسعار (Rate Cards)' : 'Rate Cards & Tariffs', icon: 'table_chart' },
+    { id: 'fallback', label: lang === 'ar' ? 'تسعير الطوارئ والبدائل' : 'Fallback Pricing', icon: 'shield' },
     { id: 'phenix', label: lang === 'ar' ? 'مزامنة فينيكس ERP' : 'Phenix ERP Sync', icon: 'sync_alt' },
     { id: 'whatsapp', label: lang === 'ar' ? 'إشعارات واتساب وميتا' : 'Meta WhatsApp Alerts', icon: 'chat' },
     { id: 'notifications', label: lang === 'ar' ? 'قنوات الإشعار' : 'Event Triggers', icon: 'notifications' },
@@ -1326,6 +1328,9 @@ export const SettingsPage = () => {
 
           {/* TAB: Carrier Contract Rate Cards & Matrices */}
           {isSuperadmin && activeTab === 'ratecards' && <RateCardsManager />}
+
+          {/* TAB: Fallback Pricing & Tariffs */}
+          {isSuperadmin && activeTab === 'fallback' && <FallbackPricingManager />}
 
           {/* TAB: Phenix ERP Sync & Auto-Pull */}
           {isSuperadmin && activeTab === 'phenix' && (

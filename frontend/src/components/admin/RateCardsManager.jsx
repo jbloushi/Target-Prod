@@ -233,6 +233,15 @@ export const RateCardsManager = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            <a
+              href="/settings?tab=fallback"
+              className="btn btn-outline btn-accent btn-sm gap-2"
+              title={lang === 'ar' ? 'إعدادات تسعير الطوارئ والبدائل' : 'Manage Fallback Pricing & Tariffs'}
+            >
+              <span className="material-symbols-outlined text-base">shield</span>
+              <span>{lang === 'ar' ? 'تسعير الطوارئ والبدائل' : 'Fallback Pricing'}</span>
+            </a>
+
             <button
               onClick={handleDownloadSample}
               className="btn btn-outline btn-sm gap-2"

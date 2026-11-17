@@ -863,6 +863,22 @@ exports.getQuotation = async (req, res) => {
                 rawRates = await CarrierRateService.getRates(normalized, resolvedCarrierCode);
             } catch (err) {
                 logger.warn(`Live rate lookup failed for ${resolvedCarrierCode}: ${err.message}`);
+            }
+        }
+
+        // Apply fallback pricing if no rates returned or carrier returned zero price (e.g. unpriced contract carrier)
+        if (rawRates.length === 0 || rawRates.every(r => Number(r.totalPrice || 0) <= 0)) {
+            const fallbackQuote = typeof PricingService.getFallbackRate === 'function' ? PricingService.getFallbackRate({
+                carrierCode: resolvedCarrierCode,
+                serviceCode: resolvedServiceCode,
+                destinationCountry: normalized.receiver?.countryCode || normalized.receiver?.country,
+                weight: normalized.weight,
+                packages: normalized.packages
+            }) : null;
+
+            if (fallbackQuote) {
+                rawRates = [fallbackQuote];
+            } else if (rawRates.length === 0) {
                 const weight = Array.isArray(normalized.packages) && normalized.packages.length > 0
                     ? normalized.packages.reduce((sum, p) => sum + (Number(p.weight?.value || p.weight || 0) || 0), 0)
                     : 1.0;
@@ -901,7 +917,7 @@ exports.getQuotation = async (req, res) => {
                 };
             }
 
-            const { markup } = PricingService.resolveMarkup(user, user.organization, resolvedCarrierCode);
+            const { markup } = PricingService.resolveMarkup(user, user.organization, resolvedCarrierCode, rate);
             const calculation = PricingService.calculateFinalPrice(rate.totalPrice, markup, rate.currency);
             return {
                 serviceName: rate.serviceName,

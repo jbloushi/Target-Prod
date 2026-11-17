@@ -39,7 +39,16 @@ exports.getSystemSettings = async (req, res) => {
                 requireSignaturePod: true,
                 autoAssignZone: true,
                 codAutoReconciliation: true
-            }) : undefined
+            }) : undefined,
+            fallbackPricing: rawSettings.fallbackPricing || {
+                enabled: true,
+                economyRateCardId: 'FALLBACK_ECONOMY_GCC',
+                aramexRateCardId: 'FALLBACK_ARAMEX_GCC',
+                dhlRateCardId: 'FALLBACK_DHL_EXPORT',
+                triggerOnZeroRate: true,
+                triggerOnCarrierError: true,
+                applyMarkupToFallback: false
+            }
         };
 
         if (isSuperAdmin) {

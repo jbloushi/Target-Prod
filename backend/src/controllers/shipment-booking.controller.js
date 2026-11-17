@@ -102,6 +102,19 @@ exports.getQuotes = async (req, res) => {
             rawQuotes = await carrier.getRates({ ...req.body, carrierCode, serviceCode, isTest, environment });
         }
 
+        if (rawQuotes.length === 0 || rawQuotes.every(q => Number(q.totalPrice || 0) <= 0)) {
+            const fallbackQuote = typeof PricingService.getFallbackRate === 'function' ? PricingService.getFallbackRate({
+                carrierCode,
+                serviceCode,
+                destinationCountry: req.body.receiver?.countryCode || req.body.receiver?.country,
+                weight: req.body.weight,
+                packages: req.body.packages
+            }) : null;
+            if (fallbackQuote) {
+                rawQuotes = [fallbackQuote];
+            }
+        }
+
         const visibleQuotes = serviceCode
             ? rawQuotes.filter(quote => String(quote.serviceCode || '').toUpperCase() === String(serviceCode).toUpperCase())
             : rawQuotes;

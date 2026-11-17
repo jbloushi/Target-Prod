@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getTabs, DEFAULT_WHATSAPP_RULES, EVENT_METRIC_CONFIG } from './SettingsPage';
 
-const privilegedTabs = ['fleet', 'ratecards', 'phenix', 'whatsapp', 'notifications', 'routing'];
+const privilegedTabs = ['fleet', 'ratecards', 'fallback', 'phenix', 'whatsapp', 'notifications', 'routing'];
 
 describe('SettingsPage navigation', () => {
   it('hides operational system settings from client accounts', () => {

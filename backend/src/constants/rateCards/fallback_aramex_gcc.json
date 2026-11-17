@@ -1,0 +1,41 @@
+{
+  "id": "FALLBACK_ARAMEX_GCC",
+  "name": "Aramex Shipping (Gulf GCC)",
+  "carrierCode": "ARAMEX",
+  "serviceCode": "EXP",
+  "currency": "KWD",
+  "pricingMode": "SELLING_PRICE",
+  "maxBracketWeight": 10.0,
+  "weightStep": 0.5,
+  "countryZones": {
+    "KW": "1",
+    "SA": "1",
+    "QA": "1",
+    "AE": "1",
+    "BH": "1",
+    "OM": "1"
+  },
+  "defaultZone": "1",
+  "brackets": [
+    { "weight": 0.5, "rates": { "1": 4.750 } },
+    { "weight": 1.0, "rates": { "1": 5.750 } },
+    { "weight": 1.5, "rates": { "1": 6.750 } },
+    { "weight": 2.0, "rates": { "1": 7.750 } },
+    { "weight": 2.5, "rates": { "1": 8.750 } },
+    { "weight": 3.0, "rates": { "1": 9.750 } },
+    { "weight": 3.5, "rates": { "1": 10.750 } },
+    { "weight": 4.0, "rates": { "1": 11.750 } },
+    { "weight": 4.5, "rates": { "1": 12.750 } },
+    { "weight": 5.0, "rates": { "1": 13.750 } },
+    { "weight": 5.5, "rates": { "1": 14.750 } },
+    { "weight": 6.0, "rates": { "1": 15.750 } },
+    { "weight": 6.5, "rates": { "1": 16.750 } },
+    { "weight": 7.0, "rates": { "1": 17.750 } },
+    { "weight": 7.5, "rates": { "1": 18.750 } },
+    { "weight": 8.0, "rates": { "1": 19.750 } },
+    { "weight": 8.5, "rates": { "1": 20.750 } },
+    { "weight": 9.0, "rates": { "1": 21.750 } },
+    { "weight": 9.5, "rates": { "1": 22.750 } },
+    { "weight": 10.0, "rates": { "1": 23.750 } }
+  ]
+}

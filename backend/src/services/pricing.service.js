@@ -98,7 +98,94 @@ class PricingService {
             }
         }
 
+        // Check fallback rate card if base price is zero or invalid
+        if (normalizedBasePrice <= 0) {
+            const fallback = this.getFallbackRate({
+                carrierCode: normalizedCarrier,
+                serviceCode: shipmentContext.serviceCode,
+                destinationCountry: shipmentContext.countryCode
+                    || shipmentContext.receiver?.countryCode
+                    || shipmentContext.receiver?.country
+                    || shipmentContext.destinationCountry,
+                weight: shipmentContext.weight,
+                packages: shipmentContext.packages
+            });
+            if (fallback && fallback.totalPrice > 0) {
+                return fallback.totalPrice;
+            }
+        }
+
         return normalizedBasePrice;
+    }
+
+    /**
+     * Resolve fallback rate using configured system fallback rate cards
+     * @param {Object} params
+     * @param {string} params.carrierCode - Carrier code (DGR, OTE, ARAMEX, etc.)
+     * @param {string} [params.serviceCode] - Service code (STD, P, EXP, etc.)
+     * @param {string} params.destinationCountry - ISO-2 country code
+     * @param {number} [params.weight] - Parcel weight in kg
+     * @param {Array} [params.packages] - Parcel dimensions & weights
+     * @returns {Object|null} Quoted fallback rate or null if not applicable
+     */
+    static getFallbackRate({ carrierCode, serviceCode, destinationCountry, weight, packages }) {
+        try {
+            const { getSystemSettings } = require('./systemSettings.service');
+            const settings = getSystemSettings() || {};
+            const fallbackCfg = settings.fallbackPricing || {};
+
+            if (fallbackCfg.enabled === false) return null;
+
+            const normalizedCarrier = String(carrierCode || '').trim().toUpperCase();
+            const normalizedService = String(serviceCode || '').trim().toUpperCase();
+            const country = String(destinationCountry || '').trim().toUpperCase();
+
+            let targetCardId = null;
+            let serviceName = null;
+            let resolvedServiceCode = serviceCode;
+
+            if (normalizedCarrier === 'ARAMEX' || normalizedService === 'EXP') {
+                targetCardId = fallbackCfg.aramexRateCardId || 'FALLBACK_ARAMEX_GCC';
+                serviceName = 'Aramex Shipping (Gulf GCC)';
+                resolvedServiceCode = resolvedServiceCode || 'EXP';
+            } else if (normalizedCarrier === 'OTE' || normalizedService === 'STD' || normalizedCarrier === 'ECONOMY') {
+                targetCardId = fallbackCfg.economyRateCardId || 'FALLBACK_ECONOMY_GCC';
+                serviceName = 'Economy Shipping (Gulf GCC)';
+                resolvedServiceCode = resolvedServiceCode || 'STD';
+            } else if (normalizedCarrier === 'DGR' || normalizedCarrier === 'DHL' || normalizedService === 'P') {
+                targetCardId = fallbackCfg.dhlRateCardId || 'FALLBACK_DHL_EXPORT';
+                serviceName = 'DHL Export Shipping (Fallback)';
+                resolvedServiceCode = resolvedServiceCode || 'P';
+            }
+
+            if (!targetCardId) return null;
+
+            const RateCardService = require('./RateCardService');
+            const cardResult = RateCardService.calculateRate({
+                rateCardId: targetCardId,
+                carrierCode: normalizedCarrier,
+                countryCode: country,
+                weight,
+                packages
+            });
+
+            if (!cardResult || cardResult.totalPrice == null) return null;
+
+            return {
+                serviceName: cardResult.rateCardName ? `${serviceName} (${cardResult.rateCardName})` : serviceName,
+                serviceCode: resolvedServiceCode,
+                carrier: normalizedCarrier || cardResult.carrierCode,
+                totalPrice: Number(cardResult.totalPrice),
+                currency: cardResult.currency || 'KWD',
+                estimatedDelivery: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+                isFallback: true,
+                rateCardId: targetCardId,
+                rateCardResult: cardResult
+            };
+        } catch (err) {
+            logger.warn(`Fallback rate calculation failed for ${carrierCode}/${serviceCode}: ${err.message}`);
+            return null;
+        }
     }
 
     static normalizeMarkupConfig(markup) {
@@ -252,8 +339,15 @@ class PricingService {
      * @returns {Object} { markup, source }
      * @business_rule Hierarchy: 1. Agent-Carrier Override > 2. Agent Default > 3. Org-Carrier Override > 4. Org Default > 5. System Fallback (15%).
      */
-    static resolveMarkup(user, organization, carrierCode) {
+    static resolveMarkup(user, organization, carrierCode, context = {}) {
         const normalizedCarrier = String(carrierCode || '').toUpperCase();
+
+        if (context?.isFallback || context?.pricingMode === 'SELLING_PRICE' || context?.rateCardResult?.pricingMode === 'SELLING_PRICE') {
+            return {
+                markup: { type: 'FLAT', flatValue: 0, percentageValue: 0 },
+                source: 'fallback_selling_price'
+            };
+        }
 
         // 0. Contract Rate Card Override (If selling price rate card is active, markup is 0)
         const carrierPricing = user?.carrierConfig?.pricingByCarrier?.[normalizedCarrier]
