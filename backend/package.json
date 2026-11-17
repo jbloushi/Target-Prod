@@ -17,6 +17,7 @@
     "db:fresh": "node scripts/fresh-database.js --confirm --mode=demo",
     "db:fresh:clean": "node scripts/fresh-database.js --confirm --mode=clean",
     "admin:ensure": "node scripts/ensure-admin.js",
+    "seed:demo": "node scripts/seed-demo-users.js",
     "verify:tracking": "node scripts/verify-carrier-scraping.js",
     "sync:carriers": "node scripts/sync-all-carriers.js",
     "audit:carrier-shipments": "node scripts/audit-carrier-shipments.js",
