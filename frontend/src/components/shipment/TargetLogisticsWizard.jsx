@@ -921,31 +921,64 @@ export const TargetLogisticsWizard = ({
     return () => { isCancelled = true; };
   }, [step, selectedClientId, service.carrierCode, service.serviceCode, receiver.countryCode, receiver.country, receiver.city, totalWeight, pkg.packagesList]);
 
-  const baseRate = useMemo(() => {
+  const quoteBreakdown = useMemo(() => {
     const matchedLive = quoteRates.find(q => String(q.carrierCode || 'DGR').toUpperCase() === String(service.carrierCode || 'DGR').toUpperCase());
-    const liveAmount = Number(matchedLive?.totalPrice ?? matchedLive?.estimatedShipmentCost ?? 0);
-    if (liveAmount > 0) return Number(liveAmount.toFixed(3));
-    if (service.carrierCode === 'INTERNAL') return 4.5;
-    if (service.carrierCode === 'FEDEX') return 21.75;
-    if (service.carrierCode === 'ARAMEX') return 14.25;
-    if (service.carrierCode === 'SMSA' || service.carrierCode === 'SMSAEXPRESS') return 12.5;
-    return 18.5; // Fallback default when live quote is unavailable
-  }, [service.carrierCode, quoteRates]);
+    const liveTotal = Number(matchedLive?.totalPrice ?? matchedLive?.estimatedShipmentCost ?? 0);
 
-  const hasLiveAllInQuote = useMemo(() => {
-    const matchedLive = quoteRates.find(q => String(q.carrierCode || 'DGR').toUpperCase() === String(service.carrierCode || 'DGR').toUpperCase());
-    return Boolean(matchedLive && Number(matchedLive.totalPrice ?? matchedLive.estimatedShipmentCost ?? 0) > 0);
-  }, [service.carrierCode, quoteRates]);
+    let rawBaseFreight = 0;
+    let rawFuelSurcharge = 0;
 
-  const fuelSurchargeAmount = useMemo(() => {
-    // Live quotes and contract rate cards (e.g. 5535_AMANI) already return the final selling price
-    if (hasLiveAllInQuote || service.carrierCode === 'INTERNAL') return 0;
-    return Number((baseRate * 0.095).toFixed(3));
-  }, [baseRate, hasLiveAllInQuote, service.carrierCode]);
+    if (matchedLive && liveTotal > 0) {
+      // Check if quote provides authentic breakdown components from RateCardService or carrier adapter
+      const hasExplicitBase = matchedLive.baseRate !== undefined || matchedLive.basePrice !== undefined || matchedLive.rateCardResult?.baseRate !== undefined || matchedLive.breakdown?.baseFreight !== undefined;
+      const explicitBase = Number(matchedLive.baseRate ?? matchedLive.basePrice ?? matchedLive.rateCardResult?.baseRate ?? matchedLive.breakdown?.baseFreight ?? 0);
+      const explicitFuel = Number(matchedLive.fuelSurcharge ?? matchedLive.rateCardResult?.fuelSurcharge ?? matchedLive.breakdown?.fuelSurcharge ?? 0);
 
-  const finalCost = useMemo(() => {
-    return Number((baseRate + addonsTotal + fuelSurchargeAmount).toFixed(3));
-  }, [baseRate, addonsTotal, fuelSurchargeAmount]);
+      if (hasExplicitBase && explicitBase > 0) {
+        rawBaseFreight = explicitBase;
+        rawFuelSurcharge = explicitFuel;
+      } else if (explicitFuel > 0 && liveTotal > explicitFuel) {
+        rawBaseFreight = liveTotal - explicitFuel;
+        rawFuelSurcharge = explicitFuel;
+      } else {
+        // Contract rate cards (e.g. 5535_AMANI) or all-inclusive quotes
+        rawBaseFreight = liveTotal;
+        rawFuelSurcharge = 0;
+      }
+    } else {
+      // Offline fallback rates when live quotes are unavailable
+      if (service.carrierCode === 'INTERNAL') {
+        rawBaseFreight = 4.5;
+        rawFuelSurcharge = 0;
+      } else if (service.carrierCode === 'FEDEX') {
+        rawBaseFreight = 21.75;
+        rawFuelSurcharge = Number((21.75 * 0.095).toFixed(3));
+      } else if (service.carrierCode === 'ARAMEX') {
+        rawBaseFreight = 14.25;
+        rawFuelSurcharge = Number((14.25 * 0.095).toFixed(3));
+      } else if (service.carrierCode === 'SMSA' || service.carrierCode === 'SMSAEXPRESS') {
+        rawBaseFreight = 12.5;
+        rawFuelSurcharge = Number((12.5 * 0.095).toFixed(3));
+      } else {
+        rawBaseFreight = 18.5;
+        rawFuelSurcharge = Number((18.5 * 0.095).toFixed(3));
+      }
+    }
+
+    const calculatedFinalCost = Number((rawBaseFreight + addonsTotal + rawFuelSurcharge).toFixed(3));
+
+    return {
+      baseFreight: Number(rawBaseFreight.toFixed(3)),
+      fuelSurcharge: Number(rawFuelSurcharge.toFixed(3)),
+      addonsTotal: Number(addonsTotal.toFixed(3)),
+      finalCost: calculatedFinalCost,
+      isLive: Boolean(matchedLive && liveTotal > 0)
+    };
+  }, [service.carrierCode, quoteRates, addonsTotal]);
+
+  const baseRate = quoteBreakdown.baseFreight;
+  const fuelSurchargeAmount = quoteBreakdown.fuelSurcharge;
+  const finalCost = quoteBreakdown.finalCost;
 
   // ── Change-diff Tracking for Edit Mode ──
   const changedFieldsList = useMemo(() => {
@@ -3524,26 +3557,44 @@ export const TargetLogisticsWizard = ({
                   {/* Financial Cost Breakdown Card */}
                   <div className="p-4 bg-[#f5f8ff] border-[1.5px] border-[#c7d7fa] rounded-2xl space-y-2 text-xs">
                     <div className="text-[10px] font-black text-[#8c9196] uppercase tracking-wider mb-1">
-                      {isRTL ? 'تفاصيل التكلفة والرسوم' : 'Updated Financial Breakdown'}
+                      {isRTL ? 'تفاصيل التكلفة والرسوم المعتمدة' : 'Itemized Financial Cost Breakdown'}
                     </div>
                     <div className="flex justify-between text-[#575c60]">
-                      <span>{service.serviceName} Base</span>
-                      <span className="font-mono">KWD {baseRate.toFixed(3)}</span>
+                      <span>{isRTL ? 'سعر الشحن الأساسي' : `${service.serviceName || 'Carrier'} Base Freight`}</span>
+                      <span className="font-mono font-semibold">KWD {quoteBreakdown.baseFreight.toFixed(3)}</span>
                     </div>
-                    {addonsTotal > 0 && (
+                    <div className="flex justify-between text-[#575c60]">
+                      <span>{isRTL ? 'رسوم الوقود الإضافية' : 'Fuel Surcharge'}</span>
+                      <span className="font-mono">
+                        {quoteBreakdown.fuelSurcharge > 0 ? `KWD ${quoteBreakdown.fuelSurcharge.toFixed(3)}` : (isRTL ? 'مشمول في السعر' : 'Included in Base')}
+                      </span>
+                    </div>
+                    {quoteBreakdown.addonsTotal > 0 && (
                       <div className="flex justify-between text-[#575c60]">
-                        <span>Add-ons Surcharges</span>
-                        <span className="font-mono">KWD {addonsTotal.toFixed(3)}</span>
+                        <span>{isRTL ? 'الخدمات الإضافية والتأمين' : 'Surcharges & Value-Added Services'}</span>
+                        <span className="font-mono font-semibold">KWD {quoteBreakdown.addonsTotal.toFixed(3)}</span>
                       </div>
                     )}
-                    <div className="flex justify-between text-[#575c60]">
-                      <span>Fuel Surcharge</span>
-                      <span className="font-mono">
-                        {fuelSurchargeAmount > 0 ? `KWD ${fuelSurchargeAmount.toFixed(3)}` : (isRTL ? 'مشمول في السعر' : 'Included')}
+                    <div className="flex justify-between items-center text-[#575c60] pt-1 border-t border-[#c7d7fa]/60">
+                      <span>{isRTL ? 'الجمارك والضرائب' : 'Customs, Duties & VAT'}</span>
+                      <span className="font-mono text-[11px]">
+                        {customs.incoterms?.toUpperCase().includes('DDP') ? (
+                          <span className="badge badge-xs badge-info font-medium">
+                            {isRTL ? 'مدفوعة مسبقاً (DDP)' : 'Prepaid by Sender (DDP)'}
+                          </span>
+                        ) : receiver.countryCode === 'KW' || service.carrierCode === 'INTERNAL' ? (
+                          <span className="text-base-content/60 font-sans">
+                            {isRTL ? 'معفى (شحن محلي)' : '0.000 (Domestic Exempt)'}
+                          </span>
+                        ) : (
+                          <span className="badge badge-xs badge-ghost font-medium">
+                            {isRTL ? 'على المستلم (DAP)' : 'Payable by Consignee (DAP)'}
+                          </span>
+                        )}
                       </span>
                     </div>
                     <div className="flex justify-between pt-2 border-t-2 border-[#c7d7fa] text-sm font-black text-[#1a1f23]">
-                      <span>{isRTL ? 'الإجمالي النهائي' : 'Total Consignment Cost'}</span>
+                      <span>{isRTL ? 'الإجمالي النهائي للشحنة' : 'Total Consignment Cost'}</span>
                       <span className="text-[#0050d4] font-mono">KWD {finalCost.toFixed(3)}</span>
                     </div>
                   </div>

@@ -76,7 +76,16 @@ class PricingService {
                         weight: shipmentContext.weight,
                         packages: shipmentContext.packages
                     });
-                    return Number(calculation.totalPrice);
+                    const cardCurrency = calculation.currency || 'KWD';
+                    const targetCurrency = policy.currency || shipmentContext.currency || 'KWD';
+                    let calculatedPrice = new Decimal(calculation.totalPrice || 0);
+
+                    if (cardCurrency && targetCurrency && cardCurrency !== targetCurrency) {
+                        const currencyRateService = require('./currencyRate.service');
+                        calculatedPrice = currencyRateService.convert(calculatedPrice, cardCurrency, targetCurrency);
+                    }
+
+                    return Number(calculatedPrice.toFixed(3));
                 }
             } catch (err) {
                 logger.warn(`RateCard calculation failed for ${policy.rateCardId}: ${err.message}`);
@@ -96,6 +105,27 @@ class PricingService {
         if (!markup || typeof markup !== 'object') return null;
         if (!markup.type) return null;
         if (markup.percentageValue === undefined && markup.flatValue === undefined && markup.value === undefined && !markup.formula) return null;
+
+        // Reject negative markup values
+        if (markup.percentageValue !== undefined) {
+            const val = Number(markup.percentageValue);
+            if (!Number.isFinite(val) || val < 0) return null;
+        }
+        if (markup.flatValue !== undefined) {
+            const val = Number(markup.flatValue);
+            if (!Number.isFinite(val) || val < 0) return null;
+        }
+        if (markup.value !== undefined) {
+            const val = Number(markup.value);
+            if (!Number.isFinite(val) || val < 0) return null;
+        }
+
+        // Validate minFloorPrice if provided
+        if (markup.minFloorPrice !== undefined) {
+            const floor = Number(markup.minFloorPrice);
+            if (!Number.isFinite(floor) || floor < 0) return null;
+        }
+
         return markup;
     }
 
@@ -103,7 +133,7 @@ class PricingService {
     /**
      * Calculates the final price for a shipment by applying markup rules to the base carrier rate.
      * @param {number} basePrice - The wholesale rate returned by the carrier API.
-     * @param {Object} markupConfig - Configuration object (type, percentageValue, flatValue, formula).
+     * @param {Object} markupConfig - Configuration object (type, percentageValue, flatValue, formula, minFloorPrice).
      * @param {string} [currency='KWD'] - Currency code for descriptive labels.
      * @returns {Object} { finalPrice, markupAmount, surchargeLabel, markupUsed }
      * @business_rule Supports PERCENTAGE, FLAT, COMBINED, and custom FORMULA markups. 
@@ -126,14 +156,14 @@ class PricingService {
 
             if (type === 'PERCENTAGE' || type === 'COMBINED') {
                 const val = markup.percentageValue !== undefined ? markup.percentageValue : markup.value;
-                const pct = new Decimal(val || 0);
+                const pct = new Decimal(Math.max(0, Number(val || 0)));
                 finalPrice = finalPrice.plus(base.times(pct.dividedBy(100)));
                 surchargeLabel = `${pct.toNumber()}%`;
             }
 
             if (type === 'FLAT' || type === 'COMBINED') {
                 const val = markup.flatValue !== undefined ? markup.flatValue : markup.value;
-                const flat = new Decimal(val || 0);
+                const flat = new Decimal(Math.max(0, Number(val || 0)));
                 finalPrice = finalPrice.plus(flat);
                 surchargeLabel += (surchargeLabel !== '0%' ? ` + ${flat.toNumber()} ${currency}` : `${flat.toNumber()} ${currency} Flat`);
             }
@@ -152,7 +182,7 @@ class PricingService {
                     if (typeof calculated !== 'number' || isNaN(calculated) || !isFinite(calculated)) {
                         throw new Error('Formula result must be a finite number');
                     }
-                    finalPrice = new Decimal(calculated);
+                    finalPrice = new Decimal(Math.max(0, calculated));
                     surchargeLabel = 'Custom Formula';
                 } catch (e) {
                     logger.error(`Markup Formula Execution Failed: ${markup.formula}`, e.message);
@@ -166,9 +196,19 @@ class PricingService {
             surchargeLabel = 'System Fallback';
         }
 
+        // Enforce non-negative minimum floor price
+        const rawFloor = Number(markup?.minFloorPrice ?? 0);
+        const minFloorPrice = (Number.isFinite(rawFloor) && rawFloor >= 0) ? new Decimal(rawFloor) : new Decimal(0);
+        if (finalPrice.lessThan(minFloorPrice)) {
+            finalPrice = minFloorPrice;
+        }
+        if (finalPrice.lessThan(0)) {
+            finalPrice = new Decimal(0);
+        }
+
         return {
             finalPrice: Number(finalPrice.toFixed(3)),
-            markupAmount: Number(finalPrice.minus(base).toFixed(3)),
+            markupAmount: Number(Math.max(0, finalPrice.minus(base).toNumber()).toFixed(3)),
             surchargeLabel,
             markupUsed: markup
         };
@@ -322,16 +362,30 @@ class PricingService {
      * @business_rule Includes an HMAC-SHA256 'rateHash' to detect any manual database modifications to pricing after creation.
      */
     static createSnapshot(carrierRate, markupInput, currency = 'KWD', policySource = 'org_default', extraMeta = {}) {
-        const carrierDecimal = new Decimal(carrierRate || 0);
+        let carrierDecimal = new Decimal(carrierRate || 0);
+        const sourceCurrency = extraMeta?.sourceCurrency || extraMeta?.cardCurrency;
+        if (sourceCurrency && currency && String(sourceCurrency).toUpperCase() !== String(currency).toUpperCase()) {
+            const currencyRateService = require('./currencyRate.service');
+            carrierDecimal = currencyRateService.convert(carrierDecimal, sourceCurrency, currency);
+        }
+        const effectiveCarrierRate = Number(carrierDecimal.toFixed(3));
         const mConfig = typeof markupInput === 'number' ? { type: 'PERCENTAGE', percentageValue: markupInput } : markupInput;
 
-        const { finalPrice, markupAmount } = this.calculateFinalPrice(carrierRate, mConfig, currency);
+        const { finalPrice, markupAmount } = this.calculateFinalPrice(effectiveCarrierRate, mConfig, currency);
 
         const sMarkup = new Decimal(markupAmount);
         let sFinal = new Decimal(finalPrice);
         const optServicesDec = new Decimal(extraMeta?.optionalServicesTotal || 0);
         if (optServicesDec.greaterThan(0)) {
             sFinal = sFinal.plus(optServicesDec);
+        }
+
+        const minFloor = Number(extraMeta?.minFloorPrice ?? mConfig?.minFloorPrice ?? 0);
+        if (Number.isFinite(minFloor) && minFloor > 0) {
+            const floorDec = new Decimal(minFloor);
+            if (sFinal.lessThan(floorDec)) {
+                sFinal = floorDec;
+            }
         }
 
         const secret = process.env.PRICING_HMAC_SECRET || 'target-logistics-pricing-hmac-secret-2026';

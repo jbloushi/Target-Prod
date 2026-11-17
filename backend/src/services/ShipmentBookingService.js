@@ -176,27 +176,40 @@ class ShipmentBookingService {
         }
 
         const price = shipment.pricingSnapshot?.totalPrice ?? shipment.price ?? 0;
+        const shipmentCurrency = shipment.currency || shipment.pricingSnapshot?.currency || (carrierCode === 'OTE' ? 'AED' : 'KWD');
 
-        // Financial Gate: Credit Check against net available credit: creditLimit - outstandingBalance + unappliedCash (F4)
+        // Financial Gate: Credit Check against net available credit: creditLimit - netAR (F4)
         const isBypassRole = ['admin', 'staff', 'accounting'].includes(String(bookingUserRole || payingUser?.role || '').toLowerCase());
         if (!isBypassRole && organizationId) {
             let org = organization;
-            if (!org || org.balance === undefined || org.unappliedBalance === undefined || org.creditLimit === undefined) {
+            if (!org || org.balance === undefined || org.unappliedBalance === undefined || org.creditLimit === undefined || !org.currency) {
                 org = await prisma.organization.findUnique({
                     where: { id: organizationId },
-                    select: { id: true, creditLimit: true, balance: true, unappliedBalance: true }
+                    select: { id: true, creditLimit: true, balance: true, unappliedBalance: true, currency: true }
                 });
             }
 
-            const creditLimit = Number(org?.creditLimit || 0);
-            const outstandingBalance = Math.max(0, Number(org?.balance || 0));
-            const unappliedCash = Number(org?.unappliedBalance || 0);
-            const availableCredit = Number((creditLimit - outstandingBalance + unappliedCash).toFixed(3));
-            const isPrepaid = org?.creditLimit == null || Number(org.creditLimit) === 0;
+            const currencyRateService = require('./currencyRate.service');
+            const orgCurrency = org?.currency || 'KWD';
+            const creditLimit = (org?.creditLimit !== null && org?.creditLimit !== undefined)
+                ? Number(org.creditLimit)
+                : Number(payingUser?.creditLimit || 0);
+            const balance = Number(org?.balance || 0);
+            const unappliedBalance = Number(org?.unappliedBalance || 0);
+            const isPrepaid = creditLimit === 0;
+            const netAR = Math.max(0, balance - unappliedBalance);
+            const availableCredit = isPrepaid
+                ? Math.max(0, unappliedBalance - Math.max(0, balance))
+                : Math.max(0, creditLimit - netAR);
+
+            const priceInOrgCurrency = Number(
+                currencyRateService.convert(price, shipmentCurrency, orgCurrency)
+                    .toFixed(orgCurrency === 'KWD' ? 3 : 2)
+            );
 
             const hasSufficientCredit = isPrepaid
-                ? (unappliedCash >= price && availableCredit >= price)
-                : (availableCredit >= price);
+                ? (unappliedBalance >= priceInOrgCurrency && availableCredit >= priceInOrgCurrency)
+                : (availableCredit >= priceInOrgCurrency);
 
             if (price > 0 && !hasSufficientCredit) {
                 await prisma.shipment.update({
@@ -208,11 +221,12 @@ class ShipmentBookingService {
                                 ? 'Insufficient prepaid unapplied balance to book shipment'
                                 : 'Shipment price exceeds organization available credit limit',
                             checkedAt: new Date(),
-                            availableCredit,
+                            availableCredit: Number(availableCredit.toFixed(3)),
                             creditLimit,
-                            currentBalance: Number(org?.balance || 0),
-                            unappliedBalance: unappliedCash,
-                            requiredAmount: price
+                            currentBalance: balance,
+                            unappliedBalance,
+                            requiredAmount: priceInOrgCurrency,
+                            currency: orgCurrency
                         }
                     }
                 });

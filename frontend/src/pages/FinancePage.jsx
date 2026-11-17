@@ -58,9 +58,23 @@ const FinancePage = () => {
     const { t, lang, isRTL, formatRoute } = useLanguage();
 
     const normalizeCurrencyCode = (currency, fallback = 'KWD') => String(currency || fallback || 'KWD').trim().toUpperCase().slice(0, 3);
-    const fmtAmount = (val) => parseFloat(val || 0).toFixed(3);
     const currentCurrency = normalizeCurrencyCode(user?.organization?.currency, 'KWD');
-    const money = (val, currency) => `${fmtAmount(val)} ${normalizeCurrencyCode(currency, currentCurrency)}`;
+    const getCurrencyDecimals = (currency) => {
+        const cur = normalizeCurrencyCode(currency, currentCurrency);
+        if (['KWD', 'BHD', 'OMR', 'JOD'].includes(cur)) return 3;
+        if (['JPY', 'KRW', 'CLP'].includes(cur)) return 0;
+        return 2;
+    };
+    const fmtAmount = (val, currency = currentCurrency) => {
+        const num = parseFloat(val);
+        const dec = getCurrencyDecimals(currency);
+        if (Number.isNaN(num)) return (0).toFixed(dec);
+        return num.toFixed(dec);
+    };
+    const money = (val, currency = currentCurrency) => {
+        const code = normalizeCurrencyCode(currency, currentCurrency);
+        return `${fmtAmount(val, code)} ${code}`;
+    };
 
     // Ledger State
     const [ledger, setLedger] = useState([]);
@@ -772,6 +786,56 @@ const FinancePage = () => {
     const summary = overview || {};
     const selectedCount = Object.keys(selectedShipmentsMap).length;
 
+    // Credit Exposure & Utilization Calculation
+    const creditMetrics = useMemo(() => {
+        const creditLimit = Number(summary.creditLimit || 0);
+        const balance = Number(summary.balance || 0);
+        const unappliedCash = Number(summary.unappliedCash || 0);
+        const availableCredit = Number(
+            summary.availableCredit !== undefined && summary.availableCredit !== null
+                ? summary.availableCredit
+                : (creditLimit > 0 ? Math.max(0, creditLimit - Math.max(0, balance) + unappliedCash) : balance)
+        );
+        const netAR = Math.max(0, balance - unappliedCash);
+        const creditUsed = creditLimit > 0 ? Math.max(0, creditLimit - availableCredit) : netAR;
+        const utilizationPct = creditLimit > 0 ? Math.min(100, Math.max(0, Math.round((creditUsed / creditLimit) * 100))) : 0;
+
+        return {
+            creditLimit,
+            balance,
+            unappliedCash,
+            availableCredit,
+            creditUsed,
+            utilizationPct
+        };
+    }, [summary]);
+
+    // Outstanding & Overdue Invoices Calculation
+    const invoiceMetrics = useMemo(() => {
+        const outstanding = invoices.filter(inv => {
+            const st = String(inv.status || '').toLowerCase();
+            return !inv.paid && st !== 'paid' && st !== 'void';
+        });
+
+        const overdue = outstanding.filter(inv => {
+            const st = String(inv.status || '').toLowerCase();
+            const isPastDue = inv.dueDate && new Date(inv.dueDate).getTime() < Date.now();
+            return st === 'overdue' || isPastDue;
+        });
+
+        const totalOutstanding = outstanding.reduce((acc, inv) => acc + Number(inv.total || 0), 0);
+        const totalOverdue = overdue.reduce((acc, inv) => acc + Number(inv.total || 0), 0);
+
+        return {
+            totalCount: invoices.length,
+            outstandingCount: outstanding.length,
+            overdueCount: overdue.length,
+            totalOutstanding,
+            totalOverdue,
+            fallbackAmount: Number(summary.totalInvoicesAmount || 0)
+        };
+    }, [invoices, summary.totalInvoicesAmount]);
+
     // Workspace Suites & Scope Categorization
     const arTabs = ['overview', 'transactions', 'allocations', 'invoices', 'all_sections'];
     const codTabs = ['cod'];
@@ -1453,104 +1517,164 @@ const FinancePage = () => {
                         </div>
                     )}
 
-                    {/* 4 Balance Metric Cards */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        {/* Card 1: Available / Period Net Balance */}
-                        <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
-                                    {selectedPeriod !== 'all'
-                                        ? (lang === 'ar' ? 'صافي رصيد الفترة' : 'Period Net Balance')
-                                        : t('fin_available_balance', 'Available Balance')}
-                                </span>
-                                <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-                                    <span className="material-symbols-outlined text-[18px]">account_balance</span>
+                    {/* 4 Balance & Credit Metric Cards */}
+                    {loading ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            {[1, 2, 3, 4].map(idx => (
+                                <div key={idx} className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4 space-y-3 animate-pulse">
+                                    <div className="flex justify-between items-center">
+                                        <div className="h-3 w-28 bg-base-200 rounded"></div>
+                                        <div className="h-8 w-8 bg-base-200 rounded-lg"></div>
+                                    </div>
+                                    <div className="h-7 w-36 bg-base-200 rounded"></div>
+                                    <div className="h-2 w-full bg-base-200 rounded"></div>
                                 </div>
-                            </div>
-                            <div className="text-2xl font-black font-mono text-base-content">
-                                {fmtAmount(selectedPeriod !== 'all' ? summary.balance : (selectedOrgId === 'all' ? summary.balance : (Number(summary.creditLimit || 0) > 0 ? summary.availableCredit : summary.balance)))} <span className="text-xs font-semibold text-base-content/60">{currentCurrency}</span>
-                            </div>
-                            <div className="flex items-center justify-between text-[11px] text-base-content/50 mt-2">
-                                <span>
-                                    {selectedPeriod !== 'all'
-                                        ? (selectedPeriod === 'today' ? (lang === 'ar' ? 'حركات اليوم المالية' : 'Activity recorded today')
-                                            : selectedPeriod === '7days' ? (lang === 'ar' ? 'حركات آخر 7 أيام' : 'Activity in past 7 days')
-                                            : selectedPeriod === 'this_month' ? (lang === 'ar' ? 'حركات هذا الشهر' : 'Activity this month')
-                                            : selectedPeriod === 'last_month' ? (lang === 'ar' ? 'حركات الشهر الماضي' : 'Activity last month')
-                                            : (lang === 'ar' ? 'حركات الفترة المحددة' : 'Activity in custom range'))
-                                        : (selectedOrgId === 'all'
-                                            ? `${summary.totalOrganizationsCount || organizations.length} ${lang === 'ar' ? 'منظمات' : 'Organizations'}`
-                                            : `${t('fin_credit_limit', 'Credit Limit')}: ${money(summary.creditLimit, currentCurrency)}`)}
-                                </span>
-                                <span className="badge badge-success badge-xs font-bold text-white">Active</span>
-                            </div>
+                            ))}
                         </div>
+                    ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            {/* Card 1: Available Credit & Limit Facility */}
+                            <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
+                                        {selectedPeriod !== 'all'
+                                            ? (lang === 'ar' ? 'صافي رصيد الفترة' : 'Period Net Balance')
+                                            : (creditMetrics.creditLimit > 0
+                                                ? (lang === 'ar' ? 'الائتمان المتاح' : 'Available Credit')
+                                                : t('fin_available_balance', 'Available Balance'))}
+                                    </span>
+                                    <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                                        <span className="material-symbols-outlined text-[18px]">account_balance</span>
+                                    </div>
+                                </div>
+                                <div className="text-2xl font-black font-mono text-base-content">
+                                    {fmtAmount(
+                                        selectedPeriod !== 'all'
+                                            ? creditMetrics.balance
+                                            : (creditMetrics.creditLimit > 0 ? creditMetrics.availableCredit : creditMetrics.balance),
+                                        currentCurrency
+                                    )} <span className="text-xs font-semibold text-base-content/60">{currentCurrency}</span>
+                                </div>
 
-                        {/* Card 2: Unapplied Cash */}
-                        <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
-                                    {t('fin_unapplied_cash', 'Unapplied Cash')}
-                                </span>
-                                <div className="w-8 h-8 rounded-lg bg-success/10 text-success flex items-center justify-center">
-                                    <span className="material-symbols-outlined text-[18px]">payments</span>
-                                </div>
+                                {creditMetrics.creditLimit > 0 ? (
+                                    <div className="mt-2 space-y-1">
+                                        <div className="w-full bg-base-200 rounded-full h-1.5 overflow-hidden">
+                                            <div
+                                                className={`h-full transition-all duration-500 rounded-full ${
+                                                    creditMetrics.utilizationPct >= 90
+                                                        ? 'bg-error'
+                                                        : creditMetrics.utilizationPct >= 70
+                                                            ? 'bg-warning'
+                                                            : 'bg-success'
+                                                }`}
+                                                style={{ width: `${creditMetrics.utilizationPct}%` }}
+                                            />
+                                        </div>
+                                        <div className="flex items-center justify-between text-[11px] text-base-content/60">
+                                            <span>
+                                                {lang === 'ar' ? 'الحد:' : 'Limit:'} {money(creditMetrics.creditLimit, currentCurrency)}
+                                            </span>
+                                            <span className={`font-mono font-bold ${
+                                                creditMetrics.utilizationPct >= 90
+                                                    ? 'text-error'
+                                                    : creditMetrics.utilizationPct >= 70
+                                                        ? 'text-warning'
+                                                        : 'text-success'
+                                            }`}>
+                                                {creditMetrics.utilizationPct}% {lang === 'ar' ? 'مستخدم' : 'used'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center justify-between text-[11px] text-base-content/50 mt-2">
+                                        <span>
+                                            {selectedOrgId === 'all'
+                                                ? `${summary.totalOrganizationsCount || organizations.length} ${lang === 'ar' ? 'منظمات مسجلة' : 'Registered Orgs'}`
+                                                : (lang === 'ar' ? 'حساب مسبق الدفع' : 'Prepaid Account (No credit limit)')}
+                                        </span>
+                                        <span className="badge badge-success badge-xs font-bold text-white">Active</span>
+                                    </div>
+                                )}
                             </div>
-                            <div className="text-2xl font-black font-mono text-success">
-                                {fmtAmount(summary.unappliedCash)} <span className="text-xs font-semibold text-base-content/60">{currentCurrency}</span>
-                            </div>
-                            <div className="flex items-center justify-between text-[11px] text-base-content/50 mt-2">
-                                <span>
-                                    {summary.unappliedPaymentsCount ?? payments.length} {lang === 'ar' ? 'دفعات متاحة' : 'Payments'}
-                                </span>
-                                <span className="badge badge-primary badge-xs font-bold">{lang === 'ar' ? 'جاهز' : 'Ready'}</span>
-                            </div>
-                        </div>
 
-                        {/* Card 3: Total Unpaid Cargo */}
-                        <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
-                                    {t('fin_unpaid_receivables', 'Total Unpaid Cargo')}
-                                </span>
-                                <div className="w-8 h-8 rounded-lg bg-warning/10 text-warning flex items-center justify-center">
-                                    <span className="material-symbols-outlined text-[18px]">inventory_2</span>
+                            {/* Card 2: Outstanding & Overdue Invoices KPI */}
+                            <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
+                                        {lang === 'ar' ? 'الفواتير المستحقة والمتأخرة' : 'Outstanding Invoices'}
+                                    </span>
+                                    <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+                                        <span className="material-symbols-outlined text-[18px]">receipt_long</span>
+                                    </div>
+                                </div>
+                                <div className="text-2xl font-black font-mono text-base-content">
+                                    {fmtAmount(
+                                        invoiceMetrics.totalOutstanding > 0
+                                            ? invoiceMetrics.totalOutstanding
+                                            : invoiceMetrics.fallbackAmount,
+                                        currentCurrency
+                                    )} <span className="text-xs font-semibold text-base-content/60">{currentCurrency}</span>
+                                </div>
+                                <div className="flex items-center justify-between text-[11px] text-base-content/60 mt-2">
+                                    <span>
+                                        {invoiceMetrics.outstandingCount} {lang === 'ar' ? 'فواتير غير مسددة' : 'unpaid invoices'}
+                                    </span>
+                                    {invoiceMetrics.overdueCount > 0 ? (
+                                        <span className="badge badge-error badge-xs font-bold text-white gap-1 animate-pulse">
+                                            <span className="material-symbols-outlined text-[10px]">event_busy</span>
+                                            {invoiceMetrics.overdueCount} {lang === 'ar' ? 'متأخرة' : 'Overdue'}
+                                        </span>
+                                    ) : (
+                                        <span className="badge badge-success badge-xs font-bold text-white">
+                                            {lang === 'ar' ? 'منتظمة' : 'All Current'}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
-                            <div className={`text-2xl font-black font-mono ${summary.totalUnpaid > 0 ? 'text-warning' : 'text-base-content'}`}>
-                                {fmtAmount(summary.totalUnpaid)} <span className="text-xs font-semibold text-base-content/60">{currentCurrency}</span>
-                            </div>
-                            <div className="flex items-center justify-between text-[11px] text-base-content/50 mt-2">
-                                <span>
-                                    {summary.unpaidShipmentsCount ?? shipments.filter(s => !s.paid).length} {lang === 'ar' ? 'شحنات غير مسددة' : 'Outstanding shipments'}
-                                </span>
-                                <span className="badge badge-ghost badge-xs font-mono">{summary.agingBuckets?.['0-30'] ? '0-30D' : 'CURRENT'}</span>
-                            </div>
-                        </div>
 
-                        {/* Card 4: Net Ledger Position */}
-                        <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
-                                    {lang === 'ar' ? 'صافي الموقف المالي' : 'Net Ledger Position'}
-                                </span>
-                                <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
-                                    <span className="material-symbols-outlined text-[18px]">trending_up</span>
+                            {/* Card 3: Unapplied Cash */}
+                            <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
+                                        {t('fin_unapplied_cash', 'Unapplied Cash')}
+                                    </span>
+                                    <div className="w-8 h-8 rounded-lg bg-success/10 text-success flex items-center justify-center">
+                                        <span className="material-symbols-outlined text-[18px]">payments</span>
+                                    </div>
+                                </div>
+                                <div className="text-2xl font-black font-mono text-success">
+                                    {fmtAmount(summary.unappliedCash, currentCurrency)} <span className="text-xs font-semibold text-base-content/60">{currentCurrency}</span>
+                                </div>
+                                <div className="flex items-center justify-between text-[11px] text-base-content/50 mt-2">
+                                    <span>
+                                        {summary.unappliedPaymentsCount ?? payments.length} {lang === 'ar' ? 'دفعات متاحة' : 'Payments'}
+                                    </span>
+                                    <span className="badge badge-primary badge-xs font-bold">{lang === 'ar' ? 'جاهز' : 'Ready'}</span>
                                 </div>
                             </div>
-                            <div className="text-2xl font-black font-mono text-base-content">
-                                {fmtAmount(parseFloat(summary.unappliedCash || 0) - parseFloat(summary.balance || 0))} <span className="text-xs font-semibold text-base-content/60">{currentCurrency}</span>
-                            </div>
-                            <div className="flex items-center justify-between text-[11px] text-base-content/50 mt-2">
-                                <span>
-                                    {Number(summary.totalInvoicesAmount || 0) > 0
-                                        ? `${fmtAmount(summary.totalInvoicesAmount)} ${currentCurrency}`
-                                        : `${summary.totalInvoicesCount ?? invoices.length} ${lang === 'ar' ? 'فواتير ومطالبات' : 'Statements'}`}
-                                </span>
-                                <span className="badge badge-outline badge-xs font-bold">{lang === 'ar' ? 'متوازن' : 'Balanced'}</span>
+
+                            {/* Card 4: Total Unpaid Cargo */}
+                            <div className="card bg-base-100 border border-base-200/80 shadow-xs rounded-2xl p-4">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-[11px] font-bold uppercase tracking-wider text-base-content/60">
+                                        {t('fin_unpaid_receivables', 'Total Unpaid Cargo')}
+                                    </span>
+                                    <div className="w-8 h-8 rounded-lg bg-warning/10 text-warning flex items-center justify-center">
+                                        <span className="material-symbols-outlined text-[18px]">inventory_2</span>
+                                    </div>
+                                </div>
+                                <div className={`text-2xl font-black font-mono ${summary.totalUnpaid > 0 ? 'text-warning' : 'text-base-content'}`}>
+                                    {fmtAmount(summary.totalUnpaid, currentCurrency)} <span className="text-xs font-semibold text-base-content/60">{currentCurrency}</span>
+                                </div>
+                                <div className="flex items-center justify-between text-[11px] text-base-content/50 mt-2">
+                                    <span>
+                                        {summary.unpaidShipmentsCount ?? shipments.filter(s => !s.paid).length} {lang === 'ar' ? 'شحنات غير مسددة' : 'Outstanding shipments'}
+                                    </span>
+                                    <span className="badge badge-ghost badge-xs font-mono">{summary.agingBuckets?.['0-30'] ? '0-30D' : 'CURRENT'}</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* Dual Charts Grid */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -2178,7 +2302,15 @@ const FinancePage = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {invoices.length > 0 ? (
+                                        {invoiceLoading || loading ? (
+                                            [1, 2, 3, 4, 5].map((idx) => (
+                                                <tr key={idx} className="animate-pulse">
+                                                    <td colSpan={selectedOrgId === 'all' ? 8 : 7} className="py-3 px-4">
+                                                        <div className="h-4 bg-base-200 rounded w-full"></div>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        ) : invoices.length > 0 ? (
                                             invoices.map((inv) => (
                                                 <tr key={inv.id} className="hover">
                                                     <td className="font-mono font-bold text-xs">{inv.invoiceNumber}</td>

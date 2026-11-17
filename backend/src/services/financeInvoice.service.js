@@ -10,7 +10,15 @@ const normalizeAmount = (value) => {
 
 const normalizeCurrencyCode = (currency, fallback = 'KWD') => String(currency || fallback || 'KWD').trim().toUpperCase().slice(0, 3);
 
-const toApiAmount = (value) => Number(normalizeAmount(value).toFixed(3));
+const getCurrencyDecimals = (currency) => {
+    const code = normalizeCurrencyCode(currency);
+    return ['KWD', 'BHD', 'OMR'].includes(code) ? 3 : 2;
+};
+
+const toApiAmount = (value, currency = 'KWD') => {
+    const dec = getCurrencyDecimals(currency);
+    return Number(normalizeAmount(value).toFixed(dec));
+};
 
 const invoiceInclude = {
     organization: { select: { id: true, name: true, currency: true } },
@@ -83,6 +91,13 @@ async function findShipmentChargeEntries({ organizationId, periodStart, periodEn
 }
 
 async function createInvoiceFromPeriod({ organizationId, periodStart, periodEnd, dueDate, notes, createdBy, vatRate = 0, currency }) {
+    const parsedVatRate = Number(vatRate !== undefined && vatRate !== null ? vatRate : 0);
+    if (isNaN(parsedVatRate) || parsedVatRate < 0 || parsedVatRate > 100) {
+        const error = new Error('Invalid VAT rate: must be a percentage between 0 and 100');
+        error.statusCode = 400;
+        throw error;
+    }
+
     const organization = await getOrganizationOrThrow(organizationId);
     const invoiceCurrency = normalizeCurrencyCode(currency || organization?.currency);
     let ledgerEntries = await findShipmentChargeEntries({ organizationId, periodStart, periodEnd, currency: invoiceCurrency });
@@ -176,17 +191,18 @@ async function createInvoiceFromPeriod({ organizationId, periodStart, periodEnd,
 
     const lineItems = validEntries.map(entry => {
         const shipment = shipmentMap.get(entry.sourceId) || {};
-        const amount = toApiAmount(entry.amount);
+        const itemCurrency = normalizeCurrencyCode(entry.currency || shipment.currency || entry.metadata?.currency, invoiceCurrency);
+        const amount = toApiAmount(entry.amount, itemCurrency);
         return {
             shipmentId: entry.sourceId,
             ledgerEntryId: entry.id,
             trackingNumber: shipment.trackingNumber || entry.reference || entry.sourceId,
             shipmentDate: shipment.createdAt || entry.createdAt,
             amount,
-            currency: normalizeCurrencyCode(entry.currency || shipment.currency || entry.metadata?.currency, invoiceCurrency),
+            currency: itemCurrency,
             paid: Boolean(shipment.paid),
-            totalPaid: toApiAmount(shipment.totalPaid || 0),
-            remainingBalance: toApiAmount(shipment.remainingBalance ?? amount)
+            totalPaid: toApiAmount(shipment.totalPaid || 0, itemCurrency),
+            remainingBalance: toApiAmount(shipment.remainingBalance ?? amount, itemCurrency)
         };
     });
 
@@ -198,7 +214,7 @@ async function createInvoiceFromPeriod({ organizationId, periodStart, periodEnd,
     }
 
     const subtotal = lineItems.reduce((sum, item) => sum.plus(item.amount), new Decimal(0));
-    const vat = subtotal.times(normalizeAmount(vatRate).div(100));
+    const vat = subtotal.times(normalizeAmount(parsedVatRate).div(100));
     const total = subtotal.plus(vat);
 
     // Snapshot active exchange rates to guarantee invoice rate immutability
@@ -233,9 +249,9 @@ async function createInvoiceFromPeriod({ organizationId, periodStart, periodEnd,
             invoiceNumber: generateInvoiceNumber(periodEnd),
             periodStart: new Date(periodStart),
             periodEnd: new Date(periodEnd),
-            subtotal: toApiAmount(subtotal),
-            vat: toApiAmount(vat),
-            total: toApiAmount(total),
+            subtotal: toApiAmount(subtotal, invoiceCurrency),
+            vat: toApiAmount(vat, invoiceCurrency),
+            total: toApiAmount(total, invoiceCurrency),
             currency: invoiceCurrency,
             status: 'draft',
             dueDate: dueDate ? new Date(dueDate) : null,
@@ -323,5 +339,6 @@ module.exports = {
     listInvoices,
     updateInvoiceStatus,
     generateInvoiceNumber,
-    toApiAmount
+    toApiAmount,
+    getCurrencyDecimals
 };

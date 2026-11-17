@@ -687,6 +687,17 @@ exports.createShipment = async (req, res) => {
             logger.info(`Dispatched background booking job for ${shipment.trackingNumber}`);
         }
 
+        if (!hasCapability(req.user?.role, 'VIEW_COST_DATA')) {
+            shipment.costPrice = null;
+            shipment.markupAmount = null;
+            if (shipment.pricingSnapshot && typeof shipment.pricingSnapshot === 'object') {
+                shipment.pricingSnapshot = { ...shipment.pricingSnapshot };
+                shipment.pricingSnapshot.carrierRate = null;
+                shipment.pricingSnapshot.markup = null;
+                if (shipment.pricingSnapshot.baseRate !== undefined) shipment.pricingSnapshot.baseRate = null;
+            }
+        }
+
         res.status(200).json({ success: true, data: shipment, message: 'Shipment created successfully' });
     } catch (error) {
         return handleControllerError(res, error, 'Shipment creation');
@@ -773,7 +784,13 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
         // Capability checks
         if (!hasCapability(req.user.role, 'VIEW_COST_DATA')) { 
             shipment.costPrice = null; 
-            if (shipment.pricingSnapshot) shipment.pricingSnapshot.carrierRate = null;
+            shipment.markupAmount = null;
+            if (shipment.pricingSnapshot && typeof shipment.pricingSnapshot === 'object') {
+                shipment.pricingSnapshot = { ...shipment.pricingSnapshot };
+                shipment.pricingSnapshot.carrierRate = null;
+                shipment.pricingSnapshot.markup = null;
+                if (shipment.pricingSnapshot.baseRate !== undefined) shipment.pricingSnapshot.baseRate = null;
+            }
         }
         if (!hasCapability(req.user.role, 'VIEW_DOCUMENTS')) { 
             shipment.labelUrl = null; 
@@ -1064,6 +1081,13 @@ exports.getAllShipments = async (req, res) => {
             if (!canViewCosts) {
                 delete s.costPrice;
                 delete s.markup;
+                delete s.markupAmount;
+                if (s.pricingSnapshot && typeof s.pricingSnapshot === 'object') {
+                    s.pricingSnapshot = { ...s.pricingSnapshot };
+                    delete s.pricingSnapshot.carrierRate;
+                    delete s.pricingSnapshot.markup;
+                    delete s.pricingSnapshot.baseRate;
+                }
             }
             if (!canViewDocs) {
                 delete s.labelUrl;

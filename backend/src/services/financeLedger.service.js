@@ -1521,24 +1521,28 @@ const confirmDriverCodRemittance = async ({ driverId, amount, currency, shipment
 
 /**
  * Calculates net available credit for any customer organization (prepaid or postpaid).
- * Formula: availableCredit = creditLimit - outstandingBalance + unappliedCash
+ * Formula:
+ * - Postpaid: creditLimit - netAR (where netAR = Math.max(0, balance - unappliedBalance))
+ * - Prepaid: Math.max(0, unappliedBalance - Math.max(0, balance))
  */
 const getAvailableCredit = async (organizationId, txClient = prisma) => {
     if (!organizationId) return 0;
     const org = await txClient.organization.findUnique({
         where: { id: organizationId },
-        select: { creditLimit: true, balance: true, unappliedBalance: true }
+        select: { creditLimit: true, balance: true, unappliedBalance: true, currency: true }
     });
     if (!org) return 0;
 
-    const creditLimit = Number(org.creditLimit || 0);
+    const creditLimit = (org.creditLimit !== null && org.creditLimit !== undefined) ? Number(org.creditLimit) : 0;
     const balance = Number(org.balance || 0);
-    const unappliedCash = Number(org.unappliedBalance || 0);
+    const unappliedBalance = Number(org.unappliedBalance || 0);
+    const isPrepaid = creditLimit === 0;
+    const netAR = Math.max(0, balance - unappliedBalance);
+    const availableCredit = isPrepaid
+        ? Math.max(0, unappliedBalance - Math.max(0, balance))
+        : Math.max(0, creditLimit - netAR);
 
-    const outstandingDebt = Math.max(0, balance);
-    const availableCredit = creditLimit - outstandingDebt + unappliedCash;
-
-    return Number(availableCredit.toFixed(3));
+    return Number(availableCredit.toFixed(org.currency === 'KWD' ? 3 : 2));
 };
 
 /**

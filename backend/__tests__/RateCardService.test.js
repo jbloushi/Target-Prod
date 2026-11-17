@@ -126,15 +126,15 @@ describe('DHL Zone Pricing and Contract Rate Cards (5535 - Amani)', () => {
             expect(r35_z1.excessPerKgRate).toBe(4.0);
             expect(r35_z1.totalPrice).toBe(144.5);
 
-            // Zone 7: 30kg is 149.5 KWD + 2.5kg * 4.8 KWD = 161.5 KWD
+            // Zone 7: 30kg is 149.5 KWD + 3kg (full-kg round-up from 2.5kg) * 4.8 KWD = 163.9 KWD
             const r325_z7 = RateCardService.calculateRate({
                 rateCardId: '5535_AMANI',
                 countryCode: 'AU', // Zone 7
                 weight: 32.5
             });
-            expect(r325_z7.excessWeight).toBe(2.5);
+            expect(r325_z7.excessWeight).toBe(3.0);
             expect(r325_z7.excessPerKgRate).toBe(4.8);
-            expect(r325_z7.totalPrice).toBe(161.5);
+            expect(r325_z7.totalPrice).toBe(163.9);
         });
 
         it('accounts for volumetric weight divisor 5000', () => {

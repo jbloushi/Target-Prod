@@ -83,6 +83,17 @@ export const RateCardsManager = () => {
       return;
     }
 
+    if (file.size > 5 * 1024 * 1024) {
+      enqueueSnackbar(
+        lang === 'ar'
+          ? `حجم الملف (${(file.size / (1024 * 1024)).toFixed(1)} ميجابايت) يتجاوز الحد الأقصى المسموح به (5 ميجابايت)`
+          : `File size (${(file.size / (1024 * 1024)).toFixed(1)} MB) exceeds the maximum 5MB limit.`,
+        { variant: 'error' }
+      );
+      if (e.target) e.target.value = '';
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = (uploadEvent) => {
       const base64 = uploadEvent.target.result;
@@ -696,9 +707,8 @@ export const RateCardsManager = () => {
                         <td className="font-bold bg-base-200/40">{bracket.weight.toFixed(1)}</td>
                         {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((z) => {
                           const val = bracket.rates?.[String(z)];
-                          const isSpecialFix = z === 7 && Math.abs(bracket.weight - 3.0) < 0.01;
                           return (
-                            <td key={z} className={isSpecialFix ? 'bg-success/20 font-bold text-success-content' : ''}>
+                            <td key={z}>
                               {val !== undefined ? Number(val).toFixed(3) : '-'}
                             </td>
                           );

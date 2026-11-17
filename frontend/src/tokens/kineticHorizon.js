@@ -161,6 +161,47 @@ export const STATUS_CONFIG = {
     bg: '#f3f4f6',
     border: '#d1d5db',
     icon: 'cancel'
+  },
+  // Financial & Invoice Statuses
+  sent: {
+    label: 'Sent / Issued',
+    color: '#1e40af',
+    dotColor: '#3b82f6',
+    bg: '#eff6ff',
+    border: '#bfdbfe',
+    icon: 'send'
+  },
+  paid: {
+    label: 'Paid',
+    color: '#065f46',
+    dotColor: '#10b981',
+    bg: '#ecfdf5',
+    border: '#a7f3d0',
+    icon: 'check_circle'
+  },
+  overdue: {
+    label: 'Overdue',
+    color: '#991b1b',
+    dotColor: '#ef4444',
+    bg: '#fef2f2',
+    border: '#fecaca',
+    icon: 'event_busy'
+  },
+  disputed: {
+    label: 'Disputed',
+    color: '#92400e',
+    dotColor: '#f59e0b',
+    bg: '#fffbeb',
+    border: '#fde68a',
+    icon: 'gavel'
+  },
+  void: {
+    label: 'Void',
+    color: '#475569',
+    dotColor: '#94a3b8',
+    bg: '#f8fafc',
+    border: '#cbd5e1',
+    icon: 'block'
   }
 };
 

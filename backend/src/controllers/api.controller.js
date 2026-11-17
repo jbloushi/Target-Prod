@@ -247,26 +247,43 @@ exports.createShipment = async (req, res) => {
         const preBookingPrice = resolvedCarrierCode === 'OTE'
             ? 25
             : Number(pricingSnapshot?.totalPrice || 0);
+        const preBookingCurrency = resolvedCarrierCode === 'OTE'
+            ? 'AED'
+            : (pricingSnapshot?.currency || 'KWD');
 
         // Enforce unified credit limit check on autoBook: true API bookings before booking
         if (req.body.autoBook === true) {
             const org = apiUser.organization;
             const isBypassRole = ['admin', 'staff', 'accounting'].includes(apiUser.role);
             if (!isBypassRole && org) {
-                const creditLimit = Number(org.creditLimit || apiUser.creditLimit || 0);
-                const outstandingBalance = Number(org.balance || 0);
+                const currencyRateService = require('../services/currencyRate.service');
+                const orgCurrency = org.currency || 'KWD';
+                const creditLimit = (org.creditLimit !== null && org.creditLimit !== undefined)
+                    ? Number(org.creditLimit)
+                    : Number(apiUser?.creditLimit || 0);
+                const balance = Number(org.balance || 0);
                 const unappliedCash = Number(org.unappliedBalance || 0);
-                const availableCredit = creditLimit - outstandingBalance + unappliedCash;
+                const isPrepaid = creditLimit === 0;
+                const netAR = Math.max(0, balance - unappliedCash);
+                const availableCredit = isPrepaid
+                    ? Math.max(0, unappliedCash - Math.max(0, balance))
+                    : Math.max(0, creditLimit - netAR);
 
-                if (preBookingPrice > 0 && preBookingPrice > availableCredit) {
+                const priceInOrgCurrency = Number(
+                    currencyRateService.convert(preBookingPrice, preBookingCurrency, orgCurrency)
+                        .toFixed(orgCurrency === 'KWD' ? 3 : 2)
+                );
+
+                if (preBookingPrice > 0 && priceInOrgCurrency > availableCredit) {
                     return res.status(400).json({
                         success: false,
                         error: 'Insufficient available credit to finalize booking',
                         details: {
                             availableCredit: Number(availableCredit.toFixed(3)),
-                            requiredAmount: preBookingPrice,
+                            requiredAmount: priceInOrgCurrency,
+                            currency: orgCurrency,
                             creditLimit,
-                            outstandingBalance,
+                            outstandingBalance: balance,
                             unappliedCash
                         }
                     });
@@ -335,20 +352,34 @@ exports.createShipment = async (req, res) => {
             const org = apiUser.organization;
             const isBypassRole = ['admin', 'staff', 'accounting'].includes(apiUser.role);
             if (!isBypassRole && org) {
-                const creditLimit = Number(org.creditLimit || apiUser.creditLimit || 0);
-                const outstandingBalance = Number(org.balance || 0);
+                const currencyRateService = require('../services/currencyRate.service');
+                const orgCurrency = org.currency || 'KWD';
+                const creditLimit = (org.creditLimit !== null && org.creditLimit !== undefined)
+                    ? Number(org.creditLimit)
+                    : Number(apiUser?.creditLimit || 0);
+                const balance = Number(org.balance || 0);
                 const unappliedCash = Number(org.unappliedBalance || 0);
-                const availableCredit = creditLimit - outstandingBalance + unappliedCash;
+                const isPrepaid = creditLimit === 0;
+                const netAR = Math.max(0, balance - unappliedCash);
+                const availableCredit = isPrepaid
+                    ? Math.max(0, unappliedCash - Math.max(0, balance))
+                    : Math.max(0, creditLimit - netAR);
 
-                if (bookingPrice > 0 && bookingPrice > availableCredit) {
+                const priceInOrgCurrency = Number(
+                    currencyRateService.convert(bookingPrice, billingCurrency, orgCurrency)
+                        .toFixed(orgCurrency === 'KWD' ? 3 : 2)
+                );
+
+                if (bookingPrice > 0 && priceInOrgCurrency > availableCredit) {
                     return res.status(400).json({
                         success: false,
                         error: 'Insufficient available credit to finalize booking',
                         details: {
                             availableCredit: Number(availableCredit.toFixed(3)),
-                            requiredAmount: bookingPrice,
+                            requiredAmount: priceInOrgCurrency,
+                            currency: orgCurrency,
                             creditLimit,
-                            outstandingBalance,
+                            outstandingBalance: balance,
                             unappliedCash
                         }
                     });

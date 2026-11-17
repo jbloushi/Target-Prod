@@ -482,6 +482,7 @@ class RateCardService {
 
         let totalActualWeight = 0;
         let totalVolumetricWeight = 0;
+        let totalPieceBillableWeight = 0;
 
         for (const pkg of packages) {
             const actual = Number(pkg.weight?.value || pkg.weight || 0) || 0;
@@ -492,18 +493,26 @@ class RateCardService {
             const width = Number(pkg.dimensions?.width || pkg.width || 0) || 0;
             const height = Number(pkg.dimensions?.height || pkg.height || 0) || 0;
 
+            let volWeight = 0;
             if (length > 0 && width > 0 && height > 0) {
-                const volWeight = (length * width * height) / volumetricDivisor;
+                volWeight = (length * width * height) / volumetricDivisor;
                 totalVolumetricWeight += volWeight;
             }
+
+            // IATA standard piece-by-piece billable weight: max(actual, volumetric) per parcel
+            const pieceBillable = Math.max(actual, volWeight);
+            totalPieceBillableWeight += pieceBillable;
         }
 
         // Fallback if weight wasn't specified: minimum 0.5 kg
-        if (totalActualWeight <= 0 && totalVolumetricWeight <= 0) {
+        if (totalPieceBillableWeight <= 0 && totalActualWeight <= 0 && totalVolumetricWeight <= 0) {
             totalActualWeight = 0.5;
+            totalPieceBillableWeight = 0.5;
         }
 
-        const billableWeight = Math.max(totalActualWeight, totalVolumetricWeight);
+        const billableWeight = totalPieceBillableWeight > 0
+            ? totalPieceBillableWeight
+            : Math.max(totalActualWeight, totalVolumetricWeight);
 
         return {
             billableWeight: Number(billableWeight.toFixed(3)),
@@ -560,8 +569,10 @@ class RateCardService {
         let excessPerKgRate = 0;
 
         if (billable <= maxBracket) {
-            // Round up to nearest 0.5 bracket
-            const bracketWeight = Math.min(maxBracket, Math.max(step, Math.ceil(billable / step) * step));
+            // Round up to nearest bracket with float epsilon tolerance (prevents float drift like 1.0000000000000002 -> 1.5)
+            const EPSILON = 1e-6;
+            const normalizedRatio = (billable - EPSILON) / step;
+            const bracketWeight = Math.min(maxBracket, Math.max(step, Number((Math.ceil(normalizedRatio) * step).toFixed(2))));
             // Find bracket
             const matchedBracket = card.brackets.find(b => Math.abs(b.weight - bracketWeight) < 0.01);
             if (!matchedBracket || matchedBracket.rates[String(zone)] === undefined) {
@@ -569,16 +580,17 @@ class RateCardService {
             }
             baseRate = Number(matchedBracket.rates[String(zone)]);
         } else {
-            // Above 30 kg: Flat per-kg addition
+            // Above 30 kg: Flat per-kg addition with full-kg round-up for excess weight
             const bracket30 = card.brackets.find(b => Math.abs(b.weight - maxBracket) < 0.01);
             if (!bracket30 || bracket30.rates[String(zone)] === undefined) {
                 throw new Error(`Base 30kg rate not found for zone ${zone}.`);
             }
             const rateAt30 = Number(bracket30.rates[String(zone)]);
-            excessWeight = Number((billable - maxBracket).toFixed(3));
+            const rawExcess = Number((billable - maxBracket).toFixed(3));
+            excessWeight = Math.max(1, Math.ceil(rawExcess - 1e-6));
             excessPerKgRate = Number(card.over30KgPerKgRate?.[String(zone)] !== undefined ? card.over30KgPerKgRate[String(zone)] : 4.0);
 
-            // Weight over 30kg is calculated per excess kg
+            // Weight over 30kg is calculated per excess kg (rounded up to next full kg)
             baseRate = rateAt30 + (excessWeight * excessPerKgRate);
         }
 

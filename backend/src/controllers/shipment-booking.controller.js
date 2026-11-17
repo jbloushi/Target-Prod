@@ -8,7 +8,7 @@ const ShipmentBookingService = require('../services/ShipmentBookingService');
 const InternalShipmentConversionService = require('../services/InternalShipmentConversionService');
 const logger = require('../utils/logger');
 const { handleControllerError } = require('../utils/controllerError');
-const { isPlatformRole } = require('../middleware/rbac.policy');
+const { isPlatformRole, hasCapability } = require('../middleware/rbac.policy');
 const { canAccessShipment } = require('../middleware/authorize.middleware');
 const { resolveEffectiveCarrierPolicy } = require('./shipment.helpers');
 const {
@@ -110,6 +110,8 @@ exports.getQuotes = async (req, res) => {
             return res.status(400).json({ success: false, error: `Assigned service ${serviceCode} is not available for this shipment.` });
         }
 
+        const canViewCosts = hasCapability(req.user?.role, 'VIEW_COST_DATA');
+
         const markupQuotes = visibleQuotes.map(quote => {
             if (quote.requiresManualPricing) {
                 return {
@@ -129,35 +131,41 @@ exports.getQuotes = async (req, res) => {
             });
             const calculation = PricingService.calculateFinalPrice(basePrice, markup);
             
-            const optionalServices = (quote.optionalServices || []).map(service => ({
-                serviceCode: service.serviceCode,
-                serviceName: service.serviceName,
-                ...(() => {
-                    const carrierAmount = Number(Number(service.totalPrice || 0).toFixed(3));
-                    const currency = service.currency || quoteCurrency || 'KWD';
-                    const { markup: optionalMarkup, source: optionalMarkupSource } =
-                        PricingService.resolveOptionalServiceMarkup(targetUser, targetUser.organization, carrierCode, service.serviceCode);
-                    if (!optionalMarkup) {
-                        return {
-                            totalPrice: carrierAmount,
-                            carrierAmount,
-                            markupAmount: 0,
-                            currency
-                        };
-                    }
-                    const optionalCalc = PricingService.calculateFinalPrice(carrierAmount, optionalMarkup, currency);
-                    return {
-                        totalPrice: Number(optionalCalc.finalPrice.toFixed(3)),
-                        carrierAmount,
-                        markupAmount: Number(optionalCalc.markupAmount.toFixed(3)),
-                        markupPolicySource: optionalMarkupSource,
+            const optionalServices = (quote.optionalServices || []).map(service => {
+                const carrierAmount = Number(Number(service.totalPrice || 0).toFixed(3));
+                const currency = service.currency || quoteCurrency || 'KWD';
+                const { markup: optionalMarkup, source: optionalMarkupSource } =
+                    PricingService.resolveOptionalServiceMarkup(targetUser, targetUser.organization, carrierCode, service.serviceCode);
+                if (!optionalMarkup) {
+                    const opt = {
+                        serviceCode: service.serviceCode,
+                        serviceName: service.serviceName,
+                        totalPrice: carrierAmount,
                         currency
                     };
-                })()
-            }));
+                    if (canViewCosts) {
+                        opt.carrierAmount = carrierAmount;
+                        opt.markupAmount = 0;
+                    }
+                    return opt;
+                }
+                const optionalCalc = PricingService.calculateFinalPrice(carrierAmount, optionalMarkup, currency);
+                const opt = {
+                    serviceCode: service.serviceCode,
+                    serviceName: service.serviceName,
+                    totalPrice: Number(optionalCalc.finalPrice.toFixed(3)),
+                    currency
+                };
+                if (canViewCosts) {
+                    opt.carrierAmount = carrierAmount;
+                    opt.markupAmount = Number(optionalCalc.markupAmount.toFixed(3));
+                    opt.markupPolicySource = optionalMarkupSource;
+                }
+                return opt;
+            });
 
             const estimatedShipmentCost = Number(calculation.finalPrice.toFixed(3));
-            return {
+            const formattedQuote = {
                 ...quote,
                 totalPrice: estimatedShipmentCost,
                 estimatedShipmentCost,
@@ -165,10 +173,24 @@ exports.getQuotes = async (req, res) => {
                 declaredCurrency: req.body.currency || quoteCurrency || 'KWD',
                 billingCurrency: quoteCurrency || 'KWD',
                 currency: quoteCurrency || 'KWD',
-                pricingPolicySource: policySource,
-                basePrice: basePrice,
-                markupAmount: calculation.markupAmount
+                pricingPolicySource: policySource
             };
+
+            if (canViewCosts) {
+                formattedQuote.basePrice = basePrice;
+                formattedQuote.markupAmount = calculation.markupAmount;
+                if (quote.rateCardResult) {
+                    formattedQuote.rateCardResult = quote.rateCardResult;
+                }
+            } else {
+                delete formattedQuote.rateCardResult;
+                delete formattedQuote.basePrice;
+                delete formattedQuote.markupAmount;
+                delete formattedQuote.costPrice;
+                delete formattedQuote.carrierRate;
+            }
+
+            return formattedQuote;
         });
 
         res.status(200).json({ success: true, data: markupQuotes });
