@@ -180,6 +180,12 @@ const assertRequestedAccessAllowed = (assignedAccess, requested = {}) => {
         return;
     }
 
+    if (requestedCarrier && requestedCarrier !== assignedAccess.carrierCode) {
+        const err = new Error(`This account is assigned to carrier ${assignedAccess.carrierCode}. Requested carrier ${requestedCarrier} is not allowed.`);
+        err.statusCode = 403;
+        throw err;
+    }
+
     if (requestedService && ['DOM', 'STD'].includes(requestedService)) {
         return;
     }
