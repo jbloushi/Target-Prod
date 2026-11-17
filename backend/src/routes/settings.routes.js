@@ -24,13 +24,13 @@ router.put(
 router.get('/system', settingsController.getSystemSettings);
 
 // Available rate cards for carrier assignment
-router.get('/rate-cards', settingsController.getRateCards);
+router.get('/rate-cards', authController.protect, authorizeAny('VIEW_SYSTEM_SETTINGS', 'MANAGE_SYSTEM_SETTINGS', 'VIEW_FINANCE', 'CREATE_SHIPMENTS'), settingsController.getRateCards);
 
 // Download sample rate card Excel template
-router.get('/rate-cards/sample-template', settingsController.downloadSampleTemplate);
+router.get('/rate-cards/sample-template', authController.protect, authorizeAny('VIEW_SYSTEM_SETTINGS', 'MANAGE_SYSTEM_SETTINGS'), settingsController.downloadSampleTemplate);
 
 // View specific rate card matrix details
-router.get('/rate-cards/:id', settingsController.getRateCardDetails);
+router.get('/rate-cards/:id', authController.protect, authorizeAny('VIEW_SYSTEM_SETTINGS', 'MANAGE_SYSTEM_SETTINGS', 'VIEW_FINANCE'), settingsController.getRateCardDetails);
 
 // Upload new rate card from Excel (Superadmin only)
 router.post(

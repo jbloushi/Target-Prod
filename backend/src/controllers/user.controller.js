@@ -231,6 +231,7 @@ exports.getUsers = async (req, res) => {
                 organizationId: true,
                 carrierConfig: true,
                 agentPolicy: true,
+                creditLimit: true,
                 ...(isAdmin ? {
                     chatwootUserId: true,
                     chatwootEmail: true,
@@ -308,6 +309,7 @@ exports.getAssignableClients = async (req, res) => {
                 organizationId: true,
                 carrierConfig: true,
                 agentPolicy: true,
+                creditLimit: true,
                 organization: {
                     select: {
                         id: true,
@@ -411,6 +413,7 @@ exports.getUserById = async (req, res) => {
                 organizationId: true,
                 carrierConfig: true,
                 agentPolicy: true,
+                creditLimit: true,
                 ...(isAdmin ? {
                     chatwootUserId: true,
                     chatwootEmail: true,
@@ -504,7 +507,13 @@ exports.createUser = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Password must be at least 8 characters' });
         }
 
-        const isAdmin = req.user?.role === 'admin';
+        const isAdmin = ['admin', 'superadmin'].includes(req.user?.role);
+        if (!isAdmin && ['admin', 'superadmin'].includes(role)) {
+            return res.status(403).json({
+                success: false,
+                error: 'Only administrators can create admin accounts'
+            });
+        }
         if (!isAdmin && chatwootAccessToken !== undefined) {
             return res.status(403).json({
                 success: false,
@@ -655,9 +664,11 @@ exports.updateProfile = async (req, res) => {
 
         if (name !== undefined) updateData.name = String(name).trim();
         if (addresses !== undefined) updateData.addresses = addresses;
-        if (carrierConfig !== undefined || company !== undefined) {
+        if (company !== undefined || (carrierConfig !== undefined && ['admin', 'superadmin'].includes(req.user?.role))) {
+            const existingCarrierConfig = (req.user?.carrierConfig && typeof req.user.carrierConfig === 'object') ? req.user.carrierConfig : {};
             updateData.carrierConfig = {
-                ...(carrierConfig || {}),
+                ...existingCarrierConfig,
+                ...(['admin', 'superadmin'].includes(req.user?.role) && carrierConfig ? carrierConfig : {}),
                 ...(company !== undefined ? { company: String(company).trim() } : {})
             };
         }
@@ -712,7 +723,13 @@ exports.updateUser = async (req, res) => {
         const userId = req.params.id;
         let { name, email, phone, role, organizationId, organization, carrierConfig, markup, optionalServiceMarkup, creditLimit, shippingAccess, chatwootUserId, chatwootEmail, chatwootAccessToken } = req.body;
 
-        const isAdmin = req.user?.role === 'admin';
+        const isAdmin = ['admin', 'superadmin'].includes(req.user?.role);
+        if (!isAdmin && ['admin', 'superadmin'].includes(role)) {
+            return res.status(403).json({
+                success: false,
+                error: 'Only administrators can create admin accounts'
+            });
+        }
         if (!isAdmin && chatwootAccessToken !== undefined) {
             return res.status(403).json({
                 success: false,
@@ -847,6 +864,10 @@ exports.updateUser = async (req, res) => {
 exports.deleteUser = async (req, res) => {
     try {
         const id = req.params.id;
+
+        if (!['admin', 'superadmin'].includes(req.user.role)) {
+            return res.status(403).json({ success: false, error: 'Only administrators can delete user accounts' });
+        }
 
         if (req.user.id === id) {
             return res.status(400).json({ success: false, error: 'Cannot delete your own user' });

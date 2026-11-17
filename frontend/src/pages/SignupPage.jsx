@@ -45,6 +45,7 @@ export const SignupPage = () => {
         email: formData.email,
         password: formData.password,
         company: formData.company,
+        organizationName: formData.company,
         phone: formData.phone,
         role: 'client',
       });

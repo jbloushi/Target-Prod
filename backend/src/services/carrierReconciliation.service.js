@@ -178,12 +178,13 @@ class CarrierReconciliationService {
                 const description = `Carrier Invoice Reconciliation Adjustment: ${adj.reason || 'Cost discrepancy'}`;
                 const entryType = delta > 0 ? 'CREDIT' : 'DEBIT';
 
+                const reconSourceId = `${adj.shipmentId}_ADJ_${posted.length + 1}_${Date.now()}`;
                 // Post to platform-level CARRIER_PAYABLE (organizationId = null so client merchant balance is never mutated)
                 const entry = await financeLedgerService.createLedgerEntry(
                     null,
                     {
-                        sourceRepo: 'Shipment',
-                        sourceId: adj.shipmentId,
+                        sourceRepo: 'CarrierReconciliation',
+                        sourceId: reconSourceId,
                         amount: absDelta,
                         currency,
                         entryType,
@@ -235,7 +236,7 @@ class CarrierReconciliationService {
                             date: new Date(),
                             reference: adj.shipmentId,
                             sourceType: 'CARRIER_RECONCILIATION',
-                            sourceId: adj.shipmentId,
+                            sourceId: reconSourceId,
                             notes: description,
                             createdById: userId,
                             lines: [

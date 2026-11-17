@@ -308,6 +308,14 @@ export const SettingsPage = () => {
   };
 
   const generateNewKey = async () => {
+    if (apiKey || user?.apiKeyLast4) {
+      const confirmed = window.confirm(
+        lang === 'ar'
+          ? 'تحذير: تجديد المفتاح سيؤدي إلى إبطال المفتاح الحالي فوراً. هل أنت متأكد من المتابعة؟'
+          : 'Warning: Rolling your API key will immediately invalidate your active key. Any integrated systems using it will stop working until updated. Are you sure you want to continue?'
+      );
+      if (!confirmed) return;
+    }
     try {
       setLoadingKey(true);
       const res = await api.post('/auth/api-key');

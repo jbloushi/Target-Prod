@@ -18,7 +18,14 @@ import StatusBadge from '../components/common/StatusBadge';
 import { FinancialDocsHubDrawer } from '../components/accounting/docs';
 import { FinancialWalkthroughTour, useFinancialTour, TOUR_IDS } from '../components/accounting/tour';
 
-const INVOICE_STATUS_OPTIONS = ['DRAFT', 'ISSUED', 'PARTIALLY_PAID', 'PAID', 'VOID', 'OVERDUE'];
+const INVOICE_STATUS_OPTIONS = [
+    { value: 'draft', label: 'Draft' },
+    { value: 'sent', label: 'Sent / Issued' },
+    { value: 'paid', label: 'Paid' },
+    { value: 'overdue', label: 'Overdue' },
+    { value: 'disputed', label: 'Disputed' },
+    { value: 'void', label: 'Void' }
+];
 
 const toDateInputValue = (d) => {
     if (!d || Number.isNaN(new Date(d).getTime())) return '';
@@ -335,6 +342,12 @@ const FinancePage = () => {
         setShipmentPagination(prev => ({ ...prev, page: 1 }));
     }, [debouncedSearch, statusFilter]);
 
+    useEffect(() => {
+        if (!can('VIEW_FINANCE') && can('VIEW_INVOICES') && activeTab === 'overview') {
+            setActiveTab('invoices');
+        }
+    }, [can, activeTab]);
+
     const fetchLedger = useCallback(async (orgId) => {
         const targetOrg = orgId || selectedOrgId;
         if (!targetOrg) return;
@@ -364,10 +377,10 @@ const FinancePage = () => {
     }, [pagination.page, pagination.limit, selectedOrgId, selectedPeriod, customStartDate, customEndDate, refreshUser]);
 
     useEffect(() => {
-        if (selectedOrgId) {
+        if (selectedOrgId && can('VIEW_FINANCE')) {
             fetchLedger(selectedOrgId);
         }
-    }, [pagination.page, pagination.limit]);
+    }, [pagination.page, pagination.limit, can, fetchLedger, selectedOrgId]);
 
     const fetchShipments = useCallback(async () => {
         if (!selectedOrgId) return;
@@ -463,14 +476,33 @@ const FinancePage = () => {
                     startDate: selectedPeriod === 'custom' ? customStartDate : undefined,
                     endDate: selectedPeriod === 'custom' ? customEndDate : undefined
                 };
-                const [balanceRes, paymentsRes, invoicesRes] = await Promise.all([
-                    financeService.getOrganizationBalance(selectedOrgId, filterParams),
-                    financeService.listPayments(selectedOrgId, filterParams),
-                    financeService.listInvoices(selectedOrgId, filterParams)
-                ]);
+
+                const hasFinanceView = can('VIEW_FINANCE');
+                const hasInvoicesView = can('VIEW_INVOICES');
+
+                const calls = [];
+                if (hasFinanceView) {
+                    calls.push(financeService.getOrganizationBalance(selectedOrgId, filterParams).catch(() => ({ data: null })));
+                    calls.push(financeService.listPayments(selectedOrgId, filterParams).catch(() => ({ data: [] })));
+                } else {
+                    calls.push(Promise.resolve({ data: null }));
+                    calls.push(Promise.resolve({ data: [] }));
+                }
+
+                if (hasInvoicesView || hasFinanceView) {
+                    calls.push(financeService.listInvoices(selectedOrgId, filterParams).catch(() => ({ data: [] })));
+                } else {
+                    calls.push(Promise.resolve({ data: [] }));
+                }
+
+                const [balanceRes, paymentsRes, invoicesRes] = await Promise.all(calls);
 
                 setOverview(balanceRes.data);
-                await fetchLedger(selectedOrgId);
+                if (hasFinanceView) {
+                    await fetchLedger(selectedOrgId);
+                } else {
+                    setLedger([]);
+                }
 
                 const unappliedPayments = (paymentsRes.data || []).filter(p => p.status !== 'APPLIED');
                 setPayments(unappliedPayments);
@@ -2194,13 +2226,13 @@ const FinancePage = () => {
 
                                                             {can('MANAGE_PAYMENTS') && (
                                                                 <select
-                                                                    value={inv.status}
+                                                                    value={String(inv.status || 'draft').toLowerCase()}
                                                                     onChange={(e) => handleInvoiceStatusChange(inv.id, e.target.value)}
                                                                     disabled={invoiceLoading}
                                                                     className="select select-xs select-bordered text-[11px]"
                                                                 >
-                                                                    {INVOICE_STATUS_OPTIONS.map(status => (
-                                                                        <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>
+                                                                    {INVOICE_STATUS_OPTIONS.map(opt => (
+                                                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
                                                                     ))}
                                                                 </select>
                                                             )}

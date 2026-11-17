@@ -21,7 +21,7 @@ router.post('/', authorizeAny('MANAGE_USERS', 'MANAGE_ORG_USERS'), userControlle
 router.get('/:id/access-scopes', authorize('MANAGE_USERS'), userController.getAccessScopes);
 router.put('/:id/access-scopes', authorize('MANAGE_USERS'), userController.replaceAccessScopes);
 router.patch('/:id', authorizeAny('MANAGE_USERS', 'MANAGE_ORG_USERS'), userController.updateUser);
-router.delete('/:id', authorizeAny('MANAGE_USERS', 'MANAGE_ORG_USERS'), userController.deleteUser);
+router.delete('/:id', authorize('MANAGE_USERS'), userController.deleteUser);
 router.patch('/:id/password', authorizeAny('MANAGE_USERS', 'MANAGE_ORG_USERS'), authController.resetUserPassword);
 
 // Password reset by admin, manager, accounting, or ops staff

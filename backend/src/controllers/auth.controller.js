@@ -23,8 +23,11 @@ const signToken = (id) => {
 const createSendToken = (user, statusCode, res) => {
     const token = signToken(user.id);
 
-    // Remove password from memory/output
+    // Remove sensitive fields from memory/output
     delete user.password;
+    delete user.apiKeyHash;
+    delete user.otp;
+    delete user.chatwootAccessToken;
 
     res.status(statusCode).json({
         success: true,
@@ -40,10 +43,11 @@ const createSendToken = (user, statusCode, res) => {
  */
 exports.signup = async (req, res) => {
     try {
-        const { name, email, password, role: requestedRole, organizationName } = req.body;
+        const { name, email, password, role: requestedRole, organizationName, company, phone } = req.body;
+        const resolvedOrgName = organizationName || company || null;
 
-        // SECURITY: Public signup is restricted to org_agent accounts only.
-        if (requestedRole && requestedRole !== 'org_agent') {
+        // SECURITY: Public signup is restricted to client/org_agent accounts only.
+        if (requestedRole && !['org_agent', 'client'].includes(requestedRole)) {
             return res.status(403).json({ success: false, error: 'Only organization agent accounts can be self-registered' });
         }
 
@@ -57,10 +61,10 @@ exports.signup = async (req, res) => {
 
             // Optional: Create an Organization if provided, or use a default one
             let organizationId = null;
-            if (organizationName) {
+            if (resolvedOrgName) {
                 const org = await tx.organization.create({
                     data: {
-                        name: organizationName,
+                        name: resolvedOrgName,
                         type: 'BUSINESS',
                         markup: {
                             type: 'PERCENTAGE',
@@ -75,6 +79,7 @@ exports.signup = async (req, res) => {
             const userData = {
                 name,
                 email: email.toLowerCase(),
+                phone: phone || null,
                 password: hashedPassword,
                 role: role
             };
@@ -128,6 +133,11 @@ exports.login = async (req, res) => {
         if (!isMatch) {
             logger.warn(`Login failed: Password mismatch for ${email}`);
             return res.status(401).json({ success: false, error: 'Incorrect email or password' });
+        }
+
+        if (user.active === false) {
+            logger.warn(`Login blocked: User ${email} is deactivated`);
+            return res.status(401).json({ success: false, error: 'Your account has been deactivated. Please contact support.' });
         }
 
         logger.debug('Password match, creating token...');
@@ -238,12 +248,16 @@ exports.verifyOtp = async (req, res) => {
         }
 
         const cleanDigits = String(rawPhone).replace(/\D/g, '');
+        if (cleanDigits.length < 8) {
+            return res.status(400).json({ success: false, error: 'Valid phone number is required (minimum 8 digits)' });
+        }
+
         let record = authOtpStore.get(cleanDigits);
 
         // Fallback search across stored keys in case of country code difference
         if (!record) {
             for (const [key, val] of authOtpStore.entries()) {
-                if (key === cleanDigits || key.endsWith(cleanDigits) || cleanDigits.endsWith(key)) {
+                if (key === cleanDigits || (cleanDigits.length >= 8 && key.endsWith(cleanDigits)) || (key.length >= 8 && cleanDigits.endsWith(key))) {
                     record = val;
                     break;
                 }
@@ -255,6 +269,12 @@ exports.verifyOtp = async (req, res) => {
                 success: false,
                 error: 'Verification code has expired or was not requested. Please request a new code.'
             });
+        }
+
+        record.attempts = (record.attempts || 0) + 1;
+        if (record.attempts > 5) {
+            authOtpStore.delete(cleanDigits);
+            return res.status(429).json({ success: false, error: 'Too many failed verification attempts. Please request a new code.' });
         }
 
         if (record.otp !== String(otp).trim()) {
@@ -275,6 +295,10 @@ exports.verifyOtp = async (req, res) => {
 
         if (!user) {
             return res.status(404).json({ success: false, error: 'User account not found' });
+        }
+
+        if (user.active === false) {
+            return res.status(401).json({ success: false, error: 'Your account has been deactivated. Please contact support.' });
         }
 
         // Clean up OTP record
@@ -382,6 +406,16 @@ exports.getAllUsers = async (req, res) => {
         const users = await prisma.user.findMany({
             where: {
                 role: { in: ['org_agent', 'org_manager'] }
+            },
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                phone: true,
+                role: true,
+                organizationId: true,
+                active: true,
+                createdAt: true
             }
         });
         res.status(200).json({ success: true, data: users });
@@ -505,6 +539,33 @@ exports.resetUserPassword = async (req, res) => {
         const targetPassword = password || newPassword;
         if (!targetPassword || targetPassword.length < 8) {
             return res.status(400).json({ success: false, error: 'Password must be at least 8 characters' });
+        }
+
+        const targetUser = await prisma.user.findUnique({
+            where: { id: req.params.id },
+            select: { id: true, role: true, organizationId: true, email: true }
+        });
+
+        if (!targetUser) {
+            return res.status(404).json({ success: false, error: 'User not found' });
+        }
+
+        const caller = req.user;
+        const isAdmin = ['admin', 'superadmin'].includes(caller.role);
+
+        if (!isAdmin) {
+            if (caller.role === 'org_manager') {
+                if (!caller.organizationId || targetUser.organizationId !== caller.organizationId) {
+                    return res.status(403).json({ success: false, error: 'Permission denied: Cannot reset password for users outside your organization' });
+                }
+                if (['admin', 'superadmin', 'manager', 'accounting', 'staff'].includes(targetUser.role)) {
+                    return res.status(403).json({ success: false, error: 'Permission denied: Cannot reset password for privileged platform roles' });
+                }
+            } else if (!['manager', 'accounting'].includes(caller.role)) {
+                return res.status(403).json({ success: false, error: 'Permission denied' });
+            } else if (['admin', 'superadmin'].includes(targetUser.role)) {
+                return res.status(403).json({ success: false, error: 'Permission denied: Cannot reset admin password' });
+            }
         }
 
         const hashedPassword = await hashPassword(targetPassword);

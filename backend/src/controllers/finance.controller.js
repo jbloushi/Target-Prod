@@ -468,8 +468,8 @@ exports.postPayment = async (req, res) => {
             }, tx);
 
             // 3. Post Double-Entry GL Entry (Dr 1010 Bank/Cash, Cr 1100 AR)
-            try {
-                const generalLedgerService = require('../services/generalLedger.service');
+            const generalLedgerService = require('../services/generalLedger.service');
+            if (typeof generalLedgerService.postPaymentReceiptEntry === 'function') {
                 await generalLedgerService.postPaymentReceiptEntry({
                     paymentId: payment.id,
                     reference: payment.reference,
@@ -478,8 +478,6 @@ exports.postPayment = async (req, res) => {
                     currency,
                     createdById: req.user.id
                 }, tx);
-            } catch (glError) {
-                logger.warn(`[finance.controller] GL payment posting warning: ${glError.message}`);
             }
 
             if (organizationId) {
@@ -721,7 +719,7 @@ exports.getDriverCodSummary = async (req, res) => {
 exports.remitDriverCod = async (req, res) => {
     try {
         const { driverId, amount, currency, shipmentIds, notes } = req.body;
-        let targetDriverId = driverId || (req.user.role === 'driver' ? req.user.id : null);
+        let targetDriverId = req.user.role === 'driver' ? req.user.id : (driverId || null);
 
         let resolvedShipmentIds = Array.isArray(shipmentIds) ? [...shipmentIds] : [];
         if (resolvedShipmentIds.length > 0 && prisma.shipment?.findMany) {
@@ -785,7 +783,7 @@ exports.remitDriverCod = async (req, res) => {
 exports.requestDriverCodRemittance = async (req, res) => {
     try {
         const { driverId, amount, currency, shipmentIds, bagReference, notes } = req.body;
-        let targetDriverId = driverId || (req.user.role === 'driver' ? req.user.id : null);
+        let targetDriverId = req.user.role === 'driver' ? req.user.id : (driverId || null);
 
         let resolvedShipmentIds = Array.isArray(shipmentIds) ? [...shipmentIds] : [];
         if (resolvedShipmentIds.length > 0 && prisma.shipment?.findMany) {
@@ -850,7 +848,7 @@ exports.requestDriverCodRemittance = async (req, res) => {
 exports.confirmDriverCodRemittance = async (req, res) => {
     try {
         const { driverId, amount, currency, shipmentIds, bagReference, notes, verifiedAmount } = req.body;
-        let targetDriverId = driverId || (req.user.role === 'driver' ? req.user.id : null);
+        let targetDriverId = req.user.role === 'driver' ? req.user.id : (driverId || null);
 
         let resolvedShipmentIds = Array.isArray(shipmentIds) ? [...shipmentIds] : [];
         if (resolvedShipmentIds.length > 0 && prisma.shipment?.findMany) {

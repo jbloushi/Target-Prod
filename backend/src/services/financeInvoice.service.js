@@ -294,16 +294,22 @@ async function listInvoices({ organizationId, status, page = 1, limit = 20 }) {
 }
 
 async function updateInvoiceStatus({ invoiceId, status }) {
+    const rawStatus = String(status || '').toLowerCase().trim();
+    const statusAliases = {
+        'issued': 'sent',
+        'partially_paid': 'sent'
+    };
+    const resolvedStatus = statusAliases[rawStatus] || rawStatus;
     const allowedStatuses = ['draft', 'sent', 'paid', 'overdue', 'disputed', 'void'];
-    if (!allowedStatuses.includes(status)) {
+    if (!allowedStatuses.includes(resolvedStatus)) {
         const error = new Error('Invalid invoice status');
         error.statusCode = 400;
         throw error;
     }
 
-    const data = { status };
-    if (status === 'sent') data.sentAt = new Date();
-    if (status === 'paid') data.paidAt = new Date();
+    const data = { status: resolvedStatus };
+    if (resolvedStatus === 'sent') data.sentAt = new Date();
+    if (resolvedStatus === 'paid') data.paidAt = new Date();
 
     return prisma.invoice.update({
         where: { id: invoiceId },

@@ -186,6 +186,7 @@ export const AuthProvider = ({ children }) => {
             loginWithOtp,
             requestOtp,
             signup,
+            register: signup,
             logout,
             refreshUser: loadUser,
             isAuthenticated: !!user,

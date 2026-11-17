@@ -816,8 +816,8 @@ const allocatePayment = async ({ organizationId, paymentId, shipmentId, amount, 
         await createLedgerEntry(
             organizationId || null,
             {
-                sourceRepo: 'Payment',
-                sourceId: paymentId,
+                sourceRepo: 'PaymentAllocation',
+                sourceId: `${paymentId}:${shipmentId}`,
                 amount: 0,
                 currency,
                 entryType: 'CREDIT',
@@ -1567,6 +1567,12 @@ const settleMerchantCod = async ({
     const freight = normalizeAmount(freightDeductions || 0);
     const fee = normalizeAmount(handlingFee || 0);
     const calculatedNet = gross.minus(freight).minus(fee);
+    if (netPayout !== undefined) {
+        const passedPayout = normalizeAmount(netPayout);
+        if (!passedPayout.equals(calculatedNet)) {
+            throw makeClientError(`Net payout (${passedPayout.toFixed(3)}) does not match Gross (${gross.toFixed(3)}) - Deductions (${freight.plus(fee).toFixed(3)} = ${calculatedNet.toFixed(3)})`, 400);
+        }
+    }
     const payout = netPayout !== undefined ? normalizeAmount(netPayout) : calculatedNet;
 
     if (payout.lt(0)) {
@@ -1609,8 +1615,8 @@ const settleMerchantCod = async ({
                 description: `Merchant COD settlement payout: Gross ${toApiAmount(gross)}, Freight ${toApiAmount(freight)}, Fee ${toApiAmount(fee)}, Net ${toApiAmount(payout)} ${settlementCurrency} (Ref: ${settlementRef})`,
                 reference: settlementRef,
                 createdBy: settledById,
-                sourceRepo: 'Organization',
-                sourceId: organizationId,
+                sourceRepo: 'CodSettlement',
+                sourceId: settlementRef || `SETTL-${organizationId}-${Date.now()}`,
                 metadata: {
                     organizationId,
                     shipmentIds,

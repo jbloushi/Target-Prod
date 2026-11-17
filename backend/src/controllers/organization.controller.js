@@ -11,6 +11,10 @@ exports.createOrganization = async (req, res) => {
     try {
         const { name, type, creditLimit, markup, allowedCarriers, address, taxId } = req.body;
 
+        if (creditLimit !== undefined && (isNaN(creditLimit) || Number(creditLimit) < 0)) {
+            return res.status(400).json({ success: false, error: 'Credit limit must be a non-negative number' });
+        }
+
         const organization = await prisma.organization.create({
             data: {
                 name,
@@ -139,10 +143,18 @@ exports.updateOrganization = async (req, res) => {
     try {
         const updateData = { ...req.body };
         delete updateData.balance; // Protect balance from manual update
+        delete updateData.unappliedBalance; // Protect unappliedBalance from manual manipulation
         delete updateData.id;
+        delete updateData.createdAt;
 
-        // Convert numeric fields
-        if (updateData.creditLimit !== undefined) updateData.creditLimit = Number(updateData.creditLimit);
+        // Convert and validate numeric fields
+        if (updateData.creditLimit !== undefined) {
+            const parsedCredit = Number(updateData.creditLimit);
+            if (isNaN(parsedCredit) || parsedCredit < 0) {
+                return res.status(400).json({ success: false, error: 'Credit limit must be a non-negative number' });
+            }
+            updateData.creditLimit = parsedCredit;
+        }
 
         const organization = await prisma.organization.update({
             where: { id: req.params.id },
