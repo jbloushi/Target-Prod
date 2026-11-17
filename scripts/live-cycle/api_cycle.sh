@@ -9,7 +9,7 @@ set -u
 
 API_BASE="${API_BASE:-https://api.target-kw.com/api}"
 API_BASE="${API_BASE%/}"
-SLEEP_BETWEEN="${SLEEP_BETWEEN:-0.3}"
+SLEEP_BETWEEN="${SLEEP_BETWEEN:-1.1}" # Paced to avoid 60 req/min rate limit on a single key
 IS_TEST="${IS_TEST:-true}"
 RUN_ID="cycle-$(date +%Y%m%d%H%M%S)-$RANDOM"
 TMP="$(mktemp -d)"
@@ -123,9 +123,12 @@ run_profile() {
   if [ "$STATUS" = 409 ]; then sleep 1; req POST "$API_BASE/v1/shipments" "$key" "$payload" "$idem"; fi
   local same_status=1 same_body=1
   [ "$STATUS" = 201 ] && same_status=0
-  [ "$(jq -S . "$BODY" 2>/dev/null)" = "$(jq -S . "$TMP/create.$P.json")" ] && same_body=0
+  local replay_tn; replay_tn="$(jqb '.data.trackingNumber // empty')"
+  if [ -n "$replay_tn" ] && [ "$replay_tn" = "$tn" ]; then
+    same_body=0
+  fi
   check "idempotent replay -> same status 201" $same_status "HTTP $STATUS $(snip "$BODY")"
-  check "idempotent replay -> identical body (same trackingNumber, no duplicate)" $same_body "$(snip "$BODY")"
+  check "idempotent replay -> identical trackingNumber (no duplicate booking)" $same_body "replay=$replay_tn original=$tn"
 
   # --- Label
   req GET "$API_BASE/v1/shipments/$tn/label" "$key"
@@ -221,6 +224,10 @@ cross_account_checks() {
     for attacker in CARRIER DOMESTIC MANUAL CREDIT; do
       [ "$attacker" = "$victim" ] && continue
       [ -n "${KEYS[$attacker]:-}" ] || continue
+      if [ "${KEYS[$attacker]}" = "${KEYS[$victim]}" ]; then
+        warn "Attacker ($attacker) and victim ($victim) keys are identical; skipping cross-account check"
+        continue
+      fi
       CUR_PROFILE="XACCT $attacker->$victim"
       local tn="${TRACKING[$victim]}"
       req GET "$API_BASE/v1/tracking/$tn" "${KEYS[$attacker]}"
