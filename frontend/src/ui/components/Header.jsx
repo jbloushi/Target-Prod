@@ -6,7 +6,34 @@ import { useLanguage } from '../../context/LanguageContext';
 import SupportChatContext from '../../context/SupportChatContext';
 import { financeService } from '../../services/api';
 import { getRoleLabel } from '../../utils/roleLabels';
+import { CAPABILITIES, hasCapability } from '../../utils/capabilities';
 import PaywallModal from '../../components/PaywallModal';
+import { setStoredUiVersion } from '../../utils/uiVersion';
+
+const V1_TO_V2_ROUTES = {
+    '/dashboard': '/dashboard-v2',
+    '/shipments': '/shipments-v2',
+    '/shipment/new': '/shipment/new-v2',
+    '/create': '/shipment/new-v2',
+    '/finance': '/finance-v2',
+    '/fleet/dispatch': '/fleet/dispatch-v2',
+    '/driver/runs': '/driver/runs-v2',
+    '/warehouse/scan': '/warehouse/scan-v2',
+    '/driver/pickup': '/driver/pickup-v2',
+    '/address-book': '/address-book-v2',
+    '/support': '/support-v2',
+    '/settings': '/settings-v2',
+    '/admin/users': '/admin/users-v2',
+    '/admin/organizations': '/admin/organizations-v2',
+    '/admin/rate-cards': '/admin/rate-cards-v2',
+    '/admin/whatsapp-logs': '/admin/whatsapp-logs-v2',
+    '/admin/phenix-audit': '/admin/phenix-audit-v2',
+};
+
+const V2_TO_V1_ROUTES = Object.entries(V1_TO_V2_ROUTES).reduce((acc, [v1, v2]) => {
+    if (!acc[v2]) acc[v2] = v1;
+    return acc;
+}, {});
 
 /**
  * Target Logistics Global — Master Top Navigation Bar
@@ -27,6 +54,7 @@ const Header = () => {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [paywallOpen, setPaywallOpen] = useState(false);
     const [financeSummary, setFinanceSummary] = useState(null);
+    const [versionNotice, setVersionNotice] = useState(null);
 
     const userMenuRef = useRef(null);
     const opsMenuRef = useRef(null);
@@ -57,6 +85,13 @@ const Header = () => {
         setMgmtMenuOpen(false);
     }, [location.pathname]);
 
+    // Auto-dismiss V1/V2 switch notification
+    useEffect(() => {
+        if (!versionNotice) return undefined;
+        const timer = setTimeout(() => setVersionNotice(null), 3500);
+        return () => clearTimeout(timer);
+    }, [versionNotice]);
+
     // Fetch finance balance for accounts
     useEffect(() => {
         if (!isAuthenticated || !user?.organizationId) {
@@ -75,6 +110,52 @@ const Header = () => {
     const isDriver = userRole === 'driver';
     const isCompanyManager = userRole === 'org_manager';
     const canAccessSupport = isStaff || ['org_manager', 'org_agent'].includes(userRole);
+    const canViewFinancialNav =
+        hasCapability(userRole, CAPABILITIES.VIEW_FINANCE) ||
+        hasCapability(userRole, CAPABILITIES.VIEW_INVOICES);
+    const canCreateShipments = hasCapability(userRole, CAPABILITIES.CREATE_SHIPMENTS);
+    const canAccessDashboard = !isDriver;
+    const showBalanceBadge = canViewFinancialNav && (Boolean(user?.organizationId) || isAdminOrOwnerOrAcct);
+    const isV2Route = location.pathname.includes('-v2') || location.pathname.includes('/v2');
+
+    // Resolve V1 <-> V2 target link based on current cockpit mode
+    const navTo = (v1Path, search = '') => {
+        const base = isV2Route ? (V1_TO_V2_ROUTES[v1Path] || v1Path) : v1Path;
+        return `${base}${search}`;
+    };
+
+    const getModeToggleTarget = () => {
+        const path = location.pathname;
+        if (isV2Route) {
+            if (path.startsWith('/shipment-v2/')) {
+                return `${path.replace('/shipment-v2/', '/shipment/')}${location.search}`;
+            }
+            if (path.startsWith('/support-v2/')) {
+                return `${path.replace('/support-v2/', '/support/')}${location.search}`;
+            }
+            return `${V2_TO_V1_ROUTES[path] || '/dashboard'}${location.search}`;
+        }
+        if (path.startsWith('/shipment/') && path !== '/shipment/new') {
+            if (path.endsWith('/edit')) {
+                const tn = path.replace('/shipment/', '').replace('/edit', '');
+                return `/shipment-v2/${tn}${location.search}`;
+            }
+            return `${path.replace('/shipment/', '/shipment-v2/')}${location.search}`;
+        }
+        if (path.startsWith('/support/')) {
+            return `${path.replace('/support/', '/support-v2/')}${location.search}`;
+        }
+        return `${V1_TO_V2_ROUTES[path] || '/dashboard-v2'}${location.search}`;
+    };
+
+    const handleSwitchUiVersion = () => {
+        const nextVersion = isV2Route ? 'v1' : 'v2';
+        setStoredUiVersion(nextVersion);
+        setVersionNotice(nextVersion);
+        setUserMenuOpen(false);
+        setMobileMenuOpen(false);
+        navigate(getModeToggleTarget());
+    };
 
     const supportChat = useContext(SupportChatContext);
     const unreadSupportCount = supportChat?.unreadCount || 0;
@@ -87,16 +168,16 @@ const Header = () => {
 
     return (
         <header className="fixed top-0 inset-x-0 z-50 h-16 bg-base-100/90 dark:bg-slate-900/90 backdrop-blur-xl border-b border-base-200 dark:border-slate-800 transition-colors duration-200">
-            <div className="max-w-[1800px] mx-auto h-full px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
+            <div className="max-w-[1800px] mx-auto h-full px-3 sm:px-5 lg:px-6 flex items-center justify-between gap-2">
                 
                 {/* ── Brand & Navigation Group ──────────────────────── */}
-                <div className="flex items-center gap-3 lg:gap-8">
+                <div className="flex items-center gap-2 xl:gap-3 min-w-0">
                     {/* Mobile Hamburger Button */}
                     {isAuthenticated && (
                         <button
                             type="button"
                             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                            className="lg:hidden btn btn-ghost btn-square btn-sm rounded-xl text-base-content"
+                            className="lg:hidden btn btn-ghost btn-square btn-sm rounded-xl text-base-content shrink-0"
                             aria-label="Toggle navigation menu"
                         >
                             <span className="material-symbols-outlined text-2xl">
@@ -107,65 +188,69 @@ const Header = () => {
 
                     {/* Target Logistics Brand Logo */}
                     <Link 
-                        to={isAuthenticated ? "/dashboard" : "/"} 
-                        className="flex items-center gap-2 group cursor-pointer"
+                        to={isAuthenticated ? (isDriver ? "/driver/pickup" : (isV2Route ? "/dashboard-v2" : "/dashboard")) : "/"} 
+                        className="flex items-center gap-1.5 group cursor-pointer shrink-0"
                     >
                         <img 
                             src="/images/target-logo.png" 
                             alt="Target Logistics" 
-                            className="h-8 sm:h-9 w-auto object-contain dark:hidden group-hover:opacity-90 transition-opacity" 
+                            className="h-7 sm:h-8 w-auto object-contain dark:hidden group-hover:opacity-90 transition-opacity shrink-0" 
                         />
                         <img 
                             src="/images/target-logo-white.png" 
                             alt="Target Logistics" 
-                            className="h-8 sm:h-9 w-auto object-contain hidden dark:block group-hover:opacity-90 transition-opacity" 
+                            className="h-7 sm:h-8 w-auto object-contain hidden dark:block group-hover:opacity-90 transition-opacity shrink-0" 
                         />
-                        <span className="hidden sm:inline-block px-2 py-0.5 rounded-full text-[9px] font-extrabold tracking-widest uppercase bg-primary/10 text-primary self-center ml-1">
-                            {isStaff ? (isRTL ? 'إدارة الشبكة' : 'Ops') : (isRTL ? 'حساب الشركات' : 'Portal')}
+                        <span className="hidden 2xl:inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-extrabold tracking-widest uppercase bg-primary/10 text-primary dark:bg-sky-500/15 dark:text-sky-400 whitespace-nowrap shrink-0">
+                            {isStaff ? (isRTL ? 'إدارة الشبكة' : 'Ops') : isDriver ? (isRTL ? 'السائق' : 'Driver') : (isRTL ? 'حساب الشركات' : 'Portal')}
                         </span>
                     </Link>
 
                     {/* Desktop Navigation Links */}
                     {isAuthenticated && (
-                        <nav className="hidden lg:flex items-center gap-1 xl:gap-2">
+                        <nav className="hidden lg:flex items-center gap-0.5 xl:gap-1 min-w-0">
                             {/* Dashboard */}
-                            <Link
-                                to="/dashboard"
-                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                                    isActive('/dashboard')
-                                        ? 'bg-primary/10 text-primary font-black shadow-xs'
-                                        : 'text-base-content/70 hover:text-base-content hover:bg-base-200/60'
-                                }`}
-                            >
-                                <span className="material-symbols-outlined text-base">speed</span>
-                                <span>{t('nav_dashboard', 'Dashboard')}</span>
-                            </Link>
+                            {canAccessDashboard && (
+                                <Link
+                                    to={isV2Route ? "/dashboard-v2" : "/dashboard"}
+                                    className={`px-2 py-1.5 rounded-xl text-[11.5px] xl:text-xs font-bold transition-all flex items-center gap-1 whitespace-nowrap shrink-0 ${
+                                        isActive('/dashboard')
+                                            ? 'bg-primary/10 text-primary dark:bg-sky-500/15 dark:text-sky-400 font-black shadow-xs'
+                                            : 'text-base-content/70 hover:text-base-content hover:bg-base-200/60'
+                                    }`}
+                                >
+                                    <span className="material-symbols-outlined text-[16px]">speed</span>
+                                    <span>{t('nav_dashboard', 'Dashboard')}</span>
+                                </Link>
+                            )}
 
                             {/* Shipments */}
-                            <Link
-                                to="/shipments"
-                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                                    isActive('/shipments')
-                                        ? 'bg-primary/10 text-primary font-black shadow-xs'
-                                        : 'text-base-content/70 hover:text-base-content hover:bg-base-200/60'
-                                }`}
-                            >
-                                <span className="material-symbols-outlined text-base">local_shipping</span>
-                                <span>{t('nav_shipments', 'Shipments')}</span>
-                            </Link>
+                            {canAccessDashboard && (
+                                <Link
+                                    to={isV2Route ? "/shipments-v2" : "/shipments"}
+                                    className={`px-2 py-1.5 rounded-xl text-[11.5px] xl:text-xs font-bold transition-all flex items-center gap-1 whitespace-nowrap shrink-0 ${
+                                        isActive('/shipments')
+                                            ? 'bg-primary/10 text-primary dark:bg-sky-500/15 dark:text-sky-400 font-black shadow-xs'
+                                            : 'text-base-content/70 hover:text-base-content hover:bg-base-200/60'
+                                    }`}
+                                >
+                                    <span className="material-symbols-outlined text-[16px]">local_shipping</span>
+                                    <span>{t('nav_shipments', 'Shipments')}</span>
+                                </Link>
+                            )}
 
                             {/* Support Center */}
                             {canAccessSupport && (
                                 <Link
-                                    to="/support"
+                                    to={isV2Route ? "/support-v2" : "/support"}
                                     data-testid="header-support-link"
-                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 relative ${
+                                    className={`px-2 py-1.5 rounded-xl text-[11.5px] xl:text-xs font-bold transition-all flex items-center gap-1 relative whitespace-nowrap shrink-0 ${
                                         isActive('/support')
-                                            ? 'bg-primary/10 text-primary font-black shadow-xs'
+                                            ? 'bg-primary/10 text-primary dark:bg-sky-500/15 dark:text-sky-400 font-black shadow-xs'
                                             : 'text-base-content/70 hover:text-base-content hover:bg-base-200/60'
                                     }`}
                                 >
-                                    <span className="material-symbols-outlined text-base">support_agent</span>
+                                    <span className="material-symbols-outlined text-[16px]">support_agent</span>
                                     <span>{isRTL ? 'مركز الدعم' : 'Support'}</span>
                                     {unreadSupportCount > 0 && (
                                         <span
@@ -179,34 +264,36 @@ const Header = () => {
                             )}
 
                             {/* Operations Dropdown */}
-                            <div className="relative" ref={opsMenuRef}>
+                            <div className="relative shrink-0" ref={opsMenuRef}>
                                 <button
                                     type="button"
                                     onClick={() => { setOpsMenuOpen(!opsMenuOpen); setMgmtMenuOpen(false); }}
-                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                                    className={`px-2 py-1.5 rounded-xl text-[11.5px] xl:text-xs font-bold transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap ${
                                         isActive('/warehouse') || isActive('/driver') || isActive('/address-book') || isActive('/shipment/new')
-                                            ? 'bg-primary/10 text-primary font-black'
+                                            ? 'bg-primary/10 text-primary dark:bg-sky-500/15 dark:text-sky-400 font-black'
                                             : 'text-base-content/70 hover:text-base-content hover:bg-base-200/60'
                                     }`}
                                 >
-                                    <span className="material-symbols-outlined text-base">alt_route</span>
+                                    <span className="material-symbols-outlined text-[16px]">alt_route</span>
                                     <span>{isRTL ? 'العمليات' : 'Operations'}</span>
                                     <span className="material-symbols-outlined text-xs opacity-60">expand_more</span>
                                 </button>
 
                                 {opsMenuOpen && (
                                     <div className="absolute top-full mt-2 start-0 w-56 p-1.5 bg-base-100 border border-base-200 rounded-2xl shadow-xl z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-                                        <Link
-                                            to="/shipment/new"
-                                            className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
-                                        >
-                                            <span className="material-symbols-outlined text-base text-primary">add_circle</span>
-                                            <span>{isRTL ? 'إنشاء شحنة جديدة' : 'New Consignment'}</span>
-                                        </Link>
+                                        {canCreateShipments && (
+                                            <Link
+                                                to={isV2Route ? "/shipment/new-v2" : "/shipment/new"}
+                                                className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
+                                            >
+                                                <span className="material-symbols-outlined text-base text-primary">add_circle</span>
+                                                <span>{isRTL ? 'إنشاء شحنة جديدة' : 'New Consignment'}</span>
+                                            </Link>
+                                        )}
 
                                         {isStaff && (
                                             <Link
-                                                to="/fleet/dispatch"
+                                                to={navTo('/fleet/dispatch')}
                                                 className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
                                             >
                                                 <span className="material-symbols-outlined text-base text-primary">local_shipping</span>
@@ -219,7 +306,7 @@ const Header = () => {
 
                                         {(isStaff || isDriver) && (
                                             <Link
-                                                to="/driver/runs"
+                                                to={navTo('/driver/runs')}
                                                 className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
                                             >
                                                 <span className="material-symbols-outlined text-base text-success">pin_drop</span>
@@ -244,9 +331,9 @@ const Header = () => {
                                             </button>
                                         )}
 
-                                        {isStaff && (
+                                        {(userRole === 'admin' || userRole === 'manager' || userRole === 'staff') && (
                                             <Link
-                                                to="/warehouse/scan"
+                                                to={navTo('/warehouse/scan')}
                                                 className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
                                             >
                                                 <span className="material-symbols-outlined text-base text-info">qr_code_scanner</span>
@@ -256,7 +343,7 @@ const Header = () => {
 
                                         {(isStaff || isDriver) && (
                                             <Link
-                                                to="/driver/pickup"
+                                                to={navTo('/driver/pickup')}
                                                 className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
                                             >
                                                 <span className="material-symbols-outlined text-base text-warning">local_shipping</span>
@@ -264,30 +351,32 @@ const Header = () => {
                                             </Link>
                                         )}
 
-                                        <Link
-                                            to="/address-book"
-                                            className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
-                                        >
-                                            <span className="material-symbols-outlined text-base text-base-content/60">menu_book</span>
-                                            <span>{isRTL ? 'دليل العناوين' : 'Address Book'}</span>
-                                        </Link>
+                                        {!isDriver && (
+                                            <Link
+                                                to={navTo('/address-book')}
+                                                className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
+                                            >
+                                                <span className="material-symbols-outlined text-base text-base-content/60">menu_book</span>
+                                                <span>{isRTL ? 'دليل العناوين' : 'Address Book'}</span>
+                                            </Link>
+                                        )}
                                     </div>
                                 )}
                             </div>
 
                             {/* Management Dropdown (Admin, Owner, Accounting, Org Manager) */}
                             {(isAdminOrOwnerOrAcct || isCompanyManager) && (
-                                <div className="relative" ref={mgmtMenuRef}>
+                                <div className="relative shrink-0" ref={mgmtMenuRef}>
                                     <button
                                         type="button"
                                         onClick={() => { setMgmtMenuOpen(!mgmtMenuOpen); setOpsMenuOpen(false); }}
-                                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                                        className={`px-2 py-1.5 rounded-xl text-[11.5px] xl:text-xs font-bold transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap ${
                                             isActive('/admin') || isActive('/api-docs')
-                                                ? 'bg-primary/10 text-primary font-black'
+                                                ? 'bg-primary/10 text-primary dark:bg-sky-500/15 dark:text-sky-400 font-black'
                                                 : 'text-base-content/70 hover:text-base-content hover:bg-base-200/60'
                                         }`}
                                     >
-                                        <span className="material-symbols-outlined text-base">admin_panel_settings</span>
+                                        <span className="material-symbols-outlined text-[16px]">admin_panel_settings</span>
                                         <span>{isRTL ? 'الإدارة والشركات' : 'Management'}</span>
                                         <span className="material-symbols-outlined text-xs opacity-60">expand_more</span>
                                     </button>
@@ -296,7 +385,7 @@ const Header = () => {
                                         <div className="absolute top-full mt-2 start-0 w-60 p-1.5 bg-base-100 border border-base-200 rounded-2xl shadow-xl z-50 animate-in fade-in slide-in-from-top-2 duration-150">
                                             {isAdminOrOwnerOrAcct && (
                                                 <Link
-                                                    to="/admin/organizations"
+                                                    to={navTo('/admin/organizations')}
                                                     className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
                                                 >
                                                     <span className="material-symbols-outlined text-base text-primary">corporate_fare</span>
@@ -308,7 +397,7 @@ const Header = () => {
                                             )}
 
                                             <Link
-                                                to="/admin/users"
+                                                to={navTo('/admin/users')}
                                                 className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
                                             >
                                                 <span className="material-symbols-outlined text-base text-secondary">people</span>
@@ -320,7 +409,20 @@ const Header = () => {
 
                                             {isAdminOrOwnerOrAcct && (
                                                 <Link
-                                                    to="/admin/whatsapp-logs"
+                                                    to={navTo('/admin/rate-cards')}
+                                                    className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
+                                                >
+                                                    <span className="material-symbols-outlined text-base text-indigo-500">price_check</span>
+                                                    <div>
+                                                        <p>{isRTL ? 'بطاقات التسعير والنواقل' : 'Carrier Rate Cards'}</p>
+                                                        <p className="text-[10px] text-base-content/50 font-normal">{isRTL ? 'مصفوفات الأوزان والمناطق' : 'Zone & Weight Matrices'}</p>
+                                                    </div>
+                                                </Link>
+                                            )}
+
+                                            {isAdminOrOwnerOrAcct && (
+                                                <Link
+                                                    to={navTo('/admin/whatsapp-logs')}
                                                     className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
                                                 >
                                                     <span className="material-symbols-outlined text-base text-success">chat</span>
@@ -333,7 +435,7 @@ const Header = () => {
 
                                             {isAdminOrOwnerOrAcct && (
                                                 <Link
-                                                    to="/admin/phenix-audit"
+                                                    to={navTo('/admin/phenix-audit')}
                                                     className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-primary/10 hover:text-primary rounded-xl transition-colors"
                                                 >
                                                     <span className="material-symbols-outlined text-base text-warning">fact_check</span>
@@ -358,54 +460,90 @@ const Header = () => {
                                 </div>
                             )}
 
-                            {/* Financials (Admin, Manager, Accounting, Staff, Org Manager, Client) */}
-                            <Link
-                                to="/finance"
-                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                                    isActive('/finance')
-                                        ? 'bg-primary/10 text-primary font-black shadow-xs'
-                                        : 'text-base-content/70 hover:text-base-content hover:bg-base-200/60'
-                                }`}
-                            >
-                                <span className="material-symbols-outlined text-base">account_balance_wallet</span>
-                                <span>{t('nav_financials', 'Financials')}</span>
-                            </Link>
+                            {/* Financials (Strictly gated to roles with VIEW_FINANCE or VIEW_INVOICES; hidden from staff & driver) */}
+                            {canViewFinancialNav && (
+                                <Link
+                                    to={isV2Route ? "/finance-v2" : "/finance"}
+                                    className={`px-2 py-1.5 rounded-xl text-[11.5px] xl:text-xs font-bold transition-all flex items-center gap-1 whitespace-nowrap shrink-0 ${
+                                        isActive('/finance')
+                                            ? 'bg-primary/10 text-primary dark:bg-sky-500/15 dark:text-sky-400 font-black shadow-xs'
+                                            : 'text-base-content/70 hover:text-base-content hover:bg-base-200/60'
+                                    }`}
+                                >
+                                    <span className="material-symbols-outlined text-[16px]">account_balance_wallet</span>
+                                    <span>{t('nav_financials', 'Financials')}</span>
+                                </Link>
+                            )}
                         </nav>
                     )}
                 </div>
 
                 {/* ── Right Actions & Profile Hub ───────────────────── */}
-                <div className="flex items-center gap-2 sm:gap-3">
+                <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                     {/* Quick "+ New Shipment" CTA Button */}
-                    {isAuthenticated && (
+                    {isAuthenticated && canCreateShipments && (
                         <Link
-                            to="/shipment/new"
-                            className="hidden sm:inline-flex btn btn-primary btn-sm rounded-xl font-bold gap-1.5 shadow-sm text-xs"
+                            to={isV2Route ? "/shipment/new-v2" : "/shipment/new"}
+                            className="hidden sm:inline-flex btn btn-primary btn-sm rounded-xl font-bold gap-1 shadow-sm text-xs whitespace-nowrap shrink-0"
                         >
                             <span className="material-symbols-outlined text-base">add</span>
                             <span>{isRTL ? 'شحنة جديدة' : 'New Shipment'}</span>
                         </Link>
                     )}
 
-                    {/* Financial Balance Badge (For Client & B2B accounts) */}
-                    {isAuthenticated && (
+                    {/* Financial Balance Badge (Actual cash balance only — never fallback to creditLimit) */}
+                    {isAuthenticated && showBalanceBadge && (
                         <Link
-                            to="/finance"
-                            className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/5 hover:bg-primary/10 border border-primary/15 transition-colors cursor-pointer"
+                            to={isV2Route ? "/finance-v2" : "/finance"}
+                            className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-primary/5 hover:bg-primary/10 border border-primary/15 transition-colors cursor-pointer whitespace-nowrap shrink-0"
                             title={isRTL ? 'الرصيد المتاح' : 'Available Balance'}
                         >
-                            <span className="material-symbols-outlined text-primary text-base">payments</span>
-                            <span className="text-xs font-extrabold text-primary font-mono">
-                                {parseFloat(financeSummary?.balance || user?.organization?.creditLimit || 0).toFixed(3)} {isRTL ? 'د.ك' : 'KWD'}
+                            <span className="material-symbols-outlined text-primary text-base shrink-0">payments</span>
+                            <span className="text-xs font-extrabold text-primary font-mono tabular-nums whitespace-nowrap">
+                                {parseFloat(financeSummary?.balance ?? user?.organization?.balance ?? 0).toFixed(3)} {isRTL ? 'د.ك' : 'KWD'}
                             </span>
                         </Link>
+                    )}
+
+                    {/* V1 / V2 Version Indicator & 1-Click Switch Pill */}
+                    {isAuthenticated && (
+                        <button
+                            type="button"
+                            onClick={handleSwitchUiVersion}
+                            data-testid="header-ui-version-pill"
+                            title={
+                                isV2Route
+                                    ? (isRTL ? 'أنت الآن على واجهة V2 — انقر للتبديل إلى V1 القياسية' : 'On V2 Cockpit — Click to switch to V1 Standard')
+                                    : (isRTL ? 'أنت الآن على واجهة V1 — انقر للتبديل إلى مقصورة V2' : 'On V1 Standard — Click to switch to V2 Cockpit')
+                            }
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-extrabold border transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                                isV2Route
+                                    ? 'bg-primary/10 text-primary border-primary/25 hover:bg-primary/15 dark:bg-sky-500/15 dark:text-sky-400 dark:border-sky-500/30'
+                                    : 'bg-amber-500/10 text-amber-700 border-amber-500/30 hover:bg-amber-500/20 dark:text-amber-300'
+                            }`}
+                        >
+                            <span
+                                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                    isV2Route ? 'bg-primary dark:bg-sky-400' : 'bg-amber-500'
+                                }`}
+                            />
+                            <span>{isV2Route ? 'V2' : 'V1'}</span>
+                            <span className="hidden xl:inline text-[10px] font-semibold opacity-75">
+                                {isV2Route
+                                    ? (isRTL ? '· تبديل إلى V1' : '· Switch to V1')
+                                    : (isRTL ? '· تبديل إلى V2' : '· Switch to V2')}
+                            </span>
+                            <span className="material-symbols-outlined text-[14px] opacity-75 xl:hidden">
+                                swap_horiz
+                            </span>
+                        </button>
                     )}
 
                     {/* Language Switcher */}
                     <button
                         type="button"
                         onClick={toggleLanguage}
-                        className="btn btn-ghost btn-sm px-2.5 rounded-xl font-extrabold text-xs flex items-center gap-1.5 border border-base-300/80 hover:bg-base-200 transition-colors"
+                        className="btn btn-ghost btn-sm px-2.5 rounded-xl font-extrabold text-xs flex items-center gap-1 border border-base-300/80 hover:bg-base-200 transition-colors whitespace-nowrap shrink-0"
                         title={lang === 'en' ? "التحويل للغة العربية" : "Switch to English"}
                     >
                         <span className="material-symbols-outlined text-sm text-primary">translate</span>
@@ -416,7 +554,7 @@ const Header = () => {
                     <button
                         type="button"
                         onClick={toggleTheme}
-                        className="btn btn-ghost btn-square btn-sm rounded-xl text-base-content/70 hover:text-base-content border border-base-300/80 hover:bg-base-200 transition-colors"
+                        className="btn btn-ghost btn-square btn-sm rounded-xl text-base-content/70 hover:text-base-content border border-base-300/80 hover:bg-base-200 transition-colors shrink-0"
                         title={isDark ? "Light Mode" : "Dark Mode"}
                     >
                         <span className="material-symbols-outlined text-lg">
@@ -426,20 +564,20 @@ const Header = () => {
 
                     {/* User Profile Menu */}
                     {isAuthenticated ? (
-                        <div className="relative" ref={userMenuRef}>
+                        <div className="relative shrink-0" ref={userMenuRef}>
                             <button
                                 type="button"
                                 onClick={() => setUserMenuOpen(!userMenuOpen)}
-                                className="flex items-center gap-2 p-1 rounded-xl hover:bg-base-200/80 transition-colors cursor-pointer border border-transparent hover:border-base-300"
+                                className="flex items-center gap-1 p-1 rounded-xl hover:bg-base-200/80 transition-colors cursor-pointer border border-transparent hover:border-base-300 shrink-0"
                             >
-                                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-blue-700 flex items-center justify-center text-white text-xs font-black shadow-sm overflow-hidden">
+                                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-blue-700 flex items-center justify-center text-white text-xs font-black shadow-sm overflow-hidden shrink-0">
                                     {user?.avatar ? (
                                         <img src={user.avatar} alt="User" className="w-full h-full object-cover" />
                                     ) : (
                                         <span>{user?.name?.[0]?.toUpperCase() || 'U'}</span>
                                     )}
                                 </div>
-                                <span className="hidden sm:inline-block material-symbols-outlined text-base-content/60 text-sm">
+                                <span className="hidden sm:inline-block material-symbols-outlined text-base-content/60 text-sm shrink-0">
                                     expand_more
                                 </span>
                             </button>
@@ -463,7 +601,27 @@ const Header = () => {
                                     </div>
 
                                     <Link
-                                        to="/settings"
+                                        to={getModeToggleTarget()}
+                                        onClick={() => {
+                                            const nextVersion = isV2Route ? 'v1' : 'v2';
+                                            setStoredUiVersion(nextVersion);
+                                            setVersionNotice(nextVersion);
+                                            setUserMenuOpen(false);
+                                        }}
+                                        className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-primary hover:bg-primary/10 rounded-xl transition-colors"
+                                    >
+                                        <span className="material-symbols-outlined text-base">
+                                            {isV2Route ? 'swap_horiz' : 'rocket_launch'}
+                                        </span>
+                                        <span>
+                                            {isV2Route
+                                                ? (isRTL ? 'التبديل إلى واجهة V1 القياسية' : 'Switch to V1 Standard')
+                                                : (isRTL ? 'التبديل إلى مقصورة V2 المحدثة' : 'Switch to V2 Cockpit')}
+                                        </span>
+                                    </Link>
+
+                                    <Link
+                                        to={navTo('/settings')}
                                         onClick={() => setUserMenuOpen(false)}
                                         className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-base-200 rounded-xl transition-colors"
                                     >
@@ -472,7 +630,7 @@ const Header = () => {
                                     </Link>
 
                                     <Link
-                                        to="/settings?tab=security"
+                                        to={navTo('/settings', '?tab=security')}
                                         onClick={() => setUserMenuOpen(false)}
                                         className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-base-content hover:bg-base-200 rounded-xl transition-colors"
                                     >
@@ -517,47 +675,55 @@ const Header = () => {
             {mobileMenuOpen && (
                 <div className="lg:hidden bg-base-100 border-b border-base-200 px-4 py-4 space-y-3 shadow-xl max-h-[80vh] overflow-y-auto">
                     <div className="grid grid-cols-2 gap-2">
-                        <Link
-                            to="/dashboard"
-                            className={`p-3 rounded-xl flex items-center gap-2 text-xs font-bold border ${
-                                isActive('/dashboard') ? 'bg-primary/10 border-primary text-primary' : 'bg-base-200/50 border-base-200 text-base-content'
-                            }`}
-                        >
-                            <span className="material-symbols-outlined text-lg">speed</span>
-                            <span>{t('nav_dashboard', 'Dashboard')}</span>
-                        </Link>
+                        {canAccessDashboard && (
+                            <Link
+                                to={isV2Route ? "/dashboard-v2" : "/dashboard"}
+                                className={`p-3 rounded-xl flex items-center gap-2 text-xs font-bold border ${
+                                    isActive('/dashboard') ? 'bg-primary/10 border-primary text-primary' : 'bg-base-200/50 border-base-200 text-base-content'
+                                }`}
+                            >
+                                <span className="material-symbols-outlined text-lg">speed</span>
+                                <span>{t('nav_dashboard', 'Dashboard')}</span>
+                            </Link>
+                        )}
 
-                        <Link
-                            to="/shipments"
-                            className={`p-3 rounded-xl flex items-center gap-2 text-xs font-bold border ${
-                                isActive('/shipments') ? 'bg-primary/10 border-primary text-primary' : 'bg-base-200/50 border-base-200 text-base-content'
-                            }`}
-                        >
-                            <span className="material-symbols-outlined text-lg">local_shipping</span>
-                            <span>{t('nav_shipments', 'Shipments')}</span>
-                        </Link>
+                        {canAccessDashboard && (
+                            <Link
+                                to={isV2Route ? "/shipments-v2" : "/shipments"}
+                                className={`p-3 rounded-xl flex items-center gap-2 text-xs font-bold border ${
+                                    isActive('/shipments') ? 'bg-primary/10 border-primary text-primary' : 'bg-base-200/50 border-base-200 text-base-content'
+                                }`}
+                            >
+                                <span className="material-symbols-outlined text-lg">local_shipping</span>
+                                <span>{t('nav_shipments', 'Shipments')}</span>
+                            </Link>
+                        )}
 
-                        <Link
-                            to="/shipment/new"
-                            className="p-3 rounded-xl flex items-center gap-2 text-xs font-bold bg-primary text-primary-content"
-                        >
-                            <span className="material-symbols-outlined text-lg">add_circle</span>
-                            <span>{isRTL ? 'شحنة جديدة' : 'New Shipment'}</span>
-                        </Link>
+                        {canCreateShipments && (
+                            <Link
+                                to={isV2Route ? "/shipment/new-v2" : "/shipment/new"}
+                                className="p-3 rounded-xl flex items-center gap-2 text-xs font-bold bg-primary text-primary-content"
+                            >
+                                <span className="material-symbols-outlined text-lg">add_circle</span>
+                                <span>{isRTL ? 'شحنة جديدة' : 'New Shipment'}</span>
+                            </Link>
+                        )}
 
-                        <Link
-                            to="/finance"
-                            className={`p-3 rounded-xl flex items-center gap-2 text-xs font-bold border ${
-                                isActive('/finance') ? 'bg-primary/10 border-primary text-primary' : 'bg-base-200/50 border-base-200 text-base-content'
-                            }`}
-                        >
-                            <span className="material-symbols-outlined text-lg">account_balance_wallet</span>
-                            <span>{t('nav_financials', 'Financials')}</span>
-                        </Link>
+                        {canViewFinancialNav && (
+                            <Link
+                                to={isV2Route ? "/finance-v2" : "/finance"}
+                                className={`p-3 rounded-xl flex items-center gap-2 text-xs font-bold border ${
+                                    isActive('/finance') ? 'bg-primary/10 border-primary text-primary' : 'bg-base-200/50 border-base-200 text-base-content'
+                                }`}
+                            >
+                                <span className="material-symbols-outlined text-lg">account_balance_wallet</span>
+                                <span>{t('nav_financials', 'Financials')}</span>
+                            </Link>
+                        )}
 
                         {canAccessSupport && (
                             <Link
-                                to="/support"
+                                to={navTo('/support')}
                                 data-testid="mobile-support-link"
                                 className={`p-3 rounded-xl flex items-center justify-between text-xs font-bold border ${
                                     isActive('/support') ? 'bg-primary/10 border-primary text-primary' : 'bg-base-200/50 border-base-200 text-base-content'
@@ -584,7 +750,7 @@ const Header = () => {
                         <div className="space-y-1">
                             {isStaff && (
                                 <Link
-                                    to="/fleet/dispatch"
+                                    to={navTo('/fleet/dispatch')}
                                     className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
                                 >
                                     <span className="material-symbols-outlined text-base text-primary">local_shipping</span>
@@ -593,7 +759,7 @@ const Header = () => {
                             )}
                             {(isStaff || isDriver) && (
                                 <Link
-                                    to="/driver/runs"
+                                    to={navTo('/driver/runs')}
                                     className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
                                 >
                                     <span className="material-symbols-outlined text-base text-success">pin_drop</span>
@@ -615,7 +781,7 @@ const Header = () => {
                             )}
                             {isStaff && (
                                 <Link
-                                    to="/warehouse/scan"
+                                    to={navTo('/warehouse/scan')}
                                     className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
                                 >
                                     <span className="material-symbols-outlined text-base text-info">qr_code_scanner</span>
@@ -624,20 +790,22 @@ const Header = () => {
                             )}
                             {(isStaff || isDriver) && (
                                 <Link
-                                    to="/driver/pickup"
+                                    to={navTo('/driver/pickup')}
                                     className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
                                 >
                                     <span className="material-symbols-outlined text-base text-warning">local_shipping</span>
                                     <span>{isRTL ? 'مسار السائق والاستلام' : 'Driver Pickups'}</span>
                                 </Link>
                             )}
-                            <Link
-                                to="/address-book"
-                                className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
-                            >
-                                <span className="material-symbols-outlined text-base text-base-content/60">menu_book</span>
-                                <span>{isRTL ? 'دليل العناوين' : 'Address Book'}</span>
-                            </Link>
+                            {!isDriver && (
+                                <Link
+                                    to={navTo('/address-book')}
+                                    className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
+                                >
+                                    <span className="material-symbols-outlined text-base text-base-content/60">menu_book</span>
+                                    <span>{isRTL ? 'دليل العناوين' : 'Address Book'}</span>
+                                </Link>
+                            )}
                         </div>
                     </div>
 
@@ -650,7 +818,7 @@ const Header = () => {
                             <div className="space-y-1">
                                 {isAdminOrOwnerOrAcct && (
                                     <Link
-                                        to="/admin/organizations"
+                                        to={navTo('/admin/organizations')}
                                         className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
                                     >
                                         <span className="material-symbols-outlined text-base text-primary">corporate_fare</span>
@@ -658,7 +826,7 @@ const Header = () => {
                                     </Link>
                                 )}
                                 <Link
-                                    to="/admin/users"
+                                    to={navTo('/admin/users')}
                                     className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
                                 >
                                     <span className="material-symbols-outlined text-base text-secondary">people</span>
@@ -666,7 +834,16 @@ const Header = () => {
                                 </Link>
                                 {isAdminOrOwnerOrAcct && (
                                     <Link
-                                        to="/admin/whatsapp-logs"
+                                        to={navTo('/admin/rate-cards')}
+                                        className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
+                                    >
+                                        <span className="material-symbols-outlined text-base text-indigo-500">price_check</span>
+                                        <span>{isRTL ? 'بطاقات التسعير والنواقل' : 'Carrier Rate Cards'}</span>
+                                    </Link>
+                                )}
+                                {isAdminOrOwnerOrAcct && (
+                                    <Link
+                                        to={navTo('/admin/whatsapp-logs')}
                                         className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
                                     >
                                         <span className="material-symbols-outlined text-base text-success">chat</span>
@@ -675,7 +852,7 @@ const Header = () => {
                                 )}
                                 {isAdminOrOwnerOrAcct && (
                                     <Link
-                                        to="/admin/phenix-audit"
+                                        to={navTo('/admin/phenix-audit')}
                                         className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg hover:bg-base-200 text-base-content"
                                     >
                                         <span className="material-symbols-outlined text-base text-warning">fact_check</span>
@@ -697,6 +874,30 @@ const Header = () => {
 
             {/* Paywall Upsell Modal */}
             <PaywallModal isOpen={paywallOpen} onClose={() => setPaywallOpen(false)} />
+
+            {/* Non-intrusive V1/V2 Switch Notification */}
+            {versionNotice && (
+                <div
+                    role="status"
+                    data-testid="header-ui-version-notice"
+                    className="fixed top-[4.25rem] end-4 z-50 flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-base-100/95 dark:bg-slate-900/95 backdrop-blur-md border border-base-300 dark:border-slate-700 shadow-lg text-xs font-bold text-base-content"
+                >
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${versionNotice === 'v2' ? 'bg-primary' : 'bg-amber-500'}`} />
+                    <span>
+                        {versionNotice === 'v2'
+                            ? (isRTL ? 'تم التبديل إلى مقصورة V2' : 'Switched to V2 Cockpit')
+                            : (isRTL ? 'تم التبديل إلى واجهة V1 القياسية' : 'Switched to V1 Standard')}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() => setVersionNotice(null)}
+                        aria-label={isRTL ? 'إغلاق الإشعار' : 'Dismiss notification'}
+                        className="btn btn-ghost btn-xs btn-circle text-base-content/50 hover:text-base-content"
+                    >
+                        <span className="material-symbols-outlined text-sm">close</span>
+                    </button>
+                </div>
+            )}
         </header>
     );
 };

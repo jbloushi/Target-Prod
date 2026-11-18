@@ -637,6 +637,12 @@ function buildDgrShipmentPayload(order, config = {}, offsetDays = 0) {
                     hideAccountNumber: false,
                     numberOfCopies: 1
                 },
+                {
+                    typeCode: 'shipmentReceipt',
+                    templateName: 'SHIPRCPT_EN_001',
+                    languageCode: 'eng',
+                    isRequested: true
+                },
                 ...((!order.isDocument && order.shipmentType !== 'documents' && !isDomestic) ? [{
                     typeCode: 'invoice',
                     templateName: 'COMMERCIAL_INVOICE_P_10',

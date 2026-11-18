@@ -7,7 +7,8 @@ export const getCarrierDisplayName = (carrierCode, fallback = '', isTest = false
   const code = String(carrierCode || fallback || '').toUpperCase();
   const testSuffix = isTest ? ' (Test Sandbox API)' : '';
   if (code === 'INTERNAL' || code === 'MAN' || code === 'MANUAL') return `Target Local Fleet${testSuffix}`;
-  if (code === 'DGR' || code === 'DHL') return `Target International Air (DHL Express)${testSuffix}`;
+  if (code === 'DGR' || code === 'DHL') return `Target International Air (DGR)${testSuffix}`;
+  if (code === 'DGR2' || code === 'DHL2') return `Target International Air (DHL)${testSuffix}`;
   if (code === 'FEDEX' || code === 'FDX') return `Target Express (FedEx Express)${testSuffix}`;
   if (code === 'ARAMEX' || code === 'ARM') return `Target Express (Aramex)${testSuffix}`;
   if (code === 'SMSA' || code === 'SMSAEXPRESS') return `SMSA Express${testSuffix}`;

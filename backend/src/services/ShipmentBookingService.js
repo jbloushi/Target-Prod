@@ -6,19 +6,29 @@ const logger = require('../utils/logger');
 const crypto = require('crypto');
 const financeLedgerService = require('./financeLedger.service');
 const { getAssignedShippingAccess, normalizeCarrier } = require('./shippingAccess.service');
+const { validateMinimumShipmentFields, buildValidationError, normalizeCarrierCode } = require('./carrierMinimumValidation.service');
+const diagnosticAttemptLog = require('./diagnosticAttemptLog.service');
 
-const buildInternalPricingSnapshot = (shipment) => ({
-    ...(shipment.pricingSnapshot || {}),
-    carrierRate: Number(shipment.costPrice || shipment.pricingSnapshot?.carrierRate || 0),
-    totalPrice: Number(shipment.price || shipment.pricingSnapshot?.totalPrice || 0),
-    currency: shipment.currency || shipment.pricingSnapshot?.currency || 'KWD',
-    billingCurrency: shipment.currency || shipment.pricingSnapshot?.billingCurrency || shipment.pricingSnapshot?.currency || 'KWD',
-    policySource: shipment.pricingSnapshot?.policySource || 'manual',
-    rulesVersion: shipment.pricingSnapshot?.rulesVersion || 'manual-pricing-scaffold',
-    rateType: 'INTERNAL',
-    requiresManualPricing: true,
-    internallyManaged: true
-});
+const TERMINAL_UNBOOKABLE_STATUSES = new Set(['cancelled', 'delivered', 'returned', 'rto_in_transit']);
+
+const buildInternalPricingSnapshot = (shipment) => {
+    const carrierRate = Number(shipment.costPrice ?? shipment.pricingSnapshot?.carrierRate ?? 0);
+    const totalPrice = Number(shipment.price ?? shipment.pricingSnapshot?.totalPrice ?? 0);
+    const markup = Number(shipment.markupAmount ?? shipment.pricingSnapshot?.markup ?? Math.max(0, totalPrice - carrierRate));
+    return {
+        ...(shipment.pricingSnapshot || {}),
+        carrierRate,
+        markup,
+        totalPrice,
+        currency: shipment.currency || shipment.pricingSnapshot?.currency || 'KWD',
+        billingCurrency: shipment.currency || shipment.pricingSnapshot?.billingCurrency || shipment.pricingSnapshot?.currency || 'KWD',
+        policySource: shipment.pricingSnapshot?.policySource || 'manual',
+        rulesVersion: shipment.pricingSnapshot?.rulesVersion || 'manual-pricing-scaffold',
+        rateType: 'INTERNAL',
+        requiresManualPricing: true,
+        internallyManaged: true
+    };
+};
 
 class ShipmentBookingService {
     normalizeCarrierIdentifier(value, fallback = null) {
@@ -88,10 +98,28 @@ class ShipmentBookingService {
 
         if (!shipment) throw new Error(`Shipment ${trackingNumber} not found for carrier dispatch`);
 
-        const carrierCapabilities = CarrierFactory.getCarrierCapabilities(carrierCode) || {};
+        const normalizedCarrier = normalizeCarrierCode(carrierCode || shipment.carrierCode || 'DGR');
+        const attempts = Array.isArray(shipment.bookingAttempts) ? shipment.bookingAttempts : [];
+        const attemptAlreadySucceeded = attempts.some(a => a.attemptId === attemptId && a.status === 'succeeded');
+        const alreadyBooked = shipment.status === 'booked' && Boolean(
+            shipment.carrierShipmentId || shipment.dhlTrackingNumber || shipment.labelUrl || shipment.awbUrl
+        );
+        if (attemptAlreadySucceeded || alreadyBooked) {
+            return { success: true, outcome: 'booked', shipment, message: 'Shipment already booked.' };
+        }
+
+        if (TERMINAL_UNBOOKABLE_STATUSES.has(String(shipment.status || '').toLowerCase())) {
+            const reason = `Cannot dispatch booking for shipment in '${shipment.status}' status.`;
+            await this.handleBookingFailure(shipment.id, attemptId, reason, 'failed');
+            const err = new Error(reason);
+            err.statusCode = 409;
+            throw err;
+        }
+
+        const carrierCapabilities = CarrierFactory.getCarrierCapabilities(normalizedCarrier) || {};
         return await this._executeCarrierBooking({
             shipment,
-            carrierCode,
+            carrierCode: normalizedCarrier,
             optionalServiceCodes: optionalServiceCodes || [],
             attemptId,
             payingUser: shipment.user,
@@ -113,30 +141,88 @@ class ShipmentBookingService {
         
         if (!shipment) throw new Error('Shipment record not found');
 
-        const carrierCode = String(overrideCarrierCode || shipment.carrierCode || 'DGR').toUpperCase();
+        const carrierCode = normalizeCarrierCode(overrideCarrierCode || shipment.carrierCode || 'DGR');
         const carrierCapabilities = CarrierFactory.getCarrierCapabilities(carrierCode) || {};
         const payingUser = shipment.user;
         const organization = shipment.organization;
         const organizationId = shipment.organizationId;
 
+        if (TERMINAL_UNBOOKABLE_STATUSES.has(String(shipment.status || '').toLowerCase())) {
+            diagnosticAttemptLog.recordAttempt({
+                trackingNumber: shipment.trackingNumber,
+                carrierCode,
+                action: 'CARRIER_BOOK',
+                status: 'VALIDATION_ERROR',
+                durationMs: 0,
+                message: `Cannot book shipment in '${shipment.status}' status.`,
+                organizationId
+            });
+            const err = new Error(`Cannot book shipment in '${shipment.status}' status.`);
+            err.statusCode = 400;
+            err.isValidationError = true;
+            err.field = 'status';
+            err.errors = [{ field: 'status', step: 1, message: err.message }];
+            throw err;
+        }
+
         // Ensure Carrier is enabled for this account
-        this.ensureCarrierAllowed({ carrierCode, organization, payingUser, bookingUserRole });
+        try {
+            this.ensureCarrierAllowed({ carrierCode, organization, payingUser, bookingUserRole });
+        } catch (accessErr) {
+            diagnosticAttemptLog.recordAttempt({
+                trackingNumber: shipment.trackingNumber,
+                carrierCode,
+                action: 'CARRIER_BOOK',
+                status: 'FAILED',
+                durationMs: 0,
+                message: accessErr.message,
+                organizationId
+            });
+            throw accessErr;
+        }
+
+        // Bar-minimum carrier validation before booking
+        const validation = validateMinimumShipmentFields({
+            ...shipment,
+            carrierCode
+        }, { carrierCode });
+        if (!validation.valid) {
+            diagnosticAttemptLog.recordAttempt({
+                trackingNumber: shipment.trackingNumber,
+                carrierCode,
+                action: 'CARRIER_BOOK',
+                status: 'VALIDATION_ERROR',
+                durationMs: 0,
+                message: validation.errors[0]?.message || 'Validation failed',
+                organizationId,
+                details: { errors: validation.errors }
+            });
+            throw buildValidationError(validation);
+        }
 
         // Idempotency: Prevent overlapping requests unless explicitly forced
-        // Check 60s cooldown and already-booked status BEFORE refreshing pricing snapshot or checking credit
+        // Check 60s cooldown, stale pending reconciliation, and already-booked status BEFORE refreshing pricing snapshot or checking credit
         const bookingAttempts = Array.isArray(shipment.bookingAttempts) ? shipment.bookingAttempts : [];
         if (!options?.force) {
             const activeAttempt = bookingAttempts.find((a) =>
-                a.status === 'succeeded' || (a.status === 'pending' && new Date() - new Date(a.createdAt) < 60000)
+                a.status === 'succeeded' || a.status === 'pending'
             );
 
             if (activeAttempt) {
-                const hasRealDocs = Boolean(shipment.labelUrl || shipment.awbUrl || shipment.status === 'booked');
+                const hasRealDocs = Boolean(
+                    shipment.labelUrl ||
+                    shipment.awbUrl ||
+                    shipment.carrierShipmentId ||
+                    shipment.dhlTrackingNumber ||
+                    shipment.status === 'booked'
+                );
                 if (activeAttempt.status === 'succeeded' && hasRealDocs) {
                     return { alreadyBooked: true, shipment, attemptId: activeAttempt.attemptId, carrierCode };
                 }
                 if (activeAttempt.status === 'pending' && new Date() - new Date(activeAttempt.createdAt) < 60000) {
-                    throw new Error('A booking request is currently being processed by the carrier. Please wait.');
+                    const err = new Error('A booking request is currently being processed by the carrier. Please wait.');
+                    err.statusCode = 409;
+                    throw err;
                 }
                 if (activeAttempt.status === 'pending') {
                     const reconciliation = await this.reconcileBookingAttempt(
@@ -159,7 +245,7 @@ class ShipmentBookingService {
                 }
             }
 
-            if (shipment.status === 'booked' && (shipment.labelUrl || shipment.awbUrl || shipment.carrierShipmentId)) {
+            if (shipment.status === 'booked' && (shipment.labelUrl || shipment.awbUrl || shipment.carrierShipmentId || shipment.dhlTrackingNumber || shipment.dhlConfirmed)) {
                 const lastSucceededAttempt = [...bookingAttempts].reverse().find(a => a.status === 'succeeded');
                 return {
                     alreadyBooked: true,
@@ -264,6 +350,7 @@ class ShipmentBookingService {
      * @private
      */
     async _executeCarrierBooking({ shipment, carrierCode, optionalServiceCodes, attemptId, payingUser, organization, organizationId, carrierCapabilities }) {
+        const bookingStart = Date.now();
         let carrierResult;
         let carrierAdapter;
         try {
@@ -295,6 +382,16 @@ class ShipmentBookingService {
             }
         } catch (error) {
             await this.handleBookingFailure(shipment.id, attemptId, error.message);
+            diagnosticAttemptLog.recordAttempt({
+                trackingNumber: shipment.trackingNumber,
+                carrierCode,
+                action: 'CARRIER_BOOK',
+                status: 'FAILED',
+                durationMs: Date.now() - bookingStart,
+                message: error.message || 'Carrier booking failed',
+                organizationId,
+                details: { attemptId, code: error.code || null }
+            });
             error.bookingOutcome = 'failed';
             throw error;
         }
@@ -356,11 +453,11 @@ class ShipmentBookingService {
                         updateData.documents = [];
                     }
                     updateData.documents.push(doc);
-                    updateData[targetField] = doc.url;
+                    if (targetField) updateData[targetField] = doc.url;
                 } catch (docError) {
                     logger.warn(`Document upload skipped for ${freshShipment.trackingNumber} (${type}): ${docError.message}`);
                     const sourceText = typeof sourceValue === 'string' ? sourceValue.trim() : '';
-                    if (sourceText) {
+                    if (sourceText && targetField) {
                         updateData[targetField] = updateData[targetField] || sourceText;
                     }
                 }
@@ -380,12 +477,26 @@ class ShipmentBookingService {
                 await tryAttachDocument('label', carrierResult.labelUrl, 'labelUrl');
                 await tryAttachDocument('invoice', carrierResult.invoiceUrl, 'invoiceUrl');
                 await tryAttachDocument('awb', carrierResult.awbUrl, 'awbUrl');
+                await tryAttachDocument('receipt', carrierResult.receiptUrl, null);
 
                 // If carrier did not return a separate commercial invoice, generate compliant customs invoice fallback
-                if (!updateData.invoiceUrl) {
+                // Skip for OTE / LogesTechs, SMSA, and document-only shipments (customs invoice not required)
+                const requiresInvoice = !['OTE', 'LOGESTECHS', 'SMSA', 'SMSAEXPRESS'].includes(carrierCode) && !freshShipment.isDocument && freshShipment.shipmentType !== 'documents';
+                const { generateCarrierInvoicePdf, generateTargetShipmentReceiptPdf } = require('../utils/carrierPdfMock');
+                const carrierName = carrierCode === 'DGR'
+                    ? 'DGR'
+                    : (carrierCode === 'DGR2'
+                        ? 'DHL'
+                        : (carrierCode === 'FEDEX'
+                            ? 'FedEx'
+                            : (carrierCode === 'ARAMEX'
+                                ? 'Aramex'
+                                : (carrierCode === 'SMSA'
+                                    ? 'SMSA Express'
+                                    : (carrierCode === 'OTE' ? 'OTE / LogesTechs' : carrierCode)))));
+
+                if (!updateData.invoiceUrl && requiresInvoice) {
                     try {
-                        const { generateCarrierInvoicePdf } = require('../utils/carrierPdfMock');
-                        const carrierName = carrierCode === 'DGR' ? 'DHL Express' : (carrierCode === 'FEDEX' ? 'FedEx' : (carrierCode === 'ARAMEX' ? 'Aramex' : (carrierCode === 'SMSA' ? 'SMSA Express' : carrierCode)));
                         const invBase64 = generateCarrierInvoicePdf(
                             { ...freshShipment, dhlTrackingNumber: carrierTrackingNumber, carrierShipmentId },
                             carrierName
@@ -395,13 +506,29 @@ class ShipmentBookingService {
                         logger.warn(`Fallback invoice generation skipped for ${freshShipment.trackingNumber}: ${invErr.message}`);
                     }
                 }
+
+                // Target-branded internal Shipment Receipt for non-DHL carriers (or when carrier did not return a receipt)
+                if (!carrierResult.receiptUrl) {
+                    try {
+                        const receiptBase64 = generateTargetShipmentReceiptPdf(
+                            { ...freshShipment, dhlTrackingNumber: carrierTrackingNumber, carrierShipmentId },
+                            carrierName
+                        );
+                        await tryAttachDocument('receipt', receiptBase64, null);
+                    } catch (rcptErr) {
+                        logger.warn(`Target shipment receipt generation skipped for ${freshShipment.trackingNumber}: ${rcptErr.message}`);
+                    }
+                }
             }
 
             // Atomic DB Transaction (DB-01): Persist shipment status update + financial ledger entries together
             const executeBookingCommit = async (tx) => {
                 const preFinalPrice = updateData.pricingSnapshot?.totalPrice ?? freshShipment.pricingSnapshot?.totalPrice ?? freshShipment.price ?? 0;
                 const preCarrierCost = updateData.pricingSnapshot?.carrierRate ?? freshShipment.pricingSnapshot?.carrierRate ?? freshShipment.costPrice ?? 0;
-                const preMarkupAmount = updateData.pricingSnapshot?.markup ?? freshShipment.pricingSnapshot?.markup ?? freshShipment.markupAmount ?? null;
+                const rawMarkup = updateData.pricingSnapshot?.markup ?? freshShipment.pricingSnapshot?.markup ?? freshShipment.markupAmount ?? null;
+                const preMarkupAmount = (rawMarkup !== null && rawMarkup !== undefined && Number.isFinite(Number(rawMarkup)))
+                    ? Number(rawMarkup)
+                    : (Number(preFinalPrice) > 0 ? Number(Math.max(0, Number(preFinalPrice) - Number(preCarrierCost || 0)).toFixed(3)) : null);
 
                 if (Number(preFinalPrice) > 0) {
                     updateData.price = Number(preFinalPrice);
@@ -409,10 +536,10 @@ class ShipmentBookingService {
                         ? 0
                         : Math.max(0, Number((Number(preFinalPrice) - Number(freshShipment.totalPaid || 0)).toFixed(4)));
                 }
-                if (Number(preCarrierCost) > 0) {
+                if (Number.isFinite(Number(preCarrierCost)) && (Number(preCarrierCost) > 0 || updateData.pricingSnapshot?.carrierRate !== undefined || freshShipment.pricingSnapshot?.carrierRate !== undefined)) {
                     updateData.costPrice = Number(preCarrierCost);
                 }
-                if (preMarkupAmount !== null && preMarkupAmount !== undefined) {
+                if (preMarkupAmount !== null && preMarkupAmount !== undefined && Number.isFinite(preMarkupAmount)) {
                     updateData.markupAmount = Number(preMarkupAmount);
                 }
 
@@ -551,6 +678,22 @@ class ShipmentBookingService {
                 logger.debug(`[ShipmentBookingService] Chatwoot notification error: ${cwErr.message}`);
             }
 
+            diagnosticAttemptLog.recordAttempt({
+                trackingNumber: finalizedShipment.trackingNumber,
+                carrierCode: finalizedShipment.carrierCode,
+                action: 'CARRIER_BOOK',
+                status: 'SUCCESS',
+                durationMs: Date.now() - bookingStart,
+                message: 'Carrier booking succeeded',
+                organizationId: finalizedShipment.organizationId,
+                details: {
+                    attemptId,
+                    carrierTrackingNumber,
+                    hasLabel: Boolean(finalizedShipment.labelUrl || carrierResult.labelUrl),
+                    hasAwb: Boolean(finalizedShipment.awbUrl || carrierResult.awbUrl)
+                }
+            });
+
             return {
                 success: true,
                 outcome: 'booked',
@@ -564,6 +707,16 @@ class ShipmentBookingService {
         } catch (commitError) {
             logger.error('Commit Failure After Carrier Success:', commitError);
             await this.handleBookingFailure(shipment.id, attemptId, `Commit Failed: ${commitError.message}`, 'reconciliation_required');
+            diagnosticAttemptLog.recordAttempt({
+                trackingNumber: shipment.trackingNumber,
+                carrierCode,
+                action: 'CARRIER_BOOK',
+                status: 'FAILED',
+                durationMs: Date.now() - bookingStart,
+                message: `Commit Failed: ${commitError.message}`,
+                organizationId,
+                details: { attemptId, outcome: 'reconciliation_required' }
+            });
             const reconciliationError = new Error('Critical: Carrier booked shipment, locally updated failed. Manual intervention required.');
             reconciliationError.bookingOutcome = 'reconciliation_required';
             throw reconciliationError;
@@ -660,6 +813,15 @@ class ShipmentBookingService {
                     bookingAttempts: attempts
                 }
             });
+            diagnosticAttemptLog.recordAttempt({
+                trackingNumber: updated.trackingNumber,
+                carrierCode: normalizeCarrierCode(carrierCode || updated.carrierCode || 'DGR'),
+                action: 'BOOKING_RECONCILE',
+                status: 'SUCCESS',
+                message: `Reconciled booking attempt ${attemptId}`,
+                organizationId: updated.organizationId || null,
+                details: { attemptId, providerShipmentId }
+            });
             return { outcome: 'booked', reconciled: true, shipment: updated };
         }
 
@@ -674,6 +836,15 @@ class ShipmentBookingService {
         await prisma.shipment.update({
             where: { id: shipment.id },
             data: { bookingAttempts: attempts }
+        });
+        diagnosticAttemptLog.recordAttempt({
+            trackingNumber: shipment.trackingNumber,
+            carrierCode: normalizeCarrierCode(carrierCode || shipment.carrierCode || 'DGR'),
+            action: 'BOOKING_RECONCILE',
+            status: 'FAILED',
+            message: 'Carrier outcome could not be confirmed',
+            organizationId: shipment.organizationId || null,
+            details: { attemptId, outcome: 'reconciliation_required' }
         });
         return { outcome: 'reconciliation_required', reconciled: false, shipment };
     }

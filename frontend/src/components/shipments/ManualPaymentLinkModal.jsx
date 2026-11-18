@@ -361,12 +361,12 @@ export const ManualPaymentLinkModal = ({
                                 onBlur={() => setAmountError(validateAmount(amount))}
                                 placeholder="0.000"
                                 disabled={isSubmitting}
-                                className={`input input-sm input-bordered w-full font-mono text-xs focus:input-primary pr-14 ${
+                                className={`input input-sm input-bordered w-full font-mono text-xs focus:input-primary pe-14 ${
                                     amountError ? 'input-error' : ''
                                 }`}
                                 data-testid="amount-input"
                             />
-                            <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-xs font-mono font-bold text-base-content/50">
+                            <div className="absolute inset-y-0 end-0 pe-3 flex items-center pointer-events-none text-xs font-mono font-bold text-base-content/50">
                                 {currency}
                             </div>
                         </div>

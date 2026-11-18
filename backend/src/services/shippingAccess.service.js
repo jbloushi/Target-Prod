@@ -10,7 +10,19 @@ const SERVICE_LABELS = {
         H: 'DHL Economy Select',
         DOM: 'Target Express (Domestic Delivery)'
     },
+    DGR2: {
+        P: 'DHL Express Worldwide',
+        Y: 'DHL Express 12:00',
+        H: 'DHL Economy Select',
+        DOM: 'Target Express (Domestic Delivery)'
+    },
     DHL: {
+        P: 'DHL Express Worldwide',
+        Y: 'DHL Express 12:00',
+        H: 'DHL Economy Select',
+        DOM: 'Target Express (Domestic Delivery)'
+    },
+    DHL2: {
         P: 'DHL Express Worldwide',
         Y: 'DHL Express 12:00',
         H: 'DHL Economy Select',
@@ -22,7 +34,8 @@ const SERVICE_LABELS = {
     SMSA: {
         DLV: 'SMSA Express Door-to-Door Delivery',
         RTN: 'SMSA Reverse Pickup',
-        EDDL: 'SMSA Express Delivery',
+        EDDL: 'SMSA Express Domestic Delivery (EDDL)',
+        EIDL: 'SMSA Express International Delivery (EIDL)',
         EXP: 'SMSA Express Priority',
         B2C: 'SMSA B2C Standard Delivery',
         C2B: 'SMSA C2B Reverse Pickup',

@@ -100,9 +100,14 @@ exports.testCarrierConnection = async (req, res) => {
     const startTime = Date.now();
     try {
         const settings = getSystemSettings();
-        const activeEnv = reqEnv || ((carrierCode === 'OTE' || carrierCode === 'LOGESTECHS')
+        const normalizedCode = String(carrierCode || '').toUpperCase();
+        const activeEnv = reqEnv || ((normalizedCode === 'OTE' || normalizedCode === 'LOGESTECHS')
             ? (settings.carrierEnvironments?.OTE || 'test')
-            : (settings.carrierEnvironments?.DHL || 'test'));
+            : (normalizedCode === 'ARAMEX' || normalizedCode === 'ARM'
+                ? (settings.carrierEnvironments?.ARAMEX || settings.carrierEnvironments?.DHL || 'test')
+                : (normalizedCode === 'DGR2' || normalizedCode === 'DHL2'
+                    ? (settings.carrierEnvironments?.DGR2 || settings.carrierEnvironments?.DHL || 'test')
+                    : (settings.carrierEnvironments?.DHL || 'test'))));
 
         const CarrierFactory = require('../services/CarrierFactory');
         const isTest = activeEnv === 'test';
@@ -110,7 +115,7 @@ exports.testCarrierConnection = async (req, res) => {
 
         let pingResult = { success: true, message: 'Connection healthy' };
 
-        if (carrierCode === 'DGR' || carrierCode === 'DHL') {
+        if (normalizedCode === 'DGR' || normalizedCode === 'DHL' || normalizedCode === 'DGR2' || normalizedCode === 'DHL2') {
             // Ping DHL rates
             const d = new Date();
             d.setDate(d.getDate() + 2);
@@ -266,4 +271,30 @@ exports.deleteRateCard = async (req, res) => {
         return res.status(400).json({ success: false, error: err.message || 'Failed to delete rate card' });
     }
 };
+
+/**
+ * GET /api/settings/system/diagnostics
+ * View recent shipment & carrier diagnostic attempts (Staff & Admin)
+ */
+exports.getSystemDiagnostics = async (req, res) => {
+    try {
+        const diagnosticAttemptLog = require('../services/diagnosticAttemptLog.service');
+        const { limit = 50, carrierCode, action, status, trackingNumber } = req.query;
+        const attempts = await diagnosticAttemptLog.getRecentAttempts({
+            limit,
+            carrierCode,
+            action,
+            status,
+            trackingNumber
+        });
+        return res.status(200).json({
+            success: true,
+            count: attempts.length,
+            data: attempts
+        });
+    } catch (err) {
+        return handleControllerError(res, err, 'Get system diagnostics');
+    }
+};
+
 

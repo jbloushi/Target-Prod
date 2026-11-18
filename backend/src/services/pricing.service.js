@@ -148,11 +148,15 @@ class PricingService {
                 targetCardId = fallbackCfg.aramexRateCardId || 'FALLBACK_ARAMEX_GCC';
                 serviceName = 'Aramex Shipping (Gulf GCC)';
                 resolvedServiceCode = resolvedServiceCode || 'EXP';
+            } else if (normalizedCarrier === 'SMSA' || normalizedCarrier === 'SMSAEXPRESS') {
+                targetCardId = fallbackCfg.smsaRateCardId || fallbackCfg.economyRateCardId || 'FALLBACK_ECONOMY_GCC';
+                serviceName = 'SMSA Express (GCC & Saudi)';
+                resolvedServiceCode = resolvedServiceCode || 'DLV';
             } else if (normalizedCarrier === 'OTE' || normalizedService === 'STD' || normalizedCarrier === 'ECONOMY') {
                 targetCardId = fallbackCfg.economyRateCardId || 'FALLBACK_ECONOMY_GCC';
                 serviceName = 'Economy Shipping (Gulf GCC)';
                 resolvedServiceCode = resolvedServiceCode || 'STD';
-            } else if (normalizedCarrier === 'DGR' || normalizedCarrier === 'DHL' || normalizedService === 'P') {
+            } else if (normalizedCarrier === 'DGR' || normalizedCarrier === 'DHL' || normalizedCarrier === 'DGR2' || normalizedCarrier === 'DHL2' || normalizedService === 'P') {
                 targetCardId = fallbackCfg.dhlRateCardId || 'FALLBACK_DHL_EXPORT';
                 serviceName = 'DHL Export Shipping (Fallback)';
                 resolvedServiceCode = resolvedServiceCode || 'P';

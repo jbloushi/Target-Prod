@@ -182,7 +182,7 @@ export const ConversationList = ({ onSelectConversation }) => {
                                 onClick={() => handleSelect(conv)}
                                 className={`p-3.5 cursor-pointer transition-all flex items-start gap-3 relative ${
                                     isSelected
-                                        ? 'bg-primary/10 border-s-4 border-primary'
+                                        ? 'bg-primary/10 before:absolute before:inset-y-2 before:start-0 before:w-1 before:rounded-full before:bg-primary'
                                         : 'hover:bg-base-200/50'
                                 }`}
                             >

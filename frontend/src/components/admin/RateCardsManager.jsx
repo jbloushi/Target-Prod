@@ -299,9 +299,9 @@ export const RateCardsManager = () => {
                 placeholder={lang === 'ar' ? 'بحث بالاسم أو المعرف...' : 'Search by ID or name...'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="input input-sm input-bordered w-full pl-8 rtl:pr-8"
+                className="input input-sm input-bordered w-full ps-8"
               />
-              <span className={`material-symbols-outlined text-sm absolute top-2.5 text-base-content/40 ${isRTL ? 'right-2.5' : 'left-2.5'}`}>
+              <span className="material-symbols-outlined text-sm absolute top-2.5 start-2.5 text-base-content/40">
                 search
               </span>
             </div>

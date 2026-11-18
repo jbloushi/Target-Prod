@@ -7,6 +7,8 @@
   /* ── Primary ── */
   --primary: #0050d4;
   --primary-dim: #0046bb;
+  --primary-hover: #0046bb;
+  --primary-bg: #eff6ff;
   --primary-container: #7b9cff;
   --primary-fixed: #7b9cff;
   --primary-fixed-dim: #658eff;
@@ -52,18 +54,23 @@
   --surface-container-highest: #d7dee3;
   --surface-variant: #d7dee3;
   --surface-tint: #0050d4;
+  --surface-card: #ffffff;
 
-  /* ── On Surface ── */
+  /* ── On Surface & Typography ── */
   --on-surface: #2a2f32;
   --on-surface-variant: #575c60;
   --on-background: #2a2f32;
+  --text1: #2a2f32;
+  --text2: #575c60;
+  --text3: #73777b;
   --inverse-surface: #0a0f12;
   --inverse-on-surface: #999da1;
   --inverse-primary: #618bff;
 
-  /* ── Outline ── */
+  /* ── Outline & Borders ── */
   --outline: #73777b;
   --outline-variant: #a9aeb1;
+  --border: #e2e8f0;
 
   /* ── Semantic Aliases (Legacy compat) ── */
   --bg-primary: var(--surface);
@@ -145,6 +152,8 @@
   /* ── Primary Override ── */
   --primary: #4e92ff;
   --primary-dim: #3a75e0;
+  --primary-hover: #3a75e0;
+  --primary-bg: rgba(78, 146, 255, 0.12);
   --on-primary: #001e5a;
   --primary-container: #00308f;
   --on-primary-container: #d6e2ff;
@@ -170,18 +179,23 @@
   --surface-container-highest: #3e444d;
   --surface-variant: #444c56;
   --surface-tint: #4e92ff;
+  --surface-card: #0d1117;
 
-  /* ── On Surface (Dark) ── */
+  /* ── On Surface & Typography (Dark) ── */
   --on-surface: #e6edf3;
   --on-surface-variant: #8b949e;
   --on-background: #e6edf3;
+  --text1: #e6edf3;
+  --text2: #8b949e;
+  --text3: #484f58;
   --inverse-surface: #f3f7fb;
   --inverse-on-surface: #2a2f32;
   --inverse-primary: #0050d4;
 
-  /* ── Outline (Dark) ── */
+  /* ── Outline & Borders (Dark) ── */
   --outline: #484f58;
   --outline-variant: #30363d;
+  --border: #30363d;
 
   /* ── Glassmorphism (Dark) ── */
   --glass-bg: rgba(13, 17, 23, 0.7);
@@ -192,11 +206,14 @@
   --shadow-elevated: 0 20px 48px -8px rgba(0, 0, 0, 0.7);
 }
 
-/* ── Global Theme Transition ── */
-.theme-transition,
-.theme-transition *,
-.theme-transition *:before,
-.theme-transition *:after {
+/* ── Scoped Theme Transitions (P1-2: eliminates layout recalculation thrashing) ── */
+body.theme-transition,
+.theme-transition body,
+.theme-transition .card,
+.theme-transition .navbar,
+.theme-transition aside,
+.theme-transition .modal-box,
+.theme-transition table {
   transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
               color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
               border-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
@@ -282,4 +299,77 @@ button {
 [dir="rtl"] .font-manrope {
   font-family: var(--font-family-sans) !important;
 }
+
+/* ── Reduced Motion Accessibility (P1-4) ── */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition-base: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+
+  /* Pause or reduce continuous animations */
+  @keyframes shimmerSweep {
+    0%, 100% {
+      background-position: 0 0;
+    }
+  }
+
+  @keyframes beaconRing {
+    0%, 100% {
+      transform: none;
+      opacity: 0.4;
+    }
+  }
+
+  @keyframes float {
+    0%, 100% {
+      transform: none;
+    }
+  }
+
+  @keyframes pulse-subtle {
+    0%, 100% {
+      opacity: 1;
+    }
+  }
+
+  .animate-shimmer,
+  .animate-pulse-subtle,
+  .animate-float-slow,
+  .live-beacon::after,
+  [class*="animate-shimmer"],
+  [class*="pulse-subtle"],
+  [class*="float-slow"],
+  [class*="beacon"] {
+    animation: none !important;
+  }
+
+  /* Scoped theme transitions with reduced motion */
+  body.theme-transition,
+  .theme-transition body,
+  .theme-transition .card,
+  .theme-transition .navbar,
+  .theme-transition aside,
+  .theme-transition .modal-box,
+  .theme-transition table {
+    transition: background-color 0.1s ease,
+                color 0.1s ease,
+                border-color 0.1s ease,
+                box-shadow 0.1s ease !important;
+  }
+
+  /* Disable instant transforms in favor of subtle opacity transitions */
+  .antigravity-floating-card:hover,
+  .hover-lift:hover {
+    transform: none !important;
+    opacity: 0.95;
+    transition: opacity 0.15s ease !important;
+  }
+
+  .press-tactile:active {
+    transform: none !important;
+    opacity: 0.85 !important;
+    transition: opacity 0.15s ease !important;
+  }
+}
+
 

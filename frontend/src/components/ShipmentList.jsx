@@ -535,7 +535,7 @@ export const ShipmentList = ({
             <button 
               type="button"
               onClick={() => setIsUndeliveredModalOpen(true)} 
-              className="btn btn-ghost btn-xs text-primary font-bold gap-1 px-2 border border-primary/25 hover:bg-primary/10 rounded-lg"
+              className="btn btn-ghost btn-sm sm:btn-xs text-primary font-bold gap-1 px-2 border border-primary/25 hover:bg-primary/10 rounded-lg"
               title={isRTL ? 'تصدير ومراقبة تقرير الشحنات غير المسلمة' : 'Export and monitor undelivered consignments log'}
             >
               <span className="material-symbols-outlined text-sm">download</span>
@@ -543,7 +543,7 @@ export const ShipmentList = ({
             </button>
             <button 
               onClick={() => mutate()} 
-              className="btn btn-ghost btn-xs btn-square"
+              className="btn btn-ghost btn-sm sm:btn-xs btn-square"
               title={t('refresh', 'Refresh')}
             >
               <span className={`material-symbols-outlined text-base ${loading ? 'animate-spin text-primary' : ''}`}>
@@ -595,7 +595,7 @@ export const ShipmentList = ({
                     <th>{t('th_status', 'Status')}</th>
                     <th>{t('th_created', 'Created')}</th>
                     <th>{t('th_eta', 'ETA')}</th>
-                    <th className={isRTL ? 'text-left' : 'text-right'}>{t('th_actions', 'Actions')}</th>
+                    <th className="text-end">{t('th_actions', 'Actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -677,18 +677,18 @@ export const ShipmentList = ({
                             {s.eta}
                           </span>
                         </td>
-                        <td className={isRTL ? 'text-left' : 'text-right'} onClick={(e) => e.stopPropagation()}>
+                        <td className="text-end" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1">
                             <button 
                               onClick={() => handleView(s)}
-                              className="btn btn-ghost btn-xs btn-square text-base-content/60 hover:text-primary"
+                              className="btn btn-ghost btn-sm sm:btn-xs btn-square text-base-content/60 hover:text-primary"
                               title={isRTL ? 'معاينة سريعة' : 'Quick Inspect'}
                             >
-                              <span className="material-symbols-outlined text-[13px]">visibility</span>
+                              <span className="material-symbols-outlined text-sm sm:text-[13px]">visibility</span>
                             </button>
                             <div className="dropdown dropdown-end">
-                              <label tabIndex={0} className="btn btn-ghost btn-xs btn-square text-base-content/60 hover:text-primary">
-                                <span className="material-symbols-outlined text-[13px]">more_horiz</span>
+                              <label tabIndex={0} className="btn btn-ghost btn-sm sm:btn-xs btn-square text-base-content/60 hover:text-primary">
+                                <span className="material-symbols-outlined text-sm sm:text-[13px]">more_horiz</span>
                               </label>
                               <ul tabIndex={0} className="dropdown-content z-30 menu p-1.5 shadow-xl bg-base-100 rounded-xl border border-base-200 w-44 text-xs font-semibold">
                                 <li>
@@ -788,7 +788,7 @@ export const ShipmentList = ({
                         disabled={page === 1}
                         onClick={() => setPage(1)}
                         title={t('first_page', 'First Page')}
-                        className="btn btn-xs join-item font-bold"
+                        className="btn btn-sm sm:btn-xs join-item font-bold"
                       >
                         {isRTL ? '»»' : '««'}
                       </button>
@@ -796,7 +796,7 @@ export const ShipmentList = ({
                         disabled={page === 1}
                         onClick={() => setPage(p => Math.max(1, p - 1))}
                         title={t('prev_page', 'Previous Page')}
-                        className="btn btn-xs join-item font-bold"
+                        className="btn btn-sm sm:btn-xs join-item font-bold"
                       >
                         {isRTL ? '»' : '«'}
                       </button>
@@ -804,7 +804,7 @@ export const ShipmentList = ({
                         <button
                           key={pNum}
                           onClick={() => setPage(pNum)}
-                          className={`btn btn-xs join-item font-bold ${page === pNum ? 'btn-primary' : 'btn-ghost'}`}
+                          className={`btn btn-sm sm:btn-xs join-item font-bold ${page === pNum ? 'btn-primary' : 'btn-ghost'}`}
                         >
                           {pNum}
                         </button>
@@ -813,7 +813,7 @@ export const ShipmentList = ({
                         disabled={page === totalPages}
                         onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                         title={t('next_page', 'Next Page')}
-                        className="btn btn-xs join-item font-bold"
+                        className="btn btn-sm sm:btn-xs join-item font-bold"
                       >
                         {isRTL ? '«' : '»'}
                       </button>
@@ -821,7 +821,7 @@ export const ShipmentList = ({
                         disabled={page === totalPages}
                         onClick={() => setPage(totalPages)}
                         title={t('last_page', 'Last Page')}
-                        className="btn btn-xs join-item font-bold"
+                        className="btn btn-sm sm:btn-xs join-item font-bold"
                       >
                         {isRTL ? '««' : '»»'}
                       </button>
@@ -854,14 +854,14 @@ export const ShipmentList = ({
                 onClick={() => {
                   enqueueSnackbar(`Preparing bulk waybills for ${selectedIds.length} packages...`, { variant: 'info' });
                 }}
-                className="btn btn-primary btn-xs font-bold rounded-lg"
+                className="btn btn-primary btn-sm sm:btn-xs font-bold rounded-lg"
               >
                 <span className="material-symbols-outlined text-sm">print</span>
                 {isRTL ? 'طباعة مجمعة' : 'Bulk Print'}
               </button>
               <button 
                 onClick={() => setSelectedIds([])}
-                className="btn btn-ghost btn-xs text-white/70 hover:text-white"
+                className="btn btn-ghost btn-sm sm:btn-xs text-white/70 hover:text-white"
               >
                 {isRTL ? 'إلغاء التحديد' : 'Deselect All'}
               </button>

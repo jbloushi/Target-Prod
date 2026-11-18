@@ -324,7 +324,7 @@ export function normalizeCarrierStatus(statusText, carrierCode, checkpointCode) 
     const carrier = String(carrierCode || '').toUpperCase();
     if (checkpointCode) {
         const c = String(checkpointCode).toLowerCase().trim();
-        if (carrier === 'DGR' || carrier === 'DHL') {
+        if (carrier === 'DGR' || carrier === 'DHL' || carrier === 'DGR2' || carrier === 'DHL2') {
             if (DHL_CHECKPOINT_MAP[c]) return DHL_CHECKPOINT_MAP[c];
         } else if (carrier === 'ARAMEX') {
             if (ARAMEX_CHECKPOINT_MAP[c]) return ARAMEX_CHECKPOINT_MAP[c];

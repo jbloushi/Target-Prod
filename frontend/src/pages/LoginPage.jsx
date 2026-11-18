@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import { getDefaultLandingPath } from '../utils/uiVersion';
 
 export const LoginPage = () => {
   const [loginMethod, setLoginMethod] = useState('email'); // 'email' | 'phone'
@@ -20,12 +21,12 @@ export const LoginPage = () => {
   const [resendTimer, setResendTimer] = useState(0);
 
   const { login, loginWithOtp, requestOtp, loading, error, isAuthenticated, user } = useAuth();
-  const { lang, isRTL } = useLanguage();
+  const { lang, toggleLanguage, isRTL } = useLanguage();
   const navigate = useNavigate();
 
   useEffect(() => {
     if (isAuthenticated && user) {
-      navigate(user.role === 'driver' ? '/driver/pickup' : '/dashboard');
+      navigate(getDefaultLandingPath(user.role));
     }
   }, [isAuthenticated, user, navigate]);
 
@@ -81,26 +82,37 @@ export const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-base-200/50 bg-target-pattern flex items-stretch font-sans selection:bg-primary selection:text-white" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className="min-h-screen w-full overflow-x-hidden bg-base-200/50 bg-target-pattern grid grid-cols-1 lg:grid-cols-2 font-sans selection:bg-primary selection:text-white" dir={isRTL ? 'rtl' : 'ltr'}>
       {/* Left Column: Login Form */}
-      <div className="flex-1 flex flex-col justify-center px-6 py-12 sm:px-12 lg:px-20 max-w-xl mx-auto w-full z-10">
-        {/* Brand Header */}
-        <div className="mb-8">
-          <Link to="/" className="inline-block">
-            <img 
-              src="/images/target-logo.png" 
-              alt="Target Logistics" 
-              className="h-10 sm:h-11 w-auto object-contain dark:hidden" 
-            />
-            <img 
-              src="/images/target-logo-white.png" 
-              alt="Target Logistics" 
-              className="h-10 sm:h-11 w-auto object-contain hidden dark:block" 
-            />
-          </Link>
-          <div className="text-[11px] font-bold text-primary tracking-widest uppercase mt-2">
-            {isRTL ? 'منظومة إدارة الشحن والخدمات اللوجستية' : 'Global Express Operating Suite'}
+      <div className="flex flex-col justify-center px-6 py-12 sm:px-12 lg:px-16 max-w-xl mx-auto w-full min-w-0 z-10">
+        {/* Brand Header & Language Switcher */}
+        <div className="mb-8 flex items-start justify-between gap-4">
+          <div>
+            <Link to="/" className="inline-block">
+              <img 
+                src="/images/target-logo.png" 
+                alt="Target Logistics" 
+                className="h-10 sm:h-11 w-auto object-contain dark:hidden" 
+              />
+              <img 
+                src="/images/target-logo-white.png" 
+                alt="Target Logistics" 
+                className="h-10 sm:h-11 w-auto object-contain hidden dark:block" 
+              />
+            </Link>
+            <div className="text-[11px] font-bold text-primary tracking-widest uppercase mt-2">
+              {isRTL ? 'منظومة إدارة الشحن والخدمات اللوجستية' : 'Global Express Operating Suite'}
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={toggleLanguage}
+            className="btn btn-ghost btn-sm px-2.5 rounded-xl font-extrabold text-xs flex items-center gap-1 border border-base-300/80 hover:bg-base-200 transition-colors shrink-0"
+            title={lang === 'en' ? 'التحويل للغة العربية' : 'Switch to English'}
+          >
+            <span className="material-symbols-outlined text-sm text-primary">translate</span>
+            <span className="font-semibold">{lang === 'en' ? '🇰🇼 عربي' : '🇬🇧 EN'}</span>
+          </button>
         </div>
 
         {/* Welcome Text */}
@@ -381,9 +393,10 @@ export const LoginPage = () => {
       </div>
 
       {/* Right Column: Hero Graphic Banner (Desktop Only) */}
-      <div className="hidden lg:flex flex-1 relative bg-gradient-to-br from-primary via-primary-focus to-neutral text-primary-content overflow-hidden p-12 flex-col justify-between bg-target-pattern">
-        {/* Decorative Grid Lines */}
-        <div className="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:24px_24px]" />
+      <div className="hidden lg:flex min-w-0 w-full relative bg-[#00266e] bg-gradient-to-br from-[#003eaf] via-[#00266e] to-[#0a1628] text-white overflow-hidden p-12 flex-col justify-between">
+        {/* Subtle Pattern & Decorative Grid Overlay */}
+        <div className="absolute inset-0 bg-target-pattern opacity-15 pointer-events-none" />
+        <div className="absolute inset-0 opacity-15 pointer-events-none bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:24px_24px]" />
 
         {/* Top Floating Badge */}
         <div className="relative z-10 flex items-center justify-between">
@@ -392,54 +405,58 @@ export const LoginPage = () => {
             alt="Target Logistics" 
             className="h-8 w-auto object-contain opacity-95" 
           />
-          <div className="badge badge-neutral/80 backdrop-blur-md text-white font-bold text-xs gap-1.5 py-3 px-3">
-            <span className="w-2 h-2 rounded-full bg-success animate-ping" />
-            <span>Middle East Hub Online</span>
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/60 backdrop-blur-md text-white font-bold text-xs border border-white/15">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span>{isRTL ? 'مركز الشرق الأوسط متصل' : 'Middle East Hub Online'}</span>
           </div>
         </div>
 
         {/* Central Graphic Visual */}
         <div className="relative z-10 max-w-lg space-y-6">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md text-xs font-bold border border-white/20">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 backdrop-blur-md text-xs font-bold border border-white/25 text-white">
             <span className="material-symbols-outlined text-sm">flight_takeoff</span>
-            <span>GCC Regional & Worldwide Corridors</span>
+            <span>{isRTL ? 'ممرات الخليج والعالم للشحن السريع' : 'GCC Regional & Worldwide Corridors'}</span>
           </div>
-          <h2 className="text-4xl xl:text-5xl font-black leading-tight tracking-tight">
-            Autonomous Freight & Logistics Intelligence.
+          <h2 className="text-4xl xl:text-5xl font-black leading-tight tracking-tight text-white">
+            {isRTL ? 'ذكاء الشحن الجوي والخدمات اللوجستية.' : 'Autonomous Freight & Logistics Intelligence.'}
           </h2>
-          <p className="text-sm opacity-85 leading-relaxed">
-            Consolidated Air Cargo dispatch with DHL Express, LogesTechs GCC linehauls, automated Kuwait customs clearance, and instant touch-screen Proof of Delivery.
+          <p className="text-sm text-white/85 leading-relaxed">
+            {isRTL
+              ? 'إدارة الشحنات المتعددة، خطوط النقل البري في دول الخليج، التخليص الجمركي الآلي، وإثبات التسليم الفوري.'
+              : 'Consolidated Air Cargo dispatch with DHL Express, LogesTechs GCC linehauls, automated Kuwait customs clearance, and instant touch-screen Proof of Delivery.'}
           </p>
 
           {/* Stat Badges */}
-          <div className="grid grid-cols-3 gap-4 pt-4 border-t border-white/20">
+          <div className="grid grid-cols-3 gap-4 pt-4 border-t border-white/20 text-white">
             <div>
               <div className="text-2xl font-black font-mono">200+</div>
-              <div className="text-[11px] opacity-75 uppercase font-bold">Global Destinations</div>
+              <div className="text-[11px] text-white/80 uppercase font-bold">{isRTL ? 'وجهة عالمية' : 'Global Destinations'}</div>
             </div>
             <div>
               <div className="text-2xl font-black font-mono">99.4%</div>
-              <div className="text-[11px] opacity-75 uppercase font-bold">On-Time Linehaul</div>
+              <div className="text-[11px] text-white/80 uppercase font-bold">{isRTL ? 'التزام بالمواعيد' : 'On-Time Linehaul'}</div>
             </div>
             <div>
               <div className="text-2xl font-black font-mono">Sub-Sec</div>
-              <div className="text-[11px] opacity-75 uppercase font-bold">Optical Scanning</div>
+              <div className="text-[11px] text-white/80 uppercase font-bold">{isRTL ? 'مسح ضوئي فوري' : 'Optical Scanning'}</div>
             </div>
           </div>
         </div>
 
         {/* Bottom Floating Consignment Radar Card */}
-        <div className="relative z-10 p-5 rounded-2xl bg-base-100/95 backdrop-blur-xl border border-white/20 text-base-content shadow-2xl flex items-center justify-between gap-4 max-w-md">
+        <div className="relative z-10 p-5 rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-white/20 text-slate-900 dark:text-slate-100 shadow-2xl flex items-center justify-between gap-4 max-w-md">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
               <span className="material-symbols-outlined">radar</span>
             </div>
             <div>
-              <div className="text-[11px] font-bold text-base-content/50 uppercase">Active Trade Route</div>
-              <div className="font-extrabold text-sm text-base-content">Kuwait (KWI) &rarr; Dubai (DXB)</div>
+              <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase">{isRTL ? 'مسار تجاري نشط' : 'Active Trade Route'}</div>
+              <div className="font-extrabold text-sm text-slate-900 dark:text-white">{isRTL ? 'الكويت (KWI) ← دبي (DXB)' : 'Kuwait (KWI) → Dubai (DXB)'}</div>
             </div>
           </div>
-          <span className="badge badge-success badge-sm font-bold text-xs">Live In Flight</span>
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-600 text-white font-bold text-xs whitespace-nowrap">
+            {isRTL ? 'قيد النقل المباشر' : 'Live In Flight'}
+          </span>
         </div>
       </div>
     </div>

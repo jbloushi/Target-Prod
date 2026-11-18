@@ -353,7 +353,7 @@ function normalizeCarrierStatus(statusText, carrierCode, checkpointCode) {
     }
 
     if (rawCheckpoint) {
-        if (carrier === 'DGR' || carrier === 'DHL') {
+        if (carrier === 'DGR' || carrier === 'DHL' || carrier === 'DGR2' || carrier === 'DHL2') {
             if (DHL_CHECKPOINT_MAP[rawCheckpoint]) return DHL_CHECKPOINT_MAP[rawCheckpoint];
         } else if (carrier === 'ARAMEX') {
             if (ARAMEX_CHECKPOINT_MAP[rawCheckpoint]) return ARAMEX_CHECKPOINT_MAP[rawCheckpoint];

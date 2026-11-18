@@ -64,4 +64,12 @@ router.post(
     settingsController.testCarrierConnection
 );
 
+// Staff & Admin diagnostic attempt logs
+router.get(
+    '/system/diagnostics',
+    authController.protect,
+    authorizeAny('MANAGE_SYSTEM_SETTINGS', 'MANAGE_CARRIERS'),
+    settingsController.getSystemDiagnostics
+);
+
 module.exports = router;

@@ -28,6 +28,10 @@ export default defineConfig(({ mode }) => {
         '^/api(?:/|$)': {
           target: 'http://127.0.0.1:8899',
           changeOrigin: true
+        },
+        '^/uploads(?:/|$)': {
+          target: 'http://127.0.0.1:8899',
+          changeOrigin: true
         }
       }
     },

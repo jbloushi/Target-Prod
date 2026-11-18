@@ -106,7 +106,7 @@ export const SearchablePhoneDialSelector = ({
 
   const buttonClasses = variant === 'daisy'
     ? 'btn btn-sm btn-outline border-base-300 bg-base-100 hover:bg-base-200/60 hover:border-primary/60 text-xs font-mono font-bold px-2.5 shrink-0 flex items-center gap-1 min-w-[96px] justify-between'
-    : 'text-[11px] font-bold text-[#0050d4] bg-[#f0f4f8] hover:bg-[#e3eaf4] border border-transparent focus:border-[#0050d4] rounded-lg px-2 py-1 outline-none cursor-pointer shrink-0 flex items-center gap-1 min-w-[92px] justify-between transition-colors';
+    : 'text-[11px] font-bold text-primary bg-base-200 hover:bg-base-300 border border-transparent focus:border-primary rounded-lg px-2 py-1 outline-none cursor-pointer shrink-0 flex items-center gap-1 min-w-[92px] justify-between transition-colors';
 
   return (
     <div ref={containerRef} className={`relative shrink-0 ${className}`}>
@@ -129,11 +129,11 @@ export const SearchablePhoneDialSelector = ({
 
       {open && (
         <div
-          className="absolute z-50 mt-1.5 w-72 bg-white border border-[#e2e8f0] rounded-xl shadow-xl overflow-hidden animate-in fade-in duration-100"
+          className="absolute z-50 mt-1.5 w-72 bg-base-100 border border-base-300 rounded-xl shadow-xl overflow-hidden animate-in fade-in duration-100"
           style={{ [isRTL ? 'right' : 'left']: 0 }}
         >
-          <div className="p-2 border-b border-[#f0f4f8] bg-[#f8fafc] flex items-center gap-1.5">
-            <span className="material-symbols-outlined text-[16px] text-[#0050d4]">search</span>
+          <div className="p-2 border-b border-base-300 bg-base-200/50 flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-[16px] text-primary">search</span>
             <input
               ref={searchInputRef}
               type="text"
@@ -141,22 +141,22 @@ export const SearchablePhoneDialSelector = ({
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={isRTL ? 'ابحث باسم الدولة أو المفتاح (+965, KW)...' : 'Type country, code or +dial...'}
-              className="w-full text-xs font-semibold bg-transparent outline-none text-[#1a1f23] placeholder:text-[#8c9196]"
+              className="w-full text-xs font-semibold bg-transparent outline-none text-base-content placeholder:text-base-content/70"
             />
             {query && (
               <button
                 type="button"
                 onClick={() => setQuery('')}
-                className="text-[#8c9196] hover:text-[#1a1f23] text-xs px-1"
+                className="text-base-content/70 hover:text-base-content text-xs px-1"
               >
                 ✕
               </button>
             )}
           </div>
 
-          <div className="max-h-60 overflow-y-auto divide-y divide-[#f8fafc]">
+          <div className="max-h-60 overflow-y-auto divide-y divide-base-200">
             {filtered.length === 0 ? (
-              <div className="p-3 text-center text-xs text-[#8c9196]">
+              <div className="p-3 text-center text-xs text-base-content/70">
                 {isRTL ? 'لا توجد دولة مطابقة للبحث' : 'No matching country found'}
               </div>
             ) : (
@@ -172,20 +172,20 @@ export const SearchablePhoneDialSelector = ({
                     onMouseEnter={() => setHighlightIdx(idx)}
                     className={`w-full px-3 py-2 text-start text-xs flex items-center justify-between gap-2 transition-colors ${
                       isHighlighted
-                        ? 'bg-[#ebf0fc] text-[#0050d4]'
+                        ? 'bg-primary/10 text-primary'
                         : isSelected
-                        ? 'bg-[#f5f8ff] text-[#0050d4] font-bold'
-                        : 'text-[#1a1f23] hover:bg-[#f8fafc]'
+                        ? 'bg-primary/15 text-primary font-bold'
+                        : 'text-base-content hover:bg-base-200'
                     }`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-base shrink-0">{c.flag}</span>
                       <div className="truncate">
                         <span className="font-semibold">{isRTL && arName ? arName : c.name}</span>
-                        <span className="text-[10px] text-[#8c9196] ms-1">({c.code})</span>
+                        <span className="text-[10px] text-base-content/70 ms-1">({c.code})</span>
                       </div>
                     </div>
-                    <span className="font-mono font-bold text-[11px] text-[#0050d4] bg-[#f0f4f8] px-1.5 py-0.5 rounded shrink-0">
+                    <span className="font-mono font-bold text-[11px] text-primary bg-primary/10 px-1.5 py-0.5 rounded shrink-0">
                       {c.dialCode}
                     </span>
                   </button>
@@ -300,8 +300,8 @@ export const SearchableCountrySelect = ({
     ? `btn btn-sm w-full justify-between font-medium text-sm bg-base-100 hover:bg-base-100 border ${
         error ? 'border-error text-error' : 'border-base-300 focus:border-primary'
       }`
-    : `w-full p-2 border-[1.5px] rounded-xl text-xs font-semibold outline-none bg-white cursor-pointer flex items-center justify-between gap-2 transition-all ${
-        error ? 'border-red-400 bg-red-50/20' : open ? 'border-[#0050d4]' : 'border-[#e9edf2] hover:border-[#c7d7fa]'
+    : `w-full p-2 border-[1.5px] rounded-xl text-xs font-semibold outline-none bg-base-100 text-base-content cursor-pointer flex items-center justify-between gap-2 transition-all ${
+        error ? 'border-error bg-error/10 text-error' : open ? 'border-primary' : 'border-base-300 hover:border-primary/50'
       }`;
 
   return (
@@ -314,15 +314,15 @@ export const SearchableCountrySelect = ({
         className={triggerClasses}
       >
         <span className="truncate text-start">{displayLabel}</span>
-        <span className="material-symbols-outlined text-[16px] text-[#8c9196] shrink-0">
+        <span className="material-symbols-outlined text-[16px] text-base-content/70 shrink-0">
           {open ? 'expand_less' : 'expand_more'}
         </span>
       </button>
 
       {open && (
-        <div className="absolute z-50 mt-1.5 w-full min-w-[250px] bg-white border border-[#e2e8f0] rounded-xl shadow-xl overflow-hidden animate-in fade-in duration-100">
-          <div className="p-2 border-b border-[#f0f4f8] bg-[#f8fafc] flex items-center gap-1.5">
-            <span className="material-symbols-outlined text-[16px] text-[#0050d4]">search</span>
+        <div className="absolute z-50 mt-1.5 w-full min-w-[250px] bg-base-100 border border-base-300 rounded-xl shadow-xl overflow-hidden animate-in fade-in duration-100">
+          <div className="p-2 border-b border-base-300 bg-base-200/50 flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-[16px] text-primary">search</span>
             <input
               ref={searchInputRef}
               type="text"
@@ -330,22 +330,22 @@ export const SearchableCountrySelect = ({
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={isRTL ? 'اكتب اسم الدولة أو الرمز للبحث...' : 'Type country name, code or +dial...'}
-              className="w-full text-xs font-semibold bg-transparent outline-none text-[#1a1f23] placeholder:text-[#8c9196]"
+              className="w-full text-xs font-semibold bg-transparent outline-none text-base-content placeholder:text-base-content/70"
             />
             {query && (
               <button
                 type="button"
                 onClick={() => setQuery('')}
-                className="text-[#8c9196] hover:text-[#1a1f23] text-xs px-1"
+                className="text-base-content/70 hover:text-base-content text-xs px-1"
               >
                 ✕
               </button>
             )}
           </div>
 
-          <div className="max-h-60 overflow-y-auto divide-y divide-[#f8fafc]">
+          <div className="max-h-60 overflow-y-auto divide-y divide-base-200">
             {filtered.length === 0 ? (
-              <div className="p-3 text-center text-xs text-[#8c9196]">
+              <div className="p-3 text-center text-xs text-base-content/70">
                 {isRTL ? 'لا توجد دولة مطابقة للبحث' : 'No matching country found'}
               </div>
             ) : (
@@ -361,18 +361,18 @@ export const SearchableCountrySelect = ({
                     onMouseEnter={() => setHighlightIdx(idx)}
                     className={`w-full px-3 py-2 text-start text-xs flex items-center justify-between gap-2 transition-colors ${
                       isHighlighted
-                        ? 'bg-[#ebf0fc] text-[#0050d4]'
+                        ? 'bg-primary/10 text-primary'
                         : isSelected
-                        ? 'bg-[#f5f8ff] text-[#0050d4] font-bold'
-                        : 'text-[#1a1f23] hover:bg-[#f8fafc]'
+                        ? 'bg-primary/15 text-primary font-bold'
+                        : 'text-base-content hover:bg-base-200'
                     }`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-base shrink-0">{c.flag}</span>
                       <span className="truncate font-semibold">{isRTL && arName ? arName : c.name}</span>
-                      <span className="text-[10px] text-[#8c9196] shrink-0">({c.code})</span>
+                      <span className="text-[10px] text-base-content/70 shrink-0">({c.code})</span>
                     </div>
-                    <span className="font-mono text-[11px] text-[#575c60] shrink-0">
+                    <span className="font-mono text-[11px] text-base-content/70 shrink-0">
                       {c.dialCode}
                     </span>
                   </button>

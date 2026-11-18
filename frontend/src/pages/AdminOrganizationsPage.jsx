@@ -6,7 +6,8 @@ import { useLanguage } from '../context/LanguageContext';
 import { organizationService, userService } from '../services/api';
 
 const CARRIERS_CONFIG = [
-    { code: 'DGR', name: 'DHL Express (DGR)' },
+    { code: 'DGR', name: 'DGR' },
+    { code: 'DGR2', name: 'DHL' },
     { code: 'FEDEX', name: 'FedEx Express (FDX)' },
     { code: 'ARAMEX', name: 'Aramex Express' },
     { code: 'INTERNAL', name: 'Target Local Fleet' },

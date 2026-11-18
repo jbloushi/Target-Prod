@@ -153,7 +153,13 @@ class SmsaAdapter extends CarrierAdapter {
             AddressLine1: addr.AddressLine1 || addr.addressLine1 || addr.street || addr.street1 || addr.line1 || lines[0] || addr.address,
             AddressLine2: addr.AddressLine2 || addr.addressLine2 || addr.street2 || addr.line2 || lines[1],
             City: addr.City || addr.city,
-            Country: String(addr.Country || addr.country || addr.countryCode || '').toUpperCase(),
+            Country: String(
+                addr.countryCode
+                || (addr.Country && String(addr.Country).trim().length === 2 ? addr.Country : '')
+                || addr.Country
+                || addr.country
+                || ''
+            ).trim().toUpperCase(),
             District: addr.District || addr.district,
             PostalCode: addr.PostalCode || addr.postalCode || addr.zip,
             Coordinates: addr.Coordinates || addr.coordinates
@@ -234,17 +240,37 @@ class SmsaAdapter extends CarrierAdapter {
                 ? s.currency
                 : (s.shipmentCurrency !== undefined ? s.shipmentCurrency : 'SAR'));
 
+        const parcelDeclaredSum = Array.isArray(parcels) && parcels.length
+            ? parcels.reduce((sum, p) => sum + Number(p?.declaredValue ?? p?.value ?? 0), 0)
+            : 0;
+        const resolvedDeclaredValue = s.DeclaredValue !== undefined
+            ? Number(s.DeclaredValue)
+            : Number(
+                s.declaredValue
+                ?? s.customsValue
+                ?? s.documents?.declaredValue
+                ?? s.customsInvoice?.declaredValue
+                ?? parcelDeclaredSum
+            );
+        const parcelDescriptions = Array.isArray(parcels)
+            ? parcels.map((p) => p?.description || p?.contents || p?.name).filter(Boolean).join('; ')
+            : '';
+
+        const shipperAddress = this._pickAddress(s.ShipperAddress || s.sender || s.origin || s.shipper);
+        const consigneeAddress = this._pickAddress(s.ConsigneeAddress || s.receiver || s.destination || s.consignee);
+        const isInternational = Boolean(
+            shipperAddress?.Country && consigneeAddress?.Country && shipperAddress.Country !== consigneeAddress.Country
+        );
+
         const payload = {
-            ConsigneeAddress: this._pickAddress(s.ConsigneeAddress || s.receiver || s.destination || s.consignee),
-            ShipperAddress: this._pickAddress(s.ShipperAddress || s.sender || s.origin || s.shipper),
-            OrderNumber: s.OrderNumber || s.orderNumber || s.reference || s.referenceNumber,
+            ConsigneeAddress: consigneeAddress,
+            ShipperAddress: shipperAddress,
+            OrderNumber: s.OrderNumber || s.orderNumber || s.reference || s.referenceNumber || s.trackingNumber,
             CODAmount: s.CODAmount !== undefined
                 ? Number(s.CODAmount)
                 : Number(s.codAmount ?? 0),
-            DeclaredValue: s.DeclaredValue !== undefined
-                ? Number(s.DeclaredValue)
-                : Number(s.declaredValue ?? s.customsValue ?? 0),
-            ContentDescription: s.ContentDescription || s.contentDescription || s.description || s.content,
+            DeclaredValue: resolvedDeclaredValue,
+            ContentDescription: s.ContentDescription || s.contentDescription || s.description || s.content || parcelDescriptions,
             Parcels: parcelCount,
             ShipDate: rawShipDate,
             ShipmentCurrency: rawCurrency,
@@ -253,8 +279,11 @@ class SmsaAdapter extends CarrierAdapter {
             WaybillType: String(s.WaybillType || s.waybillType || 'PDF').toUpperCase()
         };
 
-        const svc = serviceCode || s.ServiceCode || s.serviceCode;
-        if (svc) payload.ServiceCode = svc;
+        let svc = String(serviceCode || s.ServiceCode || s.serviceCode || '').trim().toUpperCase();
+        if (!svc || svc === 'DLV' || svc === 'STD' || (isInternational && svc === 'EDDL')) {
+            svc = isInternational ? 'EIDL' : 'EDDL';
+        }
+        payload.ServiceCode = svc;
         if (s.SMSARetailID != null || s.smsaRetailId != null) payload.SMSARetailID = String(s.SMSARetailID ?? s.smsaRetailId);
         if (s.DutyPaid != null || s.dutyPaid != null) payload.DutyPaid = Boolean(s.DutyPaid ?? s.dutyPaid);
         if (s.VatPaid != null || s.vatPaid != null) payload.VatPaid = Boolean(s.VatPaid ?? s.vatPaid);
@@ -328,11 +357,12 @@ class SmsaAdapter extends CarrierAdapter {
                 : 1);
         const rateCardId = shipmentData?.rateCardId;
 
-        if (rateCardId && countryCode) {
+        const effectiveRateCardId = rateCardId || 'FALLBACK_ECONOMY_GCC';
+        if (effectiveRateCardId && countryCode) {
             try {
                 const RateCardService = require('../services/RateCardService');
                 const rateCardResult = RateCardService.calculateRate({
-                    rateCardId,
+                    rateCardId: effectiveRateCardId,
                     carrierCode: this.code,
                     countryCode,
                     weight,
@@ -372,24 +402,26 @@ class SmsaAdapter extends CarrierAdapter {
         if (errors.length) throw badRequest(errors.join('; '));
         const payload = this._buildB2cPayload(normalizedShipment, serviceCode);
         const raw = await this.createB2CShipment(payload);
-        const awb = raw?.awbNumber || raw?.awb || raw?.sawb || null;
+        const awb = raw?.awbNumber || raw?.awb || raw?.sawb || raw?.waybills?.[0]?.awb || null;
+        const rawWaybill = raw?.waybillLabel
+            || raw?.waybills?.[0]?.awbFile
+            || raw?.waybills?.[0]?.label
+            || null;
 
         const isZpl = String(payload.WaybillType).toUpperCase() === 'ZPL' ||
                       String(raw?.waybillType).toUpperCase() === 'ZPL' ||
-                      String(raw?.waybillLabel || '').startsWith('^XA');
+                      String(rawWaybill || '').startsWith('^XA');
         const mime = isZpl ? 'application/x-zpl' : 'application/pdf';
 
         let labelUrl = null;
         let labelDataUri = null;
-        if (raw?.waybillLabel) {
-            if (raw.waybillLabel.startsWith('http://') || raw.waybillLabel.startsWith('https://')) {
-                labelUrl = raw.waybillLabel;
-                labelDataUri = raw.waybillLabel;
-            } else if (raw.waybillLabel.startsWith('data:')) {
-                labelUrl = raw.waybillLabel;
-                labelDataUri = raw.waybillLabel;
+        if (rawWaybill) {
+            const str = String(rawWaybill).trim();
+            if (str.startsWith('http://') || str.startsWith('https://') || str.startsWith('data:')) {
+                labelUrl = str;
+                labelDataUri = str;
             } else {
-                labelDataUri = `data:${mime};base64,${raw.waybillLabel}`;
+                labelDataUri = `data:${mime};base64,${str}`;
                 labelUrl = labelDataUri;
             }
         } else if (raw?.labelUrl) {
@@ -404,7 +436,7 @@ class SmsaAdapter extends CarrierAdapter {
             barcode: awb,
             serviceCode: serviceCode || payload.ServiceCode || 'DLV',
             labelUrl,
-            labelBase64: raw?.waybillLabel || null,
+            labelBase64: rawWaybill || null,
             awbUrl: labelUrl,
             invoiceUrl: raw?.invoiceUrl || null,
             documents: labelDataUri ? [
@@ -513,6 +545,46 @@ class SmsaAdapter extends CarrierAdapter {
         return this._request('queryB2CShipment', 'get', `/api/shipment/b2c/query/${encodeURIComponent(awb)}`);
     }
     async queryB2c(awb) { return this.queryB2CShipment(awb); }
+
+    /**
+     * Retrieve official SMSA waybill/label documents for an existing AWB.
+     * Mirrors DgrAdapter.getShipmentDocuments for unified controller handling.
+     */
+    async getShipmentDocuments(awb) {
+        this._requireValue(awb, 'awb');
+        const cleanAwb = String(awb).replace(/^SMSA-?/i, '').trim();
+        const raw = await this.queryB2CShipment(cleanAwb);
+        const rawWaybill = raw?.waybillLabel
+            || raw?.labelUrl
+            || raw?.waybills?.[0]?.awbFile
+            || raw?.waybills?.[0]?.label
+            || null;
+
+        let labelUrl = null;
+        if (rawWaybill) {
+            const str = String(rawWaybill).trim();
+            const isZpl = String(raw?.waybillType || '').toUpperCase() === 'ZPL' || str.startsWith('^XA');
+            const mime = isZpl ? 'application/x-zpl' : 'application/pdf';
+            labelUrl = (str.startsWith('http://') || str.startsWith('https://') || str.startsWith('data:'))
+                ? str
+                : `data:${mime};base64,${str}`;
+        }
+
+        return {
+            labelUrl,
+            awbUrl: labelUrl,
+            invoiceUrl: raw?.invoiceUrl || null,
+            documents: labelUrl ? [{ type: 'label', format: 'pdf', url: labelUrl }] : []
+        };
+    }
+
+    async getLabel(ids = []) {
+        const idList = Array.isArray(ids) ? ids : [ids];
+        const awb = idList[0];
+        if (!awb) throw badRequest('awb is required for getLabel');
+        const docs = await this.getShipmentDocuments(awb);
+        return docs.labelUrl || null;
+    }
 
     // 3. Create C2B Shipment (Reverse Pickup): POST /api/c2b/new
     async createC2BShipment(payload = {}) {

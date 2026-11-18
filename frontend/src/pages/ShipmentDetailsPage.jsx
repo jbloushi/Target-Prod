@@ -480,19 +480,22 @@ const ShipmentDetailsPage = () => {
                 return;
             }
 
-            if (typeof pdfData === 'string' && pdfData.startsWith('/uploads/documents/')) {
-                const filename = pdfData.split('/').pop();
-                const secureUrl = `/shipments/${shipment.trackingNumber}/documents/${filename}`;
-                try {
-                    const response = await api.get(secureUrl, { responseType: 'blob' });
-                    const blobUrl = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
-                    window.open(blobUrl, '_blank');
-                    return;
-                } catch {
-                    const { BACKEND_URL } = await import('../services/api');
-                    window.open(`${BACKEND_URL}${pdfData}`, '_blank');
-                    return;
+            if (typeof pdfData === 'string' && pdfData.startsWith('/uploads/')) {
+                if (pdfData.startsWith('/uploads/documents/')) {
+                    const filename = pdfData.split('/').pop();
+                    const secureUrl = `/shipments/${shipment.trackingNumber}/documents/${filename}`;
+                    try {
+                        const response = await api.get(secureUrl, { responseType: 'blob' });
+                        const blobUrl = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+                        window.open(blobUrl, '_blank');
+                        return;
+                    } catch {
+                        // Fall through to BACKEND_URL static mount
+                    }
                 }
+                const { BACKEND_URL } = await import('../services/api');
+                window.open(`${BACKEND_URL}${pdfData}`, '_blank');
+                return;
             }
 
             window.open(pdfData, '_blank');
@@ -955,7 +958,7 @@ const ShipmentDetailsPage = () => {
             setEditDrawerOpen(false);
             await getShipment(shipment.trackingNumber);
         } catch (err) {
-            enqueueSnackbar(err.message || 'Failed to update shipment', { variant: 'error' });
+            enqueueSnackbar(err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to update shipment', { variant: 'error' });
         } finally {
             setIsProcessing(false);
         }
@@ -976,6 +979,7 @@ const ShipmentDetailsPage = () => {
             }
         } catch (err) {
             console.error('Failed to fetch conversion targets:', err);
+            enqueueSnackbar(err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to load carrier conversion targets', { variant: 'error' });
         }
     };
 
@@ -1014,19 +1018,21 @@ const ShipmentDetailsPage = () => {
 
         setIsGeneratingCarrierDocs(true);
         try {
-            const res = await shipmentService.generateCarrierDocuments(shipment.trackingNumber, { force: true });
+            const res = await shipmentService.generateCarrierDocuments(shipment.trackingNumber, { force: true, autoBook: isStaff });
             const awb = res?.data?.carrierShipmentId || res?.data?.dhlTrackingNumber || res?.data?.awbUrl || res?.data?.labelUrl;
             enqueueSnackbar(`Carrier AWB & Invoice retrieved successfully from ${carrierDisplayName}! ${awb ? `(AWB: ${awb})` : ''}`, { variant: 'success' });
             await getShipment(shipment.trackingNumber);
 
             const openUrl = docTypeToOpen === 'invoice'
                 ? (res?.data?.invoiceUrl || res?.data?.shipment?.invoiceUrl)
-                : (res?.data?.awbUrl || res?.data?.labelUrl || res?.data?.shipment?.awbUrl || res?.data?.shipment?.labelUrl);
+                : (docTypeToOpen === 'receipt'
+                    ? (res?.data?.receiptUrl || res?.data?.documents?.find(d => /receipt|shiprcpt/i.test(String(d?.type || '')))?.url)
+                    : (res?.data?.awbUrl || res?.data?.labelUrl || res?.data?.shipment?.awbUrl || res?.data?.shipment?.labelUrl));
 
             if (openUrl) handleOpenPdf(openUrl);
         } catch (err) {
             console.error('Failed to generate carrier documents:', err);
-            enqueueSnackbar(err.response?.data?.error || err.message || 'Failed to generate carrier documents', { variant: 'error' });
+            enqueueSnackbar(err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to generate carrier documents', { variant: 'error' });
         } finally {
             setIsGeneratingCarrierDocs(false);
         }
@@ -1146,6 +1152,7 @@ const ShipmentDetailsPage = () => {
 
     const carrierAwbDoc = rawDocuments.find(d => /label|awb|waybill/i.test(String(d?.type || '')));
     const carrierInvoiceDoc = rawDocuments.find(d => /inv|customs|commercial/i.test(String(d?.type || '')));
+    const carrierReceiptDoc = rawDocuments.find(d => /receipt|shiprcpt/i.test(String(d?.type || '')));
 
     const isImported = Boolean(
         shipment.documents?.phenixBillId ||
@@ -1154,9 +1161,12 @@ const ShipmentDetailsPage = () => {
         (typeof shipment.documents === 'object' && !Array.isArray(shipment.documents) && (shipment.documents?.source === 'PHENIX_ERP' || shipment.documents?.phenixBillId))
     );
 
+    const isDhlCarrier = ['DGR', 'DGR2', 'DHL', 'DHL2'].includes(rawCarrierCode);
+    const hideCustomsInvoice = ['OTE', 'LOGESTECHS', 'SMSA', 'SMSAEXPRESS'].includes(rawCarrierCode);
     const resolvedCarrierAwb = shipment.labelUrl || shipment.awbUrl || extractDocUrl(carrierAwbDoc);
     const resolvedCarrierInvoice = shipment.invoiceUrl || extractDocUrl(carrierInvoiceDoc);
-    const canGenerateCarrierDocs = isStaff && (!resolvedCarrierAwb || !resolvedCarrierInvoice);
+    const resolvedCarrierReceipt = extractDocUrl(carrierReceiptDoc);
+    const canGenerateCarrierDocs = isStaff && (!resolvedCarrierAwb || (hideCustomsInvoice ? !resolvedCarrierReceipt : !resolvedCarrierInvoice));
 
     const statusEditOptions = getAllowedStatusOptions(user, shipment);
 
@@ -1353,6 +1363,11 @@ const ShipmentDetailsPage = () => {
             visualStep = 2;
             progressPct = 50;
             indicatorIcon = 'warning';
+            break;
+        case 'returned':
+            visualStep = -1;
+            progressPct = 100;
+            indicatorIcon = 'assignment_return';
             break;
         case 'cancelled':
             visualStep = -1;
@@ -1585,15 +1600,29 @@ const ShipmentDetailsPage = () => {
                             </button>
                         )}
 
-                        {/* Official Carrier Invoice */}
-                        {resolvedCarrierInvoice && (
+                        {/* Official Carrier Invoice (hidden for OTE/SMSA) */}
+                        {resolvedCarrierInvoice && !hideCustomsInvoice && (
                             <button
                                 type="button"
                                 onClick={() => handleOpenPdf(resolvedCarrierInvoice)}
                                 className="btn btn-outline btn-sm rounded-xl font-bold gap-1 text-xs"
                             >
                                 <span className="material-symbols-outlined text-xs">receipt_long</span>
-                                {isRTL ? 'فاتورة الجمارك' : 'Customs Invoice'}
+                                {isDhlCarrier
+                                    ? (isRTL ? 'فاتورة الجمارك / الإيصال' : 'Customs Invoice/Receipt')
+                                    : (isRTL ? 'فاتورة الجمارك' : 'Customs Invoice')}
+                            </button>
+                        )}
+
+                        {/* Target-Branded Shipment Receipt (for non-DHL carriers) */}
+                        {!isDhlCarrier && resolvedCarrierReceipt && (
+                            <button
+                                type="button"
+                                onClick={() => handleOpenPdf(resolvedCarrierReceipt)}
+                                className="btn btn-outline btn-sm rounded-xl font-bold gap-1 text-xs"
+                            >
+                                <span className="material-symbols-outlined text-xs">description</span>
+                                {isRTL ? 'إيصال الشحنة' : 'Shipment Receipt'}
                             </button>
                         )}
 
@@ -2252,7 +2281,8 @@ const ShipmentDetailsPage = () => {
                                  ) : null}
                              </div>
 
-                             {/* Document 2: Carrier Customs Invoice */}
+                             {/* Document 2: Carrier Customs Invoice (disabled for OTE / LogesTechs & SMSA) */}
+                             {!['OTE', 'LOGESTECHS', 'SMSA', 'SMSAEXPRESS'].includes(rawCarrierCode) && (
                              <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">
                                  <div className="space-y-1">
                                      <div className="flex items-center justify-between">
@@ -2266,7 +2296,7 @@ const ShipmentDetailsPage = () => {
                                          </span>
                                      </div>
                                      <h4 className="font-extrabold text-xs text-base-content">
-                                         {carrierDisplayName} Customs Invoice
+                                         {carrierDisplayName} {['DGR', 'DGR2', 'DHL', 'DHL2'].includes(rawCarrierCode) ? 'Customs Invoice/Shipment Receipt' : 'Customs Invoice'}
                                      </h4>
                                      <p className="text-[11px] text-base-content/60">
                                          {isRTL ? 'الفاتورة والبيان الجمركي المعتمد' : 'Itemized customs export declaration'}
@@ -2284,6 +2314,42 @@ const ShipmentDetailsPage = () => {
                                      </button>
                                  ) : null}
                              </div>
+                             )}
+
+                             {/* Document 2b: Target-Branded Shipment Receipt (for non-DHL carriers) */}
+                             {!['DGR', 'DGR2', 'DHL', 'DHL2'].includes(rawCarrierCode) && (
+                             <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">
+                                 <div className="space-y-1">
+                                     <div className="flex items-center justify-between">
+                                         <div className="w-8 h-8 rounded-lg bg-info/10 text-info flex items-center justify-center">
+                                             <span className="material-symbols-outlined text-base">description</span>
+                                         </div>
+                                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-black tracking-wider uppercase border shadow-2xs ${
+                                             resolvedCarrierReceipt ? 'bg-emerald-100 text-emerald-950 border-emerald-300' : 'bg-amber-100 text-amber-950 border-amber-300'
+                                         }`}>
+                                             {resolvedCarrierReceipt ? 'READY' : 'PENDING'}
+                                         </span>
+                                     </div>
+                                     <h4 className="font-extrabold text-xs text-base-content">
+                                         Target Shipment Receipt
+                                     </h4>
+                                     <p className="text-[11px] text-base-content/60">
+                                         {isRTL ? 'إيصال الشحنة الرسمي من تارجت' : 'Target Logistics branded customer receipt'}
+                                     </p>
+                                 </div>
+                                 {resolvedCarrierReceipt ? (
+                                     <button onClick={() => handleOpenPdf(resolvedCarrierReceipt)} className="btn btn-outline btn-xs font-bold rounded-lg w-full gap-1">
+                                         <span className="material-symbols-outlined text-[12px]">print</span>
+                                         {isRTL ? 'طباعة الإيصال' : 'Print Receipt'}
+                                     </button>
+                                 ) : isStaff ? (
+                                     <button onClick={() => handleGenerateCarrierDocs('receipt')} disabled={isGeneratingCarrierDocs} className="btn btn-outline btn-xs font-bold rounded-lg w-full gap-1">
+                                         <span className="material-symbols-outlined text-[12px]">bolt</span>
+                                         {isRTL ? 'توليد الإيصال' : 'Generate Receipt'}
+                                     </button>
+                                 ) : null}
+                             </div>
+                             )}
 
                              {/* Document 3: Target Hub Handover / Invoice QR */}
                              <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">

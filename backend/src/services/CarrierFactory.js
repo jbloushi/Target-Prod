@@ -15,7 +15,7 @@ const EXTERNAL_CAPABILITIES = (code) => ({
     supportsCancellation: false,
     supportsLabelGeneration: true,
     supportsExternalApi: true,
-    supportsConversionTarget: ['DGR', 'OTE', 'FEDEX', 'ARAMEX', 'SMSA'].includes(String(code || '').toUpperCase())
+    supportsConversionTarget: ['DGR', 'DGR2', 'OTE', 'FEDEX', 'ARAMEX', 'SMSA'].includes(String(code || '').toUpperCase())
 });
 
 const CARRIER_REGISTRY = [
@@ -32,11 +32,19 @@ const CARRIER_REGISTRY = [
     },
     {
         code: 'DGR',
-        name: 'DHL Express',
+        name: 'DGR',
         active: true,
         trackingPrefix: 'DGR',
         defaultServiceCode: 'P',
         capabilities: EXTERNAL_CAPABILITIES('DGR')
+    },
+    {
+        code: 'DGR2',
+        name: 'DHL',
+        active: true,
+        trackingPrefix: 'DGR2',
+        defaultServiceCode: 'P',
+        capabilities: EXTERNAL_CAPABILITIES('DGR2')
     },
     {
         code: 'FEDEX',
@@ -92,6 +100,7 @@ const CARRIER_REGISTRY = [
 const normalizeCarrierCode = (carrierCode) => {
     const code = String(carrierCode || 'DGR').toUpperCase();
     if (code === 'DHL') return 'DGR';
+    if (code === 'DHL2' || code === 'DHL_2' || code === 'DGR_2') return 'DGR2';
     if (code === 'FDX') return 'FEDEX';
     if (code === 'ARM') return 'ARAMEX';
     if (code === 'LOGESTECHS') return 'OTE';
@@ -163,7 +172,13 @@ class CarrierFactory {
             try {
                 const { getSystemSettings } = require('./systemSettings.service');
                 const carrierEnvs = getSystemSettings()?.carrierEnvironments;
-                const envForCarrier = (code === 'OTE' || code === 'LOGESTECHS') ? carrierEnvs?.OTE : (code === 'SMSA' ? (carrierEnvs?.SMSA || carrierEnvs?.DHL) : carrierEnvs?.DHL);
+                const envForCarrier = (code === 'OTE' || code === 'LOGESTECHS')
+                    ? carrierEnvs?.OTE
+                    : (code === 'SMSA'
+                        ? (carrierEnvs?.SMSA || carrierEnvs?.DHL)
+                        : (code === 'ARAMEX'
+                            ? (carrierEnvs?.ARAMEX || carrierEnvs?.DHL)
+                            : (code === 'DGR2' ? (carrierEnvs?.DGR2 || carrierEnvs?.DHL) : carrierEnvs?.DHL)));
                 if (envForCarrier) resolvedEnv = envForCarrier;
             } catch {
                 // fallback to production
@@ -180,6 +195,27 @@ class CarrierFactory {
 
             case 'DGR':
                 return new DgrAdapter(resolvedConfig);
+
+            case 'DGR2': {
+                const {
+                    dhl2ApiKey,
+                    dhl2ApiSecret,
+                    dhl2AccountNumber,
+                    dhl2ApiUrl,
+                    dhl2TestApiKey,
+                    dhl2TestApiSecret,
+                    dhl2TestAccountNumber,
+                    dhl2TestApiUrl
+                } = require('../config/config');
+                return new DgrAdapter({
+                    ...resolvedConfig,
+                    carrierCode: 'DGR2',
+                    apiKey: resolvedConfig.apiKey || (isTest ? dhl2TestApiKey : dhl2ApiKey),
+                    apiSecret: resolvedConfig.apiSecret || (isTest ? dhl2TestApiSecret : dhl2ApiSecret),
+                    accountNumber: resolvedConfig.accountNumber || (isTest ? dhl2TestAccountNumber : dhl2AccountNumber),
+                    baseUrl: resolvedConfig.baseUrl || (isTest ? dhl2TestApiUrl : dhl2ApiUrl)
+                });
+            }
 
             case 'ARAMEX':
                 return new AramexAdapter(resolvedConfig);

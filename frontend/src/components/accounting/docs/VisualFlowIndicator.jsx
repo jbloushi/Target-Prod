@@ -28,6 +28,7 @@ export const VisualFlowIndicator = ({
   lang: propLang,
   isRTL: propIsRTL,
   orientation = 'horizontal',
+  arrowIcon = 'arrow_forward',
   className = ''
 }) => {
   // Defensive language resolution with context fallback
@@ -143,7 +144,7 @@ export const VisualFlowIndicator = ({
                           : isCompleted
                           ? 'text-emerald-600 dark:text-emerald-400'
                           : 'text-base-content/40'
-                      }`}
+                      } ${['arrow_forward', 'chevron_right', 'arrow_right_alt', 'trending_flat', 'navigate_next'].includes(icon) ? 'rtl:rotate-180' : ''}`}
                     >
                       {icon}
                     </span>
@@ -170,10 +171,10 @@ export const VisualFlowIndicator = ({
 
                   {!isLast && !isVertical && (
                     <span
-                      className="material-symbols-outlined text-base-content/30 text-sm hidden md:inline-block rtl:rotate-180"
+                      className={`material-symbols-outlined text-base-content/30 text-sm hidden md:inline-block rtl:rotate-180 ${isRTL ? 'rotate-180' : ''}`}
                       aria-hidden="true"
                     >
-                      arrow_forward
+                      {arrowIcon || 'arrow_forward'}
                     </span>
                   )}
                 </div>
@@ -222,6 +223,7 @@ VisualFlowIndicator.propTypes = {
   lang: PropTypes.string,
   isRTL: PropTypes.bool,
   orientation: PropTypes.oneOf(['horizontal', 'vertical']),
+  arrowIcon: PropTypes.string,
   className: PropTypes.string
 };
 

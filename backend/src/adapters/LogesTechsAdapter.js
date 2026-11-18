@@ -628,6 +628,30 @@ class LogesTechsAdapter extends CarrierAdapter {
         }
     }
 
+    /**
+     * Retrieve official OTE / LogesTechs AWB PDF document for an existing shipment ID or barcode.
+     * Mirrors DgrAdapter.getShipmentDocuments and SmsaAdapter.getShipmentDocuments.
+     */
+    async getShipmentDocuments(trackingNumber, options = {}) {
+        const id = options.carrierShipmentId || trackingNumber;
+        if (!id) {
+            const err = new Error('Validation Failed: shipment ID or tracking number is required for OTE documents');
+            err.statusCode = 400;
+            throw err;
+        }
+        const pdfDoc = await this.getLabel([id]);
+        const labelUrl = Buffer.isBuffer(pdfDoc)
+            ? `data:application/pdf;base64,${pdfDoc.toString('base64')}`
+            : (typeof pdfDoc === 'string' && pdfDoc.trim() ? pdfDoc.trim() : null);
+
+        return {
+            labelUrl,
+            awbUrl: labelUrl,
+            invoiceUrl: null,
+            documents: labelUrl ? [{ type: 'label', format: 'pdf', url: labelUrl }] : []
+        };
+    }
+
     async cancelShipment(shipmentId, email = null) {
         try {
             this._assertCredentials(['companyId']);

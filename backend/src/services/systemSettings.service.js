@@ -15,9 +15,15 @@ const DEFAULT_SETTINGS = {
             active: true
         },
         DGR: {
-            name: 'Target International Air (DHL DGR)',
+            name: 'Target International Air (DGR)',
             description: 'Worldwide express air freight with dangerous goods certification',
             badge: 'Global Air',
+            active: true
+        },
+        DGR2: {
+            name: 'Target International Air (DHL)',
+            description: 'DHL Express account for international air freight',
+            badge: 'DHL Express',
             active: true
         },
         OTE: {
@@ -46,17 +52,19 @@ const DEFAULT_SETTINGS = {
     },
     carrierEnvironments: {
         DHL: 'test', // 'test' | 'production'
+        DGR2: 'test', // 'test' | 'production'
         OTE: 'test', // 'test' | 'production'
-        SMSA: 'test' // 'test' | 'production'
+        SMSA: 'test', // 'test' | 'production'
+        ARAMEX: 'test' // 'test' | 'production'
     },
     whatsapp: {
         enabled: true,
         provider: 'SHIPMENT_WHATSAPP', // 'SHIPMENT_WHATSAPP' | 'META' | 'CHATWOOT' | 'MOCK'
         serviceUrl: process.env.WHATSAPP_SERVICE_URL || 'https://msg.target-kw.com',
-        phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '109823471928374',
-        businessAccountId: process.env.WHATSAPP_WABA_ID || '209384019283741',
+        phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
+        businessAccountId: process.env.WHATSAPP_WABA_ID || '',
         accessToken: process.env.WHATSAPP_ACCESS_TOKEN || '',
-        webhookVerifyToken: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || 'target_logistics_meta_verify_secret_2026',
+        webhookVerifyToken: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '',
         metaAppId: process.env.WHATSAPP_META_APP_ID || '',
         metaAppSecret: process.env.WHATSAPP_META_APP_SECRET || ''
     },
@@ -132,7 +140,9 @@ function getSystemSettings() {
             },
             whatsapp: {
                 ...DEFAULT_SETTINGS.whatsapp,
-                ...(parsed.whatsapp || {})
+                ...Object.fromEntries(
+                    Object.entries(parsed.whatsapp || {}).filter(([, val]) => val !== '' && val !== null && val !== undefined)
+                )
             },
             phenixSync: {
                 ...DEFAULT_SETTINGS.phenixSync,

@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ override: true });
 
 /**
  * Validate required environment variables for production
@@ -54,11 +54,37 @@ module.exports = {
   dhlTestAccountNumber: process.env.DHL_TEST_ACCOUNT_NUMBER || process.env.DHL_ACCOUNT_NUMBER,
   dhlTestApiUrl: process.env.DHL_TEST_API_URL || 'https://express.api.dhl.com/mydhlapi/test',
 
+  // Second DHL Express Account (DGR2 - Optional)
+  dhl2ApiKey: process.env.DHL2_API_KEY,
+  dhl2ApiSecret: process.env.DHL2_API_SECRET,
+  dhl2AccountNumber: process.env.DHL2_ACCOUNT_NUMBER,
+  dhl2ApiUrl: process.env.DHL2_API_URL || process.env.DHL_API_URL || 'https://express.api.dhl.com/mydhlapi',
+  dhl2TestApiKey: process.env.DHL2_TEST_API_KEY || process.env.DHL2_API_KEY,
+  dhl2TestApiSecret: process.env.DHL2_TEST_API_SECRET || process.env.DHL2_API_SECRET,
+  dhl2TestAccountNumber: process.env.DHL2_TEST_ACCOUNT_NUMBER || process.env.DHL2_ACCOUNT_NUMBER,
+  dhl2TestApiUrl: process.env.DHL2_TEST_API_URL || process.env.DHL_TEST_API_URL || 'https://express.api.dhl.com/mydhlapi/test',
+
   // SMSA Express (API key via env only; defaults to sandbox URL when testing)
   smsaApiKey: process.env.SMSA_API_KEY,
   smsaApiUrl: process.env.SMSA_API_URL || 'https://ecomapis.smsaexpress.com',
   smsaTestApiKey: process.env.SMSA_TEST_API_KEY || process.env.SMSA_API_KEY,
   smsaTestApiUrl: process.env.SMSA_TEST_API_URL || 'https://ecomapis-sandbox.azurewebsites.net',
+
+  // Aramex ShippingAPI.V2 (Live & UAT)
+  aramexUsername: process.env.ARAMEX_USERNAME,
+  aramexPassword: process.env.ARAMEX_PASSWORD,
+  aramexAccountNumber: process.env.ARAMEX_ACCOUNT_NUMBER,
+  aramexAccountPin: process.env.ARAMEX_ACCOUNT_PIN,
+  aramexAccountEntity: process.env.ARAMEX_ACCOUNT_ENTITY || 'KWI',
+  aramexAccountCountryCode: process.env.ARAMEX_ACCOUNT_COUNTRY_CODE || 'KW',
+  aramexApiUrl: process.env.ARAMEX_API_URL || 'https://ws.aramex.net/ShippingAPI.V2',
+  aramexTestUsername: process.env.ARAMEX_TEST_USERNAME || process.env.ARAMEX_USERNAME,
+  aramexTestPassword: process.env.ARAMEX_TEST_PASSWORD || process.env.ARAMEX_PASSWORD,
+  aramexTestAccountNumber: process.env.ARAMEX_TEST_ACCOUNT_NUMBER || process.env.ARAMEX_ACCOUNT_NUMBER,
+  aramexTestAccountPin: process.env.ARAMEX_TEST_ACCOUNT_PIN || process.env.ARAMEX_ACCOUNT_PIN,
+  aramexTestAccountEntity: process.env.ARAMEX_TEST_ACCOUNT_ENTITY || process.env.ARAMEX_ACCOUNT_ENTITY || 'KWI',
+  aramexTestAccountCountryCode: process.env.ARAMEX_TEST_ACCOUNT_COUNTRY_CODE || process.env.ARAMEX_ACCOUNT_COUNTRY_CODE || 'KW',
+  aramexTestApiUrl: process.env.ARAMEX_TEST_API_URL || 'https://ws.uat.aramex.net/ShippingAPI.V2',
   // LogesTechs / OTE Production & Test
   logesTechsShipmentBaseUrl: process.env.LOGESTECHS_SHIPMENT_BASE_URL || 'https://apisv2.logestechs.com/api',
   logesTechsFulfillmentBaseUrl: process.env.LOGESTECHS_FULFILLMENT_BASE_URL || 'https://apisv2.logestechs.com/api',

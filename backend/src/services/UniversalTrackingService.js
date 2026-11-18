@@ -41,11 +41,11 @@ class UniversalTrackingService {
             return withMeta({ status: 'pending', events: [] }, 'universal');
         }
 
-        // 1. DHL / DGR: Official DHL Express API
-        if (normalizedCarrier === 'DGR' || normalizedCarrier === 'DHL') {
+        // 1. DHL / DGR / DGR2: Official DHL Express API
+        if (normalizedCarrier === 'DGR' || normalizedCarrier === 'DHL' || normalizedCarrier === 'DGR2' || normalizedCarrier === 'DHL2') {
             try {
-                const DgrAdapter = require('../adapters/DgrAdapter');
-                const dhlAdapter = new DgrAdapter();
+                const CarrierFactory = require('./CarrierFactory');
+                const dhlAdapter = CarrierFactory.getAdapter(normalizedCarrier);
                 return withMeta(await dhlAdapter.getTracking(cleanTracking), 'dhl_api');
             } catch (dhlErr) {
                 logger.warn(`[UniversalTracking] DHL API tracking error for ${cleanTracking}: ${dhlErr.message}`);

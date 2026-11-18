@@ -11,6 +11,8 @@ const { handleControllerError } = require('../utils/controllerError');
 const { isPlatformRole, hasCapability } = require('../middleware/rbac.policy');
 const { canAccessShipment } = require('../middleware/authorize.middleware');
 const { resolveEffectiveCarrierPolicy } = require('./shipment.helpers');
+const diagnosticAttemptLog = require('../services/diagnosticAttemptLog.service');
+const { normalizeCarrierCode } = require('../services/carrierMinimumValidation.service');
 const {
     getAssignedShippingAccess,
     assertRequestedAccessAllowed,
@@ -23,8 +25,9 @@ const {
  * @route POST /api/shipments/quotes
  */
 exports.getQuotes = async (req, res) => {
+    const startTime = Date.now();
     try {
-        const requestedCarrierCode = req.body.carrierCode ? String(req.body.carrierCode).toUpperCase() : null;
+        const requestedCarrierCode = req.body.carrierCode ? normalizeCarrierCode(req.body.carrierCode) : null;
         const requestedServiceCode = req.body.serviceCode ? String(req.body.serviceCode).toUpperCase() : null;
         const carriers = CarrierFactory.getAvailableCarriers();
         const carrierCodes = carriers.map(c => c.code.toUpperCase());
@@ -120,7 +123,22 @@ exports.getQuotes = async (req, res) => {
             : rawQuotes;
 
         if (serviceCode && visibleQuotes.length === 0) {
-            return res.status(400).json({ success: false, error: `Assigned service ${serviceCode} is not available for this shipment.` });
+            const message = `Assigned service ${serviceCode} is not available for this shipment.`;
+            diagnosticAttemptLog.recordAttempt({
+                carrierCode,
+                action: 'RATE_QUOTE',
+                status: 'VALIDATION_ERROR',
+                durationMs: Date.now() - startTime,
+                message,
+                organizationId: targetUser?.organizationId || null,
+                details: { serviceCode }
+            });
+            return res.status(400).json({
+                success: false,
+                error: message,
+                field: 'serviceCode',
+                errors: [{ field: 'serviceCode', message }]
+            });
         }
 
         const canViewCosts = hasCapability(req.user?.role, 'VIEW_COST_DATA');
@@ -206,8 +224,25 @@ exports.getQuotes = async (req, res) => {
             return formattedQuote;
         });
 
+        diagnosticAttemptLog.recordAttempt({
+            carrierCode,
+            action: 'RATE_QUOTE',
+            status: 'SUCCESS',
+            durationMs: Date.now() - startTime,
+            message: `Returned ${markupQuotes.length} rate quote(s)`,
+            organizationId: targetUser?.organizationId || null,
+            details: { quoteCount: markupQuotes.length, serviceCode }
+        });
+
         res.status(200).json({ success: true, data: markupQuotes });
     } catch (error) {
+        diagnosticAttemptLog.recordAttempt({
+            carrierCode: req.body?.carrierCode || 'DGR',
+            action: 'RATE_QUOTE',
+            status: 'FAILED',
+            durationMs: Date.now() - startTime,
+            message: error.message || 'Quote retrieval failed'
+        });
         return handleControllerError(res, error, 'Quote retrieval');
     }
 };
@@ -281,7 +316,7 @@ exports.getAvailableCarriers = async (req, res) => {
 exports.getBookingOptions = async (req, res) => {
     try {
         const { trackingNumber } = req.params;
-        const carrierCode = String(req.query.carrierCode || req.body?.carrierCode || 'DGR').toUpperCase();
+        const carrierCode = normalizeCarrierCode(req.query.carrierCode || req.body?.carrierCode || 'DGR');
         
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
@@ -290,12 +325,13 @@ exports.getBookingOptions = async (req, res) => {
             return res.status(403).json({ success: false, error: 'Permission denied' });
         }
 
-        if (carrierCode === 'MANUAL' || shipment.carrierCode === 'MANUAL') {
+        const shipmentCarrier = normalizeCarrierCode(shipment.carrierCode || 'DGR');
+        if (carrierCode === 'INTERNAL' || shipmentCarrier === 'INTERNAL' || shipment.internallyManaged === true) {
             return res.status(200).json({
                 success: true,
                 data: {
-                    carrierCode: 'MANUAL',
-                    services: [{ serviceCode: null, serviceName: 'Manual Shipment' }],
+                    carrierCode: 'INTERNAL',
+                    services: [{ serviceCode: null, serviceName: 'Manual / Internal Shipment' }],
                     selectedServiceCode: null,
                     optionalServices: []
                 }
@@ -350,13 +386,24 @@ exports.getBookingOptions = async (req, res) => {
 exports.bookWithCarrier = async (req, res) => {
     try {
         const { trackingNumber } = req.params;
-        const { carrierCode, optionalServiceCodes = [], items, parcels, origin, destination } = req.body;
+        const { carrierCode: rawCarrierCode, optionalServiceCodes = [], items, parcels, origin, destination } = req.body;
+        const carrierCode = rawCarrierCode ? normalizeCarrierCode(rawCarrierCode) : null;
 
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
         if (!canAccessShipment(req, shipment)) {
             return res.status(403).json({ success: false, error: 'Permission denied' });
+        }
+
+        if (['cancelled', 'delivered', 'returned', 'rto_in_transit'].includes(String(shipment.status || '').toLowerCase())) {
+            const msg = `Cannot book shipment in '${shipment.status}' status.`;
+            return res.status(400).json({
+                success: false,
+                error: msg,
+                field: 'status',
+                errors: [{ field: 'status', message: msg }]
+            });
         }
 
         // If staff provided updated items, parcels, origin, or destination, persist them prior to carrier dispatch
@@ -389,6 +436,14 @@ exports.bookWithCarrier = async (req, res) => {
             message: result.message || 'Carrier booking initiated in background'
         });
     } catch (error) {
+        if (error?.isValidationError) {
+            return res.status(400).json({
+                success: false,
+                error: error.message,
+                field: error.field,
+                errors: error.errors
+            });
+        }
         return handleControllerError(res, error, 'Carrier booking');
     }
 };
@@ -472,9 +527,17 @@ exports.submitToDhl = async (req, res) => {
             });
         }
 
-        const result = await ShipmentBookingService.bookShipment(trackingNumber);
+        const result = await ShipmentBookingService.bookShipment(trackingNumber, 'DGR', [], req.user?.role);
         res.status(200).json({ success: true, data: result.shipment, message: 'Shipment booked successfully' });
     } catch (error) {
+        if (error?.isValidationError) {
+            return res.status(400).json({
+                success: false,
+                error: error.message,
+                field: error.field,
+                errors: error.errors
+            });
+        }
         return handleControllerError(res, error, 'DHL submission');
     }
 };
@@ -527,7 +590,17 @@ exports.savePackageTemplate = async (req, res) => {
         const { name, length, width, height, weight, maxWeight, description } = req.body;
 
         if (!name || !length || !width || !height) {
-            return res.status(400).json({ success: false, error: 'Name, length, width, and height are required.' });
+            const errors = [];
+            if (!name) errors.push({ field: 'name', message: 'Template name is required.' });
+            if (!length) errors.push({ field: 'length', message: 'Length is required.' });
+            if (!width) errors.push({ field: 'width', message: 'Width is required.' });
+            if (!height) errors.push({ field: 'height', message: 'Height is required.' });
+            return res.status(400).json({
+                success: false,
+                error: 'Name, length, width, and height are required.',
+                field: errors[0]?.field || 'name',
+                errors
+            });
         }
 
         const newTemplate = {
@@ -589,6 +662,7 @@ exports.savePackageTemplate = async (req, res) => {
  * Generate or re-fetch Carrier AWB and Invoice documents
  */
 exports.generateCarrierDocuments = async (req, res) => {
+    const startTime = Date.now();
     try {
         const { trackingNumber } = req.params;
         const shipment = await prisma.shipment.findUnique({
@@ -598,9 +672,34 @@ exports.generateCarrierDocuments = async (req, res) => {
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
         if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
 
-        const carrierCode = (shipment.carrierCode || shipment.carrier || 'DGR').toUpperCase();
-        if (!carrierCode || carrierCode === 'INTERNAL') {
-            return res.status(400).json({ success: false, error: 'Cannot generate carrier documents for an INTERNAL shipment. Convert to carrier first.' });
+        const carrierCode = normalizeCarrierCode(shipment.carrierCode || shipment.carrier || 'DGR');
+        const isDhlCarrier = carrierCode === 'DGR' || carrierCode === 'DGR2';
+        const isOteCarrier = carrierCode === 'OTE';
+        const isAramexCarrier = carrierCode === 'ARAMEX';
+        const isSmsaCarrier = carrierCode === 'SMSA';
+        const isStrictApiAwbCarrier = isDhlCarrier || isSmsaCarrier || isOteCarrier || isAramexCarrier;
+        const strictCarrierLabel = isDhlCarrier
+            ? 'DHL Express'
+            : (isSmsaCarrier
+                ? 'SMSA Express'
+                : (isOteCarrier ? 'OTE / LogesTechs' : 'Aramex'));
+        if (!carrierCode || carrierCode === 'INTERNAL' || shipment.internallyManaged === true) {
+            const msg = 'Cannot generate carrier documents for an INTERNAL shipment. Convert to carrier first.';
+            diagnosticAttemptLog.recordAttempt({
+                trackingNumber: shipment.trackingNumber,
+                carrierCode: carrierCode || 'INTERNAL',
+                action: 'DOCUMENT_GENERATE',
+                status: 'VALIDATION_ERROR',
+                durationMs: Date.now() - startTime,
+                message: msg,
+                organizationId: shipment.organizationId || null
+            });
+            return res.status(400).json({
+                success: false,
+                error: msg,
+                field: 'carrierCode',
+                errors: [{ field: 'carrierCode', message: msg }]
+            });
         }
 
         const existingDocs = Array.isArray(shipment.documents) ? shipment.documents : [];
@@ -618,21 +717,24 @@ exports.generateCarrierDocuments = async (req, res) => {
 
         const rawFoundLabel = shipment.labelUrl || shipment.awbUrl || existingDocs.find(d => ['label', 'awb', 'waybilldoc'].includes(String(d?.type || '').toLowerCase()))?.url;
         const rawFoundInvoice = shipment.invoiceUrl || existingDocs.find(d => ['invoice', 'customs_invoice', 'commercial_invoice', 'customs-declarations'].includes(String(d?.type || '').toLowerCase()))?.url;
+        const foundReceipt = existingDocs.find(d => ['receipt', 'shipmentreceipt', 'shipment_receipt'].includes(String(d?.type || '').toLowerCase()))?.url || null;
 
-        // If carrier is DGR, filter out any previously generated mock label
-        const foundLabel = (carrierCode === 'DGR' && isMockLabel(rawFoundLabel)) ? null : rawFoundLabel;
+        // If carrier requires official API AWB (DGR, DGR2, SMSA, OTE, ARAMEX), filter out any previously generated mock label
+        const foundLabel = (isStrictApiAwbCarrier && isMockLabel(rawFoundLabel)) ? null : rawFoundLabel;
         const foundInvoice = rawFoundInvoice;
 
         const force = req.query.force === 'true' || req.body?.force === true;
+        const requiresInvoice = !isOteCarrier && !isSmsaCarrier && !shipment.isDocument && shipment.shipmentType !== 'documents';
 
         // If official documents already exist on shipment, return them unless force refresh is requested
-        if (foundLabel && (foundInvoice || shipment.isDocument || shipment.shipmentType === 'documents') && !force) {
+        if (foundLabel && (foundInvoice || !requiresInvoice) && (!isDhlCarrier || foundReceipt) && !force) {
             return res.status(200).json({
                 success: true,
                 data: {
                     labelUrl: foundLabel,
                     awbUrl: shipment.awbUrl || foundLabel,
                     invoiceUrl: foundInvoice,
+                    receiptUrl: foundReceipt,
                     documents: existingDocs,
                     carrierShipmentId: shipment.carrierShipmentId || shipment.dhlTrackingNumber
                 },
@@ -643,32 +745,34 @@ exports.generateCarrierDocuments = async (req, res) => {
         const documentStorage = require('../utils/documentStorage');
         const CarrierDocumentService = require('../services/CarrierDocumentService');
 
-        let awbUrl = force ? null : foundLabel;
-        let invoiceUrl = force ? null : foundInvoice;
-        const newDocuments = force ? [] : [...existingDocs];
+        let awbUrl = foundLabel;
+        let invoiceUrl = foundInvoice;
+        let receiptUrl = foundReceipt;
+        const newDocuments = [...existingDocs];
 
         const isRealCarrierTracking = (tn) => {
             if (!tn) return false;
             const str = String(tn).trim();
             if (str.startsWith('DGR-') || str.startsWith('TGR-') || str.startsWith('TKW-') || str.startsWith('TEST-') || str.startsWith('MOCK-')) return false;
             if (str === trackingNumber) return false;
-            return /^\d{8,12}$/.test(str);
+            return (isOteCarrier || isSmsaCarrier || isAramexCarrier) ? /^[A-Z0-9-]{4,32}$/i.test(str) : /^\d{8,14}$/.test(str);
         };
 
         const dhlTracking = isRealCarrierTracking(shipment.dhlTrackingNumber)
             ? shipment.dhlTrackingNumber
             : (isRealCarrierTracking(shipment.carrierShipmentId) ? shipment.carrierShipmentId : null);
 
-        // 1. If shipment already has an authentic DHL tracking number, attempt document retrieval via get-image
-        if (carrierCode === 'DGR' && dhlTracking && (!awbUrl || !invoiceUrl || force)) {
+        // 1. If shipment already has an authentic carrier tracking number, attempt document retrieval via adapter API
+        if (isStrictApiAwbCarrier && dhlTracking && (!awbUrl || !invoiceUrl || (isDhlCarrier && !receiptUrl) || force)) {
             try {
                 const isTest = shipment.pricingSnapshot?.isTest === true ||
                                shipment.pricingSnapshot?.environment === 'test' ||
                                shipment.isTest === true ||
                                shipment.environment === 'test';
-                const dgrAdapter = CarrierFactory.getAdapter('DGR', { isTest });
-                const carrierDocs = await dgrAdapter.getShipmentDocuments(dhlTracking, {
+                const carrierAdapter = CarrierFactory.getAdapter(carrierCode, { isTest });
+                const carrierDocs = await carrierAdapter.getShipmentDocuments(dhlTracking, {
                     accountNumber: shipment.origin?.shipperAccount || shipment.customer?.accountNumber,
+                    carrierShipmentId: shipment.carrierShipmentId,
                     isTest
                 });
 
@@ -682,14 +786,19 @@ exports.generateCarrierDocuments = async (req, res) => {
                     invoiceUrl = savedInv.url;
                     newDocuments.push(savedInv);
                 }
+                if (carrierDocs.receiptUrl && (!receiptUrl || force)) {
+                    const savedReceipt = await CarrierDocumentService.uploadDocument('receipt', carrierDocs.receiptUrl, 'pdf', trackingNumber);
+                    receiptUrl = savedReceipt.url;
+                    newDocuments.push(savedReceipt);
+                }
             } catch (dhlFetchErr) {
                 logger.warn(`DHL official get-image retrieval note for ${dhlTracking}: ${dhlFetchErr.message}`);
             }
         }
 
-        // 2. Only execute live carrier booking on GET if explicitly requested by staff/admin (?autoBook=true)
+        // 2. Only execute live carrier booking if explicitly requested by staff/admin (autoBook=true)
         const allowAutoBookOnGet =
-            String(req.query?.autoBook || '').toLowerCase() === 'true' &&
+            String(req.query?.autoBook ?? req.body?.autoBook ?? '').toLowerCase() === 'true' &&
             ['admin', 'staff'].includes(String(req.user?.role || '').toLowerCase());
 
         if (!awbUrl && !dhlTracking && allowAutoBookOnGet) {
@@ -710,42 +819,84 @@ exports.generateCarrierDocuments = async (req, res) => {
                     if (Array.isArray(fresh?.documents)) {
                         newDocuments.push(...fresh.documents);
                     }
-                } else if (carrierCode === 'DGR') {
+                } else if (isStrictApiAwbCarrier) {
                     const raw = bookResult?.shipment?.rawResponse || bookResult?.rawResponse;
                     const rawKeys = raw ? Object.keys(raw).join(',') : 'none';
                     const tn = fresh?.dhlTrackingNumber || fresh?.carrierShipmentId || bookResult?.shipment?.dhlTrackingNumber || trackingNumber;
-                    const errorDetail = bookResult?.message || `DHL booking processed (Tracking: ${tn}), but DHL API response contained no document images (Response keys: ${rawKeys}).`;
+                    const errorDetail = bookResult?.message || `${strictCarrierLabel} booking processed (Tracking: ${tn}), but carrier API response contained no document images (Response keys: ${rawKeys}).`;
+                    const errorMessage = `${strictCarrierLabel} document retrieval failed: ${errorDetail}`;
+                    diagnosticAttemptLog.recordAttempt({
+                        trackingNumber: shipment.trackingNumber,
+                        carrierCode,
+                        action: 'DOCUMENT_GENERATE',
+                        status: 'FAILED',
+                        durationMs: Date.now() - startTime,
+                        message: errorMessage,
+                        organizationId: shipment.organizationId || null
+                    });
                     return res.status(400).json({
                         success: false,
-                        error: `DHL Express document retrieval failed: ${errorDetail}`
+                        error: errorMessage
                     });
                 }
             } catch (bookErr) {
                 logger.error(`Live carrier booking failed for ${trackingNumber}: ${bookErr.message}`);
-                if (carrierCode === 'DGR') {
+                if (isStrictApiAwbCarrier) {
+                    const errorMessage = `${strictCarrierLabel} booking failed: ${bookErr.message}. Cannot retrieve official ${strictCarrierLabel} documents without a successful booking.`;
+                    diagnosticAttemptLog.recordAttempt({
+                        trackingNumber: shipment.trackingNumber,
+                        carrierCode,
+                        action: 'DOCUMENT_GENERATE',
+                        status: bookErr?.isValidationError ? 'VALIDATION_ERROR' : 'FAILED',
+                        durationMs: Date.now() - startTime,
+                        message: errorMessage,
+                        organizationId: shipment.organizationId || null,
+                        details: bookErr?.isValidationError ? { errors: bookErr.errors } : {}
+                    });
                     return res.status(400).json({
                         success: false,
-                        error: `DHL Express booking failed: ${bookErr.message}. Cannot retrieve official DHL documents without a successful DHL booking.`
+                        error: errorMessage,
+                        ...(bookErr?.isValidationError ? { field: bookErr.field, errors: bookErr.errors } : {})
                     });
                 }
             }
-        } else if (!awbUrl && !dhlTracking && carrierCode === 'DGR') {
+        } else if (!awbUrl && !dhlTracking && isStrictApiAwbCarrier) {
+            const errorMessage = `Official ${strictCarrierLabel} documents are not yet available because this shipment has not been booked with ${strictCarrierLabel}.`;
+            diagnosticAttemptLog.recordAttempt({
+                trackingNumber: shipment.trackingNumber,
+                carrierCode,
+                action: 'DOCUMENT_GENERATE',
+                status: 'FAILED',
+                durationMs: Date.now() - startTime,
+                message: errorMessage,
+                organizationId: shipment.organizationId || null
+            });
             return res.status(400).json({
                 success: false,
-                error: 'Official DHL Express documents are not yet available because this shipment has not been booked with DHL Express.'
+                error: errorMessage
             });
         }
 
         // 3. Fallback Document Handling:
-        // AWB: Strict rejection for DGR if no authentic DHL label was retrieved. Internal/other carriers use template.
-        const { generateCarrierAwbPdf, generateCarrierInvoicePdf } = require('../utils/carrierPdfMock');
-        const carrierName = carrierCode === 'DGR' ? 'DHL Express' : (carrierCode === 'FEDEX' ? 'FedEx' : (carrierCode === 'ARAMEX' ? 'Aramex' : carrierCode));
+        // AWB: Strict rejection for DGR, DGR2, SMSA, OTE, and ARAMEX if no authentic carrier label was retrieved. Internal/other carriers use template.
+        const { generateCarrierAwbPdf, generateCarrierInvoicePdf, generateTargetShipmentReceiptPdf } = require('../utils/carrierPdfMock');
+        const carrierName = carrierCode === 'DGR' ? 'DGR' : (carrierCode === 'DGR2' ? 'DHL' : (carrierCode === 'SMSA' ? 'SMSA Express' : (isOteCarrier ? 'OTE / LogesTechs' : (carrierCode === 'FEDEX' ? 'FedEx' : (carrierCode === 'ARAMEX' ? 'Aramex' : carrierCode)))));
 
         if (!awbUrl) {
-            if (carrierCode === 'DGR') {
+            if (isStrictApiAwbCarrier) {
+                const errorMessage = `Official ${strictCarrierLabel} documents could not be retrieved from ${strictCarrierLabel} API. Please check your credentials and shipment details.`;
+                diagnosticAttemptLog.recordAttempt({
+                    trackingNumber: shipment.trackingNumber,
+                    carrierCode,
+                    action: 'DOCUMENT_GENERATE',
+                    status: 'FAILED',
+                    durationMs: Date.now() - startTime,
+                    message: errorMessage,
+                    organizationId: shipment.organizationId || null
+                });
                 return res.status(400).json({
                     success: false,
-                    error: 'Official DHL Express documents could not be retrieved from DHL API. Please check your DHL credentials and shipment details.'
+                    error: errorMessage
                 });
             } else {
                 const awbBase64 = generateCarrierAwbPdf(shipment, carrierName);
@@ -757,8 +908,8 @@ exports.generateCarrierDocuments = async (req, res) => {
             }
         }
 
-        // Invoice: If invoiceUrl is missing for ANY carrier (including DGR when DHL only returned label or PLT was used), generate a compliant customs commercial invoice so customs clearance is never blocked!
-        if (!invoiceUrl) {
+        // Invoice: If invoiceUrl is missing for carriers that require customs invoice, generate a compliant customs commercial invoice
+        if (!invoiceUrl && requiresInvoice) {
             try {
                 const invBase64 = generateCarrierInvoicePdf(
                     { ...shipment, dhlTrackingNumber: dhlTracking || shipment.dhlTrackingNumber, carrierShipmentId: dhlTracking || shipment.carrierShipmentId },
@@ -774,6 +925,23 @@ exports.generateCarrierDocuments = async (req, res) => {
             }
         }
 
+        // Target-branded Shipment Receipt fallback for non-DHL carriers (or when DHL did not return a receipt)
+        if (!receiptUrl) {
+            try {
+                const receiptBase64 = generateTargetShipmentReceiptPdf(
+                    { ...shipment, dhlTrackingNumber: dhlTracking || shipment.dhlTrackingNumber, carrierShipmentId: dhlTracking || shipment.carrierShipmentId },
+                    carrierName
+                );
+                const savedRcpt = await CarrierDocumentService.uploadDocument('receipt', receiptBase64, 'pdf', trackingNumber);
+                if (savedRcpt?.url) {
+                    receiptUrl = savedRcpt.url;
+                    newDocuments.push(savedRcpt);
+                }
+            } catch (rcptErr) {
+                logger.warn(`Target shipment receipt generation note for ${trackingNumber}: ${rcptErr.message}`);
+            }
+        }
+
         const updated = await prisma.shipment.update({
             where: { id: shipment.id },
             data: {
@@ -781,7 +949,22 @@ exports.generateCarrierDocuments = async (req, res) => {
                 awbUrl: awbUrl || shipment.awbUrl,
                 invoiceUrl: invoiceUrl || shipment.invoiceUrl,
                 documents: newDocuments,
-                dhlConfirmed: carrierCode === 'DGR' ? true : shipment.dhlConfirmed
+                dhlConfirmed: isDhlCarrier ? true : shipment.dhlConfirmed
+            }
+        });
+
+        diagnosticAttemptLog.recordAttempt({
+            trackingNumber: updated.trackingNumber,
+            carrierCode,
+            action: 'DOCUMENT_GENERATE',
+            status: 'SUCCESS',
+            durationMs: Date.now() - startTime,
+            message: 'Official carrier AWB and Invoice successfully retrieved',
+            organizationId: updated.organizationId,
+            details: {
+                hasLabel: Boolean(updated.labelUrl),
+                hasAwb: Boolean(updated.awbUrl),
+                hasInvoice: Boolean(updated.invoiceUrl)
             }
         });
 
@@ -791,6 +974,7 @@ exports.generateCarrierDocuments = async (req, res) => {
                 labelUrl: updated.labelUrl,
                 awbUrl: updated.awbUrl || updated.labelUrl,
                 invoiceUrl: updated.invoiceUrl,
+                receiptUrl: receiptUrl || foundReceipt || null,
                 documents: updated.documents || [],
                 carrierShipmentId: updated.carrierShipmentId || updated.dhlTrackingNumber,
                 shipment: updated
@@ -798,6 +982,14 @@ exports.generateCarrierDocuments = async (req, res) => {
             message: 'Official carrier AWB and Invoice successfully retrieved'
         });
     } catch (error) {
+        diagnosticAttemptLog.recordAttempt({
+            trackingNumber: req.params?.trackingNumber || null,
+            carrierCode: 'SYSTEM',
+            action: 'DOCUMENT_GENERATE',
+            status: 'FAILED',
+            durationMs: Date.now() - startTime,
+            message: error.message || 'Generate carrier documents failed'
+        });
         return handleControllerError(res, error, 'Generate carrier documents');
     }
 };

@@ -82,7 +82,7 @@ describe('Internal shipment conversion service', () => {
             supportsConversionTarget: false
         }));
 
-        expect(InternalShipmentConversionService.getConversionTargetCarriers().map(carrier => carrier.code)).toEqual(['DGR', 'FEDEX', 'ARAMEX', 'SMSA', 'OTE']);
+        expect(InternalShipmentConversionService.getConversionTargetCarriers().map(carrier => carrier.code)).toEqual(['DGR', 'DGR2', 'FEDEX', 'ARAMEX', 'SMSA', 'OTE']);
     });
 
     it('converts an internal shipment in place without booking the carrier', async () => {

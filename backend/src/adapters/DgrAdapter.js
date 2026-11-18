@@ -88,6 +88,7 @@ class DgrAdapter extends CarrierAdapter {
      * @business_rule Defaults to system environment variables unless Organization-specific credentials are provided.
      */
     constructor(configOverrides = {}) {
+        const carrierCode = String(configOverrides.carrierCode || 'DGR').toUpperCase();
         const isTest = configOverrides.isTest === true || configOverrides.environment === 'test';
         const defaultBaseUrl = isTest ? (dhlTestApiUrl || 'https://express.api.dhl.com/mydhlapi/test') : (dhlApiUrl || 'https://express.api.dhl.com/mydhlapi');
         const defaultApiKey = isTest ? (dhlTestApiKey || dhlApiKey) : dhlApiKey;
@@ -101,11 +102,12 @@ class DgrAdapter extends CarrierAdapter {
 
         if ((!apiKey || !apiSecret) && process.env.NODE_ENV === 'production' && !isTest) {
             throw new Error(
-                'DGR (DHL) API credentials are required. Ensure OrganizationCredentials or .env keys are set.'
+                `${carrierCode} (DHL) API credentials are required. Ensure OrganizationCredentials or .env keys are set.`
             );
         }
 
-        super({ baseUrl, apiKey, apiSecret, accountNumber, isTest, environment: isTest ? 'test' : 'production' });
+        super({ baseUrl, apiKey, apiSecret, accountNumber, isTest, environment: isTest ? 'test' : 'production', carrierCode });
+        this.code = carrierCode;
     }
 
     /**
@@ -368,7 +370,7 @@ class DgrAdapter extends CarrierAdapter {
                 if (countryCode) {
                     const rateCardResult = RateCardService.calculateRate({
                         rateCardId,
-                        carrierCode: 'DGR',
+                        carrierCode: this.code,
                         countryCode,
                         weight: shipment.weight,
                         packages: shipment.packages
@@ -377,7 +379,7 @@ class DgrAdapter extends CarrierAdapter {
                         {
                             serviceName: `DHL Express Worldwide (${rateCardResult.rateCardName})`,
                             serviceCode: shipmentData.serviceCode || 'P',
-                            carrierCode: 'DGR',
+                            carrierCode: this.code,
                             totalPrice: rateCardResult.totalPrice,
                             currency: rateCardResult.currency || 'KWD',
                             deliveryDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
@@ -409,7 +411,7 @@ class DgrAdapter extends CarrierAdapter {
                 {
                     serviceName: 'DHL Express Worldwide (Estimate)',
                     serviceCode: 'P',
-                    carrierCode: 'DGR',
+                    carrierCode: this.code,
                     totalPrice: baseEst,
                     currency: shipment.currency || 'KWD',
                     deliveryDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
@@ -418,7 +420,7 @@ class DgrAdapter extends CarrierAdapter {
                 {
                     serviceName: 'DHL Express Document',
                     serviceCode: 'D',
-                    carrierCode: 'DGR',
+                    carrierCode: this.code,
                     totalPrice: Number((baseEst * 0.8).toFixed(3)),
                     currency: shipment.currency || 'KWD',
                     deliveryDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
@@ -455,9 +457,9 @@ class DgrAdapter extends CarrierAdapter {
                 return products.map((product) => {
                     const currency = this.extractCurrency(product, shipment.currency || 'KWD');
                     return {
-                        serviceName: product.productName || product.localProductName || `DGR ${product.productCode || 'Service'}`,
+                        serviceName: product.productName || product.localProductName || `${this.code} ${product.productCode || 'Service'}`,
                         serviceCode: product.productCode || product.localProductCode,
-                        carrierCode: 'DGR',
+                        carrierCode: this.code,
                         totalPrice: this.extractTotalPrice(product),
                         currency,
                         deliveryDate: product.deliveryCapabilities?.estimatedDeliveryDateAndTime,
@@ -507,7 +509,7 @@ class DgrAdapter extends CarrierAdapter {
                 {
                     serviceName: 'DHL Express Worldwide (Sandbox)',
                     serviceCode: 'P',
-                    carrierCode: 'DGR',
+                    carrierCode: this.code,
                     totalPrice: baseEst,
                     currency: shipment.currency || 'KWD',
                     deliveryDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
@@ -516,7 +518,7 @@ class DgrAdapter extends CarrierAdapter {
                 {
                     serviceName: 'DHL Express Document (Sandbox)',
                     serviceCode: 'D',
-                    carrierCode: 'DGR',
+                    carrierCode: this.code,
                     totalPrice: Number((baseEst * 0.8).toFixed(3)),
                     currency: shipment.currency || 'KWD',
                     deliveryDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
@@ -796,7 +798,7 @@ class DgrAdapter extends CarrierAdapter {
                 const { prisma } = require('../config/database');
                 await prisma.carrierLog.create({
                     data: {
-                        carrierCode: 'DGR',
+                        carrierCode: this.code,
                         requestType: 'book',
                         requestPayload: payload,
                         responsePayload: sanitized,
@@ -805,7 +807,7 @@ class DgrAdapter extends CarrierAdapter {
                     }
                 }).catch(e => console.error('CarrierLog Save Failed:', e.message));
 
-                let label, awb, invoice;
+                let label, awb, invoice, receipt;
                 const allRawDocs = [
                     ...(Array.isArray(res.data?.documents) ? res.data.documents : []),
                     ...(Array.isArray(res.data?.shipmentDocuments) ? res.data.shipmentDocuments : []),
@@ -829,18 +831,21 @@ class DgrAdapter extends CarrierAdapter {
 
                     const isLabelDoc = /label|transport|shipping/i.test(typeCode);
                     const isWaybillDoc = /waybill|awb|archive/i.test(typeCode);
+                    const isReceiptDoc = /receipt|shiprcpt/i.test(typeCode);
                     const isInvoiceDoc = /inv|customs|commercial/i.test(typeCode);
 
                     if (isLabelDoc && !label) {
                         label = contentUri;
                     } else if (isWaybillDoc && !awb) {
                         awb = contentUri;
+                    } else if (isReceiptDoc && !receipt) {
+                        receipt = contentUri;
                     } else if (isInvoiceDoc && !invoice) {
                         invoice = contentUri;
                     }
 
                     returnedDocuments.push({
-                        type: typeCode || 'document',
+                        type: isReceiptDoc ? 'receipt' : (typeCode || 'document'),
                         format,
                         url: contentUri
                     });
@@ -858,7 +863,7 @@ class DgrAdapter extends CarrierAdapter {
 
                 // If still missing and DHL provided a tracking number, attempt immediate document fetch via get-image
                 const returnedTracking = res.data.shipmentTrackingNumber;
-                if ((!label || !invoice) && returnedTracking) {
+                if ((!label || !invoice || !receipt) && returnedTracking) {
                     try {
                         const fallbackDocs = await this.getShipmentDocuments(returnedTracking, {
                             accountNumber: activeConfig.accountNumber,
@@ -867,6 +872,7 @@ class DgrAdapter extends CarrierAdapter {
                         if (!label && fallbackDocs.labelUrl) label = fallbackDocs.labelUrl;
                         if (!awb && (fallbackDocs.awbUrl || fallbackDocs.labelUrl)) awb = fallbackDocs.awbUrl || fallbackDocs.labelUrl;
                         if (!invoice && fallbackDocs.invoiceUrl) invoice = fallbackDocs.invoiceUrl;
+                        if (!receipt && fallbackDocs.receiptUrl) receipt = fallbackDocs.receiptUrl;
                         if (Array.isArray(fallbackDocs.documents)) {
                             returnedDocuments.push(...fallbackDocs.documents);
                         }
@@ -875,7 +881,7 @@ class DgrAdapter extends CarrierAdapter {
                     }
                 }
 
-                logger.info(`[DgrAdapter] Booking completed for ${returnedTracking || shipment.trackingNumber}: label=${Boolean(label)}, awb=${Boolean(awb)}, invoice=${Boolean(invoice)}, rawDocsCount=${allRawDocs.length}`);
+                logger.info(`[DgrAdapter] Booking completed for ${returnedTracking || shipment.trackingNumber}: label=${Boolean(label)}, awb=${Boolean(awb)}, invoice=${Boolean(invoice)}, receipt=${Boolean(receipt)}, rawDocsCount=${allRawDocs.length}`);
 
                 return {
                     trackingNumber: returnedTracking || shipment.trackingNumber,
@@ -884,6 +890,7 @@ class DgrAdapter extends CarrierAdapter {
                     labelUrl: label,
                     awbUrl: awb,
                     invoiceUrl: invoice,
+                    receiptUrl: receipt,
                     documents: returnedDocuments,
                     rawResponse: res.data
                 };
@@ -952,7 +959,7 @@ class DgrAdapter extends CarrierAdapter {
         const { prisma } = require('../config/database');
         await prisma.carrierLog.create({
             data: {
-                carrierCode: 'DGR',
+                carrierCode: this.code,
                 requestType: 'book',
                 requestPayload: lastPayload || {},
                 responsePayload: errorData || { message: lastError?.message || 'Unknown error' },
@@ -962,7 +969,7 @@ class DgrAdapter extends CarrierAdapter {
         }).catch(e => console.error('CarrierLog Save Failed:', e.message));
 
 
-        const providerError = new Error(`DGR Error: ${detailedMessage}`);
+        const providerError = new Error(`${this.code} Error: ${detailedMessage}`);
         providerError.statusCode = responseStatus;
         providerError.isProviderError = true;
         providerError.rawProviderError = errorData;
@@ -973,7 +980,7 @@ class DgrAdapter extends CarrierAdapter {
      * Fetches granular tracking history for a shipment.
      */
     async getTracking(trackingNumber, shipmentData = null) {
-        const cleanAwb = String(trackingNumber || '').replace(/^(?:TRK|DHL|DGR)-/i, '').trim() || trackingNumber;
+        const cleanAwb = String(trackingNumber || '').replace(/^(?:TRK|DHL2|DHL|DGR2|DGR)-/i, '').trim() || trackingNumber;
         try {
             const activeConfig = await this._getResolvedConfig(shipmentData);
             const res = await axios.get(`${activeConfig.baseUrl}/shipments/${cleanAwb}/tracking`, {
@@ -1045,7 +1052,7 @@ class DgrAdapter extends CarrierAdapter {
             return {
                 status: shipment.status?.statusCode || 'UNKNOWN',
                 description: shipment.status?.description || 'No status description',
-                carrierCode: 'DGR',
+                carrierCode: this.code,
                 trackingNumber,
                 estimatedDelivery,
                 carrierWeight: carrierWeight > 0 ? carrierWeight : undefined,
@@ -1063,7 +1070,7 @@ class DgrAdapter extends CarrierAdapter {
                         return {
                             status: fallbackResult.status || 'UNKNOWN',
                             description: fallbackResult.description || 'Web tracking scan',
-                            carrierCode: 'DGR',
+                            carrierCode: this.code,
                             trackingNumber,
                             estimatedDelivery: fallbackResult.estimatedDelivery || null,
                             carrierWeight: fallbackResult.carrierWeight,
@@ -1098,9 +1105,9 @@ class DgrAdapter extends CarrierAdapter {
         const accountNumber = options.accountNumber || options.shipperAccount || activeConfig.accountNumber;
         const requestedTypes = options.typeCode
             ? [options.typeCode]
-            : ['label', 'waybillDoc', 'invoice', 'customs-declarations', 'commercial-invoice'];
+            : ['label', 'waybillDoc', 'invoice', 'customs-declarations', 'commercial-invoice', 'shipmentReceipt'];
 
-        let label, awb, invoice;
+        let label, awb, invoice, receipt;
         const documents = [];
 
         for (const typeCode of requestedTypes) {
@@ -1133,18 +1140,21 @@ class DgrAdapter extends CarrierAdapter {
 
                     const isLabelDoc = /label|transport|shipping/i.test(docTypeCode);
                     const isWaybillDoc = /waybill|awb|archive/i.test(docTypeCode);
+                    const isReceiptDoc = /receipt|shiprcpt/i.test(docTypeCode);
                     const isInvoiceDoc = /inv|customs|commercial/i.test(docTypeCode);
 
                     if (isLabelDoc && !label) {
                         label = contentUri;
                     } else if (isWaybillDoc && !awb) {
                         awb = contentUri;
+                    } else if (isReceiptDoc && !receipt) {
+                        receipt = contentUri;
                     } else if (isInvoiceDoc && !invoice) {
                         invoice = contentUri;
                     }
 
                     documents.push({
-                        type: docTypeCode,
+                        type: isReceiptDoc ? 'receipt' : docTypeCode,
                         format: 'pdf',
                         url: contentUri
                     });
@@ -1172,6 +1182,7 @@ class DgrAdapter extends CarrierAdapter {
             labelUrl: label,
             awbUrl: awb,
             invoiceUrl: invoice,
+            receiptUrl: receipt,
             documents
         };
     }

@@ -1,5 +1,6 @@
 const ShipmentDraftService = require('./ShipmentDraftService');
 const { prisma } = require('../config/database');
+const diagnosticAttemptLog = require('./diagnosticAttemptLog.service');
 
 /**
  * Application-level shipment lifecycle operations.
@@ -47,14 +48,25 @@ class ShipmentLifecycleService {
         }
 
         if (!['pending', 'draft', 'booked', 'ready_for_pickup', 'pending_approval'].includes(shipment.status)) {
+            diagnosticAttemptLog.recordAttempt({
+                trackingNumber: shipment.trackingNumber,
+                carrierCode: shipment.carrierCode || 'SYSTEM',
+                action: 'PICKUP_RECORD',
+                status: 'VALIDATION_ERROR',
+                message: `Shipment cannot be picked up (Current status: ${shipment.status})`,
+                organizationId: shipment.organizationId || null
+            });
             const error = new Error(`Shipment cannot be picked up (Current status: ${shipment.status})`);
             error.statusCode = 400;
             throw error;
         }
 
+        const normalizedCarrier = String(shipment.carrierCode || '').toUpperCase();
+        const isInternal = normalizedCarrier === 'INTERNAL' || normalizedCarrier === 'MANUAL' || shipment.internallyManaged === true;
         const isAwaitingCarrierBooking = !shipment.dhlConfirmed &&
             !shipment.dhlTrackingNumber &&
-            shipment.carrierCode !== 'INTERNAL';
+            !shipment.carrierShipmentId &&
+            !isInternal;
         const nextStatus = isAwaitingCarrierBooking ? 'pending_approval' : 'picked_up';
         const description = isAwaitingCarrierBooking
             ? `Shipment collected from client by driver ${actor.name || ''}; awaiting hub verification & carrier approval`.trim()
@@ -97,7 +109,21 @@ class ShipmentLifecycleService {
             'received_at_hub', 'verified', 'in_transit'
         ];
         if (!allowedStatuses.includes(shipment.status)) {
+            diagnosticAttemptLog.recordAttempt({
+                trackingNumber: shipment.trackingNumber,
+                carrierCode: shipment.carrierCode || 'SYSTEM',
+                action: 'HUB_INTAKE',
+                status: 'VALIDATION_ERROR',
+                message: `Shipment status is ${shipment.status}. Must be in inbound/intake status to process.`,
+                organizationId: shipment.organizationId || null
+            });
             const error = new Error(`Shipment status is ${shipment.status}. Must be in inbound/intake status to process.`);
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (command.action && !['receive', 'verify', 'in_transit'].includes(String(command.action))) {
+            const error = new Error(`Invalid hub intake action '${command.action}'.`);
             error.statusCode = 400;
             throw error;
         }
@@ -199,7 +225,8 @@ class ShipmentLifecycleService {
             } catch (_) {}
         };
 
-        if (String(shipment.carrierCode || '').toUpperCase() === 'INTERNAL') {
+        const reviewCarrier = String(shipment.carrierCode || '').toUpperCase();
+        if (reviewCarrier === 'INTERNAL' || reviewCarrier === 'MANUAL' || shipment.internallyManaged === true) {
             triggerVerifiedNotification(receipt.updated || shipment);
             return { ...receipt, reviewCompleted: true };
         }

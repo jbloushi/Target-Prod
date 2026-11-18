@@ -11,6 +11,8 @@ const {
 } = require('./shippingAccess.service');
 const { canCreateShipmentForUser } = require('../middleware/authorize.middleware');
 const { hasCapability } = require('../middleware/rbac.policy');
+const { validateMinimumShipmentFields, buildValidationError } = require('./carrierMinimumValidation.service');
+const diagnosticAttemptLog = require('./diagnosticAttemptLog.service');
 
 const OTE_DEFAULT_COD_AMOUNT = 25;
 const OTE_DEFAULT_COD_CURRENCY = 'AED';
@@ -57,6 +59,7 @@ class ShipmentDraftService {
      * @returns {Object} Created Shipment
      */
     async createDraft(data, user) {
+        const startTime = Date.now();
         // Enforce role capability: drivers and unauthorized roles cannot create shipments
         if (user?.role && !hasCapability(user.role, 'CREATE_SHIPMENTS')) {
             const error = new Error('Not authorized to create shipments');
@@ -104,6 +107,28 @@ class ShipmentDraftService {
         const carrierCapabilities = CarrierFactory.getCarrierCapabilities(carrierCode) || {};
         const isInternalShipment = carrierCode === 'INTERNAL';
         const isInternalManaged = cleanData.internallyManaged === true || isInternalShipment;
+
+        if (data.status !== 'DRAFT' && data.isDraft !== true) {
+            const validation = validateMinimumShipmentFields({
+                ...cleanData,
+                sender: cleanData.origin,
+                receiver: cleanData.destination,
+                carrierCode
+            }, { carrierCode });
+
+            if (!validation.valid) {
+                diagnosticAttemptLog.recordAttempt({
+                    carrierCode,
+                    action: 'DRAFT_CREATE',
+                    status: 'VALIDATION_ERROR',
+                    durationMs: Date.now() - startTime,
+                    message: validation.errors[0]?.message || 'Validation failed',
+                    organizationId: cleanData.organizationId || targetUser.organizationId || null,
+                    details: { errors: validation.errors }
+                });
+                throw buildValidationError(validation);
+            }
+        }
 
         // 3. Rate Shopping & Pricing Snapshot
         const serviceCode = isInternalShipment ? null : (cleanData.serviceCode || defaultServiceCodeForCarrier(carrierCode));
@@ -294,6 +319,17 @@ class ShipmentDraftService {
 
         logger.debug(`ShipmentDraftService: Draft created with Tracking ${trackingNumber}, Org: ${targetUser.organizationId}`);
 
+        diagnosticAttemptLog.recordAttempt({
+            trackingNumber: shipment.trackingNumber,
+            carrierCode: shipment.carrierCode,
+            action: 'DRAFT_CREATE',
+            status: 'SUCCESS',
+            durationMs: Date.now() - startTime,
+            message: 'Shipment draft created',
+            organizationId: shipment.organizationId,
+            details: { status: shipment.status, serviceCode: shipment.serviceCode }
+        });
+
         return shipment;
     }
 
@@ -338,6 +374,7 @@ class ShipmentDraftService {
         }
 
         if (!quote) {
+            const rateStart = Date.now();
             // 1. Call Carrier
             const carrier = CarrierFactory.getAdapter(carrierCode, { isTest, environment });
             const quotes = await carrier.getRates({ ...data, isTest, environment });
@@ -348,8 +385,26 @@ class ShipmentDraftService {
                 quote = quotes.find(q => String(q.serviceCode).toUpperCase() === String(serviceCode).toUpperCase()) || quotes[0];
             }
             if (!quote) {
+                diagnosticAttemptLog.recordAttempt({
+                    carrierCode,
+                    action: 'RATE_QUOTE',
+                    status: 'FAILED',
+                    durationMs: Date.now() - rateStart,
+                    message: `Service ${serviceCode} not available from ${carrierCode}`,
+                    organizationId: user?.organizationId || null,
+                    details: { serviceCode }
+                });
                 throw new Error(`Service ${serviceCode} not available from ${carrierCode}`);
             }
+            diagnosticAttemptLog.recordAttempt({
+                carrierCode,
+                action: 'RATE_QUOTE',
+                status: 'SUCCESS',
+                durationMs: Date.now() - rateStart,
+                message: `Fetched quote for ${serviceCode}`,
+                organizationId: user?.organizationId || null,
+                details: { serviceCode: quote.serviceCode, totalPrice: quote.totalPrice, currency: quote.currency }
+            });
         }
 
         if (quote.requiresManualPricing) {
@@ -499,7 +554,12 @@ class ShipmentDraftService {
                 origin.name = origin.name || origin.contactPerson;
                 origin.phone = origin.phone || '+96500000000';
             } else {
-                throw new Error('Sender address is required');
+                const err = new Error('Sender address is required');
+                err.statusCode = 400;
+                err.isValidationError = true;
+                err.field = 'sender_addr1';
+                err.errors = [{ field: 'sender_addr1', step: 1, message: 'Sender address is required' }];
+                throw err;
             }
         }
         if (!destination || !destination.formattedAddress) {
@@ -510,7 +570,12 @@ class ShipmentDraftService {
                 destination.name = destination.name || destination.contactPerson;
                 destination.phone = destination.phone || '+96500000000';
             } else {
-                throw new Error('Receiver address is required');
+                const err = new Error('Receiver address is required');
+                err.statusCode = 400;
+                err.isValidationError = true;
+                err.field = 'receiver_addr1';
+                err.errors = [{ field: 'receiver_addr1', step: 2, message: 'Receiver address is required' }];
+                throw err;
             }
         }
 

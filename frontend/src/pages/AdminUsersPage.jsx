@@ -11,7 +11,17 @@ const CARRIER_SERVICE_OPTIONS = {
         { serviceCode: 'Y', serviceName: 'DHL Express 12:00' },
         { serviceCode: 'H', serviceName: 'DHL Economy Select' }
     ],
+    DGR2: [
+        { serviceCode: 'P', serviceName: 'DHL Express Worldwide' },
+        { serviceCode: 'Y', serviceName: 'DHL Express 12:00' },
+        { serviceCode: 'H', serviceName: 'DHL Economy Select' }
+    ],
     DHL: [
+        { serviceCode: 'P', serviceName: 'DHL Express Worldwide' },
+        { serviceCode: 'Y', serviceName: 'DHL Express 12:00' },
+        { serviceCode: 'H', serviceName: 'DHL Economy Select' }
+    ],
+    DHL2: [
         { serviceCode: 'P', serviceName: 'DHL Express Worldwide' },
         { serviceCode: 'Y', serviceName: 'DHL Express 12:00' },
         { serviceCode: 'H', serviceName: 'DHL Economy Select' }
@@ -1221,7 +1231,8 @@ const AdminUsersPage = () => {
                                             >
                                                 {(availableCarriers.length ? availableCarriers : [
                                                     { code: 'MANUAL', name: 'Manual Shipment', active: true },
-                                                    { code: 'DGR', name: 'DHL Express (DGR)', active: true },
+                                                    { code: 'DGR', name: 'DGR', active: true },
+                                                    { code: 'DGR2', name: 'DHL', active: true },
                                                     { code: 'ARAMEX', name: 'Aramex', active: true },
                                                     { code: 'OTE', name: 'LogesTechs (OTE)', active: true },
                                                     { code: 'SMSA', name: 'SMSA Express', active: true }

@@ -441,10 +441,18 @@ const WarehouseScanPage = () => {
                                             {/* Mask cutout border */}
                                             <div className="relative w-64 h-48 sm:w-72 sm:h-52 border-2 border-primary/80 rounded-2xl shadow-[0_0_20px_rgba(0,80,212,0.3)]">
                                                 {/* Corner brackets */}
-                                                <div className="absolute -top-1 -start-1 w-5 h-5 border-t-4 border-s-4 border-primary rounded-tl-lg"></div>
-                                                <div className="absolute -top-1 -end-1 w-5 h-5 border-t-4 border-e-4 border-primary rounded-tr-lg"></div>
-                                                <div className="absolute -bottom-1 -start-1 w-5 h-5 border-b-4 border-s-4 border-primary rounded-bl-lg"></div>
-                                                <div className="absolute -bottom-1 -end-1 w-5 h-5 border-b-4 border-e-4 border-primary rounded-br-lg"></div>
+                                                <svg className="absolute -top-1 -start-1 w-5 h-5 text-primary rtl:-scale-x-100" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                                                    <path d="M20 2 H6 A4 4 0 0 0 2 6 V20" />
+                                                </svg>
+                                                <svg className="absolute -top-1 -end-1 w-5 h-5 text-primary rtl:-scale-x-100" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                                                    <path d="M0 2 H14 A4 4 0 0 1 18 6 V20" />
+                                                </svg>
+                                                <svg className="absolute -bottom-1 -start-1 w-5 h-5 text-primary rtl:-scale-x-100" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                                                    <path d="M20 18 H6 A4 4 0 0 1 2 14 V0" />
+                                                </svg>
+                                                <svg className="absolute -bottom-1 -end-1 w-5 h-5 text-primary rtl:-scale-x-100" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                                                    <path d="M0 18 H14 A4 4 0 0 0 18 14 V0" />
+                                                </svg>
 
                                                 {/* Horizontal Scanning Laser line */}
                                                 {isScanning && (

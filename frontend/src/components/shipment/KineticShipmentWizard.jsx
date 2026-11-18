@@ -181,12 +181,21 @@ export const DEFAULT_PACKAGE_TEMPLATES = [
 const KNOWN_CARRIERS = {
   DGR: {
     code: 'DGR',
-    name: 'DHL Express Global',
+    name: 'DGR Express Global',
     badge: 'Express Air Network',
     color: '#D40511',
     bg: '#FEF2F2',
     icon: 'flight_takeoff',
     desc: 'Worldwide priority express with customs clearance and door-to-door courier.'
+  },
+  DGR2: {
+    code: 'DGR2',
+    name: 'DHL Express Global',
+    badge: 'Express Air Network',
+    color: '#D40511',
+    bg: '#FEF2F2',
+    icon: 'flight_takeoff',
+    desc: 'DHL Express account for worldwide priority express and customs clearance.'
   },
   FEDEX: {
     code: 'FEDEX',

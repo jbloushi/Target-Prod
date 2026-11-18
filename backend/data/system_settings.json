@@ -7,9 +7,15 @@
       "active": true
     },
     "DGR": {
-      "name": "Target International Air (DHL DGR)",
+      "name": "Target International Air (DGR)",
       "description": "Worldwide express air freight with dangerous goods certification",
       "badge": "Global Air",
+      "active": true
+    },
+    "DGR2": {
+      "name": "Target International Air (DHL)",
+      "description": "DHL Express account for international air freight",
+      "badge": "DHL Express",
       "active": true
     },
     "OTE": {
@@ -38,17 +44,19 @@
   },
   "carrierEnvironments": {
     "DHL": "test",
+    "DGR2": "test",
     "OTE": "test",
-    "SMSA": "test"
+    "SMSA": "production",
+    "ARAMEX": "test"
   },
   "whatsapp": {
     "enabled": true,
     "provider": "SHIPMENT_WHATSAPP",
     "serviceUrl": "https://msg.target-kw.com",
-    "phoneNumberId": "201163949758098",
-    "businessAccountId": "257192317476419",
-    "accessToken": "EAAOR5zRPCjQBRmHh8DH649uZBZAMhJdR1ZA2Gy4iPQfBLlfs3ZCpPcvYkEfeW9RABQZCbdag2JsTsB9TLKWs4XasQfOwjCtSGe1C01V8LPYvwZCEES85ArQIYhpkJSifvnpgH36iNEwAcn5ZCbvy71uZAdFdzHOAOo1YIS5UfooeDu5sUrbZBjNPiH0Lox1nkyhMcZCgZDZD",
-    "webhookVerifyToken": "target_logistics_meta_verify_secret_2026",
+    "phoneNumberId": "",
+    "businessAccountId": "",
+    "accessToken": "",
+    "webhookVerifyToken": "",
     "metaAppId": "",
     "metaAppSecret": ""
   },

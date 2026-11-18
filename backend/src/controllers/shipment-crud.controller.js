@@ -14,6 +14,7 @@ const { syncCarrierTrackingHistory, buildTrackingSyncDocuments, hasCriticalChang
 const chatwootNotificationService = require('../services/chatwootNotificationService');
 const WebhookDispatcher = require('../services/WebhookDispatcher');
 const { isTrackingSyncDue, markTrackingSynced, triggerBackgroundTrackingSync } = require('../services/queue/trackingCache');
+const diagnosticAttemptLog = require('../services/diagnosticAttemptLog.service');
 
 /**
  * Resolve date range filter from query params
@@ -699,6 +700,14 @@ exports.createShipment = async (req, res) => {
 
         res.status(200).json({ success: true, data: shipment, message: 'Shipment created successfully' });
     } catch (error) {
+        if (error?.isValidationError) {
+            return res.status(400).json({
+                success: false,
+                error: error.message,
+                field: error.field || error.errors?.[0]?.field || null,
+                errors: error.errors || []
+            });
+        }
         return handleControllerError(res, error, 'Shipment creation');
     }
 };
@@ -801,6 +810,7 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
         // Always synchronous on detail view so the response contains the latest tracking data
         const hasOnlyBaseline = !shipment.history || (Array.isArray(shipment.history) && shipment.history.length <= 1);
         if (req.query.refresh === 'true' || req.query.sync === 'true' || hasOnlyBaseline || isTrackingSyncDue(shipment)) {
+            const syncStart = Date.now();
             const updates = await syncCarrierTrackingHistory(shipment);
             if (updates) {
                 const dataToUpdate = {
@@ -821,6 +831,15 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
                 });
                 shipment.history = updates.history;
                 shipment.status = updates.status;
+                diagnosticAttemptLog.recordAttempt({
+                    trackingNumber: shipment.trackingNumber,
+                    carrierCode: shipment.carrierCode || 'SYSTEM',
+                    action: 'TRACKING_SYNC',
+                    status: 'SUCCESS',
+                    durationMs: Date.now() - syncStart,
+                    message: `Synced tracking status: ${updates.status}`,
+                    organizationId: shipment.organizationId || null
+                });
             }
             markTrackingSynced(shipment.trackingNumber);
         }
@@ -1301,10 +1320,27 @@ exports.updateShipment = async (req, res) => {
         if (updates.status && updates.status !== shipment.status) {
             const validStatuses = shipmentIsInternal ? INTERNAL_SHIPMENT_STATUSES : SHIPMENT_STATUSES;
             if (!validStatuses.includes(updates.status)) {
-                return res.status(400).json({ success: false, error: `Invalid shipment status '${updates.status}'. Valid: ${validStatuses.join(', ')}` });
+                const msg = `Invalid shipment status '${updates.status}'. Valid: ${validStatuses.join(', ')}`;
+                return res.status(400).json({
+                    success: false,
+                    error: msg,
+                    field: 'status',
+                    errors: [{ field: 'status', message: msg }]
+                });
             }
             if (!canUpdateShipmentStatus(user, shipment, updates.status)) {
                 return res.status(403).json({ success: false, error: 'Permission denied to update shipment status' });
+            }
+            const currentStatus = String(shipment.status || '').toLowerCase();
+            const nextStatus = String(updates.status || '').toLowerCase();
+            if (['delivered', 'cancelled', 'returned'].includes(currentStatus) && ['draft', 'pending', 'pending_approval'].includes(nextStatus)) {
+                const msg = `Cannot transition shipment from terminal status '${shipment.status}' back to '${updates.status}'.`;
+                return res.status(400).json({
+                    success: false,
+                    error: msg,
+                    field: 'status',
+                    errors: [{ field: 'status', message: msg }]
+                });
             }
         }
 
@@ -1365,12 +1401,37 @@ exports.updateShipment = async (req, res) => {
         // Always commit the updated origin blob
         updateData.origin = nextOrigin;
 
-        if (canManageManualFields && updates.price !== undefined) {
-            const price = Number(updates.price);
-            updateData.price = price;
+        if (canManageManualFields && (updates.price !== undefined || updates.costPrice !== undefined)) {
+            const hasPriceUpdate = updates.price !== undefined && updates.price !== '' && updates.price !== null;
+            const hasCostUpdate = updates.costPrice !== undefined && updates.costPrice !== '' && updates.costPrice !== null;
+
+            if (hasPriceUpdate && (!Number.isFinite(Number(updates.price)) || Number(updates.price) < 0)) {
+                const msg = 'Price must be a valid non-negative number.';
+                return res.status(400).json({ success: false, error: msg, field: 'price', errors: [{ field: 'price', message: msg }] });
+            }
+            if (hasCostUpdate && (!Number.isFinite(Number(updates.costPrice)) || Number(updates.costPrice) < 0)) {
+                const msg = 'Cost price must be a valid non-negative number.';
+                return res.status(400).json({ success: false, error: msg, field: 'costPrice', errors: [{ field: 'costPrice', message: msg }] });
+            }
+
+            const price = hasPriceUpdate ? Number(updates.price) : Number(shipment.price ?? 0);
+            const costPrice = hasCostUpdate ? Number(updates.costPrice) : Number(shipment.costPrice ?? 0);
+            const markupAmount = Number(Math.max(0, price - costPrice).toFixed(3));
+
+            if (hasPriceUpdate) {
+                updateData.price = price;
+                updateData.remainingBalance = shipment.paid
+                    ? 0
+                    : Math.max(0, Number((price - Number(shipment.totalPaid || 0)).toFixed(4)));
+            }
+            if (hasCostUpdate) {
+                updateData.costPrice = costPrice;
+            }
+            updateData.markupAmount = markupAmount;
             updateData.pricingSnapshot = {
                 ...(shipment.pricingSnapshot || {}),
-                carrierRate: Number(updates.costPrice ?? shipment.costPrice ?? 0),
+                carrierRate: costPrice,
+                markup: markupAmount,
                 totalPrice: price,
                 currency: updates.currency || shipment.currency || 'KWD',
                 policySource: 'manual',
