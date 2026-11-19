@@ -1703,8 +1703,8 @@ class ChatwootNotificationService {
 
         targets.push(...allTargets);
 
-        // When provider is SHIPMENT_WHATSAPP, META, or MOCK, route directly to WhatsApp integration
-        if (activeProvider === 'SHIPMENT_WHATSAPP' || activeProvider === 'TARGET_MSG' || activeProvider === 'META' || activeProvider === 'MOCK') {
+        // When provider is SHIPMENT_WHATSAPP, META, EVOLUTION, or MOCK, route directly to WhatsApp integration
+        if (activeProvider === 'SHIPMENT_WHATSAPP' || activeProvider === 'TARGET_MSG' || activeProvider === 'META' || activeProvider === 'EVOLUTION' || activeProvider === 'MOCK') {
             const whatsappIntegration = require('./whatsappIntegration.service');
             const results = [];
             for (const target of targets) {

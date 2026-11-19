@@ -269,6 +269,69 @@ async function sendViaShipmentWhatsappMicroservice({ serviceUrl = 'https://msg.t
     };
 }
 
+/**
+ * Resolve Evolution API credentials with `.env` taking precedence and DB config as fallback.
+ */
+function resolveEvolutionConfig(settings = {}) {
+    const baseUrl = (settings.evolutionUrl || process.env.WHATSAPP_EVOLUTION_URL || (settings.provider === 'EVOLUTION' ? settings.serviceUrl : '') || 'https://evo.mawthook.io').replace(/\/+$/, '');
+    const instanceName = String(settings.evolutionInstance || process.env.WHATSAPP_EVOLUTION_INSTANCE || (settings.provider === 'EVOLUTION' ? settings.phoneId : '') || '').trim();
+    const apiKey = String(settings.evolutionApiKey || process.env.WHATSAPP_EVOLUTION_API_KEY || (settings.provider === 'EVOLUTION' ? settings.apiKey : '') || '').trim();
+    return { baseUrl, instanceName, apiKey };
+}
+
+/**
+ * Send a WhatsApp text message via Evolution API v2 (`POST /message/sendText/{instance}`).
+ */
+async function sendViaEvolutionApi({ settings = {}, toPhone, text }) {
+    const { baseUrl, instanceName, apiKey } = resolveEvolutionConfig(settings);
+    if (!instanceName || !apiKey) {
+        throw new Error('Evolution API credentials missing (set WHATSAPP_EVOLUTION_INSTANCE and WHATSAPP_EVOLUTION_API_KEY in .env)');
+    }
+
+    const cleanDigits = String(toPhone || '').replace(/\D/g, '');
+    const url = `${baseUrl}/message/sendText/${encodeURIComponent(instanceName)}`;
+    const payload = {
+        number: cleanDigits,
+        text: String(text || '')
+    };
+
+    const res = await axios.post(url, payload, {
+        headers: {
+            apikey: apiKey,
+            'Content-Type': 'application/json'
+        },
+        timeout: 15000
+    });
+
+    const wamid = res.data?.key?.id || res.data?.messageId || res.data?.id || `evo_${Date.now()}`;
+    return {
+        status: 'SENT',
+        messageId: wamid,
+        rawResponse: res.data,
+        payload
+    };
+}
+
+function buildEvolutionShipmentText({ context = {}, shipment = {}, customMessage = null, resolvedReceiverName, resolvedReceiverPhone }) {
+    if (customMessage) return String(customMessage);
+    const tracking = shipment.dhlTrackingNumber || context.trackingNumber || shipment.trackingNumber || '-';
+    const invoice = context.invoiceNumber || shipment.invoiceNumber || shipment.trackingNumber || '-';
+    const dateDisplay = context.shipmentDateDisplay || formatLegibleDate(shipment.createdAt || context.updatedAt || new Date());
+    const receiverName = resolvedReceiverName || shipment.destination?.name || 'Customer';
+    const receiverPhone = resolvedReceiverPhone || shipment.destination?.phone || '-';
+    const trackingUrl = context.publicTrackingLink || `https://target-kw.com/track/${context.trackingNumber || shipment.trackingNumber}`;
+    return (
+        `📦 *Shipment: ${tracking}*\n` +
+        `Thank you for choosing Target Logistics.\n\n` +
+        `Invoice: ${invoice}\n` +
+        `Date: ${dateDisplay}\n` +
+        `Receiver Name: ${receiverName}\n` +
+        `Receiver Tel: ${receiverPhone}\n\n` +
+        `Track Order: ${trackingUrl}\n\n` +
+        `Target Logistics\nwww.target-kw.com`
+    );
+}
+
 function buildMicroserviceVariables({
     chosenTemplate,
     context,
@@ -1287,6 +1350,45 @@ class WhatsAppIntegrationService {
             return { status: 'SENT', logId: updated.id, externalMessageId: mockWamid, provider: 'MOCK' };
         }
 
+        // 3b. Evolution API Dispatch (evo.mawthook.io)
+        if (provider === 'EVOLUTION') {
+            try {
+                const evoText = buildEvolutionShipmentText({
+                    context,
+                    shipment,
+                    customMessage,
+                    resolvedReceiverName,
+                    resolvedReceiverPhone
+                });
+                const result = await sendViaEvolutionApi({ settings, toPhone: phone, text: evoText });
+
+                const updated = await prisma.shipmentNotificationLog.update({
+                    where: { id: log.id },
+                    data: {
+                        status: 'SENT',
+                        chatwootMessageId: result.messageId,
+                        provider: 'EVOLUTION',
+                        payloadJson: result.payload,
+                        responseJson: result.rawResponse
+                    }
+                });
+
+                return { status: 'SENT', logId: updated.id, externalMessageId: result.messageId, provider: 'EVOLUTION' };
+            } catch (evoErr) {
+                const errorData = evoErr.response?.data || { message: evoErr.message };
+                logger.error(`[WhatsApp Evolution API Error] ${evoErr.message}`, errorData);
+                await prisma.shipmentNotificationLog.update({
+                    where: { id: log.id },
+                    data: {
+                        status: 'FAILED',
+                        errorMessage: evoErr.response?.data?.message || evoErr.message,
+                        responseJson: errorData
+                    }
+                });
+                throw new Error(`Evolution API request failed: ${evoErr.response?.data?.message || evoErr.message}`);
+            }
+        }
+
         // 4. Direct Meta WhatsApp Business API Cloud Endpoint
         try {
             const url = `https://graph.facebook.com/v19.0/${settings.phoneNumberId}/messages`;
@@ -1378,6 +1480,11 @@ class WhatsAppIntegrationService {
                 variables: vars,
                 apiKey: settings.apiKey || null
             });
+        }
+
+        if (provider === 'EVOLUTION') {
+            const result = await sendViaEvolutionApi({ settings, toPhone: cleanPhone, text: messageText });
+            return { status: 'SENT', externalMessageId: result.messageId, provider: 'EVOLUTION', phone, response: result.rawResponse };
         }
 
         if (provider === 'MOCK' || !settings.accessToken || !settings.phoneNumberId) {
@@ -1641,6 +1748,21 @@ www.target-kw.com | +965 6965 6563`;
         const bodyText = `Please share code ${otp} with delivery agent after verifying the package.`;
 
         logger.info(`[WhatsApp OTP Dispatch] Template: ${templateName} [${langCode}] Target: ${maskPhoneForLog(cleanPhone)} Provider: ${provider}`);
+
+        // 0. Explicit Evolution API OTP Dispatch when EVOLUTION is selected as primary provider
+        if (provider === 'EVOLUTION') {
+            try {
+                const evoRes = await sendViaEvolutionApi({
+                    settings,
+                    toPhone: cleanPhone,
+                    text: `Your Target Logistics login code is ${otp}. Expires in 3 minutes.`
+                });
+                logger.info(`[WhatsApp OTP Sent via Evolution API] Message ID: ${evoRes.messageId}`);
+                return { status: 'SENT', externalMessageId: evoRes.messageId, provider: 'EVOLUTION' };
+            } catch (evoErr) {
+                logger.warn(`[WhatsApp OTP Evolution Error] ${evoErr.message}`);
+            }
+        }
 
         // 1. Direct Meta WhatsApp Business API Cloud Endpoint (Most accurate for Authentication / Custom templates)
         if (settings.accessToken && settings.phoneNumberId) {

@@ -214,199 +214,196 @@ export const RateCardsManager = () => {
   });
 
   return (
-    <div className="space-y-6">
-      {/* Top Banner & Quick Actions */}
-      <div className="card bg-base-100 border border-base-200 shadow-sm p-6">
+    <div className="space-y-5">
+      {/* Top Header & Quick Actions */}
+      <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary text-2xl">table_chart</span>
-              <h2 className="text-xl font-bold tracking-tight">
-                {lang === 'ar' ? 'إدارة بطاقات الأسعار وعقود الشحن' : 'Carrier Contract Rate Cards & Matrices'}
-              </h2>
-            </div>
-            <p className="text-sm text-base-content/70">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
+              {lang === 'ar' ? 'إدارة بطاقات الأسعار وعقود الشحن' : 'Carrier Contract Rate Cards & Matrices'}
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-2xl">
               {lang === 'ar'
                 ? 'اربط أسعار العقود الخاصة للعملاء بناءً على شرائح الوزن ومناطق الشحن (Zones 1-9) مثل عقود DHL Express وغيرها.'
-                : 'Manage customer contract rate cards with zone-based pricing tiers (Zones 1-9). Used by DHL Express contracts and customer-specific tariffs.'}
+                : 'Manage customer contract rate cards with zone-based pricing tiers (Zones 1-9) for DHL Express and custom tariffs.'}
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             <a
               href="/settings?tab=fallback"
-              className="btn btn-outline btn-accent btn-sm gap-2"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
               title={lang === 'ar' ? 'إعدادات تسعير الطوارئ والبدائل' : 'Manage Fallback Pricing & Tariffs'}
             >
-              <span className="material-symbols-outlined text-base">shield</span>
-              <span>{lang === 'ar' ? 'تسعير الطوارئ والبدائل' : 'Fallback Pricing'}</span>
+              <span className="material-symbols-outlined text-base text-primary" aria-hidden="true">shield</span>
+              <span>{lang === 'ar' ? 'تسعير الطوارئ' : 'Fallback Pricing'}</span>
             </a>
 
             <button
+              type="button"
               onClick={handleDownloadSample}
-              className="btn btn-outline btn-sm gap-2"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer transition-colors"
               title={lang === 'ar' ? 'تحميل نموذج Excel المعتمد' : 'Download standard Excel sample template'}
             >
-              <span className="material-symbols-outlined text-base text-success">download</span>
-              <span>{lang === 'ar' ? 'تحميل نموذج Excel' : 'Download Sample (.xlsx)'}</span>
+              <span className="material-symbols-outlined text-base text-emerald-600 dark:text-emerald-400" aria-hidden="true">download</span>
+              <span>{lang === 'ar' ? 'نموذج Excel' : 'Sample (.xlsx)'}</span>
             </button>
 
             <button
+              type="button"
               onClick={() => setUploadModalOpen(true)}
-              className="btn btn-primary btn-sm gap-2 shadow-sm"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-semibold cursor-pointer transition-colors"
             >
-              <span className="material-symbols-outlined text-base">upload_file</span>
-              <span>{lang === 'ar' ? 'رفع بطاقة أسعار جديدة' : 'Upload Rate Card'}</span>
+              <span className="material-symbols-outlined text-base" aria-hidden="true">upload_file</span>
+              <span>{lang === 'ar' ? 'رفع بطاقة أسعار' : 'Upload Rate Card'}</span>
             </button>
           </div>
         </div>
 
-        {/* Quick Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 pt-6 border-t border-base-200">
-          <div className="bg-base-200/50 rounded-xl p-3">
-            <div className="text-xs text-base-content/60">{lang === 'ar' ? 'إجمالي البطاقات' : 'Total Rate Cards'}</div>
-            <div className="text-xl font-black text-primary mt-1">{rateCards.length}</div>
+        {/* Summary Strip */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5 pt-5 border-t border-slate-200 dark:border-slate-800">
+          <div className="rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 px-3.5 py-3">
+            <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'إجمالي البطاقات' : 'Total Rate Cards'}</div>
+            <div className="text-lg font-bold tabular-nums text-primary mt-0.5">{rateCards.length}</div>
           </div>
-          <div className="bg-base-200/50 rounded-xl p-3">
-            <div className="text-xs text-base-content/60">{lang === 'ar' ? 'العقد الافتراضي' : 'Default Contract'}</div>
-            <div className="text-sm font-bold text-base-content mt-1">5535 - AMANI (DGR)</div>
+          <div className="rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 px-3.5 py-3">
+            <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'العقد الافتراضي' : 'Default Contract'}</div>
+            <div className="text-xs font-bold text-slate-900 dark:text-slate-100 mt-1">5535 - AMANI (DGR)</div>
           </div>
-          <div className="bg-base-200/50 rounded-xl p-3">
-            <div className="text-xs text-base-content/60">{lang === 'ar' ? 'المناطق المغطاة' : 'Zones Supported'}</div>
-            <div className="text-sm font-bold text-base-content mt-1">9 DHL Zones (1-9)</div>
+          <div className="rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 px-3.5 py-3">
+            <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'المناطق المغطاة' : 'Zones Supported'}</div>
+            <div className="text-xs font-bold text-slate-900 dark:text-slate-100 mt-1">9 DHL Zones (1-9)</div>
           </div>
-          <div className="bg-base-200/50 rounded-xl p-3">
-            <div className="text-xs text-base-content/60">{lang === 'ar' ? 'شرائح الوزن' : 'Weight Brackets'}</div>
-            <div className="text-sm font-bold text-base-content mt-1">0.5 kg - 30.0 kg + Flat/KG</div>
+          <div className="rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 px-3.5 py-3">
+            <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'شرائح الوزن' : 'Weight Brackets'}</div>
+            <div className="text-xs font-bold tabular-nums text-slate-900 dark:text-slate-100 mt-1">0.5 kg – 30.0 kg + Flat/KG</div>
           </div>
         </div>
       </div>
 
       {/* Cards Table Section */}
-      <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-base-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <span className="font-bold text-base">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
               {lang === 'ar' ? 'البطاقات المتاحة للنظام' : 'Active System Rate Cards'}
+            </h3>
+            <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[11px] font-semibold tabular-nums text-slate-700 dark:text-slate-300">
+              {filteredCards.length}
             </span>
-            <span className="badge badge-sm badge-neutral">{filteredCards.length}</span>
           </div>
 
-          <div className="w-full sm:w-64">
-            <div className="relative">
-              <input
-                type="text"
-                placeholder={lang === 'ar' ? 'بحث بالاسم أو المعرف...' : 'Search by ID or name...'}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="input input-sm input-bordered w-full ps-8"
-              />
-              <span className="material-symbols-outlined text-sm absolute top-2.5 start-2.5 text-base-content/40">
-                search
-              </span>
-            </div>
+          <div className="w-full sm:w-64 relative">
+            <input
+              type="text"
+              placeholder={lang === 'ar' ? 'بحث بالاسم أو المعرف...' : 'Search by ID or name...'}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full h-9 ps-9 pe-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-xs text-slate-900 dark:text-slate-100"
+            />
+            <span className="material-symbols-outlined text-base absolute top-1/2 -translate-y-1/2 start-2.5 text-slate-400" aria-hidden="true">
+              search
+            </span>
           </div>
         </div>
 
         {loading ? (
           <div className="p-12 text-center">
             <span className="loading loading-spinner loading-md text-primary" />
-            <p className="text-xs text-base-content/50 mt-2">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
               {lang === 'ar' ? 'جارٍ تحميل بطاقات الأسعار...' : 'Loading rate cards...'}
             </p>
           </div>
         ) : filteredCards.length === 0 ? (
-          <div className="p-12 text-center space-y-3">
-            <span className="material-symbols-outlined text-4xl text-base-content/30">playlist_remove</span>
-            <p className="text-sm font-semibold text-base-content/70">
+          <div className="p-12 text-center space-y-2">
+            <span className="material-symbols-outlined text-4xl text-slate-300 dark:text-slate-600" aria-hidden="true">playlist_remove</span>
+            <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
               {lang === 'ar' ? 'لم يتم العثور على بطاقات أسعار' : 'No rate cards found'}
             </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="table table-zebra w-full text-sm">
-              <thead className="bg-base-200/60 text-xs uppercase font-semibold text-base-content/70">
-                <tr>
-                  <th>{lang === 'ar' ? 'معرف البطاقة (ID)' : 'Card ID'}</th>
-                  <th>{lang === 'ar' ? 'اسم البطاقة' : 'Display Name'}</th>
-                  <th>{lang === 'ar' ? 'الناقل' : 'Carrier'}</th>
-                  <th>{lang === 'ar' ? 'طريقة التسعير' : 'Pricing Mode'}</th>
-                  <th>{lang === 'ar' ? 'العملة' : 'Currency'}</th>
-                  <th>{lang === 'ar' ? 'الشرائح والمناطق' : 'Coverage'}</th>
-                  <th className="text-end">{lang === 'ar' ? 'الإجراءات' : 'Actions'}</th>
+            <table className="w-full text-start border-collapse text-xs">
+              <thead>
+                <tr className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
+                  <th className="py-2.5 px-4 text-start font-semibold">{lang === 'ar' ? 'معرف البطاقة (ID)' : 'Card ID'}</th>
+                  <th className="py-2.5 px-4 text-start font-semibold">{lang === 'ar' ? 'اسم البطاقة' : 'Display Name'}</th>
+                  <th className="py-2.5 px-4 text-start font-semibold">{lang === 'ar' ? 'الناقل' : 'Carrier'}</th>
+                  <th className="py-2.5 px-4 text-start font-semibold">{lang === 'ar' ? 'طريقة التسعير' : 'Pricing Mode'}</th>
+                  <th className="py-2.5 px-4 text-start font-semibold">{lang === 'ar' ? 'العملة' : 'Currency'}</th>
+                  <th className="py-2.5 px-4 text-start font-semibold">{lang === 'ar' ? 'الشرائح والمناطق' : 'Coverage'}</th>
+                  <th className="py-2.5 px-4 text-end font-semibold">{lang === 'ar' ? 'الإجراءات' : 'Actions'}</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredCards.map((card) => {
                   const isBuiltIn = card.id === '5535_AMANI' || card.id === 'DHL_5535_AMANI';
                   return (
-                    <tr key={card.id} className="hover">
-                      <td>
+                    <tr key={card.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition-colors">
+                      <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
                           <span className="font-mono font-bold text-primary">{card.id}</span>
                           {isBuiltIn && (
-                            <span className="badge badge-xs badge-info font-medium">
+                            <span className="px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-700 dark:text-sky-300 text-[10px] font-semibold">
                               {lang === 'ar' ? 'نظامي' : 'System Default'}
                             </span>
                           )}
                         </div>
                       </td>
-                      <td className="font-semibold text-base-content">{card.name}</td>
-                      <td>
-                        <span className="badge badge-sm badge-outline font-semibold">
+                      <td className="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100">{card.name}</td>
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 font-mono text-[11px] font-semibold text-slate-700 dark:text-slate-300">
                           {card.carrierCode || 'DGR'}
                         </span>
                       </td>
-                      <td>
+                      <td className="py-3 px-4">
                         {card.pricingMode === 'SELLING_PRICE' ? (
-                          <span className="badge badge-sm badge-success gap-1 text-xs font-semibold">
-                            <span className="w-1.5 h-1.5 rounded-full bg-success-content" />
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                             {lang === 'ar' ? 'سعر بيع للعميل' : 'Selling Price'}
                           </span>
                         ) : (
-                          <span className="badge badge-sm badge-ghost gap-1 text-xs">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[11px] font-semibold">
                             {lang === 'ar' ? 'تكلفة أساسية' : 'Base Cost'}
                           </span>
                         )}
                       </td>
-                      <td>
-                        <span className="font-mono font-bold text-xs">{card.currency || 'KWD'}</span>
-                      </td>
-                      <td>
-                        <div className="text-xs text-base-content/80">
-                          <div>
-                            <span className="font-semibold">{card.totalBrackets || 60}</span> {lang === 'ar' ? 'شريحة' : 'brackets'} (0.5 - {card.maxBracketWeight || 30.0} kg)
-                          </div>
-                          <div className="text-base-content/50 text-[11px]">
-                            {card.zones?.length ? `Zones ${card.zones.join(', ')}` : 'Zones 1 - 9'}
-                          </div>
+                      <td className="py-3 px-4 font-mono font-bold text-slate-800 dark:text-slate-200">{card.currency || 'KWD'}</td>
+                      <td className="py-3 px-4">
+                        <div className="text-slate-800 dark:text-slate-200 tabular-nums">
+                          <span className="font-semibold">{card.totalBrackets || 60}</span> {lang === 'ar' ? 'شريحة' : 'brackets'} (0.5 – {card.maxBracketWeight || 30.0} kg)
+                        </div>
+                        <div className="text-slate-500 dark:text-slate-400 text-[11px]">
+                          {card.zones?.length ? `Zones ${card.zones.join(', ')}` : 'Zones 1 – 9'}
                         </div>
                       </td>
-                      <td className="text-end">
-                        <div className="flex items-center justify-end gap-1">
+                      <td className="py-3 px-4 text-end">
+                        <div className="flex items-center justify-end gap-1.5">
                           <button
+                            type="button"
                             onClick={() => handleOpenMatrix(card.id)}
-                            className="btn btn-ghost btn-xs gap-1 text-primary"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-primary hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
                             title={lang === 'ar' ? 'عرض جدول الأسعار' : 'View full matrix'}
                           >
-                            <span className="material-symbols-outlined text-sm">visibility</span>
+                            <span className="material-symbols-outlined text-sm" aria-hidden="true">visibility</span>
                             <span>{lang === 'ar' ? 'عرض' : 'View'}</span>
                           </button>
 
                           {!isBuiltIn ? (
                             <button
+                              type="button"
                               onClick={() => setDeleteConfirmId(card.id)}
-                              className="btn btn-ghost btn-xs text-error"
+                              className="inline-flex items-center justify-center p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
                               title={lang === 'ar' ? 'حذف البطاقة' : 'Delete rate card'}
                             >
-                              <span className="material-symbols-outlined text-sm">delete</span>
+                              <span className="material-symbols-outlined text-sm" aria-hidden="true">delete</span>
                             </button>
                           ) : (
                             <span
-                              className="btn btn-ghost btn-xs btn-disabled opacity-30"
+                              className="inline-flex items-center justify-center p-1.5 text-slate-300 dark:text-slate-600"
                               title={lang === 'ar' ? 'لا يمكن حذف البطاقة الافتراضية' : 'System card cannot be deleted'}
                             >
-                              <span className="material-symbols-outlined text-sm">lock</span>
+                              <span className="material-symbols-outlined text-sm" aria-hidden="true">lock</span>
                             </span>
                           )}
                         </div>

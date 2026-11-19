@@ -59,14 +59,17 @@ const DEFAULT_SETTINGS = {
     },
     whatsapp: {
         enabled: true,
-        provider: 'SHIPMENT_WHATSAPP', // 'SHIPMENT_WHATSAPP' | 'META' | 'CHATWOOT' | 'MOCK'
+        provider: 'SHIPMENT_WHATSAPP', // 'SHIPMENT_WHATSAPP' | 'META' | 'CHATWOOT' | 'EVOLUTION' | 'MOCK'
         serviceUrl: process.env.WHATSAPP_SERVICE_URL || 'https://msg.target-kw.com',
         phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
         businessAccountId: process.env.WHATSAPP_WABA_ID || '',
         accessToken: process.env.WHATSAPP_ACCESS_TOKEN || '',
         webhookVerifyToken: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '',
         metaAppId: process.env.WHATSAPP_META_APP_ID || '',
-        metaAppSecret: process.env.WHATSAPP_META_APP_SECRET || ''
+        metaAppSecret: process.env.WHATSAPP_META_APP_SECRET || '',
+        evolutionUrl: process.env.WHATSAPP_EVOLUTION_URL || 'https://evo.mawthook.io',
+        evolutionInstance: process.env.WHATSAPP_EVOLUTION_INSTANCE || '',
+        evolutionApiKey: process.env.WHATSAPP_EVOLUTION_API_KEY || ''
     },
     phenixSync: {
         autoSyncEnabled: true,

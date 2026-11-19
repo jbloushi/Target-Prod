@@ -102,7 +102,18 @@ class WhatsAppConfigService {
             return config;
         }
 
-        return maskSecrets(config);
+        const { getSystemSettings } = require('./systemSettings.service');
+        const envWa = getSystemSettings()?.whatsapp || {};
+        const masked = maskSecrets(config);
+        masked.envStatus = {
+            metaConfigured: Boolean(envWa.phoneNumberId && envWa.accessToken),
+            metaPhoneNumberId: envWa.phoneNumberId || null,
+            evolutionConfigured: Boolean(envWa.evolutionUrl && envWa.evolutionInstance && envWa.evolutionApiKey),
+            evolutionUrl: envWa.evolutionUrl || 'https://evo.mawthook.io',
+            evolutionInstance: envWa.evolutionInstance || null,
+            serviceUrl: envWa.serviceUrl || 'https://msg.target-kw.com'
+        };
+        return masked;
     }
 
     /**
@@ -117,6 +128,7 @@ class WhatsAppConfigService {
 
         const allowedFields = [
             'provider',
+            'fallbackProvider',
             'serviceUrl',
             'apiKey',
             'phoneId',

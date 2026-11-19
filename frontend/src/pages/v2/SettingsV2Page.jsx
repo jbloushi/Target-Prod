@@ -521,15 +521,11 @@ export const SettingsV2Page = () => {
                         )}
 
                         {activeTab === 'ratecards' && canManageSystem && (
-                            <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 sm:p-6 overflow-x-auto">
-                                <RateCardsManager />
-                            </div>
+                            <RateCardsManager />
                         )}
 
                         {activeTab === 'fallback' && canManageSystem && (
-                            <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 sm:p-6 overflow-x-auto">
-                                <FallbackPricingManager />
-                            </div>
+                            <FallbackPricingManager />
                         )}
 
                         {activeTab === 'phenix' && canManageSystem && (

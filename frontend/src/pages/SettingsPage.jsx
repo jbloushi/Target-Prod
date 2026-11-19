@@ -1579,6 +1579,7 @@ export const SettingsPage = () => {
                         onChange={(e) => setWhatsAppConfig({ ...whatsAppConfig, provider: e.target.value })}
                         className="select select-bordered select-sm w-full text-xs font-semibold focus:select-primary"
                       >
+                        <option value="EVOLUTION">EVOLUTION (evo.mawthook.io)</option>
                         <option value="SHIPMENT_WHATSAPP">SHIPMENT_WHATSAPP (Target Microservice)</option>
                         <option value="META">META (Official Cloud API)</option>
                         <option value="MOCK">MOCK (Local Sandbox)</option>

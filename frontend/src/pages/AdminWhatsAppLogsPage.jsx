@@ -508,6 +508,7 @@ export const AdminWhatsAppLogsPage = () => {
                             className="select select-bordered select-xs text-xs font-semibold rounded-lg"
                         >
                             <option value="ALL">{lang === 'ar' ? 'كافة البوابات' : 'All Gateways'}</option>
+                            <option value="EVOLUTION">Evolution API (evo.mawthook.io)</option>
                             <option value="SHIPMENT_WHATSAPP">Target Microservice (msg.target-kw.com)</option>
                             <option value="META">Meta Cloud API (WABA)</option>
                             <option value="CHATWOOT">Chatwoot (Legacy)</option>

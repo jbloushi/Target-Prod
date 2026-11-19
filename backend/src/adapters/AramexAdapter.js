@@ -41,16 +41,16 @@ class AramexAdapter {
     }
 
     hasOfficialCredentials() {
-        return Boolean(this.username && this.password && this.accountNumber && this.accountPin);
+        return Boolean(this.username && this.password);
     }
 
     _buildClientInfo() {
         return {
-            UserName: this.username,
-            Password: this.password,
+            UserName: this.username || '',
+            Password: this.password || '',
             Version: 'v1.0',
-            AccountNumber: this.accountNumber,
-            AccountPin: this.accountPin,
+            AccountNumber: this.accountNumber || '',
+            AccountPin: this.accountPin || '',
             AccountEntity: this.accountEntity || 'KWI',
             AccountCountryCode: this.accountCountryCode || 'KW'
         };
@@ -172,7 +172,7 @@ class AramexAdapter {
 
         if (!this.hasOfficialCredentials()) {
             if (process.env.NODE_ENV === 'production' && !this.config.isTest) {
-                throw new Error('Aramex API credentials (including ARAMEX_ACCOUNT_PIN) are not configured.');
+                throw new Error('Aramex API credentials (ARAMEX_USERNAME / ARAMEX_PASSWORD) are not configured.');
             }
             const baseRate = Number((11.000 + weight * 2.2).toFixed(3));
             return [
@@ -206,12 +206,21 @@ class AramexAdapter {
             OriginAddress: origin,
             DestinationAddress: destination,
             ShipmentDetails: {
+                Dimensions: {
+                    Length: Number(payload.length || 10),
+                    Width: Number(payload.width || 10),
+                    Height: Number(payload.height || 10),
+                    Unit: 'CM'
+                },
                 ActualWeight: { Unit: 'KG', Value: weight },
                 ChargeableWeight: { Unit: 'KG', Value: weight },
                 NumberOfPieces: pieces,
                 ProductGroup: productGroup,
                 ProductType: productType,
-                PaymentType: 'P'
+                PaymentType: 'P',
+                PaymentOptions: '',
+                DescriptionOfGoods: payload.description || 'General Cargo',
+                GoodsOriginCountry: origin.CountryCode || 'KW'
             },
             PreferredCurrencyCode: currency
         };
@@ -253,7 +262,7 @@ class AramexAdapter {
     async createShipment(payload = {}, serviceCode) {
         if (!this.hasOfficialCredentials()) {
             if (process.env.NODE_ENV === 'production' && process.env.ALLOW_MOCK_CARRIER_BOOKING !== 'true') {
-                throw new Error('Live Aramex API booking credentials (including ARAMEX_ACCOUNT_PIN) are not configured in production.');
+                throw new Error('Live Aramex API booking credentials (ARAMEX_USERNAME / ARAMEX_PASSWORD) are not configured in production.');
             }
             const trackingNumber = `ARM${Math.floor(1000000000 + Math.random() * 9000000000)}`;
             return {
@@ -297,11 +306,18 @@ class AramexAdapter {
                     Comments: payload.specialInstructions || payload.instructions || '',
                     PickupLocation: 'Reception',
                     Details: {
+                        Dimensions: {
+                            Length: Number(payload.length || 10),
+                            Width: Number(payload.width || 10),
+                            Height: Number(payload.height || 10),
+                            Unit: 'CM'
+                        },
                         ActualWeight: { Unit: 'KG', Value: weight },
                         ChargeableWeight: { Unit: 'KG', Value: weight },
                         ProductGroup: productGroup,
                         ProductType: productType,
                         PaymentType: 'P',
+                        PaymentOptions: '',
                         NumberOfPieces: pieces,
                         DescriptionOfGoods: description,
                         GoodsOriginCountry: shipper.PartyAddress.CountryCode,
@@ -379,7 +395,7 @@ class AramexAdapter {
     async getShipmentDocuments(awb, options = {}) {
         if (!awb) throw new Error('Tracking number is required to retrieve Aramex documents');
         if (!this.hasOfficialCredentials()) {
-            throw new Error('Aramex API credentials (including ARAMEX_ACCOUNT_PIN) are not configured.');
+            throw new Error('Aramex API credentials (ARAMEX_USERNAME / ARAMEX_PASSWORD) are not configured.');
         }
 
         const cleanAwb = String(awb).replace(/^(?:TRK|ARM|ARAMEX)-/i, '').trim();

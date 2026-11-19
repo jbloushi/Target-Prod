@@ -201,49 +201,40 @@ export const FallbackPricingManager = () => {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Top Banner */}
-      <div className="card bg-base-100 border border-base-200 shadow-sm p-6">
+    <div className="space-y-5">
+      {/* Top Header & Master Switches */}
+      <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary text-2xl">shield</span>
-              <h2 className="text-xl font-bold tracking-tight">
-                {lang === 'ar' ? 'تسعير الطوارئ والبدائل التلقائي (Fallback Tariffs)' : 'Automated Fallback Pricing & Tariffs'}
-              </h2>
-            </div>
-            <p className="text-sm text-base-content/70">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
+              {lang === 'ar' ? 'تسعير الطوارئ والبدائل التلقائي (Fallback Tariffs)' : 'Automated Fallback Pricing & Tariffs'}
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-2xl">
               {lang === 'ar'
-                ? 'جداول الأسعار الرسمية المعيارية (بالدينار الكويتي) التي يتم تفعيلها تلقائياً للشاحنين والـ API عندما لا تتوفر أسعار حية مباشرة من الناقلين أو عند انقطاع الاتصال.'
-                : 'Guaranteed system fallback rate cards (in KWD). Automatically invoked during quoting or booking if a carrier API is unpriced (returns 0) or offline.'}
+                ? 'جداول الأسعار الرسمية المعيارية (بالدينار الكويتي) التي يتم تفعيلها تلقائياً عند انقطاع الاتصال أو غياب سعر الناقل.'
+                : 'Guaranteed fallback rate cards (in KWD) automatically invoked during quoting or booking if a carrier API returns 0 or times out.'}
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="btn btn-primary btn-sm gap-2 shadow-sm"
-            >
-              {saving ? (
-                <span className="loading loading-spinner loading-xs"></span>
-              ) : (
-                <span className="material-symbols-outlined text-base">save</span>
-              )}
-              <span>{lang === 'ar' ? 'حفظ إعدادات البدائل' : 'Save Fallback Settings'}</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-semibold cursor-pointer disabled:opacity-50 shrink-0 transition-colors"
+          >
+            <span className="material-symbols-outlined text-base" aria-hidden="true">save</span>
+            <span>{saving ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : lang === 'ar' ? 'حفظ إعدادات البدائل' : 'Save Fallback Settings'}</span>
+          </button>
         </div>
 
         {/* Master Controls & Triggers */}
-        <div className="mt-6 pt-6 border-t border-base-200 grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Main Activation Switch */}
-          <div className="flex items-center justify-between bg-base-200/50 p-4 rounded-xl border border-base-200">
+        <div className="mt-5 pt-5 border-t border-slate-200 dark:border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-3.5">
+          <label className="flex items-center justify-between bg-slate-50 dark:bg-slate-950 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 cursor-pointer">
             <div>
-              <div className="font-bold text-sm">
-                {lang === 'ar' ? 'تفعيل التسعير البديل التلقائي' : 'Enable Fallback Pricing'}
+              <div className="font-semibold text-xs text-slate-900 dark:text-slate-100">
+                {lang === 'ar' ? 'تفعيل التسعير البديل' : 'Enable Fallback Pricing'}
               </div>
-              <div className="text-xs text-base-content/60">
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                 {lang === 'ar' ? 'تطبيق جداول الطوارئ عند الحاجة' : 'Apply tariffs when carrier has no quote'}
               </div>
             </div>
@@ -253,16 +244,15 @@ export const FallbackPricingManager = () => {
               checked={fallbackConfig.enabled}
               onChange={(e) => setFallbackConfig({ ...fallbackConfig, enabled: e.target.checked })}
             />
-          </div>
+          </label>
 
-          {/* Trigger on Zero Rate */}
-          <div className="flex items-center justify-between bg-base-200/50 p-4 rounded-xl border border-base-200">
+          <label className="flex items-center justify-between bg-slate-50 dark:bg-slate-950 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 cursor-pointer">
             <div>
-              <div className="font-bold text-sm">
+              <div className="font-semibold text-xs text-slate-900 dark:text-slate-100">
                 {lang === 'ar' ? 'التفعيل عند سعر 0 د.ك' : 'Trigger on 0 KD Rates'}
               </div>
-              <div className="text-xs text-base-content/60">
-                {lang === 'ar' ? 'تجاوز تسعير الناقل إذا عاد بقيمة صفر' : 'Overrides carrier 0 quote with fallback'}
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                {lang === 'ar' ? 'تجاوز تسعير الناقل إذا عاد بصفر' : 'Overrides carrier 0 quote with fallback'}
               </div>
             </div>
             <input
@@ -271,16 +261,15 @@ export const FallbackPricingManager = () => {
               checked={fallbackConfig.triggerOnZeroRate}
               onChange={(e) => setFallbackConfig({ ...fallbackConfig, triggerOnZeroRate: e.target.checked })}
             />
-          </div>
+          </label>
 
-          {/* Trigger on Carrier Offline / Error */}
-          <div className="flex items-center justify-between bg-base-200/50 p-4 rounded-xl border border-base-200">
+          <label className="flex items-center justify-between bg-slate-50 dark:bg-slate-950 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 cursor-pointer">
             <div>
-              <div className="font-bold text-sm">
+              <div className="font-semibold text-xs text-slate-900 dark:text-slate-100">
                 {lang === 'ar' ? 'التفعيل عند انقطاع الـ API' : 'Trigger on Carrier Timeout'}
               </div>
-              <div className="text-xs text-base-content/60">
-                {lang === 'ar' ? 'حماية من انقطاع خوادم شركات الشحن' : 'Protects checkout from carrier outages'}
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                {lang === 'ar' ? 'حماية من انقطاع شركات الشحن' : 'Protects checkout from carrier outages'}
               </div>
             </div>
             <input
@@ -289,58 +278,58 @@ export const FallbackPricingManager = () => {
               checked={fallbackConfig.triggerOnCarrierError}
               onChange={(e) => setFallbackConfig({ ...fallbackConfig, triggerOnCarrierError: e.target.checked })}
             />
-          </div>
+          </label>
         </div>
       </div>
 
       {/* The 3 Service Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Card 1: Economy GCC */}
-        <div className="card bg-base-100 border border-base-200 shadow-sm p-5 space-y-4">
+        <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold">
-                <span className="material-symbols-outlined">local_shipping</span>
+              <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                <span className="material-symbols-outlined text-lg" aria-hidden="true">local_shipping</span>
               </div>
               <div>
-                <h3 className="font-bold text-base leading-tight">
+                <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100 leading-tight">
                   {lang === 'ar' ? 'الشحن الاقتصادي' : 'Economy Shipping'}
                 </h3>
-                <span className="text-xs text-base-content/60">Gulf (GCC)</span>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">Gulf (GCC)</span>
               </div>
             </div>
-            <span className="badge badge-primary badge-outline text-xs font-semibold">OTE / GCC</span>
+            <span className="px-2 py-0.5 rounded-md border border-primary/30 text-primary text-[11px] font-semibold">OTE / GCC</span>
           </div>
 
-          <div className="text-xs space-y-2 bg-base-200/40 p-3 rounded-lg">
-            <div className="flex justify-between">
-              <span className="text-base-content/70">{lang === 'ar' ? 'نطاق التغطية:' : 'Applies to:'}</span>
-              <span className="font-semibold text-base-content">Saudi, UAE, Qatar, Bahrain, Oman</span>
+          <div className="text-xs space-y-2 bg-slate-50 dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800 p-3 rounded-xl">
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'نطاق التغطية:' : 'Applies to:'}</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-200 text-end">SA, AE, QA, BH, OM</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-base-content/70">{lang === 'ar' ? 'سعر البداية (0.5 كجم):' : 'Base Rate (0.5 kg):'}</span>
-              <span className="font-bold text-primary">3.250 KD</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'سعر البداية (0.5 كجم):' : 'Base Rate (0.5 kg):'}</span>
+              <span className="font-bold tabular-nums text-primary">3.250 KD</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-base-content/70">{lang === 'ar' ? 'الزيادة لكل 0.5 كجم:' : 'Step Rate (/ 0.5 kg):'}</span>
-              <span className="font-semibold text-base-content">+0.500 KD</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'الزيادة لكل 0.5 كجم:' : 'Step (/ 0.5 kg):'}</span>
+              <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-200">+0.500 KD</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-base-content/70">{lang === 'ar' ? 'الحد الأقصى (10.0 كجم):' : 'Max Tier (10.0 kg):'}</span>
-              <span className="font-bold text-base-content">12.750 KD</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'الحد الأقصى (10.0 كجم):' : 'Max (10.0 kg):'}</span>
+              <span className="font-bold tabular-nums text-slate-900 dark:text-slate-100">12.750 KD</span>
             </div>
           </div>
 
-          <div>
-            <label className="text-xs font-semibold text-base-content/70 mb-1 block">
-              {lang === 'ar' ? 'بطاقة الأسعار المربوطة:' : 'Linked Fallback Rate Card:'}
+          <div className="space-y-1">
+            <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 block">
+              {lang === 'ar' ? 'بطاقة الأسعار المربوطة' : 'Linked Fallback Rate Card'}
             </label>
             <select
               value={fallbackConfig.economyRateCardId}
               onChange={(e) => setFallbackConfig({ ...fallbackConfig, economyRateCardId: e.target.value })}
-              className="select select-bordered select-sm w-full font-mono text-xs"
+              className="w-full h-9 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 font-mono text-xs text-slate-900 dark:text-slate-100"
             >
-              <option value="FALLBACK_ECONOMY_GCC">FALLBACK_ECONOMY_GCC (Default System)</option>
+              <option value="FALLBACK_ECONOMY_GCC">FALLBACK_ECONOMY_GCC (Default)</option>
               {rateCards.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.id} - {c.name}
@@ -351,51 +340,51 @@ export const FallbackPricingManager = () => {
         </div>
 
         {/* Card 2: Aramex GCC */}
-        <div className="card bg-base-100 border border-base-200 shadow-sm p-5 space-y-4">
+        <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-xl bg-secondary/10 text-secondary flex items-center justify-center font-bold">
-                <span className="material-symbols-outlined">flight_takeoff</span>
+              <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                <span className="material-symbols-outlined text-lg" aria-hidden="true">flight_takeoff</span>
               </div>
               <div>
-                <h3 className="font-bold text-base leading-tight">
+                <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100 leading-tight">
                   {lang === 'ar' ? 'شحن أرامكس' : 'Aramex Shipping'}
                 </h3>
-                <span className="text-xs text-base-content/60">Gulf (GCC)</span>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">Gulf (GCC)</span>
               </div>
             </div>
-            <span className="badge badge-secondary badge-outline text-xs font-semibold">ARAMEX / GCC</span>
+            <span className="px-2 py-0.5 rounded-md border border-amber-500/30 text-amber-700 dark:text-amber-300 text-[11px] font-semibold">ARAMEX / GCC</span>
           </div>
 
-          <div className="text-xs space-y-2 bg-base-200/40 p-3 rounded-lg">
-            <div className="flex justify-between">
-              <span className="text-base-content/70">{lang === 'ar' ? 'نطاق التغطية:' : 'Applies to:'}</span>
-              <span className="font-semibold text-base-content">Saudi, UAE, Qatar, Bahrain, Oman</span>
+          <div className="text-xs space-y-2 bg-slate-50 dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800 p-3 rounded-xl">
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'نطاق التغطية:' : 'Applies to:'}</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-200 text-end">SA, AE, QA, BH, OM</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-base-content/70">{lang === 'ar' ? 'سعر البداية (0.5 كجم):' : 'Base Rate (0.5 kg):'}</span>
-              <span className="font-bold text-secondary">4.750 KD</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'سعر البداية (0.5 كجم):' : 'Base Rate (0.5 kg):'}</span>
+              <span className="font-bold tabular-nums text-amber-600 dark:text-amber-400">4.750 KD</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-base-content/70">{lang === 'ar' ? 'الزيادة لكل 0.5 كجم:' : 'Step Rate (/ 0.5 kg):'}</span>
-              <span className="font-semibold text-base-content">+1.000 KD</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'الزيادة لكل 0.5 كجم:' : 'Step (/ 0.5 kg):'}</span>
+              <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-200">+1.000 KD</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-base-content/70">{lang === 'ar' ? 'الحد الأقصى (10.0 كجم):' : 'Max Tier (10.0 kg):'}</span>
-              <span className="font-bold text-base-content">23.750 KD</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'الحد الأقصى (10.0 كجم):' : 'Max (10.0 kg):'}</span>
+              <span className="font-bold tabular-nums text-slate-900 dark:text-slate-100">23.750 KD</span>
             </div>
           </div>
 
-          <div>
-            <label className="text-xs font-semibold text-base-content/70 mb-1 block">
-              {lang === 'ar' ? 'بطاقة الأسعار المربوطة:' : 'Linked Fallback Rate Card:'}
+          <div className="space-y-1">
+            <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 block">
+              {lang === 'ar' ? 'بطاقة الأسعار المربوطة' : 'Linked Fallback Rate Card'}
             </label>
             <select
               value={fallbackConfig.aramexRateCardId}
               onChange={(e) => setFallbackConfig({ ...fallbackConfig, aramexRateCardId: e.target.value })}
-              className="select select-bordered select-sm w-full font-mono text-xs"
+              className="w-full h-9 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 font-mono text-xs text-slate-900 dark:text-slate-100"
             >
-              <option value="FALLBACK_ARAMEX_GCC">FALLBACK_ARAMEX_GCC (Default System)</option>
+              <option value="FALLBACK_ARAMEX_GCC">FALLBACK_ARAMEX_GCC (Default)</option>
               {rateCards.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.id} - {c.name}
@@ -406,51 +395,51 @@ export const FallbackPricingManager = () => {
         </div>
 
         {/* Card 3: DHL Export */}
-        <div className="card bg-base-100 border border-base-200 shadow-sm p-5 space-y-4">
+        <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-xl bg-accent/10 text-accent flex items-center justify-center font-bold">
-                <span className="material-symbols-outlined">public</span>
+              <div className="w-9 h-9 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400 flex items-center justify-center">
+                <span className="material-symbols-outlined text-lg" aria-hidden="true">public</span>
               </div>
               <div>
-                <h3 className="font-bold text-base leading-tight">
+                <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100 leading-tight">
                   {lang === 'ar' ? 'شحن دي إتش إل' : 'DHL Export Shipping'}
                 </h3>
-                <span className="text-xs text-base-content/60">Export Zones 1, 4, 6</span>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">Export Zones 1, 4, 6</span>
               </div>
             </div>
-            <span className="badge badge-accent badge-outline text-xs font-semibold">DHL / DGR</span>
+            <span className="px-2 py-0.5 rounded-md border border-sky-500/30 text-sky-700 dark:text-sky-300 text-[11px] font-semibold">DHL / DGR</span>
           </div>
 
-          <div className="text-xs space-y-2 bg-base-200/40 p-3 rounded-lg">
-            <div className="flex justify-between">
-              <span className="text-base-content/70">Zone 1 (Gulf):</span>
-              <span className="font-bold text-base-content">5.750 – 39.000 KD</span>
+          <div className="text-xs space-y-2 bg-slate-50 dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800 p-3 rounded-xl">
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-500 dark:text-slate-400">Zone 1 (Gulf):</span>
+              <span className="font-bold tabular-nums text-slate-800 dark:text-slate-200">5.750 – 39.000 KD</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-base-content/70">Zone 4 (Europe):</span>
-              <span className="font-bold text-base-content">8.500 – 49.500 KD</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-500 dark:text-slate-400">Zone 4 (Europe):</span>
+              <span className="font-bold tabular-nums text-slate-800 dark:text-slate-200">8.500 – 49.500 KD</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-base-content/70">Zone 6 (USA):</span>
-              <span className="font-bold text-accent">9.500 – 51.000 KD</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-500 dark:text-slate-400">Zone 6 (USA):</span>
+              <span className="font-bold tabular-nums text-sky-600 dark:text-sky-400">9.500 – 51.000 KD</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-base-content/70">{lang === 'ar' ? 'شرائح الوزن:' : 'Brackets:'}</span>
-              <span className="font-semibold text-base-content">0.5 kg – 10.0 kg (20 tiers)</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'شرائح الوزن:' : 'Brackets:'}</span>
+              <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-200">0.5 – 10.0 kg (20 tiers)</span>
             </div>
           </div>
 
-          <div>
-            <label className="text-xs font-semibold text-base-content/70 mb-1 block">
-              {lang === 'ar' ? 'بطاقة الأسعار المربوطة:' : 'Linked Fallback Rate Card:'}
+          <div className="space-y-1">
+            <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 block">
+              {lang === 'ar' ? 'بطاقة الأسعار المربوطة' : 'Linked Fallback Rate Card'}
             </label>
             <select
               value={fallbackConfig.dhlRateCardId}
               onChange={(e) => setFallbackConfig({ ...fallbackConfig, dhlRateCardId: e.target.value })}
-              className="select select-bordered select-sm w-full font-mono text-xs"
+              className="w-full h-9 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 font-mono text-xs text-slate-900 dark:text-slate-100"
             >
-              <option value="FALLBACK_DHL_EXPORT">FALLBACK_DHL_EXPORT (Default System)</option>
+              <option value="FALLBACK_DHL_EXPORT">FALLBACK_DHL_EXPORT (Default)</option>
               {rateCards.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.id} - {c.name}
