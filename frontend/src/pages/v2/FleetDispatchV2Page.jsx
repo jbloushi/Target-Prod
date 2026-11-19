@@ -178,9 +178,9 @@ export const FleetDispatchV2Page = () => {
     return (
         <div
             dir={isRTL ? 'rtl' : 'ltr'}
-            className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-x-hidden"
+            className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-x-clip"
         >
-            <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-5">
+            <div className="max-w-7xl mx-auto py-4 sm:py-6 space-y-5">
                 {/* V1 <-> V2 Switcher Banner */}
                 <div className="rounded-2xl border border-sky-200 dark:border-sky-800/60 bg-sky-50/80 dark:bg-sky-950/30 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
                     <div className="flex items-center gap-2 min-w-0">
@@ -639,7 +639,7 @@ export const FleetDispatchV2Page = () => {
             {/* Dispatch Run Modal */}
             {isDispatchModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/70 backdrop-blur-xs">
-                    <div role="dialog" aria-modal="true" className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 p-5 sm:p-6 space-y-4">
+                    <div role="dialog" aria-modal="true" className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 p-5 sm:p-6 space-y-4">
                         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
                             <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
                                 {isRTL ? `إرسال مسار توصيل (${selectedShipmentIds.length} طرود)` : `Dispatch Delivery Run (${selectedShipmentIds.length} Parcels)`}
@@ -739,7 +739,7 @@ export const FleetDispatchV2Page = () => {
             {/* Add Vehicle Modal */}
             {isVehicleModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/70 backdrop-blur-xs">
-                    <div role="dialog" aria-modal="true" className="w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 p-5 sm:p-6 space-y-4">
+                    <div role="dialog" aria-modal="true" className="w-full max-w-md max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 p-5 sm:p-6 space-y-4">
                         <h3 className="text-base font-bold text-slate-900 dark:text-white">
                             {isRTL ? 'تسجيل مركبة أسطول' : 'Register Fleet Vehicle'}
                         </h3>
@@ -773,7 +773,7 @@ export const FleetDispatchV2Page = () => {
                                     />
                                 </div>
                             </div>
-                            <div className="grid grid-cols-3 gap-2.5">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                                 <div>
                                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">{isRTL ? 'السنة' : 'Year'}</label>
                                     <input

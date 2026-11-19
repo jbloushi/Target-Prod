@@ -548,7 +548,7 @@ export const SettingsApiTabV2 = ({ user, refreshUser, isRTL }) => {
             {/* Secret Key Modal */}
             {showKeyModal && apiKey && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60" role="dialog" aria-modal="true">
-                    <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl p-6 space-y-5">
+                    <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl p-6 space-y-5">
                         <div className="flex items-center gap-3">
                             <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
                                 <span className="material-symbols-outlined text-2xl" aria-hidden="true">key</span>
@@ -565,13 +565,13 @@ export const SettingsApiTabV2 = ({ user, refreshUser, isRTL }) => {
                             </div>
                         </div>
 
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 min-w-0">
                             <input
                                 type="text"
                                 readOnly
                                 dir="ltr"
                                 value={apiKey}
-                                className="flex-1 h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 font-mono text-xs text-slate-900 dark:text-slate-100 select-all"
+                                className="flex-1 min-w-0 h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 font-mono text-xs text-slate-900 dark:text-slate-100 select-all"
                             />
                             <button
                                 type="button"

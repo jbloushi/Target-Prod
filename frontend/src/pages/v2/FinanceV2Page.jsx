@@ -1273,7 +1273,7 @@ export const FinanceV2Page = () => {
 
     return (
         <div className="w-full min-h-screen pb-16">
-            <div className="max-w-[1740px] mx-auto px-4 sm:px-6 lg:px-8 pt-5 space-y-5">
+            <div className="max-w-[1740px] mx-auto pt-5 space-y-5">
                 {/* V2 Cockpit Banner & Cross-Surface Navigation */}
                 <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 p-3.5 sm:px-5 sm:py-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-2xs">
                     <div className="flex flex-wrap items-center gap-2.5 min-w-0">
@@ -1419,7 +1419,7 @@ export const FinanceV2Page = () => {
 
                         {/* Period Filter */}
                         <div
-                            className="inline-flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl"
+                            className="inline-flex flex-wrap items-center gap-0.5 max-w-full bg-slate-100 dark:bg-slate-800 p-1 rounded-xl"
                             role="group"
                             aria-label="Accounting Period Filter"
                         >
@@ -2553,7 +2553,7 @@ export const FinanceV2Page = () => {
                 >
                     <form
                         onSubmit={handlePostQuickPayment}
-                        className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl p-5 space-y-4"
+                        className="w-full max-w-md max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl p-5 space-y-4"
                     >
                         <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
                             <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-slate-100">

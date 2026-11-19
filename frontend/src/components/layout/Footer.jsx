@@ -1,8 +1,12 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
+import { getStoredUiVersion } from '../../utils/uiVersion';
 
 const Footer = ({ compact = false }) => {
   const currentYear = new Date().getFullYear();
+  const location = useLocation();
+  const isV2Route = location.pathname.includes('-v2') || location.pathname.includes('/v2');
+  const preferV2 = isV2Route || getStoredUiVersion() === 'v2';
 
   if (compact) {
     return (
@@ -75,8 +79,8 @@ const Footer = ({ compact = false }) => {
           <div className="space-y-2">
             <h4 className="text-xs font-bold uppercase tracking-wider text-base-content/80">Navigation</h4>
             <ul className="space-y-1.5 text-xs text-base-content/60">
-              <li><Link to="/dashboard" className="hover:text-primary transition-colors">Dashboard</Link></li>
-              <li><Link to="/shipments" className="hover:text-primary transition-colors">Shipments</Link></li>
+              <li><Link to={preferV2 ? '/dashboard-v2' : '/dashboard'} className="hover:text-primary transition-colors">Dashboard</Link></li>
+              <li><Link to={preferV2 ? '/shipments-v2' : '/shipments'} className="hover:text-primary transition-colors">Shipments</Link></li>
               <li><Link to="/track" className="hover:text-primary transition-colors">Public Tracking</Link></li>
               <li><Link to="/returns" className="hover:text-primary transition-colors">Return Portal</Link></li>
             </ul>

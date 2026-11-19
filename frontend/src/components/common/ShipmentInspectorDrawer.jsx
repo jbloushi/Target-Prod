@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useLanguage } from '../../context/LanguageContext';
 import StatusBadge from './StatusBadge';
 import TradeRouteDisplay from './TradeRouteDisplay';
@@ -36,6 +36,8 @@ export const ShipmentInspectorDrawer = ({
     onDownloadLabel
 }) => {
     const navigate = useNavigate();
+    const location = useLocation();
+    const isV2Route = location.pathname.includes('-v2') || location.pathname.includes('/v2');
     const { t, lang } = useLanguage();
     const isRTL = lang === 'ar';
     const [copied, setCopied] = useState(false);
@@ -207,7 +209,7 @@ export const ShipmentInspectorDrawer = ({
                 {/* Scrollable Body */}
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
                     {/* Status & Full Dossier Strip */}
-                    <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                    <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
                         <div className="space-y-1">
                             <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block">
                                 {isRTL ? 'الحالة التشغيلية' : 'Consignment Status'}
@@ -216,7 +218,7 @@ export const ShipmentInspectorDrawer = ({
                         </div>
                         <button
                             type="button"
-                            onClick={() => navigate(`/shipment/${trackingNumber}`)}
+                            onClick={() => navigate(isV2Route ? `/shipment-v2/${trackingNumber}` : `/shipment/${trackingNumber}`)}
                             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-semibold transition-colors cursor-pointer shrink-0"
                         >
                             <span>{isRTL ? 'فتح الملف الكامل' : 'Full Dossier'}</span>
@@ -408,31 +410,31 @@ export const ShipmentInspectorDrawer = ({
                 </div>
 
                 {/* Sticky Footer Actions */}
-                <div className="px-5 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center gap-2 shrink-0">
+                <div className="px-4 sm:px-5 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-wrap items-center gap-2 shrink-0">
                     <a
                         href={`https://wa.me/${cleanPhone}?text=${waText}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-xl border border-emerald-500/40 bg-emerald-500/5 hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs font-semibold transition-colors"
+                        className="flex-1 min-w-[120px] inline-flex items-center justify-center gap-1.5 min-h-9 py-1.5 px-3 rounded-xl border border-emerald-500/40 bg-emerald-500/5 hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs font-semibold leading-tight text-center transition-colors"
                     >
-                        <span className="material-symbols-outlined text-base" aria-hidden="true">chat</span>
+                        <span className="material-symbols-outlined text-base shrink-0" aria-hidden="true">chat</span>
                         <span>{isRTL ? 'واتساب المستلم' : 'WhatsApp Client'}</span>
                     </a>
                     <button
                         type="button"
                         onClick={() => setIsChatwootOpen(true)}
-                        className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-xl border border-primary/30 bg-primary/5 hover:bg-primary/10 text-primary text-xs font-semibold transition-colors cursor-pointer"
+                        className="flex-1 min-w-[120px] inline-flex items-center justify-center gap-1.5 min-h-9 py-1.5 px-3 rounded-xl border border-primary/30 bg-primary/5 hover:bg-primary/10 text-primary text-xs font-semibold leading-tight text-center transition-colors cursor-pointer"
                         title={isRTL ? 'فتح محادثة شات ووت المباشرة' : 'Open Chatwoot Live Support'}
                         data-testid="inspector-open-chatwoot-btn"
                     >
-                        <span className="material-symbols-outlined text-base" aria-hidden="true">support_agent</span>
+                        <span className="material-symbols-outlined text-base shrink-0" aria-hidden="true">support_agent</span>
                         <span>{isRTL ? 'شات ووت' : 'Open Chatwoot'}</span>
                     </button>
                     {onDownloadLabel && (
                         <button
                             type="button"
                             onClick={() => onDownloadLabel(shipment)}
-                            className="inline-flex items-center justify-center w-9 h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer shrink-0"
+                            className="inline-flex items-center justify-center w-9 min-h-9 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer shrink-0"
                             title={t('action_view_label', 'Print Waybill')}
                         >
                             <span className="material-symbols-outlined text-base" aria-hidden="true">print</span>

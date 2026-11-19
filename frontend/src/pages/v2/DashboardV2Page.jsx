@@ -330,7 +330,7 @@ export const DashboardV2Page = () => {
 
     return (
         <div className="w-full min-h-screen pb-16">
-            <div className="max-w-[1740px] mx-auto px-4 sm:px-6 lg:px-8 pt-5 space-y-5">
+            <div className="max-w-[1740px] mx-auto pt-5 space-y-5">
                 {/* V2 Cockpit Badge & Version Switcher Header */}
                 <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 p-3.5 sm:px-5 sm:py-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-2xs">
                     <div className="flex flex-wrap items-center gap-2.5 min-w-0">
@@ -507,7 +507,7 @@ export const DashboardV2Page = () => {
 
                         {/* Period Filter */}
                         <div
-                            className="inline-flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl"
+                            className="inline-flex flex-wrap items-center gap-0.5 max-w-full bg-slate-100 dark:bg-slate-800 p-1 rounded-xl"
                             role="group"
                             aria-label="Time Period Filter"
                         >

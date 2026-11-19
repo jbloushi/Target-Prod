@@ -13,7 +13,6 @@ import { generateWaybillPDF } from '../../utils/pdfGenerator';
 import { normalizeStatus, getStepIndex, isNegativeOrExceptionPhrase } from '../../constants/statusConfig';
 import StatusBadge from '../../components/common/StatusBadge';
 import TradeRouteDisplay from '../../components/common/TradeRouteDisplay';
-import TargetLogisticsWizard from '../../components/shipment/TargetLogisticsWizard';
 import ProofOfDeliveryModal from '../../components/ProofOfDeliveryModal';
 import NativeChatDrawer from '../../components/support/NativeChatDrawer';
 import ManualPaymentLinkModal from '../../components/shipments/ManualPaymentLinkModal';
@@ -61,7 +60,6 @@ export const ShipmentDetailsV2Page = () => {
     const [isUploadingDoc, setIsUploadingDoc] = useState(false);
     const [isPodModalOpen, setIsPodModalOpen] = useState(false);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-    const [editDrawerOpen, setEditDrawerOpen] = useState(false);
     const [chatwootDrawerOpen, setChatwootDrawerOpen] = useState(false);
     const [chatwootDrawerTarget, setChatwootDrawerTarget] = useState(null);
     const [conversionDrawerOpen, setConversionDrawerOpen] = useState(false);
@@ -79,6 +77,11 @@ export const ShipmentDetailsV2Page = () => {
         if (!trackingNumber) return;
         await getShipment(trackingNumber);
     }, [getShipment, trackingNumber]);
+
+    const handleOpenEdit = useCallback(() => {
+        if (!trackingNumber) return;
+        navigate(`/shipment-v2/${trackingNumber}/edit`);
+    }, [navigate, trackingNumber]);
 
     useEffect(() => {
         loadShipmentData();
@@ -114,17 +117,17 @@ export const ShipmentDetailsV2Page = () => {
         if (!shipment) return;
         if (location.pathname.endsWith('/edit') && canEdit && !approvalHandledRef.current) {
             approvalHandledRef.current = true;
-            setEditDrawerOpen(true);
+            handleOpenEdit();
         } else if (searchParams.get('action') === 'approve' && isPlatformOps && canApproveShipments && !approvalHandledRef.current) {
             approvalHandledRef.current = true;
-            setEditDrawerOpen(true);
+            handleOpenEdit();
         }
         if (location.hash === '#invoice') {
             setTimeout(() => {
                 document.getElementById('invoice')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }, 150);
         }
-    }, [shipment, location.pathname, location.hash, searchParams, canEdit, isPlatformOps, canApproveShipments]);
+    }, [shipment, location.pathname, location.hash, searchParams, canEdit, isPlatformOps, canApproveShipments, handleOpenEdit]);
 
     useEffect(() => {
         const sid = shipment?.id || shipment?._id;
@@ -569,7 +572,7 @@ export const ShipmentDetailsV2Page = () => {
                                     {canEdit && (
                                         <button
                                             type="button"
-                                            onClick={() => setEditDrawerOpen(true)}
+                                            onClick={handleOpenEdit}
                                             data-testid="edit-shipment-btn"
                                             className="min-h-[38px] px-3.5 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-bold inline-flex items-center gap-1 cursor-pointer"
                                         >
@@ -603,7 +606,7 @@ export const ShipmentDetailsV2Page = () => {
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
-                                        <button type="button" onClick={() => setEditDrawerOpen(true)} className="min-h-[36px] px-3 rounded-xl border border-purple-300 dark:border-purple-700 text-xs font-bold cursor-pointer">
+                                        <button type="button" onClick={handleOpenEdit} className="min-h-[36px] px-3 rounded-xl border border-purple-300 dark:border-purple-700 text-xs font-bold cursor-pointer">
                                             {isRTL ? 'مراجعة وتعديل' : 'Review & Edit'}
                                         </button>
                                         {canBookCarriers && (
@@ -639,7 +642,7 @@ export const ShipmentDetailsV2Page = () => {
                                     </span>
                                 </div>
 
-                                <div className="grid grid-cols-5 gap-1 text-[10px] sm:text-xs font-bold text-center">
+                                <div className="grid grid-cols-5 gap-1.5 sm:gap-2 text-[9.5px] sm:text-xs font-bold text-center">
                                     {[
                                         isRTL ? 'تم الإنشاء' : 'Created',
                                         isRTL ? 'تم الاستلام' : 'Picked Up',
@@ -647,9 +650,14 @@ export const ShipmentDetailsV2Page = () => {
                                         isRTL ? 'مع المندوب' : 'Out Delivery',
                                         isRTL ? 'تم التسليم' : 'Delivered'
                                     ].map((label, i) => (
-                                        <div key={i} className="space-y-1">
+                                        <div key={i} className="min-w-0 space-y-1">
                                             <div className={`h-1.5 rounded-full ${visualStep >= i ? (i === 4 ? 'bg-emerald-500' : 'bg-primary') : 'bg-slate-200 dark:bg-slate-800'}`} />
-                                            <span className={`block truncate ${visualStep >= i ? 'text-slate-900 dark:text-white' : 'text-slate-400 dark:text-slate-600'}`}>{label}</span>
+                                            <span
+                                                title={label}
+                                                className={`block leading-tight break-words line-clamp-2 ${visualStep >= i ? 'text-slate-900 dark:text-white' : 'text-slate-400 dark:text-slate-600'}`}
+                                            >
+                                                {label}
+                                            </span>
                                         </div>
                                     ))}
                                 </div>
@@ -703,7 +711,7 @@ export const ShipmentDetailsV2Page = () => {
                                                 <span>{isRTL ? 'بيانات الراسل (المنشأ)' : 'Shipper (Origin)'}</span>
                                             </h2>
                                             {canEdit && (
-                                                <button type="button" onClick={() => setEditDrawerOpen(true)} className="text-xs font-bold text-primary dark:text-sky-400 hover:underline cursor-pointer">
+                                                <button type="button" onClick={handleOpenEdit} className="text-xs font-bold text-primary dark:text-sky-400 hover:underline cursor-pointer">
                                                     {isRTL ? 'تعديل' : 'Edit'}
                                                 </button>
                                             )}
@@ -733,7 +741,7 @@ export const ShipmentDetailsV2Page = () => {
                                                 <span>{isRTL ? 'بيانات المستلم (الوجهة)' : 'Consignee (Destination)'}</span>
                                             </h2>
                                             {canEdit && (
-                                                <button type="button" onClick={() => setEditDrawerOpen(true)} className="text-xs font-bold text-primary dark:text-sky-400 hover:underline cursor-pointer">
+                                                <button type="button" onClick={handleOpenEdit} className="text-xs font-bold text-primary dark:text-sky-400 hover:underline cursor-pointer">
                                                     {isRTL ? 'تعديل' : 'Edit'}
                                                 </button>
                                             )}
@@ -793,7 +801,7 @@ export const ShipmentDetailsV2Page = () => {
                                             <span>{isRTL ? 'مواصفات الطرود والجمارك' : 'Cargo, Parcels & Customs Specifications'}</span>
                                         </h2>
                                         {canEdit && (
-                                            <button type="button" onClick={() => setEditDrawerOpen(true)} className="text-xs font-bold text-primary dark:text-sky-400 hover:underline cursor-pointer">
+                                            <button type="button" onClick={handleOpenEdit} className="text-xs font-bold text-primary dark:text-sky-400 hover:underline cursor-pointer">
                                                 {isRTL ? 'تعديل الطرود' : 'Edit Parcels'}
                                             </button>
                                         )}
@@ -996,7 +1004,7 @@ export const ShipmentDetailsV2Page = () => {
                                     isInternalShipment={isInternalShipment}
                                     isSyncingCarrier={isSyncingCarrier}
                                     onSyncCarrierTracking={handleSyncCarrierTracking}
-                                    onOpenStatusEdit={() => setEditDrawerOpen(true)}
+                                    onOpenStatusEdit={handleOpenEdit}
                                     onAddComment={handleAddComment}
                                     isSubmittingComment={isSubmittingComment}
                                 />
@@ -1043,36 +1051,17 @@ export const ShipmentDetailsV2Page = () => {
                 )}
             </div>
 
-            {/* Full Edit Consignment Studio Modal (TargetLogisticsWizard) */}
-            {editDrawerOpen && shipment && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-900/70 backdrop-blur-sm">
-                    <div className="fixed inset-0" onClick={() => setEditDrawerOpen(false)} />
-                    <div className="relative w-full max-w-6xl h-[92vh] max-h-[920px] bg-base-100 rounded-3xl shadow-2xl z-10 flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800">
-                        <TargetLogisticsWizard
-                            mode="edit"
-                            shipment={shipment}
-                            isModal={true}
-                            onClose={() => setEditDrawerOpen(false)}
-                            onComplete={async () => {
-                                setEditDrawerOpen(false);
-                                await loadShipmentData();
-                            }}
-                        />
-                    </div>
-                </div>
-            )}
-
             {/* Carrier Conversion Drawer */}
             {conversionDrawerOpen && (
                 <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/60 backdrop-blur-xs">
-                    <div className="w-full max-w-md bg-white dark:bg-slate-900 h-full shadow-2xl p-5 space-y-4 flex flex-col">
-                        <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3">
+                    <div className="w-full max-w-md bg-white dark:bg-slate-900 h-full shadow-2xl p-5 space-y-4 flex flex-col overflow-hidden">
+                        <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3 shrink-0">
                             <h3 className="font-bold text-base text-slate-900 dark:text-white">{isRTL ? 'تحويل وحجز الناقل الدولي' : 'Convert & Book Carrier'}</h3>
                             <button type="button" onClick={() => setConversionDrawerOpen(false)} className="min-h-[36px] min-w-[36px] rounded-lg flex items-center justify-center cursor-pointer">
                                 <span className="material-symbols-outlined text-lg" aria-hidden="true">close</span>
                             </button>
                         </div>
-                        <div className="flex-1 space-y-3 text-xs">
+                        <div className="flex-1 overflow-y-auto space-y-3 text-xs">
                             <div>
                                 <label className="block font-bold mb-1">{isRTL ? 'شركة الشحن' : 'Target Carrier'}</label>
                                 <select
@@ -1141,7 +1130,7 @@ export const ShipmentDetailsV2Page = () => {
             {/* Upload Document Modal */}
             {isUploadModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/70 backdrop-blur-xs">
-                    <div role="dialog" aria-modal="true" className="w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 p-5 sm:p-6 space-y-4">
+                    <div role="dialog" aria-modal="true" className="w-full max-w-md max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 p-5 sm:p-6 space-y-4">
                         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
                             <h3 className="font-bold text-base text-slate-900 dark:text-white">{isRTL ? 'رفع مستند للشحنة' : 'Upload Consignment Document'}</h3>
                             <button type="button" onClick={() => setIsUploadModalOpen(false)} className="min-h-[36px] min-w-[36px] rounded-lg flex items-center justify-center cursor-pointer">

@@ -12,7 +12,7 @@ export const Tab = ({ active, onClick, children, icon, className = '' }) => (
 );
 
 export const Tabs = ({ children, className = '' }) => (
-    <div className={`tabs tabs-bordered mb-6 ${className}`}>
+    <div className={`tabs tabs-bordered mb-6 overflow-x-auto ${className}`}>
         {children}
     </div>
 );

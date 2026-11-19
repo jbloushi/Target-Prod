@@ -14,7 +14,9 @@ const V1_TO_V2_ROUTES = {
     '/dashboard': '/dashboard-v2',
     '/shipments': '/shipments-v2',
     '/shipment/new': '/shipment/new-v2',
+    '/shipments/new': '/shipment/new-v2',
     '/create': '/shipment/new-v2',
+    '/create-shipment': '/shipment/new-v2',
     '/finance': '/finance-v2',
     '/fleet/dispatch': '/fleet/dispatch-v2',
     '/driver/runs': '/driver/runs-v2',
@@ -23,6 +25,13 @@ const V1_TO_V2_ROUTES = {
     '/address-book': '/address-book-v2',
     '/support': '/support-v2',
     '/settings': '/settings-v2',
+    '/analytics': '/analytics-v2',
+    '/calendar': '/calendar-v2',
+    '/warehouse': '/warehouse-v2',
+    '/fleets': '/fleets-v2',
+    '/drivers': '/drivers-v2',
+    '/notifications': '/notifications-v2',
+    '/forgot-password': '/forgot-password-v2',
     '/admin/users': '/admin/users-v2',
     '/admin/organizations': '/admin/organizations-v2',
     '/admin/rate-cards': '/admin/rate-cards-v2',
@@ -56,11 +65,12 @@ const Header = () => {
     const [financeSummary, setFinanceSummary] = useState(null);
     const [versionNotice, setVersionNotice] = useState(null);
 
+    const headerRef = useRef(null);
     const userMenuRef = useRef(null);
     const opsMenuRef = useRef(null);
     const mgmtMenuRef = useRef(null);
 
-    // Close dropdowns on outside click
+    // Close dropdowns and mobile drawer on outside click or Escape key
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
@@ -72,9 +82,24 @@ const Header = () => {
             if (mgmtMenuRef.current && !mgmtMenuRef.current.contains(event.target)) {
                 setMgmtMenuOpen(false);
             }
+            if (headerRef.current && !headerRef.current.contains(event.target)) {
+                setMobileMenuOpen(false);
+            }
+        };
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape') {
+                setMobileMenuOpen(false);
+                setUserMenuOpen(false);
+                setOpsMenuOpen(false);
+                setMgmtMenuOpen(false);
+            }
         };
         document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
     }, []);
 
     // Close mobile menu on route change
@@ -138,7 +163,7 @@ const Header = () => {
         if (path.startsWith('/shipment/') && path !== '/shipment/new') {
             if (path.endsWith('/edit')) {
                 const tn = path.replace('/shipment/', '').replace('/edit', '');
-                return `/shipment-v2/${tn}${location.search}`;
+                return `/shipment-v2/${tn}/edit${location.search}`;
             }
             return `${path.replace('/shipment/', '/shipment-v2/')}${location.search}`;
         }
@@ -167,11 +192,11 @@ const Header = () => {
     };
 
     return (
-        <header className="fixed top-0 inset-x-0 z-50 h-16 bg-base-100/90 dark:bg-slate-900/90 backdrop-blur-xl border-b border-base-200 dark:border-slate-800 transition-colors duration-200">
-            <div className="max-w-[1800px] mx-auto h-full px-3 sm:px-5 lg:px-6 flex items-center justify-between gap-2">
+        <header ref={headerRef} className="fixed top-0 inset-x-0 z-50 h-16 bg-base-100/90 dark:bg-slate-900/90 backdrop-blur-xl border-b border-base-200 dark:border-slate-800 transition-colors duration-200">
+            <div className="max-w-[1800px] mx-auto h-full px-2.5 sm:px-5 lg:px-6 flex items-center justify-between gap-1.5 sm:gap-2">
                 
                 {/* ── Brand & Navigation Group ──────────────────────── */}
-                <div className="flex items-center gap-2 xl:gap-3 min-w-0">
+                <div className="flex items-center gap-1.5 sm:gap-2 xl:gap-3 min-w-0">
                     {/* Mobile Hamburger Button */}
                     {isAuthenticated && (
                         <button
@@ -188,18 +213,18 @@ const Header = () => {
 
                     {/* Target Logistics Brand Logo */}
                     <Link 
-                        to={isAuthenticated ? (isDriver ? "/driver/pickup" : (isV2Route ? "/dashboard-v2" : "/dashboard")) : "/"} 
+                        to={isAuthenticated ? (isDriver ? (isV2Route ? "/driver/pickup-v2" : "/driver/pickup") : (isV2Route ? "/dashboard-v2" : "/dashboard")) : "/"} 
                         className="flex items-center gap-1.5 group cursor-pointer shrink-0"
                     >
                         <img 
                             src="/images/target-logo.png" 
                             alt="Target Logistics" 
-                            className="h-7 sm:h-8 w-auto object-contain dark:hidden group-hover:opacity-90 transition-opacity shrink-0" 
+                            className="h-6 sm:h-8 w-auto object-contain dark:hidden group-hover:opacity-90 transition-opacity shrink-0" 
                         />
                         <img 
                             src="/images/target-logo-white.png" 
                             alt="Target Logistics" 
-                            className="h-7 sm:h-8 w-auto object-contain hidden dark:block group-hover:opacity-90 transition-opacity shrink-0" 
+                            className="h-6 sm:h-8 w-auto object-contain hidden dark:block group-hover:opacity-90 transition-opacity shrink-0" 
                         />
                         <span className="hidden 2xl:inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-extrabold tracking-widest uppercase bg-primary/10 text-primary dark:bg-sky-500/15 dark:text-sky-400 whitespace-nowrap shrink-0">
                             {isStaff ? (isRTL ? 'إدارة الشبكة' : 'Ops') : isDriver ? (isRTL ? 'السائق' : 'Driver') : (isRTL ? 'حساب الشركات' : 'Portal')}
@@ -479,7 +504,7 @@ const Header = () => {
                 </div>
 
                 {/* ── Right Actions & Profile Hub ───────────────────── */}
-                <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                     {/* Quick "+ New Shipment" CTA Button */}
                     {isAuthenticated && canCreateShipments && (
                         <Link
@@ -516,7 +541,7 @@ const Header = () => {
                                     ? (isRTL ? 'أنت الآن على واجهة V2 — انقر للتبديل إلى V1 القياسية' : 'On V2 Cockpit — Click to switch to V1 Standard')
                                     : (isRTL ? 'أنت الآن على واجهة V1 — انقر للتبديل إلى مقصورة V2' : 'On V1 Standard — Click to switch to V2 Cockpit')
                             }
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-extrabold border transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                            className={`inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-xl text-[11px] font-extrabold border transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                                 isV2Route
                                     ? 'bg-primary/10 text-primary border-primary/25 hover:bg-primary/15 dark:bg-sky-500/15 dark:text-sky-400 dark:border-sky-500/30'
                                     : 'bg-amber-500/10 text-amber-700 border-amber-500/30 hover:bg-amber-500/20 dark:text-amber-300'
@@ -533,7 +558,7 @@ const Header = () => {
                                     ? (isRTL ? '· تبديل إلى V1' : '· Switch to V1')
                                     : (isRTL ? '· تبديل إلى V2' : '· Switch to V2')}
                             </span>
-                            <span className="material-symbols-outlined text-[14px] opacity-75 xl:hidden">
+                            <span className="material-symbols-outlined text-[14px] opacity-75 hidden sm:inline xl:hidden">
                                 swap_horiz
                             </span>
                         </button>
@@ -543,11 +568,14 @@ const Header = () => {
                     <button
                         type="button"
                         onClick={toggleLanguage}
-                        className="btn btn-ghost btn-sm px-2.5 rounded-xl font-extrabold text-xs flex items-center gap-1 border border-base-300/80 hover:bg-base-200 transition-colors whitespace-nowrap shrink-0"
+                        className="btn btn-ghost btn-sm px-2 sm:px-2.5 rounded-xl font-extrabold text-xs flex items-center gap-1 border border-base-300/80 hover:bg-base-200 transition-colors whitespace-nowrap shrink-0"
                         title={lang === 'en' ? "التحويل للغة العربية" : "Switch to English"}
                     >
-                        <span className="material-symbols-outlined text-sm text-primary">translate</span>
-                        <span className="font-semibold">{lang === 'en' ? '🇰🇼 عربي' : '🇬🇧 EN'}</span>
+                        <span className="material-symbols-outlined text-sm text-primary hidden sm:inline">translate</span>
+                        <span className="font-semibold">
+                            <span className="hidden sm:inline">{lang === 'en' ? '🇰🇼 ' : '🇬🇧 '}</span>
+                            {lang === 'en' ? 'عربي' : 'EN'}
+                        </span>
                     </button>
 
                     {/* Dark/Light Theme Toggle */}
@@ -673,7 +701,13 @@ const Header = () => {
 
             {/* ── Mobile Navigation Drawer Menu ──────────────────── */}
             {mobileMenuOpen && (
-                <div className="lg:hidden bg-base-100 border-b border-base-200 px-4 py-4 space-y-3 shadow-xl max-h-[80vh] overflow-y-auto">
+                <>
+                    <div
+                        className="fixed inset-0 top-16 z-40 bg-slate-950/35 backdrop-blur-[1px] lg:hidden"
+                        onClick={() => setMobileMenuOpen(false)}
+                        aria-hidden="true"
+                    />
+                    <div className="relative z-50 lg:hidden bg-base-100 border-b border-base-200 px-4 py-4 space-y-3 shadow-xl max-h-[80vh] overflow-y-auto">
                     <div className="grid grid-cols-2 gap-2">
                         {canAccessDashboard && (
                             <Link
@@ -870,6 +904,7 @@ const Header = () => {
                         </div>
                     )}
                 </div>
+                </>
             )}
 
             {/* Paywall Upsell Modal */}

@@ -120,7 +120,7 @@ const Modal = ({
                 </div>
                 <div className="p-6 overflow-y-auto flex-1 text-xs">{children}</div>
                 {footer && (
-                    <div className="p-4 bg-base-200/50 border-t border-base-200 flex justify-end gap-2">
+                    <div className="p-4 bg-base-200/50 border-t border-base-200 flex flex-wrap justify-end gap-2">
                         {footer}
                     </div>
                 )}

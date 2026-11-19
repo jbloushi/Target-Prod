@@ -1418,10 +1418,10 @@ export const ShipmentWizardV2Cockpit = () => {
         <div
             ref={topAnchorRef}
             dir={isRTL ? 'rtl' : 'ltr'}
-            className="w-full min-h-screen pb-8 overflow-x-hidden"
+            className="w-full min-h-screen pb-8 overflow-x-clip"
         >
             {/* Full-Screen Device-Adaptive Fluid Workspace */}
-            <div className="w-full px-3 sm:px-6 lg:px-8 pt-4 sm:pt-5 space-y-5">
+            <div className="w-full pt-4 sm:pt-5 space-y-5">
                 {/* ── TOP V2 COCKPIT SWITCHER BANNER (Links back to /shipment/new V1 Standard) ── */}
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 sm:px-5 sm:py-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-2xs">
                     <div className="flex flex-wrap items-center gap-2.5 min-w-0">
@@ -1446,7 +1446,7 @@ export const ShipmentWizardV2Cockpit = () => {
                             <span>{isRTL ? 'لوحة V2' : 'Dashboard V2'}</span>
                         </Link>
                         <Link
-                            to="/shipment/new"
+                            to={mode === 'edit' && trackingNumber ? `/shipment/${encodeURIComponent(trackingNumber)}/edit` : '/shipment/new'}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 transition-colors whitespace-nowrap"
                         >
                             <span className="material-symbols-outlined text-sm leading-none" aria-hidden="true">
@@ -3652,31 +3652,31 @@ export const ShipmentWizardV2Cockpit = () => {
                                                             </button>
                                                         </div>
                                                     </div>
-                                                    <div className="flex justify-between">
+                                                    <div className="flex flex-wrap justify-between gap-2">
                                                         <span className="text-slate-500">{isRTL ? 'نوع الشحنة:' : 'Shipment Type:'}</span>
                                                         <span className="font-bold text-slate-900 dark:text-slate-100">
                                                             {pkg.shipmentType === 'documents' ? 'Document Express' : `Standard Package (${pkg.pkgType})`}
                                                         </span>
                                                     </div>
-                                                    <div className="flex justify-between">
+                                                    <div className="flex flex-wrap justify-between gap-2">
                                                         <span className="text-slate-500">{isRTL ? 'الوزن الخاضع للتسعير:' : 'Chargeable Weight:'}</span>
                                                         <span dir="ltr" className="font-mono font-black text-primary dark:text-sky-400">
                                                             {weightMetrics.chargeableWeight.toFixed(2)} kg (Actual: {weightMetrics.actualWeight.toFixed(2)} kg / Vol: {weightMetrics.volumetricWeight.toFixed(2)} kg)
                                                         </span>
                                                     </div>
-                                                    <div className="flex justify-between">
+                                                    <div className="flex flex-wrap justify-between gap-2">
                                                         <span className="text-slate-500">{isRTL ? 'الناقل المختار:' : 'Carrier & SLA:'}</span>
                                                         <span className="font-bold text-slate-900 dark:text-slate-100">
                                                             {isRTL ? selectedCarrier.nameAr : selectedCarrier.nameEn} ({selectedCarrier.slaPct}% SLA)
                                                         </span>
                                                     </div>
-                                                    <div className="flex justify-between">
+                                                    <div className="flex flex-wrap justify-between gap-2">
                                                         <span className="text-slate-500">{isRTL ? 'البند الجمركي و Incoterms:' : 'HS Code & Incoterms:'}</span>
                                                         <span dir="ltr" className="font-mono font-bold text-slate-900 dark:text-slate-100">
                                                             {customs.hsCode} • {customs.incoterms?.split('–')[0]?.trim() || 'DAP'}
                                                         </span>
                                                     </div>
-                                                    <div className="flex justify-between">
+                                                    <div className="flex flex-wrap justify-between gap-2">
                                                         <span className="text-slate-500">{isRTL ? 'الجمارك والضرائب:' : 'Duties & Taxes:'}</span>
                                                         <span className="font-bold text-slate-700 dark:text-slate-200">
                                                             {customs.incoterms?.toUpperCase().includes('DDP')

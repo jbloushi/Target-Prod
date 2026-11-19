@@ -2,7 +2,7 @@ import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import Layout from '../components/layout/Layout';
 import { useAuth } from '../context/AuthContext';
-import { getDefaultLandingPath } from '../utils/uiVersion';
+import { getDefaultLandingPath, getStoredUiVersion } from '../utils/uiVersion';
 
 const ShipmentWizardV2 = lazy(() => import('../pages/ShipmentWizardV2'));
 const AboutPage = lazy(() => import('../pages/AboutPage'));
@@ -92,7 +92,8 @@ const RootRedirect = () => {
 
 const RedirectToShipment = () => {
   const { trackingNumber } = useParams();
-  return <Navigate to={`/shipment/${trackingNumber}`} replace />;
+  const prefix = getStoredUiVersion() === 'v1' ? '/shipment' : '/shipment-v2';
+  return <Navigate to={`${prefix}/${trackingNumber}`} replace />;
 };
 
 const AppRoutes = () => {
@@ -276,6 +277,11 @@ const AppRoutes = () => {
           <Route path="shipment-v2/:trackingNumber" element={
             <ProtectedRoute allowedRoles={['admin', 'staff', 'client', 'manager', 'accounting', 'org_manager', 'org_agent']}>
               <ShipmentDetailsV2Page />
+            </ProtectedRoute>
+          } />
+          <Route path="shipment-v2/:trackingNumber/edit" element={
+            <ProtectedRoute allowedRoles={['admin', 'staff', 'client', 'manager', 'accounting', 'org_manager', 'org_agent']}>
+              <ShipmentWizardV2Cockpit />
             </ProtectedRoute>
           } />
           <Route path="shipment/:trackingNumber/edit" element={

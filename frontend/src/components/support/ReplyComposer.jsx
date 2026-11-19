@@ -167,14 +167,14 @@ export const ReplyComposer = ({
         .replace('{{4}}', 'Kuwait');
 
     return (
-        <div data-testid="reply-composer-pane" className="border-t border-base-200 bg-base-100 p-3.5 space-y-2 shrink-0">
+        <div data-testid="reply-composer-pane" className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 space-y-2.5 shrink-0">
             {/* Missing Agent Token RBAC Guard Alert */}
             {!hasChatwootToken && (
                 <div
                     data-testid="no-token-warning"
-                    className="p-2.5 rounded-xl bg-error/10 border border-error/20 text-error flex items-center gap-2 text-xs font-semibold"
+                    className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 text-rose-700 dark:text-rose-300 flex items-center gap-2 text-xs font-semibold"
                 >
-                    <span className="material-symbols-outlined text-base">lock</span>
+                    <span className="material-symbols-outlined text-base shrink-0">lock</span>
                     <span className="flex-1">
                         {isRTL
                             ? 'يلزم وجود رمز دخول شخصي (Chatwoot Access Token) لحسابك لإرسال الردود. يرجى التواصل مع مسؤول النظام لتفعيله في إدارة المستخدمين.'
@@ -185,9 +185,13 @@ export const ReplyComposer = ({
 
             {/* Error banner if send failed */}
             {sendError && (
-                <div className="p-2 rounded-lg bg-error/10 border border-error/20 text-error text-xs flex items-center justify-between">
+                <div className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 text-rose-700 dark:text-rose-300 text-xs flex items-center justify-between gap-2">
                     <span>{sendError}</span>
-                    <button type="button" onClick={() => setSendError(null)} className="btn btn-ghost btn-xs btn-circle">
+                    <button
+                        type="button"
+                        onClick={() => setSendError(null)}
+                        className="inline-flex items-center justify-center h-6 w-6 rounded-full hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-colors shrink-0"
+                    >
                         <span className="material-symbols-outlined text-xs">close</span>
                     </button>
                 </div>
@@ -197,14 +201,14 @@ export const ReplyComposer = ({
             {!windowStatus.inside24hWindow && (
                 <div
                     data-testid="window-expired-composer-banner"
-                    className="p-2.5 rounded-xl bg-warning/10 border border-warning/30 text-warning-content flex items-start gap-2 text-xs"
+                    className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 flex items-start gap-2 text-xs"
                 >
-                    <span className="material-symbols-outlined text-base text-warning shrink-0 mt-0.5">info</span>
+                    <span className="material-symbols-outlined text-base text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">info</span>
                     <div>
-                        <p className="font-bold text-base-content">
+                        <p className="font-bold text-slate-900 dark:text-white">
                             {isRTL ? 'انتهت نافذة الـ 24 ساعة للرد الحر' : '24-Hour Customer Service Window Expired'}
                         </p>
-                        <p className="text-base-content/70 text-[11px] mt-0.5">
+                        <p className="text-slate-600 dark:text-slate-300 text-[11px] mt-0.5">
                             {isRTL
                                 ? 'وفقاً لسياسات Meta Cloud API، لا يمكن إرسال نصوص حرة خارج الـ 24 ساعة. تم تفعيل اختيار قوالب ميتا المعتمدة تلقائياً.'
                                 : 'Per Meta WhatsApp policies, free-form text is disabled outside 24h. Please select an approved utility template to re-engage the customer.'}
@@ -215,14 +219,16 @@ export const ReplyComposer = ({
 
             {/* Mode Switcher Tabs (Only available if inside 24h window) */}
             {windowStatus.inside24hWindow && (
-                <div className="flex items-center justify-between gap-2">
-                    <div className="join join-horizontal bg-base-200/60 p-0.5 rounded-lg text-xs font-bold">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="inline-flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200/80 dark:border-slate-700 text-xs font-bold">
                         <button
                             type="button"
                             data-testid="composer-mode-free"
                             onClick={() => setComposerMode('free')}
-                            className={`join-item btn btn-xs border-0 rounded-md ${
-                                composerMode === 'free' ? 'btn-primary' : 'btn-ghost'
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
+                                composerMode === 'free'
+                                    ? 'bg-primary text-white shadow-xs'
+                                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                             }`}
                         >
                             <span className="material-symbols-outlined text-xs">edit_note</span>
@@ -232,8 +238,10 @@ export const ReplyComposer = ({
                             type="button"
                             data-testid="composer-mode-template"
                             onClick={() => setComposerMode('template')}
-                            className={`join-item btn btn-xs border-0 rounded-md ${
-                                composerMode === 'template' ? 'btn-primary' : 'btn-ghost'
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
+                                composerMode === 'template'
+                                    ? 'bg-primary text-white shadow-xs'
+                                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                             }`}
                         >
                             <span className="material-symbols-outlined text-xs">verified</span>
@@ -243,16 +251,16 @@ export const ReplyComposer = ({
 
                     {/* Private Staff Note toggle in free text mode */}
                     {composerMode === 'free' && (
-                        <label className="cursor-pointer label py-0 gap-1.5 text-xs text-base-content/70">
+                        <label className="cursor-pointer inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 select-none">
                             <input
                                 type="checkbox"
                                 data-testid="private-note-toggle"
                                 checked={isPrivate}
                                 onChange={(e) => setIsPrivate(e.target.checked)}
-                                className="checkbox checkbox-xs checkbox-warning rounded"
+                                className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 accent-amber-500 cursor-pointer"
                             />
                             <span className="text-[11px] font-semibold flex items-center gap-1">
-                                <span className="material-symbols-outlined text-xs text-warning">lock</span>
+                                <span className="material-symbols-outlined text-xs text-amber-500">lock</span>
                                 <span>{isRTL ? 'ملاحظة خاصة' : 'Internal Note'}</span>
                             </span>
                         </label>
@@ -281,14 +289,16 @@ export const ReplyComposer = ({
                                         ? (isRTL ? 'اكتب ملاحظة داخلية خاصة بفريق العمل...' : 'Write an internal note for staff...')
                                         : (isRTL ? 'اكتب رداً حراً للعميل (اضغط Enter للإرسال)...' : 'Type a reply to customer (Enter to send)...'))
                             }
-                            className={`textarea textarea-bordered w-full text-xs rounded-xl focus:outline-primary resize-none leading-relaxed ${
-                                isPrivate ? 'bg-amber-500/5 border-amber-500/40 text-amber-950 dark:text-amber-100' : 'bg-base-200/50'
+                            className={`w-full px-3 py-2.5 text-xs rounded-xl border focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none leading-relaxed transition-colors disabled:opacity-50 ${
+                                isPrivate
+                                    ? 'bg-amber-50/70 dark:bg-amber-950/30 border-amber-300 dark:border-amber-700/70 text-amber-950 dark:text-amber-100 placeholder:text-amber-700/50 dark:placeholder:text-amber-300/50 focus:border-amber-500'
+                                    : 'bg-slate-50 dark:bg-slate-800/70 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-primary'
                             }`}
                         />
                     </div>
 
-                    <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] text-base-content/50 font-mono">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-[11px] text-slate-400 dark:text-slate-500 font-mono truncate">
                             {user?.name ? `${isRTL ? 'المرسل' : 'Agent'}: ${user.name}` : ''}
                         </span>
 
@@ -296,12 +306,14 @@ export const ReplyComposer = ({
                             type="submit"
                             data-testid="send-free-text-btn"
                             disabled={!hasChatwootToken || sendingMessage || !freeText.trim()}
-                            className={`btn btn-sm rounded-xl font-bold gap-1.5 ${
-                                isPrivate ? 'btn-warning' : 'btn-primary'
+                            className={`inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold shadow-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                                isPrivate
+                                    ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                                    : 'bg-primary hover:bg-primary/90 text-white'
                             }`}
                         >
                             {sendingMessage ? (
-                                <span className="loading loading-spinner loading-xs" />
+                                <span className="inline-block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                             ) : (
                                 <>
                                     <span className="material-symbols-outlined text-base">send</span>
@@ -315,7 +327,7 @@ export const ReplyComposer = ({
                 /* Mode B: Approved Meta Template Selector & Dispatcher */
                 <form onSubmit={handleSend} className="space-y-2.5">
                     <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-base-content/70">
+                        <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block">
                             {isRTL ? 'اختر قالب ميتا المعتمد' : 'Select Approved Meta Template'}
                         </label>
                         <select
@@ -323,7 +335,7 @@ export const ReplyComposer = ({
                             value={selectedTemplateName}
                             onChange={(e) => setSelectedTemplateName(e.target.value)}
                             disabled={!hasChatwootToken || sendingMessage}
-                            className="select select-bordered select-sm w-full text-xs rounded-xl bg-base-200/50 font-semibold"
+                            className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-900 dark:text-white font-semibold focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-50"
                         >
                             {APPROVED_META_TEMPLATES.map(t => (
                                 <option key={t.name} value={t.name}>
@@ -335,7 +347,7 @@ export const ReplyComposer = ({
 
                     {/* Template Parameter Input if needed */}
                     <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-base-content/60">
+                        <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block">
                             {isRTL ? 'تفاصيل إضافية / الملاحظات للمتغيرات' : 'Custom Variable Parameter'}
                         </label>
                         <input
@@ -344,17 +356,17 @@ export const ReplyComposer = ({
                             value={customParam}
                             onChange={(e) => setCustomParam(e.target.value)}
                             placeholder={isRTL ? 'مثال: رابط الدفع، اسم المنطقة، أو ملاحظة...' : 'e.g. Payment URL, area name, or custom note...'}
-                            className="input input-sm input-bordered w-full text-xs rounded-xl bg-base-200/50"
+                            className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                         />
                     </div>
 
                     {/* Live Preview Card */}
-                    <div className="p-3 rounded-xl bg-primary/5 border border-primary/20 space-y-1">
+                    <div className="p-3 rounded-xl bg-primary/5 dark:bg-primary/10 border border-primary/20 space-y-1">
                         <div className="flex items-center gap-1 text-[10px] font-bold text-primary uppercase font-mono">
                             <span className="material-symbols-outlined text-xs">preview</span>
                             <span>{isRTL ? 'معاينة نص القالب الفعلي' : 'Live WhatsApp Template Preview'}</span>
                         </div>
-                        <p className="text-xs text-base-content leading-relaxed font-medium whitespace-pre-wrap">
+                        <p className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed font-medium whitespace-pre-wrap">
                             {previewBody}
                         </p>
                     </div>
@@ -364,10 +376,10 @@ export const ReplyComposer = ({
                             type="submit"
                             data-testid="send-template-btn"
                             disabled={!hasChatwootToken || sendingMessage}
-                            className="btn btn-sm btn-primary rounded-xl font-bold gap-1.5 shadow-sm"
+                            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-bold shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {sendingMessage ? (
-                                <span className="loading loading-spinner loading-xs" />
+                                <span className="inline-block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                             ) : (
                                 <>
                                     <span className="material-symbols-outlined text-base">verified</span>

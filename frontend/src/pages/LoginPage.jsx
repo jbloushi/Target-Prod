@@ -195,7 +195,7 @@ export const LoginPage = () => {
                 <label className="text-xs font-bold text-base-content/70 uppercase tracking-wider">
                   {isRTL ? 'كلمة المرور *' : 'Password *'}
                 </label>
-                <Link to="/forgot-password" className="link link-primary text-xs font-bold">
+                <Link to="/forgot-password-v2" className="link link-primary text-xs font-bold">
                   {isRTL ? 'نسيت كلمة المرور؟' : 'Forgot password?'}
                 </Link>
               </div>

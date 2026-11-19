@@ -451,23 +451,23 @@ export const FallbackPricingManager = () => {
       </div>
 
       {/* Simulator Section */}
-      <div className="card bg-base-100 border border-base-200 shadow-sm p-5">
+      <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6">
         <div className="flex items-center gap-2 mb-4">
-          <span className="material-symbols-outlined text-primary">calculate</span>
-          <h3 className="font-bold text-base">
+          <span className="material-symbols-outlined text-primary" aria-hidden="true">calculate</span>
+          <h3 className="font-bold text-sm sm:text-base text-slate-900 dark:text-slate-100">
             {lang === 'ar' ? 'محاكي تسعير الطوارئ الفوري' : 'Live Fallback Rate Calculator & Test'}
           </h3>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
           <div>
-            <label className="text-xs font-semibold text-base-content/70 mb-1 block">
+            <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1 block">
               {lang === 'ar' ? 'خدمة الشحن' : 'Shipping Service'}
             </label>
             <select
               value={simService}
               onChange={(e) => setSimService(e.target.value)}
-              className="select select-bordered select-sm w-full"
+              className="w-full h-9 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/30"
             >
               <option value="ECONOMY">Economy Shipping (Gulf GCC)</option>
               <option value="ARAMEX">Aramex Shipping (Gulf GCC)</option>
@@ -476,13 +476,13 @@ export const FallbackPricingManager = () => {
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-base-content/70 mb-1 block">
+            <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1 block">
               {lang === 'ar' ? 'بلد الوجهة' : 'Destination Country'}
             </label>
             <select
               value={simCountry}
               onChange={(e) => setSimCountry(e.target.value)}
-              className="select select-bordered select-sm w-full"
+              className="w-full h-9 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/30"
             >
               <optgroup label="Gulf (GCC)">
                 <option value="SA">Saudi Arabia (KSA)</option>
@@ -503,7 +503,7 @@ export const FallbackPricingManager = () => {
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-base-content/70 mb-1 block">
+            <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1 block">
               {lang === 'ar' ? 'الوزن (كجم)' : 'Weight (kg)'}
             </label>
             <input
@@ -513,29 +513,33 @@ export const FallbackPricingManager = () => {
               max="10"
               value={simWeight}
               onChange={(e) => setSimWeight(e.target.value)}
-              className="input input-bordered input-sm w-full font-mono"
+              className="w-full h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 font-mono text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
 
           <div>
-            <button onClick={handleRunSimulation} className="btn btn-outline btn-primary btn-sm w-full gap-2">
-              <span className="material-symbols-outlined text-sm">play_arrow</span>
+            <button
+              type="button"
+              onClick={handleRunSimulation}
+              className="w-full h-9 px-3 rounded-xl border border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary dark:text-sky-400 text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-sm" aria-hidden="true">play_arrow</span>
               <span>{lang === 'ar' ? 'احسب السعر البديل' : 'Calculate Quote'}</span>
             </button>
           </div>
         </div>
 
         {simResult && (
-          <div className="mt-4 p-4 rounded-xl bg-primary/5 border border-primary/20 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="mt-4 p-4 rounded-xl bg-primary/5 dark:bg-sky-500/10 border border-primary/20 dark:border-sky-500/30 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div>
-              <div className="font-bold text-sm text-primary">{simResult.serviceTitle}</div>
-              <div className="text-xs text-base-content/70">
+              <div className="font-bold text-sm text-primary dark:text-sky-400">{simResult.serviceTitle}</div>
+              <div className="text-xs text-slate-600 dark:text-slate-300">
                 {simResult.zoneDesc} | {simResult.weight} kg
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-base-content/60">{lang === 'ar' ? 'السعر المحسوب:' : 'Calculated Price:'}</span>
-              <span className="text-2xl font-black text-primary font-mono">
+              <span className="text-xs text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'السعر المحسوب:' : 'Calculated Price:'}</span>
+              <span className="text-2xl font-black text-primary dark:text-sky-400 font-mono tabular-nums">
                 {simResult.price} {simResult.currency}
               </span>
             </div>
@@ -544,14 +548,16 @@ export const FallbackPricingManager = () => {
       </div>
 
       {/* Complete Matrix Table */}
-      <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-base-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary text-xl">table_chart</span>
-            <span className="font-bold text-base">
+      <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="material-symbols-outlined text-primary text-xl" aria-hidden="true">table_chart</span>
+            <span className="font-bold text-sm sm:text-base text-slate-900 dark:text-slate-100">
               {lang === 'ar' ? 'جدول أسعار الطوارئ الكامل (بالدينار الكويتي KD)' : 'Complete Fallback Tariff Rates (All rates in KD)'}
             </span>
-            <span className="badge badge-sm badge-neutral">{filteredMatrix.length} brackets</span>
+            <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[11px] font-semibold tabular-nums text-slate-700 dark:text-slate-300">
+              {filteredMatrix.length} brackets
+            </span>
           </div>
 
           <div className="w-full sm:w-64">
@@ -560,46 +566,59 @@ export const FallbackPricingManager = () => {
               placeholder={lang === 'ar' ? 'بحث بالوزن أو السعر...' : 'Filter by weight or rate...'}
               value={tableFilter}
               onChange={(e) => setTableFilter(e.target.value)}
-              className="input input-sm input-bordered w-full"
+              className="w-full h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
         </div>
 
         <div className="overflow-x-auto max-h-[500px]">
-          <table className="table table-sm table-zebra w-full text-center">
-            <thead className="bg-base-200/90 sticky top-0 z-20 text-xs">
+          <table className="w-full border-collapse text-center text-xs">
+            <thead className="bg-slate-50 dark:bg-slate-800/90 sticky top-0 z-20 border-b border-slate-200 dark:border-slate-800">
               <tr>
-                <th className="font-black text-base-content sticky left-0 bg-base-200 z-30 shadow-xs">{lang === 'ar' ? 'الوزن (كجم)' : 'Weight (kg)'}</th>
-                <th className="text-base-content font-bold">
+                <th className="py-2.5 px-3 font-black text-slate-900 dark:text-slate-100 sticky start-0 bg-slate-100 dark:bg-slate-800 z-30 shadow-xs whitespace-nowrap">
+                  {lang === 'ar' ? 'الوزن (كجم)' : 'Weight (kg)'}
+                </th>
+                <th className="py-2.5 px-3 text-slate-700 dark:text-slate-200 font-bold whitespace-nowrap">
                   {lang === 'ar' ? 'اقتصادي - الخليج' : 'Economy | Gulf (GCC)'}
                 </th>
-                <th className="text-base-content font-bold">
+                <th className="py-2.5 px-3 text-slate-700 dark:text-slate-200 font-bold whitespace-nowrap">
                   {lang === 'ar' ? 'أرامكس - الخليج' : 'Aramex | Gulf (GCC)'}
                 </th>
-                <th className="text-base-content font-bold">
+                <th className="py-2.5 px-3 text-slate-700 dark:text-slate-200 font-bold whitespace-nowrap">
                   {lang === 'ar' ? 'DHL - المنطقة 1 (الخليج)' : 'DHL | Zone 1 (Gulf)'}
                 </th>
-                <th className="text-base-content font-bold">
+                <th className="py-2.5 px-3 text-slate-700 dark:text-slate-200 font-bold whitespace-nowrap">
                   {lang === 'ar' ? 'DHL - المنطقة 4 (أوروبا)' : 'DHL | Zone 4 (Europe)'}
                 </th>
-                <th className="text-base-content font-bold">
+                <th className="py-2.5 px-3 text-slate-700 dark:text-slate-200 font-bold whitespace-nowrap">
                   {lang === 'ar' ? 'DHL - المنطقة 6 (أمريكا)' : 'DHL | Zone 6 (USA)'}
                 </th>
               </tr>
             </thead>
-            <tbody className="font-mono text-xs">
+            <tbody className="font-mono tabular-nums text-xs divide-y divide-slate-100 dark:divide-slate-800">
               {filteredMatrix.map((row) => {
                 const isHighlighted = simResult && Math.abs(simResult.weight - row.weight) < 0.01;
                 return (
-                  <tr key={row.weight} className={isHighlighted ? 'bg-primary/10 font-bold' : 'hover'}>
-                    <td className={`font-bold text-base-content sticky left-0 z-10 shadow-xs ${isHighlighted ? 'bg-primary/10' : 'bg-base-100'}`}>
+                  <tr
+                    key={row.weight}
+                    className={
+                      isHighlighted
+                        ? 'bg-primary/10 dark:bg-sky-500/15 font-bold'
+                        : 'odd:bg-white even:bg-slate-50/70 dark:odd:bg-slate-900 dark:even:bg-slate-800/40 hover:bg-slate-100/70 dark:hover:bg-slate-800/70 transition-colors'
+                    }
+                  >
+                    <td
+                      className={`py-2.5 px-3 font-bold text-slate-900 dark:text-slate-100 sticky start-0 z-10 shadow-xs whitespace-nowrap ${
+                        isHighlighted ? 'bg-primary/10 dark:bg-sky-950' : 'bg-white dark:bg-slate-900'
+                      }`}
+                    >
                       {row.weight.toFixed(1)} kg
                     </td>
-                    <td className="text-base-content font-semibold">{row.economy.toFixed(3)}</td>
-                    <td className="text-base-content font-semibold">{row.aramex.toFixed(3)}</td>
-                    <td className="text-base-content font-medium">{row.dhlZ1.toFixed(3)}</td>
-                    <td className="text-base-content font-medium">{row.dhlZ4.toFixed(3)}</td>
-                    <td className="text-base-content font-medium">{row.dhlZ6.toFixed(3)}</td>
+                    <td className="py-2.5 px-3 text-slate-800 dark:text-slate-200 font-semibold">{row.economy.toFixed(3)}</td>
+                    <td className="py-2.5 px-3 text-slate-800 dark:text-slate-200 font-semibold">{row.aramex.toFixed(3)}</td>
+                    <td className="py-2.5 px-3 text-slate-700 dark:text-slate-300 font-medium">{row.dhlZ1.toFixed(3)}</td>
+                    <td className="py-2.5 px-3 text-slate-700 dark:text-slate-300 font-medium">{row.dhlZ4.toFixed(3)}</td>
+                    <td className="py-2.5 px-3 text-slate-700 dark:text-slate-300 font-medium">{row.dhlZ6.toFixed(3)}</td>
                   </tr>
                 );
               })}

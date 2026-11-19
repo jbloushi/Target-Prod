@@ -2,7 +2,6 @@ import React, { useState, useRef } from 'react';
 import { useSnackbar } from 'notistack';
 import { shipmentService } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
-import { TK } from '../tokens/kineticHorizon';
 
 const SAMPLE_CSV = `recipientName,recipientPhone,phoneCountryCode,destinationCountry,destinationCity,formattedAddress,weightKg,itemDescription,codAmount,carrierCode
 "Ahmed Al-Kandari","96599112233","965","KW","Kuwait City","Salmiya, Block 4, Street 12, Bldg 8","1.5","Electronics & Gadgets","","DGR"
@@ -168,23 +167,23 @@ export default function BulkShipmentImportModal({ isOpen, onClose, onImportSucce
   };
 
   const renderFooter = () => (
-    <div className="flex justify-between items-center w-full pt-4 border-t border-base-200">
+    <div className="flex flex-wrap justify-between items-center gap-3 w-full pt-4 border-t border-slate-200 dark:border-slate-800">
       <button
         type="button"
         onClick={handleDownloadTemplate}
-        className="btn btn-sm btn-outline gap-1.5 font-bold"
+        className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
       >
         <span className="material-symbols-outlined text-base text-primary">download</span>
         {t('bulk_download_template', 'Download CSV Template')}
       </button>
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-center gap-2 ms-auto">
         {step === 'preview' && (
           <button
             type="button"
             onClick={() => setStep('upload')}
             disabled={isSubmitting}
-            className="btn btn-sm btn-ghost font-bold"
+            className="inline-flex items-center justify-center rounded-xl px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors"
           >
             {t('back', 'Back to Upload')}
           </button>
@@ -194,7 +193,7 @@ export default function BulkShipmentImportModal({ isOpen, onClose, onImportSucce
           <button
             type="button"
             onClick={handleClose}
-            className="btn btn-sm btn-primary font-bold"
+            className="inline-flex items-center justify-center rounded-xl bg-primary hover:bg-primary/90 px-4 py-2 text-xs font-bold text-white shadow-sm transition-colors"
           >
             {t('close', 'Done')}
           </button>
@@ -203,11 +202,11 @@ export default function BulkShipmentImportModal({ isOpen, onClose, onImportSucce
             type="button"
             onClick={handleImportSubmit}
             disabled={isSubmitting || validCount === 0}
-            className="btn btn-sm btn-primary font-bold gap-2"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary hover:bg-primary/90 px-4 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {isSubmitting ? (
               <>
-                <span className="loading loading-spinner loading-xs" />
+                <span className="inline-block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                 {t('loading', 'Ingesting Consignments...')}
               </>
             ) : (
@@ -223,24 +222,29 @@ export default function BulkShipmentImportModal({ isOpen, onClose, onImportSucce
   );
 
   return (
-    <div className="modal modal-open z-50">
-      <div className="modal-box max-w-4xl bg-base-100 border border-base-300 p-6 space-y-4 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-base-200 pb-3">
-          <h3 className="font-black text-lg text-base-content flex items-center gap-2">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-xs" onClick={handleClose}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6 space-y-4 shadow-2xl"
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
+          <h3 className="font-black text-base sm:text-lg text-slate-900 dark:text-white flex items-center gap-2 flex-wrap">
             <span className="material-symbols-outlined text-primary">upload_file</span>
-            {t('bulk_modal_title', 'Bulk Consignment Batch Ingestion')}
+            <span>{t('bulk_modal_title', 'Bulk Consignment Batch Ingestion')}</span>
           </h3>
           <button
             type="button"
             onClick={handleClose}
             disabled={isSubmitting}
-            className="btn btn-sm btn-circle btn-ghost"
+            className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white disabled:opacity-50 transition-colors shrink-0"
+            aria-label="Close"
           >
-            ✕
+            <span className="material-symbols-outlined text-lg">close</span>
           </button>
         </div>
+
       {step === 'upload' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div className="flex flex-col gap-5">
           {/* Drag and Drop Zone */}
           <div
             onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
@@ -253,51 +257,37 @@ export default function BulkShipmentImportModal({ isOpen, onClose, onImportSucce
               }
             }}
             onClick={() => fileInputRef.current?.click()}
-            style={{
-              border: `2px dashed ${isDragging ? TK.primary : TK.border}`,
-              background: isDragging ? TK.primaryBg : '#fbfcfd',
-              borderRadius: 16,
-              padding: '36px 20px',
-              textAlign: 'center',
-              cursor: 'pointer',
-              transition: 'all 0.15s ease'
-            }}
+            className={`rounded-2xl border-2 border-dashed px-5 py-9 text-center cursor-pointer transition-all ${
+              isDragging
+                ? 'border-primary bg-primary/10'
+                : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 hover:border-primary/50'
+            }`}
           >
             <input
               ref={fileInputRef}
               type="file"
               accept=".csv,.txt"
-              style={{ display: 'none' }}
+              className="hidden"
               onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
             />
-            <div style={{
-              width: 52,
-              height: 52,
-              borderRadius: '50%',
-              background: TK.primaryBg,
-              color: TK.primary,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 12px'
-            }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 28 }}>cloud_upload</span>
+            <div className="w-13 h-13 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto mb-3">
+              <span className="material-symbols-outlined text-[28px]">cloud_upload</span>
             </div>
-            <div style={{ fontWeight: 800, fontSize: 16, color: TK.text1 }}>
+            <div className="font-extrabold text-base text-slate-900 dark:text-white">
               {t('bulk_drop_title', 'Drop your CSV file here, or')}{' '}
-              <span style={{ color: TK.primary, textDecoration: 'underline' }}>
+              <span className="text-primary underline">
                 {t('bulk_browse', 'browse')}
               </span>
             </div>
-            <div style={{ fontSize: 12.5, color: TK.text2, marginTop: 4 }}>
+            <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               {t('bulk_drop_hint', 'Supports up to 500 orders per batch with automatic address and pricing routing.')}
             </div>
           </div>
 
           {/* Quick Paste Alternative */}
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              <label style={{ fontWeight: 700, fontSize: 12, color: TK.text2 }}>
+            <div className="flex justify-between items-center gap-2 mb-1.5 flex-wrap">
+              <label className="font-bold text-xs text-slate-600 dark:text-slate-300">
                 {t('bulk_paste_title', 'Or Paste CSV Data Directly')}
               </label>
               {rawText && (
@@ -312,14 +302,7 @@ export default function BulkShipmentImportModal({ isOpen, onClose, onImportSucce
                     setParsedRows(rows);
                     setStep('preview');
                   }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: TK.primary,
-                    fontWeight: 700,
-                    fontSize: 12,
-                    cursor: 'pointer'
-                  }}
+                  className="text-xs font-bold text-primary hover:underline cursor-pointer"
                 >
                   {t('bulk_parse_btn', 'Parse & Preview →')}
                 </button>
@@ -330,50 +313,24 @@ export default function BulkShipmentImportModal({ isOpen, onClose, onImportSucce
               placeholder="recipientName,recipientPhone,destinationCountry,destinationCity,weightKg..."
               value={rawText}
               onChange={(e) => setRawText(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '12px',
-                borderRadius: 12,
-                border: `1px solid ${TK.border}`,
-                fontFamily: 'monospace',
-                fontSize: 12,
-                resize: 'vertical',
-                outline: 'none',
-                boxSizing: 'border-box'
-              }}
+              className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-mono text-xs resize-y focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
             />
           </div>
         </div>
       )}
 
       {step === 'preview' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="flex flex-col gap-4">
           {/* Batch Configuration Bar */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: 12,
-            background: '#f8fafc',
-            padding: 14,
-            borderRadius: 14,
-            border: `1px solid ${TK.border}`
-          }}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700/80 items-end">
             <div>
-              <label style={{ display: 'block', fontWeight: 700, fontSize: 11.5, color: TK.text2, marginBottom: 4 }}>
+              <label className="block font-bold text-[11px] uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
                 {t('bulk_fallback_carrier', 'Fallback Carrier')}
               </label>
               <select
                 value={defaultCarrier}
                 onChange={(e) => setDefaultCarrier(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '8px 10px',
-                  borderRadius: 8,
-                  border: `1px solid ${TK.border}`,
-                  fontSize: 12.5,
-                  fontWeight: 600,
-                  outline: 'none'
-                }}
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
               >
                 <option value="DGR">DHL Express (DGR)</option>
                 <option value="FEDEX">FedEx Express (FDX)</option>
@@ -383,39 +340,25 @@ export default function BulkShipmentImportModal({ isOpen, onClose, onImportSucce
               </select>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 18 }}>
+            <div className="flex items-center gap-2 py-1.5">
               <input
                 type="checkbox"
                 id="autoDispatchCheck"
                 checked={autoDispatch}
                 onChange={(e) => setAutoDispatch(e.target.checked)}
-                style={{ cursor: 'pointer', width: 16, height: 16 }}
+                className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 accent-primary cursor-pointer"
               />
-              <label htmlFor="autoDispatchCheck" style={{ fontSize: 12.5, fontWeight: 600, color: TK.text1, cursor: 'pointer' }}>
+              <label htmlFor="autoDispatchCheck" className="text-xs font-semibold text-slate-800 dark:text-slate-200 cursor-pointer">
                 {t('bulk_auto_dispatch', 'Auto-dispatch waybills immediately')}
               </label>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
-              <div style={{
-                padding: '4px 10px',
-                borderRadius: 8,
-                background: '#ecfdf5',
-                color: '#059669',
-                fontSize: 12,
-                fontWeight: 700
-              }}>
+            <div className="flex items-center sm:justify-end gap-2 flex-wrap">
+              <div className="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 text-xs font-bold">
                 ✓ {validCount} {lang === 'ar' ? 'صالح' : 'Valid'}
               </div>
               {errorCount > 0 && (
-                <div style={{
-                  padding: '4px 10px',
-                  borderRadius: 8,
-                  background: '#fef2f2',
-                  color: '#dc2626',
-                  fontSize: 12,
-                  fontWeight: 700
-                }}>
+                <div className="px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60 text-xs font-bold">
                   ⚠ {errorCount} {lang === 'ar' ? 'يوجد أخطاء' : 'Invalid'}
                 </div>
               )}
@@ -423,52 +366,44 @@ export default function BulkShipmentImportModal({ isOpen, onClose, onImportSucce
           </div>
 
           {/* Table Preview Grid */}
-          <div style={{
-            maxHeight: 340,
-            overflowY: 'auto',
-            border: `1px solid ${TK.border}`,
-            borderRadius: 12
-          }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: lang === 'ar' ? 'right' : 'left', fontSize: 12 }}>
+          <div className="overflow-x-auto overflow-y-auto max-h-80 border border-slate-200 dark:border-slate-800 rounded-xl">
+            <table className="w-full min-w-[680px] border-collapse text-start text-xs">
               <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: `1px solid ${TK.border}`, position: 'sticky', top: 0, zIndex: 10 }}>
-                  <th style={{ padding: '10px 12px', fontWeight: 700, color: TK.text3 }}>#</th>
-                  <th style={{ padding: '10px 12px', fontWeight: 700, color: TK.text3 }}>{t('status', 'Status')}</th>
-                  <th style={{ padding: '10px 12px', fontWeight: 700, color: TK.text3 }}>{t('recipient', 'Recipient')}</th>
-                  <th style={{ padding: '10px 12px', fontWeight: 700, color: TK.text3 }}>{t('phone', 'Phone')}</th>
-                  <th style={{ padding: '10px 12px', fontWeight: 700, color: TK.text3 }}>{t('destination', 'Destination')}</th>
-                  <th style={{ padding: '10px 12px', fontWeight: 700, color: TK.text3 }}>{t('weight', 'Weight')}</th>
-                  <th style={{ padding: '10px 12px', fontWeight: 700, color: TK.text3 }}>{t('cod_amount', 'COD')}</th>
-                  <th style={{ padding: '10px 12px', fontWeight: 700, color: TK.text3 }}>{t('carrier', 'Carrier')}</th>
+                <tr className="bg-slate-50 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10 text-slate-500 dark:text-slate-400">
+                  <th className="px-3 py-2.5 font-bold text-start">#</th>
+                  <th className="px-3 py-2.5 font-bold text-start">{t('status', 'Status')}</th>
+                  <th className="px-3 py-2.5 font-bold text-start">{t('recipient', 'Recipient')}</th>
+                  <th className="px-3 py-2.5 font-bold text-start">{t('phone', 'Phone')}</th>
+                  <th className="px-3 py-2.5 font-bold text-start">{t('destination', 'Destination')}</th>
+                  <th className="px-3 py-2.5 font-bold text-start">{t('weight', 'Weight')}</th>
+                  <th className="px-3 py-2.5 font-bold text-start">{t('cod_amount', 'COD')}</th>
+                  <th className="px-3 py-2.5 font-bold text-start">{t('carrier', 'Carrier')}</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-200/80 dark:divide-slate-800">
                 {parsedRows.map((r, i) => (
                   <tr
                     key={r.__id || i}
-                    style={{
-                      borderBottom: `1px solid ${TK.border}`,
-                      background: r.__isValid ? 'transparent' : '#fff5f5'
-                    }}
+                    className={r.__isValid ? 'hover:bg-slate-50 dark:hover:bg-slate-800/40' : 'bg-rose-50/70 dark:bg-rose-950/30'}
                   >
-                    <td style={{ padding: '8px 12px', color: TK.text3, fontWeight: 600 }}>{i + 1}</td>
-                    <td style={{ padding: '8px 12px' }}>
+                    <td className="px-3 py-2 text-slate-500 dark:text-slate-400 font-semibold">{i + 1}</td>
+                    <td className="px-3 py-2">
                       {r.__isValid ? (
-                        <span style={{ color: '#059669', fontWeight: 700, fontSize: 11 }}>{t('bulk_ready', 'READY')}</span>
+                        <span className="text-emerald-600 dark:text-emerald-400 font-bold text-[11px]">{t('bulk_ready', 'READY')}</span>
                       ) : (
-                        <span title={r.__errors.join(', ')} style={{ color: '#dc2626', fontWeight: 700, fontSize: 11, cursor: 'help' }}>
+                        <span title={r.__errors.join(', ')} className="text-rose-600 dark:text-rose-400 font-bold text-[11px] cursor-help">
                           {t('bulk_error', 'ERROR')}: {r.__errors[0]}
                         </span>
                       )}
                     </td>
-                    <td style={{ padding: '8px 12px', fontWeight: 600, color: TK.text1 }}>{r.recipientName || '—'}</td>
-                    <td style={{ padding: '8px 12px', fontFamily: 'monospace' }}>{r.recipientPhone || '—'}</td>
-                    <td style={{ padding: '8px 12px' }}>
+                    <td className="px-3 py-2 font-semibold text-slate-900 dark:text-white">{r.recipientName || '—'}</td>
+                    <td className="px-3 py-2 font-mono text-slate-700 dark:text-slate-300" dir="ltr">{r.recipientPhone || '—'}</td>
+                    <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
                       {r.destinationCity}, {r.destinationCountry}
                     </td>
-                    <td style={{ padding: '8px 12px', fontFamily: 'monospace' }}>{r.weightKg} kg</td>
-                    <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontWeight: 600 }}>{r.codAmount ? `${r.codAmount}` : '—'}</td>
-                    <td style={{ padding: '8px 12px', fontWeight: 700, color: TK.primary }}>{r.carrierCode || defaultCarrier}</td>
+                    <td className="px-3 py-2 font-mono text-slate-700 dark:text-slate-300">{r.weightKg} kg</td>
+                    <td className="px-3 py-2 font-mono font-semibold text-slate-800 dark:text-slate-200">{r.codAmount ? `${r.codAmount}` : '—'}</td>
+                    <td className="px-3 py-2 font-bold text-primary">{r.carrierCode || defaultCarrier}</td>
                   </tr>
                 ))}
               </tbody>
@@ -478,34 +413,16 @@ export default function BulkShipmentImportModal({ isOpen, onClose, onImportSucce
       )}
 
       {step === 'results' && importResults && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{
-            padding: 18,
-            borderRadius: 14,
-            background: '#ecfdf5',
-            border: '1px solid #a7f3d0',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 14
-          }}>
-            <div style={{
-              width: 44,
-              height: 44,
-              borderRadius: '50%',
-              background: '#059669',
-              color: '#ffffff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0
-            }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 26 }}>check_circle</span>
+        <div className="flex flex-col gap-4">
+          <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-[26px]">check_circle</span>
             </div>
             <div>
-              <div style={{ fontWeight: 800, fontSize: 16, color: '#065f46' }}>
+              <div className="font-extrabold text-base text-emerald-900 dark:text-emerald-200">
                 {t('bulk_success_title', 'Batch Ingestion Completed')}
               </div>
-              <div style={{ fontSize: 13, color: '#047857', marginTop: 2 }}>
+              <div className="text-xs text-emerald-700 dark:text-emerald-300 mt-0.5">
                 {lang === 'ar'
                   ? `تم إصدار ${importResults.created?.length || 0} بوليصة شحن بنجاح.`
                   : `Successfully generated ${importResults.created?.length || 0} waybills.`}
@@ -514,25 +431,25 @@ export default function BulkShipmentImportModal({ isOpen, onClose, onImportSucce
             </div>
           </div>
 
-          <div style={{ maxHeight: 300, overflowY: 'auto', border: `1px solid ${TK.border}`, borderRadius: 12 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: lang === 'ar' ? 'right' : 'left', fontSize: 12 }}>
+          <div className="overflow-x-auto overflow-y-auto max-h-72 border border-slate-200 dark:border-slate-800 rounded-xl">
+            <table className="w-full min-w-[480px] border-collapse text-start text-xs">
               <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: `1px solid ${TK.border}` }}>
-                  <th style={{ padding: '10px 12px', fontWeight: 700, color: TK.text3 }}>{t('waybill_number', 'Tracking #')}</th>
-                  <th style={{ padding: '10px 12px', fontWeight: 700, color: TK.text3 }}>{t('recipient', 'Recipient')}</th>
-                  <th style={{ padding: '10px 12px', fontWeight: 700, color: TK.text3 }}>{t('carrier', 'Carrier')}</th>
-                  <th style={{ padding: '10px 12px', fontWeight: 700, color: TK.text3, textAlign: 'right' }}>{t('price', 'Calculated Price')}</th>
+                <tr className="bg-slate-50 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400">
+                  <th className="px-3 py-2.5 font-bold text-start">{t('waybill_number', 'Tracking #')}</th>
+                  <th className="px-3 py-2.5 font-bold text-start">{t('recipient', 'Recipient')}</th>
+                  <th className="px-3 py-2.5 font-bold text-start">{t('carrier', 'Carrier')}</th>
+                  <th className="px-3 py-2.5 font-bold text-end">{t('price', 'Calculated Price')}</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-200/80 dark:divide-slate-800">
                 {(importResults.created || []).map((c, i) => (
-                  <tr key={i} style={{ borderBottom: `1px solid ${TK.border}` }}>
-                    <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontWeight: 700, color: TK.primary }}>
+                  <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                    <td className="px-3 py-2 font-mono font-bold text-primary">
                       {c.trackingNumber}
                     </td>
-                    <td style={{ padding: '8px 12px', fontWeight: 600 }}>{c.recipientName}</td>
-                    <td style={{ padding: '8px 12px' }}>{c.carrierCode}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 }}>
+                    <td className="px-3 py-2 font-semibold text-slate-900 dark:text-white">{c.recipientName}</td>
+                    <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{c.carrierCode}</td>
+                    <td className="px-3 py-2 text-end font-mono font-bold text-slate-900 dark:text-white">
                       {c.price ? `${Number(c.price).toFixed(3)} ${lang === 'ar' ? 'د.ك' : 'KWD'}` : '—'}
                     </td>
                   </tr>
@@ -544,7 +461,6 @@ export default function BulkShipmentImportModal({ isOpen, onClose, onImportSucce
       )}
         {renderFooter()}
       </div>
-      <div className="modal-backdrop bg-black/50" onClick={handleClose} />
     </div>
   );
 }

@@ -229,8 +229,8 @@ export const ManualPaymentLinkModal = ({
         : `[Amount] ${currency}`;
 
     return (
-        <div 
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto"
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4"
             data-testid="manual-payment-link-modal"
             role="dialog"
             aria-modal="true"
@@ -238,25 +238,25 @@ export const ManualPaymentLinkModal = ({
         >
             {/* Backdrop */}
             <div
-                className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
+                className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity"
                 onClick={() => !isSubmitting && onClose?.()}
                 data-testid="payment-modal-backdrop"
                 aria-hidden="true"
             />
 
             {/* Modal Dialog */}
-            <div className="relative w-full max-w-xl bg-base-100 rounded-2xl shadow-2xl z-10 border border-base-200 overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200">
+            <div className="relative w-full max-w-xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-900 rounded-2xl shadow-2xl z-10 border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-200">
                 {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-base-200 bg-base-100">
-                    <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+                <div className="flex items-center justify-between gap-3 px-5 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky top-0 z-10">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
                             <span className="material-symbols-outlined text-xl">payments</span>
                         </div>
-                        <div>
-                            <h3 id="modal-headline" className="font-extrabold text-base text-base-content">
+                        <div className="min-w-0">
+                            <h3 id="modal-headline" className="font-extrabold text-base text-slate-900 dark:text-white truncate">
                                 Send WhatsApp Payment Notice
                             </h3>
-                            <p className="text-xs text-base-content/60 font-mono">
+                            <p className="text-xs text-slate-500 dark:text-slate-400 font-mono truncate">
                                 Shipment: <span className="font-bold text-primary">{effectiveTrackingNumber || '—'}</span>
                             </p>
                         </div>
@@ -265,7 +265,7 @@ export const ManualPaymentLinkModal = ({
                         type="button"
                         onClick={onClose}
                         disabled={isSubmitting}
-                        className="btn btn-sm btn-ghost btn-square text-base-content/60 hover:text-base-content"
+                        className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white disabled:opacity-50 transition-colors shrink-0"
                         aria-label="Close modal"
                     >
                         <span className="material-symbols-outlined text-xl">close</span>
@@ -273,18 +273,18 @@ export const ManualPaymentLinkModal = ({
                 </div>
 
                 {/* Form Body */}
-                <form noValidate onSubmit={handleSubmit} className="p-6 space-y-5">
+                <form noValidate onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-5">
                     {errorMessage && (
-                        <div className="alert alert-error text-xs rounded-xl shadow-xs py-2 px-3">
-                            <span className="material-symbols-outlined text-sm">error</span>
+                        <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 text-rose-700 dark:text-rose-300 text-xs shadow-2xs flex items-center gap-2">
+                            <span className="material-symbols-outlined text-sm shrink-0">error</span>
                             <span>{errorMessage}</span>
                         </div>
                     )}
 
                     {/* Recipient Role Selector */}
                     <div>
-                        <label htmlFor="recipientRole" className="block text-xs font-bold text-base-content mb-1.5">
-                            Recipient Role <span className="text-error">*</span>
+                        <label htmlFor="recipientRole" className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5">
+                            Recipient Role <span className="text-rose-500">*</span>
                         </label>
                         <select
                             id="recipientRole"
@@ -292,14 +292,14 @@ export const ManualPaymentLinkModal = ({
                             value={recipientRole}
                             onChange={(e) => setRecipientRole(e.target.value)}
                             disabled={isSubmitting}
-                            className="select select-sm select-bordered w-full font-semibold focus:select-primary"
+                            className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-50"
                             data-testid="recipient-role-select"
                         >
                             <option value="consignee">Consignee (Customer / Receiver)</option>
                             <option value="shipper">Shipper (Sender / Merchant)</option>
                         </select>
-                        <div className="flex items-center justify-between text-[11px] text-base-content/60 mt-1 px-1">
-                            <span>Recipient: <strong>{activeRecipientName}</strong></span>
+                        <div className="flex items-center justify-between gap-2 flex-wrap text-[11px] text-slate-500 dark:text-slate-400 mt-1 px-1">
+                            <span>Recipient: <strong className="text-slate-700 dark:text-slate-200">{activeRecipientName}</strong></span>
                             {activeRecipientPhone && (
                                 <span className="font-mono" dir="ltr">{activeRecipientPhone}</span>
                             )}
@@ -308,9 +308,9 @@ export const ManualPaymentLinkModal = ({
 
                     {/* Custom Payment URL Input */}
                     <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                            <label htmlFor="customPaymentUrl" className="block text-xs font-bold text-base-content">
-                                Custom Payment/Checkout URL <span className="text-error">*</span>
+                        <div className="flex items-center justify-between gap-2 flex-wrap mb-1.5">
+                            <label htmlFor="customPaymentUrl" className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                                Custom Payment/Checkout URL <span className="text-rose-500">*</span>
                             </label>
                             <button
                                 type="button"
@@ -330,15 +330,17 @@ export const ManualPaymentLinkModal = ({
                             onBlur={() => setUrlError(validateUrl(customPaymentUrl))}
                             placeholder="https://target.ottu.com/checkout/tok_live_..."
                             disabled={isSubmitting}
-                            className={`input input-sm input-bordered w-full font-mono text-xs focus:input-primary ${
-                                urlError ? 'input-error' : ''
+                            className={`w-full px-3 py-2 rounded-xl border bg-white dark:bg-slate-950 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-mono text-xs focus:outline-none focus:ring-2 disabled:opacity-50 ${
+                                urlError
+                                    ? 'border-rose-500 focus:ring-rose-500/30'
+                                    : 'border-slate-200 dark:border-slate-700 focus:ring-primary/30 focus:border-primary'
                             }`}
                             data-testid="custom-payment-url-input"
                         />
                         {urlError ? (
-                            <p className="text-[11px] text-error font-medium mt-1">{urlError}</p>
+                            <p className="text-[11px] text-rose-600 dark:text-rose-400 font-medium mt-1">{urlError}</p>
                         ) : (
-                            <p className="text-[11px] text-base-content/50 mt-1">
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
                                 Enter a valid secure HTTP/HTTPS URL (Ottu, K-Net, MyFatoorah, or custom billing invoice).
                             </p>
                         )}
@@ -346,8 +348,8 @@ export const ManualPaymentLinkModal = ({
 
                     {/* Amount Input */}
                     <div>
-                        <label htmlFor="amount" className="block text-xs font-bold text-base-content mb-1.5">
-                            Amount ({currency}) <span className="text-base-content/50 font-normal">(Optional / Prefilled)</span>
+                        <label htmlFor="amount" className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5">
+                            Amount ({currency}) <span className="text-slate-400 dark:text-slate-500 font-normal">(Optional / Prefilled)</span>
                         </label>
                         <div className="relative">
                             <input
@@ -361,45 +363,47 @@ export const ManualPaymentLinkModal = ({
                                 onBlur={() => setAmountError(validateAmount(amount))}
                                 placeholder="0.000"
                                 disabled={isSubmitting}
-                                className={`input input-sm input-bordered w-full font-mono text-xs focus:input-primary pe-14 ${
-                                    amountError ? 'input-error' : ''
+                                className={`w-full px-3 py-2 rounded-xl border bg-white dark:bg-slate-950 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-mono text-xs pe-14 focus:outline-none focus:ring-2 disabled:opacity-50 ${
+                                    amountError
+                                        ? 'border-rose-500 focus:ring-rose-500/30'
+                                        : 'border-slate-200 dark:border-slate-700 focus:ring-primary/30 focus:border-primary'
                                 }`}
                                 data-testid="amount-input"
                             />
-                            <div className="absolute inset-y-0 end-0 pe-3 flex items-center pointer-events-none text-xs font-mono font-bold text-base-content/50">
+                            <div className="absolute inset-y-0 end-0 pe-3 flex items-center pointer-events-none text-xs font-mono font-bold text-slate-500 dark:text-slate-400">
                                 {currency}
                             </div>
                         </div>
                         {amountError ? (
-                            <p className="text-[11px] text-error font-medium mt-1">{amountError}</p>
+                            <p className="text-[11px] text-rose-600 dark:text-rose-400 font-medium mt-1">{amountError}</p>
                         ) : (
-                            <p className="text-[11px] text-base-content/50 mt-1">
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
                                 Prefilled from remaining balance or shipment total. Leave blank or adjust if sending partial settlement notice.
                             </p>
                         )}
                     </div>
 
                     {/* Template Preview Section */}
-                    <div className="p-4 bg-emerald-50/70 border border-emerald-200/80 rounded-xl space-y-2">
-                        <div className="flex items-center justify-between text-xs">
-                            <div className="flex items-center gap-1.5 font-bold text-emerald-900">
-                                <span className="material-symbols-outlined text-sm text-emerald-600">visibility</span>
+                    <div className="p-4 bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/60 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
+                            <div className="flex items-center gap-1.5 font-bold text-emerald-900 dark:text-emerald-200">
+                                <span className="material-symbols-outlined text-sm text-emerald-600 dark:text-emerald-400">visibility</span>
                                 <span>Template Preview</span>
                             </div>
-                            <span className="badge badge-xs font-mono font-bold bg-emerald-200/80 text-emerald-900 border-emerald-300">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-200/80 dark:bg-emerald-900/70 text-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700">
                                 payment_request_v1
                             </span>
                         </div>
 
                         {/* WhatsApp Message Bubble Simulation */}
-                        <div className="bg-white rounded-xl p-3 border border-emerald-100 shadow-2xs space-y-2 text-xs text-slate-800 font-sans">
-                            <div className="font-bold text-[11px] text-emerald-700 uppercase tracking-wider">
+                        <div className="bg-white dark:bg-slate-900 rounded-xl p-3 border border-emerald-100 dark:border-emerald-900/60 shadow-2xs space-y-2 text-xs text-slate-800 dark:text-slate-200 font-sans">
+                            <div className="font-bold text-[11px] text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
                                 Target Logistics • Official Settlement
                             </div>
                             <p className="leading-relaxed whitespace-pre-wrap">
-                                Hello <span className="font-bold text-slate-900">{activeRecipientName}</span>, a payment of{' '}
-                                <span className="font-extrabold text-emerald-700">{previewAmountStr}</span> is requested for shipment{' '}
-                                <span className="font-mono font-bold text-slate-900">{effectiveTrackingNumber || 'TRG-XXXXXX'}</span>.
+                                Hello <span className="font-bold text-slate-900 dark:text-white">{activeRecipientName}</span>, a payment of{' '}
+                                <span className="font-extrabold text-emerald-700 dark:text-emerald-400">{previewAmountStr}</span> is requested for shipment{' '}
+                                <span className="font-mono font-bold text-slate-900 dark:text-white">{effectiveTrackingNumber || 'TRG-XXXXXX'}</span>.
                                 Please complete your settlement using the official secure link:{' '}
                                 <span className="font-mono text-primary underline break-all">
                                     {customPaymentUrl.trim() || 'https://inbox.mawthook.io/pay/...'}
@@ -414,12 +418,12 @@ export const ManualPaymentLinkModal = ({
                     </div>
 
                     {/* Modal Actions */}
-                    <div className="pt-2 border-t border-base-200 flex items-center justify-end gap-2">
+                    <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-end gap-2">
                         <button
                             type="button"
                             onClick={onClose}
                             disabled={isSubmitting}
-                            className="btn btn-sm btn-ghost text-base-content/70"
+                            className="inline-flex items-center justify-center rounded-xl px-3.5 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors"
                         >
                             Cancel
                         </button>
@@ -427,12 +431,12 @@ export const ManualPaymentLinkModal = ({
                             type="submit"
                             onClick={handleSubmit}
                             disabled={isSubmitting}
-                            className="btn btn-sm btn-primary rounded-xl font-bold gap-1.5 shadow-sm"
+                            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary hover:bg-primary/90 text-white px-4 py-2 text-xs font-bold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             data-testid="submit-payment-link-btn"
                         >
                             {isSubmitting ? (
                                 <>
-                                    <span className="loading loading-spinner loading-xs" />
+                                    <span className="inline-block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                                     <span>Dispatching...</span>
                                 </>
                             ) : (

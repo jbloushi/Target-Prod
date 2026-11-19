@@ -229,12 +229,12 @@ export const LiveQuoteSidebarV2 = ({
                     </div>
 
                     {/* Right: Step Navigation Actions */}
-                    <div className="flex items-center justify-between md:justify-end gap-2 shrink-0">
+                    <div className="flex flex-wrap items-center justify-between md:justify-end gap-2 min-w-0">
                         <button
                             type="button"
                             disabled={step === 1 || submitting}
                             onClick={onPrevStep}
-                            className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer flex items-center gap-1"
+                            className="px-2.5 sm:px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer flex items-center gap-1 shrink-0"
                         >
                             <span className="material-symbols-outlined text-sm leading-none" aria-hidden="true">
                                 {isRTL ? 'arrow_forward' : 'arrow_back'}
@@ -246,7 +246,7 @@ export const LiveQuoteSidebarV2 = ({
                             type="button"
                             disabled={submitting}
                             onClick={onSaveDraft}
-                            className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 transition-colors cursor-pointer flex items-center gap-1"
+                            className="px-2.5 sm:px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 transition-colors cursor-pointer flex items-center gap-1 shrink-0"
                         >
                             <span className="material-symbols-outlined text-sm leading-none" aria-hidden="true">
                                 save
@@ -258,10 +258,10 @@ export const LiveQuoteSidebarV2 = ({
                             <button
                                 type="button"
                                 onClick={onNextStep}
-                                className="flex-1 sm:flex-initial px-4 sm:px-5 py-2 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-extrabold shadow-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                                className="flex-1 sm:flex-initial min-w-0 px-3 sm:px-5 py-2 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-extrabold shadow-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                             >
-                                <span>{stepCtaLabels[step]}</span>
-                                <span className="material-symbols-outlined text-sm leading-none" aria-hidden="true">
+                                <span className="truncate">{stepCtaLabels[step]}</span>
+                                <span className="material-symbols-outlined text-sm leading-none shrink-0" aria-hidden="true">
                                     {isRTL ? 'arrow_back' : 'arrow_forward'}
                                 </span>
                             </button>
@@ -270,7 +270,7 @@ export const LiveQuoteSidebarV2 = ({
                                 type="button"
                                 disabled={submitting || !agreedToPolicy}
                                 onClick={onSubmitBooking}
-                                className={`flex-1 sm:flex-initial px-4 sm:px-5 py-2 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all whitespace-nowrap ${
+                                className={`flex-1 sm:flex-initial min-w-0 px-3 sm:px-5 py-2 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all ${
                                     !agreedToPolicy || submitting
                                         ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed'
                                         : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs cursor-pointer'

@@ -970,7 +970,7 @@ export const ShipmentsV2Page = () => {
 
     return (
         <div className="w-full min-h-screen pb-20">
-            <div className="max-w-[1740px] mx-auto px-4 sm:px-6 lg:px-8 pt-5 space-y-5">
+            <div className="max-w-[1740px] mx-auto pt-5 space-y-5">
                 {/* 1. V2 Cockpit Switcher Banner */}
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 sm:px-5 sm:py-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-2xs">
                     <div className="flex flex-wrap items-center gap-2.5 min-w-0">

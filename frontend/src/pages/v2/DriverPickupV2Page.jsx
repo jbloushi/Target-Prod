@@ -422,7 +422,7 @@ export const DriverPickupV2Page = () => {
     return (
         <div
             dir={isRTL ? 'rtl' : 'ltr'}
-            className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-20 overflow-x-hidden"
+            className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-20 overflow-x-clip"
         >
             {/* Top Mobile Header */}
             <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-3 sm:px-6 py-3">
@@ -500,7 +500,7 @@ export const DriverPickupV2Page = () => {
                 )}
 
                 {/* Summary Metrics */}
-                <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
                     <MetricCardV2
                         title={isRTL ? 'للاستلام' : 'Pickups'}
                         value={readyShipments.length}
@@ -529,7 +529,7 @@ export const DriverPickupV2Page = () => {
                 </div>
 
                 {/* Mode Switcher Tabs */}
-                <div className="grid grid-cols-4 gap-1.5 p-1 rounded-2xl bg-slate-200/70 dark:bg-slate-800/80">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 rounded-2xl bg-slate-200/70 dark:bg-slate-800/80">
                     {[
                         { id: 'pickup', label: isRTL ? 'استلام' : 'Pickups', icon: 'flight_takeoff' },
                         { id: 'deliver', label: isRTL ? 'تسليم' : 'Deliver', icon: 'local_shipping' },
@@ -943,7 +943,7 @@ export const DriverPickupV2Page = () => {
                     <div
                         role="dialog"
                         aria-modal="true"
-                        className="w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 p-5 sm:p-6 space-y-4"
+                        className="w-full max-w-md max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 p-5 sm:p-6 space-y-4"
                     >
                         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
                             <h3 className="font-bold text-base text-slate-900 dark:text-white">

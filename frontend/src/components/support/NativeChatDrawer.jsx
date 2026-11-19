@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import PropTypes from 'prop-types';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useLanguage } from '../../context/LanguageContext';
 import { useSupportChat } from '../../context/SupportChatContext';
 import { MessageThread } from './MessageThread';
@@ -19,6 +19,8 @@ export const NativeChatDrawer = ({
     title
 }) => {
     const { isRTL } = useLanguage();
+    const location = useLocation();
+    const isV2Route = location.pathname.includes('-v2') || location.pathname.includes('/v2');
     const {
         activeConversation,
         selectConversation,
@@ -91,15 +93,15 @@ export const NativeChatDrawer = ({
             {/* Backdrop */}
             <div
                 data-testid="native-chat-drawer-backdrop"
-                className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
+                className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity"
                 onClick={onClose}
                 aria-hidden="true"
             />
 
             {/* Slide-over Container (Zero iframes) */}
-            <div className="relative w-full max-w-xl lg:max-w-2xl bg-base-100 h-full shadow-2xl z-10 flex flex-col border-s border-base-200">
+            <div className="relative w-full max-w-xl lg:max-w-2xl bg-white dark:bg-slate-900 h-full shadow-2xl z-10 flex flex-col border-s border-slate-200 dark:border-slate-800">
                 {/* Drawer Header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-base-200 bg-base-100/90 backdrop-blur-sm shrink-0">
+                <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm shrink-0">
                     <div className="flex items-center gap-3 min-w-0">
                         <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
                             <span className="material-symbols-outlined text-xl">support_agent</span>
@@ -108,21 +110,21 @@ export const NativeChatDrawer = ({
                             <div className="flex items-center gap-2 flex-wrap">
                                 <h2
                                     id="native-chat-drawer-title"
-                                    className="font-black text-sm text-base-content truncate"
+                                    className="font-black text-sm text-slate-900 dark:text-white truncate"
                                 >
                                     {displayName}
                                 </h2>
                                 {effectiveTrackingNumber && (
                                     <span
                                         dir="ltr"
-                                        className="badge badge-primary badge-xs font-mono font-bold"
+                                        className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-primary/10 text-primary border border-primary/20"
                                     >
                                         {effectiveTrackingNumber}
                                     </span>
                                 )}
                             </div>
                             {effectivePhone && (
-                                <p dir="ltr" className="font-mono text-xs text-base-content/60 font-semibold">
+                                <p dir="ltr" className="font-mono text-xs text-slate-500 dark:text-slate-400 font-semibold truncate">
                                     {effectivePhone}
                                 </p>
                             )}
@@ -142,7 +144,7 @@ export const NativeChatDrawer = ({
                             target="_blank"
                             rel="noopener noreferrer"
                             data-testid="native-chat-drawer-external-chatwoot-btn"
-                            className="btn btn-outline btn-primary btn-xs h-8 px-2.5 gap-1 font-bold"
+                            className="inline-flex items-center justify-center h-8 px-2.5 gap-1 rounded-xl border border-primary/30 bg-primary/5 text-primary hover:bg-primary hover:text-white font-bold transition-colors"
                             title={isRTL ? 'فتح في منصة Chatwoot (inbox.mawthook.io)' : 'Open in Chatwoot (inbox.mawthook.io)'}
                         >
                             <span className="material-symbols-outlined text-sm">forum</span>
@@ -152,11 +154,11 @@ export const NativeChatDrawer = ({
                         {/* Open in full Support Center button */}
                         {activeConversation?.id && (
                             <Link
-                                to={`/support/${activeConversation.id}`}
+                                to={isV2Route ? `/support-v2/${activeConversation.id}` : `/support/${activeConversation.id}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 data-testid="native-chat-drawer-open-full-btn"
-                                className="btn btn-ghost btn-xs btn-square h-8 w-8 text-primary hover:bg-primary/10"
+                                className="inline-flex items-center justify-center h-8 w-8 rounded-xl text-primary hover:bg-primary/10 transition-colors"
                                 title={isRTL ? 'فتح في مركز الدعم الكامل' : 'Open in full Support Center'}
                             >
                                 <span className="material-symbols-outlined text-base">open_in_new</span>
@@ -168,7 +170,7 @@ export const NativeChatDrawer = ({
                             type="button"
                             data-testid="native-chat-drawer-close-btn"
                             onClick={onClose}
-                            className="btn btn-ghost btn-xs btn-square h-8 w-8 text-base-content/70 hover:text-base-content"
+                            className="inline-flex items-center justify-center h-8 w-8 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors"
                             aria-label="Close"
                         >
                             <span className="material-symbols-outlined text-lg">close</span>
@@ -177,14 +179,16 @@ export const NativeChatDrawer = ({
                 </div>
 
                 {/* Subheader: Tab Switcher (Chat vs Logistics Info) */}
-                <div className="px-4 py-2 border-b border-base-200 bg-base-200/40 flex items-center justify-between shrink-0">
-                    <div className="join">
+                <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between gap-2 flex-wrap shrink-0">
+                    <div className="inline-flex items-center p-0.5 rounded-xl bg-slate-200/70 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700">
                         <button
                             type="button"
                             data-testid="native-chat-drawer-tab-chat"
                             onClick={() => setActiveTab('chat')}
-                            className={`join-item btn btn-xs font-bold gap-1 ${
-                                activeTab === 'chat' ? 'btn-primary' : 'btn-ghost'
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
+                                activeTab === 'chat'
+                                    ? 'bg-primary text-white shadow-xs'
+                                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                             }`}
                         >
                             <span className="material-symbols-outlined text-xs">chat</span>
@@ -195,8 +199,10 @@ export const NativeChatDrawer = ({
                             type="button"
                             data-testid="native-chat-drawer-tab-context"
                             onClick={() => setActiveTab('context')}
-                            className={`join-item btn btn-xs font-bold gap-1 ${
-                                activeTab === 'context' ? 'btn-primary' : 'btn-ghost'
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
+                                activeTab === 'context'
+                                    ? 'bg-primary text-white shadow-xs'
+                                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                             }`}
                         >
                             <span className="material-symbols-outlined text-xs">local_shipping</span>
@@ -205,18 +211,18 @@ export const NativeChatDrawer = ({
                     </div>
 
                     {activeConversation?.id && (
-                        <span className="text-[11px] font-mono text-base-content/50">
+                        <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
                             #{activeConversation.id}
                         </span>
                     )}
                 </div>
 
                 {/* Drawer Body */}
-                <div className="flex-1 flex flex-col overflow-hidden relative bg-base-100">
+                <div className="flex-1 flex flex-col overflow-hidden relative bg-white dark:bg-slate-900">
                     {localLoading ? (
                         <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-                            <span className="loading loading-spinner loading-md text-primary mb-2" />
-                            <p className="text-xs text-base-content/60 font-medium">
+                            <span className="inline-block w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mb-2" />
+                            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                                 {isRTL ? 'جاري ربط واسترجاع محادثة الشحنة...' : 'Connecting live shipment chat thread...'}
                             </p>
                         </div>
@@ -239,7 +245,7 @@ export const NativeChatDrawer = ({
                             {/* Reply Composer */}
                             <div
                                 data-testid="native-chat-drawer-composer"
-                                className="border-t border-base-200 bg-base-100 shrink-0"
+                                className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0"
                             >
                                 <ReplyComposer
                                     conversation={activeConversation || {

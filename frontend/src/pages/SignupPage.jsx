@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getDefaultLandingPath } from '../utils/uiVersion';
 
 export const SignupPage = () => {
   const [formData, setFormData] = useState({
@@ -14,14 +15,14 @@ export const SignupPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [validationError, setValidationError] = useState('');
 
-  const { register, loading, error, isAuthenticated } = useAuth();
+  const { register, loading, error, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
 
   React.useEffect(() => {
-    if (isAuthenticated) {
-      navigate('/dashboard');
+    if (isAuthenticated && user) {
+      navigate(getDefaultLandingPath(user.role));
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, user, navigate]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });

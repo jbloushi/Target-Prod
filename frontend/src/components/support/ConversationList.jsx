@@ -60,13 +60,13 @@ export const ConversationList = ({ onSelectConversation }) => {
     return (
         <aside
             data-testid="conversation-list-pane"
-            className="w-full md:w-80 lg:w-96 shrink-0 border-e border-base-200 bg-base-100 flex flex-col h-full select-none"
+            className="w-full md:w-80 lg:w-96 shrink-0 border-e border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col h-full select-none"
         >
             {/* Header / Search Controls */}
-            <div className="p-3.5 border-b border-base-200 space-y-2.5 bg-base-100/80 backdrop-blur-xs">
+            <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 space-y-2.5 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xs">
                 {/* Search Bar */}
                 <div className="relative">
-                    <span className="material-symbols-outlined absolute start-3 top-1/2 -translate-y-1/2 text-base text-base-content/50">
+                    <span className="material-symbols-outlined absolute start-3 top-1/2 -translate-y-1/2 text-base text-slate-400 dark:text-slate-500">
                         search
                     </span>
                     <input
@@ -75,13 +75,13 @@ export const ConversationList = ({ onSelectConversation }) => {
                         value={filters.search}
                         onChange={handleSearchChange}
                         placeholder={isRTL ? 'بحث بالاسم، الهاتف، البوليصة...' : 'Search name, phone, AWB...'}
-                        className="input input-sm input-bordered w-full ps-9 pe-8 text-xs rounded-xl focus:outline-primary bg-base-200/50"
+                        className="w-full ps-9 pe-8 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
                     />
                     {filters.search && (
                         <button
                             type="button"
                             onClick={() => setFilters(prev => ({ ...prev, search: '' }))}
-                            className="absolute end-2 top-1/2 -translate-y-1/2 btn btn-ghost btn-circle btn-xs text-base-content/50"
+                            className="absolute end-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center h-6 w-6 rounded-full text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
                         >
                             <span className="material-symbols-outlined text-sm">close</span>
                         </button>
@@ -90,13 +90,15 @@ export const ConversationList = ({ onSelectConversation }) => {
 
                 {/* Status Tabs */}
                 <div className="flex items-center justify-between gap-1">
-                    <div className="join join-horizontal bg-base-200/70 p-0.5 rounded-xl text-xs font-bold w-full">
+                    <div className="grid grid-cols-3 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl text-xs font-bold w-full border border-slate-200/70 dark:border-slate-700/70">
                         <button
                             type="button"
                             data-testid="status-tab-open"
                             onClick={() => handleStatusTab('open')}
-                            className={`join-item flex-1 btn btn-xs border-0 rounded-lg ${
-                                filters.status === 'open' ? 'btn-primary shadow-xs' : 'btn-ghost'
+                            className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-colors ${
+                                filters.status === 'open'
+                                    ? 'bg-primary text-white shadow-xs'
+                                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                             }`}
                         >
                             {isRTL ? 'المفتوحة' : 'Open'}
@@ -105,8 +107,10 @@ export const ConversationList = ({ onSelectConversation }) => {
                             type="button"
                             data-testid="status-tab-resolved"
                             onClick={() => handleStatusTab('resolved')}
-                            className={`join-item flex-1 btn btn-xs border-0 rounded-lg ${
-                                filters.status === 'resolved' ? 'btn-primary shadow-xs' : 'btn-ghost'
+                            className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-colors ${
+                                filters.status === 'resolved'
+                                    ? 'bg-primary text-white shadow-xs'
+                                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                             }`}
                         >
                             {isRTL ? 'المغلقة' : 'Resolved'}
@@ -115,8 +119,10 @@ export const ConversationList = ({ onSelectConversation }) => {
                             type="button"
                             data-testid="status-tab-all"
                             onClick={() => handleStatusTab('all')}
-                            className={`join-item flex-1 btn btn-xs border-0 rounded-lg ${
-                                filters.status === 'all' ? 'btn-primary shadow-xs' : 'btn-ghost'
+                            className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-colors ${
+                                filters.status === 'all'
+                                    ? 'bg-primary text-white shadow-xs'
+                                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                             }`}
                         >
                             {isRTL ? 'الكل' : 'All'}
@@ -130,7 +136,7 @@ export const ConversationList = ({ onSelectConversation }) => {
                         data-testid="support-label-filter"
                         value={filters.label}
                         onChange={handleLabelChange}
-                        className="select select-bordered select-xs flex-1 rounded-lg text-[11px] bg-base-200/50"
+                        className="flex-1 min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 px-2.5 py-1.5 text-[11px] font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                     >
                         {LABEL_OPTIONS.map(opt => (
                             <option key={opt.value} value={opt.value}>
@@ -143,29 +149,29 @@ export const ConversationList = ({ onSelectConversation }) => {
                         type="button"
                         data-testid="support-unread-toggle"
                         onClick={handleUnreadToggle}
-                        className={`btn btn-xs rounded-lg gap-1 font-bold ${
+                        className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold shrink-0 transition-colors ${
                             filters.unread
-                                ? 'btn-primary text-primary-content'
-                                : 'btn-ghost bg-base-200/60 text-base-content/70'
+                                ? 'bg-primary text-white shadow-xs'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-slate-700'
                         }`}
                         title={isRTL ? 'المحادثات غير المقروءة فقط' : 'Unread messages only'}
                     >
                         <span className="material-symbols-outlined text-xs">mark_chat_unread</span>
-                        <span className="text-[11px]">{isRTL ? 'غير مقروءة' : 'Unread'}</span>
+                        <span>{isRTL ? 'غير مقروءة' : 'Unread'}</span>
                     </button>
                 </div>
             </div>
 
             {/* Conversation Items List */}
-            <div className="flex-1 overflow-y-auto divide-y divide-base-200">
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-200/80 dark:divide-slate-800">
                 {loadingConversations && conversations.length === 0 ? (
                     <div className="p-8 text-center space-y-2">
-                        <span className="loading loading-spinner loading-sm text-primary" />
-                        <p className="text-xs text-base-content/60">{isRTL ? 'جارٍ تحميل المحادثات...' : 'Loading conversations...'}</p>
+                        <span className="inline-block w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{isRTL ? 'جارٍ تحميل المحادثات...' : 'Loading conversations...'}</p>
                     </div>
                 ) : conversations.length === 0 ? (
-                    <div className="p-8 text-center space-y-2 text-base-content/50">
-                        <span className="material-symbols-outlined text-3xl opacity-40">chat_bubble_outline</span>
+                    <div className="p-8 text-center space-y-2 text-slate-400 dark:text-slate-500">
+                        <span className="material-symbols-outlined text-3xl opacity-50">chat_bubble_outline</span>
                         <p className="text-xs font-semibold">{isRTL ? 'لا توجد محادثات مطابقة' : 'No conversations found'}</p>
                     </div>
                 ) : (
@@ -183,16 +189,16 @@ export const ConversationList = ({ onSelectConversation }) => {
                                 className={`p-3.5 cursor-pointer transition-all flex items-start gap-3 relative ${
                                     isSelected
                                         ? 'bg-primary/10 before:absolute before:inset-y-2 before:start-0 before:w-1 before:rounded-full before:bg-primary'
-                                        : 'hover:bg-base-200/50'
+                                        : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
                                 }`}
                             >
                                 {/* Customer Avatar with WhatsApp Indicator */}
                                 <div className="relative shrink-0 mt-0.5">
-                                    <div className="w-10 h-10 rounded-xl bg-primary/20 text-primary flex items-center justify-center font-bold text-xs font-mono">
+                                    <div className="w-10 h-10 rounded-xl bg-primary/15 text-primary flex items-center justify-center font-bold text-xs font-mono border border-primary/20">
                                         {initials}
                                     </div>
                                     <span
-                                        className="absolute -bottom-1 -end-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-base-100 flex items-center justify-center"
+                                        className="absolute -bottom-1 -end-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900 flex items-center justify-center"
                                         title="WhatsApp"
                                     >
                                         <span className="w-1.5 h-1.5 rounded-full bg-white" />
@@ -202,23 +208,23 @@ export const ConversationList = ({ onSelectConversation }) => {
                                 {/* Content Details */}
                                 <div className="min-w-0 flex-1">
                                     <div className="flex items-center justify-between gap-1 mb-0.5">
-                                        <span className="font-bold text-xs text-base-content truncate">
+                                        <span className="font-bold text-xs text-slate-900 dark:text-white truncate">
                                             {contactName}
                                         </span>
-                                        <span className="text-[10px] text-base-content/50 shrink-0 font-mono">
+                                        <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0 font-mono">
                                             {formatTime(conv.updatedAt)}
                                         </span>
                                     </div>
 
                                     {/* Phone & Role */}
-                                    <div className="flex items-center gap-1.5 text-[11px] text-base-content/60 mb-1">
+                                    <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 mb-1 flex-wrap">
                                         {conv.contact?.phone && (
                                             <span className="font-mono" dir="ltr">
                                                 {conv.contact.phone}
                                             </span>
                                         )}
                                         {conv.contact?.role && (
-                                            <span className="badge badge-ghost badge-xs text-[10px] uppercase font-mono">
+                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] uppercase font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
                                                 {conv.contact.role}
                                             </span>
                                         )}
@@ -226,12 +232,12 @@ export const ConversationList = ({ onSelectConversation }) => {
 
                                     {/* Active Shipment Chip if present */}
                                     {conv.activeShipment?.trackingNumber && (
-                                        <div className="flex items-center gap-1.5 mb-1.5">
-                                            <span className="badge badge-primary badge-outline badge-xs font-mono font-bold">
+                                        <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border border-primary/30 text-primary bg-primary/5">
                                                 {conv.activeShipment.trackingNumber}
                                             </span>
                                             {conv.activeShipment.status && (
-                                                <span className="badge badge-info badge-xs text-[10px] uppercase">
+                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800/60">
                                                     {conv.activeShipment.status.replace(/_/g, ' ')}
                                                 </span>
                                             )}
@@ -239,11 +245,11 @@ export const ConversationList = ({ onSelectConversation }) => {
                                     )}
 
                                     {/* Last Message Snippet */}
-                                    <p className="text-xs text-base-content/70 truncate">
+                                    <p className="text-xs text-slate-600 dark:text-slate-300 truncate">
                                         {conv.lastMessage?.isTemplate ? (
                                             <span className="text-primary font-semibold flex items-center gap-1">
                                                 <span className="material-symbols-outlined text-[13px]">verified</span>
-                                                <span>{conv.lastMessage.content || 'Template Message'}</span>
+                                                <span className="truncate">{conv.lastMessage.content || 'Template Message'}</span>
                                             </span>
                                         ) : (
                                             conv.lastMessage?.content || (isRTL ? 'لا توجد رسائل' : 'No messages yet')
@@ -256,13 +262,13 @@ export const ConversationList = ({ onSelectConversation }) => {
                                             {conv.labels.slice(0, 3).map(lbl => (
                                                 <span
                                                     key={lbl}
-                                                    className="badge badge-neutral badge-xs text-[9px] font-mono opacity-80"
+                                                    className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-mono font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
                                                 >
                                                     {lbl}
                                                 </span>
                                             ))}
                                             {conv.labels.length > 3 && (
-                                                <span className="text-[10px] text-base-content/40 font-mono">
+                                                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
                                                     +{conv.labels.length - 3}
                                                 </span>
                                             )}
@@ -274,7 +280,7 @@ export const ConversationList = ({ onSelectConversation }) => {
                                 {unread > 0 && (
                                     <span
                                         data-testid={`unread-badge-${conv.id}`}
-                                        className="badge badge-primary badge-xs font-mono font-bold px-1.5 min-w-[18px] h-4 self-center shrink-0"
+                                        className="inline-flex items-center justify-center rounded-full bg-primary text-white text-[10px] font-mono font-bold px-1.5 min-w-[18px] h-4 self-center shrink-0"
                                     >
                                         {unread > 99 ? '99+' : unread}
                                     </span>

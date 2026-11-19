@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { useLanguage } from '../../context/LanguageContext';
 import { useSnackbar } from 'notistack';
 import { settingsService } from '../../services/api';
 
 export const RateCardsManager = () => {
   const { lang, isRTL } = useLanguage();
+  const location = useLocation();
+  const isV2Route = location.pathname.includes('-v2') || location.pathname.includes('/v2');
   const { enqueueSnackbar } = useSnackbar();
   const fileInputRef = useRef(null);
 
@@ -230,14 +233,14 @@ export const RateCardsManager = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <a
-              href="/settings?tab=fallback"
+            <Link
+              to={isV2Route ? '/settings-v2?tab=fallback' : '/settings?tab=fallback'}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
               title={lang === 'ar' ? 'إعدادات تسعير الطوارئ والبدائل' : 'Manage Fallback Pricing & Tariffs'}
             >
               <span className="material-symbols-outlined text-base text-primary" aria-hidden="true">shield</span>
               <span>{lang === 'ar' ? 'تسعير الطوارئ' : 'Fallback Pricing'}</span>
-            </a>
+            </Link>
 
             <button
               type="button"
@@ -420,7 +423,7 @@ export const RateCardsManager = () => {
       {/* Upload Modal */}
       {uploadModalOpen && (
         <div className="modal modal-open">
-          <div className="modal-box max-w-2xl">
+          <div className="modal-box max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-base-200">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary text-xl">upload_file</span>
@@ -741,7 +744,7 @@ export const RateCardsManager = () => {
       {/* Delete Confirmation Modal */}
       {deleteConfirmId && (
         <div className="modal modal-open">
-          <div className="modal-box max-w-sm">
+          <div className="modal-box max-w-sm max-h-[90vh] overflow-y-auto">
             <h3 className="font-bold text-base text-error flex items-center gap-2">
               <span className="material-symbols-outlined text-lg">warning</span>
               {lang === 'ar' ? 'تأكيد حذف بطاقة الأسعار' : 'Confirm Rate Card Deletion'}

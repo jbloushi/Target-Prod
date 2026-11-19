@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../components/common/PageHeader';
+import { getStoredUiVersion } from '../utils/uiVersion';
 
 const DEMO_QUICK_SEARCHES = [
   {
@@ -41,7 +42,8 @@ export const TrackingLandingPage = () => {
       return;
     }
     setError('');
-    navigate(`/shipment/${trimmed}`);
+    const prefix = getStoredUiVersion() === 'v1' ? '/shipment' : '/shipment-v2';
+    navigate(`${prefix}/${trimmed}`);
   };
 
   const handleSubmit = (e) => {

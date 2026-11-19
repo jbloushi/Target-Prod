@@ -80,69 +80,74 @@ const UndeliveredLogModal = ({ isOpen, onClose, organizations = [], selectedOrgI
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-            <div 
-                className="bg-base-100 border border-base-200/90 shadow-2xl rounded-3xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[92vh]"
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200"
+            onClick={onClose}
+        >
+            <div
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl rounded-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]"
                 dir={isRTL ? 'rtl' : 'ltr'}
             >
                 {/* Header */}
-                <div className="p-5 sm:p-6 bg-base-100 border-b border-base-200/80 flex items-start justify-between gap-4">
-                    <div className="flex items-center gap-3.5">
-                        <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+                <div className="p-5 sm:p-6 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-start justify-between gap-4 shrink-0">
+                    <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="w-11 h-11 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
                             <span className="material-symbols-outlined text-2xl">monitoring</span>
                         </div>
-                        <div>
+                        <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                                <h3 className="text-lg sm:text-xl font-black text-base-content tracking-tight">
+                                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight">
                                     {isRTL ? 'سجل تتبع الشحنات غير المسلمة' : 'Undelivered Shipments & Polling Log'}
                                 </h3>
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-950 border border-blue-300">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-sky-50 dark:bg-sky-950/60 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-800/60">
                                     {isRTL ? 'تصدير CSV' : 'CSV Export'}
                                 </span>
                             </div>
-                            <p className="text-xs text-base-content/60 font-semibold mt-0.5">
-                                {isRTL 
-                                    ? 'تصدير كامل للشحنات النشطة مع وتيرة الفحص التلقائي وسجل التحديثات الأخير.' 
+                            <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-0.5">
+                                {isRTL
+                                    ? 'تصدير كامل للشحنات النشطة مع وتيرة الفحص التلقائي وسجل التحديثات الأخير.'
                                     : 'Export active consignments with automated tiered polling frequencies and tracking checkpoints.'}
                             </p>
                         </div>
                     </div>
-                    <button 
-                        type="button" 
-                        onClick={onClose} 
-                        className="btn btn-ghost btn-circle btn-sm text-base-content/50 hover:text-base-content"
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors shrink-0"
+                        aria-label="Close"
                     >
-                        ✕
+                        <span className="material-symbols-outlined text-lg">close</span>
                     </button>
                 </div>
 
                 {/* Body Content */}
-                <div className="p-5 sm:p-6 overflow-y-auto space-y-5 text-xs">
-                    
-                    {/* Polling Cadence Overview Ribbon */}
-                    <div className="bg-base-200/50 border border-base-300/60 rounded-2xl p-3.5 space-y-2">
+                <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-5 text-xs">
+
+                    {/* Polling Cadence Overview (Flat single-level grid, no nested cards) */}
+                    <div className="space-y-2">
                         <div className="flex items-center gap-2">
                             <span className="material-symbols-outlined text-primary text-base">schedule</span>
-                            <span className="font-black text-base-content uppercase tracking-wider text-[11px]">
+                            <span className="font-black text-slate-700 dark:text-slate-200 uppercase tracking-wider text-[11px]">
                                 {isRTL ? 'وتيرة الفحص والتحديث التلقائي للنواقل' : 'Automated Carrier Sync Cadence'}
                             </span>
                         </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center pt-1">
-                            <div className="bg-base-100 rounded-xl p-2 border border-warning/30 shadow-2xs">
-                                <span className="block font-black text-warning text-xs">{isRTL ? 'عاجل (ساعة)' : 'Urgent (1h)'}</span>
-                                <span className="text-[10px] text-base-content/60 font-medium">{isRTL ? 'خارج للتسليم' : 'Out for delivery'}</span>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                            <div className="bg-amber-50/70 dark:bg-amber-950/30 rounded-xl p-2.5 border border-amber-200/80 dark:border-amber-800/60">
+                                <span className="block font-black text-amber-700 dark:text-amber-300 text-xs">{isRTL ? 'عاجل (ساعة)' : 'Urgent (1h)'}</span>
+                                <span className="text-[10px] text-slate-600 dark:text-slate-400 font-medium">{isRTL ? 'خارج للتسليم' : 'Out for delivery'}</span>
                             </div>
-                            <div className="bg-base-100 rounded-xl p-2 border border-info/30 shadow-2xs">
-                                <span className="block font-black text-info text-xs">{isRTL ? 'المستوى 1 (ساعتان)' : 'Tier 1 (2h)'}</span>
-                                <span className="text-[10px] text-base-content/60 font-medium">{isRTL ? '≤ 14 يوم' : '≤ 14 days old'}</span>
+                            <div className="bg-sky-50/70 dark:bg-sky-950/30 rounded-xl p-2.5 border border-sky-200/80 dark:border-sky-800/60">
+                                <span className="block font-black text-sky-700 dark:text-sky-300 text-xs">{isRTL ? 'المستوى 1 (ساعتان)' : 'Tier 1 (2h)'}</span>
+                                <span className="text-[10px] text-slate-600 dark:text-slate-400 font-medium">{isRTL ? '≤ 14 يوم' : '≤ 14 days old'}</span>
                             </div>
-                            <div className="bg-base-100 rounded-xl p-2 border border-primary/30 shadow-2xs">
+                            <div className="bg-primary/5 dark:bg-primary/15 rounded-xl p-2.5 border border-primary/25">
                                 <span className="block font-black text-primary text-xs">{isRTL ? 'المستوى 2 (18 ساعة)' : 'Tier 2 (18h)'}</span>
-                                <span className="text-[10px] text-base-content/60 font-medium">{isRTL ? '15 - 45 يوم' : '15 - 45 days old'}</span>
+                                <span className="text-[10px] text-slate-600 dark:text-slate-400 font-medium">{isRTL ? '15 - 45 يوم' : '15 - 45 days old'}</span>
                             </div>
-                            <div className="bg-base-100 rounded-xl p-2 border border-purple-300 shadow-2xs">
-                                <span className="block font-black text-purple-700 text-xs">{isRTL ? 'المستوى 3 (15 يوم)' : 'Tier 3 (15d)'}</span>
-                                <span className="text-[10px] text-base-content/60 font-medium">{isRTL ? '> 45 يوم باستمرار' : '> 45d indefinitely'}</span>
+                            <div className="bg-purple-50/70 dark:bg-purple-950/30 rounded-xl p-2.5 border border-purple-200/80 dark:border-purple-800/60">
+                                <span className="block font-black text-purple-700 dark:text-purple-300 text-xs">{isRTL ? 'المستوى 3 (15 يوم)' : 'Tier 3 (15d)'}</span>
+                                <span className="text-[10px] text-slate-600 dark:text-slate-400 font-medium">{isRTL ? '> 45 يوم باستمرار' : '> 45d indefinitely'}</span>
                             </div>
                         </div>
                     </div>
@@ -150,16 +155,14 @@ const UndeliveredLogModal = ({ isOpen, onClose, organizations = [], selectedOrgI
                     {/* Filter Controls Form */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                         {/* Carrier Scope */}
-                        <div className="form-control">
-                            <label className="label py-1 px-0.5">
-                                <span className="label-text font-black text-[11px] uppercase tracking-wider text-base-content/70">
-                                    {isRTL ? 'شركة النقل / المسار' : 'Carrier Service'}
-                                </span>
+                        <div className="flex flex-col">
+                            <label className="py-1 px-0.5 font-black text-[11px] uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                                {isRTL ? 'شركة النقل / المسار' : 'Carrier Service'}
                             </label>
                             <select
                                 value={carrier}
                                 onChange={(e) => setCarrier(e.target.value)}
-                                className="select select-bordered select-sm rounded-xl font-bold text-xs bg-base-100"
+                                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white font-bold text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                             >
                                 <option value="ALL">{isRTL ? 'جميع النواقل' : 'All Carriers'}</option>
                                 <option value="DHL">{isRTL ? 'دي إتش إل إكسبريس (DHL / DGR)' : 'DHL Express (DHL / DGR)'}</option>
@@ -170,16 +173,14 @@ const UndeliveredLogModal = ({ isOpen, onClose, organizations = [], selectedOrgI
                         </div>
 
                         {/* Polling Tier */}
-                        <div className="form-control">
-                            <label className="label py-1 px-0.5">
-                                <span className="label-text font-black text-[11px] uppercase tracking-wider text-base-content/70">
-                                    {isRTL ? 'مستوى وتيرة الفحص' : 'Polling Tier'}
-                                </span>
+                        <div className="flex flex-col">
+                            <label className="py-1 px-0.5 font-black text-[11px] uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                                {isRTL ? 'مستوى وتيرة الفحص' : 'Polling Tier'}
                             </label>
                             <select
                                 value={tier}
                                 onChange={(e) => setTier(e.target.value)}
-                                className="select select-bordered select-sm rounded-xl font-bold text-xs bg-base-100"
+                                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white font-bold text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                             >
                                 <option value="all">{isRTL ? 'كافة المستويات' : 'All Tiers'}</option>
                                 <option value="urgent">{isRTL ? 'عاجل (خارج للتسليم - كل ساعة)' : 'Urgent (Out for Delivery - 1h)'}</option>
@@ -190,16 +191,14 @@ const UndeliveredLogModal = ({ isOpen, onClose, organizations = [], selectedOrgI
                         </div>
 
                         {/* Status Filter */}
-                        <div className="form-control">
-                            <label className="label py-1 px-0.5">
-                                <span className="label-text font-black text-[11px] uppercase tracking-wider text-base-content/70">
-                                    {isRTL ? 'حالة الشحنة' : 'Consignment Status'}
-                                </span>
+                        <div className="flex flex-col">
+                            <label className="py-1 px-0.5 font-black text-[11px] uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                                {isRTL ? 'حالة الشحنة' : 'Consignment Status'}
                             </label>
                             <select
                                 value={status}
                                 onChange={(e) => setStatus(e.target.value)}
-                                className="select select-bordered select-sm rounded-xl font-bold text-xs bg-base-100"
+                                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white font-bold text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                             >
                                 <option value="all">{isRTL ? 'كافة الشحنات غير المسلمة' : 'All Undelivered'}</option>
                                 <option value="in_transit">{isRTL ? 'في الطريق (In Transit)' : 'In Transit'}</option>
@@ -213,16 +212,14 @@ const UndeliveredLogModal = ({ isOpen, onClose, organizations = [], selectedOrgI
 
                         {/* Organization Filter */}
                         {organizations.length > 1 && (
-                            <div className="form-control">
-                                <label className="label py-1 px-0.5">
-                                    <span className="label-text font-black text-[11px] uppercase tracking-wider text-base-content/70">
-                                        {isRTL ? 'نطاق حساب المنظمة' : 'Account Scope'}
-                                    </span>
+                            <div className="flex flex-col">
+                                <label className="py-1 px-0.5 font-black text-[11px] uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                                    {isRTL ? 'نطاق حساب المنظمة' : 'Account Scope'}
                                 </label>
                                 <select
                                     value={orgId}
                                     onChange={(e) => setOrgId(e.target.value)}
-                                    className="select select-bordered select-sm rounded-xl font-bold text-xs bg-base-100"
+                                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white font-bold text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                                 >
                                     {organizations.map(org => (
                                         <option key={org.id} value={org.id}>{org.name}</option>
@@ -233,13 +230,13 @@ const UndeliveredLogModal = ({ isOpen, onClose, organizations = [], selectedOrgI
                     </div>
 
                     {/* Report Content Info Box */}
-                    <div className="bg-blue-50/70 border border-blue-200/90 rounded-2xl p-3.5 text-blue-950 flex items-start gap-3">
-                        <span className="material-symbols-outlined text-blue-600 text-lg shrink-0 mt-0.5">table_chart</span>
+                    <div className="bg-sky-50/80 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800/60 rounded-2xl p-3.5 text-sky-950 dark:text-sky-100 flex items-start gap-3">
+                        <span className="material-symbols-outlined text-sky-600 dark:text-sky-400 text-lg shrink-0 mt-0.5">table_chart</span>
                         <div className="space-y-1">
                             <p className="font-bold">
                                 {isRTL ? 'أعمدة التقرير الصادر:' : 'Exported Columns Include:'}
                             </p>
-                            <p className="text-[11px] leading-relaxed text-blue-900/90">
+                            <p className="text-[11px] leading-relaxed text-sky-900/85 dark:text-sky-200/85">
                                 {isRTL
                                     ? 'رقم التتبع، بوليصة الناقل (AWB)، الناقل، الحالة، تاريخ الإنشاء، أيام العبور، مستوى الفحص، موعد الفحص القادم، آخر فحص، أيام منذ الفحص، آخر حدث، تاريخ الحدث، المنشأ، الوجهة، المستلم، ورقم الهاتف.'
                                     : 'Tracking Number, Carrier AWB, Carrier Code, Status, Created Date, Days in Transit, Polling Tier, Next Check Due, Last Checked At, Days Since Check, Latest Event, Event Date, Origin, Destination, Consignee, Phone, Organization.'}
@@ -249,14 +246,14 @@ const UndeliveredLogModal = ({ isOpen, onClose, organizations = [], selectedOrgI
 
                     {/* Real-time Sync Result Notification */}
                     {syncResult && (
-                        <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-3.5 text-emerald-950 flex items-start gap-3">
-                            <span className="material-symbols-outlined text-emerald-600 text-lg shrink-0 mt-0.5">check_circle</span>
+                        <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-2xl p-3.5 text-emerald-950 dark:text-emerald-100 flex items-start gap-3">
+                            <span className="material-symbols-outlined text-emerald-600 dark:text-emerald-400 text-lg shrink-0 mt-0.5">check_circle</span>
                             <div className="text-xs">
                                 <p className="font-black">
                                     {isRTL ? 'اكتملت دورة الفحص الحي بنجاح:' : 'Live Carrier Check Completed:'}
                                 </p>
-                                <p className="text-[11px] mt-0.5 font-medium">
-                                    {isRTL 
+                                <p className="text-[11px] mt-0.5 font-medium text-emerald-800 dark:text-emerald-200">
+                                    {isRTL
                                         ? `تم مسح ${syncResult.scanned || 0} شحنة | تم التحديث: ${syncResult.updated || 0} | الأخطاء: ${syncResult.errors || 0}`
                                         : `Scanned: ${syncResult.scanned || 0} | Promoted/Updated: ${syncResult.updated || 0} | Errors: ${syncResult.errors || 0}`}
                                 </p>
@@ -266,17 +263,17 @@ const UndeliveredLogModal = ({ isOpen, onClose, organizations = [], selectedOrgI
                 </div>
 
                 {/* Footer Actions */}
-                <div className="p-4 sm:p-5 bg-base-100 border-t border-base-200/80 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="p-4 sm:p-5 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
                     <button
                         type="button"
                         onClick={handleTriggerSync}
                         disabled={isSyncing || isDownloading}
-                        className="btn btn-outline btn-info btn-sm rounded-xl font-bold w-full sm:w-auto gap-1.5"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 hover:bg-sky-600 hover:text-white px-3.5 py-2 text-xs font-bold w-full sm:w-auto disabled:opacity-50 transition-colors"
                         title={isRTL ? 'بدء فحص فوري عبر واجهات النواقل' : 'Trigger immediate live polling pass across carriers'}
                     >
-                        <span className={`material-symbols-outlined text-xs ${isSyncing ? 'animate-spin' : ''}`}>sync</span>
-                        {isSyncing 
-                            ? (isRTL ? 'جاري الفحص...' : 'Polling Carriers...') 
+                        <span className={`material-symbols-outlined text-sm ${isSyncing ? 'animate-spin' : ''}`}>sync</span>
+                        {isSyncing
+                            ? (isRTL ? 'جاري الفحص...' : 'Polling Carriers...')
                             : (isRTL ? 'فحص حي الآن' : 'Run Live Carrier Sync')}
                     </button>
 
@@ -284,7 +281,7 @@ const UndeliveredLogModal = ({ isOpen, onClose, organizations = [], selectedOrgI
                         <button
                             type="button"
                             onClick={onClose}
-                            className="btn btn-ghost btn-sm rounded-xl font-bold flex-1 sm:flex-initial"
+                            className="inline-flex items-center justify-center rounded-xl px-3.5 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 flex-1 sm:flex-initial transition-colors"
                         >
                             {isRTL ? 'إلغاء' : 'Close'}
                         </button>
@@ -292,9 +289,9 @@ const UndeliveredLogModal = ({ isOpen, onClose, organizations = [], selectedOrgI
                             type="button"
                             onClick={handleDownload}
                             disabled={isDownloading || isSyncing}
-                            className="btn btn-primary btn-sm rounded-xl font-black shadow-sm flex-1 sm:flex-initial gap-1.5"
+                            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary hover:bg-primary/90 text-white px-4 py-2 text-xs font-black shadow-sm flex-1 sm:flex-initial disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
-                            <span className={`material-symbols-outlined text-xs ${isDownloading ? 'animate-spin' : ''}`}>
+                            <span className={`material-symbols-outlined text-sm ${isDownloading ? 'animate-spin' : ''}`}>
                                 {isDownloading ? 'progress_activity' : 'download'}
                             </span>
                             {isDownloading

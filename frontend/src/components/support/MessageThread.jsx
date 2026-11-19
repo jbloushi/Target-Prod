@@ -1,10 +1,13 @@
 import React, { useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
+import { useLocation } from 'react-router-dom';
 import { useLanguage } from '../../context/LanguageContext';
 import { useSupportChat } from '../../context/SupportChatContext';
 
 export const MessageThread = ({ conversation, onToggleContext }) => {
     const { isRTL } = useLanguage();
+    const location = useLocation();
+    const isV2Route = location.pathname.includes('-v2') || location.pathname.includes('/v2');
     const {
         messages,
         windowStatus,
@@ -27,15 +30,15 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
         return (
             <div
                 data-testid="message-thread-empty"
-                className="flex-1 flex flex-col items-center justify-center p-8 text-center text-base-content/50 bg-base-100"
+                className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900"
             >
-                <div className="w-16 h-16 rounded-2xl bg-base-200 flex items-center justify-center mb-3 text-primary">
+                <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center mb-3 text-primary">
                     <span className="material-symbols-outlined text-3xl">chat</span>
                 </div>
-                <h3 className="font-bold text-sm text-base-content">
+                <h3 className="font-bold text-sm text-slate-900 dark:text-white">
                     {isRTL ? 'اختر محادثة لبدء المراسلة' : 'Select a conversation to start chatting'}
                 </h3>
-                <p className="text-xs text-base-content/60 max-w-xs mt-1">
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs mt-1">
                     {isRTL
                         ? 'يمكنك الرد بالنصوص الحرة خلال 24 ساعة من آخر رسالة للعميل أو باستخدام قوالب ميتا المعتمدة.'
                         : 'Reply with free text within 24 hours of customer message or using approved Meta utility templates.'}
@@ -79,36 +82,36 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
     };
 
     return (
-        <div data-testid="message-thread-pane" className="flex-1 flex flex-col h-full bg-base-100 overflow-hidden">
+        <div data-testid="message-thread-pane" className="flex-1 flex flex-col h-full bg-white dark:bg-slate-900 overflow-hidden">
             {/* Thread Header */}
-            <div className="px-4 py-3 border-b border-base-200 bg-base-100/90 backdrop-blur-sm flex items-center justify-between gap-3 shrink-0">
+            <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm flex items-center justify-between gap-2 flex-wrap shrink-0">
                 {/* Contact info & Active shipment */}
                 <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-primary/15 text-primary flex items-center justify-center font-bold text-sm shrink-0">
+                    <div className="w-10 h-10 rounded-xl bg-primary/15 text-primary border border-primary/20 flex items-center justify-center font-bold text-sm shrink-0">
                         {(activeConv.contact?.name || 'C').slice(0, 2).toUpperCase()}
                     </div>
                     <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                            <h2 className="font-bold text-sm text-base-content truncate">
+                            <h2 className="font-bold text-sm text-slate-900 dark:text-white truncate">
                                 {activeConv.contact?.name || 'Customer'}
                             </h2>
                             {activeConv.contact?.role && (
-                                <span className="badge badge-ghost badge-xs text-[10px] font-mono uppercase">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
                                     {activeConv.contact.role}
                                 </span>
                             )}
                             {activeConv.status === 'resolved' ? (
-                                <span className="badge badge-neutral badge-xs font-bold text-[10px]">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full font-bold text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                                     {isRTL ? 'مغلقة' : 'Resolved'}
                                 </span>
                             ) : (
-                                <span className="badge badge-success badge-xs font-bold text-[10px]">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full font-bold text-[10px] bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
                                     {isRTL ? 'مفتوحة' : 'Open'}
                                 </span>
                             )}
                         </div>
 
-                        <div className="flex items-center gap-2 text-xs text-base-content/70 mt-0.5 flex-wrap">
+                        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex-wrap">
                             {activeConv.contact?.phone && (
                                 <button
                                     type="button"
@@ -126,7 +129,7 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
                                 <>
                                     <span>•</span>
                                     <a
-                                        href={`/shipments`}
+                                        href={isV2Route ? '/shipments-v2' : '/shipments'}
                                         className="font-mono text-[11px] text-primary font-bold hover:underline"
                                     >
                                         {activeConv.activeShipment.trackingNumber}
@@ -138,15 +141,15 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
                 </div>
 
                 {/* Right controls: 24h Window Badge + Status Action + Mobile Context toggle */}
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 flex-wrap shrink-0">
                     {/* 24-Hour Customer Service Window Indicator */}
                     {windowStatus.inside24hWindow ? (
                         <div
                             data-testid="window-active-badge"
-                            className="badge badge-success badge-sm gap-1.5 font-bold text-[11px] py-2 px-2.5 shadow-xs"
+                            className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300 font-bold text-[11px] py-1 px-2.5 shadow-2xs"
                             title={isRTL ? 'النافذة نشطة: مسموح بالرد الحر' : 'Inside 24-hour window: Free text allowed'}
                         >
-                            <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                             <span>
                                 {isRTL ? 'نافذة الـ 24 ساعة نشطة' : '24h Active'}: {formatRemainingTime(windowStatus.remainingSeconds)}
                             </span>
@@ -154,7 +157,7 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
                     ) : (
                         <div
                             data-testid="window-expired-badge"
-                            className="badge badge-warning badge-sm gap-1 font-bold text-[11px] py-2 px-2.5 shadow-xs"
+                            className="inline-flex items-center gap-1 rounded-full bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-300 font-bold text-[11px] py-1 px-2.5 shadow-2xs"
                             title={isRTL ? 'انتهت النافذة: يلزم إرسال قالب ميتا معتمد' : '24h Window Expired: Approved Meta templates required'}
                         >
                             <span className="material-symbols-outlined text-xs">warning</span>
@@ -167,7 +170,7 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
                         type="button"
                         data-testid="toggle-status-btn"
                         onClick={handleStatusToggle}
-                        className="btn btn-xs btn-outline rounded-lg font-bold"
+                        className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 text-[11px] font-bold transition-colors"
                     >
                         {activeConv.status === 'open' ? (isRTL ? 'إغلاق المحادثة' : 'Resolve') : (isRTL ? 'إعادة فتح' : 'Reopen')}
                     </button>
@@ -177,7 +180,7 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
                         <button
                             type="button"
                             onClick={onToggleContext}
-                            className="btn btn-xs btn-ghost btn-square text-base-content/70 lg:hidden"
+                            className="inline-flex items-center justify-center h-7 w-7 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white lg:hidden transition-colors"
                             title="Toggle Logistics Context"
                         >
                             <span className="material-symbols-outlined text-lg">info</span>
@@ -189,15 +192,15 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
             {/* Messages Scroll Area */}
             <div
                 data-testid="messages-stream"
-                className="flex-1 overflow-y-auto p-4 space-y-4 bg-base-200/40"
+                className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50 dark:bg-slate-950/60"
             >
                 {loadingMessages && messages.length === 0 ? (
                     <div className="p-8 text-center space-y-2">
-                        <span className="loading loading-spinner loading-sm text-primary" />
-                        <p className="text-xs text-base-content/60">{isRTL ? 'جارٍ تحميل الرسائل...' : 'Loading messages...'}</p>
+                        <span className="inline-block w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{isRTL ? 'جارٍ تحميل الرسائل...' : 'Loading messages...'}</p>
                     </div>
                 ) : messages.length === 0 ? (
-                    <div className="p-8 text-center text-base-content/50 space-y-1">
+                    <div className="p-8 text-center text-slate-400 dark:text-slate-500 space-y-1">
                         <p className="text-xs font-semibold">{isRTL ? 'لا توجد رسائل سابقة في هذه المحادثة' : 'No messages in this conversation yet'}</p>
                     </div>
                 ) : (
@@ -212,9 +215,9 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
                                 <div
                                     key={msg.id || index}
                                     data-testid={`message-note-${msg.id || index}`}
-                                    className="mx-auto max-w-lg p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 space-y-1 shadow-xs"
+                                    className="mx-auto max-w-lg p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300/70 dark:border-amber-700/50 text-amber-900 dark:text-amber-200 space-y-1 shadow-2xs"
                                 >
-                                    <div className="flex items-center gap-1.5 text-[11px] font-bold">
+                                    <div className="flex items-center gap-1.5 text-[11px] font-bold flex-wrap">
                                         <span className="material-symbols-outlined text-sm">lock</span>
                                         <span>{isRTL ? 'ملاحظة داخلية خاصة بفريق العمل (لا تظهر للعميل)' : 'Internal Staff Note (Hidden from Customer)'}</span>
                                         <span className="ms-auto text-[10px] font-mono opacity-60">
@@ -235,20 +238,20 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
                                     data-message-type="template"
                                     className="flex justify-end"
                                 >
-                                    <div className="max-w-md w-full rounded-2xl p-4 bg-primary/10 border-2 border-primary/30 shadow-sm space-y-2.5">
+                                    <div className="max-w-md w-full rounded-2xl p-4 bg-primary/10 dark:bg-primary/15 border border-primary/30 shadow-sm space-y-2.5">
                                         {/* Template Card Header */}
                                         <div className="flex items-center justify-between gap-2 border-b border-primary/20 pb-2">
-                                            <div className="flex items-center gap-1.5 text-primary font-bold text-xs">
-                                                <span className="material-symbols-outlined text-base">verified</span>
-                                                <span className="font-mono text-[11px]">{msg.templateName || 'Meta Utility Template'}</span>
+                                            <div className="flex items-center gap-1.5 text-primary font-bold text-xs min-w-0">
+                                                <span className="material-symbols-outlined text-base shrink-0">verified</span>
+                                                <span className="font-mono text-[11px] truncate">{msg.templateName || 'Meta Utility Template'}</span>
                                             </div>
-                                            <span className="text-[10px] text-base-content/60 font-mono">
+                                            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono shrink-0">
                                                 {formatMessageTime(msg.createdAt)}
                                             </span>
                                         </div>
 
                                         {/* Template Content */}
-                                        <p className="text-xs text-base-content whitespace-pre-wrap leading-relaxed font-medium">
+                                        <p className="text-xs text-slate-900 dark:text-slate-100 whitespace-pre-wrap leading-relaxed font-medium">
                                             {msg.content}
                                         </p>
 
@@ -259,7 +262,7 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
                                                     href={`/track/${encodeURIComponent(activeConv.activeShipment.trackingNumber)}`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="btn btn-xs btn-outline btn-primary rounded-lg text-[10px] font-bold gap-1"
+                                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-primary/30 bg-white dark:bg-slate-900 text-primary hover:bg-primary hover:text-white text-[10px] font-bold transition-colors"
                                                 >
                                                     <span className="material-symbols-outlined text-xs">location_searching</span>
                                                     <span>{isRTL ? 'تتبع الشحنة' : 'Track'}</span>
@@ -270,7 +273,7 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
                                                     href={`/location/${activeConv.activeShipment.locationToken}`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="btn btn-xs btn-outline btn-success rounded-lg text-[10px] font-bold gap-1"
+                                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-600 hover:text-white text-[10px] font-bold transition-colors"
                                                 >
                                                     <span className="material-symbols-outlined text-xs">pin_drop</span>
                                                     <span>{isRTL ? 'تحديد الموقع' : 'Location Pin'}</span>
@@ -290,16 +293,16 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
                                     data-testid={`message-incoming-${msg.id || index}`}
                                     className="flex items-start gap-2 max-w-lg"
                                 >
-                                    <div className="w-8 h-8 rounded-xl bg-base-300 text-base-content flex items-center justify-center text-xs font-bold shrink-0 mt-1">
+                                    <div className="w-8 h-8 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 flex items-center justify-center text-xs font-bold shrink-0 mt-1">
                                         {(msg.sender?.name || 'C').slice(0, 2).toUpperCase()}
                                     </div>
-                                    <div className="space-y-1">
-                                        <div className="bg-base-100 dark:bg-slate-800 border border-base-300 rounded-2xl rounded-ss-xs p-3 shadow-xs">
-                                            <p className="text-xs text-base-content whitespace-pre-wrap leading-relaxed">
+                                    <div className="space-y-1 min-w-0">
+                                        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl rounded-ss-xs p-3 shadow-2xs">
+                                            <p className="text-xs text-slate-900 dark:text-slate-100 whitespace-pre-wrap leading-relaxed break-words">
                                                 {msg.content}
                                             </p>
                                         </div>
-                                        <span className="text-[10px] text-base-content/50 ps-2 font-mono">
+                                        <span className="text-[10px] text-slate-400 dark:text-slate-500 ps-2 font-mono">
                                             {formatMessageTime(msg.createdAt)}
                                         </span>
                                     </div>
@@ -315,12 +318,12 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
                                 className="flex justify-end"
                             >
                                 <div className="max-w-lg space-y-1 items-end flex flex-col">
-                                    <div className="bg-primary text-primary-content rounded-2xl rounded-se-xs p-3 shadow-sm">
-                                        <p className="text-xs whitespace-pre-wrap leading-relaxed">
+                                    <div className="bg-primary text-white rounded-2xl rounded-se-xs p-3 shadow-sm">
+                                        <p className="text-xs whitespace-pre-wrap leading-relaxed break-words">
                                             {msg.content}
                                         </p>
                                     </div>
-                                    <div className="flex items-center gap-1 pe-2 text-[10px] text-base-content/50 font-mono">
+                                    <div className="flex items-center gap-1 pe-2 text-[10px] text-slate-400 dark:text-slate-500 font-mono">
                                         <span>{formatMessageTime(msg.createdAt)}</span>
                                         <span className="material-symbols-outlined text-xs text-primary">done_all</span>
                                     </div>

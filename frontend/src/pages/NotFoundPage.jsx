@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getDefaultLandingPath } from '../utils/uiVersion';
 
 export const NotFoundPage = () => {
   const navigate = useNavigate();
@@ -27,7 +28,7 @@ export const NotFoundPage = () => {
           </button>
           <button
             type="button"
-            onClick={() => navigate('/dashboard')}
+            onClick={() => navigate(getDefaultLandingPath())}
             className="btn btn-primary w-full sm:w-auto font-bold text-xs shadow-md shadow-primary/20 gap-2"
           >
             <span className="material-symbols-outlined text-base">dashboard</span>

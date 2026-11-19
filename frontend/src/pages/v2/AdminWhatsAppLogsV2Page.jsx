@@ -142,7 +142,7 @@ export const AdminWhatsAppLogsV2Page = () => {
 
     return (
         <div dir={isRTL ? 'rtl' : 'ltr'} className="w-full min-h-screen pb-14">
-            <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 pt-5 space-y-5">
+            <div className="max-w-[1600px] mx-auto pt-5 space-y-5">
                 {/* V1 <-> V2 Switcher Banner */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 sm:px-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-2xs">
                     <div className="flex flex-wrap items-center gap-2.5 min-w-0">
@@ -294,7 +294,7 @@ export const AdminWhatsAppLogsV2Page = () => {
                                                 {st}
                                             </span>
                                         </div>
-                                        <div className="text-[11px] font-mono text-slate-600 dark:text-slate-400 flex justify-between gap-2" dir="ltr">
+                                        <div className="text-[11px] font-mono text-slate-600 dark:text-slate-400 flex flex-wrap justify-between gap-2 min-w-0" dir="ltr">
                                             <span>{log.trackingNumber || 'No AWB'}</span>
                                             <span>{log.sentAt ? new Date(log.sentAt).toLocaleString() : '—'}</span>
                                         </div>
@@ -400,7 +400,7 @@ export const AdminWhatsAppLogsV2Page = () => {
             {/* Message Preview Modal */}
             {previewLog && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 sm:p-4" role="dialog" aria-modal="true">
-                    <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-5 space-y-3">
+                    <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-5 space-y-3">
                         <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2.5">
                             <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">{lang === 'ar' ? 'معاينة الرسالة' : 'Message Copy Preview'}</h3>
                             <div className="flex items-center gap-1.5">
@@ -430,8 +430,8 @@ export const AdminWhatsAppLogsV2Page = () => {
             {/* Raw JSON Inspector Modal */}
             {selectedLog && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 sm:p-4" role="dialog" aria-modal="true">
-                    <div className="w-full max-w-xl rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-5 space-y-3">
-                        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2.5">
+                    <div className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-5 space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-2.5">
                             <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">{lang === 'ar' ? 'فحص البيانات الخام' : 'Raw Gateway Payload'}</h3>
                             <div className="flex items-center gap-1.5">
                                 <button

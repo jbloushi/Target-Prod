@@ -105,8 +105,8 @@ export const SearchablePhoneDialSelector = ({
   };
 
   const buttonClasses = variant === 'daisy'
-    ? 'btn btn-sm btn-outline border-base-300 bg-base-100 hover:bg-base-200/60 hover:border-primary/60 text-xs font-mono font-bold px-2.5 shrink-0 flex items-center gap-1 min-w-[96px] justify-between'
-    : 'text-[11px] font-bold text-primary bg-base-200 hover:bg-base-300 border border-transparent focus:border-primary rounded-lg px-2 py-1 outline-none cursor-pointer shrink-0 flex items-center gap-1 min-w-[92px] justify-between transition-colors';
+    ? 'h-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-primary/60 text-xs font-mono font-bold text-slate-800 dark:text-slate-100 px-2.5 shrink-0 flex items-center gap-1 min-w-[96px] justify-between transition-colors cursor-pointer'
+    : 'text-[11px] font-bold text-primary dark:text-sky-400 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200/80 dark:hover:bg-slate-700 border border-transparent focus:border-primary rounded-lg px-2 py-1 outline-none cursor-pointer shrink-0 flex items-center gap-1 min-w-[92px] justify-between transition-colors';
 
   return (
     <div ref={containerRef} className={`relative shrink-0 ${className}`}>
@@ -129,11 +129,11 @@ export const SearchablePhoneDialSelector = ({
 
       {open && (
         <div
-          className="absolute z-50 mt-1.5 w-72 bg-base-100 border border-base-300 rounded-xl shadow-xl overflow-hidden animate-in fade-in duration-100"
+          className="absolute z-50 mt-1.5 w-72 max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl overflow-hidden animate-in fade-in duration-100"
           style={{ [isRTL ? 'right' : 'left']: 0 }}
         >
-          <div className="p-2 border-b border-base-300 bg-base-200/50 flex items-center gap-1.5">
-            <span className="material-symbols-outlined text-[16px] text-primary">search</span>
+          <div className="p-2 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-[16px] text-primary dark:text-sky-400">search</span>
             <input
               ref={searchInputRef}
               type="text"
@@ -141,22 +141,22 @@ export const SearchablePhoneDialSelector = ({
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={isRTL ? 'ابحث باسم الدولة أو المفتاح (+965, KW)...' : 'Type country, code or +dial...'}
-              className="w-full text-xs font-semibold bg-transparent outline-none text-base-content placeholder:text-base-content/70"
+              className="w-full text-xs font-semibold bg-transparent outline-none text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
             />
             {query && (
               <button
                 type="button"
                 onClick={() => setQuery('')}
-                className="text-base-content/70 hover:text-base-content text-xs px-1"
+                className="text-slate-400 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 text-xs px-1 cursor-pointer"
               >
                 ✕
               </button>
             )}
           </div>
 
-          <div className="max-h-60 overflow-y-auto divide-y divide-base-200">
+          <div className="max-h-60 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
             {filtered.length === 0 ? (
-              <div className="p-3 text-center text-xs text-base-content/70">
+              <div className="p-3 text-center text-xs text-slate-500 dark:text-slate-400">
                 {isRTL ? 'لا توجد دولة مطابقة للبحث' : 'No matching country found'}
               </div>
             ) : (
@@ -170,22 +170,22 @@ export const SearchablePhoneDialSelector = ({
                     type="button"
                     onClick={() => handleSelect(c)}
                     onMouseEnter={() => setHighlightIdx(idx)}
-                    className={`w-full px-3 py-2 text-start text-xs flex items-center justify-between gap-2 transition-colors ${
+                    className={`w-full px-3 py-2 text-start text-xs flex items-center justify-between gap-2 transition-colors cursor-pointer ${
                       isHighlighted
-                        ? 'bg-primary/10 text-primary'
+                        ? 'bg-primary/10 dark:bg-sky-500/15 text-primary dark:text-sky-300'
                         : isSelected
-                        ? 'bg-primary/15 text-primary font-bold'
-                        : 'text-base-content hover:bg-base-200'
+                        ? 'bg-primary/15 dark:bg-sky-500/20 text-primary dark:text-sky-300 font-bold'
+                        : 'text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
                     }`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-base shrink-0">{c.flag}</span>
                       <div className="truncate">
                         <span className="font-semibold">{isRTL && arName ? arName : c.name}</span>
-                        <span className="text-[10px] text-base-content/70 ms-1">({c.code})</span>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 ms-1">({c.code})</span>
                       </div>
                     </div>
-                    <span className="font-mono font-bold text-[11px] text-primary bg-primary/10 px-1.5 py-0.5 rounded shrink-0">
+                    <span className="font-mono font-bold text-[11px] text-primary dark:text-sky-300 bg-primary/10 dark:bg-sky-500/15 px-1.5 py-0.5 rounded shrink-0">
                       {c.dialCode}
                     </span>
                   </button>
@@ -297,11 +297,11 @@ export const SearchableCountrySelect = ({
     : value;
 
   const triggerClasses = variant === 'daisy'
-    ? `btn btn-sm w-full justify-between font-medium text-sm bg-base-100 hover:bg-base-100 border ${
-        error ? 'border-error text-error' : 'border-base-300 focus:border-primary'
+    ? `h-9 px-3 rounded-xl w-full flex items-center justify-between gap-2 font-medium text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border transition-colors cursor-pointer ${
+        error ? 'border-rose-500 text-rose-600 dark:text-rose-400' : 'border-slate-200 dark:border-slate-700 focus:border-primary'
       }`
-    : `w-full p-2 border-[1.5px] rounded-xl text-xs font-semibold outline-none bg-base-100 text-base-content cursor-pointer flex items-center justify-between gap-2 transition-all ${
-        error ? 'border-error bg-error/10 text-error' : open ? 'border-primary' : 'border-base-300 hover:border-primary/50'
+    : `w-full p-2 border-[1.5px] rounded-xl text-xs font-semibold outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 cursor-pointer flex items-center justify-between gap-2 transition-all ${
+        error ? 'border-rose-500 bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400' : open ? 'border-primary' : 'border-slate-200 dark:border-slate-700 hover:border-primary/50'
       }`;
 
   return (
@@ -314,15 +314,15 @@ export const SearchableCountrySelect = ({
         className={triggerClasses}
       >
         <span className="truncate text-start">{displayLabel}</span>
-        <span className="material-symbols-outlined text-[16px] text-base-content/70 shrink-0">
+        <span className="material-symbols-outlined text-[16px] text-slate-500 dark:text-slate-400 shrink-0">
           {open ? 'expand_less' : 'expand_more'}
         </span>
       </button>
 
       {open && (
-        <div className="absolute z-50 mt-1.5 w-full min-w-[250px] bg-base-100 border border-base-300 rounded-xl shadow-xl overflow-hidden animate-in fade-in duration-100">
-          <div className="p-2 border-b border-base-300 bg-base-200/50 flex items-center gap-1.5">
-            <span className="material-symbols-outlined text-[16px] text-primary">search</span>
+        <div className="absolute z-50 mt-1.5 w-full min-w-[250px] max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl overflow-hidden animate-in fade-in duration-100">
+          <div className="p-2 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-[16px] text-primary dark:text-sky-400">search</span>
             <input
               ref={searchInputRef}
               type="text"
@@ -330,22 +330,22 @@ export const SearchableCountrySelect = ({
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={isRTL ? 'اكتب اسم الدولة أو الرمز للبحث...' : 'Type country name, code or +dial...'}
-              className="w-full text-xs font-semibold bg-transparent outline-none text-base-content placeholder:text-base-content/70"
+              className="w-full text-xs font-semibold bg-transparent outline-none text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
             />
             {query && (
               <button
                 type="button"
                 onClick={() => setQuery('')}
-                className="text-base-content/70 hover:text-base-content text-xs px-1"
+                className="text-slate-400 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 text-xs px-1 cursor-pointer"
               >
                 ✕
               </button>
             )}
           </div>
 
-          <div className="max-h-60 overflow-y-auto divide-y divide-base-200">
+          <div className="max-h-60 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
             {filtered.length === 0 ? (
-              <div className="p-3 text-center text-xs text-base-content/70">
+              <div className="p-3 text-center text-xs text-slate-500 dark:text-slate-400">
                 {isRTL ? 'لا توجد دولة مطابقة للبحث' : 'No matching country found'}
               </div>
             ) : (
@@ -359,20 +359,20 @@ export const SearchableCountrySelect = ({
                     type="button"
                     onClick={() => handleSelect(c)}
                     onMouseEnter={() => setHighlightIdx(idx)}
-                    className={`w-full px-3 py-2 text-start text-xs flex items-center justify-between gap-2 transition-colors ${
+                    className={`w-full px-3 py-2 text-start text-xs flex items-center justify-between gap-2 transition-colors cursor-pointer ${
                       isHighlighted
-                        ? 'bg-primary/10 text-primary'
+                        ? 'bg-primary/10 dark:bg-sky-500/15 text-primary dark:text-sky-300'
                         : isSelected
-                        ? 'bg-primary/15 text-primary font-bold'
-                        : 'text-base-content hover:bg-base-200'
+                        ? 'bg-primary/15 dark:bg-sky-500/20 text-primary dark:text-sky-300 font-bold'
+                        : 'text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
                     }`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-base shrink-0">{c.flag}</span>
                       <span className="truncate font-semibold">{isRTL && arName ? arName : c.name}</span>
-                      <span className="text-[10px] text-base-content/70 shrink-0">({c.code})</span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 shrink-0">({c.code})</span>
                     </div>
-                    <span className="font-mono text-[11px] text-base-content/70 shrink-0">
+                    <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400 shrink-0">
                       {c.dialCode}
                     </span>
                   </button>

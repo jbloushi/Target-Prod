@@ -1,18 +1,19 @@
 import React, { useState } from 'react';
 import PropTypes from 'prop-types';
+import { useLocation } from 'react-router-dom';
 import { useLanguage } from '../../context/LanguageContext';
 import { useSupportChat } from '../../context/SupportChatContext';
 import ManualPaymentLinkModal from '../shipments/ManualPaymentLinkModal';
 
 const STATUS_BADGE_CLASSES = {
-    pending: 'badge-warning',
-    in_transit: 'badge-info',
-    out_for_delivery: 'badge-primary',
-    customs_hold: 'badge-error',
-    exception: 'badge-error',
-    delivered: 'badge-success',
-    cancelled: 'badge-neutral',
-    returned: 'badge-neutral'
+    pending: 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/60',
+    in_transit: 'bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800/60',
+    out_for_delivery: 'bg-primary/10 text-primary border-primary/20',
+    customs_hold: 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/60',
+    exception: 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/60',
+    delivered: 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60',
+    cancelled: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700',
+    returned: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
 };
 
 export const CustomerContextPanel = ({
@@ -22,6 +23,8 @@ export const CustomerContextPanel = ({
     className = ''
 }) => {
     const { isRTL } = useLanguage();
+    const location = useLocation();
+    const isV2Route = location.pathname.includes('-v2') || location.pathname.includes('/v2');
     const {
         logisticsContext,
         loadingContext,
@@ -138,43 +141,41 @@ export const CustomerContextPanel = ({
     return (
         <aside
             data-testid="customer-context-panel"
-            className={`w-full h-full bg-base-100 border-s border-base-200 flex flex-col overflow-y-auto ${className}`}
+            className={`w-full h-full bg-white dark:bg-slate-900 border-s border-slate-200 dark:border-slate-800 flex flex-col overflow-y-auto ${className}`}
         >
             {/* Loading Indicator */}
             {loadingContext && (
-                <div className="w-full bg-primary/10 text-primary text-[10px] py-1 px-3 flex items-center justify-center gap-1.5 font-bold">
-                    <span className="loading loading-spinner loading-xs" />
+                <div className="w-full bg-primary/10 text-primary text-[10px] py-1.5 px-3 flex items-center justify-center gap-1.5 font-bold">
+                    <span className="inline-block w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                     <span>{isRTL ? 'جاري تحديث بيانات الشحنات...' : 'Refreshing logistics context...'}</span>
                 </div>
             )}
 
             {/* Header: Customer Profile */}
-            <div className="p-4 border-b border-base-200 bg-base-100/50">
+            <div className="p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
                 <div className="flex items-center gap-3">
-                    <div className="avatar placeholder">
-                        <div className="bg-primary/10 text-primary rounded-full w-12 h-12 flex items-center justify-center font-black text-lg border border-primary/20">
-                            {customerName.charAt(0).toUpperCase()}
-                        </div>
+                    <div className="bg-primary/10 text-primary rounded-full w-12 h-12 flex items-center justify-center font-black text-lg border border-primary/20 shrink-0">
+                        {customerName.charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                             <h2
                                 data-testid="context-customer-name"
-                                className="font-black text-sm text-base-content truncate"
+                                className="font-black text-sm text-slate-900 dark:text-white truncate"
                             >
                                 {customerName}
                             </h2>
-                            <span className="badge badge-xs badge-neutral font-mono uppercase">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                                 {customerRole}
                             </span>
                         </div>
 
                         {customerPhone ? (
-                            <div className="flex items-center gap-2 mt-1">
+                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                                 <span
                                     data-testid="context-customer-phone"
                                     dir="ltr"
-                                    className="font-mono text-xs text-base-content/80 font-bold"
+                                    className="font-mono text-xs text-slate-700 dark:text-slate-300 font-bold"
                                 >
                                     {customerPhone}
                                 </span>
@@ -183,7 +184,7 @@ export const CustomerContextPanel = ({
                                     data-testid="context-copy-phone-btn"
                                     onClick={handleCopyPhone}
                                     title={isRTL ? 'نسخ رقم الهاتف' : 'Copy phone number'}
-                                    className="btn btn-ghost btn-xs btn-square h-5 w-5 text-base-content/60 hover:text-base-content"
+                                    className="inline-flex items-center justify-center h-6 w-6 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors"
                                 >
                                     <span className="material-symbols-outlined text-xs">
                                         {phoneCopied ? 'check' : 'content_copy'}
@@ -196,14 +197,14 @@ export const CustomerContextPanel = ({
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         title={isRTL ? 'محادثة عبر واتساب' : 'Chat on WhatsApp'}
-                                        className="btn btn-ghost btn-xs btn-square h-5 w-5 text-success hover:bg-success/10"
+                                        className="inline-flex items-center justify-center h-6 w-6 rounded-lg text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 transition-colors"
                                     >
                                         <span className="material-symbols-outlined text-xs">chat</span>
                                     </a>
                                 )}
                             </div>
                         ) : (
-                            <span className="text-xs text-base-content/50 italic">
+                            <span className="text-xs text-slate-400 dark:text-slate-500 italic">
                                 {isRTL ? 'لا يوجد رقم هاتف مسجل' : 'No phone registered'}
                             </span>
                         )}
@@ -212,27 +213,27 @@ export const CustomerContextPanel = ({
 
                 {/* Organization Details (B2B Accounts) */}
                 {organization && (
-                    <div className="mt-3 p-2.5 rounded-xl bg-base-200/50 border border-base-200 text-xs">
-                        <div className="flex items-center justify-between mb-1">
-                            <span className="font-bold text-base-content/70">
+                    <div className="mt-3 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 text-xs">
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                            <span className="font-bold text-slate-600 dark:text-slate-400">
                                 {isRTL ? 'الشركة / المنشأة:' : 'Organization:'}
                             </span>
-                            <span className="font-black text-base-content truncate max-w-[140px]">
+                            <span className="font-black text-slate-900 dark:text-white truncate max-w-[140px]">
                                 {organization.name}
                             </span>
                         </div>
                         {organization.creditLimit !== undefined && organization.creditLimit !== null && (
-                            <div className="flex items-center justify-between text-base-content/70">
+                            <div className="flex items-center justify-between gap-2 text-slate-600 dark:text-slate-400">
                                 <span>{isRTL ? 'الحد الائتماني:' : 'Credit Limit:'}</span>
-                                <span dir="ltr" className="font-mono font-bold">
+                                <span dir="ltr" className="font-mono font-bold text-slate-800 dark:text-slate-200">
                                     {Number(organization.creditLimit).toFixed(3)} KWD
                                 </span>
                             </div>
                         )}
                         {organization.balance !== undefined && organization.balance !== null && (
-                            <div className="flex items-center justify-between text-base-content/70 mt-0.5">
+                            <div className="flex items-center justify-between gap-2 text-slate-600 dark:text-slate-400 mt-0.5">
                                 <span>{isRTL ? 'الرصيد المستحق:' : 'Balance Due:'}</span>
-                                <span dir="ltr" className="font-mono font-bold text-warning">
+                                <span dir="ltr" className="font-mono font-bold text-amber-600 dark:text-amber-400">
                                     {Number(organization.balance).toFixed(3)} KWD
                                 </span>
                             </div>
@@ -243,32 +244,32 @@ export const CustomerContextPanel = ({
 
             {/* Notification Toast for Location Request */}
             {locationSuccessMsg && (
-                <div className="p-2.5 bg-success/15 border-b border-success/30 text-success flex items-center gap-2 text-xs font-bold">
+                <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/50 border-b border-emerald-200 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300 flex items-center gap-2 text-xs font-bold">
                     <span className="material-symbols-outlined text-sm">check_circle</span>
                     <span>{locationSuccessMsg}</span>
                 </div>
             )}
 
             {/* Section 1: Pinned Active Shipments */}
-            <div className="p-4 border-b border-base-200">
+            <div className="p-4 border-b border-slate-200 dark:border-slate-800">
                 <div className="flex items-center justify-between mb-2.5">
                     <div className="flex items-center gap-1.5">
                         <span className="material-symbols-outlined text-primary text-base">local_shipping</span>
-                        <h3 className="font-black text-xs uppercase tracking-wider text-base-content">
+                        <h3 className="font-black text-xs uppercase tracking-wider text-slate-900 dark:text-white">
                             {isRTL ? 'الشحنات النشطة' : 'Active Shipments'}
                         </h3>
                     </div>
-                    <span className="badge badge-primary badge-xs font-mono font-bold">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-primary/10 text-primary border border-primary/20">
                         {activeShipments.length}
                     </span>
                 </div>
 
                 {activeShipments.length === 0 ? (
-                    <div className="text-center py-4 px-2 rounded-xl bg-base-200/30 border border-dashed border-base-200">
-                        <span className="material-symbols-outlined text-2xl text-base-content/40 mb-1">
+                    <div className="text-center py-4 px-2 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-200 dark:border-slate-700">
+                        <span className="material-symbols-outlined text-2xl text-slate-400 dark:text-slate-500 mb-1">
                             inventory_2
                         </span>
-                        <p className="text-xs text-base-content/60">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
                             {isRTL ? 'لا توجد شحنات نشطة حالياً' : 'No active shipments currently'}
                         </p>
                     </div>
@@ -278,12 +279,12 @@ export const CustomerContextPanel = ({
                             <div
                                 key={shp.id || shp.trackingNumber}
                                 data-testid={`context-shipment-card-${shp.trackingNumber}`}
-                                className="p-3 rounded-xl bg-base-200/60 border border-base-200 hover:border-primary/40 transition-colors"
+                                className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 hover:border-primary/40 transition-colors"
                             >
                                 {/* Tracking Number & Carrier */}
-                                <div className="flex items-center justify-between mb-1.5">
+                                <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
                                     <a
-                                        href={`/shipments/${shp.trackingNumber}`}
+                                        href={isV2Route ? `/shipment-v2/${shp.trackingNumber}` : `/shipments/${shp.trackingNumber}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         dir="ltr"
@@ -292,35 +293,39 @@ export const CustomerContextPanel = ({
                                         <span>{shp.trackingNumber}</span>
                                         <span className="material-symbols-outlined text-[10px]">open_in_new</span>
                                     </a>
-                                    <span className={`badge badge-xs font-bold uppercase ${STATUS_BADGE_CLASSES[shp.status] || 'badge-neutral'}`}>
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${STATUS_BADGE_CLASSES[shp.status] || STATUS_BADGE_CLASSES.cancelled}`}>
                                         {shp.status}
                                     </span>
                                 </div>
 
                                 {/* Carrier & Route Info */}
-                                <div className="text-[11px] text-base-content/70 mb-2 flex items-center justify-between">
-                                    <span className="font-bold">{shp.carrierName || shp.carrierCode || 'Target Logistics'}</span>
+                                <div className="text-[11px] text-slate-600 dark:text-slate-300 mb-2 flex items-center justify-between gap-2">
+                                    <span className="font-bold truncate">{shp.carrierName || shp.carrierCode || 'Target Logistics'}</span>
                                     {shp.origin && shp.destination && (
-                                        <span className="text-base-content/60 truncate max-w-[140px]">
+                                        <span className="text-slate-500 dark:text-slate-400 truncate max-w-[140px]">
                                             {shp.origin} → {shp.destination}
                                         </span>
                                     )}
                                 </div>
 
                                 {/* Financials & COD Details */}
-                                <div className="p-2 rounded-lg bg-base-100/70 border border-base-200 text-xs mb-2.5 flex items-center justify-between">
+                                <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 text-xs mb-2.5 flex items-center justify-between gap-2">
                                     <div>
-                                        <span className="text-base-content/60 text-[10px] block">
+                                        <span className="text-slate-500 dark:text-slate-400 text-[10px] block">
                                             {isRTL ? 'التحصيل عند الاستلام (COD)' : 'Cash on Delivery'}
                                         </span>
-                                        <span dir="ltr" className="font-mono font-black text-sm">
+                                        <span dir="ltr" className="font-mono font-black text-sm text-slate-900 dark:text-white">
                                             {shp.codAmount !== null && shp.codAmount !== undefined
                                                 ? `${Number(shp.codAmount).toFixed(3)} KWD`
                                                 : '0.000 KWD'}
                                         </span>
                                     </div>
                                     <div>
-                                        <span className={`badge badge-xs font-bold ${shp.isPaid ? 'badge-success' : 'badge-warning'}`}>
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                            shp.isPaid
+                                                ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60'
+                                                : 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/60'
+                                        }`}>
                                             {shp.isPaid
                                                 ? (isRTL ? 'مدفوعة' : 'Paid')
                                                 : (isRTL ? 'غير مدفوعة' : 'Unpaid')}
@@ -335,7 +340,7 @@ export const CustomerContextPanel = ({
                                         data-testid="context-request-location-btn"
                                         disabled={locationRequestLoading}
                                         onClick={() => handleRequestLocation(shp)}
-                                        className="btn btn-outline btn-primary btn-xs flex items-center justify-center gap-1 font-bold"
+                                        className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg border border-primary/30 bg-primary/5 text-primary hover:bg-primary hover:text-white text-[11px] font-bold disabled:opacity-50 transition-colors"
                                         title={isRTL ? 'طلب تحديد موقع التسليم عبر واتساب' : 'Dispatch WhatsApp GPS Pin request'}
                                     >
                                         <span className="material-symbols-outlined text-xs">location_on</span>
@@ -346,7 +351,7 @@ export const CustomerContextPanel = ({
                                         type="button"
                                         data-testid="context-send-payment-btn"
                                         onClick={() => handleOpenPayment(shp)}
-                                        className="btn btn-outline btn-success btn-xs flex items-center justify-center gap-1 font-bold"
+                                        className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-600 hover:text-white text-[11px] font-bold transition-colors"
                                         title={isRTL ? 'إرسال رابط دفع إلكتروني' : 'Send online checkout payment link'}
                                     >
                                         <span className="material-symbols-outlined text-xs">credit_card</span>
@@ -355,14 +360,14 @@ export const CustomerContextPanel = ({
                                 </div>
 
                                 {/* Document Quick Links */}
-                                <div className="flex items-center gap-2 pt-1 border-t border-base-200/50 text-[11px]">
+                                <div className="flex items-center gap-2 pt-1.5 border-t border-slate-200/70 dark:border-slate-700/70 text-[11px]">
                                     {shp.documents?.awbUrl && (
                                         <a
                                             data-testid="context-print-awb-btn"
                                             href={shp.documents.awbUrl}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="text-base-content/70 hover:text-primary flex items-center gap-1 font-bold"
+                                            className="text-slate-600 dark:text-slate-300 hover:text-primary flex items-center gap-1 font-bold transition-colors"
                                         >
                                             <span className="material-symbols-outlined text-xs">print</span>
                                             <span>{isRTL ? 'طباعة البوليصة' : 'Print AWB'}</span>
@@ -373,7 +378,7 @@ export const CustomerContextPanel = ({
                                             href={shp.links.tracking}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="text-base-content/70 hover:text-primary flex items-center gap-1 font-bold ms-auto"
+                                            className="text-slate-600 dark:text-slate-300 hover:text-primary flex items-center gap-1 font-bold ms-auto transition-colors"
                                         >
                                             <span className="material-symbols-outlined text-xs">visibility</span>
                                             <span>{isRTL ? 'تتبع مباشر' : 'Live Tracking'}</span>
@@ -387,10 +392,10 @@ export const CustomerContextPanel = ({
             </div>
 
             {/* Section 2: Logistics Quick Replies */}
-            <div className="p-4 border-b border-base-200">
+            <div className="p-4 border-b border-slate-200 dark:border-slate-800">
                 <div className="flex items-center gap-1.5 mb-2.5">
-                    <span className="material-symbols-outlined text-secondary text-base">bolt</span>
-                    <h3 className="font-black text-xs uppercase tracking-wider text-base-content">
+                    <span className="material-symbols-outlined text-amber-500 text-base">bolt</span>
+                    <h3 className="font-black text-xs uppercase tracking-wider text-slate-900 dark:text-white">
                         {isRTL ? 'ردود لوجستية سريعة' : 'Quick Replies'}
                     </h3>
                 </div>
@@ -402,10 +407,10 @@ export const CustomerContextPanel = ({
                             type="button"
                             data-testid={`context-quick-reply-chip-${qr.id}`}
                             onClick={() => onSelectQuickReply?.(qr.text)}
-                            className="btn btn-ghost btn-xs rounded-lg border border-base-200 bg-base-100 hover:bg-base-200 text-start flex items-center gap-1 font-medium"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-[11px] text-start font-semibold transition-colors"
                             title={qr.text}
                         >
-                            <span className="material-symbols-outlined text-xs text-base-content/70">
+                            <span className="material-symbols-outlined text-xs text-slate-500 dark:text-slate-400">
                                 {qr.icon}
                             </span>
                             <span>{isRTL ? qr.titleAr : qr.titleEn}</span>
@@ -418,18 +423,18 @@ export const CustomerContextPanel = ({
             <div className="p-4 flex-1">
                 <div className="flex items-center justify-between mb-2.5">
                     <div className="flex items-center gap-1.5">
-                        <span className="material-symbols-outlined text-base-content/60 text-base">history</span>
-                        <h3 className="font-black text-xs uppercase tracking-wider text-base-content">
+                        <span className="material-symbols-outlined text-slate-500 dark:text-slate-400 text-base">history</span>
+                        <h3 className="font-black text-xs uppercase tracking-wider text-slate-900 dark:text-white">
                             {isRTL ? 'سجل الشحنات السابقة' : 'Past Shipments'}
                         </h3>
                     </div>
-                    <span className="badge badge-ghost badge-xs font-mono font-bold">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
                         {pastShipments.length}
                     </span>
                 </div>
 
                 {pastShipments.length === 0 ? (
-                    <div className="text-center py-4 px-2 text-xs text-base-content/50 italic">
+                    <div className="text-center py-4 px-2 text-xs text-slate-400 dark:text-slate-500 italic">
                         {isRTL ? 'لا يوجد سجل شحنات سابقة' : 'No past shipment history'}
                     </div>
                 ) : (
@@ -437,23 +442,23 @@ export const CustomerContextPanel = ({
                         {pastShipments.map((shp) => (
                             <div
                                 key={shp.id || shp.trackingNumber}
-                                className="p-2.5 rounded-xl bg-base-200/30 border border-base-200 flex items-center justify-between text-xs"
+                                className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 flex items-center justify-between gap-2 text-xs"
                             >
-                                <div>
+                                <div className="min-w-0">
                                     <a
-                                        href={`/shipments/${shp.trackingNumber}`}
+                                        href={isV2Route ? `/shipment-v2/${shp.trackingNumber}` : `/shipments/${shp.trackingNumber}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         dir="ltr"
-                                        className="font-mono font-bold text-base-content hover:text-primary hover:underline"
+                                        className="font-mono font-bold text-slate-900 dark:text-white hover:text-primary hover:underline block truncate"
                                     >
                                         {shp.trackingNumber}
                                     </a>
-                                    <div className="text-[10px] text-base-content/50">
+                                    <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
                                         {shp.carrierName || shp.carrierCode || 'Carrier'}
                                     </div>
                                 </div>
-                                <span className={`badge badge-xs font-bold uppercase ${STATUS_BADGE_CLASSES[shp.status] || 'badge-neutral'}`}>
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border shrink-0 ${STATUS_BADGE_CLASSES[shp.status] || STATUS_BADGE_CLASSES.cancelled}`}>
                                     {shp.status}
                                 </span>
                             </div>

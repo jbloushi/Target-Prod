@@ -210,7 +210,7 @@ export const AdminRateCardsV2Page = () => {
 
     return (
         <div dir={isRTL ? 'rtl' : 'ltr'} className="w-full min-h-screen pb-14">
-            <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 pt-5 space-y-5">
+            <div className="max-w-[1600px] mx-auto pt-5 space-y-5">
                 {/* V1 <-> V2 Switcher Banner */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 sm:px-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-2xs">
                     <div className="flex flex-wrap items-center gap-2.5 min-w-0">
@@ -456,7 +456,7 @@ export const AdminRateCardsV2Page = () => {
                             </button>
                         </div>
 
-                        <div className="p-3 rounded-xl bg-primary/5 border border-primary/20 flex items-center justify-between gap-3 text-xs text-slate-700 dark:text-slate-300">
+                        <div className="p-3 rounded-xl bg-primary/5 border border-primary/20 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-700 dark:text-slate-300">
                             <span>{lang === 'ar' ? 'تأكد من مطابقة أعمدة الوزن والمناطق (Zones 1–9).' : 'Ensure your Excel sheet matches the Weight and Zone 1–9 template.'}</span>
                             <button type="button" onClick={handleDownloadSample} className="px-2.5 py-1 rounded-lg border border-primary text-primary font-bold whitespace-nowrap cursor-pointer">
                                 {lang === 'ar' ? 'تحميل النموذج' : 'Get Template'}

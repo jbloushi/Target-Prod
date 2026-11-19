@@ -36,12 +36,12 @@ const PaywallModal = ({ isOpen, onClose, featureName = 'Fleet Management Pro' })
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-2xl bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700">
         {/* Header Gradient */}
         <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-sky-600 p-8 text-white relative">
           <button 
             onClick={onClose}
-            className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 transition text-white"
+            className="absolute top-4 end-4 p-2 rounded-full bg-white/10 hover:bg-white/20 transition text-white"
           >
             <span className="material-symbols-outlined text-lg">close</span>
           </button>

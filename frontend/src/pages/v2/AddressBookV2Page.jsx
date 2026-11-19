@@ -227,7 +227,7 @@ export const AddressBookV2Page = () => {
 
     return (
         <div className="w-full min-h-screen pb-14 bg-slate-50 dark:bg-slate-950">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-5 space-y-5">
+            <div className="max-w-7xl mx-auto pt-5 space-y-5">
                 {/* V1 <-> V2 Switcher Banner */}
                 <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 p-3.5 sm:px-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xs">
                     <div className="flex flex-wrap items-center gap-2.5 min-w-0">
