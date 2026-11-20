@@ -11,12 +11,38 @@ const { hasCriticalChanges } = require('./shipment.helpers');
 const { Decimal } = require('decimal.js');
 const logger = require('../utils/logger');
 const { handleControllerError } = require('../utils/controllerError');
+const documentStorage = require('../utils/documentStorage');
 const {
     getAssignedShippingAccess,
     assertRequestedAccessAllowed,
     normalizeCarrier,
     shouldEnforceAssignedAccess
 } = require('../services/shippingAccess.service');
+
+const dispatchShipmentCreatedWebhook = (shipment, fallbackOrganizationId) => {
+    const organizationId = shipment?.organizationId || fallbackOrganizationId;
+    if (!organizationId || !shipment) return;
+    Promise.resolve(WebhookDispatcher.dispatch('shipment.created', organizationId, {
+        trackingNumber: shipment.trackingNumber,
+        carrier: shipment.carrierCode,
+        serviceCode: shipment.serviceCode,
+        status: shipment.status,
+        price: shipment.price,
+        currency: shipment.currency,
+        createdAt: shipment.createdAt || new Date().toISOString()
+    })).catch((err) => {
+        logger.warn(`[API] Failed to dispatch shipment.created webhook for ${shipment.trackingNumber}: ${err.message}`);
+    });
+};
+
+const persistInlineDocument = async (trackingNumber, docType, value, fallbackUrl = null) => {
+    if (!value || typeof value !== 'string') return value || fallbackUrl;
+    if (value.startsWith('data:')) {
+        const savedUrl = await documentStorage.saveDocument(trackingNumber, docType, value);
+        return savedUrl || fallbackUrl;
+    }
+    return value;
+};
 
 const escapeHtml = (unsafe) => {
     if (unsafe == null) return '';
@@ -82,15 +108,7 @@ exports.createShipment = async (req, res) => {
                 price: 0
             }, apiUser);
 
-            WebhookDispatcher.dispatch('shipment.created', shipment.organizationId || req.user?.organizationId, {
-                trackingNumber: shipment.trackingNumber,
-                carrier: shipment.carrierCode,
-                serviceCode: shipment.serviceCode,
-                status: shipment.status,
-                price: shipment.price,
-                currency: shipment.currency,
-                createdAt: shipment.createdAt || new Date().toISOString()
-            });
+            dispatchShipmentCreatedWebhook(shipment, req.user?.organizationId);
 
             return res.status(201).json({
                 success: true,
@@ -127,15 +145,7 @@ exports.createShipment = async (req, res) => {
                 }
             }
 
-            WebhookDispatcher.dispatch('shipment.created', shipment.organizationId || req.user?.organizationId, {
-                trackingNumber: shipment.trackingNumber,
-                carrier: shipment.carrierCode,
-                serviceCode: shipment.serviceCode,
-                status: shipment.status,
-                price: shipment.price,
-                currency: shipment.currency,
-                createdAt: shipment.createdAt || new Date().toISOString()
-            });
+            dispatchShipmentCreatedWebhook(shipment, req.user?.organizationId);
 
             return res.status(201).json({
                 success: true,
@@ -173,15 +183,7 @@ exports.createShipment = async (req, res) => {
                 serviceCode: resolvedServiceCode
             }, apiUser);
 
-            WebhookDispatcher.dispatch('shipment.created', shipment.organizationId || req.user?.organizationId, {
-                trackingNumber: shipment.trackingNumber,
-                carrier: shipment.carrierCode,
-                serviceCode: shipment.serviceCode,
-                status: shipment.status,
-                price: shipment.price,
-                currency: shipment.currency,
-                createdAt: shipment.createdAt || new Date().toISOString()
-            });
+            dispatchShipmentCreatedWebhook(shipment, req.user?.organizationId);
 
             return res.status(201).json({
                 success: true,
@@ -221,15 +223,7 @@ exports.createShipment = async (req, res) => {
                 status: 'ready_for_pickup'
             }, apiUser);
 
-            WebhookDispatcher.dispatch('shipment.created', shipment.organizationId || req.user?.organizationId, {
-                trackingNumber: shipment.trackingNumber,
-                carrier: shipment.carrierCode,
-                serviceCode: shipment.serviceCode,
-                status: shipment.status,
-                price: shipment.price,
-                currency: shipment.currency,
-                createdAt: shipment.createdAt || new Date().toISOString()
-            });
+            dispatchShipmentCreatedWebhook(shipment, req.user?.organizationId);
 
             return res.status(201).json({
                 success: true,
@@ -435,7 +429,57 @@ exports.createShipment = async (req, res) => {
             }
         }
 
-        // 5. Wrap shipment creation, customer ledger entry, invoice generation, carrier payable, and GL journal entry inside prisma.$transaction
+        // 5. Persist any inline base64 PDFs to disk before DB write so MySQL @db.Text never overflows (P2000)
+        const fallbackLabelUrl = `/api/v1/shipments/${result.trackingNumber}/label`;
+        const rawLabel = result.labelBase64
+            ? `data:application/pdf;base64,${result.labelBase64}`
+            : (result.labelUrl || null);
+        const rawAwb = result.awbBase64
+            ? `data:application/pdf;base64,${result.awbBase64}`
+            : (result.awbUrl || null);
+        const rawInvoice = result.invoiceBase64
+            ? `data:application/pdf;base64,${result.invoiceBase64}`
+            : (result.invoiceUrl || null);
+
+        const persistedLabelUrl = (await persistInlineDocument(
+            result.trackingNumber,
+            'label',
+            rawLabel,
+            fallbackLabelUrl
+        )) || fallbackLabelUrl;
+        const persistedAwbUrl = await persistInlineDocument(
+            result.trackingNumber,
+            'awb',
+            rawAwb,
+            null
+        );
+        const persistedInvoiceUrl = await persistInlineDocument(
+            result.trackingNumber,
+            'invoice',
+            rawInvoice,
+            null
+        );
+        const persistedDocuments = Array.isArray(result.documents)
+            ? await Promise.all(result.documents.map(async (doc, idx) => {
+                if (!doc || typeof doc !== 'object') return doc;
+                if (typeof doc.url === 'string' && doc.url.startsWith('data:')) {
+                    const savedDocUrl = await persistInlineDocument(
+                        result.trackingNumber,
+                        doc.type || `document_${idx}`,
+                        doc.url,
+                        null
+                    );
+                    return {
+                        ...doc,
+                        url: savedDocUrl,
+                        storageKey: savedDocUrl || doc.storageKey
+                    };
+                }
+                return doc;
+            }))
+            : undefined;
+
+        // Wrap shipment creation, customer ledger entry, invoice generation, carrier payable, and GL journal entry inside prisma.$transaction
         const shipmentDataToCreate = {
             trackingNumber: result.trackingNumber,
             userId: req.user.id,
@@ -443,8 +487,10 @@ exports.createShipment = async (req, res) => {
             carrierCode: resolvedCarrierCode,
             serviceCode: resolvedServiceCode,
             status: 'booked',
-            labelUrl: result.labelBase64 ? `data:application/pdf;base64,${result.labelBase64}` : (result.labelUrl || `/api/v1/shipments/${result.trackingNumber}/label`),
-            invoiceUrl: result.invoiceBase64 ? `data:application/pdf;base64,${result.invoiceBase64}` : (result.invoiceUrl || null),
+            labelUrl: persistedLabelUrl,
+            ...(persistedAwbUrl ? { awbUrl: persistedAwbUrl } : {}),
+            invoiceUrl: persistedInvoiceUrl,
+            ...(persistedDocuments ? { documents: persistedDocuments } : {}),
             origin: mapAddressToSchema(normalized.sender),
             destination: mapAddressToSchema(normalized.receiver),
             currentLocation: mapAddressToSchema(normalized.sender),

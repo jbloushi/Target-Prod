@@ -102,6 +102,11 @@ module.exports = {
   googleMapsDetailsUrl: process.env.GOOGLE_MAPS_DETAILS_URL || 'https://maps.googleapis.com/maps/api/place/details/json',
   googleMapsValidationUrl: process.env.GOOGLE_MAPS_VALIDATION_URL || 'https://addressvalidation.googleapis.com/v1:validateAddress',
 
+  // Evolution API WhatsApp Configuration (evo.mawthook.io)
+  whatsappEvolutionUrl: process.env.WHATSAPP_EVOLUTION_URL || 'https://evo.mawthook.io',
+  whatsappEvolutionInstance: process.env.WHATSAPP_EVOLUTION_INSTANCE || '',
+  whatsappEvolutionApiKey: process.env.WHATSAPP_EVOLUTION_API_KEY || '',
+
   chatwoot: {
     enabled: process.env.CHATWOOT_ENABLED === 'true',
     baseUrl: process.env.CHATWOOT_BASE_URL,

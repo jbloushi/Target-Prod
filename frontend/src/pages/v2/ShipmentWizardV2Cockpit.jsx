@@ -5,6 +5,11 @@ import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { shipmentService, userService, organizationService } from '../../services/api';
 import { CAPABILITIES, hasCapability, isPlatformRole } from '../../utils/capabilities';
+import {
+    canViewCarrier,
+    sanitizeCarrierTextForRole,
+    MASKED_CARRIER_LABEL
+} from '../../utils/carrierVisibility';
 import { countries, extractPhonePrefix, formatE164Phone } from '../../utils/countries';
 import { getContainerTypes, getContainerTypeById } from '../../utils/containerTypesConfig';
 import { SearchableCountrySelect, SearchablePhoneDialSelector } from '../../components/common/SearchableCountrySelect';
@@ -84,6 +89,7 @@ export const ShipmentWizardV2Cockpit = () => {
     const userRole = String(user?.role || 'client').toLowerCase();
     const isPlatformOperator = isPlatformRole(userRole);
     const canViewCostData = hasCapability(userRole, CAPABILITIES.VIEW_COST_DATA);
+    const canSeeCarrier = canViewCarrier(user?.role);
 
     // Client Assigned Carrier Policy Detection
     const assignedCarrierPolicy = useMemo(() => {
@@ -1534,7 +1540,12 @@ export const ShipmentWizardV2Cockpit = () => {
                                     {isRTL ? 'الناقل والوزن الخاضع للتسعير' : 'Carrier & Chargeable Weight'}
                                 </div>
                                 <div className="text-sm font-black text-slate-900 dark:text-white mt-1">
-                                    {bookedWaybill.carrierName} •{' '}
+                                    {canSeeCarrier
+                                        ? bookedWaybill.carrierName
+                                        : isRTL
+                                        ? 'تارجت لوجستكس'
+                                        : MASKED_CARRIER_LABEL}{' '}
+                                    •{' '}
                                     <span dir="ltr" className="font-mono">
                                         {Number(bookedWaybill.chargeableWeight || 1).toFixed(2)} kg
                                     </span>
@@ -3157,9 +3168,13 @@ export const ShipmentWizardV2Cockpit = () => {
                                                     <div className="text-xs font-bold text-slate-800 dark:text-slate-100">
                                                         {isCarrierLocked
                                                             ? isRTL ? 'الناقل مقفل بعد الحجز الفعلي' : 'Carrier is locked after active booking'
+                                                            : canSeeCarrier
+                                                            ? isRTL
+                                                                ? `حسابك مخصص للناقل المعتمد (${assignedCarrierPolicy.carrierCode})`
+                                                                : `Assigned Carrier Policy Active (${assignedCarrierPolicy.carrierCode})`
                                                             : isRTL
-                                                            ? `حسابك مخصص للناقل المعتمد (${assignedCarrierPolicy.carrierCode})`
-                                                            : `Assigned Carrier Policy Active (${assignedCarrierPolicy.carrierCode})`}
+                                                            ? 'حسابك مخصص للخدمة المعتمدة (تارجت لوجستكس)'
+                                                            : `Assigned Service Policy Active (${MASKED_CARRIER_LABEL})`}
                                                     </div>
                                                 </div>
                                             )}
@@ -3236,13 +3251,15 @@ export const ShipmentWizardV2Cockpit = () => {
                                                                     </div>
 
                                                                     <span dir="ltr" className={`px-2.5 py-1 rounded-lg text-xs font-black tracking-tight shrink-0 ${c.accentClass}`}>
-                                                                        {c.emblem}
+                                                                        {canSeeCarrier ? c.emblem : 'TRG'}
                                                                     </span>
 
                                                                     <div className="min-w-0">
                                                                         <div className="flex flex-wrap items-center gap-2">
                                                                             <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-slate-100">
-                                                                                {isRTL ? c.nameAr : c.nameEn}
+                                                                                {canSeeCarrier
+                                                                                    ? (isRTL ? c.nameAr : c.nameEn)
+                                                                                    : sanitizeCarrierTextForRole(isRTL ? c.nameAr : c.nameEn, user?.role)}
                                                                             </span>
                                                                             <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 whitespace-nowrap">
                                                                                 {c.slaPct}% SLA
@@ -3252,7 +3269,9 @@ export const ShipmentWizardV2Cockpit = () => {
                                                                             </span>
                                                                         </div>
                                                                         <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                                                                            {isRTL ? c.descAr : c.descEn}
+                                                                            {canSeeCarrier
+                                                                                ? (isRTL ? c.descAr : c.descEn)
+                                                                                : sanitizeCarrierTextForRole(isRTL ? c.descAr : c.descEn, user?.role)}
                                                                         </p>
                                                                     </div>
                                                                 </div>

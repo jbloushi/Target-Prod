@@ -45,6 +45,7 @@ export const ShipmentsFilterBarV2 = ({
     onExportCurrentCsv,
     hasActiveFilters = false,
     onResetAllFilters,
+    canSeeCarrier = true,
     isRTL = false
 }) => {
     return (
@@ -90,27 +91,29 @@ export const ShipmentsFilterBarV2 = ({
                 </div>
 
                 {/* Carrier Filter Select (Single Caret) */}
-                <div className="relative inline-flex items-center min-w-[145px] sm:min-w-[165px] flex-1 sm:flex-initial">
-                    <select
-                        aria-label={isRTL ? 'تصفية حسب الناقل' : 'Filter by Carrier'}
-                        value={carrier}
-                        onChange={(e) => onCarrierChange(e.target.value)}
-                        style={{ backgroundImage: 'none' }}
-                        className="appearance-none bg-none w-full h-9 ps-3 pe-8 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer"
-                    >
-                        {CARRIER_OPTIONS_V2.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                                {isRTL ? opt.labelAr : opt.label}
-                            </option>
-                        ))}
-                    </select>
-                    <span
-                        className="material-symbols-outlined pointer-events-none absolute end-2.5 text-base text-slate-500 dark:text-slate-400 select-none"
-                        aria-hidden="true"
-                    >
-                        expand_more
-                    </span>
-                </div>
+                {canSeeCarrier && (
+                    <div className="relative inline-flex items-center min-w-[145px] sm:min-w-[165px] flex-1 sm:flex-initial">
+                        <select
+                            aria-label={isRTL ? 'تصفية حسب الناقل' : 'Filter by Carrier'}
+                            value={carrier}
+                            onChange={(e) => onCarrierChange(e.target.value)}
+                            style={{ backgroundImage: 'none' }}
+                            className="appearance-none bg-none w-full h-9 ps-3 pe-8 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer"
+                        >
+                            {CARRIER_OPTIONS_V2.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                    {isRTL ? opt.labelAr : opt.label}
+                                </option>
+                            ))}
+                        </select>
+                        <span
+                            className="material-symbols-outlined pointer-events-none absolute end-2.5 text-base text-slate-500 dark:text-slate-400 select-none"
+                            aria-hidden="true"
+                        >
+                            expand_more
+                        </span>
+                    </div>
+                )}
 
                 {/* Trade Corridor / Destination Filter Select (Single Caret) */}
                 <div className="relative inline-flex items-center min-w-[160px] sm:min-w-[190px] flex-1 sm:flex-initial">

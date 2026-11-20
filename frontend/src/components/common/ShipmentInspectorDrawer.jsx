@@ -6,6 +6,7 @@ import StatusBadge from './StatusBadge';
 import TradeRouteDisplay from './TradeRouteDisplay';
 import { normalizeStatus, isNegativeOrExceptionPhrase } from '../../constants/statusConfig';
 import { dedupeTrackingEvents } from '../../utils/dedupeTrackingEvents';
+import { canViewCarrier, sanitizeCarrierTextForRole } from '../../utils/carrierVisibility';
 import NativeChatDrawer from '../support/NativeChatDrawer';
 
 const CARRIER_INFO_MAP = {
@@ -41,7 +42,7 @@ export const ShipmentInspectorDrawer = ({
     const isV2Route = location.pathname.includes('-v2') || location.pathname.includes('/v2');
     const { t, lang } = useLanguage();
     const { user } = useAuth();
-    const canSeeCarrier = ['admin', 'staff', 'warehouse', 'accounting', 'driver'].includes(String(user?.role || '').toLowerCase());
+    const canSeeCarrier = canViewCarrier(user?.role);
     const isRTL = lang === 'ar';
     const [copied, setCopied] = useState(false);
     const [isChatwootOpen, setIsChatwootOpen] = useState(false);
@@ -81,7 +82,7 @@ export const ShipmentInspectorDrawer = ({
     const consigneeName = shipment.receiver?.contactPerson || shipment.receiver?.name || (typeof shipment.destination === 'object' ? (shipment.destination?.contactPerson || shipment.destination?.name) : null) || (typeof shipment.customer === 'object' ? (shipment.customer?.name || shipment.customer?.contactPerson) : (typeof shipment.customer === 'string' ? shipment.customer : null)) || (isRTL ? 'المستلم' : 'Consignee');
     const consigneePhone = shipment.receiver?.phone || (typeof shipment.destination === 'object' ? shipment.destination?.phone : null) || (typeof shipment.customer === 'object' ? shipment.customer?.phone : (typeof shipment.phone === 'string' ? shipment.phone : null)) || '+965 9988 7766';
     const orgName = shipment.organization?.name || shipment.org || 'Target Logistics';
-    const serviceType = shipment.serviceType || shipment.service || 'Express Air Cargo';
+    const serviceType = sanitizeCarrierTextForRole(shipment.serviceType || shipment.service || 'Express Air Cargo', user?.role);
     const weight = shipment.weight || shipment.package?.weight || (Array.isArray(shipment.parcels) && shipment.parcels.length > 0 ? shipment.parcels.reduce((s, p) => s + (Number(p.weight) || 0), 0) : 1);
     const pieces = shipment.pieces || shipment.package?.pieces || (Array.isArray(shipment.parcels) && shipment.parcels.length > 0 ? shipment.parcels.reduce((s, p) => s + (Number(p.quantity) || 1), 0) : 1);
 
@@ -298,11 +299,13 @@ export const ShipmentInspectorDrawer = ({
                                 <ol className="relative space-y-3.5">
                                     {dedupedHistory.map((evt, idx) => {
                                         const isLatest = idx === 0;
-                                        const evtDesc = evt.description || (typeof evt.status === 'string' ? evt.status : 'Checkpoint update');
-                                        const isExc = isNegativeOrExceptionPhrase(evtDesc) || normalizeStatus(evt.statusCode || evt.status || evtDesc) === 'exception';
+                                        const rawEvtDesc = evt.description || (typeof evt.status === 'string' ? evt.status : 'Checkpoint update');
+                                        const evtDesc = sanitizeCarrierTextForRole(rawEvtDesc, user?.role);
+                                        const isExc = isNegativeOrExceptionPhrase(rawEvtDesc) || normalizeStatus(evt.statusCode || evt.status || rawEvtDesc) === 'exception';
                                         const isResolvedExc = isExc && (status !== 'exception' || idx > 0);
-                                        const evtNorm = isExc ? 'exception' : normalizeStatus(evt.statusCode || evtDesc || evt.status);
-                                        const locText = typeof evt.location === 'object' ? (evt.location?.formattedAddress || evt.location?.city || '') : (evt.location || '');
+                                        const evtNorm = isExc ? 'exception' : normalizeStatus(evt.statusCode || rawEvtDesc || evt.status);
+                                        const rawLocText = typeof evt.location === 'object' ? (evt.location?.formattedAddress || evt.location?.city || '') : (evt.location || '');
+                                        const locText = sanitizeCarrierTextForRole(rawLocText, user?.role);
                                         const dt = parseDateRobust(evt.timestamp);
                                         const timeLabel = dt ? dt.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kuwait' }) : '';
                                         const collapsed = Number(evt.collapsedCount || evt.occurrences || 1);

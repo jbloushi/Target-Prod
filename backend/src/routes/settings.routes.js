@@ -1,9 +1,18 @@
 const express = require('express');
 const router = express.Router();
+const { query, validationResult } = require('express-validator');
 const authController = require('../controllers/auth.controller');
 const settingsController = require('../controllers/settings.controller');
 const adminWhatsAppLogs = require('../controllers/adminWhatsAppLogs.controller');
 const { authorize, authorizeAny } = require('../middleware/authorize.middleware');
+
+const validate = (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ success: false, errors: errors.array() });
+    }
+    next();
+};
 
 // Admin WhatsApp Settings
 router.get(
@@ -69,6 +78,14 @@ router.get(
     '/system/diagnostics',
     authController.protect,
     authorizeAny('MANAGE_SYSTEM_SETTINGS', 'MANAGE_CARRIERS'),
+    [
+        query('limit').optional().isInt({ min: 1, max: 250 }).toInt().withMessage('limit must be an integer between 1 and 250'),
+        query('carrierCode').optional().isString().trim().isLength({ min: 1, max: 32 }).matches(/^[A-Za-z0-9_-]+$/).withMessage('carrierCode must be alphanumeric'),
+        query('action').optional().isString().trim().isLength({ min: 1, max: 64 }).matches(/^[A-Za-z0-9_-]+$/).withMessage('action must be a valid diagnostic action'),
+        query('status').optional().isString().trim().toUpperCase().isIn(['SUCCESS', 'FAILED', 'VALIDATION_ERROR']).withMessage('status must be one of SUCCESS, FAILED, VALIDATION_ERROR'),
+        query('trackingNumber').optional().isString().trim().isLength({ min: 1, max: 100 }).withMessage('trackingNumber must be a valid string'),
+        validate
+    ],
     settingsController.getSystemDiagnostics
 );
 

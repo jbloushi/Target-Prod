@@ -123,8 +123,7 @@ export const AdminUsersV2Page = () => {
 
     useEffect(() => {
         if (!openDialog || !hasPageAccess) return;
-        const onAuxError = (label) => (err) => {
-            console.error(`Failed to load ${label}:`, err);
+        const onAuxError = (label) => () => {
             enqueueSnackbar(
                 lang === 'ar' ? `تعذر تحميل ${label}` : `Failed to load ${label}`,
                 { variant: 'warning' }
@@ -451,8 +450,8 @@ export const AdminUsersV2Page = () => {
                                       { key: 'driver', label: 'Driver' }
                                   ]
                                 : []),
-                            { key: 'org_manager', label: 'Org Manager' },
-                            { key: 'org_agent', label: 'Org Agent' }
+                            { key: 'org_manager', label: 'Company Manager' },
+                            { key: 'org_agent', label: 'Company Client' }
                         ].map((f) => (
                             <button
                                 key={f.key}
@@ -675,8 +674,8 @@ export const AdminUsersV2Page = () => {
                                                     <option value="driver">Driver</option>
                                                 </>
                                             )}
-                                            <option value="org_manager">Organization Manager</option>
-                                            <option value="org_agent">Organization Agent</option>
+                                            <option value="org_manager">Company Manager</option>
+                                            <option value="org_agent">Company Client</option>
                                         </select>
                                     </div>
                                     {!editingUser && (

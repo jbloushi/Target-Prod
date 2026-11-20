@@ -8,6 +8,7 @@ import { useShipmentTriage } from '../../utils/useShipmentTriage';
 import { useShipments } from '../../utils/useShipments';
 import { organizationService } from '../../services/api';
 import { CAPABILITIES, hasCapability } from '../../utils/capabilities';
+import { canViewCarrier } from '../../utils/carrierVisibility';
 
 // Reusable V2 components
 import MetricCardV2 from './components/MetricCardV2';
@@ -167,6 +168,7 @@ export const DashboardV2Page = () => {
     const isClientUser = ['org_manager', 'org_agent', 'client'].includes(userRole);
     const canViewFinancials = ['admin', 'manager', 'accounting'].includes(userRole);
     const canViewCostData = hasCapability(userRole, CAPABILITIES.VIEW_COST_DATA);
+    const canSeeCarrier = canViewCarrier(user?.role);
 
     // Initial Perspective Setup (Addresses F3: accounting defaults cleanly to 'accounting')
     const initialPerspective = isClientUser ? 'client' : isTargetAccounting ? 'accounting' : 'target';
@@ -197,9 +199,8 @@ export const DashboardV2Page = () => {
                 if (!isMounted) return;
                 const orgList = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
                 setOrganizations(orgList);
-            } catch (err) {
+            } catch {
                 if (isMounted) {
-                    console.error('Failed to fetch organization list for V2 cockpit:', err);
                     setOrgFetchError('Failed to load organization scope.');
                 }
             }
@@ -258,13 +259,14 @@ export const DashboardV2Page = () => {
     const shipmentsList = useMemo(() => rawShipments || [], [rawShipments]);
 
     const carrierBreakdown = useMemo(() => {
+        if (!canSeeCarrier) return [];
         if (Array.isArray(stats?.carriers) && stats.carriers.length > 0) {
             return stats.carriers
                 .filter((c) => (c.count || 0) > 0)
                 .sort((a, b) => (b.count || 0) - (a.count || 0));
         }
         return [];
-    }, [stats?.carriers]);
+    }, [stats?.carriers, canSeeCarrier]);
 
     // Live Volume Chart Data from backend stats
     const weeklyChartData = useMemo(() => {
@@ -892,7 +894,7 @@ export const DashboardV2Page = () => {
                             aria-label="Network Health and Corridors"
                             className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch"
                         >
-                            <div className="lg:col-span-7 xl:col-span-8 bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-2xs flex flex-col justify-between space-y-4 min-w-0">
+                            <div className={`${canSeeCarrier ? 'lg:col-span-7 xl:col-span-8' : 'lg:col-span-12'} bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-2xs flex flex-col justify-between space-y-4 min-w-0`}>
                                 <div className="flex flex-wrap items-center justify-between gap-2.5 pb-3 border-b border-slate-100 dark:border-slate-800">
                                     <div className="flex flex-wrap items-center gap-2.5 min-w-0">
                                         <div className="flex items-center gap-2 min-w-0">
@@ -1017,28 +1019,30 @@ export const DashboardV2Page = () => {
                                 </div>
                             </div>
 
-                            <div className="lg:col-span-5 xl:col-span-4 min-w-0 flex flex-col">
-                                {carrierBreakdown.length > 0 ? (
-                                    <CarrierNetworkHealthV2
-                                        carriers={carrierBreakdown}
-                                        isRTL={isRTL}
-                                    />
-                                ) : (
-                                    <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-2xs rounded-2xl p-5 sm:p-6 flex flex-col items-center justify-center text-center h-full min-h-[220px]">
-                                        <span
-                                            className="material-symbols-outlined text-3xl text-slate-400 dark:text-slate-500 mb-2"
-                                            aria-hidden="true"
-                                        >
-                                            hub
-                                        </span>
-                                        <p className="font-bold text-xs text-slate-500 dark:text-slate-400">
-                                            {isRTL
-                                                ? 'لا توجد بيانات نشطة للناقلين حالياً'
-                                                : 'No active carrier telemetry recorded'}
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
+                            {canSeeCarrier && (
+                                <div className="lg:col-span-5 xl:col-span-4 min-w-0 flex flex-col">
+                                    {carrierBreakdown.length > 0 ? (
+                                        <CarrierNetworkHealthV2
+                                            carriers={carrierBreakdown}
+                                            isRTL={isRTL}
+                                        />
+                                    ) : (
+                                        <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-2xs rounded-2xl p-5 sm:p-6 flex flex-col items-center justify-center text-center h-full min-h-[220px]">
+                                            <span
+                                                className="material-symbols-outlined text-3xl text-slate-400 dark:text-slate-500 mb-2"
+                                                aria-hidden="true"
+                                            >
+                                                hub
+                                            </span>
+                                            <p className="font-bold text-xs text-slate-500 dark:text-slate-400">
+                                                {isRTL
+                                                    ? 'لا توجد بيانات نشطة للناقلين حالياً'
+                                                    : 'No active carrier telemetry recorded'}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </section>
 
                         {/* Pipeline Stage Tabs — Wrapping Responsive Pill Bar */}
@@ -1203,7 +1207,7 @@ export const DashboardV2Page = () => {
                                                 const carrierInfo = resolveCarrierInfo(
                                                     shipment,
                                                     isRTL,
-                                                    ['admin', 'staff', 'warehouse', 'accounting', 'driver'].includes(String(user?.role || '').toLowerCase())
+                                                    canSeeCarrier
                                                 );
                                                 const consigneeName = resolveConsigneeName(
                                                     shipment,

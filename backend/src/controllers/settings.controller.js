@@ -91,6 +91,19 @@ exports.updateSystemSettings = async (req, res) => {
     }
 };
 
+const CARRIER_ENV_KEY_MAP = {
+    OTE: 'OTE',
+    LOGESTECHS: 'OTE',
+    ARAMEX: 'ARAMEX',
+    ARM: 'ARAMEX',
+    DGR2: 'DGR2',
+    DHL2: 'DGR2',
+    SMSA: 'SMSA',
+    FEDEX: 'FEDEX',
+    DGR: 'DHL',
+    DHL: 'DHL'
+};
+
 /**
  * POST /api/settings/system/test-carrier
  * Test carrier API connection (Superadmin & Staff only)
@@ -101,13 +114,10 @@ exports.testCarrierConnection = async (req, res) => {
     try {
         const settings = getSystemSettings();
         const normalizedCode = String(carrierCode || '').toUpperCase();
-        const activeEnv = reqEnv || ((normalizedCode === 'OTE' || normalizedCode === 'LOGESTECHS')
-            ? (settings.carrierEnvironments?.OTE || 'test')
-            : (normalizedCode === 'ARAMEX' || normalizedCode === 'ARM'
-                ? (settings.carrierEnvironments?.ARAMEX || settings.carrierEnvironments?.DHL || 'test')
-                : (normalizedCode === 'DGR2' || normalizedCode === 'DHL2'
-                    ? (settings.carrierEnvironments?.DGR2 || settings.carrierEnvironments?.DHL || 'test')
-                    : (settings.carrierEnvironments?.DHL || 'test'))));
+        const envKey = CARRIER_ENV_KEY_MAP[normalizedCode] || 'DHL';
+        const activeEnv = reqEnv
+            || settings.carrierEnvironments?.[envKey]
+            || (envKey === 'OTE' ? 'test' : (settings.carrierEnvironments?.DHL || 'test'));
 
         const CarrierFactory = require('../services/CarrierFactory');
         const isTest = activeEnv === 'test';

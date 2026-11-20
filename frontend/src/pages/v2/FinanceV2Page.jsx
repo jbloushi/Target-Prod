@@ -786,7 +786,6 @@ export const FinanceV2Page = () => {
                 );
             }
         } catch (err) {
-            console.error('FinanceV2 telemetry sync error:', err);
             setSyncError(
                 err?.message || 'Unable to synchronize financial ledger telemetry.'
             );

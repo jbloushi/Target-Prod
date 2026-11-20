@@ -6,6 +6,11 @@ import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { getRoleLabel } from '../../utils/roleLabels';
 import { CAPABILITIES, hasCapability } from '../../utils/capabilities';
+import {
+    canViewCarrier,
+    sanitizeCarrierTextForRole,
+    MASKED_CARRIER_LABEL
+} from '../../utils/carrierVisibility';
 import { useShipments } from '../../utils/useShipments';
 import { useShipmentStats } from '../../utils/useShipmentStats';
 import { shipmentService, organizationService } from '../../services/api';
@@ -788,6 +793,7 @@ export const ShipmentsV2Page = () => {
             return;
         }
 
+        const canSeeCarrier = canViewCarrier(user?.role);
         const carrierCode = String(raw.carrierCode || raw.carrier || '').toUpperCase();
         if (
             carrierCode &&
@@ -795,12 +801,13 @@ export const ShipmentsV2Page = () => {
             hasCapability(userRole, CAPABILITIES.BOOK_CARRIERS)
         ) {
             try {
+                const displayCarrierToast = canSeeCarrier
+                    ? (carrierCode === 'DGR' ? 'DGR' : (carrierCode === 'DGR2' ? 'DHL' : carrierCode))
+                    : MASKED_CARRIER_LABEL;
                 enqueueSnackbar(
                     isRTL
                         ? 'جاري جلب بوليصة الشحن الرسمية من الناقل...'
-                        : `Fetching official label from ${
-                              carrierCode === 'DGR' ? 'DGR' : (carrierCode === 'DGR2' ? 'DHL' : carrierCode)
-                          }...`,
+                        : `Fetching official label from ${displayCarrierToast}...`,
                     { variant: 'info' }
                 );
                 const res = await shipmentService.generateCarrierDocuments(
@@ -812,7 +819,7 @@ export const ShipmentsV2Page = () => {
                     enqueueSnackbar(
                         isRTL
                             ? 'تم فتح بوليصة الناقل الرسمية بنجاح'
-                            : `Official ${carrierCode} label opened`,
+                            : `Official ${displayCarrierToast} label opened`,
                         { variant: 'success' }
                     );
                     return;
@@ -912,11 +919,12 @@ export const ShipmentsV2Page = () => {
             headers.push('Wholesale Cost (KWD)', 'Gross Margin (KWD)');
         }
 
+        const showCarrierInExport = canViewCarrier(user?.role);
         const lines = rowsToExport.map((r) => {
             const cols = [
                 escapeCsv(r.trackingNumber),
-                escapeCsv(r.carrierName),
-                escapeCsv(r.service),
+                escapeCsv(showCarrierInExport ? r.carrierName : MASKED_CARRIER_LABEL),
+                escapeCsv(showCarrierInExport ? r.service : sanitizeCarrierTextForRole(r.service, user?.role)),
                 escapeCsv(r.status),
                 escapeCsv(r.originCity),
                 escapeCsv(r.originCountry),
@@ -1530,11 +1538,12 @@ export const ShipmentsV2Page = () => {
                                 }
                                 hasActiveFilters={hasActiveFilters}
                                 onResetAllFilters={handleResetAllFilters}
+                                canSeeCarrier={canViewCarrier(user?.role)}
                                 isRTL={isRTL}
                             />
 
                             {/* Active Filter Chips Bar */}
-                            {(selectedCarrier !== 'ALL' ||
+                            {((canViewCarrier(user?.role) && selectedCarrier !== 'ALL') ||
                                 selectedCorridor !== 'ALL' ||
                                 Boolean(search)) && (
                                 <div className="px-4 py-2 bg-slate-50/80 dark:bg-slate-800/40 border-b border-slate-200/70 dark:border-slate-800 flex flex-wrap items-center gap-2 text-xs">
@@ -1542,7 +1551,7 @@ export const ShipmentsV2Page = () => {
                                         {isRTL ? 'الفلاتر النشطة:' : 'Active Filters:'}
                                     </span>
 
-                                    {selectedCarrier !== 'ALL' && (
+                                    {canViewCarrier(user?.role) && selectedCarrier !== 'ALL' && (
                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-primary/10 dark:bg-sky-500/20 text-primary dark:text-sky-300 font-bold">
                                             <span>
                                                 {isRTL ? 'الناقل:' : 'Carrier:'}{' '}

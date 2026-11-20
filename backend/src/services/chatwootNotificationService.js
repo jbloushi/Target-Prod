@@ -1732,7 +1732,18 @@ class ChatwootNotificationService {
             await this.refreshDbCredentialsIfNeeded();
         }
         const cw = getChatwootConfig();
-        const fallbackEnabled = (systemSettings.fallbackProvider || 'SHIPMENT_WHATSAPP') === 'SHIPMENT_WHATSAPP';
+        const rawFallbackProvider = systemSettings.fallbackProvider === undefined || systemSettings.fallbackProvider === null || systemSettings.fallbackProvider === ''
+            ? 'SHIPMENT_WHATSAPP'
+            : systemSettings.fallbackProvider;
+        const normalizedFallback = String(rawFallbackProvider).trim().toUpperCase();
+        const resolvedFallbackProvider = normalizedFallback === 'TARGET_MSG'
+            ? 'SHIPMENT_WHATSAPP'
+            : normalizedFallback;
+        const SUPPORTED_FALLBACK_PROVIDERS = new Set(['EVOLUTION', 'SHIPMENT_WHATSAPP', 'META']);
+        const fallbackProvider = SUPPORTED_FALLBACK_PROVIDERS.has(resolvedFallbackProvider)
+            ? resolvedFallbackProvider
+            : null;
+        const fallbackEnabled = Boolean(fallbackProvider);
 
         if (!cw.enabled) {
             logger.info('[chatwoot] skipped disabled');
@@ -1753,7 +1764,7 @@ class ChatwootNotificationService {
                 selectNotificationTemplate(eventType, target.role, options.templateName) === 'shipment_confirmation_2'
             );
             if (fallbackEnabled && !options.disableProviderFallback && !requiresApprovedConfirmation) {
-                logger.warn('[chatwoot] Chatwoot token not configured yet; failing over to SHIPMENT_WHATSAPP (msg.target-kw.com)');
+                logger.warn(`[chatwoot] Chatwoot token not configured yet; failing over to ${fallbackProvider}`);
                 const whatsappIntegration = require('./whatsappIntegration.service');
                 const fallbackResults = [];
                 for (const target of targets) {
@@ -1767,15 +1778,16 @@ class ChatwootNotificationService {
                             eventType: options.fallbackEventType || eventType,
                             templateName: selectNotificationTemplate(eventType, target.role, options.templateName),
                             force: true,
-                            provider: 'SHIPMENT_WHATSAPP'
+                            provider: fallbackProvider,
+                            isFallbackAttempt: true
                         });
                         fallbackResults.push({ target: target.role, status: res.status || 'submitted', externalMessageId: res.externalMessageId, isFallback: true });
                     } catch (fbErr) {
-                        logger.error(`[chatwoot fallback] SHIPMENT_WHATSAPP failover error: ${fbErr.message}`);
+                        logger.error(`[chatwoot fallback] ${fallbackProvider} failover error: ${fbErr.message}`);
                         fallbackResults.push({ target: target.role, status: 'failed', error: fbErr.message });
                     }
                 }
-                return { skipped: false, provider: 'SHIPMENT_WHATSAPP', isFallback: true, results: fallbackResults };
+                return { skipped: false, provider: fallbackProvider, isFallback: true, results: fallbackResults };
             }
 
             logger.warn('[chatwoot] skipped disabled or incomplete configuration');
@@ -1870,7 +1882,7 @@ class ChatwootNotificationService {
 
                 if (fallbackEnabled && !options.disableProviderFallback && selectedTemplate !== 'shipment_confirmation_2') {
                     try {
-                        logger.warn(`[chatwoot fallback] Failing over ${shipment.trackingNumber} (${eventType}) to SHIPMENT_WHATSAPP after Chatwoot error: ${message}`);
+                        logger.warn(`[chatwoot fallback] Failing over ${shipment.trackingNumber} (${eventType}) to ${fallbackProvider} after Chatwoot error: ${message}`);
                         const whatsappIntegration = require('./whatsappIntegration.service');
                         const fbRes = await whatsappIntegration.sendNotification({
                             shipment,
@@ -1881,13 +1893,14 @@ class ChatwootNotificationService {
                             eventType: options.fallbackEventType || eventType,
                             templateName: selectedTemplate,
                             force: true,
-                            provider: 'SHIPMENT_WHATSAPP',
-                            existingLogId: log.id
+                            provider: fallbackProvider,
+                            existingLogId: log.id,
+                            isFallbackAttempt: true
                         });
                         results.push({ target: target.role, status: fbRes.status || 'submitted', externalMessageId: fbRes.externalMessageId, isFallback: true });
                         continue;
                     } catch (fbErr) {
-                        logger.error(`[chatwoot fallback] Microservice failover also failed for ${shipment.trackingNumber}: ${fbErr.message}`);
+                        logger.error(`[chatwoot fallback] ${fallbackProvider} failover also failed for ${shipment.trackingNumber}: ${fbErr.message}`);
                     }
                 }
 

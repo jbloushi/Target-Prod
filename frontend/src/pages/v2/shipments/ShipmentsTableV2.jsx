@@ -5,6 +5,7 @@ import {
     canDeleteShipmentStatus,
     hasCarrierBooking
 } from '../../../utils/shipmentDeletionPolicy';
+import { canViewCarrier } from '../../../utils/carrierVisibility';
 
 /**
  * ShipmentsTableV2 - Responsive, RBAC-hardened consignment manifest table
@@ -30,7 +31,7 @@ export const ShipmentsTableV2 = ({
     isRTL = false
 }) => {
     const [openActionRowId, setOpenActionRowId] = useState(null);
-    const showCarrier = ['admin', 'staff', 'warehouse', 'accounting', 'driver'].includes(String(userRole || '').toLowerCase());
+    const showCarrier = canViewCarrier(userRole);
 
     const isAllSelected =
         shipments.length > 0 && selectedIds.length === shipments.length;

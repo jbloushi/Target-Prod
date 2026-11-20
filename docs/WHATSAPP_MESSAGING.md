@@ -25,7 +25,7 @@ node scripts/resend-shipment-confirmations.js --from=2026-10-25 --to=2026-10-26 
 | Concern | Main implementation | Responsibility |
 | --- | --- | --- |
 | Shipment-event selection and Chatwoot path | `backend/src/services/chatwootNotificationService.js` | Event mapping, automatic recipient roles, Chatwoot contact/conversation lookup, templates, message send, status log writes, retry enqueue. |
-| Provider routing and shipment template variables | `backend/src/services/whatsappIntegration.service.js` | Chooses microservice, Chatwoot, MOCK, or Meta path; normalizes recipient phone; builds provider template variables; creates shipment logs. |
+| Provider routing and shipment template variables | `backend/src/services/whatsappIntegration.service.js` | Chooses microservice, Chatwoot, Evolution API, MOCK, or Meta path; handles single-hop `fallbackProvider` failover; normalizes recipient phone; builds provider template variables; creates shipment logs. |
 | WhatsApp settings and event rules | `backend/src/services/whatsAppConfig.service.js` | Reads/writes database config and rules, masks API-returned secrets, evaluates quiet hours and per-role event rules. |
 | File-backed system settings | `backend/src/services/systemSettings.service.js`, `backend/src/controllers/settings.controller.js` | Legacy/provider settings, Meta credentials, webhook verification token, system-settings API. |
 | Admin settings UI | `frontend/src/pages/SettingsPage.jsx` | Provider and Chatwoot credentials, per-event/role rule editor, quiet hours. |
@@ -53,9 +53,12 @@ The event-to-status mapping is `mapStatusToNotificationEvent` in `chatwootNotifi
 `WhatsAppConfig` is loaded first by `whatsappIntegration.service.js`; its fields are merged over file-backed `systemSettings.whatsapp`. The selected provider sends through:
 
 1. `SHIPMENT_WHATSAPP` / `TARGET_MSG`: remote `msg.target-kw.com` service.
-2. `CHATWOOT`: Chatwoot API, with conditional fallback to the remote shipment WhatsApp service.
-3. `META`: direct Meta Cloud API.
-4. `MOCK`: synthetic local result.
+2. `CHATWOOT`: Chatwoot API, with conditional failover to `fallbackProvider` (`EVOLUTION`, `SHIPMENT_WHATSAPP`, or `META`; disabled when `NONE`, `disableProviderFallback` is set, or the strict `shipment_confirmation_2` template is required).
+3. `EVOLUTION`: Evolution API v2 (`POST /message/sendText/{instance}`, defaulting to `https://evo.mawthook.io`), configured via `WHATSAPP_EVOLUTION_URL`, `WHATSAPP_EVOLUTION_INSTANCE`, and `WHATSAPP_EVOLUTION_API_KEY` (read through `config.js` with `settings` fallback).
+4. `META`: direct Meta Cloud API.
+5. `MOCK`: synthetic local result.
+
+When a primary provider (`SHIPMENT_WHATSAPP`, `EVOLUTION`, or `META`) fails in `whatsappIntegration.sendNotification` and `settings.fallbackProvider` is configured to another supported provider (`EVOLUTION`, `SHIPMENT_WHATSAPP`, or `META`, `!== 'NONE'`, `!== provider`), the service performs a single-hop failover (`isFallbackAttempt: true`, preventing recursive failover) and records `isFallback` / `fallbackReason` on the notification log.
 
 The Chatwoot event orchestrator also has provider-specific branches and fallback behavior. Trace both `chatwootNotificationService.sendShipmentNotification` and `whatsappIntegration.sendNotification` before changing provider routing. The remote `msg.target-kw.com` source is not part of this repository, so its runtime implementation cannot be verified here.
 
@@ -99,7 +102,7 @@ The database secret fields are masked in GET responses but stored as ordinary fi
 | --- | --- |
 | Database `WhatsAppConfig` | `enabled`, `provider`, `fallbackProvider`, `serviceUrl`, `apiKey`, `phoneId`, `chatwootBaseUrl`, `chatwootAccountId`, `chatwootInboxId`, `chatwootApiToken`, `quietHoursEnabled`, `quietHoursStart`, `quietHoursEnd`, `quietHoursTimezone`, `allowDeliveryQuietHours`. |
 | Database `WhatsAppEventRule` | `eventType`, `recipientRole`, `templateName`, `enabled`, `allowQuietHoursBypass`. |
-| File/env-backed `systemSettings.whatsapp` | `enabled`, `provider`, `serviceUrl`, `phoneNumberId`, `businessAccountId`, `accessToken`, `webhookVerifyToken`, `metaAppId`, `metaAppSecret`; env names are `WHATSAPP_SERVICE_URL`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_WABA_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN`, `WHATSAPP_META_APP_ID`, and `WHATSAPP_META_APP_SECRET`. |
+| File/env-backed `systemSettings.whatsapp` | `enabled`, `provider`, `serviceUrl`, `phoneNumberId`, `businessAccountId`, `accessToken`, `webhookVerifyToken`, `metaAppId`, `metaAppSecret`, `evolutionUrl`, `evolutionInstance`, `evolutionApiKey`; env names are `WHATSAPP_SERVICE_URL`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_WABA_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN`, `WHATSAPP_META_APP_ID`, `WHATSAPP_META_APP_SECRET`, `WHATSAPP_EVOLUTION_URL`, `WHATSAPP_EVOLUTION_INSTANCE`, and `WHATSAPP_EVOLUTION_API_KEY`. |
 | Chatwoot environment config | `CHATWOOT_ENABLED`, `CHATWOOT_BASE_URL`, `CHATWOOT_ACCOUNT_ID`, `CHATWOOT_INBOX_ID`, `CHATWOOT_API_ACCESS_TOKEN`, `CHATWOOT_ALLOW_PLAIN_TEXT_FALLBACK`, `CHATWOOT_TEMPLATE_CONFIG`, `CHATWOOT_WEBHOOK_SECRET`. |
 | Telemetry sync | `ADMIN_TOKEN` is read by the admin telemetry-sync controller for the remote microservice request. |
 
@@ -112,6 +115,7 @@ The same logical message can be assembled by more than one path:
 - Chatwoot uses `buildSyncedTemplatePayload`, `buildTemplateParameters`, and `buildPlainContent` in `chatwootNotificationService.js`.
 - The remote WhatsApp service path uses `buildMicroserviceVariables` and `sendViaShipmentWhatsappMicroservice` in `whatsappIntegration.service.js`.
 - Direct Meta uses `buildMetaMessagePayload` in `whatsappIntegration.service.js`.
+- Evolution API uses `buildEvolutionShipmentText` in `whatsappIntegration.service.js` and preserves the literal `[receiver name]` and `[receiver telephone]` missing-value placeholders.
 - Chatwoot's template resolution can substitute an inbox template when the requested template is unavailable. The confirmed shipper lifecycle template `shipment_confirmation_2` is strict: dispatch fails visibly if Chatwoot cannot return the inbox template list or if that list omits the approved template.
 
 The confirmed automatic shipper lifecycle path uses the approved Chatwoot template `shipment_confirmation_2` (`en_US`) for shipment creation and status milestones. The WhatsApp destination remains the shipper. Its header is the shipment tracking number; body variables are invoice/reference, shipment creation date, receiver name, receiver phone, and tracking URL. Resolve receiver fields only from explicit destination or receiver-document fields. If receiver name or phone is missing, send the literal placeholders `[receiver name]` or `[receiver telephone]`; never substitute the shipper's details or fabricate a phone. Render Chatwoot `content` to match the approved template copy; do not append a Support link outside the approved template.

@@ -9,6 +9,7 @@ import api, { BACKEND_URL } from '../../services/api';
 import { CAPABILITIES, hasCapability, isPlatformRole } from '../../utils/capabilities';
 import { canDeleteShipmentStatus, getShipmentDeleteErrorMessage } from '../../utils/shipmentDeletionPolicy';
 import { getCarrierDisplayName } from '../../utils/shipmentDisplay';
+import { canViewCarrier, sanitizeCarrierTextForRole } from '../../utils/carrierVisibility';
 import { generateWaybillPDF } from '../../utils/pdfGenerator';
 import { normalizeStatus, getStepIndex, isNegativeOrExceptionPhrase } from '../../constants/statusConfig';
 import StatusBadge from '../../components/common/StatusBadge';
@@ -94,15 +95,11 @@ export const ShipmentDetailsV2Page = () => {
         const pollId = setInterval(() => {
             const st = shipment?.status?.toLowerCase();
             if (st && TERMINAL.includes(st)) return;
-            getShipment(trackingNumber).catch((err) => {
-                console.warn('ShipmentV2 background poll failed:', err);
-            });
+            getShipment(trackingNumber).catch(() => {});
         }, 120000);
         const onVisible = () => {
             if (document.visibilityState === 'visible') {
-                getShipment(trackingNumber).catch((err) => {
-                    console.warn('ShipmentV2 visibility refresh failed:', err);
-                });
+                getShipment(trackingNumber).catch(() => {});
             }
         };
         document.addEventListener('visibilitychange', onVisible);
@@ -137,9 +134,7 @@ export const ShipmentDetailsV2Page = () => {
             .then((res) => {
                 if (!cancelled && res?.data) setAccounting(res.data);
             })
-            .catch((err) => {
-                console.warn('ShipmentV2 accounting fetch failed:', err);
-            });
+            .catch(() => {});
         return () => { cancelled = true; };
     }, [shipment?.id, shipment?._id, isPlatformOps]);
 
@@ -418,7 +413,7 @@ export const ShipmentDetailsV2Page = () => {
     const rawCarrierCode = String(shipment?.carrier || shipment?.carrierCode || 'INTERNAL').toUpperCase();
     const isInternalShipment = rawCarrierCode === 'INTERNAL' || shipment?.internallyManaged === true;
     const isManualShipment = Boolean(shipment?.manualShipment || shipment?.serviceType === 'manual' || rawCarrierCode === 'MANUAL');
-    const canSeeCarrier = ['admin', 'staff', 'warehouse', 'accounting', 'driver'].includes(String(user?.role || '').toLowerCase());
+    const canSeeCarrier = canViewCarrier(user?.role);
     const carrierDisplayName = !canSeeCarrier
         ? (isRTL ? 'تارجت لوجستكس' : 'Target Logistics')
         : (isManualShipment ? (isRTL ? 'شحنة يدوية (Target)' : 'Manual Shipment') : getCarrierDisplayName(rawCarrierCode));
@@ -626,7 +621,7 @@ export const ShipmentDetailsV2Page = () => {
                                     <span className="material-symbols-outlined text-rose-600 dark:text-rose-400 shrink-0" aria-hidden="true">error</span>
                                     <div>
                                         <strong className="font-extrabold">{isRTL ? 'تنبيه استثناء تشغيلي' : 'Active Triage & Exception Flag'}</strong>
-                                        <span className="ms-2 opacity-90">{shipment.exceptionReason || shipment.remarks || (isRTL ? 'يتطلب متابعة فريق العمليات.' : 'Requires operations intervention.')}</span>
+                                        <span className="ms-2 opacity-90">{sanitizeCarrierTextForRole(shipment.exceptionReason || shipment.remarks || (isRTL ? 'يتطلب متابعة فريق العمليات.' : 'Requires operations intervention.'), user?.role)}</span>
                                     </div>
                                 </div>
                             )}
@@ -1002,6 +997,8 @@ export const ShipmentDetailsV2Page = () => {
                                     shipment={shipment}
                                     isRTL={isRTL}
                                     lang={lang}
+                                    userRole={user?.role}
+                                    canSeeCarrier={canSeeCarrier}
                                     isPlatformOps={isPlatformOps}
                                     canEdit={canEdit}
                                     isInternalShipment={isInternalShipment}

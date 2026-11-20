@@ -230,9 +230,17 @@ class ShipmentDraftService {
             }
         }
         const isOteShipment = carrierCode === 'OTE' || carrierCode === 'LOGESTECHS';
-        const codAmount = isOteShipment ? OTE_DEFAULT_COD_AMOUNT : null;
-        const codCurrency = isOteShipment ? OTE_DEFAULT_COD_CURRENCY : null;
-        const codStatus = isOteShipment ? 'pending' : null;
+        const requestedCodAmount = Number(cleanData.codAmount ?? data.codAmount ?? 0);
+        const hasRequestedCod = Number.isFinite(requestedCodAmount) && requestedCodAmount > 0;
+        const codAmount = hasRequestedCod
+            ? requestedCodAmount
+            : (isOteShipment ? OTE_DEFAULT_COD_AMOUNT : null);
+        const codCurrency = hasRequestedCod
+            ? String(cleanData.codCurrency || data.codCurrency || cleanData.currency || snapshot?.billingCurrency || snapshot?.currency || 'KWD').trim().toUpperCase()
+            : (isOteShipment ? OTE_DEFAULT_COD_CURRENCY : null);
+        const codStatus = hasRequestedCod
+            ? 'PENDING'
+            : (isOteShipment ? 'pending' : null);
         if (!SHIPMENT_STATUSES.includes(requestedStatus)) {
             throw new Error(`Invalid shipment status '${requestedStatus}'`);
         }

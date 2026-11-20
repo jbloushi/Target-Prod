@@ -1,6 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { dedupeTrackingEvents } from '../../../utils/dedupeTrackingEvents';
 import { getEventDisplayMessage } from '../../../utils/shipmentDisplay';
+import {
+    canViewCarrier,
+    sanitizeCarrierTextForRole,
+    MASKED_CARRIER_LABEL
+} from '../../../utils/carrierVisibility';
 import { isNegativeOrExceptionPhrase, normalizeStatus } from '../../../constants/statusConfig';
 import StatusBadge from '../../../components/common/StatusBadge';
 import EmptyStateV2 from '../components/EmptyStateV2';
@@ -29,6 +34,8 @@ export const ShipmentTimelineTabsV2 = ({
     shipment,
     isRTL,
     lang,
+    userRole,
+    canSeeCarrier,
     isPlatformOps,
     canEdit,
     isInternalShipment,
@@ -40,8 +47,12 @@ export const ShipmentTimelineTabsV2 = ({
 }) => {
     const [historyTab, setHistoryTab] = useState('milestones');
     const [newCommentText, setNewCommentText] = useState('');
+    const showCarrier = typeof canSeeCarrier === 'boolean'
+        ? canSeeCarrier
+        : (userRole !== undefined ? canViewCarrier(userRole) : Boolean(isPlatformOps));
 
     const { milestoneEvents, telemetryEvents, commentEvents } = useMemo(() => {
+        const sanitizeText = (val) => (showCarrier ? val : sanitizeCarrierTextForRole(val, 'client'));
         const rawHistory = Array.isArray(shipment?.history) ? shipment.history : [];
         const deduped = dedupeTrackingEvents(rawHistory, (e) => `${e?.status}|${e?.timestamp}|${e?.description}`);
         const sorted = [...deduped].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
@@ -57,15 +68,17 @@ export const ShipmentTimelineTabsV2 = ({
             const norm = normalizeStatus(rawStatus);
             const dateParts = formatTimestampKuwait(evt.timestamp);
 
-            const locationText = typeof evt.location === 'object'
+            const rawLocationText = typeof evt.location === 'object'
                 ? [evt.location?.city, evt.location?.country].filter(Boolean).join(', ')
                 : (evt.location || '');
+            const displayDescription = sanitizeText(desc || getEventDisplayMessage(evt, lang));
+            const locationText = sanitizeText(rawLocationText);
 
             if (evt.comment || evt.source === 'staff' || evt.author) {
                 comments.push({
-                    text: evt.comment || evt.description || '',
+                    text: sanitizeText(evt.comment || evt.description || ''),
                     author: evt.author || (isRTL ? 'فريق العمليات' : 'Operations Staff'),
-                    source: evt.source || 'staff',
+                    source: showCarrier ? (evt.source || 'staff') : MASKED_CARRIER_LABEL,
                     timestamp: evt.timestamp,
                     dateParts
                 });
@@ -74,9 +87,9 @@ export const ShipmentTimelineTabsV2 = ({
             telemetry.push({
                 idx: sorted.length - idx,
                 statusCode: evt.statusCode || evt.code || norm.toUpperCase(),
-                description: desc || getEventDisplayMessage(evt, lang),
+                description: displayDescription,
                 location: locationText || '—',
-                source: evt.source || (isInternalShipment ? 'TARGET' : 'CARRIER'),
+                source: showCarrier ? (evt.source || (isInternalShipment ? 'TARGET' : 'CARRIER')) : MASKED_CARRIER_LABEL,
                 timezoneOffset: evt.timezoneOffset || '',
                 collapsedCount: evt.collapsedCount || 1,
                 dateParts
@@ -84,9 +97,11 @@ export const ShipmentTimelineTabsV2 = ({
 
             milestones.push({
                 status: isException ? 'exception' : norm,
-                rawDescription: desc || getEventDisplayMessage(evt, lang),
+                rawDescription: displayDescription,
                 locationText,
-                carrierSource: evt.source || (isInternalShipment ? 'Target Hub' : (shipment?.carrierCode || 'Carrier')),
+                carrierSource: showCarrier
+                    ? (evt.source || (isInternalShipment ? 'Target Hub' : (shipment?.carrierCode || 'Carrier')))
+                    : (isRTL ? 'تارجت لوجستكس' : MASKED_CARRIER_LABEL),
                 timezoneOffset: evt.timezoneOffset || '',
                 collapsedCount: evt.collapsedCount || 1,
                 pod: evt.pod || null,
@@ -95,7 +110,7 @@ export const ShipmentTimelineTabsV2 = ({
         });
 
         return { milestoneEvents: milestones, telemetryEvents: telemetry, commentEvents: comments };
-    }, [shipment, isInternalShipment, isRTL, lang]);
+    }, [shipment, isInternalShipment, isRTL, lang, showCarrier]);
 
     const handleCommentSubmit = async (e) => {
         e.preventDefault();
@@ -223,9 +238,11 @@ export const ShipmentTimelineTabsV2 = ({
                                                             <span>{event.locationText}</span>
                                                         </span>
                                                     )}
-                                                    <span className="px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-700/70 font-mono text-[10px] uppercase">
-                                                        {event.carrierSource}
-                                                    </span>
+                                                    {showCarrier && event.carrierSource && (
+                                                        <span className="px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-700/70 font-mono text-[10px] uppercase">
+                                                            {event.carrierSource}
+                                                        </span>
+                                                    )}
                                                 </div>
 
                                                 {event.pod && (

@@ -5,8 +5,24 @@
 const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
 const chatwootNotificationService = require('./chatwootNotificationService');
+const WebhookDispatcher = require('./WebhookDispatcher');
 const { postJournalEntry, postDriverCodCollectionEntry } = require('./generalLedger.service');
 const { compactHistory } = require('../controllers/shipment.helpers');
+
+function dispatchStatusUpdatedWebhook(updatedShipment, previousStatus, extra = {}) {
+    if (!updatedShipment?.organizationId) return;
+    if (previousStatus && updatedShipment.status === previousStatus) return;
+    Promise.resolve(WebhookDispatcher.dispatch('shipment.status_updated', updatedShipment.organizationId, {
+        trackingNumber: updatedShipment.trackingNumber,
+        status: updatedShipment.status,
+        previousStatus: previousStatus || null,
+        carrier: updatedShipment.carrierCode,
+        updatedAt: new Date().toISOString(),
+        ...extra
+    })).catch((err) => {
+        logger.warn(`[FleetService] Failed to dispatch shipment.status_updated webhook for ${updatedShipment.trackingNumber}: ${err.message}`);
+    });
+}
 
 // Standard Kuwait Governorate Zone Map
 const KUWAIT_GOVERNORATES = {
@@ -140,7 +156,7 @@ async function createDeliveryRun({ driverId, vehicleId, zone, shipmentIds = [], 
             }
         ]);
 
-        await prisma.shipment.update({
+        const updatedShipment = await prisma.shipment.update({
             where: { id: s.id },
             data: {
                 deliveryRunId: run.id,
@@ -149,6 +165,10 @@ async function createDeliveryRun({ driverId, vehicleId, zone, shipmentIds = [], 
                 status: 'out_for_delivery',
                 history: newHistory
             }
+        });
+
+        dispatchStatusUpdatedWebhook(updatedShipment, s.status, {
+            deliveryRunNumber: runNumber
         });
 
         // Trigger WhatsApp Out For Delivery notification to recipient
@@ -348,6 +368,11 @@ async function completeDeliveryStop({
         logger.warn(`Failed sending delivered WhatsApp for ${shipment.trackingNumber}:`, err.message);
     }
 
+    dispatchStatusUpdatedWebhook(updatedShipment, shipment.status, {
+        deliveredAt: updatedShipment.deliveredAt ? updatedShipment.deliveredAt.toISOString() : new Date().toISOString(),
+        recipientName: recipientName || null
+    });
+
     return updatedShipment;
 }
 
@@ -412,6 +437,11 @@ async function recordDeliveryException({
             });
         }
     }
+
+    dispatchStatusUpdatedWebhook(updatedShipment, shipment.status, {
+        failureReason: updatedShipment.failureReason || null,
+        failureNotes: updatedShipment.failureNotes || null
+    });
 
     return updatedShipment;
 }

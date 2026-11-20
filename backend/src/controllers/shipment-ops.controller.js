@@ -13,6 +13,22 @@ const { canUpdateShipmentStatus, isManualShipment, compactHistory } = require('.
 const { canAccessShipment } = require('../middleware/authorize.middleware');
 const chatwootNotificationService = require('../services/chatwootNotificationService');
 const ShipmentLifecycleService = require('../services/ShipmentLifecycleService');
+const WebhookDispatcher = require('../services/WebhookDispatcher');
+
+const dispatchStatusUpdatedWebhook = (updatedShipment, previousStatus, extra = {}) => {
+    if (!updatedShipment?.organizationId) return;
+    if (previousStatus && updatedShipment.status === previousStatus) return;
+    Promise.resolve(WebhookDispatcher.dispatch('shipment.status_updated', updatedShipment.organizationId, {
+        trackingNumber: updatedShipment.trackingNumber,
+        status: updatedShipment.status,
+        previousStatus: previousStatus || null,
+        carrier: updatedShipment.carrierCode,
+        updatedAt: new Date().toISOString(),
+        ...extra
+    })).catch((err) => {
+        logger.warn(`[ShipmentOps] Failed to dispatch shipment.status_updated webhook for ${updatedShipment.trackingNumber}: ${err.message}`);
+    });
+};
 
 exports.updateShipmentStatus = async (req, res) => {
     try {
@@ -66,6 +82,9 @@ exports.updateShipmentStatus = async (req, res) => {
         if (eventType) {
             chatwootNotificationService.triggerShipmentNotification(eventType, updated);
         }
+        dispatchStatusUpdatedWebhook(updated, shipment.status, {
+            description: description || undefined
+        });
         res.status(200).json({ success: true, data: updated, message: 'Shipment status updated successfully' });
     } catch (error) {
         logger.error('Error updating shipment status:', error);
@@ -249,6 +268,8 @@ exports.pickupShipment = async (req, res) => {
             return res.status(200).json({ success: true, data: result.updated, message: 'Shipment already picked up' });
         }
 
+        dispatchStatusUpdatedWebhook(result.updated, shipment.status);
+
         logger.info(`Shipment ${trackingNumber} picked up by driver ${user.name} -> ${result.nextStatus}`);
         res.status(200).json({ success: true, data: result.updated, message: `Shipment picked up successfully (${result.nextStatus})` });
     } catch (error) {
@@ -286,6 +307,9 @@ exports.processWarehouseScan = async (req, res) => {
         if (eventType) {
             chatwootNotificationService.triggerShipmentNotification(eventType, result.updated);
         }
+        dispatchStatusUpdatedWebhook(result.updated, shipment.status, {
+            description: result.description || undefined
+        });
 
         res.status(200).json({ 
             success: true, 
@@ -664,6 +688,10 @@ exports.confirmDeliveryWithPod = async (req, res) => {
 
         logger.info(`[POD] Shipment ${trackingNumber} marked as DELIVERED with POD signature by ${req.user?.name || 'Driver'}`);
         chatwootNotificationService.triggerShipmentNotification('delivered', updated);
+        dispatchStatusUpdatedWebhook(updated, shipment.status, {
+            deliveredAt: podData.deliveredAt,
+            recipientName: podData.recipientName
+        });
 
         res.status(200).json({
             success: true,

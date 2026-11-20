@@ -1,5 +1,6 @@
 const axios = require('axios');
 const crypto = require('crypto');
+const config = require('../config/config');
 const { prisma } = require('../config/database');
 const { getSystemSettings } = require('./systemSettings.service');
 const whatsAppConfigService = require('./whatsAppConfig.service');
@@ -270,12 +271,36 @@ async function sendViaShipmentWhatsappMicroservice({ serviceUrl = 'https://msg.t
 }
 
 /**
- * Resolve Evolution API credentials with `.env` taking precedence and DB config as fallback.
+ * Resolve Evolution API credentials via config with settings fallback.
  */
 function resolveEvolutionConfig(settings = {}) {
-    const baseUrl = (settings.evolutionUrl || process.env.WHATSAPP_EVOLUTION_URL || (settings.provider === 'EVOLUTION' ? settings.serviceUrl : '') || 'https://evo.mawthook.io').replace(/\/+$/, '');
-    const instanceName = String(settings.evolutionInstance || process.env.WHATSAPP_EVOLUTION_INSTANCE || (settings.provider === 'EVOLUTION' ? settings.phoneId : '') || '').trim();
-    const apiKey = String(settings.evolutionApiKey || process.env.WHATSAPP_EVOLUTION_API_KEY || (settings.provider === 'EVOLUTION' ? settings.apiKey : '') || '').trim();
+    const evoConfig = config.whatsapp?.evolution || config.evolution || {};
+    const configUrl = config.whatsapp?.evolutionUrl ?? config.whatsappEvolutionUrl ?? evoConfig.url ?? evoConfig.baseUrl;
+    const configInstance = config.whatsapp?.evolutionInstance ?? config.whatsappEvolutionInstance ?? evoConfig.instance ?? evoConfig.instanceName;
+    const configApiKey = config.whatsapp?.evolutionApiKey ?? config.whatsappEvolutionApiKey ?? evoConfig.apiKey;
+
+    const envUrl = configUrl !== undefined ? configUrl : process.env.WHATSAPP_EVOLUTION_URL;
+    const envInstance = configInstance !== undefined ? configInstance : process.env.WHATSAPP_EVOLUTION_INSTANCE;
+    const envApiKey = configApiKey !== undefined ? configApiKey : process.env.WHATSAPP_EVOLUTION_API_KEY;
+
+    const baseUrl = String(
+        settings.evolutionUrl
+        || envUrl
+        || (settings.provider === 'EVOLUTION' ? settings.serviceUrl : '')
+        || 'https://evo.mawthook.io'
+    ).replace(/\/+$/, '');
+    const instanceName = String(
+        settings.evolutionInstance
+        || envInstance
+        || (settings.provider === 'EVOLUTION' ? settings.phoneId : '')
+        || ''
+    ).trim();
+    const apiKey = String(
+        settings.evolutionApiKey
+        || envApiKey
+        || (settings.provider === 'EVOLUTION' ? settings.apiKey : '')
+        || ''
+    ).trim();
     return { baseUrl, instanceName, apiKey };
 }
 
@@ -313,12 +338,12 @@ async function sendViaEvolutionApi({ settings = {}, toPhone, text }) {
 }
 
 function buildEvolutionShipmentText({ context = {}, shipment = {}, customMessage = null, resolvedReceiverName, resolvedReceiverPhone }) {
-    if (customMessage) return String(customMessage);
+    if (typeof customMessage === 'string' && customMessage.trim()) return customMessage;
     const tracking = shipment.dhlTrackingNumber || context.trackingNumber || shipment.trackingNumber || '-';
     const invoice = context.invoiceNumber || shipment.invoiceNumber || shipment.trackingNumber || '-';
     const dateDisplay = context.shipmentDateDisplay || formatLegibleDate(shipment.createdAt || context.updatedAt || new Date());
-    const receiverName = resolvedReceiverName || shipment.destination?.name || 'Customer';
-    const receiverPhone = resolvedReceiverPhone || shipment.destination?.phone || '-';
+    const receiverName = resolvedReceiverName || shipment.destination?.contactPerson || shipment.destination?.name || '[receiver name]';
+    const receiverPhone = resolvedReceiverPhone || shipment.destination?.phone || '[receiver telephone]';
     const trackingUrl = context.publicTrackingLink || `https://target-kw.com/track/${context.trackingNumber || shipment.trackingNumber}`;
     return (
         `📦 *Shipment: ${tracking}*\n` +
@@ -687,7 +712,7 @@ class WhatsAppIntegrationService {
     /**
      * Send automatic or manual shipment event notification via WhatsApp
      */
-    async sendNotification({ shipment, recipientRole, recipientPhone, recipientCountryCode, recipientName, eventType, templateName, customMessage, force = false, existingLogId = null, bypassAgeGuard = false, provider: optionsProvider = null }) {
+    async sendNotification({ shipment, recipientRole, recipientPhone, recipientCountryCode, recipientName, eventType, templateName, customMessage, force = false, existingLogId = null, bypassAgeGuard = false, provider: optionsProvider = null, isFallbackAttempt = false, fallbackReason: incomingFallbackReason = null }) {
         const dbConfig = await whatsAppConfigService.getConfig({ internal: true }).catch(() => null);
         const sysSettings = getSystemSettings()?.whatsapp || {};
         const settings = {
@@ -1034,6 +1059,75 @@ class WhatsAppIntegrationService {
             return { status: 'SKIPPED', logId: log.id, message: 'WhatsApp disabled in settings' };
         }
 
+        const SUPPORTED_FALLBACK_PROVIDERS = new Set(['EVOLUTION', 'SHIPMENT_WHATSAPP', 'META']);
+        const rawFallbackProvider = settings.fallbackProvider
+            ? String(settings.fallbackProvider).trim().toUpperCase()
+            : '';
+        const normalizedFallbackProvider = rawFallbackProvider === 'TARGET_MSG'
+            ? 'SHIPMENT_WHATSAPP'
+            : rawFallbackProvider;
+        const canFallbackTo = (
+            !isFallbackAttempt
+            && normalizedFallbackProvider
+            && normalizedFallbackProvider !== 'NONE'
+            && SUPPORTED_FALLBACK_PROVIDERS.has(normalizedFallbackProvider)
+            && normalizedFallbackProvider !== provider
+            && !(provider === 'TARGET_MSG' && normalizedFallbackProvider === 'SHIPMENT_WHATSAPP')
+        ) ? normalizedFallbackProvider : null;
+
+        const attemptProviderFailover = async (primaryError) => {
+            if (!canFallbackTo) return null;
+            const reason = `${provider} dispatch failed (${primaryError.response?.status || primaryError.code || primaryError.message})`;
+            logger.warn('[WhatsApp Failover] Primary provider failed; failing over', {
+                trackingNumber: shipment.trackingNumber,
+                primaryProvider: provider,
+                fallbackProvider: canFallbackTo,
+                reason
+            });
+            try {
+                const fbResult = await this.sendNotification({
+                    shipment,
+                    recipientRole,
+                    recipientPhone,
+                    recipientCountryCode,
+                    recipientName,
+                    eventType,
+                    templateName: chosenTemplate,
+                    customMessage,
+                    force: true,
+                    existingLogId: log.id,
+                    bypassAgeGuard: true,
+                    provider: canFallbackTo,
+                    isFallbackAttempt: true,
+                    fallbackReason: reason
+                });
+                return {
+                    ...fbResult,
+                    isFallback: true,
+                    fallbackReason: reason
+                };
+            } catch (fbErr) {
+                logger.error('[WhatsApp Failover] Fallback provider also failed', {
+                    trackingNumber: shipment.trackingNumber,
+                    primaryProvider: provider,
+                    fallbackProvider: canFallbackTo,
+                    error: fbErr.message
+                });
+                await prisma.shipmentNotificationLog.update({
+                    where: { id: log.id },
+                    data: {
+                        status: 'FAILED',
+                        provider: canFallbackTo,
+                        isFallback: true,
+                        fallbackReason: `${reason} | ${canFallbackTo} error: ${fbErr.message}`,
+                        errorMessage: fbErr.message,
+                        responseJson: fbErr.response?.data || fbErr.rawResponse || { error: fbErr.message }
+                    }
+                }).catch(() => {});
+                throw fbErr;
+            }
+        };
+
         // 1. Explicit Shipment-WhatsApp Microservice Dispatch (msg.target-kw.com)
         if (provider === 'SHIPMENT_WHATSAPP' || provider === 'TARGET_MSG') {
             const serviceUrl = settings.serviceUrl || 'https://msg.target-kw.com';
@@ -1134,16 +1228,25 @@ class WhatsAppIntegrationService {
                         status: 'SENT',
                         chatwootMessageId: result.messageId,
                         provider: 'SHIPMENT_WHATSAPP',
-                        isFallback: false,
-                        fallbackReason: null,
+                        isFallback: Boolean(isFallbackAttempt),
+                        fallbackReason: isFallbackAttempt ? (incomingFallbackReason || null) : null,
                         payloadJson: enrichedPayload,
                         responseJson: result.rawResponse
                     }
                 });
 
-                return { status: 'SENT', logId: updated.id, externalMessageId: result.messageId, provider: 'SHIPMENT_WHATSAPP', isFallback: false };
+                return {
+                    status: 'SENT',
+                    logId: updated.id,
+                    externalMessageId: result.messageId,
+                    provider: 'SHIPMENT_WHATSAPP',
+                    isFallback: Boolean(isFallbackAttempt),
+                    ...(isFallbackAttempt && incomingFallbackReason ? { fallbackReason: incomingFallbackReason } : {})
+                };
             } catch (err) {
                 logger.error(`[Shipment-WhatsApp Dispatch Error] ${err.message}`);
+                const failoverResult = await attemptProviderFailover(err);
+                if (failoverResult) return failoverResult;
                 await prisma.shipmentNotificationLog.update({
                     where: { id: log.id },
                     data: {
@@ -1158,7 +1261,7 @@ class WhatsAppIntegrationService {
         }
 
         // 2. Primary Chatwoot Outbound Dispatch with Emergency Fallback to msg.target-kw.com
-        if (provider === 'CHATWOOT' || (!['MOCK', 'META'].includes(provider))) {
+        if (provider === 'CHATWOOT' || (!['MOCK', 'META', 'EVOLUTION'].includes(provider))) {
             const displayTracking = shipment.dhlTrackingNumber || context.trackingNumber || shipment.trackingNumber;
             const estDeliveryFormatted = formatLegibleDate(context.estimatedDeliveryDate);
             const dateFormatted = chosenTemplate === 'shipment_confirmation_2'
@@ -1368,15 +1471,26 @@ class WhatsAppIntegrationService {
                         status: 'SENT',
                         chatwootMessageId: result.messageId,
                         provider: 'EVOLUTION',
+                        isFallback: Boolean(isFallbackAttempt),
+                        fallbackReason: isFallbackAttempt ? (incomingFallbackReason || null) : null,
                         payloadJson: result.payload,
                         responseJson: result.rawResponse
                     }
                 });
 
-                return { status: 'SENT', logId: updated.id, externalMessageId: result.messageId, provider: 'EVOLUTION' };
+                return {
+                    status: 'SENT',
+                    logId: updated.id,
+                    externalMessageId: result.messageId,
+                    provider: 'EVOLUTION',
+                    isFallback: Boolean(isFallbackAttempt),
+                    ...(isFallbackAttempt && incomingFallbackReason ? { fallbackReason: incomingFallbackReason } : {})
+                };
             } catch (evoErr) {
                 const errorData = evoErr.response?.data || { message: evoErr.message };
-                logger.error(`[WhatsApp Evolution API Error] ${evoErr.message}`, errorData);
+                logger.error('[WhatsApp Evolution API Error]', { error: evoErr.message, errorData });
+                const failoverResult = await attemptProviderFailover(evoErr);
+                if (failoverResult) return failoverResult;
                 await prisma.shipmentNotificationLog.update({
                     where: { id: log.id },
                     data: {
@@ -1411,15 +1525,27 @@ class WhatsAppIntegrationService {
                 data: {
                     status: 'SENT',
                     chatwootMessageId: wamid,
+                    provider: 'META',
+                    isFallback: Boolean(isFallbackAttempt),
+                    fallbackReason: isFallbackAttempt ? (incomingFallbackReason || null) : null,
                     payloadJson: payload,
                     responseJson: res.data
                 }
             });
 
-            return { status: 'SENT', logId: updated.id, externalMessageId: wamid, provider: 'META' };
+            return {
+                status: 'SENT',
+                logId: updated.id,
+                externalMessageId: wamid,
+                provider: 'META',
+                isFallback: Boolean(isFallbackAttempt),
+                ...(isFallbackAttempt && incomingFallbackReason ? { fallbackReason: incomingFallbackReason } : {})
+            };
         } catch (err) {
             const errorData = err.response?.data || { message: err.message };
             logger.error(`[WhatsApp Meta API Error] ${err.message}`, errorData);
+            const failoverResult = await attemptProviderFailover(err);
+            if (failoverResult) return failoverResult;
 
             await prisma.shipmentNotificationLog.update({
                 where: { id: log.id },
