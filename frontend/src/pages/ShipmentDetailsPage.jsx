@@ -339,6 +339,7 @@ const ShipmentDetailsPage = () => {
     const { enqueueSnackbar } = useSnackbar();
     const canViewCostData = typeof can === 'function' && can('VIEW_COST_DATA');
     const internalReceiptEnsuredRef = useRef(null);
+    const targetReceiptEnsuredRef = useRef(null);
 
     const {
         shipment,
@@ -445,6 +446,20 @@ const ShipmentDetailsPage = () => {
             internalReceiptEnsuredRef.current = null;
         });
     }, [canViewCostData, shipment?.trackingNumber]);
+
+    useEffect(() => {
+        const canBookCarriers = typeof can === 'function' && can('BOOK_CARRIERS');
+        if (!canBookCarriers || !shipment?.trackingNumber || targetReceiptEnsuredRef.current === shipment.trackingNumber) return;
+        const docs = shipment.documents;
+        const targetReceipt = Array.isArray(docs)
+            ? docs.find((doc) => String(doc?.type || '').toLowerCase() === 'target_shipment_receipt')
+            : docs?.targetShipmentReceipt;
+        if (Number(targetReceipt?.receiptVersion || 0) >= 2) return;
+        targetReceiptEnsuredRef.current = shipment.trackingNumber;
+        shipmentService.generateTargetShipmentReceipt(shipment.trackingNumber, { force: true })
+            .then(() => getShipment(shipment.trackingNumber))
+            .catch(() => { targetReceiptEnsuredRef.current = null; });
+    }, [can, shipment?.trackingNumber, shipment?.documents, getShipment]);
 
     const shipmentId = shipment?._id || shipment?.id;
     const organizationId = shipment?.organizationId || shipment?.organization?._id;
@@ -1054,7 +1069,7 @@ const ShipmentDetailsPage = () => {
         if (!shipment?.trackingNumber) return;
         setIsGeneratingTargetReceipt(true);
         try {
-            const res = await shipmentService.generateTargetShipmentReceipt(shipment.trackingNumber);
+            const res = await shipmentService.generateTargetShipmentReceipt(shipment.trackingNumber, { force: true });
             const receiptUrl = res?.data?.targetReceiptUrl || res?.data?.receiptUrl;
             await getShipment(shipment.trackingNumber);
             if (!receiptUrl) throw new Error('Receipt URL was not returned by the server');

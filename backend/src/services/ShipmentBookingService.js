@@ -454,7 +454,10 @@ class ShipmentBookingService {
             const tryAttachDocument = async (type, sourceValue, targetField) => {
                 if (!sourceValue) return;
                 try {
-                    const doc = await CarrierDocumentService.uploadDocument(type, sourceValue, 'pdf', freshShipment.trackingNumber);
+                    const uploadedDoc = await CarrierDocumentService.uploadDocument(type, sourceValue, 'pdf', freshShipment.trackingNumber);
+                    const doc = type === 'target_shipment_receipt'
+                        ? { ...uploadedDoc, receiptVersion: 2 }
+                        : uploadedDoc;
                     if (!Array.isArray(updateData.documents)) {
                         updateData.documents = [];
                     }
@@ -517,9 +520,10 @@ class ShipmentBookingService {
 
             // Every booked shipment gets its own Target-branded receipt, even when the
             // carrier also provides a separate receipt or does not generate documents.
-            const hasTargetReceipt = Boolean(legacyDocumentsMetadata?.targetShipmentReceipt?.url || legacyDocumentsMetadata?.targetShipmentReceiptUrl) ||
-                [...docsArray, ...(Array.isArray(updateData.documents) ? updateData.documents : [])]
-                    .some(doc => String(doc?.type || '').toLowerCase() === 'target_shipment_receipt');
+            const existingTargetReceipt = [...docsArray, ...(Array.isArray(updateData.documents) ? updateData.documents : [])]
+                .find(doc => String(doc?.type || '').toLowerCase() === 'target_shipment_receipt');
+            const legacyTargetReceipt = legacyDocumentsMetadata?.targetShipmentReceipt;
+            const hasTargetReceipt = Number(existingTargetReceipt?.receiptVersion || legacyTargetReceipt?.receiptVersion || 0) >= 2;
             if (!hasTargetReceipt) {
                 try {
                     const { generateTargetShipmentReceiptPdf } = require('../utils/carrierPdfMock');

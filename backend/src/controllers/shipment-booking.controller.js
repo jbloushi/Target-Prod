@@ -932,7 +932,8 @@ exports.generateCarrierDocuments = async (req, res) => {
                     { ...shipment, dhlTrackingNumber: dhlTracking || shipment.dhlTrackingNumber, carrierShipmentId: dhlTracking || shipment.carrierShipmentId },
                     carrierName
                 );
-                const savedRcpt = await CarrierDocumentService.uploadDocument('target_shipment_receipt', receiptBase64, 'pdf', trackingNumber);
+                const uploadedReceipt = await CarrierDocumentService.uploadDocument('target_shipment_receipt', receiptBase64, 'pdf', trackingNumber);
+                const savedRcpt = uploadedReceipt ? { ...uploadedReceipt, receiptVersion: 2 } : null;
                 if (savedRcpt?.url) {
                     receiptUrl = savedRcpt.url;
                     newDocuments.push(savedRcpt);
@@ -1016,7 +1017,8 @@ exports.generateTargetShipmentReceipt = async (req, res) => {
         const force = req.body?.force === true || req.query?.force === 'true';
         const existingReceiptUrl = (typeof existingReceipt === 'string' ? existingReceipt : existingReceipt?.url) ||
             (!Array.isArray(rawDocuments) && rawDocuments && typeof rawDocuments === 'object' ? rawDocuments.targetShipmentReceiptUrl : null);
-        if (existingReceiptUrl && !force) {
+        const hasCurrentTargetReceipt = Number(existingReceipt?.receiptVersion || 0) >= 2;
+        if (existingReceiptUrl && hasCurrentTargetReceipt && !force) {
             return res.status(200).json({
                 success: true,
                 data: { receiptUrl: existingReceiptUrl, targetReceiptUrl: existingReceiptUrl, documents: rawDocuments || documents },
@@ -1031,12 +1033,13 @@ exports.generateTargetShipmentReceipt = async (req, res) => {
         const { generateTargetShipmentReceiptPdf } = require('../utils/carrierPdfMock');
         const CarrierDocumentService = require('../services/CarrierDocumentService');
         const receiptBase64 = generateTargetShipmentReceiptPdf(shipment, carrierName);
-        const savedReceipt = await CarrierDocumentService.uploadDocument(
+        const uploadedReceipt = await CarrierDocumentService.uploadDocument(
             'target_shipment_receipt',
             receiptBase64,
             'pdf',
             trackingNumber
         );
+        const savedReceipt = uploadedReceipt ? { ...uploadedReceipt, receiptVersion: 2 } : null;
         if (!savedReceipt?.url) throw new Error('Target shipment receipt could not be stored');
 
         const updatedDocuments = Array.isArray(rawDocuments)

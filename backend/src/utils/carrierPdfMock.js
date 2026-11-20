@@ -277,8 +277,8 @@ function generateCarrierAwbPdfBuffer(shipment, carrierName = 'Target Express') {
 }
 
 /**
- * Generates a Target-branded internal Shipment Receipt PDF for non-DHL carriers
- * (SMSA, OTE, Aramex, FedEx, Internal) — displays customer-facing total charge only.
+ * Generates a Target-branded customer receipt or a staff-only accounting receipt.
+ * Customer copies show billed amount components and never show carrier costs.
  */
 function generateTargetShipmentReceiptPdf(shipment, carrierName = 'Target Express', options = {}) {
     const trk = escapePdfText(shipment.trackingNumber || 'N/A');
@@ -291,14 +291,14 @@ function generateTargetShipmentReceiptPdf(shipment, carrierName = 'Target Expres
     const totalWeight = parcels.reduce((sum, p) => sum + (Number(p?.weight) || 0), 0) || Number(shipment.weight || 1.0);
     const totalPieces = parcels.reduce((sum, p) => sum + (Number(p?.quantity) || 1), 0) || Number(shipment.pieces || 1);
 
-    const totalPrice = Number(shipment.price ?? shipment.pricingSnapshot?.totalPrice ?? 0).toFixed(3);
+    const totalPriceNumber = Math.max(0, Number(shipment.price ?? shipment.pricingSnapshot?.totalPrice ?? 0) || 0);
+    const totalPrice = totalPriceNumber.toFixed(3);
     const rawCarrierCost = shipment.carrierCost ?? shipment.costPrice ?? shipment.pricingSnapshot?.carrierRate ?? shipment.pricingSnapshot?.baseRate;
     const carrierCost = rawCarrierCost === null || rawCarrierCost === undefined || rawCarrierCost === '' || !Number.isFinite(Number(rawCarrierCost))
         ? 'NOT RECORDED'
         : Number(rawCarrierCost).toFixed(3);
     const isInternal = options.includeInternalCosts === true;
     const currency = escapePdfText(shipment.currency || shipment.pricingSnapshot?.currency || 'KWD');
-    const paidText = shipment.paid ? 'PAID' : 'BILLED / ON ACCOUNT';
     const shipmentCreatedAt = new Date(shipment.createdAt || Date.now());
     const validShipmentDate = !Number.isNaN(shipmentCreatedAt.getTime());
     // Keep November shipment receipts aligned with their shipment date; other receipts
@@ -315,17 +315,112 @@ function generateTargetShipmentReceiptPdf(shipment, carrierName = 'Target Expres
     const receiverLine = escapePdfText(`${receiver.name || receiver.company || 'Consignee'} | ${addressText(receiver)}`);
     const receiverContact = escapePdfText(`${[receiver.city, receiver.state, receiver.postalCode, receiver.countryCode].filter(Boolean).join(', ')} | ${receiver.phone || ''} | ${receiver.email || ''}`);
     const shipmentType = escapePdfText(shipment.shipmentType || shipment.serviceType || shipment.description || 'General Cargo');
+    const snapshot = shipment.pricingSnapshot && typeof shipment.pricingSnapshot === 'object' ? shipment.pricingSnapshot : {};
+    const optionalServices = Array.isArray(snapshot.optionalServices)
+        ? snapshot.optionalServices.map((item) => ({
+            label: String(item?.serviceName || item?.name || item?.serviceCode || 'Optional service').slice(0, 42),
+            amount: Number(item?.totalPrice)
+        })).filter((item) => Number.isFinite(item.amount) && item.amount > 0)
+        : [];
+    const optionalTotal = Math.min(totalPriceNumber, Math.max(
+        0,
+        Number(snapshot.optionalServicesTotal) || optionalServices.reduce((sum, item) => sum + item.amount, 0)
+    ));
+    const detailedOptionalTotal = optionalServices.reduce((sum, item) => sum + item.amount, 0);
+    const storedPaid = Math.max(0, Number(shipment.totalPaid) || 0);
+    const totalPaid = shipment.paid && storedPaid <= 0 ? totalPriceNumber : storedPaid;
+    const remainingBalance = shipment.paid
+        ? 0
+        : Math.max(0, Number(shipment.remainingBalance ?? (totalPriceNumber - totalPaid)) || 0);
+    const paidText = shipment.paid || remainingBalance <= 0.001 ? 'PAID' : 'BILLED / ON ACCOUNT';
+    const chargeRows = isInternal
+        ? [
+            { label: 'Carrier cost (internal)', amount: carrierCost },
+            { label: 'Customer charge', amount: `${totalPrice} ${currency}` }
+        ]
+        : [
+            { label: 'Shipment service', amount: `${Math.max(0, totalPriceNumber - optionalTotal).toFixed(3)} ${currency}` },
+            ...(optionalTotal > 0 && optionalServices.length > 0 && Math.abs(detailedOptionalTotal - optionalTotal) < 0.002
+                ? [
+                    ...optionalServices.slice(0, 3).map((item) => ({ label: item.label, amount: `${item.amount.toFixed(3)} ${currency}` })),
+                    ...(optionalServices.length > 3 ? [{
+                        label: 'Other selected services',
+                        amount: `${optionalServices.slice(3).reduce((sum, item) => sum + item.amount, 0).toFixed(3)} ${currency}`
+                    }] : [])
+                ]
+                : optionalTotal > 0 ? [{ label: 'Additional services', amount: `${optionalTotal.toFixed(3)} ${currency}` }] : [])
+        ];
+    const chargeSectionLines = [
+        'q',
+        '0.94 0.96 1.0 rg 40 350 515 195 re f',
+        '0.78 0.83 0.9 RG 1 w 40 350 515 195 re s',
+        'Q',
+        'BT',
+        '/F1 11 Tf 55 523 Td (CHARGE BREAKDOWN) Tj',
+        'ET'
+    ];
+    let chargeY = 500;
+    chargeRows.forEach((row) => {
+        chargeSectionLines.push(
+            'BT',
+            `/F2 9 Tf 58 ${chargeY} Td (${escapePdfText(row.label)}) Tj`,
+            'ET',
+            'BT',
+            `/F2 9 Tf 385 ${chargeY} Td (${escapePdfText(row.amount)}) Tj`,
+            'ET'
+        );
+        chargeY -= 17;
+    });
+    chargeY -= 4;
+    chargeSectionLines.push(
+        'q',
+        `0.72 0.78 0.86 RG 0.8 w 55 ${chargeY + 10} m 540 ${chargeY + 10} l S`,
+        'Q',
+        'BT',
+        `/F1 10 Tf 58 ${chargeY - 5} Td (${isInternal ? 'CUSTOMER TOTAL CHARGED:' : 'TOTAL CHARGED:'}) Tj`,
+        'ET',
+        'BT',
+        `/F1 10 Tf 385 ${chargeY - 5} Td (${totalPrice} ${currency}) Tj`,
+        'ET',
+        'BT',
+        `/F2 8 Tf 58 ${chargeY - 23} Td (Payment status: ${paidText}) Tj`,
+        'ET',
+        'BT',
+        `/F2 8 Tf 270 ${chargeY - 23} Td (Paid: ${totalPaid.toFixed(3)} ${currency}) Tj`,
+        'ET',
+        'BT',
+        `/F2 8 Tf 405 ${chargeY - 23} Td (Balance: ${remainingBalance.toFixed(3)} ${currency}) Tj`,
+        'ET',
+        'BT',
+        ...(isInternal ? [`/F2 8 Tf 58 ${chargeY - 40} Td (CONFIDENTIAL - INTERNAL STAFF / ACCOUNTING USE ONLY) Tj`] : [`/F2 8 Tf 58 ${chargeY - 40} Td (Customer receipt issued by Target Logistics Kuwait) Tj`]),
+        'ET'
+    );
 
     const streamLines = [
         'q',
-        '0.75 0.1 0.1 rg 40 765 515 50 re f',
-        '0.2 0.2 0.2 RG 1 w 40 765 515 50 re s',
+        '0.0 0.31 0.83 rg 40 765 515 50 re f',
+        '0.0 0.31 0.83 RG 1 w 40 765 515 50 re s',
+        '1.0 1.0 1.0 RG 2 w 55 790 m 55 799 62 806 71 806 c 80 806 87 799 87 790 c 87 781 80 774 71 774 c 62 774 55 781 55 790 c S',
+        '1.0 1.0 1.0 RG 2 w 61 790 m 61 796 65 800 71 800 c 77 800 81 796 81 790 c 81 784 77 780 71 780 c 65 780 61 784 61 790 c S',
+        '1.0 1.0 1.0 rg 68 787 6 6 re f',
         'Q',
         'BT',
         '1.0 1.0 1.0 rg',
-        '/F1 18 Tf 55 792 Td (TARGET LOGISTICS) Tj',
-        `/F1 11 Tf 240 0 Td (${isInternal ? 'INTERNAL ACCOUNTING COPY' : 'OFFICIAL SHIPMENT RECEIPT'}) Tj`,
-        `/F2 9 Tf -240 -15 Td (Carrier: ${carrierLabel}   |   Service: ${service}   |   Date: ${createdDate} UTC) Tj`,
+        '/F1 18 Tf 100 794 Td (TARGET) Tj',
+        'ET',
+        'BT',
+        '1.0 1.0 1.0 rg',
+        '/F2 8 Tf 101 779 Td (LOGISTICS  |  KUWAIT) Tj',
+        'ET',
+        'BT',
+        '1.0 1.0 1.0 rg',
+        `/F1 10 Tf 350 796 Td (${isInternal ? 'INTERNAL COST RECEIPT' : 'SHIPMENT RECEIPT'}) Tj`,
+        'ET',
+        'BT',
+        '1.0 1.0 1.0 rg',
+        `/F2 7 Tf 350 780 Td (${carrierLabel}  |  ${service}  |  ${createdDate} UTC) Tj`,
+        'ET',
+        'BT',
         '0.0 0.0 0.0 rg',
         `/F1 12 Tf 50 735 Td (Target Tracking #: ${trk}) Tj`,
         `/F2 10 Tf 0 -18 Td (Carrier AWB / Ref: ${carrierAwb}) Tj`,
@@ -338,22 +433,7 @@ function generateTargetShipmentReceiptPdf(shipment, carrierName = 'Target Expres
         `/F1 10 Tf 0 -22 Td (CONSIGNMENT SUMMARY) Tj`,
         `/F2 9 Tf 0 -15 Td (Type: ${shipmentType}   |   Pieces: ${totalPieces}   |   Chargeable / Actual Weight: ${Number(totalWeight).toFixed(2)} KG) Tj`,
         'ET',
-        'q',
-        '0.95 0.95 0.95 rg 40 480 515 65 re f',
-        '0.8 0.8 0.8 RG 1 w 40 480 515 65 re s',
-        'Q',
-        'BT',
-        ...(isInternal ? [
-            `/F1 11 Tf 55 525 Td (CARRIER COST:  ${carrierCost} ${currency}) Tj`,
-            `/F1 11 Tf 0 -20 Td (CUSTOMER CHARGE:  ${totalPrice} ${currency}) Tj`,
-            `/F2 8 Tf 0 -18 Td (Payment Status: ${paidText}) Tj`,
-            '/F2 8 Tf 0 -16 Td (CONFIDENTIAL - INTERNAL STAFF / ACCOUNTING USE ONLY) Tj'
-        ] : [
-            `/F1 12 Tf 55 522 Td (TOTAL SHIPMENT CHARGE:  ${totalPrice} ${currency}) Tj`,
-            `/F2 9 Tf 0 -18 Td (Payment Status: ${paidText}) Tj`,
-            `/F2 8 Tf 0 -16 Td (Issued electronically by Target Logistics Kuwait - Official Customer Receipt) Tj`
-        ]),
-        'ET'
+        ...chargeSectionLines
     ];
 
     return buildPdfDocument(streamLines);

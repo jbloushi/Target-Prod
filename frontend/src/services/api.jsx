@@ -434,7 +434,6 @@ export const shipmentService = {
       const response = await api.post(`shipments/${trackingNumber}/target-receipt/generate`, options);
       return response.data;
     } catch (error) {
-      console.error('Error generating Target shipment receipt:', error);
       throw error;
     }
   },

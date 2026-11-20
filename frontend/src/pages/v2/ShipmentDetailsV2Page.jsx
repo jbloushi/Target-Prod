@@ -41,6 +41,7 @@ export const ShipmentDetailsV2Page = () => {
     const { shipment, loading, error, getShipment } = useShipment();
     const approvalHandledRef = useRef(false);
     const internalReceiptEnsuredRef = useRef(null);
+    const targetReceiptEnsuredRef = useRef(null);
 
     // Strict RBAC & Capability Gating
     const isPlatformOps = Boolean(user && isPlatformRole(user.role));
@@ -98,6 +99,19 @@ export const ShipmentDetailsV2Page = () => {
             internalReceiptEnsuredRef.current = null;
         });
     }, [canViewCost, shipment?.trackingNumber]);
+
+    useEffect(() => {
+        if (!canBookCarriers || !shipment?.trackingNumber || targetReceiptEnsuredRef.current === shipment.trackingNumber) return;
+        const docs = shipment.documents;
+        const targetReceipt = Array.isArray(docs)
+            ? docs.find((doc) => String(doc?.type || '').toLowerCase() === 'target_shipment_receipt')
+            : docs?.targetShipmentReceipt;
+        if (Number(targetReceipt?.receiptVersion || 0) >= 2) return;
+        targetReceiptEnsuredRef.current = shipment.trackingNumber;
+        shipmentService.generateTargetShipmentReceipt(shipment.trackingNumber, { force: true })
+            .then(() => getShipment(shipment.trackingNumber))
+            .catch(() => { targetReceiptEnsuredRef.current = null; });
+    }, [canBookCarriers, shipment?.trackingNumber, shipment?.documents, getShipment]);
 
     // Auto-refresh active shipments every 2 minutes + on tab focus
     useEffect(() => {
@@ -255,7 +269,7 @@ export const ShipmentDetailsV2Page = () => {
         if (!isPlatformOps || !canBookCarriers || !shipment?.trackingNumber) return;
         setIsGeneratingTargetReceipt(true);
         try {
-            const res = await shipmentService.generateTargetShipmentReceipt(shipment.trackingNumber);
+            const res = await shipmentService.generateTargetShipmentReceipt(shipment.trackingNumber, { force: true });
             const receiptUrl = res?.data?.targetReceiptUrl || res?.data?.receiptUrl;
             await loadShipmentData();
             if (!receiptUrl) throw new Error('Receipt URL was not returned by the server');

@@ -664,7 +664,7 @@ exports.getTriageShipments = async (req, res) => {
  */
 exports.createShipment = async (req, res) => {
     try {
-        const shipment = await ShipmentLifecycleService.submitShipment(req.body, req.user);
+        let shipment = await ShipmentLifecycleService.submitShipment(req.body, req.user);
         logger.info(`Shipment ${shipment.trackingNumber} created (Draft).`);
         if (req.body.notifyCustomer !== false && !req.body.isHistorical) {
             chatwootNotificationService.triggerShipmentNotification('shipment_created', shipment);
@@ -685,6 +685,17 @@ exports.createShipment = async (req, res) => {
             const optionalCodes = (shipment.pricingSnapshot?.optionalServices || []).map(s => s.serviceCode);
             await ShipmentBookingService.bookShipmentAsync(shipment.trackingNumber, shipment.carrierCode, optionalCodes, req.user.role);
             logger.info(`Dispatched background booking job for ${shipment.trackingNumber}`);
+        }
+
+        try {
+            const { generateAndAttachTargetShipmentReceipt } = require('../services/targetShipmentReceipt.service');
+            const code = String(shipment.carrierCode || 'INTERNAL').toUpperCase();
+            shipment = await generateAndAttachTargetShipmentReceipt(
+                shipment,
+                code === 'DGR' ? 'DHL Express' : (['INTERNAL', 'MANUAL'].includes(code) ? 'Target Logistics' : code)
+            );
+        } catch (receiptError) {
+            logger.warn(`Target shipment receipt generation skipped for ${shipment.trackingNumber}: ${receiptError.message}`);
         }
 
         // Keep an internal accounting receipt available for every newly created shipment,
