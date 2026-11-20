@@ -717,7 +717,7 @@ exports.generateCarrierDocuments = async (req, res) => {
 
         const rawFoundLabel = shipment.labelUrl || shipment.awbUrl || existingDocs.find(d => ['label', 'awb', 'waybilldoc'].includes(String(d?.type || '').toLowerCase()))?.url;
         const rawFoundInvoice = shipment.invoiceUrl || existingDocs.find(d => ['invoice', 'customs_invoice', 'commercial_invoice', 'customs-declarations'].includes(String(d?.type || '').toLowerCase()))?.url;
-        const foundReceipt = existingDocs.find(d => ['receipt', 'shipmentreceipt', 'shipment_receipt'].includes(String(d?.type || '').toLowerCase()))?.url || null;
+        const foundReceipt = existingDocs.find(d => ['receipt', 'shipmentreceipt', 'shipment_receipt', 'target_shipment_receipt'].includes(String(d?.type || '').toLowerCase()))?.url || null;
 
         // If carrier requires official API AWB (DGR, DGR2, SMSA, OTE, ARAMEX), filter out any previously generated mock label
         const foundLabel = (isStrictApiAwbCarrier && isMockLabel(rawFoundLabel)) ? null : rawFoundLabel;
@@ -932,7 +932,7 @@ exports.generateCarrierDocuments = async (req, res) => {
                     { ...shipment, dhlTrackingNumber: dhlTracking || shipment.dhlTrackingNumber, carrierShipmentId: dhlTracking || shipment.carrierShipmentId },
                     carrierName
                 );
-                const savedRcpt = await CarrierDocumentService.uploadDocument('receipt', receiptBase64, 'pdf', trackingNumber);
+                const savedRcpt = await CarrierDocumentService.uploadDocument('target_shipment_receipt', receiptBase64, 'pdf', trackingNumber);
                 if (savedRcpt?.url) {
                     receiptUrl = savedRcpt.url;
                     newDocuments.push(savedRcpt);
@@ -991,5 +991,93 @@ exports.generateCarrierDocuments = async (req, res) => {
             message: error.message || 'Generate carrier documents failed'
         });
         return handleControllerError(res, error, 'Generate carrier documents');
+    }
+};
+
+/**
+ * Generate a Target-branded receipt independently of carrier paperwork.
+ * @route POST /api/shipments/:trackingNumber/target-receipt/generate
+ */
+exports.generateTargetShipmentReceipt = async (req, res) => {
+    const startTime = Date.now();
+    try {
+        const { trackingNumber } = req.params;
+        const shipment = await prisma.shipment.findUnique({
+            where: { trackingNumber },
+            include: { organization: true, user: true }
+        });
+        if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
+        if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
+
+        const rawDocuments = shipment.documents;
+        const documents = Array.isArray(rawDocuments) ? rawDocuments : [];
+        const existingReceipt = documents.find(doc => String(doc?.type || '').toLowerCase() === 'target_shipment_receipt') ||
+            (!Array.isArray(rawDocuments) && rawDocuments && typeof rawDocuments === 'object' ? rawDocuments.targetShipmentReceipt : null);
+        const force = req.body?.force === true || req.query?.force === 'true';
+        const existingReceiptUrl = (typeof existingReceipt === 'string' ? existingReceipt : existingReceipt?.url) ||
+            (!Array.isArray(rawDocuments) && rawDocuments && typeof rawDocuments === 'object' ? rawDocuments.targetShipmentReceiptUrl : null);
+        if (existingReceiptUrl && !force) {
+            return res.status(200).json({
+                success: true,
+                data: { receiptUrl: existingReceiptUrl, targetReceiptUrl: existingReceiptUrl, documents: rawDocuments || documents },
+                message: 'Target shipment receipt is already available'
+            });
+        }
+
+        const carrierCode = normalizeCarrierCode(shipment.carrierCode || shipment.carrier || 'INTERNAL');
+        const carrierName = ['INTERNAL', 'MANUAL'].includes(carrierCode)
+            ? 'Target Logistics'
+            : (carrierCode === 'DGR' ? 'DHL Express' : (carrierCode === 'SMSA' ? 'SMSA Express' : carrierCode));
+        const { generateTargetShipmentReceiptPdf } = require('../utils/carrierPdfMock');
+        const CarrierDocumentService = require('../services/CarrierDocumentService');
+        const receiptBase64 = generateTargetShipmentReceiptPdf(shipment, carrierName);
+        const savedReceipt = await CarrierDocumentService.uploadDocument(
+            'target_shipment_receipt',
+            receiptBase64,
+            'pdf',
+            trackingNumber
+        );
+        if (!savedReceipt?.url) throw new Error('Target shipment receipt could not be stored');
+
+        const updatedDocuments = Array.isArray(rawDocuments)
+            ? [
+                ...documents.filter(doc => String(doc?.type || '').toLowerCase() !== 'target_shipment_receipt'),
+                savedReceipt
+            ]
+            : {
+                ...(rawDocuments && typeof rawDocuments === 'object' ? rawDocuments : {}),
+                targetShipmentReceipt: savedReceipt,
+                targetShipmentReceiptUrl: savedReceipt.url
+            };
+        await prisma.shipment.update({
+            where: { id: shipment.id },
+            data: { documents: updatedDocuments }
+        });
+
+        diagnosticAttemptLog.recordAttempt({
+            trackingNumber,
+            carrierCode,
+            action: 'TARGET_RECEIPT_GENERATE',
+            status: 'SUCCESS',
+            durationMs: Date.now() - startTime,
+            message: 'Target shipment receipt generated',
+            organizationId: shipment.organizationId || null
+        });
+
+        return res.status(200).json({
+            success: true,
+            data: { receiptUrl: savedReceipt.url, targetReceiptUrl: savedReceipt.url, documents: updatedDocuments },
+            message: 'Target shipment receipt generated successfully'
+        });
+    } catch (error) {
+        diagnosticAttemptLog.recordAttempt({
+            trackingNumber: req.params?.trackingNumber || null,
+            carrierCode: 'SYSTEM',
+            action: 'TARGET_RECEIPT_GENERATE',
+            status: 'FAILED',
+            durationMs: Date.now() - startTime,
+            message: error.message || 'Generate Target shipment receipt failed'
+        });
+        return handleControllerError(res, error, 'Generate Target shipment receipt');
     }
 };

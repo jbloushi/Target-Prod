@@ -294,7 +294,14 @@ function generateTargetShipmentReceiptPdf(shipment, carrierName = 'Target Expres
     const totalPrice = Number(shipment.price ?? shipment.pricingSnapshot?.totalPrice ?? 0).toFixed(3);
     const currency = escapePdfText(shipment.currency || shipment.pricingSnapshot?.currency || 'KWD');
     const paidText = shipment.paid ? 'PAID' : 'BILLED / ON ACCOUNT';
-    const createdDate = escapePdfText(new Date(shipment.createdAt || Date.now()).toISOString().slice(0, 19).replace('T', ' '));
+    const shipmentCreatedAt = new Date(shipment.createdAt || Date.now());
+    const validShipmentDate = !Number.isNaN(shipmentCreatedAt.getTime());
+    // Keep November shipment receipts aligned with their shipment date; other receipts
+    // are dated when generated so the document is not silently backdated.
+    const receiptDate = validShipmentDate && shipmentCreatedAt.getUTCMonth() === 10
+        ? shipmentCreatedAt
+        : new Date();
+    const createdDate = escapePdfText(receiptDate.toISOString().slice(0, 19).replace('T', ' '));
 
     const senderLine = escapePdfText(`${sender.name || sender.company || 'Shipper'} | ${sender.city || ''}, ${sender.countryCode || 'KW'} | ${sender.phone || ''}`);
     const receiverLine = escapePdfText(`${receiver.name || receiver.company || 'Consignee'} | ${receiver.city || ''}, ${receiver.countryCode || ''} | ${receiver.phone || ''}`);

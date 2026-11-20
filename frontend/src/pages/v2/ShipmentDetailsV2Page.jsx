@@ -55,6 +55,7 @@ export const ShipmentDetailsV2Page = () => {
     const [isProcessing, setIsProcessing] = useState(false);
     const [isSyncingCarrier, setIsSyncingCarrier] = useState(false);
     const [isGeneratingDocs, setIsGeneratingDocs] = useState(false);
+    const [isGeneratingTargetReceipt, setIsGeneratingTargetReceipt] = useState(false);
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
     const [uploadDocType, setUploadDocType] = useState('awb');
     const [uploadFile, setUploadFile] = useState(null);
@@ -240,6 +241,23 @@ export const ShipmentDetailsV2Page = () => {
         }
     };
 
+    const handleGenerateTargetReceipt = async () => {
+        if (!isPlatformOps || !canBookCarriers || !shipment?.trackingNumber) return;
+        setIsGeneratingTargetReceipt(true);
+        try {
+            const res = await shipmentService.generateTargetShipmentReceipt(shipment.trackingNumber);
+            const receiptUrl = res?.data?.targetReceiptUrl || res?.data?.receiptUrl;
+            await loadShipmentData();
+            if (!receiptUrl) throw new Error('Receipt URL was not returned by the server');
+            enqueueSnackbar(isRTL ? 'تم توليد إيصال الشحنة بنجاح' : 'Target shipment receipt generated', { variant: 'success' });
+            handleOpenPdf(receiptUrl);
+        } catch (err) {
+            enqueueSnackbar(err?.response?.data?.error || err?.response?.data?.message || err?.message || 'Failed generating Target receipt', { variant: 'error' });
+        } finally {
+            setIsGeneratingTargetReceipt(false);
+        }
+    };
+
     const handleUploadDocument = async (e) => {
         e.preventDefault();
         if (!uploadFile || !shipment?.trackingNumber) return;
@@ -422,10 +440,11 @@ export const ShipmentDetailsV2Page = () => {
     const extractDocUrl = (doc) => (typeof doc === 'string' ? doc : doc?.url || doc?.path || null);
     const carrierAwbDoc = rawDocuments.find((d) => /label|awb|waybill/i.test(String(d?.type || '')));
     const carrierInvoiceDoc = rawDocuments.find((d) => /inv|customs|commercial/i.test(String(d?.type || '')));
-    const carrierReceiptDoc = rawDocuments.find((d) => /receipt|shiprcpt/i.test(String(d?.type || '')));
+    const targetReceiptDoc = rawDocuments.find((d) => String(d?.type || '').toLowerCase() === 'target_shipment_receipt') ||
+        (shipment?.documents && !Array.isArray(shipment.documents) ? shipment.documents.targetShipmentReceipt || shipment.documents.targetShipmentReceiptUrl : null);
     const resolvedCarrierAwb = shipment?.labelUrl || shipment?.awbUrl || extractDocUrl(carrierAwbDoc);
     const resolvedCarrierInvoice = shipment?.invoiceUrl || extractDocUrl(carrierInvoiceDoc);
-    const resolvedCarrierReceipt = extractDocUrl(carrierReceiptDoc);
+    const resolvedTargetReceipt = extractDocUrl(targetReceiptDoc);
 
     const accountingSummary = accounting || {
         totalCharge: Number(shipment?.price || 0),
@@ -960,25 +979,23 @@ export const ShipmentDetailsV2Page = () => {
                                         </div>
                                         )}
 
-                                        {!['DGR', 'DGR2', 'DHL', 'DHL2'].includes(rawCarrierCode) && (
                                         <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex flex-col justify-between gap-3">
                                             <div>
                                                 <div className="text-xs font-bold text-slate-900 dark:text-white">{isRTL ? 'إيصال الشحنة (تارجت)' : 'Target Shipment Receipt'}</div>
-                                                <div className="text-[11px] text-slate-500 dark:text-slate-400">{resolvedCarrierReceipt ? (isRTL ? 'جاهز' : 'Ready') : (isRTL ? 'قيد الانتظار' : 'Pending')}</div>
+                                                <div className="text-[11px] text-slate-500 dark:text-slate-400">{resolvedTargetReceipt ? (isRTL ? 'جاهز' : 'Ready') : (isRTL ? 'قيد الانتظار' : 'Pending')}</div>
                                             </div>
-                                            {resolvedCarrierReceipt ? (
-                                                <button type="button" onClick={() => handleOpenPdf(resolvedCarrierReceipt)} className="min-h-[36px] rounded-lg border border-slate-300 dark:border-slate-600 text-xs font-bold cursor-pointer">
+                                            {resolvedTargetReceipt ? (
+                                                <button type="button" onClick={() => handleOpenPdf(resolvedTargetReceipt)} className="min-h-[36px] rounded-lg border border-slate-300 dark:border-slate-600 text-xs font-bold cursor-pointer">
                                                     {isRTL ? 'طباعة الإيصال' : 'Print Receipt'}
                                                 </button>
-                                            ) : (isPlatformOps && canBookCarriers && !isManualShipment) ? (
-                                                <button type="button" onClick={() => handleGenerateCarrierDocs('receipt')} disabled={isGeneratingDocs} className="min-h-[36px] rounded-lg border border-slate-300 dark:border-slate-600 text-xs font-bold cursor-pointer disabled:opacity-50">
-                                                    {isRTL ? 'توليد الإيصال' : 'Generate Receipt'}
+                                            ) : (isPlatformOps && canBookCarriers) ? (
+                                                <button type="button" onClick={handleGenerateTargetReceipt} disabled={isGeneratingTargetReceipt} className="min-h-[36px] rounded-lg border border-slate-300 dark:border-slate-600 text-xs font-bold cursor-pointer disabled:opacity-50">
+                                                    {isGeneratingTargetReceipt ? (isRTL ? 'جارٍ التوليد...' : 'Generating...') : (isRTL ? 'توليد الإيصال' : 'Generate Receipt')}
                                                 </button>
                                             ) : (
                                                 <span className="text-xs text-slate-400">—</span>
                                             )}
                                         </div>
-                                        )}
 
                                         <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex flex-col justify-between gap-3">
                                             <div>

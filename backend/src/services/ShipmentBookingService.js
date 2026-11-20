@@ -412,8 +412,14 @@ class ShipmentBookingService {
             freshAttempts[attemptIndex].updatedAt = new Date();
 
             let docsArray = [];
+            const legacyDocumentsMetadata = !Array.isArray(freshShipment.documents) &&
+                freshShipment.documents && typeof freshShipment.documents === 'object'
+                ? { ...freshShipment.documents }
+                : null;
             if (Array.isArray(freshShipment.documents)) {
                 docsArray = [...freshShipment.documents];
+            } else if (Array.isArray(freshShipment.documents?.attachments)) {
+                docsArray = [...freshShipment.documents.attachments];
             } else if (typeof freshShipment.documents === 'string') {
                 try {
                     const parsed = JSON.parse(freshShipment.documents);
@@ -482,7 +488,7 @@ class ShipmentBookingService {
                 // If carrier did not return a separate commercial invoice, generate compliant customs invoice fallback
                 // Skip for OTE / LogesTechs, SMSA, and document-only shipments (customs invoice not required)
                 const requiresInvoice = !['OTE', 'LOGESTECHS', 'SMSA', 'SMSAEXPRESS'].includes(carrierCode) && !freshShipment.isDocument && freshShipment.shipmentType !== 'documents';
-                const { generateCarrierInvoicePdf, generateTargetShipmentReceiptPdf } = require('../utils/carrierPdfMock');
+                const { generateCarrierInvoicePdf } = require('../utils/carrierPdfMock');
                 const carrierName = carrierCode === 'DGR'
                     ? 'DGR'
                     : (carrierCode === 'DGR2'
@@ -507,18 +513,37 @@ class ShipmentBookingService {
                     }
                 }
 
-                // Target-branded internal Shipment Receipt for non-DHL carriers (or when carrier did not return a receipt)
-                if (!carrierResult.receiptUrl) {
-                    try {
-                        const receiptBase64 = generateTargetShipmentReceiptPdf(
-                            { ...freshShipment, dhlTrackingNumber: carrierTrackingNumber, carrierShipmentId },
-                            carrierName
-                        );
-                        await tryAttachDocument('receipt', receiptBase64, null);
-                    } catch (rcptErr) {
-                        logger.warn(`Target shipment receipt generation skipped for ${freshShipment.trackingNumber}: ${rcptErr.message}`);
-                    }
+            }
+
+            // Every booked shipment gets its own Target-branded receipt, even when the
+            // carrier also provides a separate receipt or does not generate documents.
+            const hasTargetReceipt = Boolean(legacyDocumentsMetadata?.targetShipmentReceipt?.url || legacyDocumentsMetadata?.targetShipmentReceiptUrl) ||
+                [...docsArray, ...(Array.isArray(updateData.documents) ? updateData.documents : [])]
+                    .some(doc => String(doc?.type || '').toLowerCase() === 'target_shipment_receipt');
+            if (!hasTargetReceipt) {
+                try {
+                    const { generateTargetShipmentReceiptPdf } = require('../utils/carrierPdfMock');
+                    const targetReceiptCarrierName = ['INTERNAL', 'MANUAL'].includes(String(carrierCode).toUpperCase())
+                        ? 'Target Logistics'
+                        : (carrierCode === 'DGR' ? 'DHL Express' : (carrierCode === 'SMSA' ? 'SMSA Express' : carrierCode));
+                    const receiptBase64 = generateTargetShipmentReceiptPdf(
+                        { ...freshShipment, dhlTrackingNumber: carrierTrackingNumber, carrierShipmentId },
+                        targetReceiptCarrierName
+                    );
+                    await tryAttachDocument('target_shipment_receipt', receiptBase64, null);
+                } catch (rcptErr) {
+                    logger.warn(`Target shipment receipt generation skipped for ${freshShipment.trackingNumber}: ${rcptErr.message}`);
                 }
+            }
+
+            if (legacyDocumentsMetadata) {
+                const attachedDocuments = Array.isArray(updateData.documents) ? updateData.documents : [];
+                const targetReceipt = attachedDocuments.find(doc => String(doc?.type || '').toLowerCase() === 'target_shipment_receipt');
+                updateData.documents = {
+                    ...legacyDocumentsMetadata,
+                    attachments: attachedDocuments,
+                    ...(targetReceipt ? { targetShipmentReceipt: targetReceipt, targetShipmentReceiptUrl: targetReceipt.url } : {})
+                };
             }
 
             // Atomic DB Transaction (DB-01): Persist shipment status update + financial ledger entries together

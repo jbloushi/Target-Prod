@@ -349,6 +349,7 @@ const ShipmentDetailsPage = () => {
     const [accounting, setAccounting] = useState(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [isGeneratingCarrierDocs, setIsGeneratingCarrierDocs] = useState(false);
+    const [isGeneratingTargetReceipt, setIsGeneratingTargetReceipt] = useState(false);
     const [copiedTracking, setCopiedTracking] = useState(false);
     const [isCarrierDocsCollapsed, setIsCarrierDocsCollapsed] = useState(false);
     const [isPodModalOpen, setIsPodModalOpen] = useState(false);
@@ -1038,6 +1039,23 @@ const ShipmentDetailsPage = () => {
         }
     };
 
+    const handleGenerateTargetReceipt = async () => {
+        if (!shipment?.trackingNumber) return;
+        setIsGeneratingTargetReceipt(true);
+        try {
+            const res = await shipmentService.generateTargetShipmentReceipt(shipment.trackingNumber);
+            const receiptUrl = res?.data?.targetReceiptUrl || res?.data?.receiptUrl;
+            await getShipment(shipment.trackingNumber);
+            if (!receiptUrl) throw new Error('Receipt URL was not returned by the server');
+            enqueueSnackbar(isRTL ? 'تم توليد إيصال الشحنة بنجاح' : 'Target shipment receipt generated', { variant: 'success' });
+            handleOpenPdf(receiptUrl);
+        } catch (err) {
+            enqueueSnackbar(err.response?.data?.error || err.response?.data?.message || err.message || 'Failed generating Target receipt', { variant: 'error' });
+        } finally {
+            setIsGeneratingTargetReceipt(false);
+        }
+    };
+
     // Upload Carrier or Customs Document
     const handleUploadDocument = async (e) => {
         if (e) e.preventDefault();
@@ -1153,6 +1171,8 @@ const ShipmentDetailsPage = () => {
     const carrierAwbDoc = rawDocuments.find(d => /label|awb|waybill/i.test(String(d?.type || '')));
     const carrierInvoiceDoc = rawDocuments.find(d => /inv|customs|commercial/i.test(String(d?.type || '')));
     const carrierReceiptDoc = rawDocuments.find(d => /receipt|shiprcpt/i.test(String(d?.type || '')));
+    const targetReceiptDoc = rawDocuments.find(d => String(d?.type || '').toLowerCase() === 'target_shipment_receipt') ||
+        (shipment.documents && !Array.isArray(shipment.documents) ? shipment.documents.targetShipmentReceipt || shipment.documents.targetShipmentReceiptUrl : null);
 
     const isImported = Boolean(
         shipment.documents?.phenixBillId ||
@@ -1166,7 +1186,9 @@ const ShipmentDetailsPage = () => {
     const resolvedCarrierAwb = shipment.labelUrl || shipment.awbUrl || extractDocUrl(carrierAwbDoc);
     const resolvedCarrierInvoice = shipment.invoiceUrl || extractDocUrl(carrierInvoiceDoc);
     const resolvedCarrierReceipt = extractDocUrl(carrierReceiptDoc);
+    const resolvedTargetReceipt = extractDocUrl(targetReceiptDoc);
     const canGenerateCarrierDocs = isStaff && (!resolvedCarrierAwb || (hideCustomsInvoice ? !resolvedCarrierReceipt : !resolvedCarrierInvoice));
+    const canGenerateTargetReceipt = isStaff && (typeof can !== 'function' || can('BOOK_CARRIERS'));
 
     const statusEditOptions = getAllowedStatusOptions(user, shipment);
 
@@ -1614,11 +1636,11 @@ const ShipmentDetailsPage = () => {
                             </button>
                         )}
 
-                        {/* Target-Branded Shipment Receipt (for non-DHL carriers) */}
-                        {!isDhlCarrier && resolvedCarrierReceipt && (
+                        {/* Target-Branded Shipment Receipt */}
+                        {resolvedTargetReceipt && (
                             <button
                                 type="button"
-                                onClick={() => handleOpenPdf(resolvedCarrierReceipt)}
+                                onClick={() => handleOpenPdf(resolvedTargetReceipt)}
                                 className="btn btn-outline btn-sm rounded-xl font-bold gap-1 text-xs"
                             >
                                 <span className="material-symbols-outlined text-xs">description</span>
@@ -2316,8 +2338,7 @@ const ShipmentDetailsPage = () => {
                              </div>
                              )}
 
-                             {/* Document 2b: Target-Branded Shipment Receipt (for non-DHL carriers) */}
-                             {!['DGR', 'DGR2', 'DHL', 'DHL2'].includes(rawCarrierCode) && (
+                             {/* Document 2b: Target-Branded Shipment Receipt */}
                              <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">
                                  <div className="space-y-1">
                                      <div className="flex items-center justify-between">
@@ -2325,9 +2346,9 @@ const ShipmentDetailsPage = () => {
                                              <span className="material-symbols-outlined text-base">description</span>
                                          </div>
                                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-black tracking-wider uppercase border shadow-2xs ${
-                                             resolvedCarrierReceipt ? 'bg-emerald-100 text-emerald-950 border-emerald-300' : 'bg-amber-100 text-amber-950 border-amber-300'
+                                             resolvedTargetReceipt ? 'bg-emerald-100 text-emerald-950 border-emerald-300' : 'bg-amber-100 text-amber-950 border-amber-300'
                                          }`}>
-                                             {resolvedCarrierReceipt ? 'READY' : 'PENDING'}
+                                             {resolvedTargetReceipt ? 'READY' : 'PENDING'}
                                          </span>
                                      </div>
                                      <h4 className="font-extrabold text-xs text-base-content">
@@ -2337,19 +2358,18 @@ const ShipmentDetailsPage = () => {
                                          {isRTL ? 'إيصال الشحنة الرسمي من تارجت' : 'Target Logistics branded customer receipt'}
                                      </p>
                                  </div>
-                                 {resolvedCarrierReceipt ? (
-                                     <button onClick={() => handleOpenPdf(resolvedCarrierReceipt)} className="btn btn-outline btn-xs font-bold rounded-lg w-full gap-1">
+                                 {resolvedTargetReceipt ? (
+                                     <button onClick={() => handleOpenPdf(resolvedTargetReceipt)} className="btn btn-outline btn-xs font-bold rounded-lg w-full gap-1">
                                          <span className="material-symbols-outlined text-[12px]">print</span>
                                          {isRTL ? 'طباعة الإيصال' : 'Print Receipt'}
                                      </button>
-                                 ) : isStaff ? (
-                                     <button onClick={() => handleGenerateCarrierDocs('receipt')} disabled={isGeneratingCarrierDocs} className="btn btn-outline btn-xs font-bold rounded-lg w-full gap-1">
+                                 ) : canGenerateTargetReceipt ? (
+                                     <button onClick={handleGenerateTargetReceipt} disabled={isGeneratingTargetReceipt} className="btn btn-outline btn-xs font-bold rounded-lg w-full gap-1">
                                          <span className="material-symbols-outlined text-[12px]">bolt</span>
-                                         {isRTL ? 'توليد الإيصال' : 'Generate Receipt'}
+                                         {isGeneratingTargetReceipt ? (isRTL ? 'جاري التوليد...' : 'Generating...') : (isRTL ? 'توليد الإيصال' : 'Generate Receipt')}
                                      </button>
                                  ) : null}
                              </div>
-                             )}
 
                              {/* Document 3: Target Hub Handover / Invoice QR */}
                              <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">

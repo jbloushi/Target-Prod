@@ -429,6 +429,16 @@ export const shipmentService = {
     }
   },
 
+  generateTargetShipmentReceipt: async (trackingNumber, options = {}) => {
+    try {
+      const response = await api.post(`shipments/${trackingNumber}/target-receipt/generate`, options);
+      return response.data;
+    } catch (error) {
+      console.error('Error generating Target shipment receipt:', error);
+      throw error;
+    }
+  },
+
   // Upload custom/external PDF document (AWB, invoice, POD, customs)
   uploadDocument: async (trackingNumber, data) => {
     try {

@@ -344,6 +344,16 @@ router.post(
   shipmentBookingController.generateCarrierDocuments
 );
 
+router.post(
+  '/:trackingNumber/target-receipt/generate',
+  authorize('BOOK_CARRIERS'),
+  [
+    param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
+    validate
+  ],
+  shipmentBookingController.generateTargetShipmentReceipt
+);
+
 // Update a checkpoint
 router.patch(
   '/:trackingNumber/checkpoints/:checkpointId',
