@@ -5,6 +5,51 @@ import supportChatService from '../services/supportChatService';
 
 const SupportChatContext = createContext(null);
 
+const messageIdentityValues = (message) => {
+    const values = [];
+    if (message?.id !== undefined && message?.id !== null && message.id !== '') {
+        values.push(`id:${String(message.id)}`);
+    }
+    if (message?.clientMessageId) {
+        values.push(`client:${String(message.clientMessageId)}`);
+    }
+    return values;
+};
+
+const messageTimestamp = (value) => {
+    if (typeof value === 'number' || (typeof value === 'string' && /^\d+$/.test(value))) {
+        const numeric = Number(value);
+        return numeric < 1e12 ? numeric * 1000 : numeric;
+    }
+    const parsed = Date.parse(value || '');
+    return Number.isNaN(parsed) ? null : parsed;
+};
+
+const normalizeMessages = (items, conversationId) => {
+    const seen = new Set();
+    return (Array.isArray(items) ? items : [])
+        .map((message, index) => ({
+            ...message,
+            conversationId: message.conversationId || conversationId,
+            __originalIndex: index
+        }))
+        .filter((message) => {
+            const identities = messageIdentityValues(message);
+            if (identities.some((identity) => seen.has(identity))) return false;
+            identities.forEach((identity) => seen.add(identity));
+            return true;
+        })
+        .sort((a, b) => {
+            const aTime = messageTimestamp(a.createdAt);
+            const bTime = messageTimestamp(b.createdAt);
+            if (aTime === null || bTime === null || aTime === bTime) {
+                return a.__originalIndex - b.__originalIndex;
+            }
+            return aTime - bTime;
+        })
+        .map(({ __originalIndex, ...message }) => message);
+};
+
 export const useSupportChat = () => {
     const context = useContext(SupportChatContext);
     if (!context) {
@@ -116,19 +161,16 @@ export const SupportChatProvider = ({ children }) => {
                 return;
             }
             if (data?.success) {
-                const incoming = (Array.isArray(data.messages) ? data.messages : []).map(m => ({
-                    ...m,
-                    conversationId: m.conversationId || conversationId
-                }));
+                const incoming = normalizeMessages(data.messages, conversationId);
                 setMessages(prev => {
                     if (prev.length === 0) return incoming;
-                    const incomingIds = new Set(incoming.map(m => m.id));
+                    const incomingIds = new Set(incoming.flatMap(messageIdentityValues));
                     const pendingLocal = prev.filter(m =>
-                        !incomingIds.has(m.id) &&
+                        !messageIdentityValues(m).some(identity => incomingIds.has(identity)) &&
                         (!m.conversationId || String(m.conversationId) === String(conversationId))
                     );
                     if (pendingLocal.length === 0) return incoming;
-                    return [...incoming, ...pendingLocal];
+                    return normalizeMessages([...incoming, ...pendingLocal], conversationId);
                 });
                 if (data.windowStatus) {
                     setWindowStatus(data.windowStatus);
@@ -225,7 +267,7 @@ export const SupportChatProvider = ({ children }) => {
                 setActiveConversation(conv);
                 if (data.windowStatus) setWindowStatus(data.windowStatus);
                 if (Array.isArray(data.messages) && data.messages.length > 0) {
-                    setMessages(data.messages);
+                    setMessages(normalizeMessages(data.messages, convId));
                 }
                 await Promise.all([
                     loadConversationMessages(data.conversationId),
@@ -292,6 +334,7 @@ export const SupportChatProvider = ({ children }) => {
         }
 
         setSendingMessage(true);
+        const clientMessageId = globalThis.crypto?.randomUUID?.() || `client-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         try {
             const result = await supportChatService.sendMessage(activeId, {
                 content,
@@ -299,12 +342,14 @@ export const SupportChatProvider = ({ children }) => {
                 templateName,
                 templateParams,
                 language,
-                isPrivate
+                isPrivate,
+                clientMessageId
             });
 
             // Optimistically append new message to thread
             const newMsg = {
-                id: result?.message?.id || Date.now(),
+                id: result?.message?.id ?? `pending-${clientMessageId}`,
+                clientMessageId,
                 conversationId: activeId,
                 content: content || `[Template: ${templateName}]`,
                 messageType: isPrivate ? 'note' : 'outgoing',
@@ -317,7 +362,7 @@ export const SupportChatProvider = ({ children }) => {
                 status: 'delivered'
             };
 
-            setMessages(prev => [...prev, newMsg]);
+            setMessages(prev => normalizeMessages([...prev, newMsg], activeId));
 
             // Update conversation card preview
             setConversations(prev => prev.map(c => {
@@ -441,11 +486,7 @@ export const SupportChatProvider = ({ children }) => {
                             const messageWithConv = incomingMsg.conversationId
                                 ? incomingMsg
                                 : { ...incomingMsg, conversationId: convId };
-                            setMessages(prev => {
-                                // Avoid duplicate message insertion
-                                if (prev.some(m => m.id === incomingMsg.id)) return prev;
-                                return [...prev, messageWithConv];
-                            });
+                            setMessages(prev => normalizeMessages([...prev, messageWithConv], convId));
 
                             // Re-evaluate 24h window
                             if (incomingMsg.messageType === 'incoming') {

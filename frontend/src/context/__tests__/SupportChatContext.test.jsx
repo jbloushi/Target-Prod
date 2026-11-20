@@ -212,6 +212,36 @@ describe('SupportChatContext & Provider', () => {
         expect(supportChatService.getLogisticsContext).toHaveBeenCalled();
     });
 
+    it('sorts messages chronologically and removes duplicate ids regardless of id type', async () => {
+        supportChatService.getMessages.mockResolvedValue({
+            success: true,
+            messages: [
+                { id: 3, content: 'Newest', messageType: 'outgoing', createdAt: '2026-10-24T12:00:00Z' },
+                { id: 11039, content: 'Keep this copy', messageType: 'incoming', createdAt: '2026-10-24T11:00:00Z' },
+                { id: '11039', content: 'Duplicate copy', messageType: 'incoming', createdAt: '2026-10-24T11:00:00Z' },
+                { id: 1, content: 'Oldest', messageType: 'incoming', createdAt: '2026-10-24T10:00:00Z' }
+            ]
+        });
+
+        render(
+            <SupportChatProvider>
+                <TestConsumer />
+            </SupportChatProvider>
+        );
+
+        await act(async () => {
+            screen.getByTestId('select-btn').click();
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('messages-count').textContent).toBe('3');
+        });
+
+        const renderedMessages = Array.from(screen.getByTestId('message-list').children)
+            .map((element) => element.textContent);
+        expect(renderedMessages).toEqual(['Oldest', 'Keep this copy', 'Newest']);
+    });
+
     it('handles incoming SSE real-time message event without full page reload', async () => {
         render(
             <SupportChatProvider>
@@ -241,6 +271,20 @@ describe('SupportChatContext & Provider', () => {
                     message: {
                         id: 999,
                         content: 'Realtime update received!',
+                        messageType: 'incoming',
+                        createdAt: new Date().toISOString()
+                    }
+                })
+            });
+        });
+
+        await act(async () => {
+            sseListeners['message']({
+                data: JSON.stringify({
+                    conversationId: 101,
+                    message: {
+                        id: '999',
+                        content: 'Duplicate realtime update',
                         messageType: 'incoming',
                         createdAt: new Date().toISOString()
                     }
@@ -304,9 +348,23 @@ describe('SupportChatContext & Provider', () => {
     });
 
     it('sends agent reply and updates status correctly', async () => {
-        supportChatService.sendMessage.mockResolvedValue({
-            success: true,
-            message: { id: 888, content: 'Agent response test', status: 'delivered' }
+        supportChatService.sendMessage.mockImplementation(async (_conversationId, payload) => {
+            sseListeners.message({
+                data: JSON.stringify({
+                    conversationId: 101,
+                    message: {
+                        id: 888,
+                        clientMessageId: payload.clientMessageId,
+                        content: 'Agent response test',
+                        messageType: 'outgoing',
+                        createdAt: new Date().toISOString()
+                    }
+                })
+            });
+            return {
+                success: true,
+                message: { id: 888, content: 'Agent response test', status: 'delivered' }
+            };
         });
         supportChatService.toggleStatus.mockResolvedValue({
             success: true,
@@ -335,7 +393,8 @@ describe('SupportChatContext & Provider', () => {
 
         await waitFor(() => {
             expect(supportChatService.sendMessage).toHaveBeenCalledWith(101, expect.objectContaining({
-                content: 'Agent response test'
+                content: 'Agent response test',
+                clientMessageId: expect.any(String)
             }));
             expect(screen.getByTestId('messages-count').textContent).toBe('2');
         });

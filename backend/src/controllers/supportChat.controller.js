@@ -300,7 +300,7 @@ exports.get24hWindow = async (req, res) => {
 exports.sendMessage = async (req, res) => {
     try {
         const { id } = req.params;
-        const { content, isTemplate, templateName, templateParams, language, isPrivate } = req.body;
+        const { content, isTemplate, templateName, templateParams, language, isPrivate, clientMessageId } = req.body;
 
         // 1. Verify sending user has a configured Chatwoot token
         const user = await prisma.user.findUnique({
@@ -429,6 +429,7 @@ exports.sendMessage = async (req, res) => {
             conversationId: id,
             message: {
                 id: result?.id || Date.now(),
+                clientMessageId: clientMessageId || null,
                 content: payload.content,
                 messageType: isPrivate ? 'note' : 'outgoing',
                 private: Boolean(isPrivate),
@@ -441,7 +442,8 @@ exports.sendMessage = async (req, res) => {
 
         return res.status(201).json({
             success: true,
-            message: result
+            message: result,
+            clientMessageId: clientMessageId || null
         });
     } catch (err) {
         logger.error(`[supportChat] sendMessage error:`, err);
