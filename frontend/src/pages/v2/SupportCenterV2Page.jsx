@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLanguage } from '../../context/LanguageContext';
 import { useSupportChat } from '../../context/SupportChatContext';
 import { ConversationList } from '../../components/support/ConversationList';
@@ -100,56 +100,30 @@ export const SupportCenterV2Page = () => {
     return (
         <div
             data-testid="support-center-v2-page"
-            className="w-full min-h-[calc(100dvh-64px)] lg:h-[calc(100dvh-64px)] flex flex-col bg-slate-50 dark:bg-slate-950 overflow-x-hidden"
+            className="w-full h-full min-h-0 flex flex-col bg-slate-50 dark:bg-slate-950 overflow-hidden"
         >
-            {/* V1 <-> V2 Switcher Banner */}
-            <div className="px-3 sm:px-5 py-2.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-2.5 shrink-0">
-                <div className="flex flex-wrap items-center gap-2 min-w-0">
+            {/* Keep the workspace header short; global navigation already provides app links and version switching. */}
+            <div className="px-3 sm:px-5 py-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
                     <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-primary text-white whitespace-nowrap shrink-0">
                         {isRTL ? 'مركز الدعم V2' : 'Support Center V2'}
                     </span>
-                    <span className="text-xs font-medium text-slate-600 dark:text-slate-300 truncate">
+                    <span className="hidden md:block text-xs font-medium text-slate-600 dark:text-slate-300 truncate">
                         {isRTL
                             ? 'المحادثات الموحدة وسياق الشحنات الفوري'
                             : 'Omnichannel support inbox with live shipment context'}
                     </span>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-between lg:justify-end">
-                    <div className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-                        <Link
-                            to="/dashboard-v2"
-                            className="px-2.5 py-1 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap"
-                        >
-                            {isRTL ? 'لوحة القيادة V2' : 'Dashboard V2'}
-                        </Link>
-                        <Link
-                            to="/shipments-v2"
-                            className="px-2.5 py-1 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap"
-                        >
-                            {isRTL ? 'الشحنات V2' : 'Shipments V2'}
-                        </Link>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={handleRefresh}
-                            disabled={loadingConversations}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer disabled:opacity-50"
-                        >
-                            <span className="material-symbols-outlined text-sm" aria-hidden="true">refresh</span>
-                            <span className="hidden sm:inline">{isRTL ? 'تحديث' : 'Refresh'}</span>
-                        </button>
-                        <Link
-                            to={routeConversationId ? `/support/${routeConversationId}` : '/support'}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 transition-colors shrink-0 whitespace-nowrap"
-                        >
-                            <span className="material-symbols-outlined text-sm leading-none" aria-hidden="true">
-                                {isRTL ? 'arrow_forward' : 'arrow_back'}
-                            </span>
-                            <span>{isRTL ? 'العودة إلى V1' : 'Switch to V1 Standard'}</span>
-                        </Link>
-                    </div>
-                </div>
+                <button
+                    type="button"
+                    onClick={handleRefresh}
+                    disabled={loadingConversations}
+                    aria-label={isRTL ? 'تحديث المحادثات' : 'Refresh conversations'}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer disabled:opacity-50 shrink-0"
+                >
+                    <span className="material-symbols-outlined text-sm" aria-hidden="true">refresh</span>
+                    <span className="hidden sm:inline">{isRTL ? 'تحديث' : 'Refresh'}</span>
+                </button>
             </div>
 
             {syncError && (
@@ -163,7 +137,7 @@ export const SupportCenterV2Page = () => {
             )}
 
             {/* Compact navigation for phones; tablet keeps inbox and thread side by side. */}
-            <div className="2xl:hidden px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between gap-2 shrink-0">
+            <div className="lg:hidden px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between gap-2 shrink-0">
                 {mobileView !== 'list' && (
                     <button
                         type="button"
@@ -240,21 +214,30 @@ export const SupportCenterV2Page = () => {
                 >
                     {activeConversation ? (
                         <>
-                            <div className="flex items-center justify-end px-3 sm:px-4 py-1.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0 2xl:hidden">
+                            <div className="hidden lg:flex items-center justify-end px-3 sm:px-4 py-1.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => setMobileView((view) => view === 'context' ? 'thread' : 'context')}
+                                    aria-pressed={mobileView === 'context'}
+                                    className="2xl:hidden inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                                >
+                                    <span className="material-symbols-outlined text-sm" aria-hidden="true">local_shipping</span>
+                                    <span>{mobileView === 'context'
+                                        ? isRTL ? 'إخفاء الشحنات' : 'Hide shipments'
+                                        : isRTL ? 'عرض الشحنات' : 'Shipments'}</span>
+                                </button>
                                 <button
                                     type="button"
                                     onClick={() => setShowContextPanel((prev) => !prev)}
                                     aria-pressed={showContextPanel}
-                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                                    className="hidden 2xl:inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                                 >
                                     <span className="material-symbols-outlined text-sm" aria-hidden="true">
                                         {showContextPanel ? 'side_navigation' : 'dock_to_right'}
                                     </span>
-                                    <span>
-                                        {showContextPanel
-                                            ? isRTL ? 'إخفاء التفاصيل' : 'Hide Context'
-                                            : isRTL ? 'إظهار التفاصيل' : 'Show Context'}
-                                    </span>
+                                    <span>{showContextPanel
+                                        ? isRTL ? 'إخفاء الشحنات' : 'Hide shipments'
+                                        : isRTL ? 'إظهار الشحنات' : 'Show shipments'}</span>
                                 </button>
                             </div>
 
@@ -299,16 +282,16 @@ export const SupportCenterV2Page = () => {
                 </div>
 
                 {/* Pane 3: Customer Context */}
-                {activeConversation && showContextPanel && (
+                {activeConversation && (showContextPanel || mobileView === 'context') && (
                     <div
-                        className={`w-full lg:w-[min(24rem,calc(100vw-18rem))] 2xl:w-80 shrink-0 h-full border-s border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-y-auto ${
+                        className={`w-full lg:w-80 2xl:w-80 shrink-0 h-full border-s border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-y-auto ${
                             mobileView === 'context' ? 'flex flex-col' : 'hidden 2xl:flex 2xl:flex-col'
                         } ${mobileView === 'context' ? 'lg:absolute lg:z-30 lg:inset-y-0 lg:end-0 lg:shadow-2xl 2xl:static 2xl:shadow-none' : ''}`}
                     >
                         <div className="hidden lg:flex 2xl:hidden absolute z-10 top-2 end-2">
                             <button
                                 type="button"
-                                onClick={() => { setShowContextPanel(false); setMobileView('thread'); }}
+                                onClick={() => setMobileView('thread')}
                                 aria-label={isRTL ? 'إغلاق تفاصيل الشحنة' : 'Close shipment details'}
                                 className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 shadow"
                             >

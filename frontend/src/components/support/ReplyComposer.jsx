@@ -167,7 +167,7 @@ export const ReplyComposer = ({
         .replace('{{4}}', 'Kuwait');
 
     return (
-        <div data-testid="reply-composer-pane" className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 space-y-2.5 shrink-0">
+        <div data-testid="reply-composer-pane" className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 space-y-2 shrink-0">
             {/* Missing Agent Token RBAC Guard Alert */}
             {!hasChatwootToken && (
                 <div
@@ -201,19 +201,12 @@ export const ReplyComposer = ({
             {!windowStatus.inside24hWindow && (
                 <div
                     data-testid="window-expired-composer-banner"
-                    className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 flex items-start gap-2 text-xs"
+                    className="px-2.5 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 flex items-center gap-2 text-[11px]"
                 >
-                    <span className="material-symbols-outlined text-base text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">info</span>
-                    <div>
-                        <p className="font-bold text-slate-900 dark:text-white">
-                            {isRTL ? 'انتهت نافذة الـ 24 ساعة للرد الحر' : '24-Hour Customer Service Window Expired'}
-                        </p>
-                        <p className="text-slate-600 dark:text-slate-300 text-[11px] mt-0.5">
-                            {isRTL
-                                ? 'وفقاً لسياسات Meta Cloud API، لا يمكن إرسال نصوص حرة خارج الـ 24 ساعة. تم تفعيل اختيار قوالب ميتا المعتمدة تلقائياً.'
-                                : 'Per Meta WhatsApp policies, free-form text is disabled outside 24h. Please select an approved utility template to re-engage the customer.'}
-                        </p>
-                    </div>
+                    <span className="material-symbols-outlined text-sm text-amber-600 dark:text-amber-400 shrink-0">info</span>
+                    <span className="font-semibold text-slate-700 dark:text-slate-200">
+                        {isRTL ? 'انتهت نافذة الرد الحر. اختر قالباً معتمداً أدناه.' : 'Reply window expired. Choose an approved template below.'}
+                    </span>
                 </div>
             )}
 
@@ -327,8 +320,9 @@ export const ReplyComposer = ({
                 </form>
             ) : (
                 /* Mode B: Approved Meta Template Selector & Dispatcher */
-                <form onSubmit={handleSend} className="space-y-2.5">
-                    <div className="space-y-1">
+                <form onSubmit={handleSend} className="space-y-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div className="space-y-1 min-w-0">
                         <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block">
                             {isRTL ? 'اختر قالب ميتا المعتمد' : 'Select Approved Meta Template'}
                         </label>
@@ -348,9 +342,9 @@ export const ReplyComposer = ({
                     </div>
 
                     {/* Template Parameter Input if needed */}
-                    <div className="space-y-1">
+                    <div className="space-y-1 min-w-0">
                         <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block">
-                            {isRTL ? 'تفاصيل إضافية / الملاحظات للمتغيرات' : 'Custom Variable Parameter'}
+                            {isRTL ? 'تفاصيل إضافية (اختياري)' : 'Optional details'}
                         </label>
                         <input
                             type="text"
@@ -361,19 +355,22 @@ export const ReplyComposer = ({
                             className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                         />
                     </div>
-
-                    {/* Live Preview Card */}
-                    <div className="p-3 rounded-xl bg-primary/5 dark:bg-primary/10 border border-primary/20 space-y-1">
-                        <div className="flex items-center gap-1 text-[10px] font-bold text-primary uppercase font-mono">
-                            <span className="material-symbols-outlined text-xs">preview</span>
-                            <span>{isRTL ? 'معاينة نص القالب الفعلي' : 'Live WhatsApp Template Preview'}</span>
-                        </div>
-                        <p className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed font-medium whitespace-pre-wrap">
-                            {previewBody}
-                        </p>
                     </div>
 
-                    <div className="flex justify-end pt-1">
+                    <details className="group">
+                        <summary className="inline-flex items-center gap-1 min-h-8 cursor-pointer text-[11px] font-bold text-primary">
+                            <span className="material-symbols-outlined text-sm" aria-hidden="true">preview</span>
+                            <span>{isRTL ? 'معاينة القالب' : 'Preview template'}</span>
+                            <span className="material-symbols-outlined text-sm transition-transform group-open:rotate-180" aria-hidden="true">expand_more</span>
+                        </summary>
+                        <div className="p-2.5 rounded-lg bg-primary/5 dark:bg-primary/10 border border-primary/20 mt-1">
+                            <p className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed font-medium whitespace-pre-wrap">
+                                {previewBody}
+                            </p>
+                        </div>
+                    </details>
+
+                    <div className="flex justify-end">
                         <button
                             type="submit"
                             data-testid="send-template-btn"

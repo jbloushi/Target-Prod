@@ -15,17 +15,18 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
         toggleConversationStatus
     } = useSupportChat();
 
-    const messagesEndRef = useRef(null);
+    const messagesContainerRef = useRef(null);
     const shouldStickToBottomRef = useRef(true);
 
     useEffect(() => {
         shouldStickToBottomRef.current = true;
     }, [conversation?.id]);
 
-    // Auto-scroll to bottom when messages update
+    // Scroll only the message list. scrollIntoView can move the entire page and footer.
     useEffect(() => {
-        if (shouldStickToBottomRef.current && typeof messagesEndRef.current?.scrollIntoView === 'function') {
-            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        const container = messagesContainerRef.current;
+        if (shouldStickToBottomRef.current && container) {
+            container.scrollTop = container.scrollHeight;
         }
     }, [messages]);
 
@@ -197,6 +198,7 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
             {/* Messages Scroll Area */}
             <div
                 data-testid="messages-stream"
+                ref={messagesContainerRef}
                 onScroll={(event) => {
                     const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
                     shouldStickToBottomRef.current = scrollHeight - scrollTop - clientHeight < 120;
@@ -341,7 +343,6 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
                         );
                     })
                 )}
-                <div ref={messagesEndRef} />
             </div>
         </div>
     );

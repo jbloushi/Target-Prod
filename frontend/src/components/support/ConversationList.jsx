@@ -68,7 +68,7 @@ export const ConversationList = ({ onSelectConversation }) => {
     return (
         <aside
             data-testid="conversation-list-pane"
-            className="w-full md:w-80 lg:w-96 shrink-0 border-e border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col h-full"
+            className="w-full min-w-0 shrink-0 border-e border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col h-full"
         >
             {/* Header / Search Controls */}
             <div className="p-4 border-b border-slate-200 dark:border-slate-800 space-y-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xs">
