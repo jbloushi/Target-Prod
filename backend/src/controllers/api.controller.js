@@ -635,6 +635,15 @@ exports.createShipment = async (req, res) => {
             }
         }
 
+        // API bookings bypass ShipmentBookingService; create the restricted accounting copy here too.
+        try {
+            const { generateAndStoreInternalShipmentReceipt } = require('../services/internalShipmentReceipt.service');
+            const internalCarrierName = resolvedCarrierCode === 'DGR' ? 'DHL Express' : resolvedCarrierCode;
+            await generateAndStoreInternalShipmentReceipt(newShipment, internalCarrierName);
+        } catch (receiptError) {
+            logger.warn(`Internal shipment receipt generation skipped for ${result.trackingNumber}: ${receiptError.message}`);
+        }
+
         WebhookDispatcher.dispatch('shipment.booked', newShipment.organizationId || req.user?.organizationId, {
             trackingNumber: result.trackingNumber,
             carrier: resolvedCarrierCode,

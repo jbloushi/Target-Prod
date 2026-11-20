@@ -439,6 +439,16 @@ export const shipmentService = {
     }
   },
 
+  downloadInternalShipmentReceipt: async (trackingNumber) => {
+    const response = await api.get(`shipments/${trackingNumber}/internal-cost-receipt`, { responseType: 'blob' });
+    return response.data;
+  },
+
+  ensureInternalShipmentReceipt: async (trackingNumber) => {
+    const response = await api.get(`shipments/${trackingNumber}/internal-cost-receipt`, { params: { ensureOnly: true } });
+    return response.data;
+  },
+
   // Upload custom/external PDF document (AWB, invoice, POD, customs)
   uploadDocument: async (trackingNumber, data) => {
     try {

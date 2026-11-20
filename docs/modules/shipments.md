@@ -360,6 +360,7 @@ DELETE /api/shipments/:trackingNumber/checkpoints/:checkpointId
 
 GET    /api/shipments/:trackingNumber/label        — Generate HTML label
 GET    /api/shipments/:trackingNumber/documents/:filename  — Download document PDF
+GET    /api/shipments/:trackingNumber/internal-cost-receipt — Staff-only carrier cost / customer charge PDF (VIEW_COST_DATA)
 POST   /api/shipments/:trackingNumber/pickup       — Driver pickup scan
 POST   /api/shipments/:trackingNumber/warehouse/scan  — Warehouse inbound scan
 PATCH  /api/shipments/:trackingNumber/public-settings — Toggle public update flags
@@ -379,3 +380,7 @@ PATCH  /api/shipments/:trackingNumber/public-settings — Toggle public update f
 | `driver` | Only shipments assigned to them; pickup operation only |
 
 Tenant isolation is enforced at the query level — non-platform roles have `organizationId` or `userId` hard-scoped into every DB query.
+
+## Shipment receipts
+
+The Target customer receipt contains shipment and customer-charge details only and remains attached to shipment documents. A separate internal accounting receipt includes the carrier cost and customer charge. It is generated when shipments are created or booked, and is also generated when an authorized staff member opens a shipment receipt for an older record. The accounting PDF is stored outside public `/uploads`, is not attached to shipment documents, and is streamed only through the authenticated `VIEW_COST_DATA` endpoint.

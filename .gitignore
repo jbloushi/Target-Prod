@@ -12,5 +12,6 @@ node_modules/
 *.log
 backend/run_query.js
 backend/data/salla_tokens.json
+backend/private-shipment-receipts/
 backend/src/constants/rateCards/dgr_test.json
 .scratch/

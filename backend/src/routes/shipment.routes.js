@@ -354,6 +354,16 @@ router.post(
   shipmentBookingController.generateTargetShipmentReceipt
 );
 
+router.get(
+  '/:trackingNumber/internal-cost-receipt',
+  authorize('VIEW_COST_DATA'),
+  [
+    param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
+    validate
+  ],
+  shipmentBookingController.downloadInternalShipmentReceipt
+);
+
 // Update a checkpoint
 router.patch(
   '/:trackingNumber/checkpoints/:checkpointId',

@@ -681,6 +681,21 @@ class ShipmentBookingService {
                 ? await prisma.$transaction(executeBookingCommit)
                 : await executeBookingCommit(prisma);
 
+            // Generate the detailed cost copy after the booking transaction, with finalized rates and IDs.
+            // It is never added to shipment.documents or the public /uploads tree.
+            try {
+                const { generateAndStoreInternalShipmentReceipt } = require('./internalShipmentReceipt.service');
+                const internalCarrierName = ['INTERNAL', 'MANUAL'].includes(String(carrierCode).toUpperCase())
+                    ? 'Target Logistics'
+                    : (carrierCode === 'DGR' ? 'DHL Express' : (carrierCode === 'SMSA' ? 'SMSA Express' : carrierCode));
+                await generateAndStoreInternalShipmentReceipt(
+                    { ...finalizedShipment, dhlTrackingNumber: carrierTrackingNumber, carrierShipmentId },
+                    internalCarrierName
+                );
+            } catch (receiptError) {
+                logger.warn(`Internal shipment receipt generation skipped for ${freshShipment.trackingNumber}: ${receiptError.message}`);
+            }
+
             // Dispatch webhook and chatwoot notification
             try {
                 const WebhookDispatcher = require('./WebhookDispatcher');

@@ -280,7 +280,7 @@ function generateCarrierAwbPdfBuffer(shipment, carrierName = 'Target Express') {
  * Generates a Target-branded internal Shipment Receipt PDF for non-DHL carriers
  * (SMSA, OTE, Aramex, FedEx, Internal) — displays customer-facing total charge only.
  */
-function generateTargetShipmentReceiptPdf(shipment, carrierName = 'Target Express') {
+function generateTargetShipmentReceiptPdf(shipment, carrierName = 'Target Express', options = {}) {
     const trk = escapePdfText(shipment.trackingNumber || 'N/A');
     const carrierAwb = escapePdfText(shipment.carrierShipmentId || shipment.dhlTrackingNumber || shipment.trackingNumber || 'Pending');
     const carrierLabel = escapePdfText(carrierName || shipment.carrierCode || 'Target Express');
@@ -292,6 +292,11 @@ function generateTargetShipmentReceiptPdf(shipment, carrierName = 'Target Expres
     const totalPieces = parcels.reduce((sum, p) => sum + (Number(p?.quantity) || 1), 0) || Number(shipment.pieces || 1);
 
     const totalPrice = Number(shipment.price ?? shipment.pricingSnapshot?.totalPrice ?? 0).toFixed(3);
+    const rawCarrierCost = shipment.carrierCost ?? shipment.costPrice ?? shipment.pricingSnapshot?.carrierRate ?? shipment.pricingSnapshot?.baseRate;
+    const carrierCost = rawCarrierCost === null || rawCarrierCost === undefined || rawCarrierCost === '' || !Number.isFinite(Number(rawCarrierCost))
+        ? 'NOT RECORDED'
+        : Number(rawCarrierCost).toFixed(3);
+    const isInternal = options.includeInternalCosts === true;
     const currency = escapePdfText(shipment.currency || shipment.pricingSnapshot?.currency || 'KWD');
     const paidText = shipment.paid ? 'PAID' : 'BILLED / ON ACCOUNT';
     const shipmentCreatedAt = new Date(shipment.createdAt || Date.now());
@@ -303,8 +308,13 @@ function generateTargetShipmentReceiptPdf(shipment, carrierName = 'Target Expres
         : new Date();
     const createdDate = escapePdfText(receiptDate.toISOString().slice(0, 19).replace('T', ' '));
 
-    const senderLine = escapePdfText(`${sender.name || sender.company || 'Shipper'} | ${sender.city || ''}, ${sender.countryCode || 'KW'} | ${sender.phone || ''}`);
-    const receiverLine = escapePdfText(`${receiver.name || receiver.company || 'Consignee'} | ${receiver.city || ''}, ${receiver.countryCode || ''} | ${receiver.phone || ''}`);
+    const addressText = (address) => [address.addressLine1, address.addressLine2, address.street, address.block, address.building]
+        .filter(Boolean).join(', ');
+    const senderLine = escapePdfText(`${sender.name || sender.company || 'Shipper'} | ${addressText(sender)}`);
+    const senderContact = escapePdfText(`${[sender.city, sender.state, sender.postalCode, sender.countryCode || 'KW'].filter(Boolean).join(', ')} | ${sender.phone || ''} | ${sender.email || ''}`);
+    const receiverLine = escapePdfText(`${receiver.name || receiver.company || 'Consignee'} | ${addressText(receiver)}`);
+    const receiverContact = escapePdfText(`${[receiver.city, receiver.state, receiver.postalCode, receiver.countryCode].filter(Boolean).join(', ')} | ${receiver.phone || ''} | ${receiver.email || ''}`);
+    const shipmentType = escapePdfText(shipment.shipmentType || shipment.serviceType || shipment.description || 'General Cargo');
 
     const streamLines = [
         'q',
@@ -314,26 +324,35 @@ function generateTargetShipmentReceiptPdf(shipment, carrierName = 'Target Expres
         'BT',
         '1.0 1.0 1.0 rg',
         '/F1 18 Tf 55 792 Td (TARGET LOGISTICS) Tj',
-        '/F1 11 Tf 240 0 Td (OFFICIAL SHIPMENT RECEIPT) Tj',
+        `/F1 11 Tf 240 0 Td (${isInternal ? 'INTERNAL ACCOUNTING COPY' : 'OFFICIAL SHIPMENT RECEIPT'}) Tj`,
         `/F2 9 Tf -240 -15 Td (Carrier: ${carrierLabel}   |   Service: ${service}   |   Date: ${createdDate} UTC) Tj`,
         '0.0 0.0 0.0 rg',
         `/F1 12 Tf 50 735 Td (Target Tracking #: ${trk}) Tj`,
         `/F2 10 Tf 0 -18 Td (Carrier AWB / Ref: ${carrierAwb}) Tj`,
         `/F1 10 Tf 0 -28 Td (SHIPPER DETAILS) Tj`,
         `/F2 9 Tf 0 -15 Td (${senderLine}) Tj`,
-        `/F1 10 Tf 0 -24 Td (CONSIGNEE DETAILS) Tj`,
+        `/F2 8 Tf 0 -12 Td (${senderContact}) Tj`,
+        `/F1 10 Tf 0 -22 Td (CONSIGNEE DETAILS) Tj`,
         `/F2 9 Tf 0 -15 Td (${receiverLine}) Tj`,
-        `/F1 10 Tf 0 -24 Td (CONSIGNMENT SUMMARY) Tj`,
-        `/F2 9 Tf 0 -15 Td (Pieces: ${totalPieces}   |   Chargeable / Actual Weight: ${Number(totalWeight).toFixed(2)} KG) Tj`,
+        `/F2 8 Tf 0 -12 Td (${receiverContact}) Tj`,
+        `/F1 10 Tf 0 -22 Td (CONSIGNMENT SUMMARY) Tj`,
+        `/F2 9 Tf 0 -15 Td (Type: ${shipmentType}   |   Pieces: ${totalPieces}   |   Chargeable / Actual Weight: ${Number(totalWeight).toFixed(2)} KG) Tj`,
         'ET',
         'q',
         '0.95 0.95 0.95 rg 40 480 515 65 re f',
         '0.8 0.8 0.8 RG 1 w 40 480 515 65 re s',
         'Q',
         'BT',
-        `/F1 12 Tf 55 522 Td (TOTAL SHIPMENT CHARGE:  ${totalPrice} ${currency}) Tj`,
-        `/F2 9 Tf 0 -18 Td (Payment Status: ${paidText}) Tj`,
-        `/F2 8 Tf 0 -16 Td (Issued electronically by Target Logistics Kuwait - Official Customer Receipt) Tj`,
+        ...(isInternal ? [
+            `/F1 11 Tf 55 525 Td (CARRIER COST:  ${carrierCost} ${currency}) Tj`,
+            `/F1 11 Tf 0 -20 Td (CUSTOMER CHARGE:  ${totalPrice} ${currency}) Tj`,
+            `/F2 8 Tf 0 -18 Td (Payment Status: ${paidText}) Tj`,
+            '/F2 8 Tf 0 -16 Td (CONFIDENTIAL - INTERNAL STAFF / ACCOUNTING USE ONLY) Tj'
+        ] : [
+            `/F1 12 Tf 55 522 Td (TOTAL SHIPMENT CHARGE:  ${totalPrice} ${currency}) Tj`,
+            `/F2 9 Tf 0 -18 Td (Payment Status: ${paidText}) Tj`,
+            `/F2 8 Tf 0 -16 Td (Issued electronically by Target Logistics Kuwait - Official Customer Receipt) Tj`
+        ]),
         'ET'
     ];
 

@@ -337,6 +337,8 @@ const ShipmentDetailsPage = () => {
 
     const { user, can } = useAuth();
     const { enqueueSnackbar } = useSnackbar();
+    const canViewCostData = typeof can === 'function' && can('VIEW_COST_DATA');
+    const internalReceiptEnsuredRef = useRef(null);
 
     const {
         shipment,
@@ -350,6 +352,7 @@ const ShipmentDetailsPage = () => {
     const [isProcessing, setIsProcessing] = useState(false);
     const [isGeneratingCarrierDocs, setIsGeneratingCarrierDocs] = useState(false);
     const [isGeneratingTargetReceipt, setIsGeneratingTargetReceipt] = useState(false);
+    const [isGeneratingInternalReceipt, setIsGeneratingInternalReceipt] = useState(false);
     const [copiedTracking, setCopiedTracking] = useState(false);
     const [isCarrierDocsCollapsed, setIsCarrierDocsCollapsed] = useState(false);
     const [isPodModalOpen, setIsPodModalOpen] = useState(false);
@@ -434,6 +437,14 @@ const ShipmentDetailsPage = () => {
             document.removeEventListener('visibilitychange', handleVisibility);
         };
     }, [trackingNumber, getShipment]);
+
+    useEffect(() => {
+        if (!canViewCostData || !shipment?.trackingNumber || internalReceiptEnsuredRef.current === shipment.trackingNumber) return;
+        internalReceiptEnsuredRef.current = shipment.trackingNumber;
+        shipmentService.ensureInternalShipmentReceipt(shipment.trackingNumber).catch(() => {
+            internalReceiptEnsuredRef.current = null;
+        });
+    }, [canViewCostData, shipment?.trackingNumber]);
 
     const shipmentId = shipment?._id || shipment?.id;
     const organizationId = shipment?.organizationId || shipment?.organization?._id;
@@ -1053,6 +1064,27 @@ const ShipmentDetailsPage = () => {
             enqueueSnackbar(err.response?.data?.error || err.response?.data?.message || err.message || 'Failed generating Target receipt', { variant: 'error' });
         } finally {
             setIsGeneratingTargetReceipt(false);
+        }
+    };
+
+    const handleDownloadInternalReceipt = async () => {
+        if (!canViewCostData || !shipment?.trackingNumber) return;
+        const receiptWindow = window.open('about:blank', '_blank');
+        if (!receiptWindow) {
+            enqueueSnackbar(isRTL ? 'يرجى السماح بالنوافذ المنبثقة لعرض الإيصال' : 'Allow pop-ups to open the receipt', { variant: 'warning' });
+            return;
+        }
+        setIsGeneratingInternalReceipt(true);
+        try {
+            const pdfBlob = await shipmentService.downloadInternalShipmentReceipt(shipment.trackingNumber);
+            const blobUrl = URL.createObjectURL(pdfBlob);
+            receiptWindow.location = blobUrl;
+            window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+        } catch (err) {
+            receiptWindow.close();
+            enqueueSnackbar(err?.response?.data?.error || err?.message || 'Unable to generate internal receipt', { variant: 'error' });
+        } finally {
+            setIsGeneratingInternalReceipt(false);
         }
     };
 
@@ -2370,6 +2402,25 @@ const ShipmentDetailsPage = () => {
                                      </button>
                                  ) : null}
                              </div>
+
+                             {canViewCostData && (
+                                 <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl flex flex-col justify-between space-y-3">
+                                     <div className="space-y-1">
+                                         <div className="flex items-center justify-between">
+                                             <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center">
+                                                 <span className="material-symbols-outlined text-base">lock</span>
+                                             </div>
+                                             <span className="text-[10px] font-black tracking-wider uppercase text-amber-800">STAFF ONLY</span>
+                                         </div>
+                                         <h4 className="font-extrabold text-xs text-base-content">Internal Cost Receipt</h4>
+                                         <p className="text-[11px] text-base-content/60">Carrier cost and customer charge. Protected accounting copy.</p>
+                                     </div>
+                                     <button onClick={handleDownloadInternalReceipt} disabled={isGeneratingInternalReceipt} className="btn btn-outline btn-xs font-bold rounded-lg w-full gap-1 disabled:opacity-50">
+                                         <span className="material-symbols-outlined text-[12px]">receipt_long</span>
+                                         {isGeneratingInternalReceipt ? 'Generating…' : 'View Internal Receipt'}
+                                     </button>
+                                 </div>
+                             )}
 
                              {/* Document 3: Target Hub Handover / Invoice QR */}
                              <div className="p-3.5 bg-base-200/40 border border-base-200 rounded-xl flex flex-col justify-between space-y-3">

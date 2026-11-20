@@ -1081,3 +1081,38 @@ exports.generateTargetShipmentReceipt = async (req, res) => {
         return handleControllerError(res, error, 'Generate Target shipment receipt');
     }
 };
+
+/**
+ * Create or refresh the private accounting copy and stream it to an authorized staff member.
+ * This file is not stored in shipment.documents and is not served from /uploads.
+ */
+exports.downloadInternalShipmentReceipt = async (req, res) => {
+    try {
+        const { trackingNumber } = req.params;
+        const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
+        if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
+        if (!canAccessShipment(req, shipment)) return res.status(403).json({ success: false, error: 'Permission denied' });
+        if (!hasCapability(req.user?.role, 'VIEW_COST_DATA')) {
+            return res.status(403).json({ success: false, error: 'Cost data access is required' });
+        }
+
+        const carrierCode = normalizeCarrierCode(shipment.carrierCode || shipment.carrier || 'INTERNAL');
+        const carrierName = ['INTERNAL', 'MANUAL'].includes(carrierCode)
+            ? 'Target Logistics'
+            : (carrierCode === 'DGR' ? 'DHL Express' : (carrierCode === 'SMSA' ? 'SMSA Express' : carrierCode));
+        const { generateAndStoreInternalShipmentReceipt } = require('../services/internalShipmentReceipt.service');
+        const filePath = await generateAndStoreInternalShipmentReceipt(shipment, carrierName);
+        if (req.query?.ensureOnly === 'true') {
+            return res.status(200).json({ success: true, data: { ready: true } });
+        }
+        res.set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${String(trackingNumber).replace(/[^a-zA-Z0-9_-]/g, '_')}-internal-receipt.pdf"`,
+            'Cache-Control': 'private, no-store, max-age=0',
+            'X-Content-Type-Options': 'nosniff'
+        });
+        return res.sendFile(filePath);
+    } catch (error) {
+        return handleControllerError(res, error, 'Generate internal shipment receipt');
+    }
+};

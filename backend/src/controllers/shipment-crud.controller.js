@@ -687,6 +687,19 @@ exports.createShipment = async (req, res) => {
             logger.info(`Dispatched background booking job for ${shipment.trackingNumber}`);
         }
 
+        // Keep an internal accounting receipt available for every newly created shipment,
+        // including internal/manual and draft shipments. It is stored outside public uploads.
+        try {
+            const { generateAndStoreInternalShipmentReceipt } = require('../services/internalShipmentReceipt.service');
+            const code = String(shipment.carrierCode || 'INTERNAL').toUpperCase();
+            await generateAndStoreInternalShipmentReceipt(
+                shipment,
+                code === 'DGR' ? 'DHL Express' : (['INTERNAL', 'MANUAL'].includes(code) ? 'Target Logistics' : code)
+            );
+        } catch (receiptError) {
+            logger.warn(`Internal shipment receipt generation skipped for ${shipment.trackingNumber}: ${receiptError.message}`);
+        }
+
         if (!hasCapability(req.user?.role, 'VIEW_COST_DATA')) {
             shipment.costPrice = null;
             shipment.markupAmount = null;

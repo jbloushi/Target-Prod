@@ -40,6 +40,7 @@ export const ShipmentDetailsV2Page = () => {
     const { enqueueSnackbar } = useSnackbar();
     const { shipment, loading, error, getShipment } = useShipment();
     const approvalHandledRef = useRef(false);
+    const internalReceiptEnsuredRef = useRef(null);
 
     // Strict RBAC & Capability Gating
     const isPlatformOps = Boolean(user && isPlatformRole(user.role));
@@ -56,6 +57,7 @@ export const ShipmentDetailsV2Page = () => {
     const [isSyncingCarrier, setIsSyncingCarrier] = useState(false);
     const [isGeneratingDocs, setIsGeneratingDocs] = useState(false);
     const [isGeneratingTargetReceipt, setIsGeneratingTargetReceipt] = useState(false);
+    const [isGeneratingInternalReceipt, setIsGeneratingInternalReceipt] = useState(false);
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
     const [uploadDocType, setUploadDocType] = useState('awb');
     const [uploadFile, setUploadFile] = useState(null);
@@ -88,6 +90,14 @@ export const ShipmentDetailsV2Page = () => {
     useEffect(() => {
         loadShipmentData();
     }, [loadShipmentData]);
+
+    useEffect(() => {
+        if (!canViewCost || !shipment?.trackingNumber || internalReceiptEnsuredRef.current === shipment.trackingNumber) return;
+        internalReceiptEnsuredRef.current = shipment.trackingNumber;
+        shipmentService.ensureInternalShipmentReceipt(shipment.trackingNumber).catch(() => {
+            internalReceiptEnsuredRef.current = null;
+        });
+    }, [canViewCost, shipment?.trackingNumber]);
 
     // Auto-refresh active shipments every 2 minutes + on tab focus
     useEffect(() => {
@@ -255,6 +265,27 @@ export const ShipmentDetailsV2Page = () => {
             enqueueSnackbar(err?.response?.data?.error || err?.response?.data?.message || err?.message || 'Failed generating Target receipt', { variant: 'error' });
         } finally {
             setIsGeneratingTargetReceipt(false);
+        }
+    };
+
+    const handleDownloadInternalReceipt = async () => {
+        if (!canViewCost || !shipment?.trackingNumber) return;
+        const receiptWindow = window.open('about:blank', '_blank');
+        if (!receiptWindow) {
+            enqueueSnackbar(isRTL ? 'يرجى السماح بالنوافذ المنبثقة لعرض الإيصال' : 'Allow pop-ups to open the receipt', { variant: 'warning' });
+            return;
+        }
+        setIsGeneratingInternalReceipt(true);
+        try {
+            const pdfBlob = await shipmentService.downloadInternalShipmentReceipt(shipment.trackingNumber);
+            const blobUrl = URL.createObjectURL(pdfBlob);
+            receiptWindow.location = blobUrl;
+            window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+        } catch (err) {
+            receiptWindow.close();
+            enqueueSnackbar(err?.response?.data?.error || err?.message || 'Unable to generate internal receipt', { variant: 'error' });
+        } finally {
+            setIsGeneratingInternalReceipt(false);
         }
     };
 
@@ -996,6 +1027,18 @@ export const ShipmentDetailsV2Page = () => {
                                                 <span className="text-xs text-slate-400">—</span>
                                             )}
                                         </div>
+
+                                        {canViewCost && (
+                                            <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 flex flex-col justify-between gap-3">
+                                                <div>
+                                                    <div className="text-xs font-bold text-slate-900 dark:text-white">{isRTL ? 'إيصال التكلفة الداخلي' : 'Internal Cost Receipt'}</div>
+                                                    <div className="text-[11px] text-slate-500 dark:text-slate-400">{isRTL ? 'للمحاسبة والموظفين المخولين فقط' : 'Carrier cost and customer charge · staff only'}</div>
+                                                </div>
+                                                <button type="button" onClick={handleDownloadInternalReceipt} disabled={isGeneratingInternalReceipt} className="min-h-[36px] rounded-lg border border-amber-300 dark:border-amber-700 text-xs font-bold cursor-pointer disabled:opacity-50">
+                                                    {isGeneratingInternalReceipt ? (isRTL ? 'جارٍ التوليد...' : 'Generating...') : (isRTL ? 'عرض الإيصال الداخلي' : 'View Internal Receipt')}
+                                                </button>
+                                            </div>
+                                        )}
 
                                         <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex flex-col justify-between gap-3">
                                             <div>
