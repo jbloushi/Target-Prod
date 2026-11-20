@@ -122,7 +122,7 @@ export const SettingsPage = () => {
   const [systemSettings, setSystemSettings] = useState(null);
   const [savingSettings, setSavingSettings] = useState(false);
 
-  // Dedicated WhatsApp & Chatwoot Configuration State (Milestone 4)
+  // Dedicated WhatsApp & Inbox Configuration State (Milestone 4)
   const [whatsAppConfig, setWhatsAppConfig] = useState({
     provider: 'SHIPMENT_WHATSAPP',
     serviceUrl: 'https://msg.target-kw.com',
@@ -286,7 +286,7 @@ export const SettingsPage = () => {
           setWhatsAppRules(res.data.rules);
         }
         enqueueSnackbar(
-          lang === 'ar' ? 'تم حفظ إعدادات واتساب وشات ووت بنجاح' : 'WhatsApp and Chatwoot settings updated successfully',
+          lang === 'ar' ? 'تم حفظ إعدادات واتساب وصندوق الوارد بنجاح' : 'WhatsApp and Inbox settings updated successfully',
           { variant: 'success' }
         );
       } else {
@@ -1504,7 +1504,7 @@ export const SettingsPage = () => {
             </div>
           )}
 
-          {/* TAB 4: WhatsApp & Meta Cloud API + Chatwoot Integration */}
+          {/* TAB 4: WhatsApp & Meta Cloud API + Inbox Integration */}
           {isSuperadmin && activeTab === 'whatsapp' && (
             <div className="space-y-6">
               {/* Tab Header Card */}
@@ -1515,13 +1515,13 @@ export const SettingsPage = () => {
                       <div className="flex items-center gap-2">
                         <span className="material-symbols-outlined text-primary text-2xl">chat</span>
                         <h2 className="text-lg font-black text-base-content tracking-tight">
-                          {lang === 'ar' ? 'إعدادات واتساب وميتا والدعم المباشر (Chatwoot)' : 'WhatsApp Cloud API & Chatwoot Live Support'}
+                          {lang === 'ar' ? 'إعدادات واتساب وميتا والدعم المباشر (Inbox)' : 'WhatsApp Cloud API & Inbox Live Support'}
                         </h2>
                       </div>
                       <p className="text-xs text-base-content/60 mt-1">
                         {lang === 'ar'
-                          ? 'إدارة قوالب Meta Cloud المعتمدة، بيانات اعتماد شات ووت، قواعد الإشعارات المفصلة، وسياسات ساعات الهدوء في الكويت.'
-                          : 'Manage approved Meta Cloud utility templates, Chatwoot agent credentials, granular event toggles, and Kuwait quiet-hours delivery policies.'}
+                          ? 'إدارة قوالب Meta Cloud المعتمدة، بيانات اعتماد صندوق الوارد، قواعد الإشعارات المفصلة، وسياسات ساعات الهدوء في الكويت.'
+                          : 'Manage approved Meta Cloud utility templates, Inbox agent credentials, granular event toggles, and Kuwait quiet-hours delivery policies.'}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1543,7 +1543,7 @@ export const SettingsPage = () => {
                         className="btn btn-primary btn-sm font-bold text-xs gap-1.5 shadow-md shadow-primary/20"
                       >
                         {savingWhatsApp ? <span className="loading loading-spinner loading-xs" /> : <span className="material-symbols-outlined text-base">save</span>}
-                        <span>{lang === 'ar' ? 'حفظ إعدادات واتساب وشات ووت' : 'Save WhatsApp Config'}</span>
+                        <span>{lang === 'ar' ? 'حفظ إعدادات واتساب وصندوق الوارد' : 'Save WhatsApp Config'}</span>
                       </button>
                     </div>
                   </div>
@@ -1674,19 +1674,19 @@ export const SettingsPage = () => {
                 </div>
               </div>
 
-              {/* CARD 2: Chatwoot Live Support Credentials Card */}
+              {/* CARD 2: Inbox Live Support Credentials Card */}
               <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden" data-testid="card-chatwoot-credentials">
                 <div className="card-body p-6 sm:p-8 space-y-4">
                   <div className="flex items-center gap-2 pb-2 border-b border-base-200">
                     <span className="material-symbols-outlined text-primary text-xl">support_agent</span>
                     <div>
                       <h3 className="text-sm font-black uppercase tracking-wider text-base-content">
-                        {lang === 'ar' ? 'بيانات اعتماد شات ووت للدعم المباشر (Chatwoot Live Support)' : 'Chatwoot Live Support Credentials'}
+                        {lang === 'ar' ? 'بيانات اعتماد صندوق الوارد للدعم المباشر (Inbox Live Support)' : 'Inbox Live Support Credentials'}
                       </h3>
                       <p className="text-[11px] text-base-content/50">
                         {lang === 'ar'
-                          ? 'ربط وتوجيه محادثات العملاء إلى صندوق الوارد الموحد في Chatwoot.'
-                          : 'Connects WhatsApp recipient conversations and customer enquiries to Chatwoot omnichannel inboxes.'}
+                          ? 'ربط وتوجيه محادثات العملاء إلى صندوق الوارد الموحد في Inbox.'
+                          : 'Connects WhatsApp recipient conversations and customer enquiries to Inbox omnichannel inboxes.'}
                       </p>
                     </div>
                   </div>
@@ -1694,7 +1694,7 @@ export const SettingsPage = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="space-y-1">
                       <label htmlFor="chatwoot-base-url" className="text-xs font-bold text-base-content/70 uppercase">
-                        {lang === 'ar' ? 'عنوان منصة Chatwoot' : 'Base URL'}
+                        {lang === 'ar' ? 'عنوان منصة Inbox' : 'Base URL'}
                       </label>
                       <input
                         id="chatwoot-base-url"
@@ -1759,8 +1759,8 @@ export const SettingsPage = () => {
                           onClick={() => setShowChatwootToken(!showChatwootToken)}
                           aria-pressed={showChatwootToken}
                           aria-label={showChatwootToken
-                            ? (lang === 'ar' ? 'إخفاء رمز Chatwoot' : 'Hide Chatwoot token')
-                            : (lang === 'ar' ? 'إظهار رمز Chatwoot' : 'Show Chatwoot token')}
+                            ? (lang === 'ar' ? 'إخفاء رمز Inbox' : 'Hide Inbox token')
+                            : (lang === 'ar' ? 'إظهار رمز Inbox' : 'Show Inbox token')}
                           className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-base-content/50 hover:text-base-content"
                           title={showChatwootToken ? 'Hide Token' : 'Show Token'}
                         >

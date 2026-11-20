@@ -708,11 +708,11 @@ export const AdminUsersV2Page = () => {
                                     {role === 'admin' && (
                                         <>
                                             <div>
-                                                <label htmlFor="chatwoot-user-id-v2" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Chatwoot User ID</label>
+                                                <label htmlFor="chatwoot-user-id-v2" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Inbox User ID</label>
                                                 <input id="chatwoot-user-id-v2" type="text" dir="ltr" placeholder="e.g. 104" value={formData.chatwootUserId || ''} onChange={(e) => setFormData({ ...formData, chatwootUserId: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-mono text-slate-900 dark:text-slate-100" />
                                             </div>
                                             <div>
-                                                <label htmlFor="chatwoot-agent-email-v2" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Chatwoot Agent Email</label>
+                                                <label htmlFor="chatwoot-agent-email-v2" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Inbox Agent Email</label>
                                                 <input id="chatwoot-agent-email-v2" type="email" dir="ltr" value={formData.chatwootEmail || ''} onChange={(e) => setFormData({ ...formData, chatwootEmail: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100" />
                                             </div>
                                             <div className="sm:col-span-2">
@@ -746,8 +746,8 @@ export const AdminUsersV2Page = () => {
                                                         onClick={() => setShowChatwootToken((visible) => !visible)}
                                                         aria-pressed={showChatwootToken}
                                                         aria-label={showChatwootToken
-                                                            ? (lang === 'ar' ? 'إخفاء رمز Chatwoot' : 'Hide Chatwoot token')
-                                                            : (lang === 'ar' ? 'إظهار رمز Chatwoot' : 'Show Chatwoot token')}
+                                                            ? (lang === 'ar' ? 'إخفاء رمز Inbox' : 'Hide Inbox token')
+                                                            : (lang === 'ar' ? 'إظهار رمز Inbox' : 'Show Inbox token')}
                                                         className="absolute inset-y-0 end-2 flex items-center text-slate-500 hover:text-slate-800 dark:hover:text-slate-100"
                                                     >
                                                         <span className="material-symbols-outlined text-sm">{showChatwootToken ? 'visibility_off' : 'visibility'}</span>

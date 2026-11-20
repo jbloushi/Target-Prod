@@ -166,7 +166,7 @@ export const NativeChatDrawer = ({
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
-                        {/* Open directly in external Chatwoot Inbox (inbox.mawthook.io) */}
+                        {/* Open directly in external Inbox Inbox (inbox.mawthook.io) */}
                         <a
                             href={
                                 activeConversation?.id && !String(activeConversation.id).startsWith('local:')
@@ -179,10 +179,10 @@ export const NativeChatDrawer = ({
                             rel="noopener noreferrer"
                             data-testid="native-chat-drawer-external-chatwoot-btn"
                             className="inline-flex items-center justify-center h-8 px-2.5 gap-1 rounded-xl border border-primary/30 bg-primary/5 text-primary hover:bg-primary hover:text-white font-bold transition-colors"
-                            title={isRTL ? 'فتح في منصة Chatwoot (inbox.mawthook.io)' : 'Open in Chatwoot (inbox.mawthook.io)'}
+                            title={isRTL ? 'فتح في منصة Inbox (inbox.mawthook.io)' : 'Open in Inbox (inbox.mawthook.io)'}
                         >
                             <span className="material-symbols-outlined text-sm">forum</span>
-                            <span className="hidden sm:inline text-[11px]">Chatwoot</span>
+                            <span className="hidden sm:inline text-[11px]">Inbox</span>
                         </a>
 
                         {/* Open in full Support Center button */}

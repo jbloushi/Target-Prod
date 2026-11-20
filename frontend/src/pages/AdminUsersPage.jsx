@@ -1006,18 +1006,18 @@ const AdminUsersPage = () => {
                                     )
                                 )}
 
-                                {/* Chatwoot Live Support Identity Mapping (Admin-only RBAC Guard) */}
+                                {/* Inbox Live Support Identity Mapping (Admin-only RBAC Guard) */}
                                 {currentUser?.role === 'admin' && (
                                     <div className="p-3.5 bg-base-200/50 rounded-xl border border-base-200 space-y-3">
                                         <div className="flex items-center gap-1.5 text-xs font-bold text-primary uppercase">
                                             <span className="material-symbols-outlined text-sm">support_agent</span>
-                                            <span>{lang === 'ar' ? 'هوية وكيل المحادثات الحية (Chatwoot)' : 'Chatwoot Live Support Identity'}</span>
+                                            <span>{lang === 'ar' ? 'هوية وكيل المحادثات الحية (Inbox)' : 'Inbox Live Support Identity'}</span>
                                             <span className="badge badge-primary badge-outline text-[10px] font-bold">{lang === 'ar' ? 'للمدير فقط' : 'Admin only'}</span>
                                         </div>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                             <div>
                                                 <label htmlFor="chatwoot-user-id" className="text-xs font-bold text-base-content/70 block mb-1">
-                                                    {lang === 'ar' ? 'معرّف وكيل Chatwoot' : 'Chatwoot Agent ID'}
+                                                    {lang === 'ar' ? 'معرّف وكيل Inbox' : 'Inbox Agent ID'}
                                                 </label>
                                                 <input
                                                     id="chatwoot-user-id"
@@ -1031,7 +1031,7 @@ const AdminUsersPage = () => {
                                             </div>
                                             <div>
                                                 <label htmlFor="chatwoot-agent-email" className="text-xs font-bold text-base-content/70 block mb-1">
-                                                    {lang === 'ar' ? 'البريد الإلكتروني في Chatwoot' : 'Chatwoot Email'}
+                                                    {lang === 'ar' ? 'البريد الإلكتروني في Inbox' : 'Inbox Email'}
                                                 </label>
                                                 <input
                                                     id="chatwoot-agent-email"
@@ -1073,8 +1073,8 @@ const AdminUsersPage = () => {
                                                         onClick={() => setShowChatwootToken((visible) => !visible)}
                                                         aria-pressed={showChatwootToken}
                                                         aria-label={showChatwootToken
-                                                            ? (lang === 'ar' ? 'إخفاء رمز Chatwoot' : 'Hide Chatwoot token')
-                                                            : (lang === 'ar' ? 'إظهار رمز Chatwoot' : 'Show Chatwoot token')}
+                                                            ? (lang === 'ar' ? 'إخفاء رمز Inbox' : 'Hide Inbox token')
+                                                            : (lang === 'ar' ? 'إظهار رمز Inbox' : 'Show Inbox token')}
                                                         className="absolute inset-y-0 end-2 flex items-center text-base-content/50 hover:text-base-content"
                                                     >
                                                         <span className="material-symbols-outlined text-sm">{showChatwootToken ? 'visibility_off' : 'visibility'}</span>
@@ -1102,8 +1102,8 @@ const AdminUsersPage = () => {
                                         </div>
                                         <p className="text-[10.5px] text-base-content/50">
                                             {lang === 'ar'
-                                                ? 'يربط هذا المستخدم بوكيل Chatwoot ويتيح إرسال الردود من مركز الدعم. إعداد بيانات الاعتماد متاح لمديري النظام فقط.'
-                                                : 'Links this Target user to a Chatwoot agent and enables replies from Support. Credential setup is limited to administrators.'}
+                                                ? 'يربط هذا المستخدم بوكيل Inbox ويتيح إرسال الردود من مركز الدعم. إعداد بيانات الاعتماد متاح لمديري النظام فقط.'
+                                                : 'Links this Target user to a Inbox agent and enables replies from Support. Credential setup is limited to administrators.'}
                                         </p>
                                     </div>
                                 )}

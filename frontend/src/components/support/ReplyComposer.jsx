@@ -90,7 +90,7 @@ export const ReplyComposer = ({
     const trackingNumber = activeShipment?.trackingNumber || 'TRG-KW-001';
     const customerName = activeConv?.contact?.name || 'Customer';
 
-    // Per-Agent Chatwoot Personal Access Token Check
+    // Per-Agent Inbox Personal Access Token Check
     // If user has no token configured (indicated by user.chatwootAccessToken null or user.hasChatwootToken false)
     const hasChatwootToken = Boolean(
         user?.chatwootAccessToken !== null &&
@@ -113,8 +113,8 @@ export const ReplyComposer = ({
 
         if (!hasChatwootToken) {
             setSendError(isRTL
-                ? 'يلزم وجود رمز Chatwoot شخصي لحسابك لإرسال الردود. يرجى التواصل مع مسؤول النظام.'
-                : 'Chatwoot Personal Access Token Required: Please ask an admin to configure your credentials in User Management to send replies.'
+                ? 'يلزم وجود رمز Inbox شخصي لحسابك لإرسال الردود. يرجى التواصل مع مسؤول النظام.'
+                : 'Inbox Personal Access Token Required: Please ask an admin to configure your credentials in User Management to send replies.'
             );
             return;
         }
@@ -177,8 +177,8 @@ export const ReplyComposer = ({
                     <span className="material-symbols-outlined text-base shrink-0">lock</span>
                     <span className="flex-1">
                         {isRTL
-                            ? 'يلزم وجود رمز دخول شخصي (Chatwoot Access Token) لحسابك لإرسال الردود. يرجى التواصل مع مسؤول النظام لتفعيله في إدارة المستخدمين.'
-                            : 'Personal Chatwoot token required to reply: Please contact an administrator to configure your Chatwoot credentials in User Management to send replies.'}
+                            ? 'يلزم وجود رمز دخول شخصي (Inbox Access Token) لحسابك لإرسال الردود. يرجى التواصل مع مسؤول النظام لتفعيله في إدارة المستخدمين.'
+                            : 'Personal Inbox token required to reply: Please contact an administrator to configure your Inbox credentials in User Management to send replies.'}
                     </span>
                 </div>
             )}
@@ -279,7 +279,7 @@ export const ReplyComposer = ({
                             rows={3}
                             placeholder={
                                 !hasChatwootToken
-                                    ? (isRTL ? 'يتطلب إدخال رمز Chatwoot في إدارة المستخدمين...' : 'Personal Chatwoot token required to reply...')
+                                    ? (isRTL ? 'يتطلب إدخال رمز Inbox في إدارة المستخدمين...' : 'Personal Inbox token required to reply...')
                                     : (isPrivate
                                         ? (isRTL ? 'اكتب ملاحظة داخلية خاصة بفريق العمل...' : 'Write an internal note for staff...')
                                         : (isRTL ? 'اكتب رداً حراً للعميل (اضغط Enter للإرسال)...' : 'Type a reply to customer (Enter to send)...'))

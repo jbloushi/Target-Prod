@@ -1655,16 +1655,16 @@ const ShipmentDetailsPage = () => {
                             {isRTL ? 'فاتورة / QR تارغت' : 'Invoice/QR'}
                         </button>
 
-                        {/* Chatwoot Live Support */}
+                        {/* Inbox Live Support */}
                         <button
                             type="button"
                             onClick={() => openChatwootDrawer()}
                             className="btn btn-outline btn-primary btn-sm rounded-xl font-bold gap-1 text-xs"
-                            title={isRTL ? 'فتح المحادثة المباشرة في شات ووت' : 'Open Chatwoot Live Support'}
+                            title={isRTL ? 'فتح المحادثة المباشرة في صندوق الوارد' : 'Open Inbox Live Support'}
                             data-testid="header-chatwoot-btn"
                         >
                             <span className="material-symbols-outlined text-xs">support_agent</span>
-                            {isRTL ? 'دعم شات ووت' : 'Chatwoot Live Support'}
+                            {isRTL ? 'دعم صندوق الوارد' : 'Inbox Live Support'}
                         </button>
 
                         {/* Capture POD (For In Transit or Out for Delivery) */}
@@ -2945,11 +2945,11 @@ const ShipmentDetailsPage = () => {
                                         type="button"
                                         onClick={() => openChatwootDrawer()}
                                         className="btn btn-outline btn-primary btn-xs rounded-lg font-bold gap-1 text-[11px]"
-                                        title={isRTL ? 'فتح دعم شات ووت المباشر' : 'Chatwoot Live Support'}
+                                        title={isRTL ? 'فتح دعم صندوق الوارد المباشر' : 'Inbox Live Support'}
                                         data-testid="card-chatwoot-btn"
                                     >
                                         <span className="material-symbols-outlined text-[13px]">support_agent</span>
-                                        <span>{isRTL ? 'دعم شات ووت' : 'Chatwoot Live Support'}</span>
+                                        <span>{isRTL ? 'دعم صندوق الوارد' : 'Inbox Live Support'}</span>
                                     </button>
                                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-300">
                                         {(shipment.notificationLogs || []).length} logs
@@ -3012,10 +3012,10 @@ const ShipmentDetailsPage = () => {
                                                                 accountId: latestLog?.chatwootAccountId
                                                             })}
                                                             className="btn btn-ghost btn-xs h-6 min-h-6 text-[10.5px] px-2 rounded-lg font-bold gap-1 text-primary hover:bg-primary/10 border border-primary/20"
-                                                            title={isRTL ? 'فتح محادثة شات ووت' : 'Chatwoot'}
+                                                            title={isRTL ? 'فتح محادثة صندوق الوارد' : 'Inbox'}
                                                         >
                                                             <span className="material-symbols-outlined text-[11px]">support_agent</span>
-                                                            <span>{isRTL ? 'شات ووت' : 'Chatwoot'}</span>
+                                                            <span>{isRTL ? 'صندوق الوارد' : 'Inbox'}</span>
                                                         </button>
                                                         <Link
                                                             to={`/admin/whatsapp-logs?search=${shipment.trackingNumber}`}

@@ -42,8 +42,8 @@ const PROVIDERS = [
     },
     {
         id: 'CHATWOOT',
-        titleEn: 'Chatwoot',
-        titleAr: 'Chatwoot',
+        titleEn: 'Inbox',
+        titleAr: 'صندوق الوارد',
         subEn: 'Omnichannel Inbox',
         subAr: 'صندوق الدعم الموحد',
         icon: 'forum'
@@ -158,7 +158,7 @@ export const SettingsWhatsAppTabV2 = ({ isRTL }) => {
                 rules: whatsAppRules
             });
             enqueueSnackbar(
-                isRTL ? 'تم حفظ إعدادات واتساب وشات ووت بنجاح' : 'WhatsApp & gateway settings saved!',
+                isRTL ? 'تم حفظ إعدادات واتساب وصندوق الوارد بنجاح' : 'WhatsApp & gateway settings saved!',
                 { variant: 'success' }
             );
             fetchWhatsAppSettings();
@@ -202,8 +202,8 @@ export const SettingsWhatsAppTabV2 = ({ isRTL }) => {
                         </h2>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                             {isRTL
-                                ? 'اختر المزود الأساسي والبديل (Evolution API أو Meta Cloud أو Chatwoot) وتحكم في القواعد وساعات الهدوء.'
-                                : 'Choose primary and fallback transport (Evolution API, Meta Cloud, Chatwoot, or Target Gateway), milestone templates, and Kuwait quiet hours.'}
+                                ? 'اختر المزود الأساسي والبديل (Evolution API أو Meta Cloud أو Inbox) وتحكم في القواعد وساعات الهدوء.'
+                                : 'Choose primary and fallback transport (Evolution API, Meta Cloud, Inbox, or Target Gateway), milestone templates, and Kuwait quiet hours.'}
                         </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -259,7 +259,7 @@ export const SettingsWhatsAppTabV2 = ({ isRTL }) => {
                             <option value="EVOLUTION">EVOLUTION (evo.mawthook.io)</option>
                             <option value="SHIPMENT_WHATSAPP">SHIPMENT_WHATSAPP (msg.target-kw.com)</option>
                             <option value="META">META (Official Cloud API)</option>
-                            <option value="CHATWOOT">CHATWOOT</option>
+                            <option value="CHATWOOT">Inbox</option>
                             <option value="NONE">{isRTL ? 'بدون مزود بديل' : 'None (Disabled)'}</option>
                         </select>
                     </div>
@@ -501,7 +501,7 @@ export const SettingsWhatsAppTabV2 = ({ isRTL }) => {
                 )}
             </div>
 
-            {/* Chatwoot Credentials (Always accessible, expanded by default when CHATWOOT is active) */}
+            {/* Inbox Credentials (Always accessible, expanded by default when CHATWOOT is active) */}
             <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6 space-y-4">
                 <button
                     type="button"
@@ -512,7 +512,7 @@ export const SettingsWhatsAppTabV2 = ({ isRTL }) => {
                 >
                     <div>
                         <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                            {isRTL ? 'بيانات اعتماد Chatwoot للدعم المباشر' : 'Chatwoot Live Support Credentials'}
+                            {isRTL ? 'بيانات اعتماد Inbox للدعم المباشر' : 'Inbox Live Support Credentials'}
                         </h3>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                             {whatsAppConfig.chatwootBaseUrl || 'https://inbox.mawthook.io'} · Inbox {whatsAppConfig.chatwootInboxId || '1'}
@@ -579,8 +579,8 @@ export const SettingsWhatsAppTabV2 = ({ isRTL }) => {
                                     onClick={() => setShowChatwootToken(!showChatwootToken)}
                                     aria-pressed={showChatwootToken}
                                     aria-label={showChatwootToken
-                                        ? (isRTL ? 'إخفاء رمز Chatwoot' : 'Hide Chatwoot token')
-                                        : (isRTL ? 'إظهار رمز Chatwoot' : 'Show Chatwoot token')}
+                                        ? (isRTL ? 'إخفاء رمز Inbox' : 'Hide Inbox token')
+                                        : (isRTL ? 'إظهار رمز Inbox' : 'Show Inbox token')}
                                     className="absolute end-2 top-1/2 -translate-y-1/2 text-slate-500 cursor-pointer"
                                 >
                                     <span className="material-symbols-outlined text-sm" aria-hidden="true">

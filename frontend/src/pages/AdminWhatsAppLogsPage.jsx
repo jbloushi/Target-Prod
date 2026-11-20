@@ -260,7 +260,12 @@ export const AdminWhatsAppLogsPage = () => {
             case 'SUBMITTED':
             case 'SUBMIT':
             case 'ACCEPTED':
-                return { badgeClass: 'badge-warning text-warning-content', label: lang === 'ar' ? 'تم الإرسال' : 'Sent', icon: 'done' };
+                return { badgeClass: 'badge-primary text-primary-content', label: lang === 'ar' ? 'تم الإرسال' : 'Sent', icon: 'done' };
+            case 'QUEUED':
+            case 'PENDING':
+                return { badgeClass: 'badge-warning text-warning-content', label: lang === 'ar' ? 'في الانتظار' : 'Queued', icon: 'schedule' };
+            case 'SKIPPED':
+                return { badgeClass: 'badge-ghost text-base-content/70', label: lang === 'ar' ? 'تم التخطي' : 'Skipped', icon: 'block' };
             case 'FAILED':
                 return { badgeClass: 'badge-error text-white', label: lang === 'ar' ? 'فشل' : 'Failed', icon: 'error' };
             default:
@@ -284,7 +289,7 @@ export const AdminWhatsAppLogsPage = () => {
             };
         }
         return {
-            label: 'Chatwoot',
+            label: 'Inbox',
             sub: 'Legacy Provider',
             badgeClass: 'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20'
         };
@@ -544,7 +549,7 @@ export const AdminWhatsAppLogsPage = () => {
                             <option value="EVOLUTION">Evolution API (evo.mawthook.io)</option>
                             <option value="SHIPMENT_WHATSAPP">Target Microservice (msg.target-kw.com)</option>
                             <option value="META">Meta Cloud API (WABA)</option>
-                            <option value="CHATWOOT">Chatwoot (Legacy)</option>
+                            <option value="CHATWOOT">Inbox (Legacy)</option>
                         </select>
                     </div>
 
@@ -826,16 +831,16 @@ export const AdminWhatsAppLogsPage = () => {
                                                         {lang === 'ar' ? 'فحص' : 'Inspect'}
                                                     </button>
 
-                                                    {/* Chatwoot Drawer Button */}
+                                                    {/* Inbox Drawer Button */}
                                                     <button
                                                         type="button"
                                                         onClick={() => setChatwootDrawerLog(log)}
                                                         className="btn btn-xs btn-outline btn-primary gap-1 font-semibold"
-                                                        title={lang === 'ar' ? 'فتح محادثة شات ووت' : 'Open in Chatwoot'}
+                                                        title={lang === 'ar' ? 'فتح محادثة صندوق الوارد' : 'Open in Inbox'}
                                                         data-testid="logs-table-chatwoot-btn"
                                                     >
                                                         <span className="material-symbols-outlined text-[14px]">support_agent</span>
-                                                        <span>Chatwoot</span>
+                                                        <span>Inbox</span>
                                                     </button>
 
                                                     {/* Resend Action */}
@@ -964,7 +969,7 @@ export const AdminWhatsAppLogsPage = () => {
                                     </div>
                                     <div className="sm:col-span-3 pt-2 border-t border-base-200/60 flex items-center justify-between gap-2 flex-wrap">
                                         <div>
-                                            <span className="text-[10px] font-bold text-base-content/50 uppercase">{selectedLog.provider?.toUpperCase() === 'CHATWOOT' ? (lang === 'ar' ? 'معرف رسالة Chatwoot:' : 'Chatwoot Message ID:') : (lang === 'ar' ? 'معرف الرسالة الخارجي (WAMID):' : 'External WAMID:')}</span>
+                                            <span className="text-[10px] font-bold text-base-content/50 uppercase">{selectedLog.provider?.toUpperCase() === 'CHATWOOT' ? (lang === 'ar' ? 'معرف رسالة Inbox:' : 'Inbox Message ID:') : (lang === 'ar' ? 'معرف الرسالة الخارجي (WAMID):' : 'External WAMID:')}</span>
                                             <div className="font-mono text-xs text-base-content/80 break-all">{selectedLog.chatwootMessageId || selectedLog.externalMessageId || (lang === 'ar' ? 'لا يوجد' : 'None')}</div>
                                         </div>
                                         <div>
@@ -1126,7 +1131,7 @@ export const AdminWhatsAppLogsPage = () => {
                                 data-testid="logs-modal-chatwoot-btn"
                             >
                                 <span className="material-symbols-outlined text-base">support_agent</span>
-                                {lang === 'ar' ? 'فتح شات ووت' : 'Open Chatwoot'}
+                                {lang === 'ar' ? 'فتح صندوق الوارد' : 'Open Inbox'}
                             </button>
                         </div>
                         <button

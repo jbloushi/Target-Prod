@@ -82,6 +82,14 @@ export const STATUS_CONFIG = {
     border: '#fde68a',
     icon: 'pending'
   },
+  booked: {
+    label: 'Booked',
+    color: '#1e3a8a',
+    dotColor: '#2563eb',
+    bg: '#eff6ff',
+    border: '#bfdbfe',
+    icon: 'inventory_2'
+  },
   pending_approval: {
     label: 'Pending Approval',
     color: '#701a75',
@@ -105,6 +113,22 @@ export const STATUS_CONFIG = {
     bg: '#e0e7ff',
     border: '#a5b4fc',
     icon: 'inventory'
+  },
+  received_at_hub: {
+    label: 'Received at Hub',
+    color: '#155e75',
+    dotColor: '#0891b2',
+    bg: '#ecfeff',
+    border: '#a5f3fc',
+    icon: 'warehouse'
+  },
+  verified: {
+    label: 'Hub Verified',
+    color: '#5b21b6',
+    dotColor: '#7c3aed',
+    bg: '#f5f3ff',
+    border: '#ddd6fe',
+    icon: 'verified'
   },
   created: {
     label: 'Manifest Created',
@@ -137,6 +161,22 @@ export const STATUS_CONFIG = {
     bg: '#dcfce7',
     border: '#86efac',
     icon: 'check_circle'
+  },
+  rto_in_transit: {
+    label: 'RTO In Transit',
+    color: '#9a3412',
+    dotColor: '#ea580c',
+    bg: '#fff7ed',
+    border: '#fed7aa',
+    icon: 'keyboard_return'
+  },
+  returned: {
+    label: 'Returned to Shipper',
+    color: '#7c2d12',
+    dotColor: '#c2410c',
+    bg: '#ffedd5',
+    border: '#fdba74',
+    icon: 'assignment_return'
   },
   completed: {
     label: 'Completed',

@@ -252,7 +252,7 @@ export const AdminWhatsAppLogsV2Page = () => {
                         <select aria-label={lang === 'ar' ? 'تصفية حسب المزود' : 'Filter by provider'} value={providerFilter} onChange={(e) => setProviderFilter(e.target.value)} className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-slate-100">
                             <option value="ALL">{lang === 'ar' ? 'كل المزودين' : 'All Providers'}</option>
                             <option value="META">Meta Cloud</option>
-                            <option value="CHATWOOT">Chatwoot</option>
+                            <option value="CHATWOOT">Inbox</option>
                             <option value="MSG_GATEWAY">MSG Gateway</option>
                         </select>
                         <select aria-label={lang === 'ar' ? 'تصفية حسب الطرف' : 'Filter by party'} value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-slate-100">
@@ -307,7 +307,7 @@ export const AdminWhatsAppLogsV2Page = () => {
                                         </div>
                                         <div className="flex flex-wrap justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                                             <button type="button" onClick={() => setChatwootDrawerLog(log)} className="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-xs font-bold text-indigo-700 dark:text-indigo-300 cursor-pointer">
-                                                {lang === 'ar' ? 'شات ووت' : 'Chatwoot'}
+                                                {lang === 'ar' ? 'صندوق الوارد' : 'Inbox'}
                                             </button>
                                             <button type="button" onClick={() => setPreviewLog(log)} className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer">
                                                 {lang === 'ar' ? 'النص' : 'Copy'}
@@ -363,7 +363,7 @@ export const AdminWhatsAppLogsV2Page = () => {
                                                     </td>
                                                     <td className="px-4 py-3 text-end">
                                                         <div className="inline-flex items-center justify-end gap-1">
-                                                            <button type="button" onClick={() => setChatwootDrawerLog(log)} title={lang === 'ar' ? 'فتح محادثة شات ووت' : 'Open Chatwoot'} className="p-1.5 rounded-lg text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 cursor-pointer">
+                                                            <button type="button" onClick={() => setChatwootDrawerLog(log)} title={lang === 'ar' ? 'فتح محادثة صندوق الوارد' : 'Open Inbox'} className="p-1.5 rounded-lg text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 cursor-pointer">
                                                                 <span className="material-symbols-outlined text-base">support_agent</span>
                                                             </button>
                                                             <button type="button" onClick={() => setPreviewLog(log)} title="Preview Message" className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
@@ -447,7 +447,7 @@ export const AdminWhatsAppLogsV2Page = () => {
                                     onClick={() => setChatwootDrawerLog(selectedLog)}
                                     className="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-xs font-bold cursor-pointer"
                                 >
-                                    {lang === 'ar' ? 'فتح شات ووت' : 'Open Chatwoot'}
+                                    {lang === 'ar' ? 'فتح صندوق الوارد' : 'Open Inbox'}
                                 </button>
                                 <button
                                     type="button"

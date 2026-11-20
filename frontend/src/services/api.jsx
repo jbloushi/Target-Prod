@@ -372,7 +372,7 @@ export const shipmentService = {
     }
   },
 
-  // Send Pay-by-Link via WhatsApp (Chatwoot)
+  // Send Pay-by-Link via WhatsApp (Inbox)
   sendPaymentLink: async (trackingNumber, payload = {}) => {
     try {
       const response = await api.post(`shipments/${trackingNumber}/send-payment-link`, payload);
@@ -727,7 +727,7 @@ export const integrationService = {
       });
       return response.data;
     } catch (error) {
-      console.error('Error previewing Chatwoot shipment message:', error);
+      console.error('Error previewing Inbox shipment message:', error);
       throw error;
     }
   },
@@ -742,7 +742,7 @@ export const integrationService = {
       });
       return response.data;
     } catch (error) {
-      console.error('Error sending Chatwoot test message:', error);
+      console.error('Error sending Inbox test message:', error);
       throw error;
     }
   }

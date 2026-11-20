@@ -7,7 +7,7 @@
 export const STATUS_ORDER = [
     'draft', 'pending', 'pending_approval', 'booked', 'ready_for_pickup', 'picked_up',
     'received_at_hub', 'verified',
-    'in_transit', 'out_for_delivery', 'delivered', 'cancelled'
+    'in_transit', 'out_for_delivery', 'delivered', 'rto_in_transit', 'returned', 'cancelled'
 ];
 
 export const STATUS_LABELS = {
@@ -22,6 +22,8 @@ export const STATUS_LABELS = {
     in_transit: 'In Transit',
     out_for_delivery: 'Out for Delivery',
     delivered: 'Delivered',
+    rto_in_transit: 'RTO In Transit',
+    returned: 'Returned to Shipper',
     exception: 'Exception',
     cancelled: 'Cancelled',
 };
@@ -38,6 +40,8 @@ export const INTERNAL_SHIPMENT_STATUSES = [
     'in_transit',
     'out_for_delivery',
     'delivered',
+    'rto_in_transit',
+    'returned',
     'exception',
     'cancelled',
 ];

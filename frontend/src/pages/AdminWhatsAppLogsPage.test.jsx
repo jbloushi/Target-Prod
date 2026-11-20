@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { formatExactMessageCopy } from './AdminWhatsAppLogsPage';
 
 describe('WhatsApp log message copy', () => {
-    it('shows the recorded Chatwoot message instead of rebuilding it from recipient fields', () => {
+    it('shows the recorded Inbox message instead of rebuilding it from recipient fields', () => {
         const content = 'Thank you for choosing us.\nReceiver Name: AMIRA ALOTAIBI\nReceiver Tel: 966533309338';
         const log = {
             templateName: 'shipment_confirmation_2',

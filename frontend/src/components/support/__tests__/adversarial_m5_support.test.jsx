@@ -333,7 +333,7 @@ describe('Milestone 5 Adversarial Empirical Challenge Suite', () => {
         });
 
         it('1.5 asserts NativeChatDrawer handles backend API failure (404/network error) gracefully without crashing React tree', async () => {
-            supportChatService.getShipmentConversation.mockRejectedValueOnce(new Error('Network Timeout or Chatwoot 503'));
+            supportChatService.getShipmentConversation.mockRejectedValueOnce(new Error('Network Timeout or Inbox 503'));
 
             render(
                 <MemoryRouter>

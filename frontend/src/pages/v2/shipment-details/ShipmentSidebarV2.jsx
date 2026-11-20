@@ -169,7 +169,7 @@ export const ShipmentSidebarV2 = ({
                             data-testid="card-chatwoot-btn"
                             className="text-xs font-bold text-primary dark:text-sky-400 hover:underline shrink-0 cursor-pointer"
                         >
-                            {isRTL ? 'شات ووت' : 'Live Support'}
+                            {isRTL ? 'صندوق الوارد' : 'Live Support'}
                         </button>
                     </div>
 

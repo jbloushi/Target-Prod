@@ -430,11 +430,11 @@ export const ShipmentInspectorDrawer = ({
                         type="button"
                         onClick={() => setIsChatwootOpen(true)}
                         className="flex-1 min-w-[120px] inline-flex items-center justify-center gap-1.5 min-h-9 py-1.5 px-3 rounded-xl border border-primary/30 bg-primary/5 hover:bg-primary/10 text-primary text-xs font-semibold leading-tight text-center transition-colors cursor-pointer"
-                        title={isRTL ? 'فتح محادثة شات ووت المباشرة' : 'Open Chatwoot Live Support'}
+                        title={isRTL ? 'فتح محادثة صندوق الوارد المباشرة' : 'Open Inbox Live Support'}
                         data-testid="inspector-open-chatwoot-btn"
                     >
                         <span className="material-symbols-outlined text-base shrink-0" aria-hidden="true">support_agent</span>
-                        <span>{isRTL ? 'شات ووت' : 'Open Chatwoot'}</span>
+                        <span>{isRTL ? 'صندوق الوارد' : 'Open Inbox'}</span>
                     </button>
                     {onDownloadLabel && (
                         <button
