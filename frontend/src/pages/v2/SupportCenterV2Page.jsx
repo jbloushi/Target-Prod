@@ -168,6 +168,7 @@ export const SupportCenterV2Page = () => {
                     <button
                         type="button"
                         onClick={() => setMobileView('list')}
+                        aria-pressed={mobileView === 'list'}
                         aria-label={isRTL ? 'العودة للقائمة' : 'Back to conversations'}
                         className="p-1.5 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer shrink-0"
                     >
@@ -193,6 +194,7 @@ export const SupportCenterV2Page = () => {
                         type="button"
                         disabled={!activeConversation}
                         onClick={() => setMobileView('thread')}
+                        aria-pressed={mobileView === 'thread'}
                         className={`inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-colors disabled:opacity-40 cursor-pointer ${
                             mobileView === 'thread'
                                 ? 'bg-primary text-white'
@@ -206,6 +208,7 @@ export const SupportCenterV2Page = () => {
                         type="button"
                         disabled={!activeConversation}
                         onClick={() => setMobileView('context')}
+                        aria-pressed={mobileView === 'context'}
                         className={`inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-colors disabled:opacity-40 cursor-pointer ${
                             mobileView === 'context'
                                 ? 'bg-primary text-white'
@@ -237,23 +240,11 @@ export const SupportCenterV2Page = () => {
                 >
                     {activeConversation ? (
                         <>
-                            <div className="hidden lg:flex items-center justify-between px-4 py-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
-                                <div className="flex items-center gap-2 min-w-0">
-                                    <span className="text-xs font-bold text-slate-600 dark:text-slate-400">
-                                        {isRTL ? 'المحادثة النشطة:' : 'Active Conversation:'}
-                                    </span>
-                                    <span className="font-mono font-black text-xs text-primary">
-                                        #{activeConversation.id}
-                                    </span>
-                                    {activeConversation.activeShipment?.trackingNumber && (
-                                        <span className="px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 font-mono font-bold text-[11px] text-slate-700 dark:text-slate-200">
-                                            {activeConversation.activeShipment.trackingNumber}
-                                        </span>
-                                    )}
-                                </div>
+                            <div className="hidden lg:flex items-center justify-end px-4 py-1.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
                                 <button
                                     type="button"
                                     onClick={() => setShowContextPanel((prev) => !prev)}
+                                    aria-pressed={showContextPanel}
                                     className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                                 >
                                     <span className="material-symbols-outlined text-sm" aria-hidden="true">

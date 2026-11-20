@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { Link, useLocation } from 'react-router-dom';
 import { useLanguage } from '../../context/LanguageContext';
@@ -31,6 +31,8 @@ export const NativeChatDrawer = ({
     const [activeTab, setActiveTab] = useState('chat'); // 'chat' | 'context'
     const [draftText, setDraftText] = useState('');
     const [localLoading, setLocalLoading] = useState(false);
+    const dialogRef = useRef(null);
+    const previousActiveElementRef = useRef(null);
 
     const effectiveConversationId = chatwootConversationId || conversationId || null;
     const effectiveTrackingNumber = trackingNumber || shipment?.trackingNumber || null;
@@ -68,22 +70,54 @@ export const NativeChatDrawer = ({
         initDrawerConversation();
     }, [initDrawerConversation]);
 
-    // Handle Escape key
+    // Keep keyboard focus inside the drawer and return it to the opener on close.
     useEffect(() => {
         if (!isOpen) return;
+        previousActiveElementRef.current = document.activeElement;
+        const previousOverflow = document.body.style.overflow;
+        const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+        const focusTimer = setTimeout(() => {
+            dialogRef.current?.querySelector('[data-testid="native-chat-drawer-close-btn"]')?.focus();
+        }, 0);
+
         const handleKeyDown = (e) => {
             if (e.key === 'Escape') {
                 onClose?.();
+                return;
+            }
+            if (e.key === 'Tab' && dialogRef.current) {
+                const focusables = Array.from(dialogRef.current.querySelectorAll(focusableSelector))
+                    .filter((element) => element.getAttribute('aria-hidden') !== 'true');
+                if (focusables.length === 0) {
+                    e.preventDefault();
+                    return;
+                }
+                const first = focusables[0];
+                const last = focusables[focusables.length - 1];
+                if (e.shiftKey && (document.activeElement === first || !dialogRef.current.contains(document.activeElement))) {
+                    e.preventDefault();
+                    last.focus();
+                } else if (!e.shiftKey && (document.activeElement === last || !dialogRef.current.contains(document.activeElement))) {
+                    e.preventDefault();
+                    first.focus();
+                }
             }
         };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        document.addEventListener('keydown', handleKeyDown);
+        document.body.style.overflow = 'hidden';
+        return () => {
+            clearTimeout(focusTimer);
+            document.removeEventListener('keydown', handleKeyDown);
+            document.body.style.overflow = previousOverflow;
+            previousActiveElementRef.current?.focus?.();
+        };
     }, [isOpen, onClose]);
 
     if (!isOpen) return null;
 
     return (
         <div
+            ref={dialogRef}
             data-testid="native-chat-drawer"
             className="fixed inset-0 z-50 flex justify-end"
             role="dialog"
@@ -185,6 +219,7 @@ export const NativeChatDrawer = ({
                             type="button"
                             data-testid="native-chat-drawer-tab-chat"
                             onClick={() => setActiveTab('chat')}
+                            aria-pressed={activeTab === 'chat'}
                             className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
                                 activeTab === 'chat'
                                     ? 'bg-primary text-white shadow-xs'
@@ -199,6 +234,7 @@ export const NativeChatDrawer = ({
                             type="button"
                             data-testid="native-chat-drawer-tab-context"
                             onClick={() => setActiveTab('context')}
+                            aria-pressed={activeTab === 'context'}
                             className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
                                 activeTab === 'context'
                                     ? 'bg-primary text-white shadow-xs'

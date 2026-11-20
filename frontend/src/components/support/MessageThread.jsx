@@ -16,10 +16,15 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
     } = useSupportChat();
 
     const messagesEndRef = useRef(null);
+    const shouldStickToBottomRef = useRef(true);
+
+    useEffect(() => {
+        shouldStickToBottomRef.current = true;
+    }, [conversation?.id]);
 
     // Auto-scroll to bottom when messages update
     useEffect(() => {
-        if (typeof messagesEndRef.current?.scrollIntoView === 'function') {
+        if (shouldStickToBottomRef.current && typeof messagesEndRef.current?.scrollIntoView === 'function') {
             messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
         }
     }, [messages]);
@@ -192,6 +197,10 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
             {/* Messages Scroll Area */}
             <div
                 data-testid="messages-stream"
+                onScroll={(event) => {
+                    const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
+                    shouldStickToBottomRef.current = scrollHeight - scrollTop - clientHeight < 120;
+                }}
                 className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50 dark:bg-slate-950/60"
             >
                 {loadingMessages && messages.length === 0 ? (
@@ -251,7 +260,7 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
                                         </div>
 
                                         {/* Template Content */}
-                                        <p className="text-xs text-slate-900 dark:text-slate-100 whitespace-pre-wrap leading-relaxed font-medium">
+                                        <p className="text-[13px] text-slate-900 dark:text-slate-100 whitespace-pre-wrap leading-relaxed font-medium">
                                             {msg.content}
                                         </p>
 
@@ -298,7 +307,7 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
                                     </div>
                                     <div className="space-y-1 min-w-0">
                                         <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl rounded-ss-xs p-3 shadow-2xs">
-                                            <p className="text-xs text-slate-900 dark:text-slate-100 whitespace-pre-wrap leading-relaxed break-words">
+                                            <p className="text-[13px] text-slate-900 dark:text-slate-100 whitespace-pre-wrap leading-relaxed break-words">
                                                 {msg.content}
                                             </p>
                                         </div>
@@ -319,7 +328,7 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
                             >
                                 <div className="max-w-lg space-y-1 items-end flex flex-col">
                                     <div className="bg-primary text-white rounded-2xl rounded-se-xs p-3 shadow-sm">
-                                        <p className="text-xs whitespace-pre-wrap leading-relaxed break-words">
+                                        <p className="text-[13px] whitespace-pre-wrap leading-relaxed break-words">
                                             {msg.content}
                                         </p>
                                     </div>

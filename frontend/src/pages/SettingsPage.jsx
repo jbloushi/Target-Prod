@@ -1570,7 +1570,7 @@ export const SettingsPage = () => {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-base-content/70 uppercase">
+                      <label htmlFor="chatwoot-base-url" className="text-xs font-bold text-base-content/70 uppercase">
                         {lang === 'ar' ? 'وضع مزود الخدمة' : 'Provider Mode'}
                       </label>
                       <select
@@ -1591,6 +1591,7 @@ export const SettingsPage = () => {
                         {lang === 'ar' ? 'عنوان خدمة المايكروسيرفس' : 'Service URL'}
                       </label>
                       <input
+                        id="chatwoot-base-url"
                         type="text"
                         data-testid="service-url-input"
                         value={whatsAppConfig.serviceUrl || ''}
@@ -1601,10 +1602,11 @@ export const SettingsPage = () => {
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-base-content/70 uppercase">
+                      <label htmlFor="chatwoot-account-id" className="text-xs font-bold text-base-content/70 uppercase">
                         {lang === 'ar' ? 'معرف الهاتف (Phone ID)' : 'Phone ID'}
                       </label>
                       <input
+                        id="chatwoot-account-id"
                         type="text"
                         data-testid="phone-id-input"
                         value={whatsAppConfig.phoneId || ''}
@@ -1615,7 +1617,7 @@ export const SettingsPage = () => {
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-base-content/70 uppercase">
+                      <label htmlFor="chatwoot-inbox-id" className="text-xs font-bold text-base-content/70 uppercase">
                         {lang === 'ar' ? 'مفتاح API السري' : 'API Key'}
                       </label>
                       <div className="relative">
@@ -1691,10 +1693,11 @@ export const SettingsPage = () => {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-base-content/70 uppercase">
+                      <label htmlFor="chatwoot-base-url" className="text-xs font-bold text-base-content/70 uppercase">
                         {lang === 'ar' ? 'عنوان منصة Chatwoot' : 'Base URL'}
                       </label>
                       <input
+                        id="chatwoot-base-url"
                         type="text"
                         data-testid="chatwoot-base-url-input"
                         value={whatsAppConfig.chatwootBaseUrl || ''}
@@ -1705,10 +1708,11 @@ export const SettingsPage = () => {
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-base-content/70 uppercase">
+                      <label htmlFor="chatwoot-account-id" className="text-xs font-bold text-base-content/70 uppercase">
                         {lang === 'ar' ? 'معرف الحساب (Account ID)' : 'Account ID'}
                       </label>
                       <input
+                        id="chatwoot-account-id"
                         type="text"
                         data-testid="chatwoot-account-id-input"
                         value={whatsAppConfig.chatwootAccountId || ''}
@@ -1719,10 +1723,11 @@ export const SettingsPage = () => {
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-base-content/70 uppercase">
+                      <label htmlFor="chatwoot-inbox-id" className="text-xs font-bold text-base-content/70 uppercase">
                         {lang === 'ar' ? 'معرف صندوق الوارد (Inbox ID)' : 'Inbox ID'}
                       </label>
                       <input
+                        id="chatwoot-inbox-id"
                         type="text"
                         data-testid="chatwoot-inbox-id-input"
                         value={whatsAppConfig.chatwootInboxId || ''}
@@ -1733,12 +1738,15 @@ export const SettingsPage = () => {
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-base-content/70 uppercase">
+                      <label htmlFor="chatwoot-api-token" className="text-xs font-bold text-base-content/70 uppercase">
                         {lang === 'ar' ? 'رمز API السري (API Token)' : 'API Token'}
                       </label>
                       <div className="relative">
                         <input
+                          id="chatwoot-api-token"
                           type={showChatwootToken ? 'text' : 'password'}
+                          autoComplete="new-password"
+                          spellCheck="false"
                           data-testid="chatwoot-api-token-input"
                           value={whatsAppConfig.chatwootApiToken || ''}
                           onChange={(e) => setWhatsAppConfig({ ...whatsAppConfig, chatwootApiToken: e.target.value })}
@@ -1749,6 +1757,10 @@ export const SettingsPage = () => {
                           type="button"
                           data-testid="toggle-chatwoot-token"
                           onClick={() => setShowChatwootToken(!showChatwootToken)}
+                          aria-pressed={showChatwootToken}
+                          aria-label={showChatwootToken
+                            ? (lang === 'ar' ? 'إخفاء رمز Chatwoot' : 'Hide Chatwoot token')
+                            : (lang === 'ar' ? 'إظهار رمز Chatwoot' : 'Show Chatwoot token')}
                           className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-base-content/50 hover:text-base-content"
                           title={showChatwootToken ? 'Hide Token' : 'Show Token'}
                         >

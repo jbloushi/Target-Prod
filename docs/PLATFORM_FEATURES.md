@@ -2,7 +2,7 @@
 
 This is the maintained feature catalog for Target Logistics. Future developers should update this file whenever platform behavior changes.
 
-Last reviewed: 2026-04-14
+Last reviewed: 2026-11-20
 
 ## Product Summary
 
@@ -227,6 +227,7 @@ User features:
 - Shipping access assignment.
 - Markup override and credit limit fields.
 - Active/inactive status.
+- Admin-managed Chatwoot agent identity and encrypted per-agent access token for Support replies.
 
 ## Documents And Labels
 
@@ -260,6 +261,8 @@ Primary frontend pages include:
 - Settings and API key management.
 - Admin users page.
 - Admin organizations page.
+- Support Center inbox with conversation search, status/unread filters, message replies, internal notes, and shipment/customer context.
+- Chatwoot integration settings and WhatsApp delivery audit logs for administrators.
 - Address book.
 - Static legal/contact/about pages.
 

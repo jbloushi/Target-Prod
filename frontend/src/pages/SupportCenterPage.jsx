@@ -162,21 +162,7 @@ export const SupportCenterPage = () => {
                     {activeConversation ? (
                         <>
                             {/* Thread Header Action Bar for Desktop */}
-                            <div className="hidden lg:flex items-center justify-between px-4 py-2 border-b border-base-200 bg-base-100/60">
-                                <div className="flex items-center gap-2">
-                                    <span className="font-bold text-xs text-base-content/70">
-                                        {isRTL ? 'المحادثة النشطة:' : 'Active Conversation:'}
-                                    </span>
-                                    <span className="font-mono font-black text-xs text-primary">
-                                        #{activeConversation.id}
-                                    </span>
-                                    {activeConversation.activeShipment?.trackingNumber && (
-                                        <span className="badge badge-outline badge-xs font-mono font-bold">
-                                            {activeConversation.activeShipment.trackingNumber}
-                                        </span>
-                                    )}
-                                </div>
-
+                            <div className="hidden lg:flex items-center justify-end px-4 py-1.5 border-b border-base-200 bg-base-100/60">
                                 <button
                                     type="button"
                                     data-testid="context-panel-toggle-btn"

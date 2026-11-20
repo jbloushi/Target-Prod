@@ -36,7 +36,7 @@ const Input = ({
                 />
             </div>
             {error && (
-                <span id={errorId} className="block text-[11px] text-error font-semibold mt-0.5">
+                <span id={errorId} role="alert" className="block text-[11px] text-error font-semibold mt-0.5">
                     {error}
                 </span>
             )}

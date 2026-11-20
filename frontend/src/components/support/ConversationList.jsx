@@ -51,7 +51,15 @@ export const ConversationList = ({ onSelectConversation }) => {
         try {
             const date = new Date(isoString);
             if (Number.isNaN(date.getTime())) return '';
-            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const now = new Date();
+            const isToday = date.toDateString() === now.toDateString();
+            const yesterday = new Date(now);
+            yesterday.setDate(now.getDate() - 1);
+            if (isToday) return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            if (date.toDateString() === yesterday.toDateString()) return isRTL ? 'أمس' : 'Yesterday';
+            const daysOld = (now.getTime() - date.getTime()) / 86400000;
+            if (daysOld < 7 && daysOld >= 0) return date.toLocaleDateString(isRTL ? 'ar' : undefined, { weekday: 'short' });
+            return date.toLocaleDateString(isRTL ? 'ar' : undefined, { month: 'short', day: 'numeric' });
         } catch (_) {
             return '';
         }
@@ -60,10 +68,22 @@ export const ConversationList = ({ onSelectConversation }) => {
     return (
         <aside
             data-testid="conversation-list-pane"
-            className="w-full md:w-80 lg:w-96 shrink-0 border-e border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col h-full select-none"
+            className="w-full md:w-80 lg:w-96 shrink-0 border-e border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col h-full"
         >
             {/* Header / Search Controls */}
-            <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 space-y-2.5 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xs">
+            <div className="p-4 border-b border-slate-200 dark:border-slate-800 space-y-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xs">
+                <div className="flex items-center justify-between gap-3">
+                    <div>
+                        <h1 className="text-sm font-black text-slate-900 dark:text-white">{isRTL ? 'صندوق الوارد' : 'Inbox'}</h1>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            {isRTL ? `${conversations.length} محادثة` : `${conversations.length} conversations`}
+                        </p>
+                    </div>
+                    <span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2.5 py-1 text-[10px] font-bold text-primary">
+                        <span className="material-symbols-outlined text-xs">forum</span>
+                        {isRTL ? 'الدعم المباشر' : 'Live support'}
+                    </span>
+                </div>
                 {/* Search Bar */}
                 <div className="relative">
                     <span className="material-symbols-outlined absolute start-3 top-1/2 -translate-y-1/2 text-base text-slate-400 dark:text-slate-500">
@@ -74,6 +94,7 @@ export const ConversationList = ({ onSelectConversation }) => {
                         data-testid="support-search-input"
                         value={filters.search}
                         onChange={handleSearchChange}
+                        aria-label={isRTL ? 'البحث في المحادثات' : 'Search conversations'}
                         placeholder={isRTL ? 'بحث بالاسم، الهاتف، البوليصة...' : 'Search name, phone, AWB...'}
                         className="w-full ps-9 pe-8 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
                     />
@@ -81,6 +102,7 @@ export const ConversationList = ({ onSelectConversation }) => {
                         <button
                             type="button"
                             onClick={() => setFilters(prev => ({ ...prev, search: '' }))}
+                            aria-label={isRTL ? 'مسح البحث' : 'Clear search'}
                             className="absolute end-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center h-6 w-6 rounded-full text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
                         >
                             <span className="material-symbols-outlined text-sm">close</span>
@@ -95,6 +117,7 @@ export const ConversationList = ({ onSelectConversation }) => {
                             type="button"
                             data-testid="status-tab-open"
                             onClick={() => handleStatusTab('open')}
+                            aria-pressed={filters.status === 'open'}
                             className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-colors ${
                                 filters.status === 'open'
                                     ? 'bg-primary text-white shadow-xs'
@@ -107,6 +130,7 @@ export const ConversationList = ({ onSelectConversation }) => {
                             type="button"
                             data-testid="status-tab-resolved"
                             onClick={() => handleStatusTab('resolved')}
+                            aria-pressed={filters.status === 'resolved'}
                             className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-colors ${
                                 filters.status === 'resolved'
                                     ? 'bg-primary text-white shadow-xs'
@@ -119,6 +143,7 @@ export const ConversationList = ({ onSelectConversation }) => {
                             type="button"
                             data-testid="status-tab-all"
                             onClick={() => handleStatusTab('all')}
+                            aria-pressed={filters.status === 'all'}
                             className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-colors ${
                                 filters.status === 'all'
                                     ? 'bg-primary text-white shadow-xs'
@@ -134,6 +159,7 @@ export const ConversationList = ({ onSelectConversation }) => {
                 <div className="flex items-center gap-2">
                     <select
                         data-testid="support-label-filter"
+                        aria-label={isRTL ? 'تصفية حسب التصنيف' : 'Filter by label'}
                         value={filters.label}
                         onChange={handleLabelChange}
                         className="flex-1 min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 px-2.5 py-1.5 text-[11px] font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
@@ -149,6 +175,7 @@ export const ConversationList = ({ onSelectConversation }) => {
                         type="button"
                         data-testid="support-unread-toggle"
                         onClick={handleUnreadToggle}
+                        aria-pressed={filters.unread}
                         className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold shrink-0 transition-colors ${
                             filters.unread
                                 ? 'bg-primary text-white shadow-xs'
@@ -163,7 +190,12 @@ export const ConversationList = ({ onSelectConversation }) => {
             </div>
 
             {/* Conversation Items List */}
-            <div className="flex-1 overflow-y-auto divide-y divide-slate-200/80 dark:divide-slate-800">
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-200/80 dark:divide-slate-800" aria-busy={loadingConversations}>
+                {loadingConversations && conversations.length > 0 && (
+                    <div className="h-0.5 w-full overflow-hidden bg-slate-100 dark:bg-slate-800" aria-label={isRTL ? 'جاري تحديث المحادثات' : 'Updating conversations'}>
+                        <div className="h-full w-1/3 animate-pulse bg-primary" />
+                    </div>
+                )}
                 {loadingConversations && conversations.length === 0 ? (
                     <div className="p-8 text-center space-y-2">
                         <span className="inline-block w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -173,6 +205,16 @@ export const ConversationList = ({ onSelectConversation }) => {
                     <div className="p-8 text-center space-y-2 text-slate-400 dark:text-slate-500">
                         <span className="material-symbols-outlined text-3xl opacity-50">chat_bubble_outline</span>
                         <p className="text-xs font-semibold">{isRTL ? 'لا توجد محادثات مطابقة' : 'No conversations found'}</p>
+                        {(filters.search || filters.label || filters.unread || filters.status !== 'open') && (
+                            <button
+                                type="button"
+                                data-testid="support-clear-filters"
+                                onClick={() => setFilters((prev) => ({ ...prev, status: 'open', label: '', search: '', unread: false }))}
+                                className="mt-2 inline-flex items-center justify-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-[11px] font-bold text-primary hover:bg-primary/5"
+                            >
+                                {isRTL ? 'مسح عوامل التصفية' : 'Clear filters'}
+                            </button>
+                        )}
                     </div>
                 ) : (
                     conversations.map(conv => {
@@ -182,11 +224,13 @@ export const ConversationList = ({ onSelectConversation }) => {
                         const unread = conv.unreadCount || 0;
 
                         return (
-                            <div
+                            <button
+                                type="button"
                                 key={conv.id}
                                 data-testid={`conversation-item-${conv.id}`}
                                 onClick={() => handleSelect(conv)}
-                                className={`p-3.5 cursor-pointer transition-all flex items-start gap-3 relative ${
+                                aria-current={isSelected ? 'true' : undefined}
+                                className={`w-full text-start font-[inherit] p-3.5 cursor-pointer transition-colors flex items-start gap-3 relative focus-visible:z-10 ${
                                     isSelected
                                         ? 'bg-primary/10 before:absolute before:inset-y-2 before:start-0 before:w-1 before:rounded-full before:bg-primary'
                                         : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
@@ -285,7 +329,7 @@ export const ConversationList = ({ onSelectConversation }) => {
                                         {unread > 99 ? '99+' : unread}
                                     </span>
                                 )}
-                            </div>
+                            </button>
                         );
                     })
                 )}

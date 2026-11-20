@@ -207,7 +207,7 @@ export const AdminWhatsAppLogsV2Page = () => {
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                     {[
                         { label: lang === 'ar' ? 'إجمالي الصادر' : 'Total Dispatches', value: stats.totalDispatched || stats.totalLogs || 0, icon: 'send', color: 'text-primary' },
-                        { label: lang === 'ar' ? 'نسبة النجاح' : 'Delivery Rate', value: `${stats.deliveryRate ?? 100}%`, icon: 'done_all', color: 'text-emerald-600 dark:text-emerald-400' },
+                        { label: lang === 'ar' ? 'تأكيدات التسليم' : 'Handset Delivered', value: stats.totalDelivered || 0, icon: 'done_all', color: 'text-emerald-600 dark:text-emerald-400' },
                         { label: lang === 'ar' ? 'تمت قراءتها' : 'Read Receipts', value: stats.totalRead || 0, icon: 'visibility', color: 'text-sky-600 dark:text-sky-400' },
                         { label: lang === 'ar' ? 'فشل / معلق' : 'Failed / Queued', value: `${stats.totalFailed || 0} / ${stats.totalQueued || 0}`, icon: 'error_outline', color: 'text-rose-600 dark:text-rose-400' }
                     ].map((kpi) => (
@@ -229,6 +229,7 @@ export const AdminWhatsAppLogsV2Page = () => {
                         <span className="material-symbols-outlined text-lg text-slate-400 absolute top-1/2 -translate-y-1/2 start-3 pointer-events-none" aria-hidden="true">search</span>
                         <input
                             type="text"
+                            aria-label={lang === 'ar' ? 'ابحث في سجلات واتساب' : 'Search WhatsApp logs'}
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                             placeholder={lang === 'ar' ? 'بحث برقم التتبع، الهاتف، أو القالب...' : 'Search by tracking #, phone, or template...'}
@@ -236,7 +237,7 @@ export const AdminWhatsAppLogsV2Page = () => {
                         />
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-                        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-slate-100">
+                        <select aria-label={lang === 'ar' ? 'تصفية حسب الحالة' : 'Filter by status'} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-slate-100">
                             <option value="ALL">{lang === 'ar' ? 'كل الحالات' : 'All Statuses'}</option>
                             <option value="DELIVERED">Delivered</option>
                             <option value="READ">Read</option>
@@ -244,17 +245,18 @@ export const AdminWhatsAppLogsV2Page = () => {
                             <option value="QUEUED">Queued</option>
                             <option value="FAILED">Failed</option>
                         </select>
-                        <select value={providerFilter} onChange={(e) => setProviderFilter(e.target.value)} className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-slate-100">
+                        <select aria-label={lang === 'ar' ? 'تصفية حسب المزود' : 'Filter by provider'} value={providerFilter} onChange={(e) => setProviderFilter(e.target.value)} className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-slate-100">
                             <option value="ALL">{lang === 'ar' ? 'كل المزودين' : 'All Providers'}</option>
                             <option value="META">Meta Cloud</option>
+                            <option value="CHATWOOT">Chatwoot</option>
                             <option value="MSG_GATEWAY">MSG Gateway</option>
                         </select>
-                        <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-slate-100">
+                        <select aria-label={lang === 'ar' ? 'تصفية حسب الطرف' : 'Filter by party'} value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-slate-100">
                             <option value="ALL">{lang === 'ar' ? 'كافة الأطراف' : 'All Parties'}</option>
                             <option value="RECEIVER">{lang === 'ar' ? 'المستلم' : 'Consignee'}</option>
                             <option value="SENDER">{lang === 'ar' ? 'الراسل' : 'Shipper'}</option>
                         </select>
-                        <select value={dateRangeFilter} onChange={(e) => setDateRangeFilter(e.target.value)} className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-slate-100">
+                        <select aria-label={lang === 'ar' ? 'تصفية حسب الفترة الزمنية' : 'Filter by date range'} value={dateRangeFilter} onChange={(e) => setDateRangeFilter(e.target.value)} className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-slate-100">
                             <option value="ALL">{lang === 'ar' ? 'كل الأوقات' : 'All Time'}</option>
                             <option value="TODAY">{lang === 'ar' ? 'اليوم' : 'Today'}</option>
                             <option value="7D">{lang === 'ar' ? 'آخر 7 أيام' : 'Last 7 Days'}</option>

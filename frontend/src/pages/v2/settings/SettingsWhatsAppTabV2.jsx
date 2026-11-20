@@ -506,6 +506,8 @@ export const SettingsWhatsAppTabV2 = ({ isRTL }) => {
                 <button
                     type="button"
                     onClick={() => setShowChatwootPanel((prev) => !prev)}
+                    aria-expanded={showChatwootPanel}
+                    aria-controls="chatwoot-credentials-fields"
                     className="w-full flex items-center justify-between gap-3 text-start cursor-pointer"
                 >
                     <div>
@@ -521,11 +523,11 @@ export const SettingsWhatsAppTabV2 = ({ isRTL }) => {
                     </span>
                 </button>
 
-                {showChatwootPanel && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 pt-3 border-t border-slate-200 dark:border-slate-800">
+                <div id="chatwoot-credentials-fields" hidden={!showChatwootPanel} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 pt-3 border-t border-slate-200 dark:border-slate-800">
                         <div className="space-y-1">
-                            <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Base URL</label>
+                            <label htmlFor="chatwoot-base-url-v2" className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Base URL</label>
                             <input
+                                id="chatwoot-base-url-v2"
                                 type="text"
                                 dir="ltr"
                                 value={whatsAppConfig.chatwootBaseUrl || ''}
@@ -535,8 +537,9 @@ export const SettingsWhatsAppTabV2 = ({ isRTL }) => {
                             />
                         </div>
                         <div className="space-y-1">
-                            <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Account ID</label>
+                            <label htmlFor="chatwoot-account-id-v2" className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Account ID</label>
                             <input
+                                id="chatwoot-account-id-v2"
                                 type="text"
                                 dir="ltr"
                                 value={whatsAppConfig.chatwootAccountId || ''}
@@ -546,8 +549,9 @@ export const SettingsWhatsAppTabV2 = ({ isRTL }) => {
                             />
                         </div>
                         <div className="space-y-1">
-                            <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Inbox ID</label>
+                            <label htmlFor="chatwoot-inbox-id-v2" className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Inbox ID</label>
                             <input
+                                id="chatwoot-inbox-id-v2"
                                 type="text"
                                 dir="ltr"
                                 value={whatsAppConfig.chatwootInboxId || ''}
@@ -557,10 +561,13 @@ export const SettingsWhatsAppTabV2 = ({ isRTL }) => {
                             />
                         </div>
                         <div className="space-y-1">
-                            <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">API Token</label>
+                            <label htmlFor="chatwoot-api-token-v2" className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">API Token</label>
                             <div className="relative">
                                 <input
+                                    id="chatwoot-api-token-v2"
                                     type={showChatwootToken ? 'text' : 'password'}
+                                    autoComplete="new-password"
+                                    spellCheck="false"
                                     dir="ltr"
                                     value={whatsAppConfig.chatwootApiToken || ''}
                                     onChange={(e) => setWhatsAppConfig({ ...whatsAppConfig, chatwootApiToken: e.target.value })}
@@ -570,6 +577,10 @@ export const SettingsWhatsAppTabV2 = ({ isRTL }) => {
                                 <button
                                     type="button"
                                     onClick={() => setShowChatwootToken(!showChatwootToken)}
+                                    aria-pressed={showChatwootToken}
+                                    aria-label={showChatwootToken
+                                        ? (isRTL ? 'إخفاء رمز Chatwoot' : 'Hide Chatwoot token')
+                                        : (isRTL ? 'إظهار رمز Chatwoot' : 'Show Chatwoot token')}
                                     className="absolute end-2 top-1/2 -translate-y-1/2 text-slate-500 cursor-pointer"
                                 >
                                     <span className="material-symbols-outlined text-sm" aria-hidden="true">
@@ -578,8 +589,7 @@ export const SettingsWhatsAppTabV2 = ({ isRTL }) => {
                                 </button>
                             </div>
                         </div>
-                    </div>
-                )}
+                </div>
             </div>
 
             {/* Granular Milestone Rules */}

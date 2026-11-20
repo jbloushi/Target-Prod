@@ -88,6 +88,7 @@ export const AdminUsersV2Page = () => {
     const [activeTab, setActiveTab] = useState('profile');
     const [saveLoading, setSaveLoading] = useState(false);
     const [formData, setFormData] = useState({});
+    const [showChatwootToken, setShowChatwootToken] = useState(false);
 
     // Aux Data
     const [organizations, setOrganizations] = useState([]);
@@ -192,6 +193,10 @@ export const AdminUsersV2Page = () => {
         initialData.accessScopes = initialData.accessScopes || [];
         initialData.chatwootUserId = targetUser?.chatwootUserId || '';
         initialData.chatwootEmail = targetUser?.chatwootEmail || '';
+        initialData.chatwootAccessToken = '';
+        initialData.hasChatwootAccessToken = Boolean(targetUser?.chatwootAccessToken);
+        initialData.clearChatwootAccessToken = false;
+        setShowChatwootToken(false);
         if (isOrgManager) {
             initialData.organizationId = currentUser?.organizationId || '';
         } else if (typeof initialData.organization === 'object' && initialData.organization) {
@@ -228,6 +233,11 @@ export const AdminUsersV2Page = () => {
             if (role === 'admin') {
                 payload.chatwootUserId = formData.chatwootUserId ? String(formData.chatwootUserId).trim() : null;
                 payload.chatwootEmail = formData.chatwootEmail ? String(formData.chatwootEmail).trim() : null;
+                if (formData.clearChatwootAccessToken) {
+                    payload.chatwootAccessToken = null;
+                } else if (formData.chatwootAccessToken?.trim()) {
+                    payload.chatwootAccessToken = formData.chatwootAccessToken.trim();
+                }
             }
             if (canFullAdmin) {
                 payload.agentPolicy = {
@@ -698,12 +708,64 @@ export const AdminUsersV2Page = () => {
                                     {role === 'admin' && (
                                         <>
                                             <div>
-                                                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Chatwoot User ID</label>
-                                                <input type="text" dir="ltr" placeholder="e.g. 104" value={formData.chatwootUserId || ''} onChange={(e) => setFormData({ ...formData, chatwootUserId: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-mono text-slate-900 dark:text-slate-100" />
+                                                <label htmlFor="chatwoot-user-id-v2" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Chatwoot User ID</label>
+                                                <input id="chatwoot-user-id-v2" type="text" dir="ltr" placeholder="e.g. 104" value={formData.chatwootUserId || ''} onChange={(e) => setFormData({ ...formData, chatwootUserId: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-mono text-slate-900 dark:text-slate-100" />
                                             </div>
                                             <div>
-                                                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Chatwoot Agent Email</label>
-                                                <input type="email" dir="ltr" value={formData.chatwootEmail || ''} onChange={(e) => setFormData({ ...formData, chatwootEmail: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100" />
+                                                <label htmlFor="chatwoot-agent-email-v2" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Chatwoot Agent Email</label>
+                                                <input id="chatwoot-agent-email-v2" type="email" dir="ltr" value={formData.chatwootEmail || ''} onChange={(e) => setFormData({ ...formData, chatwootEmail: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100" />
+                                            </div>
+                                            <div className="sm:col-span-2">
+                                                <div className="flex items-center justify-between gap-2 mb-1">
+                                                    <label htmlFor="chatwoot-agent-token-v2" className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                                                        {lang === 'ar' ? 'رمز وصول الوكيل الشخصي' : 'Agent Personal Access Token'}
+                                                    </label>
+                                                    {formData.hasChatwootAccessToken && !formData.clearChatwootAccessToken && (
+                                                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                                                            <span className="material-symbols-outlined text-xs">check_circle</span>
+                                                            {lang === 'ar' ? 'تم الإعداد' : 'Configured'}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="relative">
+                                                    <input
+                                                        id="chatwoot-agent-token-v2"
+                                                        type={showChatwootToken ? 'text' : 'password'}
+                                                        autoComplete="new-password"
+                                                        spellCheck="false"
+                                                        dir="ltr"
+                                                        value={formData.chatwootAccessToken || ''}
+                                                        onChange={(e) => setFormData({ ...formData, chatwootAccessToken: e.target.value })}
+                                                        placeholder={lang === 'ar' ? 'أدخل رمزاً جديداً للاستبدال' : 'Enter a new token to replace the saved token'}
+                                                        disabled={formData.clearChatwootAccessToken}
+                                                        className="w-full pe-11 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-mono text-slate-900 dark:text-slate-100"
+                                                        data-testid="input-chatwoot-access-token-v2"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowChatwootToken((visible) => !visible)}
+                                                        aria-pressed={showChatwootToken}
+                                                        aria-label={showChatwootToken
+                                                            ? (lang === 'ar' ? 'إخفاء رمز Chatwoot' : 'Hide Chatwoot token')
+                                                            : (lang === 'ar' ? 'إظهار رمز Chatwoot' : 'Show Chatwoot token')}
+                                                        className="absolute inset-y-0 end-2 flex items-center text-slate-500 hover:text-slate-800 dark:hover:text-slate-100"
+                                                    >
+                                                        <span className="material-symbols-outlined text-sm">{showChatwootToken ? 'visibility_off' : 'visibility'}</span>
+                                                    </button>
+                                                </div>
+                                                <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+                                                    <p className="text-[10.5px] text-slate-500 dark:text-slate-400">
+                                                        {lang === 'ar'
+                                                            ? 'اتركه فارغاً للاحتفاظ بالرمز الحالي. يُشفّر الرمز عند حفظه.'
+                                                            : 'Leave blank to keep the current token. Tokens are encrypted when saved.'}
+                                                    </p>
+                                                    {formData.hasChatwootAccessToken && (
+                                                        <label className="inline-flex items-center gap-2 text-[10.5px] font-semibold text-rose-700 dark:text-rose-300 cursor-pointer">
+                                                            <span>{lang === 'ar' ? 'إزالة الرمز المحفوظ' : 'Remove saved token'}</span>
+                                                            <input type="checkbox" checked={Boolean(formData.clearChatwootAccessToken)} onChange={(e) => setFormData({ ...formData, clearChatwootAccessToken: e.target.checked })} className="checkbox checkbox-error checkbox-xs" />
+                                                        </label>
+                                                    )}
+                                                </div>
                                             </div>
                                         </>
                                     )}

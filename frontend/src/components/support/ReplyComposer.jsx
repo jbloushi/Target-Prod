@@ -225,6 +225,7 @@ export const ReplyComposer = ({
                             type="button"
                             data-testid="composer-mode-free"
                             onClick={() => setComposerMode('free')}
+                            aria-pressed={composerMode === 'free'}
                             className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
                                 composerMode === 'free'
                                     ? 'bg-primary text-white shadow-xs'
@@ -238,6 +239,7 @@ export const ReplyComposer = ({
                             type="button"
                             data-testid="composer-mode-template"
                             onClick={() => setComposerMode('template')}
+                            aria-pressed={composerMode === 'template'}
                             className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
                                 composerMode === 'template'
                                     ? 'bg-primary text-white shadow-xs'

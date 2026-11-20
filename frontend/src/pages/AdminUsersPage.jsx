@@ -74,6 +74,7 @@ const AdminUsersPage = () => {
     const [editingUser, setEditingUser] = useState(null);
     const [activeTab, setActiveTab] = useState('profile');
     const [saveLoading, setSaveLoading] = useState(false);
+    const [showChatwootToken, setShowChatwootToken] = useState(false);
 
     // Filter State
     const [roleFilter, setRoleFilter] = useState('');
@@ -246,6 +247,10 @@ const AdminUsersPage = () => {
         initialData.accessScopes = initialData.accessScopes || [];
         initialData.chatwootUserId = targetUser?.chatwootUserId || '';
         initialData.chatwootEmail = targetUser?.chatwootEmail || '';
+        initialData.chatwootAccessToken = '';
+        initialData.hasChatwootAccessToken = Boolean(targetUser?.chatwootAccessToken);
+        initialData.clearChatwootAccessToken = false;
+        setShowChatwootToken(false);
 
         setFormData(initialData);
         setActiveTab('profile');
@@ -274,10 +279,20 @@ const AdminUsersPage = () => {
             if (currentUser?.role === 'admin') {
                 payload.chatwootUserId = formData.chatwootUserId ? String(formData.chatwootUserId).trim() : null;
                 payload.chatwootEmail = formData.chatwootEmail ? String(formData.chatwootEmail).trim() : null;
+                if (formData.clearChatwootAccessToken) {
+                    payload.chatwootAccessToken = null;
+                } else if (formData.chatwootAccessToken?.trim()) {
+                    payload.chatwootAccessToken = formData.chatwootAccessToken.trim();
+                } else {
+                    delete payload.chatwootAccessToken;
+                }
             } else {
                 delete payload.chatwootUserId;
                 delete payload.chatwootEmail;
+                delete payload.chatwootAccessToken;
             }
+            delete payload.hasChatwootAccessToken;
+            delete payload.clearChatwootAccessToken;
 
             if (payload.markup) {
                 payload.markup.percentageValue = Number(payload.markup.percentageValue || 0);
@@ -997,14 +1012,15 @@ const AdminUsersPage = () => {
                                         <div className="flex items-center gap-1.5 text-xs font-bold text-primary uppercase">
                                             <span className="material-symbols-outlined text-sm">support_agent</span>
                                             <span>{lang === 'ar' ? 'هوية وكيل المحادثات الحية (Chatwoot)' : 'Chatwoot Live Support Identity'}</span>
-                                            <span className="badge badge-primary badge-outline text-[10px] font-bold">Admin Only</span>
+                                            <span className="badge badge-primary badge-outline text-[10px] font-bold">{lang === 'ar' ? 'للمدير فقط' : 'Admin only'}</span>
                                         </div>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                             <div>
-                                                <label className="text-xs font-bold text-base-content/70 block mb-1">
+                                                <label htmlFor="chatwoot-user-id" className="text-xs font-bold text-base-content/70 block mb-1">
                                                     {lang === 'ar' ? 'معرّف وكيل Chatwoot' : 'Chatwoot Agent ID'}
                                                 </label>
                                                 <input
+                                                    id="chatwoot-user-id"
                                                     type="text"
                                                     value={formData.chatwootUserId || ''}
                                                     onChange={(e) => updateField('chatwootUserId', e.target.value)}
@@ -1014,10 +1030,11 @@ const AdminUsersPage = () => {
                                                 />
                                             </div>
                                             <div>
-                                                <label className="text-xs font-bold text-base-content/70 block mb-1">
+                                                <label htmlFor="chatwoot-agent-email" className="text-xs font-bold text-base-content/70 block mb-1">
                                                     {lang === 'ar' ? 'البريد الإلكتروني في Chatwoot' : 'Chatwoot Email'}
                                                 </label>
                                                 <input
+                                                    id="chatwoot-agent-email"
                                                     type="email"
                                                     value={formData.chatwootEmail || ''}
                                                     onChange={(e) => updateField('chatwootEmail', e.target.value)}
@@ -1026,11 +1043,67 @@ const AdminUsersPage = () => {
                                                     data-testid="input-chatwoot-email"
                                                 />
                                             </div>
+                                            <div className="sm:col-span-2">
+                                                <div className="flex items-center justify-between gap-2 mb-1">
+                                                    <label htmlFor="chatwoot-agent-token" className="text-xs font-bold text-base-content/70">
+                                                        {lang === 'ar' ? 'رمز وصول الوكيل الشخصي' : 'Agent Personal Access Token'}
+                                                    </label>
+                                                    {formData.hasChatwootAccessToken && !formData.clearChatwootAccessToken && (
+                                                        <span className="badge badge-success badge-outline badge-xs gap-1">
+                                                            <span className="material-symbols-outlined text-[11px]">check_circle</span>
+                                                            {lang === 'ar' ? 'تم الإعداد' : 'Configured'}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="relative">
+                                                    <input
+                                                        id="chatwoot-agent-token"
+                                                        type={showChatwootToken ? 'text' : 'password'}
+                                                        autoComplete="new-password"
+                                                        spellCheck="false"
+                                                        value={formData.chatwootAccessToken || ''}
+                                                        onChange={(e) => updateField('chatwootAccessToken', e.target.value)}
+                                                        placeholder={lang === 'ar' ? 'أدخل رمزاً جديداً للاستبدال' : 'Enter a new token to replace the saved token'}
+                                                        disabled={formData.clearChatwootAccessToken}
+                                                        className="input input-xs sm:input-sm input-bordered w-full pe-11 font-mono text-xs focus:input-primary"
+                                                        data-testid="input-chatwoot-access-token"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowChatwootToken((visible) => !visible)}
+                                                        aria-pressed={showChatwootToken}
+                                                        aria-label={showChatwootToken
+                                                            ? (lang === 'ar' ? 'إخفاء رمز Chatwoot' : 'Hide Chatwoot token')
+                                                            : (lang === 'ar' ? 'إظهار رمز Chatwoot' : 'Show Chatwoot token')}
+                                                        className="absolute inset-y-0 end-2 flex items-center text-base-content/50 hover:text-base-content"
+                                                    >
+                                                        <span className="material-symbols-outlined text-sm">{showChatwootToken ? 'visibility_off' : 'visibility'}</span>
+                                                    </button>
+                                                </div>
+                                                <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+                                                    <span className="text-[10.5px] text-base-content/55">
+                                                        {lang === 'ar'
+                                                            ? 'اتركه فارغاً للاحتفاظ بالرمز الحالي. يُشفّر الرمز عند حفظه.'
+                                                            : 'Leave blank to keep the current token. Tokens are encrypted when saved.'}
+                                                    </span>
+                                                    {formData.hasChatwootAccessToken && (
+                                                        <label className="label cursor-pointer gap-2 p-0 text-[10.5px] text-error">
+                                                            <span>{lang === 'ar' ? 'إزالة الرمز المحفوظ' : 'Remove saved token'}</span>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={Boolean(formData.clearChatwootAccessToken)}
+                                                                onChange={(e) => updateField('clearChatwootAccessToken', e.target.checked)}
+                                                                className="checkbox checkbox-error checkbox-xs"
+                                                            />
+                                                        </label>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
                                         <p className="text-[10.5px] text-base-content/50">
                                             {lang === 'ar'
-                                                ? 'ربط حساب مستخدم تارجت مع وكيل شات ووت للدعم المباشر. متاح فقط لمديري النظام.'
-                                                : 'Associates Target user actions with Chatwoot live support inbox tickets. Restricted to Superadmin.'}
+                                                ? 'يربط هذا المستخدم بوكيل Chatwoot ويتيح إرسال الردود من مركز الدعم. إعداد بيانات الاعتماد متاح لمديري النظام فقط.'
+                                                : 'Links this Target user to a Chatwoot agent and enables replies from Support. Credential setup is limited to administrators.'}
                                         </p>
                                     </div>
                                 )}

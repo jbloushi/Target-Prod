@@ -242,6 +242,13 @@ export const AdminWhatsAppLogsPage = () => {
         enqueueSnackbar(lang === 'ar' ? 'تم النسخ بنجاح' : 'Copied to clipboard!', { variant: 'success' });
     };
 
+    const handleMetricKeyDown = (event, status) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            setStatusFilter(status);
+        }
+    };
+
     const getStatusBadge = (status) => {
         const s = (status || '').toUpperCase();
         switch (s) {
@@ -355,9 +362,14 @@ export const AdminWhatsAppLogsPage = () => {
             {/* Metric Cards (Clickable Quick Filters) */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 {/* Card 1: Total Dispatches */}
-                <div 
-                    onClick={() => { setStatusFilter('ALL'); fetchLogs(1); }}
-                    className="stats bg-base-100 border border-base-200/80 shadow-xs rounded-2xl hover:border-primary/50 transition-all cursor-pointer"
+                <div
+                    role="button"
+                    tabIndex={0}
+                    aria-label={lang === 'ar' ? 'عرض كافة الرسائل' : 'Show all dispatches'}
+                    aria-pressed={statusFilter === 'ALL'}
+                    onKeyDown={(event) => handleMetricKeyDown(event, 'ALL')}
+                    onClick={() => setStatusFilter('ALL')}
+                    className="stats bg-base-100 border border-base-200/80 shadow-xs rounded-2xl hover:border-primary/50 focus-visible:border-primary transition-all cursor-pointer"
                     title={lang === 'ar' ? 'انقر لعرض كافة الرسائل' : 'Click to show all dispatches'}
                 >
                     <div className="stat p-4">
@@ -377,9 +389,14 @@ export const AdminWhatsAppLogsPage = () => {
                 </div>
 
                 {/* Card 2: Delivery Success Rate */}
-                <div 
-                    onClick={() => { setStatusFilter('SENT'); fetchLogs(1); }}
-                    className="stats bg-base-100 border border-base-200/80 shadow-xs rounded-2xl hover:border-success/50 transition-all cursor-pointer"
+                <div
+                    role="button"
+                    tabIndex={0}
+                    aria-label={lang === 'ar' ? 'تصفية الرسائل الناجحة' : 'Filter successful dispatches'}
+                    aria-pressed={statusFilter === 'SENT'}
+                    onKeyDown={(event) => handleMetricKeyDown(event, 'SENT')}
+                    onClick={() => setStatusFilter('SENT')}
+                    className="stats bg-base-100 border border-base-200/80 shadow-xs rounded-2xl hover:border-success/50 focus-visible:border-success transition-all cursor-pointer"
                     title={lang === 'ar' ? 'انقر لعرض الرسائل المقبولة والناجحة' : 'Click to filter successful deliveries'}
                 >
                     <div className="stat p-4">
@@ -387,21 +404,26 @@ export const AdminWhatsAppLogsPage = () => {
                             <span className="material-symbols-outlined text-3xl">done_all</span>
                         </div>
                         <div className="stat-title text-xs font-bold text-base-content/60 uppercase">
-                            {lang === 'ar' ? 'معدل نجاح الإرسال' : 'Delivery Success Rate'}
+                            {lang === 'ar' ? 'تأكيدات التسليم' : 'Handset Delivered'}
                         </div>
                         <div className="stat-value text-2xl font-black text-success font-mono mt-0.5">
-                            {stats.deliveryRate ?? 100}%
+                            {stats.totalDelivered || 0}
                         </div>
                         <div className="stat-desc text-[11px] text-base-content/50">
-                            {stats.totalDelivered > 0 ? `${stats.totalDelivered} handset confirmed` : `${stats.totalDispatched || 0} accepted by gateway`}
+                            {lang === 'ar' ? 'رسائل أكد الجهاز استلامها' : 'Messages confirmed delivered to a handset'}
                         </div>
                     </div>
                 </div>
 
                 {/* Card 3: Read Receipts */}
-                <div 
-                    onClick={() => { setStatusFilter('READ'); fetchLogs(1); }}
-                    className="stats bg-base-100 border border-base-200/80 shadow-xs rounded-2xl hover:border-info/50 transition-all cursor-pointer"
+                <div
+                    role="button"
+                    tabIndex={0}
+                    aria-label={lang === 'ar' ? 'تصفية الرسائل المقروءة' : 'Filter read messages'}
+                    aria-pressed={statusFilter === 'READ'}
+                    onKeyDown={(event) => handleMetricKeyDown(event, 'READ')}
+                    onClick={() => setStatusFilter('READ')}
+                    className="stats bg-base-100 border border-base-200/80 shadow-xs rounded-2xl hover:border-info/50 focus-visible:border-info transition-all cursor-pointer"
                     title={lang === 'ar' ? 'انقر لعرض الرسائل المقروءة' : 'Click to filter read receipts'}
                 >
                     <div className="stat p-4">
@@ -421,9 +443,14 @@ export const AdminWhatsAppLogsPage = () => {
                 </div>
 
                 {/* Card 4: Delivery Failures */}
-                <div 
-                    onClick={() => { setStatusFilter('FAILED'); fetchLogs(1); }}
-                    className="stats bg-base-100 border border-base-200/80 shadow-xs rounded-2xl hover:border-error/50 transition-all cursor-pointer"
+                <div
+                    role="button"
+                    tabIndex={0}
+                    aria-label={lang === 'ar' ? 'تصفية الرسائل الفاشلة' : 'Filter failed messages'}
+                    aria-pressed={statusFilter === 'FAILED'}
+                    onKeyDown={(event) => handleMetricKeyDown(event, 'FAILED')}
+                    onClick={() => setStatusFilter('FAILED')}
+                    className="stats bg-base-100 border border-base-200/80 shadow-xs rounded-2xl hover:border-error/50 focus-visible:border-error transition-all cursor-pointer"
                     title={lang === 'ar' ? 'انقر لعرض الرسائل التي فشلت ومعالجتها' : 'Click to filter and review failures'}
                 >
                     <div className="stat p-4">
@@ -455,6 +482,7 @@ export const AdminWhatsAppLogsPage = () => {
                             search
                         </span>
                         <input
+                            aria-label={lang === 'ar' ? 'ابحث في سجلات واتساب' : 'Search WhatsApp logs'}
                             type="text"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
@@ -485,6 +513,7 @@ export const AdminWhatsAppLogsPage = () => {
                                 key={st.key}
                                 type="button"
                                 onClick={() => setStatusFilter(st.key)}
+                                aria-pressed={statusFilter === st.key}
                                 className={`btn btn-xs rounded-lg ${
                                     statusFilter === st.key
                                         ? 'btn-primary font-bold'
