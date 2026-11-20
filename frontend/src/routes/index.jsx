@@ -113,6 +113,7 @@ const AppRoutes = () => {
         <Route path="/returns/:trackingNumber" element={<PublicReturnPortalPage />} />
 
         {/* Standalone Customer Self-Service GPS Pin Portal */}
+        <Route path="/location" element={<PublicLocationPage />} />
         <Route path="/location/:token" element={<PublicLocationPage />} />
         <Route path="location/:token" element={<PublicLocationPage />} />
 

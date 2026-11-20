@@ -585,7 +585,7 @@ describe('Milestone 4 Challenger 2: Failover, Logging & Safety Precedence Suite'
                 expect.objectContaining({
                     rows: expect.arrayContaining([
                         expect.objectContaining({
-                            buttonUrlParam: 'loc_preset_valid_token_abc123'
+                            buttonUrlParam: '#loc_preset_valid_token_abc123'
                         })
                     ])
                 }),
@@ -1110,7 +1110,7 @@ describe('Milestone 4 Challenger 2: Failover, Logging & Safety Precedence Suite'
                 {
                     type: 'url',
                     index: '0',
-                    parameter: expect.stringMatching(/^loc_[a-f0-9]{64}$/)
+                    parameter: expect.stringMatching(/^#loc_[a-f0-9]{64}$/)
                 }
             ]);
         });

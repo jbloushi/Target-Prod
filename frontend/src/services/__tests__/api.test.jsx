@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { redactFailedRequest } from '../api';
+import api, { redactFailedRequest } from '../api';
 
 describe('API error logging redaction', () => {
+    it('uses cookie credentials without adding a JavaScript-readable bearer token', () => {
+        expect(api.defaults.withCredentials).toBe(true);
+        expect(api.defaults.headers.common.Authorization).toBeUndefined();
+    });
+
     it('removes credentials, bodies, and query parameters from errors before they are logged', () => {
         const error = {
             message: 'Request failed: Authorization: Bearer private-token?access_token=private-query-token',

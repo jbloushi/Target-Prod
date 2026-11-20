@@ -246,7 +246,7 @@
   3. `{{3}}`: City & Area
   4. `{{4}}`: Courier / Driver Name
   5. `{{5}}`: Delivery Window
-- **Button:** Dynamic URL -> `https://target-kw.com/location/{{1}}` ("Confirm Delivery Pin" / "تأكيد موقع التوصيل") where variable `{{1}}` is `locationToken`.
+- **Button:** Dynamic URL base `https://target-kw.com/location/{{1}}` ("Confirm Delivery Pin" / "تأكيد موقع التوصيل"). The app supplies `#` plus the `locationToken` as `{{1}}`, producing a final URL fragment that is not sent in the HTTP request URL.
 
 ---
 
@@ -280,7 +280,7 @@
   2. `{{2}}`: Tracking Number
   3. `{{3}}`: Attempt Timestamp
   4. `{{4}}`: Failure Reason
-- **Button:** Dynamic URL -> `https://target-kw.com/location/{{1}}` ("Reschedule / Pin" / "إعادة الجدولة وتأكيد الموقع") where variable `{{1}}` is `locationToken`.
+- **Button:** Dynamic URL -> `https://target-kw.com/location/{{1}}` ("Reschedule / Pin" / "إعادة الجدولة وتأكيد الموقع").
 
 ---
 

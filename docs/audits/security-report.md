@@ -149,3 +149,13 @@ The codebase demonstrates strong security fundamentals: Prisma ORM eliminates SQ
 | Debug Logging | **RISK** — sensitive data in console.log on quote requests | HIGH |
 | CSP | Missing explicit policy | LOW |
 | Dependencies | Current versions — run `npm audit` before deploy | LOW |
+
+---
+
+## Supplemental authentication hardening — 2026-11-20
+
+The browser authentication flow now uses an HttpOnly, Secure production session cookie instead of returning JWTs in JSON or storing them in `localStorage`. Cookie-authenticated state changes require an exact trusted Origin; production CORS no longer accepts arbitrary subdomains. Browser API requests and the support SSE stream use credentials without reading the session token in JavaScript. The logout endpoint clears the cookie, and auth responses are marked `no-store`.
+
+The frontend production `start` command and PM2 ecosystem config serve the built assets through Vite preview on loopback. Development Vite binds loopback, and Vite no longer allows arbitrary Host headers. Public location bearer tokens are carried in URL fragments and sent to the API through `X-Location-Token`; request logs redact legacy token paths during the link expiry period. API-key auth remains header-only, and authentication endpoints share the stricter rate limiter.
+
+**Operational action still required:** the JWT shown in the submitted console capture may remain valid until its expiry. Rotate `JWT_SECRET` to invalidate all existing JWTs, including that exposed token; this will sign every user out. Replace the existing PM2 frontend process with `frontend/ecosystem.config.cjs` after building, since a running Vite dev process keeps its old command until explicitly replaced. Existing customers must sign in again after the browser-cookie migration. External clients that previously expected a JWT in login JSON must use a supported API key or direct bearer integration flow.

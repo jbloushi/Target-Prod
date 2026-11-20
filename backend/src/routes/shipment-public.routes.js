@@ -1,14 +1,18 @@
 const express = require('express');
 const router = express.Router();
 const publicController = require('../controllers/shipment-public.controller');
+const authController = require('../controllers/auth.controller');
 
 // @route   GET /location/:token (and /api/public/shipments/location/:token)
 // @desc    Get public shipment delivery details by single-use/scoped token
+router.get('/location', publicController.getLocationByToken);
 router.get('/location/:token', publicController.getLocationByToken);
 
 // @route   POST /location/:token (and PATCH /location/:token)
 // @desc    Update destination delivery coordinates by token
+router.post('/location', publicController.updateLocationByToken);
 router.post('/location/:token', publicController.updateLocationByToken);
+router.patch('/location', publicController.updateLocationByToken);
 router.patch('/location/:token', publicController.updateLocationByToken);
 
 // @route   GET /api/public/shipments/:trackingNumber
@@ -21,7 +25,7 @@ router.get('/:trackingNumber/checkout', publicController.getPublicCheckout);
 
 // @route   POST /api/public/shipments/:trackingNumber/pay
 // @desc    Settle shipment payment online (K-Net / Card / Apple Pay)
-router.post('/:trackingNumber/pay', publicController.processPublicPayment);
+router.post('/:trackingNumber/pay', authController.optionalProtect, publicController.processPublicPayment);
 
 // @route   POST /api/public/shipments/:trackingNumber/ottu-session
 // @desc    Generate Ottu Hosted Checkout Session Link

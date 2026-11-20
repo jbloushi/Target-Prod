@@ -988,7 +988,7 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
                 {
                     type: 'url',
                     index: '0',
-                    parameter: expect.stringMatching(/^loc_[a-f0-9]{64}$/)
+                    parameter: expect.stringMatching(/^#loc_[a-f0-9]{64}$/)
                 }
             ]);
         });

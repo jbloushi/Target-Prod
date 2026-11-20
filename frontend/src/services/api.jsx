@@ -28,7 +28,7 @@ export { API_URL };
 
 const SENSITIVE_ERROR_KEY = /(password|token|secret|api[_-]?key|authorization|cookie|session[_-]?id|payment[_-]?link|checkout[_-]?url)/i;
 const redactErrorText = (value) => String(value)
-  .replace(/(\bBearer\s+)[A-Za-z0-9._~+\/-]+=*/gi, '$1[REDACTED]')
+  .replace(/(\bBearer\s+)[A-Za-z0-9._~+/-]+=*/gi, '$1[REDACTED]')
   .replace(/((?:api[_-]?key|access[_-]?token|refresh[_-]?token|verify[_-]?token|password|secret|authorization|session_id)=)[^&\s]+/gi, '$1[REDACTED]')
   .replace(/([?&](?:api[_-]?key|access[_-]?token|refresh[_-]?token|verify[_-]?token|session_id)=)[^&\s]+/gi, '$1[REDACTED]');
 const redactErrorValue = (value, depth = 0) => {
@@ -62,18 +62,15 @@ export const redactFailedRequest = (error) => {
 
 const api = axios.create({
   baseURL: API_URL,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Add request interceptor to add auth token and idempotency key
+// Authentication is carried by a server-issued HttpOnly session cookie.
 api.interceptors.request.use(
   config => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
     const method = String(config.method || '').toLowerCase();
     if (['post', 'put', 'patch', 'delete'].includes(method)) {
       if (!config.headers['Idempotency-Key'] && !config.headers['idempotency-key']) {
@@ -105,10 +102,12 @@ api.interceptors.response.use(
 
     if (error.response) {
       // Keep browser diagnostics limited to non-sensitive error metadata.
-      console.error('[API] Request failed', {
-        status: error.response.status,
-        code: error.code || 'HTTP_ERROR'
-      });
+      if (error.response.status !== 401) {
+        console.error('[API] Request failed', {
+          status: error.response.status,
+          code: error.code || 'HTTP_ERROR'
+        });
+      }
 
       const errorData = error.response.data;
 

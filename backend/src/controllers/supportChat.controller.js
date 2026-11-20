@@ -553,7 +553,7 @@ exports.getLogisticsContext = async (req, res) => {
             links: {
                 tracking: `https://target-kw.com/track/${s.trackingNumber}`,
                 payment: `https://target-kw.com/pay/${s.trackingNumber}`,
-                locationPortal: s.locationToken ? `https://target-kw.com/location/${s.locationToken}` : null
+                locationPortal: s.locationToken ? `https://target-kw.com/location#${s.locationToken}` : null
             }
         });
 

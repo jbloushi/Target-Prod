@@ -13,6 +13,7 @@ const rateLimit = require('express-rate-limit');
 const { port, databaseUrl, corsOrigin, rateLimitGlobalMax, rateLimitAuthMax, rateLimitEnabled } = require('./config/config');
 const { connectDB, prisma } = require('./config/database');
 const logger = require('./utils/logger');
+const { isTrustedBrowserOrigin } = require('./utils/authCookies');
 const { errorHandler } = require('./middleware/error.middleware');
 const shipmentRoutes = require('./routes/shipment.routes');
 const authRoutes = require('./routes/auth.routes');
@@ -25,7 +26,8 @@ const app = express();
 // RAW REQUEST LOGGER (Pre-everything)
 app.use((req, res, next) => {
   if (process.env.NODE_ENV === 'development') {
-    const rawMsg = `[RAW_REQUEST] ${req.method} ${req.path} - CT: ${req.headers['content-type']}`;
+    const safePath = req.path.replace(/(\/(?:api\/)?public\/(?:shipments\/)?location\/)[^/]+/gi, '$1[REDACTED]');
+    const rawMsg = `[RAW_REQUEST] ${req.method} ${safePath} - CT: ${req.headers['content-type']}`;
     console.log(rawMsg);
   }
   next();
@@ -58,35 +60,8 @@ app.set('trust proxy', 1); // Trust first proxy (Nginx)
 
 const isOriginAllowed = (origin) => {
   if (!origin) return true;
-  const cleanOrigin = origin.replace(/\/$/, '').toLowerCase();
-
-  // 1. Any localhost / 127.0.0.1 (any port)
-  if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(cleanOrigin)) return true;
-
-  // 2. Server IP (157.173.118.162 with any port or protocol)
-  if (/^https?:\/\/157\.173\.118\.162(:\d+)?$/.test(cleanOrigin)) return true;
-
-  // 3. Official target-kw.com domain and all subdomains
-  if (/^https?:\/\/([a-z0-9-]+\.)*target-kw\.com(:\d+)?$/.test(cleanOrigin)) return true;
-
-  // 4. Official target-logistics.com domain and all subdomains
-  if (/^https?:\/\/([a-z0-9-]+\.)*target-logistics\.com(:\d+)?$/.test(cleanOrigin)) return true;
-
-  // 5. Configured origins from environment variables
-  const configuredList = [
-    ...(corsOrigin ? corsOrigin.split(',') : []),
-    process.env.FRONTEND_URL,
-    process.env.PUBLIC_TRACKING_BASE_URL,
-    'https://target-kw.com',
-    'https://www.target-kw.com',
-    'http://target-kw.com',
-    'http://www.target-kw.com',
-    'https://api.target-kw.com'
-  ].map(o => (o || '').trim().replace(/\/$/, '').toLowerCase()).filter(Boolean);
-
-  if (configuredList.includes(cleanOrigin)) return true;
-
-  return false;
+  if (process.env.NODE_ENV !== 'production' && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return true;
+  return isTrustedBrowserOrigin(origin);
 };
 
 // Enable CORS early to ensure all responses (including errors/rate limits) have CORS headers
@@ -100,7 +75,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Authorization', 'Content-Type', 'Accept', 'Origin', 'Idempotency-Key', 'X-Requested-With', 'x-api-key', 'X-Api-Key', 'ApiKey'],
+  allowedHeaders: ['Authorization', 'Content-Type', 'Accept', 'Origin', 'Idempotency-Key', 'X-Requested-With', 'X-Location-Token', 'x-api-key', 'X-Api-Key', 'ApiKey'],
   optionsSuccessStatus: 204
 };
 
@@ -114,7 +89,7 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, Accept, Origin, Idempotency-Key, X-Requested-With, x-api-key, X-Api-Key, ApiKey');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, Accept, Origin, Idempotency-Key, X-Requested-With, X-Location-Token, x-api-key, X-Api-Key, ApiKey');
   }
   if (req.method === 'OPTIONS') {
     return res.sendStatus(204);
@@ -162,8 +137,10 @@ if (rateLimitEnabled) {
     message: { success: false, error: 'Security limit reached. Please try again in a few minutes.' },
     skip: (req) => req.method === 'OPTIONS' || req.path === '/me' || req.path === '/api/auth/me'
   });
-  app.use('/api/auth/login', authLimiter);
-  app.use('/api/auth/register', authLimiter);
+  ['/login', '/signup', '/request-otp', '/verify-otp'].forEach((path) => {
+    app.use(`/api/auth${path}`, authLimiter);
+    app.use(`/auth${path}`, authLimiter);
+  });
   app.use('/api/public/shipments', authLimiter);
 
   // Stricter limiter for external client API (API-key authenticated routes)
@@ -173,8 +150,6 @@ if (rateLimitEnabled) {
     keyGenerator: (req) => {
       return req.headers['x-api-key'] ||
         (req.headers['authorization']?.startsWith('ApiKey ') ? req.headers['authorization'].slice(7).trim() : null) ||
-        req.query?.api_key ||
-        req.query?.apiKey ||
         req.ip ||
         'no-key';
     },
@@ -199,7 +174,8 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // Logging middleware (verbose logs in production can noticeably impact throughput)
 app.use((req, res, next) => {
-  const message = `${req.method} ${req.path}`;
+  const safePath = req.path.replace(/(\/(?:api\/)?public\/(?:shipments\/)?location\/)[^/]+/gi, '$1[REDACTED]');
+  const message = `${req.method} ${safePath}`;
   if (process.env.NODE_ENV === 'production') {
     logger.debug(message);
   } else {
@@ -232,8 +208,11 @@ const releaseInfo = require('./utils/releaseInfo');
 app.use('/api', whatsappRoutes);
 app.use('/api/support', supportChatRoutes);
 app.post('/api/public/checkout/ottu/webhook', shipmentPublicController.handleOttuWebhook);
+app.get('/api/public/location', shipmentPublicController.getLocationByToken);
 app.get('/api/public/location/:token', shipmentPublicController.getLocationByToken);
+app.post('/api/public/location', shipmentPublicController.updateLocationByToken);
 app.post('/api/public/location/:token', shipmentPublicController.updateLocationByToken);
+app.patch('/api/public/location', shipmentPublicController.updateLocationByToken);
 app.patch('/api/public/location/:token', shipmentPublicController.updateLocationByToken);
 app.post('/api/webhooks/trackingmore', integrationController.handleTrackingMoreWebhook);
 app.use('/api/public/shipments', shipmentPublicRoutes);
@@ -254,8 +233,11 @@ app.use('/api/shipments', shipmentRoutes);
 // Direct root aliases for proxy resilience (handles reverse proxies stripping /api)
 app.use('/support', supportChatRoutes);
 app.post('/public/checkout/ottu/webhook', shipmentPublicController.handleOttuWebhook);
+app.get('/public/location', shipmentPublicController.getLocationByToken);
 app.get('/public/location/:token', shipmentPublicController.getLocationByToken);
+app.post('/public/location', shipmentPublicController.updateLocationByToken);
 app.post('/public/location/:token', shipmentPublicController.updateLocationByToken);
+app.patch('/public/location', shipmentPublicController.updateLocationByToken);
 app.patch('/public/location/:token', shipmentPublicController.updateLocationByToken);
 app.post('/webhooks/trackingmore', integrationController.handleTrackingMoreWebhook);
 app.use('/public/shipments', shipmentPublicRoutes);
@@ -313,7 +295,8 @@ const { AppError } = require('./middleware/error.middleware');
 
 // Handle undefined routes
 app.all('*', (req, res, next) => {
-  next(new AppError(`Can't find ${req.path} on this server!`, 404));
+  const safePath = req.path.replace(/(\/(?:api\/)?public\/(?:shipments\/)?location\/)[^/]+/gi, '$1[REDACTED]');
+  next(new AppError(`Can't find ${safePath} on this server!`, 404));
 });
 
 // Error handling middleware

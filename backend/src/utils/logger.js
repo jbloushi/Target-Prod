@@ -27,7 +27,7 @@ winston.addColors(colors);
 
 const SENSITIVE_LOG_KEY = /(authorization|password|token|secret|api[_-]?key|cookie|session[_-]?id|payment[_-]?link|checkout[_-]?url|errorData|payload|response(json)?|request(body)?|headers?)/i;
 const redactLogString = (value) => String(value)
-  .replace(/(\bBearer\s+)[A-Za-z0-9._~+\/-]+=*/gi, '$1[REDACTED]')
+  .replace(/(\bBearer\s+)[A-Za-z0-9._~+/-]+=*/gi, '$1[REDACTED]')
   .replace(/((?:api[_-]?key|access[_-]?token|refresh[_-]?token|verify[_-]?token|password|secret|authorization|session_id)=)[^&\s]+/gi, '$1[REDACTED]')
   .replace(/([?&](?:api[_-]?key|access[_-]?token|refresh[_-]?token|verify[_-]?token|session_id)=)[^&\s]+/gi, '$1[REDACTED]');
 const redactLogValue = (value, depth = 0) => {

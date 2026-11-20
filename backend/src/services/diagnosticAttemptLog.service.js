@@ -19,7 +19,7 @@ const VALID_STATUSES = Object.freeze(['SUCCESS', 'FAILED', 'VALIDATION_ERROR']);
 const SENSITIVE_KEY_PATTERN = /(password|token|secret|apikey|api_key|authorization|cookie|creditcard|cvv|pin)/i;
 const BINARY_KEY_PATTERN = /(base64|pdf|labeldata|awbdata|buffer)/i;
 const STRING_SECRET_PATTERNS = [
-    /(\bBearer\s+)[A-Za-z0-9._~+\/-]+=*/gi,
+    /(\bBearer\s+)[A-Za-z0-9._~+/-]+=*/gi,
     /((?:api[_-]?key|access[_-]?token|refresh[_-]?token|verify[_-]?token|password|secret|authorization|session_id)=)[^&\s]+/gi,
     /([?&](?:api[_-]?key|access[_-]?token|refresh[_-]?token|verify[_-]?token|session_id)=)[^&\s]+/gi
 ];

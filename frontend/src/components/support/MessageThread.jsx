@@ -281,7 +281,7 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
                                             )}
                                             {activeConv.activeShipment?.locationToken && (
                                                 <a
-                                                    href={`/location/${activeConv.activeShipment.locationToken}`}
+                                                    href={`/location#${encodeURIComponent(activeConv.activeShipment.locationToken)}`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-600 hover:text-white text-[10px] font-bold transition-colors"

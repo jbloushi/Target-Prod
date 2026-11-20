@@ -16,10 +16,10 @@ export default defineConfig(({ mode }) => {
       'process.env': JSON.stringify(processEnv)
     },
     server: {
-      host: '0.0.0.0',
+      host: '127.0.0.1',
       port: Number(process.env.PORT) || 3000,
-      strictPort: false,
-      allowedHosts: true,
+      strictPort: true,
+      allowedHosts: ['localhost', '127.0.0.1'],
       fs: {
         strict: true,
         deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**']
@@ -36,10 +36,10 @@ export default defineConfig(({ mode }) => {
       }
     },
     preview: {
-      host: '0.0.0.0',
+      host: '127.0.0.1',
       port: Number(process.env.PORT) || 3000,
-      strictPort: false,
-      allowedHosts: true
+      strictPort: true,
+      allowedHosts: ['localhost', '127.0.0.1', 'target-kw.com', 'www.target-kw.com', 'target-logistics.com', 'www.target-logistics.com']
     },
     build: {
       outDir: 'build',

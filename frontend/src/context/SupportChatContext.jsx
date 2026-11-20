@@ -471,8 +471,7 @@ export const SupportChatProvider = ({ children }) => {
         // 2. Setup Server-Sent Events (SSE) listener
         let eventSource = null;
         try {
-            const token = localStorage.getItem('token');
-            eventSource = supportChatService.createEventsSource(token);
+            eventSource = supportChatService.createEventsSource();
 
             if (eventSource) {
                 eventSource.addEventListener('message', (e) => {

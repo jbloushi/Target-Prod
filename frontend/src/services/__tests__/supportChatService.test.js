@@ -13,7 +13,7 @@ describe('supportChatService SSE authentication', () => {
         vi.unstubAllGlobals();
     });
 
-    it('sends the auth token in the Authorization header instead of the URL', async () => {
+    it('authenticates the event stream with an HttpOnly cookie instead of a URL token', async () => {
         const body = new ReadableStream({
             start(controller) {
                 controller.enqueue(new TextEncoder().encode('event: message\ndata: {"conversationId":18}\n\n'));
@@ -22,7 +22,8 @@ describe('supportChatService SSE authentication', () => {
         const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, body });
         vi.stubGlobal('fetch', fetchMock);
 
-        const source = supportChatService.createEventsSource('sensitive-test-token');
+        localStorage.setItem('token', 'sensitive-test-token');
+        const source = supportChatService.createEventsSource();
         const receivedEvent = new Promise((resolve) => source.addEventListener('message', resolve));
         const event = await receivedEvent;
 
@@ -30,13 +31,13 @@ describe('supportChatService SSE authentication', () => {
         expect(fetchMock).toHaveBeenCalledWith(
             'https://api.example.test/api/support/events',
             expect.objectContaining({
-                headers: {
-                    Accept: 'text/event-stream',
-                    Authorization: 'Bearer sensitive-test-token'
-                }
+                headers: { Accept: 'text/event-stream' },
+                credentials: 'include'
             })
         );
         expect(fetchMock.mock.calls[0][0]).not.toContain('sensitive-test-token');
+        expect(JSON.stringify(fetchMock.mock.calls[0][1])).not.toContain('sensitive-test-token');
+        localStorage.removeItem('token');
 
         source.close();
     });

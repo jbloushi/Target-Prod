@@ -93,9 +93,8 @@ export const supportChatService = {
     /**
      * Connect to SSE stream
      */
-    createEventsSource(token) {
+    createEventsSource() {
         const baseUrl = API_URL.endsWith('/api') ? API_URL : `${API_URL}/api`;
-        const authToken = token || localStorage.getItem('token') || '';
         if (typeof globalThis.fetch !== 'function' || typeof AbortController === 'undefined') return null;
 
         const controller = new AbortController();
@@ -153,11 +152,10 @@ export const supportChatService = {
         const connect = async () => {
             while (!closed) {
                 try {
-                    const headers = { Accept: 'text/event-stream' };
-                    if (authToken) headers.Authorization = `Bearer ${authToken}`;
                     const response = await globalThis.fetch(url, {
                         method: 'GET',
-                        headers,
+                        headers: { Accept: 'text/event-stream' },
+                        credentials: 'include',
                         cache: 'no-store',
                         signal: controller.signal
                     });

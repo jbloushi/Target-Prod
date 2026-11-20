@@ -3,6 +3,7 @@ const { randomInt } = require('crypto');
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
 const { hashPassword, comparePassword, generateUserApiKey } = require('../utils/security');
+const { getAuthToken, setAuthCookie, clearAuthCookie, isTrustedBrowserOrigin } = require('../utils/authCookies');
 
 /**
  * Signs a JWT token for the given user ID
@@ -29,12 +30,10 @@ const createSendToken = (user, statusCode, res) => {
     delete user.otp;
     delete user.chatwootAccessToken;
 
+    setAuthCookie(res, token);
     res.status(statusCode).json({
         success: true,
-        token,
-        data: {
-            user
-        }
+        data: { user }
     });
 };
 
@@ -114,7 +113,7 @@ exports.login = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Please provide email and password' });
         }
 
-        logger.debug(`Attempting login for: ${email}`);
+        logger.debug('Attempting user login');
         
         // In Prisma, we pull the password explicitly if we want it, 
         // but here we just find the user.
@@ -123,7 +122,7 @@ exports.login = async (req, res) => {
         });
 
         if (!user) {
-            logger.warn(`Login failed: No user found for email ${email}`);
+            logger.warn('Login failed: user not found');
             return res.status(401).json({ success: false, error: 'Incorrect email or password' });
         }
 
@@ -131,12 +130,12 @@ exports.login = async (req, res) => {
         const isMatch = await comparePassword(password, user.password);
 
         if (!isMatch) {
-            logger.warn(`Login failed: Password mismatch for ${email}`);
+            logger.warn('Login failed: password mismatch');
             return res.status(401).json({ success: false, error: 'Incorrect email or password' });
         }
 
         if (user.active === false) {
-            logger.warn(`Login blocked: User ${email} is deactivated`);
+            logger.warn('Login blocked: user is deactivated');
             return res.status(401).json({ success: false, error: 'Your account has been deactivated. Please contact support.' });
         }
 
@@ -304,7 +303,7 @@ exports.verifyOtp = async (req, res) => {
         // Clean up OTP record
         authOtpStore.delete(cleanDigits);
 
-        logger.info(`User ${user.email} (${user.id}) successfully logged in via mobile OTP`);
+        logger.info(`User ${user.id} successfully logged in via mobile OTP`);
         return createSendToken(user, 200, res);
     } catch (error) {
         logger.error('Verify OTP error:', error);
@@ -317,13 +316,18 @@ exports.verifyOtp = async (req, res) => {
  */
 exports.protect = async (req, res, next) => {
     try {
-        let token;
-        if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-            token = req.headers.authorization.split(' ')[1];
-        }
+        const bearerToken = /^Bearer\s+/i.test(req.headers.authorization || '');
+        const token = getAuthToken(req);
+        req.authViaCookie = !bearerToken && Boolean(token);
 
         if (!token) {
             return res.status(401).json({ success: false, error: 'You are not logged in' });
+        }
+
+        if (req.authViaCookie && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+            if (!isTrustedBrowserOrigin(req.get('origin')) || req.get('sec-fetch-site') === 'cross-site') {
+                return res.status(403).json({ success: false, error: 'Request origin is not allowed' });
+            }
         }
 
         // Verify token (Synchronous if callback is not passed)
@@ -348,11 +352,13 @@ exports.protect = async (req, res, next) => {
         });
         
         if (!currentUser) {
+            if (req.authViaCookie) clearAuthCookie(res);
             logger.warn(`Auth Failed: User ${decoded.id} no longer exists. User must re-login.`);
             return res.status(401).json({ success: false, error: 'User no longer exists' });
         }
 
         if (!currentUser.active) {
+            if (req.authViaCookie) clearAuthCookie(res);
             logger.warn(`Auth Failed: User ${decoded.id} account is deactivated.`);
             return res.status(401).json({ success: false, error: 'Account is deactivated' });
         }
@@ -369,8 +375,23 @@ exports.protect = async (req, res, next) => {
             next();
         });
     } catch (error) {
+        if (req.authViaCookie) clearAuthCookie(res);
         res.status(401).json({ success: false, error: 'Invalid token or login expired' });
     }
+};
+
+exports.optionalProtect = (req, res, next) => {
+    if (!getAuthToken(req)) return next();
+    return exports.protect(req, res, next);
+};
+
+exports.logout = (req, res) => {
+    const bearerToken = /^Bearer\s+/i.test(req.headers.authorization || '');
+    if (!bearerToken && getAuthToken(req) && !isTrustedBrowserOrigin(req.get('origin'))) {
+        return res.status(403).json({ success: false, error: 'Request origin is not allowed' });
+    }
+    clearAuthCookie(res);
+    return res.status(200).json({ success: true });
 };
 
 /**
@@ -575,7 +596,7 @@ exports.resetUserPassword = async (req, res) => {
             data: { password: hashedPassword }
         });
 
-        logger.info(`Password reset for user ${req.params.id} by ${req.user.role} ${req.user.email}`);
+        logger.info(`Password reset for user ${req.params.id} by ${req.user.role} ${req.user.id}`);
         res.status(200).json({ success: true, message: 'Password updated successfully' });
     } catch (error) {
         logger.error('Reset password error:', error);

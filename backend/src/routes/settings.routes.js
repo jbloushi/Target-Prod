@@ -30,7 +30,7 @@ router.put(
 );
 
 // Public/Authenticated reading of system settings (e.g. carrier display names)
-router.get('/system', settingsController.getSystemSettings);
+router.get('/system', authController.optionalProtect, settingsController.getSystemSettings);
 
 // Available rate cards for carrier assignment
 router.get('/rate-cards', authController.protect, authorizeAny('VIEW_SYSTEM_SETTINGS', 'MANAGE_SYSTEM_SETTINGS', 'VIEW_FINANCE', 'CREATE_SHIPMENTS'), settingsController.getRateCards);

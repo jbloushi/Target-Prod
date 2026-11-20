@@ -19,7 +19,8 @@ const countries = [
 const API_URL = getApiBaseUrl();
 
 export const PublicLocationPage = () => {
-  const { token, trackingNumber: routeTrackingNumber } = useParams();
+  const { token: routeToken, trackingNumber: routeTrackingNumber } = useParams();
+  const token = routeToken || (typeof window !== 'undefined' ? window.location.hash.slice(1) : '');
   const isTokenMode = Boolean(token);
 
   const [shipment, setShipment] = useState(null);
@@ -58,6 +59,9 @@ export const PublicLocationPage = () => {
   const effectiveTracking = shipment?.trackingNumber || routeTrackingNumber || '';
 
   useEffect(() => {
+    if (routeToken && typeof window !== 'undefined') {
+      window.history.replaceState(null, '', `/location#${encodeURIComponent(routeToken)}`);
+    }
     let isMounted = true;
     const loadData = async () => {
       setLoading(true);
@@ -66,10 +70,10 @@ export const PublicLocationPage = () => {
       try {
         if (token) {
           // Public single-use token access (no OTP required)
-          let response = await fetch(`${API_URL}/public/location/${encodeURIComponent(token)}`);
+          let response = await fetch(`${API_URL}/public/location`, { headers: { 'X-Location-Token': token } });
           if (response.status === 404) {
             // Fallback to route alias if proxy strips /shipments
-            response = await fetch(`${API_URL}/public/shipments/location/${encodeURIComponent(token)}`);
+            response = await fetch(`${API_URL}/public/shipments/location`, { headers: { 'X-Location-Token': token } });
           }
 
           if (response.status === 410) {
@@ -248,9 +252,9 @@ export const PublicLocationPage = () => {
     try {
       if (isTokenMode) {
         // Direct token submission
-        let response = await fetch(`${API_URL}/public/location/${encodeURIComponent(token)}`, {
+        let response = await fetch(`${API_URL}/public/location`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-Location-Token': token },
           body: JSON.stringify({
             coordinates: addressData.coordinates,
             latitude: addressData.coordinates ? addressData.coordinates[1] : undefined,
@@ -273,9 +277,9 @@ export const PublicLocationPage = () => {
 
         if (response.status === 404) {
           // Fallback to route alias if proxy strips /api/public
-          response = await fetch(`${API_URL}/public/shipments/location/${encodeURIComponent(token)}`, {
+          response = await fetch(`${API_URL}/public/shipments/location`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-Location-Token': token },
             body: JSON.stringify({
               coordinates: addressData.coordinates,
               latitude: addressData.coordinates ? addressData.coordinates[1] : undefined,

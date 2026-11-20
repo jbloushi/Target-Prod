@@ -535,19 +535,7 @@ exports.processPublicPayment = async (req, res) => {
 
         // Security Gate (SEC-01): Prevent unauthenticated direct settlement without gateway/staff verification
         if (process.env.ALLOW_DEMO_PUBLIC_CHECKOUT !== 'true') {
-            let isAuthorized = false;
-            const authHeader = req.headers.authorization;
-            if (authHeader && authHeader.startsWith('Bearer ')) {
-                try {
-                    const jwt = require('jsonwebtoken');
-                    const decoded = jwt.verify(authHeader.split(' ')[1], process.env.JWT_SECRET);
-                    if (decoded && ['admin', 'staff', 'accounting'].includes(String(decoded.role || '').toLowerCase())) {
-                        isAuthorized = true;
-                    }
-                } catch (_) {
-                    // Invalid token
-                }
-            }
+            let isAuthorized = ['admin', 'staff', 'accounting'].includes(String(req.user?.role || '').toLowerCase());
 
             const paymentSig = req.headers['x-payment-signature'];
             const secret = process.env.PUBLIC_PAYMENT_SECRET || process.env.OTTU_WEBHOOK_SECRET;
@@ -1023,12 +1011,13 @@ exports.createPublicReturn = async (req, res) => {
 
 /**
  * Public location lookup by single-use/scoped token
- * @route GET /api/public/location/:token
- * @route GET /api/public/shipments/location/:token
+ * @route GET /api/public/location (X-Location-Token header)
+ * @route GET /api/public/shipments/location (X-Location-Token header)
+ * @route GET /api/public/location/:token (legacy)
  */
 exports.getLocationByToken = async (req, res) => {
     try {
-        const { token } = req.params;
+        const token = req.params.token || req.get('x-location-token');
         if (!token || typeof token !== 'string' || !token.trim()) {
             return res.status(400).json({ success: false, error: 'Location token is required' });
         }
@@ -1098,14 +1087,13 @@ exports.getLocationByToken = async (req, res) => {
 
 /**
  * Update shipment destination location via single-use/scoped token
- * @route POST /api/public/location/:token
- * @route PATCH /api/public/location/:token
- * @route POST /api/public/shipments/location/:token
- * @route PATCH /api/public/shipments/location/:token
+ * @route POST/PATCH /api/public/location (X-Location-Token header)
+ * @route POST/PATCH /api/public/shipments/location (X-Location-Token header)
+ * Legacy token-in-path routes remain for existing messages during transition.
  */
 exports.updateLocationByToken = async (req, res) => {
     try {
-        const { token } = req.params;
+        const token = req.params.token || req.get('x-location-token') || req.body?.locationToken;
         if (!token || typeof token !== 'string' || !token.trim()) {
             return res.status(400).json({ success: false, error: 'Location token is required' });
         }

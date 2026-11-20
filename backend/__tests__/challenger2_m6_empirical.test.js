@@ -266,6 +266,26 @@ describe('CHALLENGER_2 Empirical Adversarial Test Suite', () => {
     // =========================================================================
     describe('2. Single-use & 15-Minute Edit Grace Period Lifecycle', () => {
 
+        test('2.0.1 Accepts location bearer token in header without placing it in the request path', async () => {
+            const token = `loc_${crypto.randomBytes(32).toString('hex')}`;
+            const req = { params: {}, get: (name) => name === 'x-location-token' ? token : undefined };
+            const res = createMockResponse();
+            jest.spyOn(prisma.shipment, 'findFirst').mockResolvedValueOnce({
+                id: 'shp-header-token',
+                trackingNumber: 'TRG-HEADER-001',
+                locationToken: token,
+                locationTokenExpiresAt: new Date(Date.now() + 48 * 3600000),
+                status: 'out_for_delivery',
+                destination: { contactPerson: 'Ali Al-Hassan', city: 'Kuwait City' }
+            });
+
+            await shipmentPublicController.getLocationByToken(req, res);
+
+            expect(prisma.shipment.findFirst).toHaveBeenCalledWith({ where: { locationToken: token } });
+            expect(res.statusCode).toBe(200);
+            expect(res.body.valid).toBe(true);
+        });
+
         test('2.1 Fresh, unused token returns 200 with shipment delivery context', async () => {
             const token = `loc_${crypto.randomBytes(32).toString('hex')}`;
             const req = { params: { token } };

@@ -3,8 +3,14 @@ const router = express.Router();
 const authController = require('../controllers/auth.controller');
 const { authorize } = require('../middleware/authorize.middleware');
 
+router.use((_req, res, next) => {
+    res.set('Cache-Control', 'no-store, private');
+    next();
+});
+
 router.post('/signup', authController.signup);
 router.post('/login', authController.login);
+router.post('/logout', authController.logout);
 router.post('/request-otp', authController.requestOtp);
 router.post('/verify-otp', authController.verifyOtp);
 router.patch('/change-password', authController.protect, authController.changeMyPassword);

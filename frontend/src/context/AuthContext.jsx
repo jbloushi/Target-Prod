@@ -32,8 +32,7 @@ export const AuthProvider = ({ children }) => {
             setError(null);
             const res = await api.post('/auth/login', { email, password });
 
-            const { token, data } = res.data;
-            localStorage.setItem('token', token);
+            const { data } = res.data;
             localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
             setUser(data.user);
             return data.user;
@@ -72,8 +71,7 @@ export const AuthProvider = ({ children }) => {
             setError(null);
             const res = await api.post('/auth/verify-otp', { phone, otp });
 
-            const { token, data } = res.data;
-            localStorage.setItem('token', token);
+            const { data } = res.data;
             localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
             setUser(data.user);
             return data.user;
@@ -95,8 +93,7 @@ export const AuthProvider = ({ children }) => {
             setError(null);
             const res = await api.post('/auth/signup', userData);
 
-            const { token, data } = res.data;
-            localStorage.setItem('token', token);
+            const { data } = res.data;
             localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
             setUser(data.user);
             return data.user;
@@ -110,31 +107,25 @@ export const AuthProvider = ({ children }) => {
     };
 
     const logout = useCallback(() => {
+        void api.post('/auth/logout').catch(() => {});
         localStorage.removeItem('token');
         localStorage.removeItem(LAST_ACTIVITY_KEY);
         setUser(null);
     }, []);
 
     const loadUser = useCallback(async () => {
-        const token = localStorage.getItem('token');
-        if (!token) {
-            localStorage.removeItem(LAST_ACTIVITY_KEY);
-            setLoading(false);
-            return;
-        }
-
+        // Remove tokens left by older builds; browser sessions now use HttpOnly cookies.
+        localStorage.removeItem('token');
         try {
-            const res = await api.get('users/me', {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const res = await api.get('users/me');
             // Fix: Controller returns { data: userObject }, not { data: { user: userObject } }
             setUser(res.data.data);
         } catch (err) {
-            console.error('Load user failed:', err);
-            if (err.response && err.response.status === 401) {
-                localStorage.removeItem('token');
+            if (err.response?.status === 401) {
                 localStorage.removeItem(LAST_ACTIVITY_KEY);
                 setUser(null);
+            } else {
+                console.error('Load user failed:', err.code || 'REQUEST_ERROR');
             }
         } finally {
             setLoading(false);

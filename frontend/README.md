@@ -72,3 +72,8 @@ Run this before handing off frontend changes:
 ```bash
 npm run build
 ```
+
+
+## Production frontend process
+
+Build with `npm run build`, then run the PM2 app from the frontend directory with `pm2 start ecosystem.config.cjs --only target-frontend --update-env`. It serves the built assets on `127.0.0.1:3000`; do not run the Vite development server behind the public site proxy. To replace an existing Vite dev process, run `pm2 delete target-frontend` followed by `pm2 start ecosystem.config.cjs --only target-frontend --update-env`.

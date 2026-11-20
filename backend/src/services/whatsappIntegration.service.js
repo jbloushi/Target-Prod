@@ -788,7 +788,7 @@ class WhatsAppIntegrationService {
                 shipment.locationToken = token;
                 shipment.locationTokenExpiresAt = expiresAt;
             }
-            buttonUrlParam = shipment.locationToken;
+            buttonUrlParam = `#${shipment.locationToken}`;
         }
 
         // Check quiet hours suppression
