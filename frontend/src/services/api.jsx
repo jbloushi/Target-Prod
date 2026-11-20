@@ -26,6 +26,21 @@ export const BACKEND_URL = API_URL.endsWith('/api')
 
 export { API_URL };
 
+export const redactFailedRequest = (error) => {
+  const configs = new Set([error?.config, error?.response?.config].filter(Boolean));
+  for (const config of configs) {
+    // Service-level catches sometimes log Axios errors directly. Strip request
+    // data that can contain credentials, user input, or personal identifiers.
+    config.headers = {};
+    config.data = undefined;
+    config.params = undefined;
+    if (typeof config.url === 'string') config.url = config.url.split('?')[0];
+  }
+  if (error?.response) error.response.request = undefined;
+  if (error?.response) error.response.headers = {};
+  if (error?.request) error.request = '[request details redacted]';
+};
+
 const api = axios.create({
   baseURL: API_URL,
   headers: {
@@ -57,7 +72,8 @@ api.interceptors.response.use(
     // Guardrail: API endpoints should not return HTML documents.
     const contentType = String(response?.headers?.['content-type'] || '').toLowerCase();
     if (contentType.includes('text/html')) {
-      const requestUrl = `${response?.config?.baseURL || ''}${response?.config?.url || ''}`;
+      const requestPath = String(response?.config?.url || '').split('?')[0];
+      const requestUrl = `${response?.config?.baseURL || ''}${requestPath}`;
       const routingError = new Error(`API returned HTML instead of JSON for ${requestUrl}. Check VITE_API_URL and reverse-proxy /api routing.`);
       routingError.code = 'API_HTML_RESPONSE';
       throw routingError;
@@ -66,17 +82,14 @@ api.interceptors.response.use(
     return response;
   },
   error => {
-    // For errors, add more context
+    redactFailedRequest(error);
+
     if (error.response) {
-      // The request was made and the server responded with a status code
-      // that falls out of the range of 2xx
-      console.error('API Error Response:', JSON.stringify(error.response.data, null, 2));
-      console.error('Request Config:', JSON.stringify({
-        url: error.response.config.url,
-        method: error.response.config.method,
-        baseURL: error.response.config.baseURL,
-        headers: error.response.config.headers
-      }, null, 2));
+      // Keep browser diagnostics limited to non-sensitive error metadata.
+      console.error('[API] Request failed', {
+        status: error.response.status,
+        code: error.code || 'HTTP_ERROR'
+      });
 
       const errorData = error.response.data;
 
@@ -95,11 +108,11 @@ api.interceptors.response.use(
       }
     } else if (error.request) {
       // The request was made but no response was received
-      console.error('API No Response:', error.request);
+      console.error('[API] No response from server', { code: error.code || 'NETWORK_ERROR' });
       error.message = 'No response from server. Please check your connection.';
     } else {
       // Something happened in setting up the request that triggered an Error
-      console.error('API Request Error:', error.message);
+      console.error('[API] Request setup failed', { code: error.code || 'REQUEST_ERROR' });
       if (!error.message) {
         error.message = 'Request failed. Please try again.';
       }

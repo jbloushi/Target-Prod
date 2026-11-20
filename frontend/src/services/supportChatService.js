@@ -96,11 +96,101 @@ export const supportChatService = {
     createEventsSource(token) {
         const baseUrl = API_URL.endsWith('/api') ? API_URL : `${API_URL}/api`;
         const authToken = token || localStorage.getItem('token') || '';
-        const url = `${baseUrl}/support/events?token=${encodeURIComponent(authToken)}`;
-        if (typeof window !== 'undefined' && window.EventSource) {
-            return new window.EventSource(url);
-        }
-        return null;
+        if (typeof globalThis.fetch !== 'function' || typeof AbortController === 'undefined') return null;
+
+        const controller = new AbortController();
+        const listeners = new Map();
+        let closed = false;
+        let retryTimer = null;
+        let resolveRetry = null;
+        const url = `${baseUrl}/support/events`;
+
+        const source = {
+            onerror: null,
+            addEventListener(eventName, handler) {
+                if (!listeners.has(eventName)) listeners.set(eventName, new Set());
+                listeners.get(eventName).add(handler);
+            },
+            removeEventListener(eventName, handler) {
+                listeners.get(eventName)?.delete(handler);
+            },
+            close() {
+                closed = true;
+                controller.abort();
+                if (retryTimer) clearTimeout(retryTimer);
+                resolveRetry?.();
+            }
+        };
+
+        const dispatchEventBlock = (block) => {
+            let eventName = 'message';
+            const dataLines = [];
+            block.split('\n').forEach((line) => {
+                if (!line || line.startsWith(':')) return;
+                if (line.startsWith('event:')) eventName = line.slice(6).trim() || 'message';
+                if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''));
+            });
+            if (dataLines.length === 0) return;
+            const event = { data: dataLines.join('\n') };
+            listeners.get(eventName)?.forEach((handler) => {
+                try {
+                    handler(event);
+                } catch (_) {
+                    // One consumer callback must not interrupt the shared event stream.
+                }
+            });
+        };
+
+        const waitBeforeRetry = () => new Promise((resolve) => {
+            resolveRetry = resolve;
+            retryTimer = setTimeout(() => {
+                retryTimer = null;
+                resolveRetry = null;
+                resolve();
+            }, 3000);
+        });
+
+        const connect = async () => {
+            while (!closed) {
+                try {
+                    const headers = { Accept: 'text/event-stream' };
+                    if (authToken) headers.Authorization = `Bearer ${authToken}`;
+                    const response = await globalThis.fetch(url, {
+                        method: 'GET',
+                        headers,
+                        cache: 'no-store',
+                        signal: controller.signal
+                    });
+                    if (!response.ok || !response.body) {
+                        throw new Error(`SSE connection failed (${response.status})`);
+                    }
+
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+                    while (!closed) {
+                        const { value, done } = await reader.read();
+                        if (done) break;
+                        buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
+                        const blocks = buffer.split('\n\n');
+                        buffer = blocks.pop() || '';
+                        blocks.forEach(dispatchEventBlock);
+                    }
+                    if (!closed) throw new Error('SSE connection closed');
+                } catch (error) {
+                    if (closed) return;
+                    try {
+                        source.onerror?.(error);
+                    } catch (_) {
+                        // Keep retry handling alive if a consumer error handler throws.
+                    }
+                    await waitBeforeRetry();
+                }
+            }
+        };
+
+        connect();
+        return source;
     }
 };
 

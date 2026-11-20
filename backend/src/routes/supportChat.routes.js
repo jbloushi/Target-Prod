@@ -3,19 +3,8 @@ const router = express.Router();
 const authController = require('../controllers/auth.controller');
 const supportChatController = require('../controllers/supportChat.controller');
 
-/**
- * Authentication wrapper supporting both Bearer header and query param token
- * (Essential for native EventSource in SSE which doesn't allow setting custom headers)
- */
-const protectSupport = (req, res, next) => {
-    if (!req.headers.authorization && req.query.token) {
-        req.headers.authorization = `Bearer ${req.query.token}`;
-    }
-    return authController.protect(req, res, next);
-};
-
 // All support routes are protected
-router.use(protectSupport);
+router.use(authController.protect);
 
 // Conversations & Thread Operations
 router.get('/conversations', supportChatController.getConversations);
