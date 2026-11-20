@@ -1,492 +1,572 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../context/LanguageContext';
-import PageHeader from '../components/common/PageHeader';
+import { useAuth } from '../context/AuthContext';
+import { downloadApiDocsPdf, downloadPostmanCollection } from '../utils/apiDocsExport';
 
-const METHOD_BADGES = {
-  GET: 'badge-success text-white',
-  POST: 'badge-primary text-white',
-  PUT: 'badge-warning text-neutral',
-  DELETE: 'badge-error text-white',
+const API_BASE_URL = 'https://api.target-kw.com/api/v1';
+
+const METHOD_STYLES = {
+    GET: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30',
+    POST: 'bg-primary/10 text-primary border border-primary/30',
+    PUT: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30',
+    DELETE: 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/30'
 };
 
-const MethodBadge = ({ method }) => {
-  const badgeClass = METHOD_BADGES[method] || 'badge-neutral';
-  return (
-    <span className={`badge badge-sm font-mono font-black text-[11px] px-2 py-0.5 ${badgeClass}`}>
-      {method}
+const MethodBadge = ({ method }) => (
+    <span className={`px-2 py-0.5 rounded-md font-mono font-bold text-[11px] uppercase shrink-0 ${METHOD_STYLES[method] || 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'}`}>
+        {method}
     </span>
-  );
-};
-
-const CodeBlock = ({ children }) => (
-  <pre className="p-3 rounded-lg bg-neutral text-neutral-content font-mono text-xs overflow-x-auto leading-relaxed my-2">
-    <code>{children}</code>
-  </pre>
 );
 
-const ApiKeyPanel = () => {
-  const { lang } = useLanguage();
-  return (
-    <div className="card bg-primary/10 border border-primary/20 shadow-sm p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-      <div className="space-y-1">
-        <div className="flex items-center gap-2">
-          <span className="material-symbols-outlined text-primary text-xl">vpn_key</span>
-          <span className="font-bold text-sm text-base-content">
-            {lang === 'ar' ? 'مفتاح واجهة برمجة التطبيقات الخاص بك' : 'Your Client API Key'}
-          </span>
+const CodeBlock = ({ code, title }) => {
+    const [copied, setCopied] = useState(false);
+    const handleCopy = () => {
+        navigator.clipboard?.writeText(code);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1800);
+    };
+
+    return (
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-950 text-slate-100 overflow-hidden my-2">
+            {title && (
+                <div className="px-3.5 py-2 border-b border-slate-800 flex items-center justify-between gap-2 bg-slate-900/80">
+                    <span className="text-[11px] font-mono text-slate-400">{title}</span>
+                    <button
+                        type="button"
+                        onClick={handleCopy}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-300 hover:text-white cursor-pointer"
+                    >
+                        <span className="material-symbols-outlined text-xs" aria-hidden="true">
+                            {copied ? 'check' : 'content_copy'}
+                        </span>
+                        <span>{copied ? 'Copied' : 'Copy'}</span>
+                    </button>
+                </div>
+            )}
+            <pre className="p-3.5 font-mono text-xs overflow-x-auto leading-relaxed" dir="ltr">
+                <code>{code}</code>
+            </pre>
         </div>
-        <p className="text-xs text-base-content/70">
-          {lang === 'ar'
-            ? 'احصل على مفتاح API الخاص بحسابك أو قم بإعادة إنشائه من إعدادات الحساب.'
-            : 'Access or regenerate your account API key from your profile settings.'}
-        </p>
-      </div>
-      <Link
-        to="/settings"
-        className="btn btn-primary btn-sm font-bold text-xs gap-1.5 self-start sm:self-auto shrink-0"
-      >
-        <span className="material-symbols-outlined text-sm">settings</span>
-        <span>{lang === 'ar' ? 'إدارة مفاتيح API' : 'Manage API Keys'}</span>
-      </Link>
-    </div>
-  );
+    );
 };
 
-const FieldTable = ({ fields }) => {
-  const { lang } = useLanguage();
-  return (
-    <div className="overflow-x-auto my-2">
-      <table className="table table-xs table-zebra w-full font-mono">
-        <thead>
-          <tr className="text-base-content/60 font-sans">
-            <th>{lang === 'ar' ? 'الحقل' : 'Field'}</th>
-            <th>{lang === 'ar' ? 'النوع' : 'Type'}</th>
-            <th>{lang === 'ar' ? 'مطلوب' : 'Required'}</th>
-            <th className="font-sans">{lang === 'ar' ? 'الوصف' : 'Description'}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {fields.map((f) => (
-            <tr key={f.field}>
-              <td className="text-primary font-bold">{f.field}</td>
-              <td className="text-base-content/70">{f.type}</td>
-              <td>
-                {f.required ? (
-                  <span className="badge badge-error badge-xs font-bold text-white">required</span>
-                ) : (
-                  <span className="badge badge-ghost badge-xs">optional</span>
-                )}
-              </td>
-              <td className="font-sans text-xs text-base-content/80">{f.description}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-};
-
-const EndpointCard = ({ method, path, title, description, fields, response, errors, note }) => {
-  const [open, setOpen] = useState(false);
-  const { lang } = useLanguage();
-
-  return (
-    <div className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden mb-3">
-      <div
-        onClick={() => setOpen(!open)}
-        className="p-4 flex items-center justify-between cursor-pointer hover:bg-base-200/50 transition-colors gap-3"
-      >
-        <div className="flex items-center gap-3 flex-wrap">
-          <MethodBadge method={method} />
-          <code className="font-mono text-xs sm:text-sm font-bold text-base-content">{path}</code>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-base-content/60 hidden sm:inline">{title}</span>
-          <span className="material-symbols-outlined text-sm text-base-content/40 transition-transform duration-200">
-            {open ? 'expand_less' : 'expand_more'}
-          </span>
-        </div>
-      </div>
-
-      {open && (
-        <div className="p-4 sm:p-5 border-t border-base-200 space-y-4 bg-base-100">
-          {note && (
-            <div className="alert alert-info text-xs py-2 px-3 shadow-none">
-              <span className="material-symbols-outlined text-base">info</span>
-              <span>{note}</span>
-            </div>
-          )}
-
-          {description && <p className="text-xs text-base-content/70 leading-relaxed">{description}</p>}
-
-          {fields && fields.length > 0 && (
-            <div>
-              <div className="text-[11px] font-bold text-base-content/60 uppercase tracking-wider mb-1">
-                {lang === 'ar' ? 'حقول الطلب' : 'Request Payload Parameters'}
-              </div>
-              <FieldTable fields={fields} />
-            </div>
-          )}
-
-          {response && (
-            <div>
-              <div className="text-[11px] font-bold text-base-content/60 uppercase tracking-wider mb-1">
-                {lang === 'ar' ? 'نموذج الاستجابة' : 'Response Example (JSON)'}
-              </div>
-              <CodeBlock>{response}</CodeBlock>
-            </div>
-          )}
-
-          {errors && errors.length > 0 && (
-            <div>
-              <div className="text-[11px] font-bold text-base-content/60 uppercase tracking-wider mb-1.5">
-                {lang === 'ar' ? 'استجابات الأخطاء' : 'HTTP Error Responses'}
-              </div>
-              <div className="space-y-1">
-                {errors.map((e) => (
-                  <div key={e.code} className="flex items-center gap-2 text-xs">
-                    <span className="badge badge-error badge-xs font-mono font-bold text-white">{e.code}</span>
-                    <span className="text-base-content/70">{e.msg}</span>
-                  </div>
+const FieldTable = ({ fields, isRTL }) => (
+    <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 my-2">
+        <table className="w-full text-start border-collapse text-xs">
+            <thead>
+                <tr className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
+                    <th className="py-2 px-3 text-start font-semibold">{isRTL ? 'الحقل' : 'Field'}</th>
+                    <th className="py-2 px-3 text-start font-semibold">{isRTL ? 'النوع' : 'Type'}</th>
+                    <th className="py-2 px-3 text-start font-semibold">{isRTL ? 'مطلوب' : 'Required'}</th>
+                    <th className="py-2 px-3 text-start font-semibold">{isRTL ? 'الوصف' : 'Description'}</th>
+                </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {fields.map((f) => (
+                    <tr key={f.field} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/30">
+                        <td className="py-2 px-3 font-mono font-bold text-primary whitespace-nowrap" dir="ltr">{f.field}</td>
+                        <td className="py-2 px-3 font-mono text-slate-500 dark:text-slate-400 whitespace-nowrap" dir="ltr">{f.type}</td>
+                        <td className="py-2 px-3 whitespace-nowrap">
+                            {f.required ? (
+                                <span className="px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-700 dark:text-rose-300 text-[10px] font-bold uppercase">
+                                    required
+                                </span>
+                            ) : (
+                                <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-semibold">
+                                    optional
+                                </span>
+                            )}
+                        </td>
+                        <td className="py-2 px-3 text-slate-700 dark:text-slate-300">{f.description}</td>
+                    </tr>
                 ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+            </tbody>
+        </table>
     </div>
-  );
-};
-
-const SectionHeader = ({ id, title, subtitle }) => (
-  <div id={id} className="pt-6 pb-2 scroll-mt-24 space-y-1">
-    <h3 className="text-xl font-black text-base-content tracking-tight">{title}</h3>
-    {subtitle && <p className="text-xs text-base-content/60">{subtitle}</p>}
-  </div>
 );
 
-const SECTIONS = [
-  { id: 'shipments', label: 'Shipments', labelAr: 'الشحنات' },
-  { id: 'quotes', label: 'Quotes', labelAr: 'عروض الأسعار' },
-  { id: 'addresses', label: 'Address Book', labelAr: 'دفتر العناوين' },
-  { id: 'pickups', label: 'Pickups', labelAr: 'الاستلام' },
-  { id: 'tracking', label: 'Tracking', labelAr: 'التتبع' },
-  { id: 'public', label: 'Public Tracking', labelAr: 'التتبع العام' },
-  { id: 'statuses', label: 'Status Reference', labelAr: 'مرجع الحالات' },
-];
+const EndpointCard = ({ method, path, title, description, headers, fields, requestSample, responseSample, note, defaultOpen = false, isRTL }) => {
+    const [open, setOpen] = useState(defaultOpen);
 
-export const ApiDocsPage = () => {
-  const { lang } = useLanguage();
-
-  const scrollTo = (id) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-
-  return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 font-sans">
-      <PageHeader
-        title={lang === 'ar' ? 'توثيق واجهة برمجة التطبيقات' : 'API Documentation'}
-        description="Developer reference for rates, shipment creation, tracking, pickups, and integrations."
-        secondaryAction={
-          <div className="flex flex-wrap items-center gap-2">
-            <a
-              href="/api-docs.html"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-outline border-base-300 btn-sm font-bold text-xs gap-1.5"
+    return (
+        <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
+            <button
+                type="button"
+                onClick={() => setOpen((v) => !v)}
+                className="w-full px-4 sm:px-5 py-3.5 flex items-center justify-between gap-3 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors cursor-pointer text-start"
             >
-              <span className="material-symbols-outlined text-sm">open_in_new</span>
-              <span>Interactive Guide</span>
-            </a>
-            <a
-              href="/postman_collection.json"
-              download="target-logistics-api.postman_collection.json"
-              className="btn btn-outline border-base-300 btn-sm font-bold text-xs gap-1.5"
-            >
-              <span className="material-symbols-outlined text-sm">download</span>
-              <span>Postman Collection</span>
-            </a>
-          </div>
-        }
-        action={
-          <a
-            href="/Target_Logistics_Client_API_Documentation.pdf"
-            download="Target_Logistics_Client_API_Documentation.pdf"
-            className="btn btn-primary btn-sm font-bold text-xs gap-1.5"
-          >
-            <span className="material-symbols-outlined text-sm">picture_as_pdf</span>
-            <span>Download PDF Guide</span>
-          </a>
-        }
-      />
+                <div className="flex items-center gap-2.5 flex-wrap min-w-0">
+                    <MethodBadge method={method} />
+                    <code className="font-mono text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 break-all" dir="ltr">
+                        {path}
+                    </code>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs text-slate-500 dark:text-slate-400 hidden sm:inline">{title}</span>
+                    <span className="material-symbols-outlined text-base text-slate-400" aria-hidden="true">
+                        {open ? 'expand_less' : 'expand_more'}
+                    </span>
+                </div>
+            </button>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Sticky Left Nav */}
-        <div className="hidden lg:block lg:col-span-3 sticky top-24">
-          <div className="card bg-base-100 border border-base-200 shadow-sm p-3">
-            <div className="text-[11px] font-black text-base-content/50 uppercase tracking-widest px-3 py-2">
-              API Topics
-            </div>
-            <ul className="menu menu-xs w-full gap-0.5 p-0">
-              {SECTIONS.map((s) => (
-                <li key={s.id}>
-                  <button
-                    type="button"
-                    onClick={() => scrollTo(s.id)}
-                    className="font-bold text-xs text-base-content/70 hover:text-primary py-2 px-3 rounded-lg"
-                  >
-                    {lang === 'ar' && s.labelAr ? s.labelAr : s.label}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
+            {open && (
+                <div className="px-4 sm:px-5 py-4 border-t border-slate-200 dark:border-slate-800 space-y-4">
+                    <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">{description}</p>
+
+                    {note && (
+                        <div className="p-3 rounded-xl bg-sky-500/10 border border-sky-500/20 text-xs text-sky-900 dark:text-sky-200 flex items-start gap-2">
+                            <span className="material-symbols-outlined text-base text-sky-600 dark:text-sky-400 shrink-0" aria-hidden="true">info</span>
+                            <span>{note}</span>
+                        </div>
+                    )}
+
+                    {headers && headers.length > 0 && (
+                        <div className="space-y-1">
+                            <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                {isRTL ? 'الترويسات المطلوبة' : 'Headers'}
+                            </div>
+                            <FieldTable fields={headers} isRTL={isRTL} />
+                        </div>
+                    )}
+
+                    {fields && fields.length > 0 && (
+                        <div className="space-y-1">
+                            <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                {isRTL ? 'حقول الطلب' : 'Request Body Fields'}
+                            </div>
+                            <FieldTable fields={fields} isRTL={isRTL} />
+                        </div>
+                    )}
+
+                    {requestSample && <CodeBlock title="Request JSON" code={requestSample} />}
+                    {responseSample && <CodeBlock title="Response JSON" code={responseSample} />}
+                </div>
+            )}
         </div>
+    );
+};
 
-        {/* Right Content */}
-        <div className="lg:col-span-9 space-y-6">
-          <ApiKeyPanel />
+const ApiDocsPage = () => {
+    const { lang } = useLanguage();
+    const { user } = useAuth();
+    const isRTL = lang === 'ar';
 
-          {/* Section: Authentication */}
-          <SectionHeader
-            id="auth"
-            title={lang === 'ar' ? 'المصادقة وحدود الطلبات' : 'Authentication & Rate Limits'}
-            subtitle="Secure x-api-key HTTP header authorization."
-          />
-          <div className="card bg-base-100 border border-base-200 shadow-sm p-5 space-y-3 text-xs leading-relaxed">
-            <p className="text-base-content/70">
-              All REST endpoints require an active API key transmitted as an HTTP header:
-            </p>
-            <CodeBlock>x-api-key: usr_9a823f...live_8834</CodeBlock>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-              <div className="p-3 bg-base-200/50 rounded-lg">
-                <span className="font-bold text-base-content block">Production Base URL</span>
-                <code className="text-primary font-mono text-[11px]">https://api.target-kw.com/api</code>
-              </div>
-              <div className="p-3 bg-base-200/50 rounded-lg">
-                <span className="font-bold text-base-content block">Rate Limiting</span>
-                <span className="text-base-content/70 text-[11px]">60 requests/minute per key (HTTP 429 upon excess)</span>
-              </div>
-            </div>
-          </div>
+    return (
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
+            {/* Hero Header + Public Downloads (No Login Required) */}
+            <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-7 space-y-5">
+                <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                    <div className="space-y-1.5">
+                        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
+                            {isRTL ? 'وثائق واجهة برمجة التطبيقات — تارجت لوجستكس (API v1)' : 'Target Logistics Partner API Documentation (v1)'}
+                        </h1>
+                        <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-2xl">
+                            {isRTL
+                                ? 'دليل التكامل الكامل لإنشاء وحجز الشحنات، استخراج بوالص الشحن، التسعير الفوري، التتبع، والويب هوك — متاح للتحميل والمشاركة بدون تسجيل دخول.'
+                                : 'Complete integration reference for shipment booking, live quotes, waybill labels, tracking, and signed webhooks. Publicly accessible and downloadable with no login required.'}
+                        </p>
+                    </div>
 
-          {/* Section: Shipments */}
-          <SectionHeader id="shipments" title={lang === 'ar' ? 'إدارة الشحنات' : 'Shipment Operations'} />
-          <EndpointCard
-            method="POST"
-            path="/v1/shipments"
-            title="Create Consignment (Carrier, Domestic, or Manual)"
-            description="Creates an authorized consignment. Supports carrier-backed routes (DGR, SMSA, ARAMEX, OTE, FEDEX), Target Express domestic delivery (INTERNAL/DOM), and Manual consignments (MAN-*)."
-            note="Required header: Idempotency-Key: <UUIDv4>. Verified for GCC & worldwide export routes."
-            fields={[
-              { field: 'Idempotency-Key', type: 'header', required: true, description: 'Unique UUIDv4 per order to prevent duplicate bookings' },
-              { field: 'sender', type: 'object', required: true, description: 'Origin contact, PACI, address (alias: origin)' },
-              { field: 'receiver', type: 'object', required: true, description: 'Destination address (alias: destination)' },
-              { field: 'parcels', type: 'object[]', required: true, description: 'weight(kg), length, width, height(cm)' },
-              { field: 'items', type: 'object[]', required: true, description: 'Commercial customs line items with HS Codes' },
-              { field: 'carrierCode', type: 'string', required: false, description: 'Carrier code (e.g. DGR, SMSA, OTE, INTERNAL)' },
-              { field: 'serviceCode', type: 'string', required: false, description: 'Service tier returned from /v1/quotes (e.g. P, DOM)' },
-              { field: 'currency', type: 'string', required: false, description: 'Default: KWD' },
-              { field: 'autoBook', type: 'boolean', required: false, description: 'Credit accounts: immediately books live 3PL AWB' },
-            ]}
-            response={`{\n  "success": true,\n  "data": {\n    "trackingNumber": "2042595203",\n    "status": "booked",\n    "carrier": "DGR",\n    "serviceCode": "P",\n    "labelUrl": "/api/v1/shipments/2042595203/label"\n  }\n}`}
-            errors={[
-              { code: 400, msg: 'Missing required fields or invalid weight parameters / missing Idempotency-Key' },
-              { code: 403, msg: 'Carrier service not authorized for this account' },
-              { code: 409, msg: 'Another request with this Idempotency-Key is currently in flight' },
-            ]}
-          />
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        <button
+                            type="button"
+                            onClick={downloadApiDocsPdf}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-semibold cursor-pointer transition-colors"
+                        >
+                            <span className="material-symbols-outlined text-base" aria-hidden="true">picture_as_pdf</span>
+                            <span>{isRTL ? 'تحميل دليل PDF' : 'Download PDF Guide'}</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={downloadPostmanCollection}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+                        >
+                            <span className="material-symbols-outlined text-base" aria-hidden="true">download</span>
+                            <span>{isRTL ? 'مجموعة Postman' : 'Postman Collection'}</span>
+                        </button>
+                        <Link
+                            to={user ? '/settings-v2?tab=api' : '/login'}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors"
+                        >
+                            <span className="material-symbols-outlined text-base text-primary" aria-hidden="true">vpn_key</span>
+                            <span>{user ? (isRTL ? 'إدارة مفاتيح API' : 'Manage API Keys') : (isRTL ? 'تسجيل الدخول للمفاتيح' : 'Sign In for API Keys')}</span>
+                        </Link>
+                    </div>
+                </div>
 
-          <EndpointCard
-            method="GET"
-            path="/v1/shipments/:trackingNumber/label"
-            title="Download Printable Waybill / Label PDF"
-            description="Streams printable official carrier Air Waybill PDF or branded Target Express vector label directly to client."
-            note="Authenticate via x-api-key header or ?api_key= query parameter for direct download links."
-            response="Binary application/pdf stream (label-2042595203.pdf)"
-            errors={[
-              { code: 401, msg: 'Missing or invalid API key' },
-              { code: 404, msg: 'Shipment not found' },
-            ]}
-          />
-
-          <EndpointCard
-            method="PUT"
-            path="/v1/shipments/:trackingNumber"
-            title="Update Consignment"
-            description="Modify shipment addresses, parcels, remarks, or references before carrier physical collection."
-            fields={[
-              { field: 'origin', type: 'object', required: false, description: 'Updated shipper address (or sender)' },
-              { field: 'destination', type: 'object', required: false, description: 'Updated recipient address (or receiver)' },
-              { field: 'parcels', type: 'object[]', required: false, description: 'Updated weights and dimensions' },
-              { field: 'remarks', type: 'string', required: false, description: 'Handling instructions' },
-              { field: 'reference', type: 'string', required: false, description: 'Internal order reference' },
-            ]}
-            response={`{\n  "success": true,\n  "data": {\n    "trackingNumber": "2042595203",\n    "status": "booked",\n    "price": 18.576,\n    "updatedAt": "2026-04-10T12:00:00Z"\n  }\n}`}
-            errors={[
-              { code: 400, msg: 'Cannot edit shipment in current status' },
-              { code: 404, msg: 'Shipment not found' },
-            ]}
-          />
-
-          {/* Section: Quotes */}
-          <SectionHeader
-            id="quotes"
-            title={lang === 'ar' ? 'عروض الأسعار الحية' : 'Live Carrier Rate Quotes'}
-            subtitle="Compute live airfreight tariffs across carriers and domestic routes."
-          />
-          <EndpointCard
-            method="POST"
-            path="/v1/quotes"
-            title="Get Multi-Carrier / Domestic Quote"
-            description="Fetches live rate quotations filtered to your account shipping access mode (DGR, SMSA, ARAMEX, OTE, Target Express DOM, or Manual placeholder)."
-            fields={[
-              { field: 'sender', type: 'object', required: true, description: 'Origin city and countryCode' },
-              { field: 'receiver', type: 'object', required: true, description: 'Destination city and countryCode' },
-              { field: 'parcels', type: 'object[]', required: true, description: 'Weight and dimensions' },
-              { field: 'items', type: 'object[]', required: false, description: 'Customs items with HS codes and values' },
-            ]}
-            response={`{\n  "success": true,\n  "data": [\n    {\n      "carrier": "DGR",\n      "serviceName": "EXPRESS WORLDWIDE",\n      "serviceCode": "P",\n      "totalPrice": 18.576,\n      "currency": "KWD"\n    }\n  ]\n}`}
-          />
-
-          {/* Section: Address Book */}
-          <SectionHeader
-            id="addresses"
-            title={lang === 'ar' ? 'دفتر العناوين' : 'Saved Address Book'}
-            subtitle="Manage reusable warehouse and origin addresses."
-          />
-          <EndpointCard
-            method="GET"
-            path="/v1/addresses"
-            title="List Saved Addresses"
-            description="Retrieves all saved warehouse and shipper profiles. Also serves as the recommended lightweight connectivity test."
-            response={`{\n  "success": true,\n  "data": [\n    {\n      "id": "addr_91f03b",\n      "label": "Main Warehouse",\n      "company": "My Warehouse Co.",\n      "contactPerson": "Ahmed Al-Rashid",\n      "phone": "96512345678",\n      "city": "Kuwait City",\n      "countryCode": "KW"\n    }\n  ]\n}`}
-          />
-          <EndpointCard
-            method="POST"
-            path="/v1/addresses"
-            title="Save New Address Profile"
-            description="Adds a new address profile with a friendly label for rapid consignment generation."
-            fields={[
-              { field: 'label', type: 'string', required: true, description: 'Friendly profile name (e.g. Main Warehouse)' },
-              { field: 'company', type: 'string', required: true, description: 'Company or branch name' },
-              { field: 'contactPerson', type: 'string', required: true, description: 'Contact person' },
-              { field: 'phone', type: 'string', required: true, description: 'Contact phone number' },
-              { field: 'streetLines', type: 'string[]', required: true, description: 'Street address lines' },
-              { field: 'city', type: 'string', required: true, description: 'City name' },
-              { field: 'countryCode', type: 'string', required: true, description: 'ISO-2 country code (e.g. KW)' },
-            ]}
-            response={`{\n  "success": true,\n  "data": {\n    "id": "addr_91f03b",\n    "label": "Main Warehouse",\n    "city": "Kuwait City",\n    "countryCode": "KW"\n  }\n}`}
-          />
-
-          {/* Section: Pickups */}
-          <SectionHeader
-            id="pickups"
-            title={lang === 'ar' ? 'طلبات الاستلام' : 'Courier Pickup Scheduling'}
-            subtitle="Schedule driver dispatch to collect prepared consignments."
-          />
-          <EndpointCard
-            method="POST"
-            path="/client/pickups"
-            title="Schedule Courier Pickup"
-            description="Schedules a driver collection from your warehouse or store location."
-            fields={[
-              { field: 'sender', type: 'object', required: true, description: 'Pickup location and contact' },
-              { field: 'receiver', type: 'object', required: true, description: 'Consignee destination details' },
-              { field: 'parcels', type: 'object[]', required: true, description: 'Box counts, weights and dimensions' },
-              { field: 'requestedPickupDate', type: 'string', required: true, description: 'ISO-8601 pickup timestamp' },
-              { field: 'pickupInstructions', type: 'string', required: false, description: 'Driver gate or loading bay notes' },
-            ]}
-            response={`{\n  "success": true,\n  "data": {\n    "id": "pickup_9a23f10b",\n    "status": "REQUESTED",\n    "createdAt": "2026-04-14T09:15:00Z"\n  }\n}`}
-          />
-          <EndpointCard
-            method="GET"
-            path="/client/pickups/:id"
-            title="Check Pickup Status"
-            description="Checks courier pickup approval, driver assignment, and linked waybill numbers."
-            response={`{\n  "success": true,\n  "data": {\n    "id": "pickup_9a23f10b",\n    "status": "APPROVED",\n    "shipment": {\n      "trackingNumber": "2042595203",\n      "status": "ready_for_pickup"\n    }\n  }\n}`}
-          />
-
-          {/* Section: Tracking */}
-          <SectionHeader id="tracking" title={lang === 'ar' ? 'تتبع الشحنات' : 'Consignment Tracking Telemetry'} />
-          <EndpointCard
-            method="GET"
-            path="/v1/tracking/:trackingNumber"
-            title="Authenticated Telemetry Feed"
-            description="Complete consolidated timeline of airline flight radar, optical scans, customs holds, and driver signatures."
-            response={`{\n  "success": true,\n  "data": {\n    "trackingNumber": "2042595203",\n    "status": "in_transit",\n    "carrier": "DGR",\n    "serviceCode": "P",\n    "estimatedDelivery": "2026-04-17T00:00:00Z",\n    "history": []\n  }\n}`}
-          />
-          <EndpointCard
-            method="GET"
-            path="/client/shipments/:trackingNumber/tracking"
-            title="Unified Multi-Carrier Scan History"
-            description="Merges internal hub checkpoints with live 3PL carrier scans, deduplicates overlaps, and returns sorted newest-first."
-            response={`{\n  "success": true,\n  "data": {\n    "trackingNumber": "2042595203",\n    "status": "in_transit",\n    "events": [\n      { "source": "carrier", "status": "in_transit", "description": "Processed at Kuwait City Hub", "timestamp": "2026-04-14T11:20:00Z" }\n    ]\n  }\n}`}
-          />
-
-          {/* Section: Public */}
-          <SectionHeader id="public" title={lang === 'ar' ? 'واجهة التتبع العام' : 'Public Unauthenticated Endpoint'} />
-          <EndpointCard
-            method="GET"
-            path="/public/shipments/:trackingNumber"
-            title="Public Storefront Tracking Feed"
-            description="Safe for customer-facing tracking apps and portals without requiring API key authorization."
-            response={`{\n  "success": true,\n  "data": {\n    "trackingNumber": "2042595203",\n    "status": "in_transit",\n    "carrierCode": "DGR",\n    "destination": { "city": "Dubai", "countryCode": "AE" },\n    "events": []\n  }\n}`}
-          />
-
-          {/* Section: Status Reference */}
-          <SectionHeader id="statuses" title={lang === 'ar' ? 'مرجع الحالات الموحد' : 'Unified Status Reference'} />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="card bg-base-100 border border-base-200 p-4 space-y-2">
-              <span className="font-black text-xs text-base-content uppercase">Consignment Lifecycle (15 Statuses)</span>
-              <div className="space-y-1.5 text-xs">
-                {[
-                  ['draft', 'Manual or saved consignment awaiting confirmation'],
-                  ['pending', 'Awaiting operations review or pickup scheduling'],
-                  ['pending_approval', 'Held for credit or dispatch approval'],
-                  ['booked', 'Confirmed with carrier; AWB & waybill label assigned'],
-                  ['ready_for_pickup', 'Scheduled for courier collection from origin'],
-                  ['picked_up', 'Collected from sender by courier driver'],
-                  ['received_at_hub', 'Checked in at Target or carrier sorting facility'],
-                  ['verified', 'Weight, dimensions, and customs verified at hub'],
-                  ['in_transit', 'Active linehaul, air freight, or customs clearance'],
-                  ['out_for_delivery', 'On final-mile delivery courier vehicle'],
-                  ['delivered', 'Successfully delivered to consignee (POD)'],
-                  ['rto_in_transit', 'Return-to-origin transit in progress'],
-                  ['returned', 'Returned and handed back to original shipper'],
-                  ['exception', 'Customs hold, bad address, or failed attempt'],
-                  ['cancelled', 'Voided consignment; no further status progression'],
-                ].map(([st, desc]) => (
-                  <div key={st} className="flex items-center gap-2">
-                    <code className="badge badge-xs badge-neutral font-bold">{st}</code>
-                    <span className="text-base-content/70 text-[11px]">{desc}</span>
-                  </div>
-                ))}
-              </div>
+                {/* Base URL & Key Facts Strip */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+                    <div className="rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 p-3.5">
+                        <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Base URL</div>
+                        <code className="text-xs font-mono font-bold text-primary break-all mt-0.5 block" dir="ltr">
+                            {API_BASE_URL}
+                        </code>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 p-3.5">
+                        <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                            {isRTL ? 'الاختبار والفوترة' : 'Testing & Billing'}
+                        </div>
+                        <div className="text-xs font-semibold text-slate-900 dark:text-slate-100 mt-0.5">
+                            {isRTL ? 'نقبل الشحنات التجريبية (isTest: true) دون أي رسوم' : 'Test shipments accepted ("isTest": true) — not charged'}
+                        </div>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 p-3.5">
+                        <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                            {isRTL ? 'التوجيه والتحديثات' : 'Routing & Updates'}
+                        </div>
+                        <div className="text-xs font-semibold text-slate-900 dark:text-slate-100 mt-0.5">
+                            {isRTL ? 'التوجيه مضبوط تلقائياً على حسابك · ويب هوك + تتبع API' : 'Auto-routed by account · Webhooks + Tracking API'}
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <div className="card bg-base-100 border border-base-200 p-4 space-y-2">
-              <span className="font-black text-xs text-base-content uppercase">Driver Pickup Requests</span>
-              <div className="space-y-1.5 text-xs">
-                {[
-                  ['REQUESTED', 'Customer submitted pickup order'],
-                  ['APPROVED', 'Dispatcher assigned driver vehicle'],
-                  ['COLLECTED', 'Driver loaded parcel into van'],
-                  ['REJECTED', 'Address unserviceable or cancelled'],
-                ].map(([st, desc]) => (
-                  <div key={st} className="flex items-center gap-2">
-                    <code className="badge badge-xs badge-primary font-bold">{st}</code>
-                    <span className="text-base-content/70 text-[11px]">{desc}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+            {/* Section 1: Authentication, Idempotency & Testing */}
+            <section className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6 space-y-4">
+                <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                    {isRTL ? '1. المصادقة والترويسات والاختبار' : '1. Authentication, Required Headers & Testing'}
+                </h2>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-slate-600 dark:text-slate-300">
+                    <div className="rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-4 space-y-2">
+                        <div className="font-bold text-slate-900 dark:text-slate-100">
+                            {isRTL ? 'مفتاح API والترويسات' : 'API Key & Idempotency-Key'}
+                        </div>
+                        <p>
+                            {isRTL
+                                ? 'قم بإنشاء مفتاح API من بوابة تارجت عبر الإعدادات ← واجهة API والويب هوك (/settings-v2?tab=api).'
+                                : 'Generate your API key in the Target Portal under Settings → API & Webhooks (/settings-v2?tab=api). Send it via X-API-Key or Authorization: ApiKey <key>.'}
+                        </p>
+                        <p className="font-semibold text-slate-800 dark:text-slate-200">
+                            {isRTL
+                                ? 'مهم: ترويسة Idempotency-Key مطلوبة في POST /api/v1/shipments لمنع تكرار الشحنات عند إعادة المحاولة.'
+                                : 'Required on POST /api/v1/shipments: include a unique Idempotency-Key header (e.g. order-10001) to prevent duplicate bookings on network retries.'}
+                        </p>
+                    </div>
+
+                    <div className="rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-4 space-y-2">
+                        <div className="font-bold text-slate-900 dark:text-slate-100">
+                            {isRTL ? 'الشحنات التجريبية (لا توجد بيئة منفصلة)' : 'Test Shipments (Single Endpoint, Zero Charges)'}
+                        </div>
+                        <p>
+                            {isRTL
+                                ? 'لا توجد بيئة اختبار منفصلة. يمكنك إرسال شحنات تجريبية مباشرة على نفس الرابط مع تمرير "isTest": true في جسم الطلب — لا يتم احتساب أي رسوم ولا يتم إرسال مندوب للاستلام.'
+                                : 'Target does not require a separate sandbox server. Submit test shipments directly to the standard endpoint with "isTest": true in the JSON body. Test shipments are not charged and do not trigger live courier pickups.'}
+                        </p>
+                    </div>
+                </div>
+
+                <CodeBlock
+                    title="Required Request Headers"
+                    code={`X-API-Key: trg_live_xxxxxxxxxxxxxxxxxxxxxxxx
+Content-Type: application/json
+Idempotency-Key: order-10001`}
+                />
+            </section>
+
+            {/* Section 2: Credit Account, Simple Booking Lifecycle, Dimensions & COD */}
+            <section className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6 space-y-4">
+                <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                    {isRTL ? '2. الحسابات الآجلة (Credit)، دورة الشحنة، الأبعاد، والدفع عند الاستلام' : '2. Credit Accounts, Booking Lifecycle, Dimensions & COD'}
+                </h2>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-slate-600 dark:text-slate-300">
+                    <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 space-y-2">
+                        <div className="font-bold text-slate-900 dark:text-slate-100">
+                            {isRTL ? 'التوجيه التلقائي والحجز (Credit Accounts)' : 'Pre-Configured Routing & Credit Booking'}
+                        </div>
+                        <ul className="list-disc ps-4 space-y-1.5">
+                            <li>
+                                <strong className="text-slate-900 dark:text-slate-100">Account-Managed Routing:</strong>{' '}
+                                Delivery routing is configured directly on your Target account — simply send the minimum shipment details (sender, receiver, parcel) with no carrier selection required.
+                            </li>
+                            <li>
+                                <strong className="text-slate-900 dark:text-slate-100">Manual vs Automatic Booking:</strong>{' '}
+                                Omit <code className="font-mono text-primary">autoBook</code> for manual approval, or pass <code className="font-mono text-primary">"autoBook": true</code> to book immediately within your credit limit.
+                            </li>
+                            <li>
+                                <strong className="text-slate-900 dark:text-slate-100">Billing & Checkout Fees:</strong>{' '}
+                                Target bills your credit account directly per booked shipment. In checkout, you may keep your own area fees or fetch live Target rates via <code className="font-mono">POST /api/v1/quotes</code>.
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 space-y-2">
+                        <div className="font-bold text-slate-900 dark:text-slate-100">
+                            {isRTL ? 'الأبعاد والوزن والدفع عند الاستلام (COD)' : 'Parcel Dimensions, Weight & Optional COD'}
+                        </div>
+                        <ul className="list-disc ps-4 space-y-1.5">
+                            <li>
+                                <strong className="text-slate-900 dark:text-slate-100">Simple Parcel Defaults:</strong>{' '}
+                                Standard default box dimensions (e.g. <code className="font-mono tabular-nums">20 × 20 × 10 cm</code>, <code className="font-mono tabular-nums">1.0 kg</code>) work cleanly for standard deliveries — per-SKU dimensions are not required unless shipping bulky international parcels.
+                            </li>
+                            <li>
+                                <strong className="text-slate-900 dark:text-slate-100">Cash on Delivery (COD):</strong>{' '}
+                                Optional. Pass <code className="font-mono text-primary">codAmount</code> (&gt; 0) and <code className="font-mono text-primary">codCurrency</code> (e.g. <code className="font-mono">"KWD"</code>). Omit or pass <code className="font-mono">0</code> for online-paid orders.
+                            </li>
+                            <li>
+                                <strong className="text-slate-900 dark:text-slate-100">Lifecycle:</strong>{' '}
+                                Created / Booked → Ready for Pickup → Picked Up → In Transit → Out for Delivery → Delivered.
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            {/* Section 3: Endpoints Reference */}
+            <section className="space-y-3">
+                <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 px-1">
+                    {isRTL ? '3. مرجع نقاط الاتصال (API Endpoints)' : '3. API Endpoints Reference'}
+                </h2>
+
+                <EndpointCard
+                    method="POST"
+                    path="/api/v1/shipments"
+                    title={isRTL ? 'إنشاء وحجز شحنة' : 'Create & Book Shipment'}
+                    description="Creates and books a Target Logistics shipment with minimal required fields. Delivery routing is automatically applied from your account configuration."
+                    note="Idempotency-Key header is required. Pass isTest: true for test shipments (never charged)."
+                    defaultOpen={true}
+                    isRTL={isRTL}
+                    headers={[
+                        { field: 'X-API-Key', type: 'string', required: true, description: 'Your account API key from Settings → API & Webhooks' },
+                        { field: 'Idempotency-Key', type: 'string', required: true, description: 'Unique key per order (e.g. order-10001) to prevent duplicate bookings' }
+                    ]}
+                    fields={[
+                        { field: 'autoBook', type: 'boolean', required: false, description: 'Credit accounts: set true to book immediately without manual approval' },
+                        { field: 'isTest', type: 'boolean', required: false, description: 'Set true for integration test shipments (not charged, no live pickup)' },
+                        { field: 'reference', type: 'string', required: false, description: 'Your store order number or internal reference' },
+                        { field: 'sender', type: 'object', required: true, description: 'Pickup details: name, company, phone, email, addressLine1, city, countryCode (KW)' },
+                        { field: 'receiver', type: 'object', required: true, description: 'Consignee details: name, phone, email, addressLine1, city, countryCode' },
+                        { field: 'parcels', type: 'array', required: true, description: 'Array of { weight (kg), dimensions: { length, width, height } (cm), description }' },
+                        { field: 'codAmount', type: 'number', required: false, description: 'Optional Cash on Delivery amount (> 0). Omit or 0 for prepaid orders' },
+                        { field: 'codCurrency', type: 'string', required: false, description: 'COD currency code (e.g. KWD). Defaults to KWD' }
+                    ]}
+                    requestSample={JSON.stringify(
+                        {
+                            autoBook: true,
+                            isTest: true,
+                            reference: 'ORDER-10001',
+                            sender: {
+                                name: 'My Store',
+                                company: 'My Store W.L.L.',
+                                phone: '+96590000000',
+                                email: 'ops@mystore.com',
+                                addressLine1: 'Block 1, Street 10, Shuwaikh',
+                                city: 'Kuwait City',
+                                countryCode: 'KW'
+                            },
+                            receiver: {
+                                name: 'Customer Name',
+                                phone: '+96599887766',
+                                email: 'customer@example.com',
+                                addressLine1: 'Block 4, Street 2, Salmiya',
+                                city: 'Salmiya',
+                                countryCode: 'KW'
+                            },
+                            parcels: [{ weight: 1.0, dimensions: { length: 20, width: 20, height: 10 }, description: 'Order #10001' }],
+                            codAmount: 0,
+                            codCurrency: 'KWD'
+                        },
+                        null,
+                        2
+                    )}
+                    responseSample={JSON.stringify(
+                        {
+                            success: true,
+                            data: {
+                                trackingNumber: 'TKW-20261119-0042',
+                                status: 'ready_for_pickup',
+                                labelUrl: '/api/v1/shipments/TKW-20261119-0042/label',
+                                price: 1.5,
+                                currency: 'KWD',
+                                codAmount: null,
+                                codCurrency: null,
+                                codStatus: null
+                            }
+                        },
+                        null,
+                        2
+                    )}
+                />
+
+                <EndpointCard
+                    method="POST"
+                    path="/api/v1/quotes"
+                    title={isRTL ? 'حساب أسعار الشحن' : 'Get Live Delivery Quote'}
+                    description="Returns your account's live Target delivery rate in KWD for a given origin, destination, and parcel list."
+                    isRTL={isRTL}
+                    fields={[
+                        { field: 'origin', type: 'object', required: true, description: '{ city, countryCode }' },
+                        { field: 'destination', type: 'object', required: true, description: '{ city, countryCode }' },
+                        { field: 'parcels', type: 'array', required: true, description: 'Array of { weight, dimensions: { length, width, height } }' }
+                    ]}
+                    responseSample={JSON.stringify(
+                        {
+                            success: true,
+                            data: [
+                                {
+                                    serviceName: 'Target Delivery',
+                                    totalPrice: 1.5,
+                                    currency: 'KWD'
+                                }
+                            ]
+                        },
+                        null,
+                        2
+                    )}
+                />
+
+                <EndpointCard
+                    method="GET"
+                    path="/api/v1/shipments/:number/label"
+                    title={isRTL ? 'تحميل بوليصة الشحن PDF' : 'Download Waybill Label (PDF)'}
+                    description="Streams or returns the official Target Logistics waybill PDF for printing."
+                    isRTL={isRTL}
+                />
+
+                <EndpointCard
+                    method="PUT"
+                    path="/api/v1/shipments/:number"
+                    title={isRTL ? 'تحديث بيانات الشحنة' : 'Update Shipment'}
+                    description="Updates receiver contact details, special instructions, or shipment metadata before courier pickup."
+                    isRTL={isRTL}
+                />
+
+                <EndpointCard
+                    method="GET"
+                    path="/api/v1/tracking/:number"
+                    title={isRTL ? 'تتبع حالة الشحنة' : 'Track Shipment & Checkpoint History'}
+                    description="Returns current normalized shipment status and chronological tracking history. Can be used on-demand or as a polling fallback alongside webhooks."
+                    isRTL={isRTL}
+                    responseSample={JSON.stringify(
+                        {
+                            success: true,
+                            data: {
+                                trackingNumber: 'TKW-20261119-0042',
+                                status: 'out_for_delivery',
+                                history: [
+                                    {
+                                        status: 'out_for_delivery',
+                                        timestamp: '2026-11-19T09:15:00.000Z',
+                                        location: 'Kuwait City',
+                                        description: 'Out for delivery with Target courier'
+                                    }
+                                ]
+                            }
+                        },
+                        null,
+                        2
+                    )}
+                />
+
+                <EndpointCard
+                    method="GET"
+                    path="/api/v1/addresses"
+                    title={isRTL ? 'سجل العناوين المحفوظة' : 'Saved Addresses (GET / POST / PUT)'}
+                    description="Manage reusable pickup and receiver addresses via GET /api/v1/addresses, POST /api/v1/addresses, and PUT /api/v1/addresses/:id."
+                    isRTL={isRTL}
+                />
+            </section>
+
+            {/* Section 4: Webhooks & Real-Time Status Updates */}
+            <section className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                        {isRTL ? '4. الويب هوك وتحديثات الحالة الفورية (Webhooks)' : '4. Webhooks & Real-Time Status Updates'}
+                    </h2>
+                    <span className="px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold">
+                        HMAC-SHA256 Signed · 5 Retries
+                    </span>
+                </div>
+
+                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">
+                    {isRTL
+                        ? 'يدعم تارجت إرسال إشعارات فورية عبر HTTP Webhook عند إنشاء الشحنة أو حجزها أو تغير حالتها. قم بإضافة رابط HTTPS الخاص بك وتجربته من الإعدادات ← واجهة API والويب هوك.'
+                        : 'Target pushes real-time JSON events to your HTTPS endpoint whenever a shipment is created, booked, or changes status. Configure your URL, choose events, and send a test ping in Settings → API & Webhooks (/settings-v2?tab=api).'}
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    {[
+                        ['shipment.created', 'Fired when a new shipment is created via API or portal'],
+                        ['shipment.booked', 'Fired when a shipment is booked and waybill is ready'],
+                        ['shipment.status_updated', 'Fired whenever pickup, transit, or delivery status updates']
+                    ].map(([evt, desc]) => (
+                        <div key={evt} className="rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-3.5">
+                            <code className="font-mono font-bold text-primary text-xs" dir="ltr">{evt}</code>
+                            <p className="text-slate-600 dark:text-slate-400 mt-1">{desc}</p>
+                        </div>
+                    ))}
+                </div>
+
+                <CodeBlock
+                    title="Sample Webhook Payload (POST to your HTTPS endpoint)"
+                    code={JSON.stringify(
+                        {
+                            event: 'shipment.status_updated',
+                            trackingNumber: 'TKW-20261119-0042',
+                            status: 'delivered',
+                            previousStatus: 'out_for_delivery',
+                            updatedAt: '2026-11-19T12:30:00.000Z'
+                        },
+                        null,
+                        2
+                    )}
+                />
+
+                <CodeBlock
+                    title="Verify X-Webhook-Signature-256 (Node.js)"
+                    code={`const crypto = require('crypto');
+
+function verifyTargetWebhook(rawBody, signatureHeader, webhookSecret) {
+  const expected = crypto
+    .createHmac('sha256', webhookSecret)
+    .update(rawBody)
+    .digest('hex');
+  return crypto.timingSafeEqual(
+    Buffer.from(String(signatureHeader || '')),
+    Buffer.from(expected)
   );
+}`}
+                />
+            </section>
+
+            {/* Section 5: Shipment Statuses */}
+            <section className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6 space-y-3">
+                <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                    {isRTL ? '5. دورة حياة وحالات الشحنة القياسية' : '5. Standard Shipment Lifecycle & Statuses'}
+                </h2>
+                <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+                    <table className="w-full text-start border-collapse text-xs">
+                        <thead>
+                            <tr className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
+                                <th className="py-2 px-3 text-start font-semibold">status</th>
+                                <th className="py-2 px-3 text-start font-semibold">{isRTL ? 'المعنى' : 'Meaning'}</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {[
+                                ['pending_approval', 'Created and awaiting approval (when autoBook is not true)'],
+                                ['ready_for_pickup', 'Booked and scheduled for courier pickup'],
+                                ['booked', 'Booked and waybill PDF generated'],
+                                ['picked_up', 'Collected from sender location'],
+                                ['in_transit', 'In transit at sorting hub or delivery corridor'],
+                                ['out_for_delivery', 'With courier for final delivery'],
+                                ['delivered', 'Delivered to consignee (ePOD completed)'],
+                                ['exception', 'Delivery attempt failed or address issue'],
+                                ['cancelled', 'Cancelled prior to pickup (no charge)']
+                            ].map(([st, desc]) => (
+                                <tr key={st} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/30">
+                                    <td className="py-2 px-3 font-mono font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap" dir="ltr">{st}</td>
+                                    <td className="py-2 px-3 text-slate-600 dark:text-slate-300">{desc}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    );
 };
 
 export default ApiDocsPage;

@@ -418,7 +418,10 @@ export const ShipmentDetailsV2Page = () => {
     const rawCarrierCode = String(shipment?.carrier || shipment?.carrierCode || 'INTERNAL').toUpperCase();
     const isInternalShipment = rawCarrierCode === 'INTERNAL' || shipment?.internallyManaged === true;
     const isManualShipment = Boolean(shipment?.manualShipment || shipment?.serviceType === 'manual' || rawCarrierCode === 'MANUAL');
-    const carrierDisplayName = isManualShipment ? (isRTL ? 'شحنة يدوية (Target)' : 'Manual Shipment') : getCarrierDisplayName(rawCarrierCode);
+    const canSeeCarrier = ['admin', 'staff', 'warehouse', 'accounting', 'driver'].includes(String(user?.role || '').toLowerCase());
+    const carrierDisplayName = !canSeeCarrier
+        ? (isRTL ? 'تارجت لوجستكس' : 'Target Logistics')
+        : (isManualShipment ? (isRTL ? 'شحنة يدوية (Target)' : 'Manual Shipment') : getCarrierDisplayName(rawCarrierCode));
 
     const rawDocuments = Array.isArray(shipment?.documents) ? shipment.documents : [];
     const extractDocUrl = (doc) => (typeof doc === 'string' ? doc : doc?.url || doc?.path || null);

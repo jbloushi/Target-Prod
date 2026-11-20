@@ -264,11 +264,21 @@ class CarrierSyncCronService {
                             markTrackingSynced(shipment.trackingNumber);
                             summary.updated++;
 
-                            // If status promoted, trigger notification
+                            // If status promoted, trigger notification & outbound customer webhook
                             if (updates.status !== shipment.status) {
                                 const eventType = chatwootNotificationService.mapStatusToNotificationEvent(updates.status);
                                 if (eventType) {
                                     chatwootNotificationService.triggerShipmentNotification(eventType, updatedShipment);
+                                }
+                                if (updatedShipment.organizationId) {
+                                    const WebhookDispatcher = require('./WebhookDispatcher');
+                                    WebhookDispatcher.dispatch('shipment.status_updated', updatedShipment.organizationId, {
+                                        trackingNumber: updatedShipment.trackingNumber,
+                                        status: updates.status,
+                                        previousStatus: shipment.status,
+                                        carrier: updatedShipment.carrierCode,
+                                        updatedAt: new Date().toISOString()
+                                    });
                                 }
                             }
 

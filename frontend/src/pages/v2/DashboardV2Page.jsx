@@ -54,7 +54,13 @@ const AnimatedCounter = ({ value = 0, duration = 800 }) => {
 /**
  * Resolve Carrier Display Metadata from Shipment Payload
  */
-const resolveCarrierInfo = (shipment, isRTL = false) => {
+const resolveCarrierInfo = (shipment, isRTL = false, canSeeCarrier = true) => {
+    if (!canSeeCarrier) {
+        return {
+            name: isRTL ? 'تارجت لوجستكس' : 'Target Logistics',
+            dotClass: 'bg-primary'
+        };
+    }
     const raw = String(
         shipment?.carrierCode || shipment?.carrier || shipment?.assignedCarrier || ''
     )
@@ -1196,7 +1202,8 @@ export const DashboardV2Page = () => {
                                                     shipment.id;
                                                 const carrierInfo = resolveCarrierInfo(
                                                     shipment,
-                                                    isRTL
+                                                    isRTL,
+                                                    ['admin', 'staff', 'warehouse', 'accounting', 'driver'].includes(String(user?.role || '').toLowerCase())
                                                 );
                                                 const consigneeName = resolveConsigneeName(
                                                     shipment,

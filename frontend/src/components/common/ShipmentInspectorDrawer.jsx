@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useLanguage } from '../../context/LanguageContext';
+import { useAuth } from '../../context/AuthContext';
 import StatusBadge from './StatusBadge';
 import TradeRouteDisplay from './TradeRouteDisplay';
 import { normalizeStatus, isNegativeOrExceptionPhrase } from '../../constants/statusConfig';
@@ -39,6 +40,8 @@ export const ShipmentInspectorDrawer = ({
     const location = useLocation();
     const isV2Route = location.pathname.includes('-v2') || location.pathname.includes('/v2');
     const { t, lang } = useLanguage();
+    const { user } = useAuth();
+    const canSeeCarrier = ['admin', 'staff', 'warehouse', 'accounting', 'driver'].includes(String(user?.role || '').toLowerCase());
     const isRTL = lang === 'ar';
     const [copied, setCopied] = useState(false);
     const [isChatwootOpen, setIsChatwootOpen] = useState(false);
@@ -171,7 +174,7 @@ export const ShipmentInspectorDrawer = ({
                                     {copied ? 'check' : 'content_copy'}
                                 </span>
                             </button>
-                            {carrierCode && (
+                            {canSeeCarrier && carrierCode && (
                                 <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${carrierMeta?.badge || 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'}`}>
                                     {isRTL ? carrierMeta?.nameAr || carrierCode : carrierMeta?.name || carrierCode}
                                 </span>

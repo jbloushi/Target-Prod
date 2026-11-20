@@ -30,6 +30,7 @@ export const ShipmentsTableV2 = ({
     isRTL = false
 }) => {
     const [openActionRowId, setOpenActionRowId] = useState(null);
+    const showCarrier = ['admin', 'staff', 'warehouse', 'accounting', 'driver'].includes(String(userRole || '').toLowerCase());
 
     const isAllSelected =
         shipments.length > 0 && selectedIds.length === shipments.length;
@@ -65,7 +66,9 @@ export const ShipmentsTableV2 = ({
                                 {isRTL ? 'الشحنة والحالة' : 'Consignment & Status'}
                             </span>
                             <span className="hidden sm:inline">
-                                {isRTL ? 'رقم البوليصة / الناقل' : 'Tracking # / Carrier'}
+                                {showCarrier
+                                    ? (isRTL ? 'رقم البوليصة / الناقل' : 'Tracking # / Carrier')
+                                    : (isRTL ? 'رقم البوليصة' : 'Tracking #')}
                             </span>
                         </th>
                         <th className="hidden sm:table-cell text-start py-2.5 px-2 lg:px-3">
@@ -153,7 +156,7 @@ export const ShipmentsTableV2 = ({
                                             >
                                                 {s.trackingNumber}
                                             </span>
-                                            {s.carrierName && (
+                                            {showCarrier && s.carrierName && (
                                                 <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700 whitespace-nowrap">
                                                     <span
                                                         className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.carrierDotClass}`}
@@ -176,7 +179,7 @@ export const ShipmentsTableV2 = ({
 
                                     {/* Mobile Carrier + TEST + Service Row (< 640px) */}
                                     <div className="sm:hidden flex flex-wrap items-center gap-1.5 mt-1">
-                                        {s.carrierName && (
+                                        {showCarrier && s.carrierName && (
                                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700 whitespace-nowrap">
                                                 <span
                                                     className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.carrierDotClass}`}

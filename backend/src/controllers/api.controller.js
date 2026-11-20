@@ -4,6 +4,7 @@ const CarrierFactory = require('../services/CarrierFactory');
 const CarrierRateService = require('../services/CarrierRateService');
 const PricingService = require('../services/pricing.service');
 const ShipmentLifecycleService = require('../services/ShipmentLifecycleService');
+const WebhookDispatcher = require('../services/WebhookDispatcher');
 const { prisma } = require('../config/database');
 const { normalizeShipment } = require('../utils/shipmentNormalizer');
 const { hasCriticalChanges } = require('./shipment.helpers');
@@ -81,6 +82,16 @@ exports.createShipment = async (req, res) => {
                 price: 0
             }, apiUser);
 
+            WebhookDispatcher.dispatch('shipment.created', shipment.organizationId || req.user?.organizationId, {
+                trackingNumber: shipment.trackingNumber,
+                carrier: shipment.carrierCode,
+                serviceCode: shipment.serviceCode,
+                status: shipment.status,
+                price: shipment.price,
+                currency: shipment.currency,
+                createdAt: shipment.createdAt || new Date().toISOString()
+            });
+
             return res.status(201).json({
                 success: true,
                 data: {
@@ -115,6 +126,16 @@ exports.createShipment = async (req, res) => {
                     labelUrl = `/api/v1/shipments/${shipment.trackingNumber}/label`;
                 }
             }
+
+            WebhookDispatcher.dispatch('shipment.created', shipment.organizationId || req.user?.organizationId, {
+                trackingNumber: shipment.trackingNumber,
+                carrier: shipment.carrierCode,
+                serviceCode: shipment.serviceCode,
+                status: shipment.status,
+                price: shipment.price,
+                currency: shipment.currency,
+                createdAt: shipment.createdAt || new Date().toISOString()
+            });
 
             return res.status(201).json({
                 success: true,
@@ -151,6 +172,16 @@ exports.createShipment = async (req, res) => {
                 carrierCode: resolvedCarrierCode,
                 serviceCode: resolvedServiceCode
             }, apiUser);
+
+            WebhookDispatcher.dispatch('shipment.created', shipment.organizationId || req.user?.organizationId, {
+                trackingNumber: shipment.trackingNumber,
+                carrier: shipment.carrierCode,
+                serviceCode: shipment.serviceCode,
+                status: shipment.status,
+                price: shipment.price,
+                currency: shipment.currency,
+                createdAt: shipment.createdAt || new Date().toISOString()
+            });
 
             return res.status(201).json({
                 success: true,
@@ -190,6 +221,16 @@ exports.createShipment = async (req, res) => {
                 status: 'ready_for_pickup'
             }, apiUser);
 
+            WebhookDispatcher.dispatch('shipment.created', shipment.organizationId || req.user?.organizationId, {
+                trackingNumber: shipment.trackingNumber,
+                carrier: shipment.carrierCode,
+                serviceCode: shipment.serviceCode,
+                status: shipment.status,
+                price: shipment.price,
+                currency: shipment.currency,
+                createdAt: shipment.createdAt || new Date().toISOString()
+            });
+
             return res.status(201).json({
                 success: true,
                 data: {
@@ -210,11 +251,18 @@ exports.createShipment = async (req, res) => {
         // 1. Normalize
         const normalized = normalizeShipment(shipmentData);
         normalized.serviceCode = resolvedServiceCode;
-        if (resolvedCarrierCode === 'OTE') {
+        const requestedCodAmount = Number(req.body.codAmount || 0);
+        const hasRequestedCod = Number.isFinite(requestedCodAmount) && requestedCodAmount > 0;
+        const resolvedCodAmount = hasRequestedCod ? requestedCodAmount : (resolvedCarrierCode === 'OTE' ? 25 : null);
+        const resolvedCodCurrency = hasRequestedCod
+            ? (req.body.codCurrency || normalized.currency || 'KWD')
+            : (resolvedCarrierCode === 'OTE' ? 'AED' : null);
+        const resolvedCodStatus = resolvedCodAmount ? 'pending' : null;
+        if (resolvedCodAmount) {
             normalized.shipmentType = 'COD';
-            normalized.codAmount = 25;
-            normalized.codCurrency = 'AED';
-            normalized.codStatus = 'pending';
+            normalized.codAmount = resolvedCodAmount;
+            normalized.codCurrency = resolvedCodCurrency;
+            normalized.codStatus = resolvedCodStatus;
         }
 
         // 1b. Compute server-side pricing snapshot
@@ -420,9 +468,9 @@ exports.createShipment = async (req, res) => {
             paid: false,
             totalPaid: 0,
             remainingBalance: bookingPrice,
-            codAmount: resolvedCarrierCode === 'OTE' ? 25 : null,
-            codCurrency: resolvedCarrierCode === 'OTE' ? 'AED' : null,
-            codStatus: resolvedCarrierCode === 'OTE' ? 'pending' : null,
+            codAmount: resolvedCodAmount,
+            codCurrency: resolvedCodCurrency,
+            codStatus: resolvedCodStatus,
             dhlTrackingNumber: carrierTrackingNumber,
             carrierShipmentId,
             dhlConfirmed: Boolean(carrierTrackingNumber),
@@ -540,6 +588,17 @@ exports.createShipment = async (req, res) => {
                 newShipment = await prisma.shipment.create({ data: shipmentDataToCreate });
             }
         }
+
+        WebhookDispatcher.dispatch('shipment.booked', newShipment.organizationId || req.user?.organizationId, {
+            trackingNumber: result.trackingNumber,
+            carrier: resolvedCarrierCode,
+            serviceCode: newShipment.serviceCode,
+            status: newShipment.status,
+            price: newShipment.price,
+            currency: newShipment.currency,
+            labelUrl: newShipment.labelUrl || null,
+            bookedAt: new Date().toISOString()
+        });
 
         res.status(201).json({
             success: true,
