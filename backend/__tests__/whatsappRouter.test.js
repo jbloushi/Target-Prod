@@ -82,15 +82,13 @@ describe('Cloudflare WhatsApp Webhook Router (whatsapp-router.js)', () => {
             expect(text).toBe('PHONE_CHALLENGE_456');
         });
 
-        test('returns 200 with hardcoded fallback token target_logistics_meta_verify_secret_2026', async () => {
+        test('rejects a former hardcoded fallback token', async () => {
             const req = new Request('https://router.local/?hub.mode=subscribe&hub.verify_token=target_logistics_meta_verify_secret_2026&hub.challenge=SECRET_CHALLENGE_789', {
                 method: 'GET'
             });
 
             const res = await router.fetch(req, {}, {});
-            expect(res.status).toBe(200);
-            const text = await res.text();
-            expect(text).toBe('SECRET_CHALLENGE_789');
+            expect(res.status).toBe(403);
         });
 
         test('returns 403 Forbidden on invalid verify token', async () => {

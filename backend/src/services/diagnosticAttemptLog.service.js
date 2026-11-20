@@ -18,6 +18,15 @@ const VALID_STATUSES = Object.freeze(['SUCCESS', 'FAILED', 'VALIDATION_ERROR']);
 
 const SENSITIVE_KEY_PATTERN = /(password|token|secret|apikey|api_key|authorization|cookie|creditcard|cvv|pin)/i;
 const BINARY_KEY_PATTERN = /(base64|pdf|labeldata|awbdata|buffer)/i;
+const STRING_SECRET_PATTERNS = [
+    /(\bBearer\s+)[A-Za-z0-9._~+\/-]+=*/gi,
+    /((?:api[_-]?key|access[_-]?token|refresh[_-]?token|verify[_-]?token|password|secret|authorization|session_id)=)[^&\s]+/gi,
+    /([?&](?:api[_-]?key|access[_-]?token|refresh[_-]?token|verify[_-]?token|session_id)=)[^&\s]+/gi
+];
+
+function redactSensitiveString(input) {
+    return STRING_SECRET_PATTERNS.reduce((value, pattern) => value.replace(pattern, '$1[REDACTED]'), input);
+}
 
 // In-memory ring buffer (newest at index 0)
 const ringBuffer = [];
@@ -33,10 +42,11 @@ function sanitizeDetails(value, depth = 0) {
     if (depth > 4) return '[Truncated]';
 
     if (typeof value === 'string') {
-        if (value.startsWith('data:application/pdf;base64,') || value.length > 500) {
-            return `${value.slice(0, 120)}... [truncated ${value.length} chars]`;
+        const redacted = redactSensitiveString(value);
+        if (redacted.startsWith('data:application/pdf;base64,') || redacted.length > 500) {
+            return `${redacted.slice(0, 120)}... [truncated ${redacted.length} chars]`;
         }
-        return value;
+        return redacted;
     }
 
     if (typeof value === 'number' || typeof value === 'boolean') {

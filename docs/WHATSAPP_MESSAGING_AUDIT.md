@@ -6,6 +6,12 @@
 
 Use [the WhatsApp messaging system guide](WHATSAPP_MESSAGING.md) for architecture and agent workflow. This audit records code-evidenced risks and recommended work; it does not change message behavior.
 
+## Supplemental code scan — 2026-11-20
+
+A repository-wide follow-up scan found and fixed these code-level disclosure paths: browser API error objects now redact credentials and sensitive response fields before service-level console logging; backend request logs omit query strings; webhook verify tokens are no longer logged or accepted from hardcoded fallbacks; Cloudflare fan-out logs omit destination URLs; WhatsApp provider logs omit message payloads and full recipient numbers; payment checkout URLs are no longer logged; diagnostic strings redact common credential formats; and external API-key authentication no longer accepts query parameters. Static API docs now document header-based authentication.
+
+The formerly hardcoded Meta verify value has been public in repository history and was also logged by earlier code. Treat it as compromised: rotate the Meta verification token and update the backend/Cloudflare secrets together. This repository scan does not authenticate or verify POST webhook callbacks; the unauthenticated callback/signature issue below remains open. Raw notification payload snapshots and `auditMetadata` persistence also remain open for retention/access review. Query-key authentication removal may require external clients to switch to the `x-api-key` or `Authorization: ApiKey` header.
+
 ## Executive summary
 
 Automatic shipment lifecycle notifications are coded to target the shipper. The principal message-content defect is a role conflation: some template builders derive receiver-labeled variables from the shipper contact selected to receive the message. Other provider paths derive the receiver correctly but fall back through account/customer fields that may represent the shipper. The same event can therefore produce different party data depending on provider and template resolution.
@@ -62,9 +68,11 @@ Evidence: `backend/src/routes/whatsapp.routes.js`; `sendShipmentWhatsApp` in `ba
 **Priority:** P1
 **Impact:** A forged callback can mark a message delivered/read/failed or attach arbitrary receipt data to a matched notification log.
 
-Evidence: `backend/src/routes/whatsapp.routes.js` exposes webhook POST aliases without auth; `whatsappWebhook.controller.js` parses Meta status receipts and updates `ShipmentNotificationLog` but does not validate Meta `X-Hub-Signature-256` against the raw request body. The GET verification path also accepts hardcoded fallback tokens and logs supplied verification tokens.
+Evidence: `backend/src/routes/whatsapp.routes.js` exposes webhook POST aliases without auth; `whatsappWebhook.controller.js` parses Meta status receipts and updates `ShipmentNotificationLog` but does not validate Meta `X-Hub-Signature-256` against the raw request body. The GET verification path previously accepted hardcoded fallback tokens and logged supplied verification tokens.
 
-**Recommendation:** Require Meta app-secret HMAC verification for Meta payloads and a distinct shared secret/signature for remote-service callbacks; fail closed when secrets are missing. Remove hardcoded verification tokens and never log supplied tokens. Keep provider-specific callback verification separate.
+**Recommendation:** Require Meta app-secret HMAC verification for Meta payloads and a distinct shared secret/signature for remote-service callbacks; fail closed when secrets are missing. Keep provider-specific callback verification separate.
+
+**Current remediation:** Removed hardcoded verification-token fallbacks from the backend and Cloudflare Worker. Verification logs no longer include submitted tokens. POST callback authentication remains open and should be treated as a separate P1 security issue.
 
 ### 4. Phone masking is inconsistent and breaks a resend path
 
@@ -82,9 +90,11 @@ Evidence: `chatwootNotificationService.createLog`, `whatsappIntegration.service.
 **Priority:** P1
 **Impact:** Phone numbers, receiver/shipper names, shipment data, template variables, and provider response objects can appear in app logs or JSON audit columns. Existing documentation says phone numbers are masked in logs/storage, but that is not true for all provider paths.
 
-Evidence: `sendViaShipmentWhatsappMicroservice` logs the raw payload and full destination phone; direct Meta logs the full request payload; `ShipmentNotificationLog.payloadJson`/`responseJson` retain provider request/response data. `whatsappIntegration.service.js` also constructs `auditMetadata` with sender and consignee names/phones. Chatwoot's `createLog` masks its primary phone field, but that does not sanitize the payload/response snapshots or the other provider path.
+Evidence at discovery: `sendViaShipmentWhatsappMicroservice` logged the raw payload and direct Meta logged the full request payload; `ShipmentNotificationLog.payloadJson`/`responseJson` still retain provider request/response data. `whatsappIntegration.service.js` also constructs `auditMetadata` with sender and consignee names/phones. Chatwoot's `createLog` masks its primary phone field, but that does not sanitize the payload/response snapshots.
 
-**Recommendation:** Redact or remove phone/name/template-variable data from routine logs. Define which audit fields are necessary, mask or encrypt them at rest, apply retention/deletion rules, and restrict payload inspection to narrowly privileged roles. Correct the old claims in `docs/CHATWOOT_SHIPMENT_NOTIFICATIONS.md` by using the canonical guide.
+**Recommendation:** Define which audit fields are necessary, mask or encrypt them at rest, apply retention/deletion rules, and restrict payload inspection to narrowly privileged roles. Correct the old claims in `docs/CHATWOOT_SHIPMENT_NOTIFICATIONS.md` by using the canonical guide.
+
+**Current remediation:** Removed WhatsApp payload/recipient content from routine provider logs; log lines include template metadata and a masked recipient only. Remaining raw notification snapshots and PII-rich `auditMetadata` storage require a separate retention/access review.
 
 ### 6. Automatic recipient policy differs between code and Settings UI defaults
 

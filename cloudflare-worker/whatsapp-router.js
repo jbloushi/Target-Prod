@@ -25,23 +25,17 @@ export default {
       const token = url.searchParams.get('hub.verify_token');
       const challenge = url.searchParams.get('hub.challenge');
 
-      // Accepted verify tokens across the system
-      const validTokens = [
-        env.META_VERIFY_TOKEN,
-        env.META_VERIFY_TOKEN_96569656563,
-        'target_logistics_meta_verify_secret_2026',
-        'change-me-verify-token',
-      ].filter(Boolean);
+      const validTokens = [env.META_VERIFY_TOKEN, env.META_VERIFY_TOKEN_96569656563].filter(Boolean);
 
       if (mode === 'subscribe' && token && validTokens.includes(token)) {
-        console.log(`[Meta Webhook] Successfully verified hub challenge (token: ${token})`);
+        console.log('[Meta Webhook] Hub challenge verified');
         return new Response(challenge || '', {
           status: 200,
           headers: { 'Content-Type': 'text/plain' },
         });
       }
 
-      console.warn(`[Meta Webhook] Verification rejected. Token supplied: "${token}"`);
+      console.warn(`[Meta Webhook] Verification rejected (configured token: ${validTokens.length > 0 ? 'yes' : 'no'})`);
       return new Response('Verification token mismatch', { status: 403 });
     }
 
@@ -73,7 +67,7 @@ export default {
       try {
         payload = JSON.parse(rawBody);
       } catch (e) {
-        console.error('[Meta Webhook] Invalid JSON payload received:', e.message);
+        console.error('[Meta Webhook] Invalid JSON payload received');
         return new Response('Invalid JSON', { status: 400 });
       }
 
@@ -111,7 +105,7 @@ export default {
         chatwootUrl,
       ].filter((u, idx, arr) => u && typeof u === 'string' && u.startsWith('http') && arr.indexOf(u) === idx);
 
-      console.log(`[Meta Webhook Router] Ingested event. Fan-out to ${targets.length} targets:`, targets);
+      console.log(`[Meta Webhook Router] Ingested event. Fan-out to ${targets.length} configured targets`);
 
       // Perform non-blocking fan-out in the background so Meta receives immediate 200 OK
       const dispatchPromise = Promise.allSettled(
@@ -127,9 +121,9 @@ export default {
               },
               body: rawBody,
             });
-            console.log(`[Webhook Fan-out] ${targetUrl} -> HTTP ${res.status}`);
+            console.log(`[Webhook Fan-out] Target ${targets.indexOf(targetUrl) + 1} -> HTTP ${res.status}`);
           } catch (err) {
-            console.error(`[Webhook Fan-out Error] ${targetUrl} -> ${err.message}`);
+            console.error(`[Webhook Fan-out Error] Target ${targets.indexOf(targetUrl) + 1} failed (${err.name || 'Error'})`);
           }
         })
       );

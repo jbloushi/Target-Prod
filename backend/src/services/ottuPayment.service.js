@@ -42,7 +42,7 @@ class OttuPaymentService {
 
         // If Ottu API Key is not configured, gracefully fallback to the Target hosted checkout page
         if (!ottuConfig.enabled || !ottuConfig.apiKey) {
-            logger.info(`[Ottu Gateway] API Key not set - returning Target hosted Pay-by-Link for ${trackingNumber}: ${fallbackUrl}`);
+            logger.info(`[Ottu Gateway] API key not configured; using Target hosted checkout for ${trackingNumber}`);
             return {
                 gateway: 'LOCAL_CHECKOUT',
                 checkoutUrl: fallbackUrl,
@@ -91,7 +91,7 @@ class OttuPaymentService {
             const checkoutUrl = data.checkout_url || data.payment_url || fallbackUrl;
             const sessionId = data.session_id || data.id || null;
 
-            logger.info(`[Ottu Gateway] Successfully generated checkout session for ${trackingNumber}: ${checkoutUrl}`);
+            logger.info(`[Ottu Gateway] Successfully generated checkout session for ${trackingNumber}`);
             return {
                 gateway: 'OTTU',
                 checkoutUrl,

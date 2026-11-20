@@ -26,7 +26,26 @@ export const BACKEND_URL = API_URL.endsWith('/api')
 
 export { API_URL };
 
+const SENSITIVE_ERROR_KEY = /(password|token|secret|api[_-]?key|authorization|cookie|session[_-]?id|payment[_-]?link|checkout[_-]?url)/i;
+const redactErrorText = (value) => String(value)
+  .replace(/(\bBearer\s+)[A-Za-z0-9._~+\/-]+=*/gi, '$1[REDACTED]')
+  .replace(/((?:api[_-]?key|access[_-]?token|refresh[_-]?token|verify[_-]?token|password|secret|authorization|session_id)=)[^&\s]+/gi, '$1[REDACTED]')
+  .replace(/([?&](?:api[_-]?key|access[_-]?token|refresh[_-]?token|verify[_-]?token|session_id)=)[^&\s]+/gi, '$1[REDACTED]');
+const redactErrorValue = (value, depth = 0) => {
+  if (typeof value === 'string') return redactErrorText(value);
+  if (Array.isArray(value)) return value.map((item) => redactErrorValue(item, depth + 1));
+  if (!value || typeof value !== 'object' || depth > 5) return value;
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [
+    key,
+    SENSITIVE_ERROR_KEY.test(key) ? '[REDACTED]' : redactErrorValue(item, depth + 1)
+  ]));
+};
+
 export const redactFailedRequest = (error) => {
+  if (typeof error?.message === 'string') error.message = redactErrorText(error.message);
+  if (error?.response && error.response.data !== undefined) {
+    error.response.data = redactErrorValue(error.response.data);
+  }
   const configs = new Set([error?.config, error?.response?.config].filter(Boolean));
   for (const config of configs) {
     // Service-level catches sometimes log Axios errors directly. Strip request
@@ -168,7 +187,7 @@ export const shipmentService = {
       // If the response has a data property, return that, otherwise return the whole response
       return response.data.data ? response.data : response.data;
     } catch (error) {
-      console.error(`Error fetching shipment ${trackingNumber}:`, error);
+      console.error('Error fetching shipment :', error);
 
       // Enhance error message
       if (error.response && error.response.status === 404) {
@@ -279,7 +298,7 @@ export const shipmentService = {
       const response = await api.delete(`shipments/${trackingNumber}`);
       return response.data;
     } catch (error) {
-      console.error(`Error deleting shipment ${trackingNumber}:`, error);
+      console.error('Error deleting shipment :', error);
       throw error;
     }
   },
@@ -290,7 +309,7 @@ export const shipmentService = {
       const response = await api.patch(`shipments/${trackingNumber}`, updates);
       return response.data;
     } catch (error) {
-      console.error(`Error updating shipment details ${trackingNumber}:`, error);
+      console.error('Error updating shipment details :', error);
       throw error;
     }
   },
@@ -300,7 +319,7 @@ export const shipmentService = {
       const response = await api.patch(`shipments/${trackingNumber}`, updates);
       return response.data;
     } catch (error) {
-      console.error(`Error updating shipment ${trackingNumber}:`, error);
+      console.error('Error updating shipment :', error);
       throw error;
     }
   },
@@ -313,7 +332,7 @@ export const shipmentService = {
       const response = await api.patch(`shipments/${trackingNumber}/location`, locationData);
       return response.data;
     } catch (error) {
-      console.error(`Error updating location for shipment ${trackingNumber}:`, error);
+      console.error('Error updating location for shipment :', error);
       throw error;
     }
   },
@@ -324,7 +343,7 @@ export const shipmentService = {
       const response = await api.patch(`shipments/${trackingNumber}/status`, statusData);
       return response.data;
     } catch (error) {
-      console.error(`Error updating status for shipment ${trackingNumber}:`, error);
+      console.error('Error updating status for shipment :', error);
       throw error;
     }
   },
@@ -335,7 +354,7 @@ export const shipmentService = {
       const response = await api.post(`shipments/${trackingNumber}/pickup`);
       return response.data;
     } catch (error) {
-      console.error(`Error processing driver pickup for ${trackingNumber}:`, error);
+      console.error('Error processing driver pickup for :', error);
       // Return error object instead of throwing if we want to handle it gracefully in UI without try/catch there?
       // But existing pattern throws, so let's stick to consistent error handling or return data.
       // The UI (DriverScannerPage) uses try/catch blocks.
@@ -349,7 +368,7 @@ export const shipmentService = {
       const response = await api.post(`shipments/${trackingNumber}/warehouse/scan`, payload);
       return response.data;
     } catch (error) {
-      console.error(`Error processing warehouse scan for ${trackingNumber}:`, error);
+      console.error('Error processing warehouse scan for :', error);
       throw error;
     }
   },
@@ -360,7 +379,7 @@ export const shipmentService = {
       const response = await api.post(`shipments/${trackingNumber}/send-payment-link`, payload);
       return response.data;
     } catch (error) {
-      console.error(`Error sending payment link for ${trackingNumber}:`, error);
+      console.error('Error sending payment link for :', error);
       throw error;
     }
   },
@@ -370,7 +389,7 @@ export const shipmentService = {
       const response = await api.get(`shipments/${trackingNumber}/booking-options`, { params: { carrierCode } });
       return response.data;
     } catch (error) {
-      console.error(`Error fetching booking options for shipment ${trackingNumber}:`, error);
+      console.error('Error fetching booking options for shipment :', error);
       throw error;
     }
   },
@@ -380,7 +399,7 @@ export const shipmentService = {
       const response = await api.get(`shipments/${trackingNumber}/conversion-targets`);
       return response.data;
     } catch (error) {
-      console.error(`Error fetching conversion targets for shipment ${trackingNumber}:`, error);
+      console.error('Error fetching conversion targets for shipment :', error);
       throw error;
     }
   },
@@ -388,7 +407,6 @@ export const shipmentService = {
   // Submit to Carrier (Generic Carrier Booking)
   bookShipment: async (trackingNumber, carrierCode = 'DGR', optionalServiceCodes = [], isAsync = false) => {
     try {
-      console.log('--- FRONTEND BOOKING REQUEST ---', { trackingNumber, carrierCode, optionalServiceCodes, isAsync });
       const response = await api.post(`shipments/${trackingNumber}/book?async=${isAsync}`, {
         carrierCode,
         optionalServiceCodes,
@@ -396,7 +414,7 @@ export const shipmentService = {
       });
       return response.data;
     } catch (error) {
-      console.error(`Error submitting shipment ${trackingNumber} to ${carrierCode}:`, error);
+      console.error('Error submitting shipment to :', error);
       throw error;
     }
   },
@@ -407,7 +425,7 @@ export const shipmentService = {
       const response = await api.post(`shipments/${trackingNumber}/carrier-documents/generate`, options);
       return response.data;
     } catch (error) {
-      console.error(`Error generating carrier documents for ${trackingNumber}:`, error);
+      console.error('Error generating carrier documents for :', error);
       throw error;
     }
   },
@@ -418,7 +436,7 @@ export const shipmentService = {
       const response = await api.post(`shipments/${trackingNumber}/documents/upload`, data);
       return response.data;
     } catch (error) {
-      console.error(`Error uploading document for ${trackingNumber}:`, error);
+      console.error('Error uploading document for :', error);
       throw error;
     }
   },
@@ -428,7 +446,7 @@ export const shipmentService = {
       const response = await api.post(`shipments/${trackingNumber}/convert-carrier`, payload);
       return response.data;
     } catch (error) {
-      console.error(`Error converting internal shipment ${trackingNumber}:`, error);
+      console.error('Error converting internal shipment :', error);
       throw error;
     }
   },
@@ -439,7 +457,7 @@ export const shipmentService = {
       const response = await api.get(`shipments/${trackingNumber}/eta`);
       return response.data;
     } catch (error) {
-      console.error(`Error fetching ETA for shipment ${trackingNumber}:`, error);
+      console.error('Error fetching ETA for shipment :', error);
       throw error;
     }
   },
@@ -450,7 +468,7 @@ export const shipmentService = {
       const response = await api.get(`/shipments/${trackingNumber}/history`);
       return response.data;
     } catch (error) {
-      console.error(`Error fetching history for shipment ${trackingNumber}:`, error);
+      console.error('Error fetching history for shipment :', error);
       throw error;
     }
   },
@@ -461,7 +479,7 @@ export const shipmentService = {
       const response = await api.get(`/shipments/${trackingNumber}/distance`);
       return response.data;
     } catch (error) {
-      console.error(`Error fetching route distance for shipment ${trackingNumber}:`, error);
+      console.error('Error fetching route distance for shipment :', error);
       throw error;
     }
   },
@@ -472,7 +490,7 @@ export const shipmentService = {
       const response = await api.patch(`/shipments/${trackingNumber}/location/manual`, locationData);
       return response.data;
     } catch (error) {
-      console.error(`Error updating location manually for shipment ${trackingNumber}:`, error);
+      console.error('Error updating location manually for shipment :', error);
       throw error;
     }
   },
@@ -483,7 +501,7 @@ export const shipmentService = {
       const response = await api.post(`/shipments/${trackingNumber}/checkpoints`, checkpointData);
       return response.data;
     } catch (error) {
-      console.error(`Error adding checkpoint to shipment ${trackingNumber}:`, error);
+      console.error('Error adding checkpoint to shipment :', error);
       throw error;
     }
   },
@@ -494,7 +512,7 @@ export const shipmentService = {
       const response = await api.patch(`/shipments/${trackingNumber}/checkpoints/${checkpointId}`, checkpointData);
       return response.data;
     } catch (error) {
-      console.error(`Error updating checkpoint ${checkpointId} for shipment ${trackingNumber}:`, error);
+      console.error('Error updating checkpoint for shipment :', error);
       throw error;
     }
   },
@@ -505,7 +523,7 @@ export const shipmentService = {
       const response = await api.delete(`/shipments/${trackingNumber}/checkpoints/${checkpointId}`);
       return response.data;
     } catch (error) {
-      console.error(`Error deleting checkpoint ${checkpointId} for shipment ${trackingNumber}:`, error);
+      console.error('Error deleting checkpoint for shipment :', error);
       throw error;
     }
   },
@@ -516,7 +534,7 @@ export const shipmentService = {
       const response = await api.patch(`/shipments/${trackingNumber}/public-settings`, settings);
       return response.data;
     } catch (error) {
-      console.error(`Error updating public settings for shipment ${trackingNumber}:`, error);
+      console.error('Error updating public settings for shipment :', error);
       throw error;
     }
   },
@@ -547,7 +565,7 @@ export const shipmentService = {
       const response = await api.get(`/pickups/${id}`);
       return response.data;
     } catch (error) {
-      console.error(`Error fetching pickup request ${id}:`, error);
+      console.error('Error fetching pickup request :', error);
       throw error;
     }
   },
@@ -557,7 +575,7 @@ export const shipmentService = {
       const response = await api.patch(`/pickups/${id}`, data);
       return response.data;
     } catch (error) {
-      console.error(`Error updating pickup request ${id}:`, error);
+      console.error('Error updating pickup request :', error);
       throw error;
     }
   },
@@ -567,7 +585,7 @@ export const shipmentService = {
       const response = await api.post(`/pickups/${id}/approve`);
       return response.data;
     } catch (error) {
-      console.error(`Error approving pickup request ${id}:`, error);
+      console.error('Error approving pickup request :', error);
       // Pass through specific error messages
       if (error.response?.data?.error) {
         throw new Error(error.response.data.error);
@@ -581,7 +599,7 @@ export const shipmentService = {
       const response = await api.post(`/pickups/${id}/reject`, { reason });
       return response.data;
     } catch (error) {
-      console.error(`Error rejecting pickup request ${id}:`, error);
+      console.error('Error rejecting pickup request :', error);
       throw error;
     }
   },
@@ -591,7 +609,7 @@ export const shipmentService = {
       const response = await api.delete(`/pickups/${id}`);
       return response.data;
     } catch (error) {
-      console.error(`Error deleting pickup request ${id}:`, error);
+      console.error('Error deleting pickup request :', error);
       throw error;
     }
   },
@@ -613,7 +631,7 @@ export const shipmentService = {
       const response = await api.post(`shipments/${trackingNumber}/deliver`, payload);
       return response.data;
     } catch (error) {
-      console.error(`Error confirming delivery for ${trackingNumber}:`, error);
+      console.error('Error confirming delivery for :', error);
       throw error;
     }
   },
@@ -624,7 +642,7 @@ export const shipmentService = {
       const response = await api.get(`shipments/public/${trackingNumber}/return-eligibility`);
       return response.data;
     } catch (error) {
-      console.error(`Error checking return eligibility for ${trackingNumber}:`, error);
+      console.error('Error checking return eligibility for :', error);
       throw error;
     }
   },
@@ -635,7 +653,7 @@ export const shipmentService = {
       const response = await api.post(`shipments/public/${trackingNumber}/create-return`, payload);
       return response.data;
     } catch (error) {
-      console.error(`Error creating return for ${trackingNumber}:`, error);
+      console.error('Error creating return for :', error);
       throw error;
     }
   },
@@ -1395,7 +1413,7 @@ export const organizationService = {
       const response = await api.get(`organizations/${id}`);
       return response.data;
     } catch (error) {
-      console.error(`Error fetching organization ${id}:`, error);
+      console.error('Error fetching organization :', error);
       throw error;
     }
   },
@@ -1415,7 +1433,7 @@ export const organizationService = {
       const response = await api.patch(`organizations/${id}`, data);
       return response.data;
     } catch (error) {
-      console.error(`Error updating organization ${id}:`, error);
+      console.error('Error updating organization :', error);
       throw error;
     }
   },
@@ -1425,7 +1443,7 @@ export const organizationService = {
       const response = await api.post(`organizations/${id}/members`, { userId });
       return response.data;
     } catch (error) {
-      console.error(`Error adding member to organization ${id}:`, error);
+      console.error('Error adding member to organization :', error);
       throw error;
     }
   },
@@ -1435,7 +1453,7 @@ export const organizationService = {
       const response = await api.delete(`organizations/${id}/members/${userId}`);
       return response.data;
     } catch (error) {
-      console.error(`Error removing member from organization ${id}:`, error);
+      console.error('Error removing member from organization :', error);
       throw error;
     }
   },
@@ -1445,7 +1463,7 @@ export const organizationService = {
       const response = await api.delete(`organizations/${id}`);
       return response.data;
     } catch (error) {
-      console.error(`Error deleting organization ${id}:`, error);
+      console.error('Error deleting organization :', error);
       throw error;
     }
   }
@@ -1581,7 +1599,7 @@ export const whatsappService = {
       const response = await api.post(`admin/whatsapp/resend/${logId}`);
       return response.data;
     } catch (error) {
-      console.error(`Error resending WhatsApp log ${logId}:`, error);
+      console.error('Error resending WhatsApp log :', error);
       throw error;
     }
   },
@@ -1591,7 +1609,7 @@ export const whatsappService = {
       const response = await api.post(`shipments/${trackingNumber}/whatsapp/send`, payload);
       return response.data;
     } catch (error) {
-      console.error(`Error sending WhatsApp notification for shipment ${trackingNumber}:`, error);
+      console.error('Error sending WhatsApp notification for shipment :', error);
       throw error;
     }
   },
@@ -1605,7 +1623,7 @@ export const whatsappService = {
       });
       return response.data;
     } catch (error) {
-      console.error(`Error resending shipment WhatsApp update for ${trackingNumber}:`, error);
+      console.error('Error resending shipment WhatsApp update for :', error);
       throw error;
     }
   },
@@ -1621,7 +1639,7 @@ export const whatsappService = {
       });
       return response.data;
     } catch (error) {
-      console.error(`Error sending location request WhatsApp for ${trackingNumber}:`, error);
+      console.error('Error sending location request WhatsApp for :', error);
       throw error;
     }
   },
@@ -1637,7 +1655,7 @@ export const whatsappService = {
       });
       return response.data;
     } catch (error) {
-      console.error(`Error sending return portal WhatsApp for ${trackingNumber}:`, error);
+      console.error('Error sending return portal WhatsApp for :', error);
       throw error;
     }
   },
@@ -1653,7 +1671,7 @@ export const whatsappService = {
       });
       return response.data;
     } catch (error) {
-      console.error(`Error starting customer engagement WhatsApp for ${trackingNumber}:`, error);
+      console.error('Error starting customer engagement WhatsApp for :', error);
       throw error;
     }
   },

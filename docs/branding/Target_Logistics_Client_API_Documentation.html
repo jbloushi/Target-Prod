@@ -1198,7 +1198,7 @@
           <ul class="clean">
             <li><strong>Primary Header:</strong> <code class="inline">x-api-key: YOUR_API_KEY</code></li>
             <li><strong>Alt Header:</strong> <code class="inline">Authorization: ApiKey YOUR_API_KEY</code></li>
-            <li><strong>Query Fallback:</strong> <code class="inline">?api_key=YOUR_API_KEY</code> (useful for direct PDF label download links)</li>
+            <li>For browser downloads, use an authenticated application session. Do not put API keys in URLs.</li>
             <li><strong>Security Rule:</strong> Store keys strictly server-side. Never expose them in browser JS or mobile apps.</li>
           </ul>
         </div>
@@ -1728,7 +1728,7 @@
       </div>
 
       <p>
-        Streams the official carrier AWB PDF (for 3PL shipments such as DHL Express) or generates and caches a branded vector Target Express PDF waybill (for domestic / internal shipments). You may authenticate via the <code class="inline">x-api-key</code> header or via <code class="inline">?api_key=YOUR_API_KEY</code> when linking directly from a back-office print button.
+        Streams the official carrier AWB PDF (for 3PL shipments such as DHL Express) or generates and caches a branded vector Target Express PDF waybill (for domestic / internal shipments). You may authenticate via the <code class="inline">x-api-key</code> header. Do not include API keys in URLs.
       </p>
 
       <div class="code-card">
@@ -2266,7 +2266,7 @@ with open(f"label-{tracking}.pdf", "wb") as f:
             <tr>
               <td style="padding: 2.3px 7px;"><span class="badge badge-get">GET</span></td>
               <td class="mono-cell" style="padding: 2.3px 7px;">/v1/shipments/:trackingNumber/label</td>
-              <td style="padding: 2.3px 7px;"><code class="inline">x-api-key</code> or <code class="inline">?api_key=</code></td>
+              <td style="padding: 2.3px 7px;"><code class="inline">x-api-key</code></td>
               <td style="padding: 2.3px 7px;">Stream printable AWB / waybill PDF</td>
             </tr>
             <tr>

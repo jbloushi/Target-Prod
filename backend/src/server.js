@@ -25,7 +25,7 @@ const app = express();
 // RAW REQUEST LOGGER (Pre-everything)
 app.use((req, res, next) => {
   if (process.env.NODE_ENV === 'development') {
-    const rawMsg = `[RAW_REQUEST] ${req.method} ${req.originalUrl || req.url} - CT: ${req.headers['content-type']}`;
+    const rawMsg = `[RAW_REQUEST] ${req.method} ${req.path} - CT: ${req.headers['content-type']}`;
     console.log(rawMsg);
   }
   next();
@@ -199,7 +199,7 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // Logging middleware (verbose logs in production can noticeably impact throughput)
 app.use((req, res, next) => {
-  const message = `${req.method} ${req.url}`;
+  const message = `${req.method} ${req.path}`;
   if (process.env.NODE_ENV === 'production') {
     logger.debug(message);
   } else {
@@ -313,7 +313,7 @@ const { AppError } = require('./middleware/error.middleware');
 
 // Handle undefined routes
 app.all('*', (req, res, next) => {
-  next(new AppError(`Can't find ${req.originalUrl} on this server!`, 404));
+  next(new AppError(`Can't find ${req.path} on this server!`, 404));
 });
 
 // Error handling middleware

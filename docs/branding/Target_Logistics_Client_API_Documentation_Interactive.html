@@ -453,8 +453,8 @@
                   <button type="button" data-copy="Authorization: ApiKey YOUR_API_KEY" class="copy-btn text-[10px] font-sans font-semibold text-royal-600 hover:underline">Copy</button>
                 </li>
                 <li class="flex items-center justify-between gap-2 rounded bg-slate-50 px-2.5 py-1.5 font-mono border border-slate-100">
-                  <span>?api_key=YOUR_API_KEY</span>
-                  <button type="button" data-copy="?api_key=YOUR_API_KEY" class="copy-btn text-[10px] font-sans font-semibold text-royal-600 hover:underline">Copy</button>
+                  <span>Use the x-api-key request header</span>
+                  <button type="button" data-copy="x-api-key: YOUR_API_KEY" class="copy-btn text-[10px] font-sans font-semibold text-royal-600 hover:underline">Copy</button>
                 </li>
               </ul>
               <p class="text-[11px] text-rose-700 font-medium pt-1">Security Rule: Store keys strictly server-side. Never expose them in browser JS or mobile apps.</p>
@@ -919,7 +919,7 @@
                 <button type="button" data-copy-endpoint="/v1/shipments/:trackingNumber/label" class="copy-endpoint-btn rounded bg-royal-50 px-2 py-1 text-xs font-semibold text-royal-600 hover:bg-royal-100">Copy URL</button>
               </div>
             </div>
-            <p class="text-xs text-slate-600 leading-relaxed">Streams the official carrier AWB PDF (e.g., DHL Express) or generates and caches a branded vector Target Express PDF waybill (domestic/internal). Authenticate via <code>x-api-key</code> header or <code>?api_key=YOUR_API_KEY</code>.</p>
+            <p class="text-xs text-slate-600 leading-relaxed">Streams the official carrier AWB PDF (e.g., DHL Express) or generates and caches a branded vector Target Express PDF waybill (domestic/internal). Authenticate via <code>x-api-key</code> header or <code>x-api-key</code> request header.</p>
             <div class="code-card">
               <div class="code-header flex items-center justify-between px-4 py-2 text-xs">
                 <span class="font-mono text-slate-300">cURL · Download Printable Waybill PDF</span>
@@ -1452,7 +1452,7 @@ with open(f"label-{tracking}.pdf", "wb") as f:
       const ENDPOINTS = [
         { method: 'POST', path: '/v1/quotes', auth: 'x-api-key', purpose: 'Live carrier, domestic, or manual quote', anchor: '#ep-quotes' },
         { method: 'POST', path: '/v1/shipments', auth: 'x-api-key + Idempotency-Key', purpose: 'Create 3PL, domestic, or manual shipment', anchor: '#ep-shipments' },
-        { method: 'GET', path: '/v1/shipments/:trackingNumber/label', auth: 'x-api-key or ?api_key=', purpose: 'Stream printable AWB / waybill PDF', anchor: '#ep-label' },
+        { method: 'GET', path: '/v1/shipments/:trackingNumber/label', auth: 'x-api-key', purpose: 'Stream printable AWB / waybill PDF', anchor: '#ep-label' },
         { method: 'PUT', path: '/v1/shipments/:trackingNumber', auth: 'x-api-key', purpose: 'Update editable pre-dispatch fields', anchor: '#ep-update' },
         { method: 'GET', path: '/v1/tracking/:trackingNumber', auth: 'x-api-key', purpose: 'Private shipment status & history', anchor: '#ep-tracking' },
         { method: 'GET', path: '/client/shipments/:trackingNumber', auth: 'x-api-key', purpose: 'Unified shipment summary & carrier ID', anchor: '#ep-tracking' },

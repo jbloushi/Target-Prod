@@ -248,7 +248,8 @@ describe('diagnosticAttemptLog.service', () => {
                 safeField: 'ok'
             },
             labelData: 'A'.repeat(200),
-            documentUrl: `data:application/pdf;base64,${'B'.repeat(600)}`
+            documentUrl: `data:application/pdf;base64,${'B'.repeat(600)}`,
+            errorText: 'Request failed with Authorization: Bearer abc.def.ghi and ?access_token=sensitive-value'
         });
 
         expect(sanitized.apiKey).toBe('[REDACTED]');
@@ -257,6 +258,9 @@ describe('diagnosticAttemptLog.service', () => {
         expect(sanitized.nested.safeField).toBe('ok');
         expect(sanitized.labelData).toBe('[BINARY_TRUNCATED:200]');
         expect(sanitized.documentUrl).toMatch(/\[truncated \d+ chars\]$/);
+        expect(sanitized.errorText).not.toContain('abc.def.ghi');
+        expect(sanitized.errorText).not.toContain('sensitive-value');
+        expect(sanitized.errorText).toContain('[REDACTED]');
     });
 
     test('records attempt in ring buffer and persists non-blockingly via prisma.carrierLog', () => {

@@ -23,7 +23,7 @@ In Cloudflare Worker → **Settings** → **Variables and Secrets**, ensure the 
 
 | Variable Name | Value | Purpose |
 |---|---|---|
-| `META_VERIFY_TOKEN_96569656563` | `target_logistics_meta_verify_secret_2026` | Meta Webhook GET verification handshake |
+| `META_VERIFY_TOKEN_96569656563` | Set a unique secret in Cloudflare | Meta Webhook GET verification handshake |
 | `SHIPMENT_WEBHOOK_URL_96569656563` | `https://target-kw.com/api/whatsapp/webhook` | Delivers receipts to Target Admin Cockpit & Database |
 | `MICROSERVICE_WEBHOOK_URL_96569656563` | `https://msg.target-kw.com/api/webhook` | Delivers receipts to msg.target-kw.com dashboard |
 | `CHATWOOT_WEBHOOK_URL_96569656563` | `https://inbox.mawthook.io/...` | Mirrors messages to Chatwoot (optional) |
@@ -46,6 +46,6 @@ If you'd like the worker to also be accessible directly under your `target-kw.co
 1. Open [developers.facebook.com](https://developers.facebook.com) → Your App → **WhatsApp** → **Configuration**.
 2. In the **Webhook** section, click **Edit**:
    - **Callback URL**: `https://whatsapp-webhook.mawthook.io/` (or your new domain `https://whatsapp-webhook.target-kw.com/`)
-   - **Verify Token**: `target_logistics_meta_verify_secret_2026`
+   - **Verify Token**: Use the same unique secret configured as `META_VERIFY_TOKEN_96569656563`. Do not use a public/default value.
 3. Click **Verify and Save**. (The worker will respond with HTTP 200 and echo the challenge).
 4. In the **Webhook Fields** table below, find **`messages`** and click **Subscribe**.

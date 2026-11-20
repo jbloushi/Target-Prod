@@ -83,26 +83,24 @@ describe('Adversarial Stress Testing: Cloudflare WhatsApp Router', () => {
             expect(fetchCalls.length).toBe(3);
         });
 
-        test('GET handshake with empty env {} accepts hardcoded fallback token', async () => {
+        test('GET handshake with empty env {} rejects formerly hardcoded fallback token', async () => {
             const req = new Request(
                 'https://router.mawthook.io/?hub.mode=subscribe&hub.verify_token=target_logistics_meta_verify_secret_2026&hub.challenge=CHALLENGE_DEFAULT',
                 { method: 'GET' }
             );
 
             const res = await router.fetch(req, {}, {});
-            expect(res.status).toBe(200);
-            expect(await res.text()).toBe('CHALLENGE_DEFAULT');
+            expect(res.status).toBe(403);
         });
 
-        test('GET handshake with empty env {} accepts secondary fallback token change-me-verify-token', async () => {
+        test('GET handshake with empty env {} rejects placeholder fallback token change-me-verify-token', async () => {
             const req = new Request(
                 'https://router.mawthook.io/?hub.mode=subscribe&hub.verify_token=change-me-verify-token&hub.challenge=CHALLENGE_SECONDARY',
                 { method: 'GET' }
             );
 
             const res = await router.fetch(req, {}, {});
-            expect(res.status).toBe(200);
-            expect(await res.text()).toBe('CHALLENGE_SECONDARY');
+            expect(res.status).toBe(403);
         });
 
         test('GET handshake with empty env {} rejects unauthorized tokens with 403', async () => {

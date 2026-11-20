@@ -31,6 +31,17 @@ describe('API key middleware', () => {
         expect(malformedRes.status).toHaveBeenCalledWith(401);
     });
 
+
+    it('rejects API keys supplied in query strings', async () => {
+        const { validateApiKey } = require('../src/middleware/apiKey.middleware');
+        const res = createMockRes();
+
+        await validateApiKey({ headers: {}, query: { api_key: 'user-1.secret' } }, res, next);
+
+        expect(res.status).toHaveBeenCalledWith(401);
+        expect(prisma.user.findFirst).not.toHaveBeenCalled();
+    });
+
     it('attaches authenticated API user context for valid keys', async () => {
         const { validateApiKey } = require('../src/middleware/apiKey.middleware');
         const req = { headers: { 'x-api-key': 'user-1.secret' } };

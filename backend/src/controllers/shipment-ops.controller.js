@@ -469,7 +469,7 @@ exports.sendPaymentLink = async (req, res) => {
             currency: ottuSession.currency
         });
 
-        logger.info(`[PaymentLink] Dispatched Ottu payment link (${paymentLink}) for ${trackingNumber} to ${recipientRole} via WhatsApp (Gateway: ${ottuSession.gateway})`);
+        logger.info(`[PaymentLink] Dispatched Ottu payment link for ${trackingNumber} to ${recipientRole} via WhatsApp (Gateway: ${ottuSession.gateway})`);
         res.status(200).json({
             success: true,
             message: 'Payment link dispatched via WhatsApp successfully',

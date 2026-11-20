@@ -15,19 +15,14 @@ async function verifyWebhook(req, res) {
         const challenge = req.query['hub.challenge'];
 
         const settings = getSystemSettings()?.whatsapp || {};
-        const validTokens = [
-            settings.webhookVerifyToken,
-            process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN,
-            'target_logistics_meta_verify_secret_2026',
-            'change-me-verify-token'
-        ].filter(Boolean);
+        const validTokens = [settings.webhookVerifyToken, process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN].filter(Boolean);
 
         if (mode === 'subscribe' && token && validTokens.includes(token)) {
-            logger.info(`[Meta Webhook Verified] Successfully responded to Meta hub challenge (token: ${token})`);
+            logger.info('[Meta Webhook Verified] Successfully responded to Meta hub challenge');
             return res.status(200).send(challenge);
         }
 
-        logger.warn(`[Meta Webhook Verification Failed] Invalid token supplied: ${token}`);
+        logger.warn(`[Meta Webhook Verification Failed] Request rejected (configured token: ${validTokens.length > 0 ? 'yes' : 'no'})`);
         return res.status(403).json({ error: 'Verification token mismatch' });
     } catch (err) {
         logger.error(`[Webhook Verification Error] ${err.message}`);

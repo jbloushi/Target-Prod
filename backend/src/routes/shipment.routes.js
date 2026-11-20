@@ -21,7 +21,7 @@ const validate = (req, res, next) => {
 
 // Log all requests to this router
 router.use((req, res, next) => {
-  logger.info(`[DEBUG] Shipment Router Hit: ${req.method} ${req.originalUrl}`);
+  logger.info(`[DEBUG] Shipment Router Hit: ${req.method} ${req.path}`);
   next();
 });
 
@@ -55,13 +55,12 @@ router.use(authController.protect);
 
 // Static/Fixed routes MUST come before parameterized routes (/:trackingNumber)
 router.get('/stats', (req, res, next) => {
-  logger.info(`[DEBUG] Shipment Stats Route Hit: ${req.method} ${req.originalUrl}`);
-  logger.info(`[DEBUG] Query Params: ${JSON.stringify(req.query)}`);
+  logger.info(`[DEBUG] Shipment Stats Route Hit: ${req.method} ${req.path}`);
   next();
 }, shipmentController.getShipmentStats);
 
 router.get('/triage', (req, res, next) => {
-  logger.info(`[DEBUG] Shipment Triage Route Hit: ${req.method} ${req.originalUrl}`);
+  logger.info(`[DEBUG] Shipment Triage Route Hit: ${req.method} ${req.path}`);
   next();
 }, shipmentController.getTriageShipments);
 

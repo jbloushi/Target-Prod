@@ -187,10 +187,12 @@ async function sendViaShipmentWhatsappMicroservice({ serviceUrl = 'https://msg.t
         ]
     };
 
-    const safeLogPayload = /otp/i.test(String(templateName || ''))
-        ? { templateName, language: lang, recipient: maskPhoneForLog(cleanPhone), rowCount: payload.rows.length }
-        : payload;
-    logger.info(`[Shipment-WhatsApp Dispatch] URL: ${url} Template: ${templateName} [${lang}] Recipient: ${maskPhoneForLog(cleanPhone)}`, safeLogPayload);
+    logger.info('[Shipment-WhatsApp Dispatch] Sending template', {
+        templateName,
+        language: lang,
+        recipient: maskPhoneForLog(cleanPhone),
+        rowCount: payload.rows.length
+    });
 
     let response;
     try {
@@ -200,10 +202,9 @@ async function sendViaShipmentWhatsappMicroservice({ serviceUrl = 'https://msg.t
             responseType: 'text'
         });
     } catch (httpErr) {
-        const errData = httpErr.response?.data || httpErr.message;
-        const e = new Error(`WhatsApp microservice connection error: ${httpErr.message}`);
-        e.payload = payload;
-        e.rawResponse = errData;
+        const e = new Error('WhatsApp microservice request failed');
+        e.code = httpErr.code;
+        e.status = httpErr.response?.status;
         throw e;
     }
 
@@ -1508,7 +1509,7 @@ class WhatsAppIntegrationService {
             const url = `https://graph.facebook.com/v19.0/${settings.phoneNumberId}/messages`;
             const payload = buildMetaMessagePayload(phone, eventType, context, chosenTemplate);
 
-            logger.info(`[WhatsApp Meta API Request] URL: ${url}`, JSON.stringify(payload, null, 2));
+            logger.info('[WhatsApp Meta API Request] Sending message', { templateName: chosenTemplate, recipient: maskPhoneForLog(String(phone).replace(/\D/g, '')) });
 
             const res = await axios.post(url, payload, {
                 headers: {
@@ -1632,7 +1633,7 @@ class WhatsAppIntegrationService {
                 }
             };
 
-            logger.info(`[WhatsApp Meta API] Dispatching text message to ${cleanPhone} (DEV Mode: ${isDevMode() ? 'YES -> +201040957289' : 'NO'})`);
+            logger.info(`[WhatsApp Meta API] Dispatching text message to ${maskPhoneForLog(cleanPhone)} (DEV Mode: ${isDevMode() ? 'YES' : 'NO'})`);
             try {
                 const res = await axios.post(url, payload, {
                     headers: {
@@ -1642,7 +1643,7 @@ class WhatsAppIntegrationService {
                     timeout: 12000
                 });
                 const wamid = res.data?.messages?.[0]?.id || null;
-                logger.info(`[WhatsApp Meta API] Success sending to ${cleanPhone}. Message ID: ${wamid}`);
+                logger.info(`[WhatsApp Meta API] Message sent to ${maskPhoneForLog(cleanPhone)}. Message ID: ${wamid}`);
                 return { status: 'SENT', externalMessageId: wamid, provider: 'META', phone, response: res.data };
             } catch (err) {
                 const errorData = err.response?.data || { message: err.message };
