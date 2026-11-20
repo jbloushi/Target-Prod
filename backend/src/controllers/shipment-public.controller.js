@@ -265,20 +265,25 @@ exports.sendReceiverLocationOtp = async (req, res) => {
         const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
         locationOtpStore.set(trackingNumber, { otp, expiresAt, verified: false });
 
-        // Dispatch OTP via WhatsApp
+        // Dispatch OTP only through the approved authentication template.
         try {
             const whatsappService = require('../services/whatsappIntegration.service');
-            await whatsappService.sendNotification({
-                shipment,
-                recipientRole: 'customer',
-                recipientPhone: phone,
-                recipientCountryCode: countryCode,
-                eventType: 'location_otp',
-                templateName: 'new_shipment_created',
-                customMessage: `Your Target Logistics Location Pin OTP is: ${otp}`
+            const dispatch = await whatsappService.sendAuthOtp({
+                phone,
+                phoneCountryCode: countryCode,
+                name: shipment.destination?.contactPerson || shipment.destination?.name || 'Customer',
+                otp
             });
+            if (!dispatch || ['FAILED', 'SKIPPED'].includes(String(dispatch.status || '').toUpperCase())) {
+                throw new Error('Approved authentication template was not accepted by a provider');
+            }
         } catch (waErr) {
-            logger.warn(`[WhatsApp OTP Dispatch Warning] ${waErr.message}`);
+            locationOtpStore.delete(trackingNumber);
+            logger.warn('[WhatsApp OTP Dispatch] Approved authentication template could not be sent');
+            return res.status(503).json({
+                success: false,
+                error: 'Unable to send verification code right now. Please try again later.'
+            });
         }
 
         logger.info(`[Receiver OTP Generated] Verification code issued for shipment ${trackingNumber}`);

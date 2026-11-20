@@ -148,10 +148,10 @@ export const STATUS_CONFIG = {
   },
   out_for_delivery: {
     label: 'Out for Delivery',
-    color: '#064e3b',
-    dotColor: '#059669',
-    bg: '#ecfdf5',
-    border: '#a7f3d0',
+    color: '#9a3412',
+    dotColor: '#ea580c',
+    bg: '#fff7ed',
+    border: '#fed7aa',
     icon: 'local_shipping'
   },
   delivered: {

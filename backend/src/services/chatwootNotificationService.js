@@ -1634,22 +1634,37 @@ class ChatwootNotificationService {
     }
 
     async sendDirectOtp({ phone, name, otp }) {
-        if (!this.isConfigured() || !phone) return null;
-        try {
-            const normalizedTargetPhone = normalizePhone(phone);
-            const target = { role: 'auth', name: name || 'User', phone: normalizedTargetPhone };
-            const contact = await this.findOrCreateContact(target, { trackingNumber: 'AUTH-OTP' });
-            const conversation = await this.findOrCreateConversation(contact, target, { trackingNumber: 'AUTH-OTP' });
-            const messagePayload = {
-                message_type: 'outgoing',
-                private: false,
-                content: `Your Target Logistics login verification code is: ${otp}\nValid for 5 minutes.`
-            };
-            return await this.sendMessage(conversation.id, messagePayload);
-        } catch (err) {
-            logger.warn(`[chatwoot] OTP dispatch failed: ${err.message}`);
-            return null;
+        if (!phone || !otp) {
+            throw new Error('Inbox template dispatch requires a phone number and OTP');
         }
+        await this.refreshDbCredentialsIfNeeded();
+        if (!this.isConfigured()) {
+            throw new Error('Inbox template dispatch configuration incomplete');
+        }
+
+        const templates = await this.getInboxTemplates();
+        if (!Array.isArray(templates) || !templates.some(template => template.name === 'otptargetlogin')) {
+            throw new Error('Approved Inbox authentication template otptargetlogin is unavailable');
+        }
+
+        const normalizedTargetPhone = normalizePhone(phone);
+        const target = { role: 'auth', name: name || 'User', phone: normalizedTargetPhone };
+        const contact = await this.findOrCreateContact(target, { trackingNumber: 'AUTH-OTP' });
+        const conversation = await this.findOrCreateConversation(contact, target, { trackingNumber: 'AUTH-OTP' });
+        const messagePayload = {
+            message_type: 'outgoing',
+            private: false,
+            content: 'Your Target Logistics login verification code.',
+            template_params: {
+                name: 'otptargetlogin',
+                category: 'AUTHENTICATION',
+                language: 'en_US',
+                processed_params: { body: { '1': String(otp) } },
+                parameters: [String(otp)]
+            }
+        };
+
+        return await this.sendMessage(conversation.id, messagePayload, { isTemplate: true });
     }
 
     async buildShipmentNotificationPreview(eventType, shipment, recipientRole = null, requestedTemplate = null) {

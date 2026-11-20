@@ -1882,40 +1882,45 @@ www.target-kw.com | +965 6965 6563`;
     /**
      * Send Authentication OTP Code via WhatsApp using approved template 'otptargetlogin'
      */
-    async sendAuthOtp({ phone, name, otp }) {
+    async sendAuthOtp({ phone, name, otp, phoneCountryCode = '965' }) {
         if (!phone || !otp) return null;
-        const resolvedPhone = resolveRecipientPhone(phone, '965');
+        const resolvedPhone = resolveRecipientPhone(phone, phoneCountryCode);
         if (!resolvedPhone) {
             logger.warn(`[WhatsApp OTP] Invalid phone number ending ${maskPhoneForLog(phone).slice(-4)}`);
             return null;
         }
 
         const cleanPhone = String(resolvedPhone).replace(/\D/g, '');
-        const settings = getSystemSettings()?.whatsapp || {};
-        const provider = settings.provider || 'SHIPMENT_WHATSAPP';
+        const dbConfig = await whatsAppConfigService.getConfig({ internal: true }).catch(() => null);
+        const settings = {
+            ...(getSystemSettings()?.whatsapp || {}),
+            ...(dbConfig || {})
+        };
+        const provider = String(settings.provider || 'SHIPMENT_WHATSAPP').trim().toUpperCase();
+        const fallbackProvider = String(settings.fallbackProvider || '').trim().toUpperCase();
         const templateName = 'otptargetlogin';
         const langCode = 'en_US';
-        const bodyText = `Please share code ${otp} with delivery agent after verifying the package.`;
 
         logger.info(`[WhatsApp OTP Dispatch] Template: ${templateName} [${langCode}] Target: ${maskPhoneForLog(cleanPhone)} Provider: ${provider}`);
 
-        // 0. Explicit Evolution API OTP Dispatch when EVOLUTION is selected as primary provider
-        if (provider === 'EVOLUTION') {
+        // Chatwoot is template-capable only through its approved inbox template API.
+        if (provider === 'CHATWOOT') {
             try {
-                const evoRes = await sendViaEvolutionApi({
-                    settings,
-                    toPhone: cleanPhone,
-                    text: `Your Target Logistics login code is ${otp}. Expires in 3 minutes.`
-                });
-                logger.info(`[WhatsApp OTP Sent via Evolution API] Message ID: ${evoRes.messageId}`);
-                return { status: 'SENT', externalMessageId: evoRes.messageId, provider: 'EVOLUTION' };
-            } catch (evoErr) {
-                logger.warn(`[WhatsApp OTP Evolution Error] ${evoErr.message}`);
+                const result = await chatwootService.sendDirectOtp({ phone: resolvedPhone, name, otp });
+                if (result) return { ...result, status: 'SENT', provider: 'CHATWOOT', templateName };
+                throw new Error('Inbox authentication template dispatch returned no message');
+            } catch (inboxErr) {
+                logger.warn(`[WhatsApp OTP Inbox Template Error] ${inboxErr.message}`);
             }
         }
 
         // 1. Direct Meta WhatsApp Business API Cloud Endpoint (Most accurate for Authentication / Custom templates)
-        if (settings.accessToken && settings.phoneNumberId) {
+        const templateProviderCandidates = [provider, fallbackProvider];
+        if (
+            templateProviderCandidates.includes('META') &&
+            settings.accessToken &&
+            settings.phoneNumberId
+        ) {
             const url = `https://graph.facebook.com/v19.0/${settings.phoneNumberId}/messages`;
             
             const candidateComponentSets = [
@@ -2004,7 +2009,10 @@ www.target-kw.com | +965 6965 6563`;
         }
 
         // 2. Shipment-WhatsApp Microservice Dispatch (https://msg.target-kw.com)
-        if (provider === 'SHIPMENT_WHATSAPP' || provider === 'TARGET_MSG') {
+        const templateMicroserviceProvider = [provider, fallbackProvider].find(candidate =>
+            candidate === 'SHIPMENT_WHATSAPP' || candidate === 'TARGET_MSG'
+        );
+        if (templateMicroserviceProvider) {
             const serviceUrl = settings.serviceUrl || 'https://msg.target-kw.com';
             try {
                 const res = await sendViaShipmentWhatsappMicroservice({
@@ -2016,31 +2024,19 @@ www.target-kw.com | +965 6965 6563`;
                     apiKey: settings.apiKey || null
                 });
                 logger.info(`[WhatsApp OTP Sent via Microservice] Message ID: ${res.messageId}`);
-                return res;
+                return { ...res, provider: 'SHIPMENT_WHATSAPP', templateName };
             } catch (microErr) {
                 logger.warn(`[WhatsApp OTP Microservice Error] ${microErr.message}`);
             }
         }
 
-        // 3. Fallback to Chatwoot
-        try {
-            await chatwootService.sendDirectOtp({ phone: resolvedPhone, name, otp });
-        } catch (cwErr) {
-            logger.debug(`[Chatwoot OTP note] ${cwErr.message}`);
+        if (fallbackProvider === 'CHATWOOT' && provider !== 'CHATWOOT') {
+            const result = await chatwootService.sendDirectOtp({ phone: resolvedPhone, name, otp });
+            if (result) return { ...result, status: 'SENT', provider: 'CHATWOOT', templateName };
         }
 
-        // 4. Fallback to direct text message
-        try {
-            return await this.sendDirectTextMessage({
-                toPhone: resolvedPhone,
-                messageText: bodyText,
-                recipientName: name || 'User',
-                metadata: { templateName, variables: [String(otp)] }
-            });
-        } catch (directErr) {
-            logger.warn(`[WhatsApp Direct OTP Text Error] ${directErr.message}`);
-            return null;
-        }
+        // Evolution /sendText and free-text Chatwoot/direct sends are not approved OTP templates.
+        throw new Error(`Unable to send required WhatsApp authentication template '${templateName}' with the configured template-capable provider`);
     }
 
     /**

@@ -20,6 +20,15 @@ const STATUS_BADGE_MAP = {
     SKIPPED: 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
 };
 
+const getProviderLabel = (provider) => {
+    const key = String(provider || '').trim().toUpperCase();
+    if (key === 'CHATWOOT') return 'Inbox';
+    if (key === 'SHIPMENT_WHATSAPP' || key === 'TARGET_MSG' || key === 'MSG_GATEWAY') return 'Target Gateway';
+    if (key === 'META') return 'Meta Cloud API';
+    if (key === 'EVOLUTION') return 'Evolution API';
+    return provider || 'MSG';
+};
+
 export const AdminWhatsAppLogsV2Page = () => {
     const { lang, isRTL } = useLanguage();
     const { user } = useAuth();
@@ -352,7 +361,7 @@ export const AdminWhatsAppLogsV2Page = () => {
                                                         <div className="font-mono font-bold text-primary" dir="ltr">{log.trackingNumber || '—'}</div>
                                                         <div className="text-[11px] text-slate-500 dark:text-slate-400" dir="ltr">{log.templateName || '—'}</div>
                                                     </td>
-                                                    <td className="px-4 py-3 font-mono font-semibold text-slate-700 dark:text-slate-300" dir="ltr">{log.provider || 'MSG'}</td>
+                                                    <td className="px-4 py-3 font-mono font-semibold text-slate-700 dark:text-slate-300" dir="ltr">{getProviderLabel(log.provider)}</td>
                                                     <td className="px-4 py-3">
                                                         <span title={status.title} className={`inline-flex px-2 py-0.5 rounded-lg border text-[11px] font-bold ${STATUS_BADGE_MAP[st] || STATUS_BADGE_MAP.SENT}`}>
                                                             {status.label}

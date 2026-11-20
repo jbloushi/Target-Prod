@@ -575,7 +575,7 @@ export const AdminUsersV2Page = () => {
                                                         {u.phone && <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400" dir="ltr">{u.phone}</div>}
                                                         {role === 'admin' && (u.chatwootUserId || u.chatwootEmail) && (
                                                             <span className="inline-flex mt-0.5 px-1.5 py-0.5 rounded bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 font-mono text-[10px] font-bold" dir="ltr">
-                                                                CW #{u.chatwootUserId || u.chatwootEmail}
+                                                                Inbox #{u.chatwootUserId || u.chatwootEmail}
                                                             </span>
                                                         )}
                                                     </td>

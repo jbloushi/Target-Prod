@@ -208,16 +208,25 @@ exports.requestOtp = async (req, res) => {
             authOtpStore.set(userPhoneDigits, otpRecord);
         }
 
-        // Dispatch OTP via WhatsApp / Chatwoot notification
+        // Dispatch only through a named, approved WhatsApp authentication template.
         try {
             const whatsappService = require('../services/whatsappIntegration.service');
-            await whatsappService.sendAuthOtp({
+            const dispatch = await whatsappService.sendAuthOtp({
                 phone: user.phone,
                 name: user.name,
                 otp
             });
+            if (!dispatch || ['FAILED', 'SKIPPED'].includes(String(dispatch.status || '').toUpperCase())) {
+                throw new Error('Approved authentication template was not accepted by a provider');
+            }
         } catch (msgErr) {
-            logger.warn(`[Auth OTP Dispatch note] ${msgErr.message}`);
+            authOtpStore.delete(cleanDigits);
+            if (userPhoneDigits && userPhoneDigits !== cleanDigits) authOtpStore.delete(userPhoneDigits);
+            logger.warn('[Auth OTP Dispatch] Approved authentication template could not be sent');
+            return res.status(503).json({
+                success: false,
+                error: 'Unable to send verification code right now. Please try again later.'
+            });
         }
 
         logger.info(`[Auth OTP Generated] Verification code issued for mobile ending ${cleanDigits.slice(-4)}`);

@@ -733,7 +733,7 @@ const AdminUsersPage = () => {
                                                         {currentUser?.role === 'admin' && (u.chatwootUserId || u.chatwootEmail) && (
                                                             <div className="mt-0.5">
                                                                 <span className="badge badge-xs badge-info gap-1 font-mono text-[10px]">
-                                                                    CW #{u.chatwootUserId || u.chatwootEmail}
+                                                                Inbox #{u.chatwootUserId || u.chatwootEmail}
                                                                 </span>
                                                             </div>
                                                         )}
