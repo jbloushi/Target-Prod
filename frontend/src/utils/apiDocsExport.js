@@ -36,7 +36,7 @@ export function downloadPostmanCollection() {
                             {
                                 origin: { city: 'Kuwait City', countryCode: 'KW' },
                                 destination: { city: 'Salmiya', countryCode: 'KW' },
-                                parcels: [{ weight: 1.0, dimensions: { length: 20, width: 20, height: 10 } }]
+                                parcels: [{ weight: 1.0, length: 20, width: 20, height: 10 }]
                             },
                             null,
                             2
@@ -57,9 +57,10 @@ export function downloadPostmanCollection() {
                         mode: 'raw',
                         raw: JSON.stringify(
                             {
-                                autoBook: true,
                                 isTest: true,
                                 reference: 'ORDER-10001',
+                                declaredValue: 10,
+                                currency: 'KWD',
                                 sender: {
                                     name: 'My Store',
                                     company: 'My Store W.L.L.',
@@ -80,7 +81,9 @@ export function downloadPostmanCollection() {
                                 parcels: [
                                     {
                                         weight: 1.0,
-                                        dimensions: { length: 20, width: 20, height: 10 },
+                                        length: 20,
+                                        width: 20,
+                                        height: 10,
                                         description: 'Order #10001'
                                     }
                                 ],
@@ -236,10 +239,9 @@ export function downloadApiDocsPdf() {
 
     addHeading('3. Credit Accounts, Routing & Shipment Lifecycle');
     addBody('- Pre-Configured Routing: Delivery routing is configured directly on your Target account. You do not need to select or pass a carrier in API requests.');
-    addBody('- Simple Minimum Payload: Submit sender, receiver, and parcel weight/dimensions (default standard box e.g. 20x20x10 cm, 1 kg is accepted for standard orders).');
-    addBody('- Credit Booking Modes: Omit autoBook for manual approval, or pass "autoBook": true to book immediately within your credit limit without manual approval.');
-    addBody('- Lifecycle: Created / Booked -> Ready for Pickup -> Picked Up -> In Transit -> Out for Delivery -> Delivered.');
-    addBody('- Delivery Fees & COD: Keep your own checkout delivery fees or query POST /api/v1/quotes. Target bills your credit account directly per booked shipment. COD is optional via codAmount and codCurrency.');
+    addBody('- Simple Minimum Payload: Submit sender, receiver, declaredValue (> 0), and parcels[] with flat weight (kg), length, width, height (cm) — a standard default box (e.g. 20x20x10 cm, 1 kg) works cleanly for standard orders.');
+    addBody('- Delivery Cycle: Create (POST /api/v1/shipments) -> Picked Up -> Target Hub Review & Verification -> Confirmed & Booked -> In Transit -> Out for Delivery -> Delivered.');
+    addBody('- Rates & Billing: Target bills your credit account directly per shipment. Initial rates from POST /api/v1/quotes are estimates and may adjust once Target verifies actual parcel weight/dimensions at the hub. COD is optional via codAmount and codCurrency.');
 
     addHeading('4. Core Endpoints');
     addCode(
@@ -256,12 +258,13 @@ export function downloadApiDocsPdf() {
     addCode(
         'POST ' + API_BASE_URL + '/shipments\n' +
         '{\n' +
-        '  "autoBook": true,\n' +
         '  "isTest": true,\n' +
         '  "reference": "ORDER-10001",\n' +
+        '  "declaredValue": 10,\n' +
+        '  "currency": "KWD",\n' +
         '  "sender": { "name": "My Store", "phone": "+96590000000", "addressLine1": "Shuwaikh", "city": "Kuwait City", "countryCode": "KW" },\n' +
         '  "receiver": { "name": "Customer", "phone": "+96599887766", "addressLine1": "Block 4, Salmiya", "city": "Salmiya", "countryCode": "KW" },\n' +
-        '  "parcels": [{ "weight": 1.0, "dimensions": { "length": 20, "width": 20, "height": 10 }, "description": "Order #10001" }],\n' +
+        '  "parcels": [{ "weight": 1.0, "length": 20, "width": 20, "height": 10, "description": "Order #10001" }],\n' +
         '  "codAmount": 0,\n' +
         '  "codCurrency": "KWD"\n' +
         '}'

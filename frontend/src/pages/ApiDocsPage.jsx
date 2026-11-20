@@ -282,12 +282,12 @@ Idempotency-Key: order-10001`}
                                 Delivery routing is configured directly on your Target account — simply send the minimum shipment details (sender, receiver, parcel) with no carrier selection required.
                             </li>
                             <li>
-                                <strong className="text-slate-900 dark:text-slate-100">Manual vs Automatic Booking:</strong>{' '}
-                                Omit <code className="font-mono text-primary">autoBook</code> for manual approval, or pass <code className="font-mono text-primary">"autoBook": true</code> to book immediately within your credit limit.
+                                <strong className="text-slate-900 dark:text-slate-100">Delivery Cycle:</strong>{' '}
+                                Your store creates the shipment via <code className="font-mono">POST /api/v1/shipments</code> → Target picks up the parcel → Target staff verifies actual weight/details at our hub, confirms the final rate, and books/dispatches it.
                             </li>
                             <li>
-                                <strong className="text-slate-900 dark:text-slate-100">Billing & Checkout Fees:</strong>{' '}
-                                Target bills your credit account directly per booked shipment. In checkout, you may keep your own area fees or fetch live Target rates via <code className="font-mono">POST /api/v1/quotes</code>.
+                                <strong className="text-slate-900 dark:text-slate-100">Estimated Rates &amp; Billing:</strong>{' '}
+                                Target bills your credit account directly per shipment. Initial rates from <code className="font-mono">POST /api/v1/quotes</code> are estimates and may adjust once Target verifies the parcel at pickup/hub.
                             </li>
                         </ul>
                     </div>
@@ -307,7 +307,7 @@ Idempotency-Key: order-10001`}
                             </li>
                             <li>
                                 <strong className="text-slate-900 dark:text-slate-100">Lifecycle:</strong>{' '}
-                                Created / Booked → Ready for Pickup → Picked Up → In Transit → Out for Delivery → Delivered.
+                                Created → Picked Up → Hub Review &amp; Verification → Confirmed &amp; Booked → In Transit → Out for Delivery → Delivered.
                             </li>
                         </ul>
                     </div>
@@ -333,20 +333,22 @@ Idempotency-Key: order-10001`}
                         { field: 'Idempotency-Key', type: 'string', required: true, description: 'Unique key per order (e.g. order-10001) to prevent duplicate bookings' }
                     ]}
                     fields={[
-                        { field: 'autoBook', type: 'boolean', required: false, description: 'Credit accounts: set true to book immediately without manual approval' },
+                        { field: 'declaredValue', type: 'number', required: true, description: 'Declared shipment value (> 0) required for non-document parcels' },
+                        { field: 'currency', type: 'string', required: false, description: 'Currency code (defaults to KWD)' },
                         { field: 'isTest', type: 'boolean', required: false, description: 'Set true for integration test shipments (not charged, no live pickup)' },
                         { field: 'reference', type: 'string', required: false, description: 'Your store order number or internal reference' },
                         { field: 'sender', type: 'object', required: true, description: 'Pickup details: name, company, phone, email, addressLine1, city, countryCode (KW)' },
                         { field: 'receiver', type: 'object', required: true, description: 'Consignee details: name, phone, email, addressLine1, city, countryCode' },
-                        { field: 'parcels', type: 'array', required: true, description: 'Array of { weight (kg), dimensions: { length, width, height } (cm), description }' },
+                        { field: 'parcels', type: 'array', required: true, description: 'Array of flat objects: { weight (kg), length (cm), width (cm), height (cm), description }' },
                         { field: 'codAmount', type: 'number', required: false, description: 'Optional Cash on Delivery amount (> 0). Omit or 0 for prepaid orders' },
                         { field: 'codCurrency', type: 'string', required: false, description: 'COD currency code (e.g. KWD). Defaults to KWD' }
                     ]}
                     requestSample={JSON.stringify(
                         {
-                            autoBook: true,
                             isTest: true,
                             reference: 'ORDER-10001',
+                            declaredValue: 10,
+                            currency: 'KWD',
                             sender: {
                                 name: 'My Store',
                                 company: 'My Store W.L.L.',
@@ -364,7 +366,7 @@ Idempotency-Key: order-10001`}
                                 city: 'Salmiya',
                                 countryCode: 'KW'
                             },
-                            parcels: [{ weight: 1.0, dimensions: { length: 20, width: 20, height: 10 }, description: 'Order #10001' }],
+                            parcels: [{ weight: 1.0, length: 20, width: 20, height: 10, description: 'Order #10001' }],
                             codAmount: 0,
                             codCurrency: 'KWD'
                         },
@@ -399,7 +401,7 @@ Idempotency-Key: order-10001`}
                     fields={[
                         { field: 'origin', type: 'object', required: true, description: '{ city, countryCode }' },
                         { field: 'destination', type: 'object', required: true, description: '{ city, countryCode }' },
-                        { field: 'parcels', type: 'array', required: true, description: 'Array of { weight, dimensions: { length, width, height } }' }
+                        { field: 'parcels', type: 'array', required: true, description: 'Array of { weight, length, width, height }' }
                     ]}
                     responseSample={JSON.stringify(
                         {
