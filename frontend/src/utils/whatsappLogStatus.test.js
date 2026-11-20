@@ -12,6 +12,8 @@ describe('WhatsApp log status presentation', () => {
   });
 
   it('normalizes delivery states and localizes labels', () => {
+    expect(getWhatsAppLogStatusPresentation('submit').label).toBe('Sent');
+    expect(getWhatsAppLogStatusPresentation('accepted').badgeKey).toBe('SENT');
     expect(getWhatsAppLogStatusPresentation('delivered', 'ar').label).toBe('تم التوصيل');
     expect(getWhatsAppLogStatusPresentation('READ').label).toBe('Read');
     expect(getWhatsAppLogStatusPresentation('queued').badgeKey).toBe('QUEUED');

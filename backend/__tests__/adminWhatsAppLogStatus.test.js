@@ -26,7 +26,7 @@ describe('WhatsApp log status reporting', () => {
         await getNotificationLogs({ query: { status: 'SENT' } }, res);
 
         const listQuery = prisma.shipmentNotificationLog.findMany.mock.calls[0][0];
-        expect(listQuery.where.status.in).toEqual(expect.arrayContaining(['SUBMITTED', 'submitted', 'SENT', 'sent']));
+        expect(listQuery.where.status.in).toEqual(expect.arrayContaining(['SUBMITTED', 'submitted', 'SUBMIT', 'submit', 'ACCEPTED', 'accepted', 'SENT', 'sent']));
         expect(res.json.mock.calls[0][0].stats).toEqual(expect.objectContaining({
             totalDispatched: 2,
             totalDelivered: 0,

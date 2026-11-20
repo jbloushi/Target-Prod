@@ -258,6 +258,8 @@ export const AdminWhatsAppLogsPage = () => {
                 return { badgeClass: 'badge-info text-white', label: lang === 'ar' ? 'تمت القراءة' : 'Read', icon: 'visibility' };
             case 'SENT':
             case 'SUBMITTED':
+            case 'SUBMIT':
+            case 'ACCEPTED':
                 return { badgeClass: 'badge-warning text-warning-content', label: lang === 'ar' ? 'تم الإرسال' : 'Sent', icon: 'done' };
             case 'FAILED':
                 return { badgeClass: 'badge-error text-white', label: lang === 'ar' ? 'فشل' : 'Failed', icon: 'error' };

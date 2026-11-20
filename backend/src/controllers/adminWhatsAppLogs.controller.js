@@ -24,7 +24,7 @@ async function getNotificationLogs(req, res) {
         if (status && status !== 'ALL') {
             const s = status.toUpperCase();
             if (s === 'SENT') {
-                where.status = { in: ['SENT', 'sent', 'SUBMITTED', 'submitted'] };
+                where.status = { in: ['SENT', 'sent', 'SUBMITTED', 'submitted', 'SUBMIT', 'submit', 'ACCEPTED', 'accepted'] };
             } else if (s === 'DELIVERED') {
                 where.status = { in: ['DELIVERED', 'delivered'] };
             } else if (s === 'READ') {
@@ -145,18 +145,18 @@ async function getNotificationLogs(req, res) {
             prisma.shipmentNotificationLog.count({
                 where: {
                     createdAt: { gte: todayStart },
-                    status: { in: ['SENT', 'sent', 'SUBMITTED', 'submitted', 'DELIVERED', 'delivered', 'READ', 'read'] }
+                    status: { in: ['SENT', 'sent', 'SUBMITTED', 'submitted', 'SUBMIT', 'submit', 'ACCEPTED', 'accepted', 'DELIVERED', 'delivered', 'READ', 'read'] }
                 }
             }),
             prisma.shipmentNotificationLog.count({
                 where: {
                     createdAt: { gte: last24h },
-                    status: { in: ['SENT', 'sent', 'SUBMITTED', 'submitted', 'DELIVERED', 'delivered', 'READ', 'read'] }
+                    status: { in: ['SENT', 'sent', 'SUBMITTED', 'submitted', 'SUBMIT', 'submit', 'ACCEPTED', 'accepted', 'DELIVERED', 'delivered', 'READ', 'read'] }
                 }
             }),
             prisma.shipmentNotificationLog.count({
                 where: {
-                    status: { in: ['SENT', 'sent', 'SUBMITTED', 'submitted', 'DELIVERED', 'delivered', 'READ', 'read'] }
+                    status: { in: ['SENT', 'sent', 'SUBMITTED', 'submitted', 'SUBMIT', 'submit', 'ACCEPTED', 'accepted', 'DELIVERED', 'delivered', 'READ', 'read'] }
                 }
             }),
             prisma.shipmentNotificationLog.count({
@@ -237,11 +237,11 @@ async function resendNotification(req, res) {
                 where: {
                     trackingNumber: existing.trackingNumber,
                     recipientRole: { in: roleGroup },
-                    status: { in: ['submitted', 'SUBMITTED', 'SENT', 'sent', 'DELIVERED', 'delivered', 'READ', 'read'] }
+                    status: { in: ['submitted', 'SUBMITTED', 'submit', 'SUBMIT', 'accepted', 'ACCEPTED', 'SENT', 'sent', 'DELIVERED', 'delivered', 'READ', 'read'] }
                 }
             });
 
-            if (anySent || ['SUBMITTED', 'SENT', 'DELIVERED', 'READ'].includes(String(existing.status || '').toUpperCase())) {
+            if (anySent || ['SUBMIT', 'SUBMITTED', 'ACCEPTED', 'SENT', 'DELIVERED', 'READ'].includes(String(existing.status || '').toUpperCase())) {
                 return res.status(400).json({ 
                     error: `A notification was already successfully delivered for shipment ${existing.trackingNumber} to ${isSender ? 'Sender' : 'Consignee'}. Resending is disabled to prevent duplicate customer messages.`,
                     alreadySent: true
@@ -532,7 +532,7 @@ async function dispatchQueuedNotifications(req, res) {
                     trackingNumber: log.trackingNumber,
                     eventType: log.eventType,
                     recipientRole: { in: roleGroup },
-                    status: { in: ['submitted', 'SUBMITTED', 'SENT', 'sent', 'DELIVERED', 'delivered', 'READ', 'read'] },
+                    status: { in: ['submitted', 'SUBMITTED', 'submit', 'SUBMIT', 'accepted', 'ACCEPTED', 'SENT', 'sent', 'DELIVERED', 'delivered', 'READ', 'read'] },
                     id: { not: log.id }
                 }
             });
@@ -597,7 +597,7 @@ async function dispatchQueuedNotifications(req, res) {
                     sendStatus = result?.status;
                 }
 
-                if (['submitted', 'SENT', 'sent'].includes(sendStatus)) {
+                if (['submitted', 'submit', 'accepted', 'SENT', 'sent'].includes(sendStatus)) {
                     dispatched++;
                 } else {
                     skipped++;
