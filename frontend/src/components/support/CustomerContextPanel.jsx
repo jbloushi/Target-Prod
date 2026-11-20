@@ -37,6 +37,7 @@ export const CustomerContextPanel = ({
     const [locationRequestLoading, setLocationRequestLoading] = useState(false);
     const [locationSuccessMsg, setLocationSuccessMsg] = useState('');
     const [phoneCopied, setPhoneCopied] = useState(false);
+    const [expandedQuickReplies, setExpandedQuickReplies] = useState(false);
 
     // Merge conversation contact & context customer info
     const customer = logisticsContext?.customer || conversation?.contact || {};
@@ -282,19 +283,19 @@ export const CustomerContextPanel = ({
                                 className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 hover:border-primary/40 transition-colors"
                             >
                                 {/* Tracking Number & Carrier */}
-                                <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+                                <div className="flex items-center justify-between gap-2 mb-2">
                                     <a
                                         href={isV2Route ? `/shipment-v2/${shp.trackingNumber}` : `/shipments/${shp.trackingNumber}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         dir="ltr"
-                                        className="font-mono text-xs font-black text-primary hover:underline flex items-center gap-1"
+                                        className="font-mono text-sm font-black text-primary hover:underline flex items-center gap-1 min-w-0"
                                     >
-                                        <span>{shp.trackingNumber}</span>
+                                        <span className="truncate">{shp.trackingNumber}</span>
                                         <span className="material-symbols-outlined text-[10px]">open_in_new</span>
                                     </a>
-                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${STATUS_BADGE_CLASSES[shp.status] || STATUS_BADGE_CLASSES.cancelled}`}>
-                                        {shp.status}
+                                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-[10px] font-bold border shrink-0 ${STATUS_BADGE_CLASSES[shp.status] || STATUS_BADGE_CLASSES.cancelled}`}>
+                                        {String(shp.status || 'unknown').replaceAll('_', ' ')}
                                     </span>
                                 </div>
 
@@ -309,7 +310,7 @@ export const CustomerContextPanel = ({
                                 </div>
 
                                 {/* Financials & COD Details */}
-                                <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 text-xs mb-2.5 flex items-center justify-between gap-2">
+                                <div className="px-2.5 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 text-xs mb-2 flex items-center justify-between gap-2">
                                     <div>
                                         <span className="text-slate-500 dark:text-slate-400 text-[10px] block">
                                             {isRTL ? 'التحصيل عند الاستلام (COD)' : 'Cash on Delivery'}
@@ -333,8 +334,13 @@ export const CustomerContextPanel = ({
                                     </div>
                                 </div>
 
-                                {/* 1-Click Action Buttons */}
-                                <div className="grid grid-cols-2 gap-1.5 mb-1.5">
+                                {/* Keep the shipment summary clear; less frequent actions stay grouped. */}
+                                <details className="group border-t border-slate-200/70 dark:border-slate-700/70 pt-1.5">
+                                    <summary className="list-none flex items-center justify-between min-h-9 px-1 cursor-pointer text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                                        <span>{isRTL ? 'إجراءات الشحنة' : 'Shipment actions'}</span>
+                                        <span className="material-symbols-outlined text-base transition-transform group-open:rotate-180" aria-hidden="true">expand_more</span>
+                                    </summary>
+                                    <div className="grid grid-cols-2 gap-1.5 pb-1.5">
                                     <button
                                         type="button"
                                         data-testid="context-request-location-btn"
@@ -357,10 +363,10 @@ export const CustomerContextPanel = ({
                                         <span className="material-symbols-outlined text-xs">credit_card</span>
                                         <span className="truncate">{isRTL ? 'رابط دفع' : 'Pay Link'}</span>
                                     </button>
-                                </div>
+                                    </div>
 
-                                {/* Document Quick Links */}
-                                <div className="flex items-center gap-2 pt-1.5 border-t border-slate-200/70 dark:border-slate-700/70 text-[11px]">
+                                {/* Document links share the same disclosure as less frequent actions. */}
+                                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-1 text-[11px]">
                                     {shp.documents?.awbUrl && (
                                         <a
                                             data-testid="context-print-awb-btn"
@@ -385,6 +391,7 @@ export const CustomerContextPanel = ({
                                         </a>
                                     )}
                                 </div>
+                                </details>
                             </div>
                         ))}
                     </div>
@@ -407,7 +414,7 @@ export const CustomerContextPanel = ({
                             type="button"
                             data-testid={`context-quick-reply-chip-${qr.id}`}
                             onClick={() => onSelectQuickReply?.(qr.text)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-[11px] text-start font-semibold transition-colors"
+                            className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-[11px] text-start font-semibold transition-colors ${qr.id !== 'status_update' && !expandedQuickReplies ? 'hidden' : ''}`}
                             title={qr.text}
                         >
                             <span className="material-symbols-outlined text-xs text-slate-500 dark:text-slate-400">
@@ -416,6 +423,14 @@ export const CustomerContextPanel = ({
                             <span>{isRTL ? qr.titleAr : qr.titleEn}</span>
                         </button>
                     ))}
+                    <button
+                        type="button"
+                        onClick={() => setExpandedQuickReplies((expanded) => !expanded)}
+                        aria-expanded={expandedQuickReplies}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-primary text-[11px] font-bold"
+                    >
+                        {expandedQuickReplies ? (isRTL ? 'أقل' : 'Less') : (isRTL ? 'المزيد' : 'More')}
+                    </button>
                 </div>
             </div>
 

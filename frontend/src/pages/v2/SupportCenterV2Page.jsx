@@ -162,8 +162,8 @@ export const SupportCenterV2Page = () => {
                 </div>
             )}
 
-            {/* Mobile Segmented Navigation (< lg) */}
-            <div className="lg:hidden px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between gap-2 shrink-0">
+            {/* Compact navigation for phones; tablet keeps inbox and thread side by side. */}
+            <div className="2xl:hidden px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between gap-2 shrink-0">
                 {mobileView !== 'list' && (
                     <button
                         type="button"
@@ -207,7 +207,7 @@ export const SupportCenterV2Page = () => {
                     <button
                         type="button"
                         disabled={!activeConversation}
-                        onClick={() => setMobileView('context')}
+                        onClick={() => { setShowContextPanel(true); setMobileView('context'); }}
                         aria-pressed={mobileView === 'context'}
                         className={`inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-colors disabled:opacity-40 cursor-pointer ${
                             mobileView === 'context'
@@ -221,11 +221,11 @@ export const SupportCenterV2Page = () => {
                 </div>
             </div>
 
-            {/* 3-Pane Workspace */}
-            <div className="flex-1 flex min-h-0 overflow-hidden">
+            {/* Two panes on tablet/laptop; shipment context joins as a third pane on wide screens. */}
+            <div className="relative flex-1 flex min-h-0 overflow-hidden">
                 {/* Pane 1: Conversations */}
                 <div
-                    className={`w-full lg:w-80 xl:w-96 shrink-0 h-full border-e border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 ${
+                    className={`w-full lg:w-72 xl:w-80 2xl:w-80 shrink-0 h-full border-e border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 ${
                         mobileView === 'list' ? 'flex flex-col' : 'hidden lg:flex lg:flex-col'
                     }`}
                 >
@@ -240,7 +240,7 @@ export const SupportCenterV2Page = () => {
                 >
                     {activeConversation ? (
                         <>
-                            <div className="hidden lg:flex items-center justify-end px-4 py-1.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
+                            <div className="flex items-center justify-end px-3 sm:px-4 py-1.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0 2xl:hidden">
                                 <button
                                     type="button"
                                     onClick={() => setShowContextPanel((prev) => !prev)}
@@ -301,10 +301,20 @@ export const SupportCenterV2Page = () => {
                 {/* Pane 3: Customer Context */}
                 {activeConversation && showContextPanel && (
                     <div
-                        className={`w-full lg:w-80 xl:w-96 shrink-0 h-full border-s border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-y-auto ${
-                            mobileView === 'context' ? 'flex flex-col' : 'hidden lg:flex lg:flex-col'
-                        }`}
+                        className={`w-full lg:w-[min(24rem,calc(100vw-18rem))] 2xl:w-80 shrink-0 h-full border-s border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-y-auto ${
+                            mobileView === 'context' ? 'flex flex-col' : 'hidden 2xl:flex 2xl:flex-col'
+                        } ${mobileView === 'context' ? 'lg:absolute lg:z-30 lg:inset-y-0 lg:end-0 lg:shadow-2xl 2xl:static 2xl:shadow-none' : ''}`}
                     >
+                        <div className="hidden lg:flex 2xl:hidden absolute z-10 top-2 end-2">
+                            <button
+                                type="button"
+                                onClick={() => { setShowContextPanel(false); setMobileView('thread'); }}
+                                aria-label={isRTL ? 'إغلاق تفاصيل الشحنة' : 'Close shipment details'}
+                                className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 shadow"
+                            >
+                                <span className="material-symbols-outlined text-lg" aria-hidden="true">close</span>
+                            </button>
+                        </div>
                         <CustomerContextPanel
                             conversation={activeConversation}
                             shipment={activeConversation.activeShipment}
