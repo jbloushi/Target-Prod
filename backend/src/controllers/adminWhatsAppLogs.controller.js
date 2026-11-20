@@ -24,7 +24,7 @@ async function getNotificationLogs(req, res) {
         if (status && status !== 'ALL') {
             const s = status.toUpperCase();
             if (s === 'SENT') {
-                where.status = { in: ['SENT', 'sent', 'submitted'] };
+                where.status = { in: ['SENT', 'sent', 'SUBMITTED', 'submitted'] };
             } else if (s === 'DELIVERED') {
                 where.status = { in: ['DELIVERED', 'delivered'] };
             } else if (s === 'READ') {
@@ -32,7 +32,9 @@ async function getNotificationLogs(req, res) {
             } else if (s === 'FAILED') {
                 where.status = { in: ['FAILED', 'failed'] };
             } else if (s === 'QUEUED' || s === 'PENDING') {
-                where.status = { in: ['PENDING', 'pending', 'queued', 'QUEUED', 'SKIPPED', 'skipped'] };
+                where.status = { in: ['PENDING', 'pending', 'queued', 'QUEUED'] };
+            } else if (s === 'SKIPPED') {
+                where.status = { in: ['SKIPPED', 'skipped'] };
             } else {
                 where.status = status;
             }
@@ -143,18 +145,18 @@ async function getNotificationLogs(req, res) {
             prisma.shipmentNotificationLog.count({
                 where: {
                     createdAt: { gte: todayStart },
-                    status: { in: ['SENT', 'sent', 'DELIVERED', 'delivered', 'READ', 'read', 'submitted'] }
+                    status: { in: ['SENT', 'sent', 'SUBMITTED', 'submitted', 'DELIVERED', 'delivered', 'READ', 'read'] }
                 }
             }),
             prisma.shipmentNotificationLog.count({
                 where: {
                     createdAt: { gte: last24h },
-                    status: { in: ['SENT', 'sent', 'DELIVERED', 'delivered', 'READ', 'read', 'submitted'] }
+                    status: { in: ['SENT', 'sent', 'SUBMITTED', 'submitted', 'DELIVERED', 'delivered', 'READ', 'read'] }
                 }
             }),
             prisma.shipmentNotificationLog.count({
                 where: {
-                    status: { in: ['SENT', 'sent', 'DELIVERED', 'delivered', 'READ', 'read', 'submitted'] }
+                    status: { in: ['SENT', 'sent', 'SUBMITTED', 'submitted', 'DELIVERED', 'delivered', 'READ', 'read'] }
                 }
             }),
             prisma.shipmentNotificationLog.count({
@@ -181,7 +183,7 @@ async function getNotificationLogs(req, res) {
         ]);
 
         const totalAttempts = totalDispatched + totalFailed;
-        const deliveryRate = totalAttempts > 0 ? Math.round(((totalDelivered || totalDispatched) / totalAttempts) * 100) : 100;
+        const deliveryRate = totalAttempts > 0 ? Math.round((totalDelivered / totalAttempts) * 100) : 0;
 
         return res.json({
             success: true,

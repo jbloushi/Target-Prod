@@ -170,3 +170,11 @@ Evidence:
 ## Evidence limits
 
 The exact approved Chatwoot copy, rendered body, and current per-message delivery/read status were supplied for 100 sampled messages. The source for `routes/webhook.js`, `routes/send.js`, `services/messageLog.js`, `services/autoSend.js`, and `services/whatsapp.js` was reviewed at `/root/projects/shipment-whatsapp` commit `b3d5630d019172be6417a5355bc3374f7355f380`. It shows a JSON-backed per-WAMID log with delivered/read/failed timestamps and error fields, but those exact service-side records were not supplied. The webhook source also exposes `/sync-receipt` without visible authentication and makes Meta signature checking conditional on a configured app secret, while skipping it for requests carrying `X-Forwarded-From`; runtime route/parser wiring and whether those settings are configured remain unverified. Remaining evidence is the service-side records for the two failed Chatwoot message IDs (or provider failure details), actual status timestamps, plus `index.js` route/parser wiring and safe config-presence/forward-target metadata. No test send is needed.
+
+## 12. Delivery status display and template-provider enforcement
+
+**Priority:** P1
+
+**Impact:** Admin logs displayed `SUBMITTED` as an unfamiliar raw value, counted dispatched messages as delivered when no delivery receipts existed, and could persist a microservice `SKIPPED` result as `SENT`. The Evolution `/sendText` adapter cannot deliver the required approved shipment template.
+
+**Local remediation (2026-11-21):** Logs now label submitted/provider-accepted messages as Sent with receipt-pending context; delivery-rate math requires a delivered receipt; QUEUED and SKIPPED have distinct filters/presentation. Chatwoot `message_updated` callbacks update matching logs with normalized statuses and delivery/read timestamps, reject stale downgrades, and return an error if persistence fails. Automatic lifecycle dispatch requiring `shipment_confirmation_2` will use a configured template-capable fallback or fail clearly instead of sending free text through Evolution. Remote microservice skipped/failed results are no longer logged as sent. No live WhatsApp send was performed; the production inbox template and provider configuration still require runtime confirmation.

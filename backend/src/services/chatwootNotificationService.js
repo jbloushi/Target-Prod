@@ -1465,6 +1465,10 @@ class ChatwootNotificationService {
         const isTemplateOption = options.isTemplate === true || options.isTemplate === 'true';
         const isTemplate = hasTemplateName || isTemplateOption;
 
+        if (isTemplateOption && !hasTemplateName) {
+            throw new Error('Template dispatch requires a named template payload');
+        }
+
         // Enforce 24-hour window for free-text messages
         if (!isTemplate && !options.skipWindowCheck) {
             const windowStatus = await this.checkCustomer24hWindow(conversationId, options);

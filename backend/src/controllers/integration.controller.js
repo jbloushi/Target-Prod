@@ -8,11 +8,27 @@ const { normalizeStatus, isStatusAhead, isTerminalStatus, isNegativeOrExceptionP
 
 // Chatwoot message statuses that map to our log statuses
 const CHATWOOT_STATUS_MAP = {
-    sent: 'sent',
-    delivered: 'delivered',
-    read: 'read',
-    failed: 'failed',
+    sent: 'SENT',
+    delivered: 'DELIVERED',
+    read: 'READ',
+    failed: 'FAILED',
 };
+
+function parseChatwootTimestamp(value) {
+    if (value === undefined || value === null || value === '') return new Date();
+    const numeric = Number(value);
+    const date = Number.isFinite(numeric)
+        ? new Date(String(value).trim().length <= 10 ? numeric * 1000 : numeric)
+        : new Date(value);
+    return Number.isNaN(date.getTime()) ? new Date() : date;
+}
+
+function shouldApplyChatwootStatus(currentStatus, nextStatus) {
+    const current = String(currentStatus || '').toUpperCase();
+    if (current === 'READ' || current === 'FAILED') return false;
+    if (current === 'DELIVERED' && ['SENT', 'SUBMITTED'].includes(nextStatus)) return false;
+    return true;
+}
 
 const safeTimingEqual = (left = '', right = '') => {
     const leftBuffer = Buffer.from(String(left));
@@ -149,50 +165,78 @@ exports.handleChatwootWebhook = async (req, res) => {
         }
     }
 
-    res.status(200).json({ ok: true });
-
     const body = req.body || {};
-    const event = body.event;
-    const messageId = body.id ? String(body.id) : null;
-    const rawStatus = body.content_attributes?.status || body.status;
+    const event = body.event || body.data?.event;
+    const messageIdValue = body.id || body.message?.id || body.data?.id;
+    const messageId = messageIdValue ? String(messageIdValue) : null;
+    const rawStatus = body.content_attributes?.status || body.status || body.message?.status || body.data?.status;
 
-    logger.info(`[chatwoot-webhook] received event=${event} id=${messageId} status=${rawStatus} conv=${body.conversation?.id}`);
+    logger.info(`[chatwoot-webhook] received event=${event} status=${rawStatus}`);
 
     if (event !== 'message_updated') {
         logger.info(`[chatwoot-webhook] ignored event type: ${event}`);
-        return;
+        return res.status(200).json({ ok: true, ignored: true });
     }
 
     if (!messageId) {
         logger.warn('[chatwoot-webhook] message_updated missing id field');
-        return;
+        return res.status(200).json({ ok: true, ignored: true });
     }
 
     const accountId = String(body.account?.id || '');
     const expectedAccountId = String(config.chatwoot?.accountId || '');
     if (expectedAccountId && accountId !== expectedAccountId) {
-        logger.warn(`[chatwoot-webhook] account mismatch: got ${accountId}, expected ${expectedAccountId}`);
-        return;
+        logger.warn('[chatwoot-webhook] account mismatch — message update ignored');
+        return res.status(200).json({ ok: true, ignored: true });
     }
 
-    const mappedStatus = CHATWOOT_STATUS_MAP[rawStatus];
+    const mappedStatus = CHATWOOT_STATUS_MAP[String(rawStatus || '').trim().toLowerCase()];
     if (!mappedStatus) {
         logger.info(`[chatwoot-webhook] unmapped status "${rawStatus}" — no update`);
-        return;
+        return res.status(200).json({ ok: true, ignored: true });
     }
 
     try {
-        const updated = await prisma.shipmentNotificationLog.updateMany({
+        const logs = await prisma.shipmentNotificationLog.findMany({
             where: { chatwootMessageId: messageId },
-            data: { status: mappedStatus, updatedAt: new Date() }
+            select: { id: true, status: true, responseJson: true }
         });
+        const timestamp = parseChatwootTimestamp(body.updated_at || body.timestamp || body.created_at);
+        const timestampIso = timestamp.toISOString();
+        const errorMessage = body.external_error || body.content_attributes?.external_error || body.errors?.[0]?.message || null;
+        let updatedCount = 0;
 
-        logger.info(`[chatwoot-webhook] message ${messageId} → ${mappedStatus} (matched ${updated.count} log rows)`);
-        if (updated.count === 0) {
-            logger.warn(`[chatwoot-webhook] no log row has chatwootMessageId=${messageId} — delivery status not tracked`);
+        for (const log of logs) {
+            if (!shouldApplyChatwootStatus(log.status, mappedStatus)) continue;
+            const responseJson = log.responseJson && typeof log.responseJson === 'object' && !Array.isArray(log.responseJson)
+                ? log.responseJson
+                : {};
+            const nextResponseJson = { ...responseJson, chatwootStatusUpdatedAt: timestampIso };
+            if (mappedStatus === 'DELIVERED') nextResponseJson.deliveredAt = responseJson.deliveredAt || timestampIso;
+            if (mappedStatus === 'READ') {
+                nextResponseJson.readAt = responseJson.readAt || timestampIso;
+                nextResponseJson.deliveredAt = responseJson.deliveredAt || timestampIso;
+            }
+
+            await prisma.shipmentNotificationLog.update({
+                where: { id: log.id },
+                data: {
+                    status: mappedStatus,
+                    responseJson: nextResponseJson,
+                    ...(mappedStatus === 'FAILED' && errorMessage ? { errorMessage: String(errorMessage).slice(0, 1000) } : {})
+                }
+            });
+            updatedCount += 1;
         }
+
+        logger.info(`[chatwoot-webhook] status=${mappedStatus} matched=${updatedCount}`);
+        if (logs.length === 0) {
+            logger.warn('[chatwoot-webhook] no notification log matched the message update');
+        }
+        return res.status(200).json({ ok: true, updated: updatedCount });
     } catch (error) {
-        logger.error(`[chatwoot-webhook] db update failed for message ${messageId}: ${error.message}`);
+        logger.error(`[chatwoot-webhook] message status update failed: ${error.message}`);
+        return res.status(500).json({ ok: false, error: 'Failed to update message status' });
     }
 };
 

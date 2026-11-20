@@ -109,7 +109,7 @@ export const AdminWhatsAppLogsPage = () => {
         totalRead: 0,
         totalFailed: 0,
         totalQueued: 0,
-        deliveryRate: 100
+        deliveryRate: 0
     });
     const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 1 });
     const [loading, setLoading] = useState(false);
@@ -191,7 +191,7 @@ export const AdminWhatsAppLogsPage = () => {
                     totalRead: 0,
                     totalFailed: 0,
                     totalQueued: 0,
-                    deliveryRate: 100
+                    deliveryRate: 0
                 });
                 setPagination(data.pagination || { page: 1, limit: 20, total: 0, pages: 1 });
             }
@@ -507,6 +507,8 @@ export const AdminWhatsAppLogsPage = () => {
                             { key: 'SENT', label: lang === 'ar' ? 'تم الإرسال' : 'Sent' },
                             { key: 'DELIVERED', label: lang === 'ar' ? 'تم التوصيل' : 'Delivered' },
                             { key: 'READ', label: lang === 'ar' ? 'تمت القراءة' : 'Read' },
+                            { key: 'QUEUED', label: lang === 'ar' ? 'في الانتظار' : 'Queued' },
+                            { key: 'SKIPPED', label: lang === 'ar' ? 'تم التخطي' : 'Skipped' },
                             { key: 'FAILED', label: lang === 'ar' ? 'فشل' : 'Failed' }
                         ].map((st) => (
                             <button

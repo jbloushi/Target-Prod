@@ -263,6 +263,21 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
             expect(axios.post).not.toHaveBeenCalled();
         });
 
+        test('uses the required approved confirmation template for sender delivery milestones', async () => {
+            const result = await chatwootService.sendShipmentNotification('out_for_delivery', makeShipment(), {
+                recipientRole: 'sender',
+                templateName: 'target_shipment_out_for_delivery'
+            });
+
+            expect(result.results[0]).toEqual(expect.objectContaining({ target: 'sender', status: 'submitted' }));
+            const messageCall = mockClientRequest.mock.calls.find(([request]) => request.method === 'post' && request.url.includes('/messages'));
+            expect(messageCall[0].data.template_params.name).toBe('shipment_confirmation_2');
+            expect(mockClientRequest).toHaveBeenCalledWith(expect.objectContaining({
+                method: 'get',
+                url: expect.stringContaining('/inboxes')
+            }));
+        });
+
         test('uses literal receiver placeholders when receiver details are absent', async () => {
             await chatwootService.sendShipmentNotification('shipment_created', makeShipment(), { recipientRole: 'sender' });
 
@@ -433,6 +448,15 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
                     api_access_token: agentToken
                 }
             }));
+        });
+
+        test('does not treat a plain-text payload as a template when template mode is requested', async () => {
+            await expect(chatwootService.sendMessage(201, {
+                message_type: 'outgoing',
+                content: 'This is plain text without a template name'
+            }, { isTemplate: true })).rejects.toThrow(/named template payload/i);
+
+            expect(mockClientRequest.mock.calls.filter(([request]) => request.method === 'post' && request.url.includes('/messages'))).toHaveLength(0);
         });
     });
 
@@ -793,6 +817,43 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
             expect(latestUpdate.provider).toBe('SHIPMENT_WHATSAPP');
             expect(latestUpdate.isFallback).toBe(false);
             expect(latestUpdate.fallbackReason).toBeNull();
+        });
+
+        test('required confirmation template fails over from Evolution text to a template-capable provider', async () => {
+            jest.spyOn(whatsAppConfigService, 'getConfig').mockResolvedValue({
+                provider: 'EVOLUTION',
+                fallbackProvider: 'SHIPMENT_WHATSAPP',
+                serviceUrl: 'https://msg.target-kw.com',
+                apiKey: 'test-api-key',
+                enabled: true
+            });
+            axios.post.mockResolvedValue({ data: { status: 'sent', messageId: 'wamid.TEMPLATE_FALLBACK' } });
+
+            const result = await whatsappService.sendNotification({
+                shipment: {
+                    id: 'shp-evolution-template',
+                    trackingNumber: 'TRG-EVOLUTION-TEMPLATE',
+                    origin: { contactPerson: 'Shipper', phone: '+96597959567' },
+                    destination: { contactPerson: 'Receiver', phone: '+96599112233' },
+                    createdAt: new Date()
+                },
+                eventType: 'delivered',
+                recipientRole: 'sender',
+                recipientPhone: '+96597959567',
+                force: true
+            });
+
+            expect(result).toEqual(expect.objectContaining({
+                status: 'SENT',
+                provider: 'SHIPMENT_WHATSAPP',
+                isFallback: true
+            }));
+            expect(axios.post).toHaveBeenCalledWith(
+                'https://msg.target-kw.com/api/send',
+                expect.objectContaining({ templateName: 'shipment_confirmation_2' }),
+                expect.any(Object)
+            );
+            expect(axios.post.mock.calls.some(([url]) => String(url).includes('evo.mawthook.io'))).toBe(false);
         });
     });
 

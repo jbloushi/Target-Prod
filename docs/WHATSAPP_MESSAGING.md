@@ -124,7 +124,7 @@ When editing a message, record a contract for each supported provider: event, te
 
 ## Queue, deduplication, and delivery state
 
-`ShipmentNotificationLog.status` is a string, and code currently writes several case/style variants, including `QUEUED`, `SENT`, `DELIVERED`, `READ`, `FAILED`, `SKIPPED`, and lowercase `submitted`/`failed`. A provider API accepting a request is not handset delivery confirmation. Read receipt webhooks can advance status to delivered/read.
+`ShipmentNotificationLog.status` is a string, and older rows may contain case/style variants, including `QUEUED`, `SENT`, `DELIVERED`, `READ`, `FAILED`, `SKIPPED`, and lowercase `submitted`/`failed`. The logs UI presents submitted/provider-accepted rows as **Sent** while explaining that a receipt is pending. A provider API accepting a request is not handset delivery confirmation. Delivery rates count receipt-confirmed deliveries and do not treat dispatched messages as delivered.
 
 The admin API can:
 
@@ -145,6 +145,8 @@ The schema's operational fields include `shipmentId`, `trackingNumber`, `eventTy
 ## Webhooks and delivery receipts
 
 `whatsappWebhook.controller.js` accepts Meta Cloud status events and several remote-microservice callback shapes, matches receipts by provider message ID, and updates log state. It also forwards receipts to `msg.target-kw.com`. This endpoint is separate from the signed Chatwoot event webhook in `integration.controller.js`.
+
+Chatwoot `message_updated` status callbacks are normalized and persisted to matching notification logs. `SENT`/`SUBMITTED` callbacks do not downgrade a delivered or read state; delivered/read timestamps are retained. If persistence fails, the webhook returns an error so the sender can retry.
 
 For a delivery investigation, record the log ID, tracking number, recipient role, provider, message ID, template, normalized status, status timestamp, and whether that value came from the provider response, webhook, or telemetry sync. Avoid recording unmasked phone numbers or raw auth headers/tokens.
 

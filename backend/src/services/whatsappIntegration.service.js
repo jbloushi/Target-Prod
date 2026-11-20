@@ -239,9 +239,9 @@ async function sendViaShipmentWhatsappMicroservice({ serviceUrl = 'https://msg.t
         if (rawData.status === 'skipped') {
             status = 'skipped';
             errorMessage = rawData.message || 'Already sent previously';
-        } else if (rawData.error) {
+        } else if (rawData.status === 'failed' || rawData.error) {
             status = 'failed';
-            errorMessage = rawData.error;
+            errorMessage = rawData.error || rawData.message || 'Microservice reported delivery failure';
         }
     }
 
@@ -1129,6 +1129,24 @@ class WhatsAppIntegrationService {
             }
         };
 
+        // Evolution's /sendText API cannot carry the approved Meta template payload.
+        // Never report or dispatch a required shipment-confirmation template as free text.
+        if (provider === 'EVOLUTION' && chosenTemplate === 'shipment_confirmation_2') {
+            const templateError = new Error('Evolution text dispatch cannot send the required approved template shipment_confirmation_2');
+            const failoverResult = await attemptProviderFailover(templateError);
+            if (failoverResult) return failoverResult;
+
+            await prisma.shipmentNotificationLog.update({
+                where: { id: log.id },
+                data: {
+                    status: 'FAILED',
+                    errorMessage: templateError.message,
+                    responseJson: { reason: 'TEMPLATE_UNSUPPORTED_BY_PROVIDER', provider }
+                }
+            });
+            throw templateError;
+        }
+
         // 1. Explicit Shipment-WhatsApp Microservice Dispatch (msg.target-kw.com)
         if (provider === 'SHIPMENT_WHATSAPP' || provider === 'TARGET_MSG') {
             const serviceUrl = settings.serviceUrl || 'https://msg.target-kw.com';
@@ -1210,6 +1228,7 @@ class WhatsAppIntegrationService {
                     }
                 }
 
+                const wasSkipped = result.status === 'SKIPPED';
                 const enrichedPayload = {
                     ...result.payload,
                     auditMetadata: {
@@ -1226,20 +1245,22 @@ class WhatsAppIntegrationService {
                 const updated = await prisma.shipmentNotificationLog.update({
                     where: { id: log.id },
                     data: {
-                        status: 'SENT',
-                        chatwootMessageId: result.messageId,
+                        status: wasSkipped ? 'SKIPPED' : 'SENT',
+                        chatwootMessageId: wasSkipped ? null : result.messageId,
                         provider: 'SHIPMENT_WHATSAPP',
                         isFallback: Boolean(isFallbackAttempt),
                         fallbackReason: isFallbackAttempt ? (incomingFallbackReason || null) : null,
+                        errorMessage: wasSkipped ? result.message : null,
                         payloadJson: enrichedPayload,
-                        responseJson: result.rawResponse
+                        responseJson: result.rawResponse,
+                        sentAt: wasSkipped ? null : new Date()
                     }
                 });
 
                 return {
-                    status: 'SENT',
+                    status: wasSkipped ? 'SKIPPED' : 'SENT',
                     logId: updated.id,
-                    externalMessageId: result.messageId,
+                    ...(!wasSkipped ? { externalMessageId: result.messageId } : { reason: result.message }),
                     provider: 'SHIPMENT_WHATSAPP',
                     isFallback: Boolean(isFallbackAttempt),
                     ...(isFallbackAttempt && incomingFallbackReason ? { fallbackReason: incomingFallbackReason } : {})
@@ -1381,28 +1402,30 @@ class WhatsAppIntegrationService {
                             }
                         }
 
+                        const fallbackWasSkipped = fallbackResult.status === 'SKIPPED';
                         await prisma.shipmentNotificationLog.update({
                             where: { id: log.id },
                             data: {
-                                status: 'SENT',
+                                status: fallbackWasSkipped ? 'SKIPPED' : 'SENT',
                                 provider: 'fallback',
                                 isFallback: true,
                                 fallbackReason,
-                                chatwootMessageId: fallbackResult.messageId,
+                                chatwootMessageId: fallbackWasSkipped ? null : fallbackResult.messageId,
+                                errorMessage: fallbackWasSkipped ? fallbackResult.message : null,
                                 payloadJson: {
                                     ...fallbackResult.payload,
                                     fallback: true,
                                     primaryError: chatwootErr.message
                                 },
                                 responseJson: fallbackResult.rawResponse,
-                                sentAt: new Date()
+                                sentAt: fallbackWasSkipped ? null : new Date()
                             }
                         });
 
                         return {
-                            status: 'SENT',
+                            status: fallbackWasSkipped ? 'SKIPPED' : 'SENT',
                             logId: log.id,
-                            externalMessageId: fallbackResult.messageId,
+                            ...(!fallbackWasSkipped ? { externalMessageId: fallbackResult.messageId } : { reason: fallbackResult.message }),
                             provider: 'fallback',
                             isFallback: true,
                             fallbackReason

@@ -8,13 +8,16 @@ import { formatExactMessageCopy } from '../AdminWhatsAppLogsPage';
 import NativeChatDrawer from '../../components/support/NativeChatDrawer';
 import ErrorBannerV2 from './components/ErrorBannerV2';
 import EmptyStateV2 from './components/EmptyStateV2';
+import { getWhatsAppLogStatusPresentation } from '../../utils/whatsappLogStatus';
 
 const STATUS_BADGE_MAP = {
     DELIVERED: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
     READ: 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800',
     SENT: 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
     QUEUED: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
-    FAILED: 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+    FAILED: 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800',
+    PENDING: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+    SKIPPED: 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
 };
 
 export const AdminWhatsAppLogsV2Page = () => {
@@ -33,7 +36,7 @@ export const AdminWhatsAppLogsV2Page = () => {
         totalRead: 0,
         totalFailed: 0,
         totalQueued: 0,
-        deliveryRate: 100
+        deliveryRate: 0
     });
     const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 1 });
     const [loading, setLoading] = useState(false);
@@ -243,6 +246,7 @@ export const AdminWhatsAppLogsV2Page = () => {
                             <option value="READ">Read</option>
                             <option value="SENT">Sent</option>
                             <option value="QUEUED">Queued</option>
+                            <option value="SKIPPED">Skipped</option>
                             <option value="FAILED">Failed</option>
                         </select>
                         <select aria-label={lang === 'ar' ? 'تصفية حسب المزود' : 'Filter by provider'} value={providerFilter} onChange={(e) => setProviderFilter(e.target.value)} className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-slate-100">
@@ -284,7 +288,8 @@ export const AdminWhatsAppLogsV2Page = () => {
                         {/* Mobile Cards (< md) */}
                         <div className="grid grid-cols-1 gap-3 md:hidden">
                             {logs.map((log) => {
-                                const st = (log.status || 'SENT').toUpperCase();
+                                const status = getWhatsAppLogStatusPresentation(log.status, lang);
+                                const st = status.badgeKey;
                                 return (
                                     <div key={log.id} className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-4 shadow-2xs space-y-2.5">
                                         <div className="flex items-start justify-between gap-2">
@@ -292,8 +297,8 @@ export const AdminWhatsAppLogsV2Page = () => {
                                                 <div className="font-mono font-bold text-xs text-primary truncate" dir="ltr">{log.recipientPhone || '—'}</div>
                                                 <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{log.templateName || 'notification'}</div>
                                             </div>
-                                            <span className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold shrink-0 ${STATUS_BADGE_MAP[st] || STATUS_BADGE_MAP.SENT}`}>
-                                                {st}
+                                            <span title={status.title} className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold shrink-0 ${STATUS_BADGE_MAP[st] || STATUS_BADGE_MAP.SENT}`}>
+                                                {status.label}
                                             </span>
                                         </div>
                                         <div className="text-[11px] font-mono text-slate-600 dark:text-slate-400 flex flex-wrap justify-between gap-2 min-w-0" dir="ltr">
@@ -335,7 +340,8 @@ export const AdminWhatsAppLogsV2Page = () => {
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                                         {logs.map((log) => {
-                                            const st = (log.status || 'SENT').toUpperCase();
+                                            const status = getWhatsAppLogStatusPresentation(log.status, lang);
+                                            const st = status.badgeKey;
                                             return (
                                                 <tr key={log.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                                                     <td className="px-4 py-3">
@@ -348,8 +354,8 @@ export const AdminWhatsAppLogsV2Page = () => {
                                                     </td>
                                                     <td className="px-4 py-3 font-mono font-semibold text-slate-700 dark:text-slate-300" dir="ltr">{log.provider || 'MSG'}</td>
                                                     <td className="px-4 py-3">
-                                                        <span className={`inline-flex px-2 py-0.5 rounded-lg border text-[11px] font-bold ${STATUS_BADGE_MAP[st] || STATUS_BADGE_MAP.SENT}`}>
-                                                            {st}
+                                                        <span title={status.title} className={`inline-flex px-2 py-0.5 rounded-lg border text-[11px] font-bold ${STATUS_BADGE_MAP[st] || STATUS_BADGE_MAP.SENT}`}>
+                                                            {status.label}
                                                         </span>
                                                     </td>
                                                     <td className="px-4 py-3 font-mono text-[11px] text-slate-600 dark:text-slate-400 tabular-nums" dir="ltr">
