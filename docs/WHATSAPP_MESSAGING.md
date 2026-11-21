@@ -161,3 +161,7 @@ For a delivery investigation, record the log ID, tracking number, recipient role
 ## Primary code tests
 
 Relevant existing test files include `backend/__tests__/chatwootOutboundDispatch.test.js`, `backend/__tests__/chatwootCrmSync.test.js`, `backend/__tests__/whatsappTemplateCatalogParity.test.js`, `backend/__tests__/whatsappTemplateCatalogAdversarial.test.js`, `backend/__tests__/whatsappRouter.test.js`, `backend/__tests__/whatsappRouterAdversarial.test.js`, and `backend/__tests__/whatsappChatwootGpsParity.test.js`. Read their assertions before changing behavior. This audit did not run tests.
+
+### Authentication button parameters
+
+The `otptargetlogin` send payload supplies the same OTP string in `processed_params.body["1"]` and `processed_params.buttons[0]` (`type: "url"`, `parameter: otp`). Chatwoot translates the latter into the Meta authentication button component. A Copy Code button can require this URL subtype at the send API level; error 131008 about a missing URL button parameter is not, on its own, evidence that the approved template needs replacing. Preserve leading zeroes. Chatwoot acceptance is reported as `SUBMITTED`, not proof of delivery. Never log these parameter values.

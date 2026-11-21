@@ -207,6 +207,24 @@ describe('Milestone 4: Chatwoot Outbound WhatsApp Dispatch, 24h Window & Fallbac
         appConfig.chatwoot.apiAccessToken = undefined;
     });
 
+    test('OTP supplies the body and index-zero authentication button and reports submission only', async () => {
+        jest.spyOn(chatwootService, 'refreshDbCredentialsIfNeeded').mockResolvedValue();
+        mockInboxTemplates.push({ name: 'otptargetlogin', status: 'APPROVED', language: 'en_US' });
+        const result = await whatsappService.sendAuthOtp({ phone: '+96599112233', name: 'Test', otp: '012345' });
+        expect(result.status).toBe('SUBMITTED');
+        expect(mockMessages).toHaveLength(1);
+        expect(mockMessages[0].data.template_params).toMatchObject({
+            name: 'otptargetlogin',
+            category: 'AUTHENTICATION',
+            language: 'en_US',
+            processed_params: {
+                body: { '1': '012345' },
+                buttons: [{ type: 'url', parameter: '012345' }]
+            }
+        });
+        expect(mockMessages[0].data.content).not.toContain('012345');
+    });
+
     describe('approved shipment confirmation routing', () => {
         const makeShipment = (destination = {}) => ({
             id: 'confirmation-test-shipment',

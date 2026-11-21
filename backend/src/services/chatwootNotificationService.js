@@ -1659,7 +1659,12 @@ class ChatwootNotificationService {
                 name: 'otptargetlogin',
                 category: 'AUTHENTICATION',
                 language: 'en_US',
-                processed_params: { body: { '1': String(otp) } },
+                // Authentication Copy Code buttons require the code as a URL-button
+                // parameter in the Meta send API; Chatwoot reads it from this array.
+                processed_params: {
+                    body: { '1': String(otp) },
+                    buttons: [{ type: 'url', parameter: String(otp) }]
+                },
                 parameters: [String(otp)]
             }
         };

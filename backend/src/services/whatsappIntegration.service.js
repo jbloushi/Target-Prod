@@ -1907,7 +1907,7 @@ www.target-kw.com | +965 6965 6563`;
         if (provider === 'CHATWOOT') {
             try {
                 const result = await chatwootService.sendDirectOtp({ phone: resolvedPhone, name, otp });
-                if (result) return { ...result, status: 'SENT', provider: 'CHATWOOT', templateName };
+                if (result) return { ...result, status: String(result.status || '').toLowerCase() === 'failed' ? 'FAILED' : 'SUBMITTED', provider: 'CHATWOOT', templateName };
                 throw new Error('Inbox authentication template dispatch returned no message');
             } catch (inboxErr) {
                 logger.warn(`[WhatsApp OTP Inbox Template Error] ${inboxErr.message}`);
@@ -2032,7 +2032,7 @@ www.target-kw.com | +965 6965 6563`;
 
         if (fallbackProvider === 'CHATWOOT' && provider !== 'CHATWOOT') {
             const result = await chatwootService.sendDirectOtp({ phone: resolvedPhone, name, otp });
-            if (result) return { ...result, status: 'SENT', provider: 'CHATWOOT', templateName };
+            if (result) return { ...result, status: String(result.status || '').toLowerCase() === 'failed' ? 'FAILED' : 'SUBMITTED', provider: 'CHATWOOT', templateName };
         }
 
         // Evolution /sendText and free-text Chatwoot/direct sends are not approved OTP templates.

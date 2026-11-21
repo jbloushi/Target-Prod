@@ -229,11 +229,11 @@ exports.requestOtp = async (req, res) => {
             });
         }
 
-        logger.info(`[Auth OTP Generated] Verification code issued for mobile ending ${cleanDigits.slice(-4)}`);
+        logger.info(`[Auth OTP Submitted] Verification request accepted for mobile ending ${cleanDigits.slice(-4)}`);
 
         return res.status(200).json({
             success: true,
-            message: `Verification code sent to registered mobile number ending in ${cleanDigits.slice(-4)}`,
+            message: `Verification code requested for registered mobile number ending in ${cleanDigits.slice(-4)}`,
             devOtp: process.env.NODE_ENV !== 'production' ? otp : undefined
         });
     } catch (error) {
