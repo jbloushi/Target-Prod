@@ -7,6 +7,7 @@ import { useSupportChat } from '../../context/SupportChatContext';
 const APPROVED_META_TEMPLATES = [
     {
         name: 'customer_inquiry_start',
+        fields: [{ key: 'customer', labelEn: 'Customer name', labelAr: 'اسم العميل', defaultValue: 'contact' }, { key: 'shipment', labelEn: 'Shipment number', labelAr: 'رقم الشحنة', defaultValue: 'tracking' }],
         titleEn: 'Customer Support Engagement (General)',
         titleAr: 'بدء استفسار دعم العملاء',
         bodyEn: 'Hello {{1}}, we are contacting you regarding your Target Logistics shipment {{2}}. How can we assist you today?',
@@ -14,6 +15,7 @@ const APPROVED_META_TEMPLATES = [
     },
     {
         name: 'location_request_v1',
+        fields: [{ key: 'customer', labelEn: 'Customer name', labelAr: 'اسم العميل', defaultValue: 'contact' }, { key: 'shipment', labelEn: 'Shipment number', labelAr: 'رقم الشحنة', defaultValue: 'tracking' }],
         titleEn: 'Request GPS Location Pin (Delivery)',
         titleAr: 'طلب تحديد موقع التوصيل (GPS Pin)',
         bodyEn: 'Hello {{1}}, your shipment {{2}} is out for delivery. Please tap below to confirm your exact delivery map pin location.',
@@ -21,6 +23,7 @@ const APPROVED_META_TEMPLATES = [
     },
     {
         name: 'payment_request_v1',
+        fields: [{ key: 'customer', labelEn: 'Customer name', labelAr: 'اسم العميل', defaultValue: 'contact' }, { key: 'shipment', labelEn: 'Shipment number', labelAr: 'رقم الشحنة', defaultValue: 'tracking' }, { key: 'amount', labelEn: 'Amount', labelAr: 'المبلغ', defaultValue: '' }],
         titleEn: 'Payment Request & Checkout Link',
         titleAr: 'رابط دفع وتأكيد الفاتورة',
         bodyEn: 'Hello {{1}}, your invoice for shipment {{2}} is ready (Amount: {{3}}). Please complete payment via our secure portal.',
@@ -28,6 +31,7 @@ const APPROVED_META_TEMPLATES = [
     },
     {
         name: 'target_documents_needed',
+        fields: [{ key: 'customer', labelEn: 'Customer name', labelAr: 'اسم العميل', defaultValue: 'contact' }, { key: 'shipment', labelEn: 'Shipment number', labelAr: 'رقم الشحنة', defaultValue: 'tracking' }],
         titleEn: 'Customs Documents Required (Civil ID)',
         titleAr: 'طلب مستندات جمركية (البطاقة المدنية)',
         bodyEn: 'Dear {{1}}, customs clearance for shipment {{2}} requires a copy of your Civil ID. Please share a photo or scan.',
@@ -35,6 +39,7 @@ const APPROVED_META_TEMPLATES = [
     },
     {
         name: 'target_shipment_out_for_delivery',
+        fields: [{ key: 'customer', labelEn: 'Customer name', labelAr: 'اسم العميل', defaultValue: 'contact' }, { key: 'shipment', labelEn: 'Shipment number', labelAr: 'رقم الشحنة', defaultValue: 'tracking' }, { key: 'courier', labelEn: 'Courier', labelAr: 'المندوب', defaultValue: '' }, { key: 'destination', labelEn: 'Destination', labelAr: 'الوجهة', defaultValue: 'destination' }],
         titleEn: 'Out for Delivery Notice',
         titleAr: 'إشعار الخروج للتوصيل',
         bodyEn: 'Hello {{1}}, parcel {{2}} is with your courier {{3}} and out for delivery today to {{4}}.',
@@ -42,6 +47,7 @@ const APPROVED_META_TEMPLATES = [
     },
     {
         name: 'target_delivery_attempt',
+        fields: [{ key: 'customer', labelEn: 'Customer name', labelAr: 'اسم العميل', defaultValue: 'contact' }, { key: 'shipment', labelEn: 'Shipment number', labelAr: 'رقم الشحنة', defaultValue: 'tracking' }],
         titleEn: 'Delivery Reschedule Notice',
         titleAr: 'إشعار محاولة تسليم وإعادة جدولة',
         bodyEn: 'Hello {{1}}, we attempted delivery of {{2}} today but could not reach you. Please reply to reschedule delivery.',
@@ -49,6 +55,7 @@ const APPROVED_META_TEMPLATES = [
     },
     {
         name: 'target_customs_exception_hold',
+        fields: [{ key: 'shipment', labelEn: 'Shipment number', labelAr: 'رقم الشحنة', defaultValue: 'tracking' }, { key: 'location', labelEn: 'Customs location', labelAr: 'موقع الجمارك', defaultValue: 'destination' }, { key: 'reason', labelEn: 'Hold reason', labelAr: 'سبب الإيقاف', defaultValue: '' }],
         titleEn: 'Customs Hold Alert',
         titleAr: 'إشعار احتجاز جمركي',
         bodyEn: 'Notice: Shipment {{1}} is currently on hold at customs clearance in {{2}}. Reason: {{3}}.',
@@ -75,7 +82,7 @@ export const ReplyComposer = ({
     const [freeText, setFreeText] = useState(draftText || '');
     const [isPrivate, setIsPrivate] = useState(false);
     const [selectedTemplateName, setSelectedTemplateName] = useState('customer_inquiry_start');
-    const [customParam, setCustomParam] = useState('');
+    const [templateValues, setTemplateValues] = useState({});
     const [sendError, setSendError] = useState(null);
 
     // Synchronize draftText changes
@@ -117,12 +124,7 @@ export const ReplyComposer = ({
         try {
             if (!isPrivate && (composerMode === 'template' || !windowStatus.inside24hWindow)) {
                 const tmpl = APPROVED_META_TEMPLATES.find(t => t.name === selectedTemplateName) || APPROVED_META_TEMPLATES[0];
-                const params = [
-                    customerName,
-                    trackingNumber,
-                    customParam || activeShipment?.destination || 'Kuwait',
-                    'Target Courier'
-                ];
+                const params = currentTemplate.fields.map(field => templateValuesForCurrent[field.key].trim());
 
                 await sendMessage({
                     content: isRTL ? tmpl.bodyAr : tmpl.bodyEn,
@@ -155,11 +157,19 @@ export const ReplyComposer = ({
     };
 
     const currentTemplate = APPROVED_META_TEMPLATES.find(t => t.name === selectedTemplateName) || APPROVED_META_TEMPLATES[0];
+    const defaultTemplateValue = (field) => {
+        if (field.defaultValue === 'contact') return customerName;
+        if (field.defaultValue === 'tracking') return trackingNumber;
+        if (field.defaultValue === 'destination') return activeShipment?.destination || '';
+        return '';
+    };
+    const templateValuesForCurrent = Object.fromEntries(currentTemplate.fields.map(field => [
+        field.key,
+        templateValues[`${currentTemplate.name}:${field.key}`] ?? defaultTemplateValue(field)
+    ]));
     const previewBody = (isRTL ? currentTemplate.bodyAr : currentTemplate.bodyEn)
-        .replace('{{1}}', customerName)
-        .replace('{{2}}', trackingNumber)
-        .replace('{{3}}', customParam || 'Kuwait')
-        .replace('{{4}}', 'Kuwait');
+        .replace(/{{(\d+)}}/g, (_, index) => templateValuesForCurrent[currentTemplate.fields[Number(index) - 1]?.key] || `[${currentTemplate.fields[Number(index) - 1]?.labelEn || 'value'}]`);
+    const templateValuesComplete = currentTemplate.fields.every(field => String(templateValuesForCurrent[field.key] || '').trim());
 
     return (
         <div data-testid="reply-composer-pane" className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 space-y-2 shrink-0">
@@ -337,40 +347,35 @@ export const ReplyComposer = ({
                         </select>
                     </div>
 
-                    {/* Template Parameter Input if needed */}
-                    <div className="space-y-1 min-w-0">
-                        <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block">
-                            {isRTL ? 'تفاصيل إضافية (اختياري)' : 'Optional details'}
-                        </label>
-                        <input
-                            type="text"
-                            data-testid="template-custom-param-input"
-                            value={customParam}
-                            onChange={(e) => setCustomParam(e.target.value)}
-                            placeholder={isRTL ? 'مثال: رابط الدفع، اسم المنطقة، أو ملاحظة...' : 'e.g. Payment URL, area name, or custom note...'}
-                            className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                        />
-                    </div>
                     </div>
 
-                    <details className="group">
-                        <summary className="inline-flex items-center gap-1 min-h-8 cursor-pointer text-[11px] font-bold text-primary">
-                            <span className="material-symbols-outlined text-sm" aria-hidden="true">preview</span>
-                            <span>{isRTL ? 'معاينة القالب' : 'Preview template'}</span>
-                            <span className="material-symbols-outlined text-sm transition-transform group-open:rotate-180" aria-hidden="true">expand_more</span>
-                        </summary>
-                        <div className="p-2.5 rounded-lg bg-primary/5 dark:bg-primary/10 border border-primary/20 mt-1">
-                            <p className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed font-medium whitespace-pre-wrap">
-                                {previewBody}
-                            </p>
-                        </div>
-                    </details>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" data-testid="template-value-inputs">
+                        {currentTemplate.fields.map(field => (
+                            <label key={field.key} className="space-y-1 min-w-0">
+                                <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300">{isRTL ? field.labelAr : field.labelEn}</span>
+                                <input
+                                    type="text"
+                                    data-testid={`template-value-${field.key}`}
+                                    value={templateValuesForCurrent[field.key]}
+                                    onChange={(event) => setTemplateValues(values => ({ ...values, [`${currentTemplate.name}:${field.key}`]: event.target.value }))}
+                                    disabled={!hasChatwootToken || sendingMessage}
+                                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-50"
+                                />
+                            </label>
+                        ))}
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-primary/5 dark:bg-primary/10 border border-primary/20" data-testid="template-preview">
+                        <div className="text-[10px] uppercase tracking-wide text-primary font-bold mb-1">{isRTL ? 'معاينة الرسالة' : 'Message preview'}</div>
+                        <p className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed font-medium whitespace-pre-wrap">{previewBody}</p>
+                    </div>
+
 
                     <div className="flex justify-end">
                         <button
                             type="submit"
                             data-testid="send-template-btn"
-                            disabled={!hasChatwootToken || sendingMessage}
+                            disabled={!hasChatwootToken || sendingMessage || !templateValuesComplete}
                             className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-bold shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {sendingMessage ? (
