@@ -165,3 +165,7 @@ Relevant existing test files include `backend/__tests__/chatwootOutboundDispatch
 ### Authentication button parameters
 
 The `otptargetlogin` send payload supplies the same OTP string in `processed_params.body["1"]` and `processed_params.buttons[0]` (`type: "url"`, `parameter: otp`). Chatwoot translates the latter into the Meta authentication button component. A Copy Code button can require this URL subtype at the send API level; error 131008 about a missing URL button parameter is not, on its own, evidence that the approved template needs replacing. Preserve leading zeroes. Chatwoot acceptance is reported as `SUBMITTED`, not proof of delivery. Never log these parameter values.
+
+### Personal Inbox reply availability
+
+Login and `/api/users/me` expose `hasChatwootToken`, a boolean indicating whether the current user has a stored personal Inbox token. The reply composer uses this flag rather than expecting the credential in browser state. Manual sends still validate and decrypt the actual personal token on the server. A configured flag does not prove that the remote credential remains valid.

@@ -90,13 +90,8 @@ export const ReplyComposer = ({
     const trackingNumber = activeShipment?.trackingNumber || 'TRG-KW-001';
     const customerName = activeConv?.contact?.name || 'Customer';
 
-    // Per-Agent Inbox Personal Access Token Check
-    // If user has no token configured (indicated by user.chatwootAccessToken null or user.hasChatwootToken false)
-    const hasChatwootToken = Boolean(
-        user?.chatwootAccessToken !== null &&
-        user?.chatwootAccessToken !== undefined &&
-        user?.chatwootAccessToken !== ''
-    );
+    // The API exposes configuration state, never the personal token itself.
+    const hasChatwootToken = user?.hasChatwootToken === true;
 
     // If 24h window expires, enforce template mode automatically
     useEffect(() => {

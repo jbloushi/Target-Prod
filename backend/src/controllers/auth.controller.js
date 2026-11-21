@@ -24,6 +24,8 @@ const signToken = (id) => {
 const createSendToken = (user, statusCode, res) => {
     const token = signToken(user.id);
 
+    user.hasChatwootToken = Boolean(user.chatwootAccessToken);
+
     // Remove sensitive fields from memory/output
     delete user.password;
     delete user.apiKeyHash;

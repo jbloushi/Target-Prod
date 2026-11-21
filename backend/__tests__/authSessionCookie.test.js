@@ -11,6 +11,7 @@ jest.mock('../src/utils/security', () => ({
 
 const { prisma } = require('../src/config/database');
 const { comparePassword } = require('../src/utils/security');
+const userController = require('../src/controllers/user.controller');
 const authController = require('../src/controllers/auth.controller');
 
 describe('browser auth session issuance', () => {
@@ -47,6 +48,22 @@ describe('browser auth session issuance', () => {
         }));
         const response = res.json.mock.calls[0][0];
         expect(response.token).toBeUndefined();
+        expect(response.data.user.hasChatwootToken).toBe(true);
+        expect(response.data.user.chatwootAccessToken).toBeUndefined();
+        expect(JSON.stringify(response)).not.toContain('chatwoot-secret');
         expect(JSON.stringify(response)).not.toContain('session-cookie-test-secret');
+    });
+});
+
+describe('Inbox token configuration flag on session refresh', () => {
+    it.each([['encrypted-secret', true], [null, false]])('reports configuration without returning staff credentials', async (storedToken, configured) => {
+        prisma.user.findUnique.mockResolvedValue({ id: 'staff-1', role: 'staff', chatwootAccessToken: storedToken });
+        const res = createMockRes();
+        await userController.getMe({ user: { id: 'staff-1', role: 'staff' } }, res);
+        expect(res.status).toHaveBeenCalledWith(200);
+        const user = res.json.mock.calls[0][0].data;
+        expect(user.hasChatwootToken).toBe(configured);
+        expect(user.chatwootAccessToken).toBeUndefined();
+        expect(JSON.stringify(user)).not.toContain('encrypted-secret');
     });
 });

@@ -628,6 +628,7 @@ exports.getMe = async (req, res) => {
         const isAdmin = req.user?.role === 'admin';
         const mappedUser = {
             ...user,
+            hasChatwootToken: Boolean(user.chatwootAccessToken),
             markup: user.agentPolicy?.markupOverride || { type: 'PERCENTAGE', percentageValue: 15, flatValue: 0 },
             optionalServiceMarkup: user.agentPolicy?.optionalServiceMarkup || {},
             creditLimit: user.organization?.creditLimit !== undefined ? user.organization.creditLimit : (user.creditLimit || 0)
