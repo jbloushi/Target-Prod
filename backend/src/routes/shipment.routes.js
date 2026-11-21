@@ -6,7 +6,7 @@ const shipmentBookingController = require('../controllers/shipment-booking.contr
 const { check } = require('express-validator');
 const logger = require('../utils/logger');
 const authController = require('../controllers/auth.controller');
-const { authorize } = require('../middleware/authorize.middleware');
+const { authorize, authorizeAny } = require('../middleware/authorize.middleware');
 const { requireIdempotency } = require('../middleware/idempotency.middleware');
 const { SHIPMENT_STATUSES } = require('../constants/statusConstants');
 
@@ -346,7 +346,7 @@ router.post(
 
 router.post(
   '/:trackingNumber/target-receipt/generate',
-  authorize('BOOK_CARRIERS'),
+  authorizeAny('VIEW_DOCUMENTS', 'VIEW_OWN_SHIPMENTS'),
   [
     param('trackingNumber').isString().notEmpty().withMessage('Valid tracking number is required'),
     validate

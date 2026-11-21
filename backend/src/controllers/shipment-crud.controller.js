@@ -798,6 +798,20 @@ exports.getShipmentByTrackingNumber = async (req, res) => {
             return res.status(403).json({ success: false, error: 'Permission denied' });
         }
 
+        // Replace legacy customer receipts when a shipment is first viewed after the
+        // branded receipt rollout. This PDF contains billed charges only, never carrier cost.
+        try {
+            const { generateAndAttachTargetShipmentReceipt } = require('../services/targetShipmentReceipt.service');
+            const code = String(shipment.carrierCode || shipment.carrier || 'INTERNAL').toUpperCase();
+            const carrierName = code === 'DGR'
+                ? 'DHL Express'
+                : (['INTERNAL', 'MANUAL'].includes(code) ? 'Target Logistics' : code);
+            const refreshedShipment = await generateAndAttachTargetShipmentReceipt(shipment, carrierName);
+            if (refreshedShipment?.documents !== undefined) shipment.documents = refreshedShipment.documents;
+        } catch (receiptError) {
+            logger.warn(`Target receipt refresh skipped for ${shipment.trackingNumber}: ${receiptError.message}`);
+        }
+
         // Auto-heal missing URLs from documents array if present
         if (Array.isArray(shipment.documents)) {
             if (!shipment.invoiceUrl) {

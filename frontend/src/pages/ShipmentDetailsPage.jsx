@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useSnackbar } from 'notistack';
 import { financeService, integrationService, shipmentService, userService, whatsappService } from '../services/api';
-import api from '../services/api';
+import api, { BACKEND_URL } from '../services/api';
 import {
     STATUS_ORDER, STATUS_LABELS, INTERNAL_SHIPMENT_STATUSES, getStepIndex, normalizeStatus, isStatusAhead, isNegativeOrExceptionPhrase
 } from '../constants/statusConfig';
@@ -1066,7 +1066,12 @@ const ShipmentDetailsPage = () => {
     };
 
     const handleGenerateTargetReceipt = async () => {
-        if (!shipment?.trackingNumber) return;
+        if (!user || !shipment?.trackingNumber) return;
+        const receiptWindow = window.open('about:blank', '_blank');
+        if (!receiptWindow) {
+            enqueueSnackbar(isRTL ? 'يرجى السماح بالنوافذ المنبثقة لعرض الإيصال' : 'Allow pop-ups to open the receipt', { variant: 'warning' });
+            return;
+        }
         setIsGeneratingTargetReceipt(true);
         try {
             const res = await shipmentService.generateTargetShipmentReceipt(shipment.trackingNumber, { force: true });
@@ -1074,8 +1079,10 @@ const ShipmentDetailsPage = () => {
             await getShipment(shipment.trackingNumber);
             if (!receiptUrl) throw new Error('Receipt URL was not returned by the server');
             enqueueSnackbar(isRTL ? 'تم توليد إيصال الشحنة بنجاح' : 'Target shipment receipt generated', { variant: 'success' });
-            handleOpenPdf(receiptUrl);
+            const finalUrl = receiptUrl.startsWith('http') ? receiptUrl : `${BACKEND_URL}${receiptUrl.startsWith('/') ? '' : '/'}${receiptUrl}`;
+            receiptWindow.location = finalUrl;
         } catch (err) {
+            receiptWindow.close();
             enqueueSnackbar(err.response?.data?.error || err.response?.data?.message || err.message || 'Failed generating Target receipt', { variant: 'error' });
         } finally {
             setIsGeneratingTargetReceipt(false);
@@ -1235,7 +1242,7 @@ const ShipmentDetailsPage = () => {
     const resolvedCarrierReceipt = extractDocUrl(carrierReceiptDoc);
     const resolvedTargetReceipt = extractDocUrl(targetReceiptDoc);
     const canGenerateCarrierDocs = isStaff && (!resolvedCarrierAwb || (hideCustomsInvoice ? !resolvedCarrierReceipt : !resolvedCarrierInvoice));
-    const canGenerateTargetReceipt = isStaff && (typeof can !== 'function' || can('BOOK_CARRIERS'));
+    const canGenerateTargetReceipt = Boolean(user);
 
     const statusEditOptions = getAllowedStatusOptions(user, shipment);
 
@@ -2406,9 +2413,9 @@ const ShipmentDetailsPage = () => {
                                      </p>
                                  </div>
                                  {resolvedTargetReceipt ? (
-                                     <button onClick={() => handleOpenPdf(resolvedTargetReceipt)} className="btn btn-outline btn-xs font-bold rounded-lg w-full gap-1">
+                                     <button onClick={handleGenerateTargetReceipt} disabled={isGeneratingTargetReceipt} className="btn btn-outline btn-xs font-bold rounded-lg w-full gap-1 disabled:opacity-50">
                                          <span className="material-symbols-outlined text-[12px]">print</span>
-                                         {isRTL ? 'طباعة الإيصال' : 'Print Receipt'}
+                                         {isGeneratingTargetReceipt ? (isRTL ? 'جاري تجهيز الإيصال...' : 'Preparing receipt…') : (isRTL ? 'تحديث وطباعة الإيصال' : 'Refresh & Print Receipt')}
                                      </button>
                                  ) : canGenerateTargetReceipt ? (
                                      <button onClick={handleGenerateTargetReceipt} disabled={isGeneratingTargetReceipt} className="btn btn-outline btn-xs font-bold rounded-lg w-full gap-1">

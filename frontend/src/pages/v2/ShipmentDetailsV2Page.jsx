@@ -266,7 +266,12 @@ export const ShipmentDetailsV2Page = () => {
     };
 
     const handleGenerateTargetReceipt = async () => {
-        if (!isPlatformOps || !canBookCarriers || !shipment?.trackingNumber) return;
+        if (!user || !shipment?.trackingNumber) return;
+        const receiptWindow = window.open('about:blank', '_blank');
+        if (!receiptWindow) {
+            enqueueSnackbar(isRTL ? 'يرجى السماح بالنوافذ المنبثقة لعرض الإيصال' : 'Allow pop-ups to open the receipt', { variant: 'warning' });
+            return;
+        }
         setIsGeneratingTargetReceipt(true);
         try {
             const res = await shipmentService.generateTargetShipmentReceipt(shipment.trackingNumber, { force: true });
@@ -274,8 +279,10 @@ export const ShipmentDetailsV2Page = () => {
             await loadShipmentData();
             if (!receiptUrl) throw new Error('Receipt URL was not returned by the server');
             enqueueSnackbar(isRTL ? 'تم توليد إيصال الشحنة بنجاح' : 'Target shipment receipt generated', { variant: 'success' });
-            handleOpenPdf(receiptUrl);
+            const finalUrl = receiptUrl.startsWith('http') ? receiptUrl : `${BACKEND_URL}${receiptUrl.startsWith('/') ? '' : '/'}${receiptUrl}`;
+            receiptWindow.location = finalUrl;
         } catch (err) {
+            receiptWindow.close();
             enqueueSnackbar(err?.response?.data?.error || err?.response?.data?.message || err?.message || 'Failed generating Target receipt', { variant: 'error' });
         } finally {
             setIsGeneratingTargetReceipt(false);
@@ -1030,10 +1037,10 @@ export const ShipmentDetailsV2Page = () => {
                                                 <div className="text-[11px] text-slate-500 dark:text-slate-400">{resolvedTargetReceipt ? (isRTL ? 'جاهز' : 'Ready') : (isRTL ? 'قيد الانتظار' : 'Pending')}</div>
                                             </div>
                                             {resolvedTargetReceipt ? (
-                                                <button type="button" onClick={() => handleOpenPdf(resolvedTargetReceipt)} className="min-h-[36px] rounded-lg border border-slate-300 dark:border-slate-600 text-xs font-bold cursor-pointer">
-                                                    {isRTL ? 'طباعة الإيصال' : 'Print Receipt'}
+                                                <button type="button" onClick={handleGenerateTargetReceipt} disabled={isGeneratingTargetReceipt} className="min-h-[36px] rounded-lg border border-slate-300 dark:border-slate-600 text-xs font-bold cursor-pointer disabled:opacity-50">
+                                                    {isGeneratingTargetReceipt ? (isRTL ? 'جارٍ تجهيز الإيصال...' : 'Preparing receipt...') : (isRTL ? 'تحديث وطباعة الإيصال' : 'Refresh & Print Receipt')}
                                                 </button>
-                                            ) : (isPlatformOps && canBookCarriers) ? (
+                                            ) : user ? (
                                                 <button type="button" onClick={handleGenerateTargetReceipt} disabled={isGeneratingTargetReceipt} className="min-h-[36px] rounded-lg border border-slate-300 dark:border-slate-600 text-xs font-bold cursor-pointer disabled:opacity-50">
                                                     {isGeneratingTargetReceipt ? (isRTL ? 'جارٍ التوليد...' : 'Generating...') : (isRTL ? 'توليد الإيصال' : 'Generate Receipt')}
                                                 </button>
