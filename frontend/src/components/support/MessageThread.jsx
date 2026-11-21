@@ -235,7 +235,8 @@ export const MessageThread = ({ conversation, onToggleContext }) => {
                                             {formatMessageTime(msg.createdAt)}
                                         </span>
                                     </div>
-                                    <p className="text-xs whitespace-pre-wrap">{msg.content}</p>
+                                    <p className="text-[11px] font-semibold">{msg.sender?.name || (isRTL ? 'فريق العمل' : 'Staff')}</p>
+                                    <p className="text-xs whitespace-pre-wrap break-words">{msg.content}</p>
                                 </div>
                             );
                         }

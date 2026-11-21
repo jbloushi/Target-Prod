@@ -93,12 +93,12 @@ export const ReplyComposer = ({
     // The API exposes configuration state, never the personal token itself.
     const hasChatwootToken = user?.hasChatwootToken === true;
 
-    // If 24h window expires, enforce template mode automatically
+    // Public replies require templates after expiry; private notes remain available.
     useEffect(() => {
-        if (!windowStatus.inside24hWindow) {
+        if (!windowStatus.inside24hWindow && !isPrivate) {
             setComposerMode('template');
         }
-    }, [windowStatus.inside24hWindow]);
+    }, [windowStatus.inside24hWindow, isPrivate]);
 
     if (!activeConv) return null;
 
@@ -115,7 +115,7 @@ export const ReplyComposer = ({
         }
 
         try {
-            if (composerMode === 'template' || !windowStatus.inside24hWindow) {
+            if (!isPrivate && (composerMode === 'template' || !windowStatus.inside24hWindow)) {
                 const tmpl = APPROVED_META_TEMPLATES.find(t => t.name === selectedTemplateName) || APPROVED_META_TEMPLATES[0];
                 const params = [
                     customerName,
@@ -193,7 +193,7 @@ export const ReplyComposer = ({
             )}
 
             {/* Outside 24h Window Forced Template Banner */}
-            {!windowStatus.inside24hWindow && (
+            {!windowStatus.inside24hWindow && !isPrivate && (
                 <div
                     data-testid="window-expired-composer-banner"
                     className="px-2.5 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 flex items-center gap-2 text-[11px]"
@@ -205,14 +205,15 @@ export const ReplyComposer = ({
                 </div>
             )}
 
-            {/* Mode Switcher Tabs (Only available if inside 24h window) */}
-            {windowStatus.inside24hWindow && (
+            {/* Public reply modes and always-available private notes */}
+            {(
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="inline-flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200/80 dark:border-slate-700 text-xs font-bold">
                         <button
                             type="button"
                             data-testid="composer-mode-free"
-                            onClick={() => setComposerMode('free')}
+                            disabled={!windowStatus.inside24hWindow}
+                            onClick={() => { setIsPrivate(false); setComposerMode('free'); }}
                             aria-pressed={composerMode === 'free'}
                             className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
                                 composerMode === 'free'
@@ -226,7 +227,7 @@ export const ReplyComposer = ({
                         <button
                             type="button"
                             data-testid="composer-mode-template"
-                            onClick={() => setComposerMode('template')}
+                            onClick={() => { setIsPrivate(false); setComposerMode('template'); }}
                             aria-pressed={composerMode === 'template'}
                             className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
                                 composerMode === 'template'
@@ -239,14 +240,14 @@ export const ReplyComposer = ({
                         </button>
                     </div>
 
-                    {/* Private Staff Note toggle in free text mode */}
-                    {composerMode === 'free' && (
+                    {/* Private notes are independent of the WhatsApp reply window. */}
+                    {(
                         <label className="cursor-pointer inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 select-none">
                             <input
                                 type="checkbox"
                                 data-testid="private-note-toggle"
                                 checked={isPrivate}
-                                onChange={(e) => setIsPrivate(e.target.checked)}
+                                onChange={(e) => { setIsPrivate(e.target.checked); if (e.target.checked) setComposerMode('free'); }}
                                 className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 accent-amber-500 cursor-pointer"
                             />
                             <span className="text-[11px] font-semibold flex items-center gap-1">
@@ -259,7 +260,7 @@ export const ReplyComposer = ({
             )}
 
             {/* Mode A: Free Text Composer */}
-            {composerMode === 'free' && windowStatus.inside24hWindow ? (
+            {isPrivate || (composerMode === 'free' && windowStatus.inside24hWindow) ? (
                 <form onSubmit={handleSend} className="space-y-2">
                     <div className="relative">
                         <textarea

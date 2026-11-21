@@ -1469,8 +1469,8 @@ class ChatwootNotificationService {
             throw new Error('Template dispatch requires a named template payload');
         }
 
-        // Enforce 24-hour window for free-text messages
-        if (!isTemplate && !options.skipWindowCheck) {
+        // Internal notes stay in Inbox and do not use the WhatsApp reply window.
+        if (!isTemplate && payload?.private !== true && !options.skipWindowCheck) {
             const windowStatus = await this.checkCustomer24hWindow(conversationId, options);
             if (!windowStatus.inside24hWindow) {
                 const err = new Error('Free-text messages are prohibited outside the 24-hour customer service window. An approved Meta template is required.');

@@ -5,6 +5,8 @@ const supportChatController = require('../controllers/supportChat.controller');
 
 // All support routes are protected
 router.use(authController.protect);
+// Inbox threads, private notes and SSE are internal staff data.
+router.use(authController.restrictTo('admin', 'staff', 'manager', 'accounting'));
 
 // Conversations & Thread Operations
 router.get('/conversations', supportChatController.getConversations);

@@ -428,6 +428,44 @@ describe('Milestone 5: Backend Support Center & Chat Controller Suite', () => {
     });
 
     describe('4. Outbound Agent Replies & Per-Agent Identity (POST /api/support/conversations/:id/messages)', () => {
+        it.each(['client', 'org_agent', 'org_manager', 'driver'])('blocks %s from staff messages and private notes', async role => {
+            prisma.user.findUnique.mockResolvedValueOnce({ id: 'external-user', role, active: true });
+            const res = await request(app).get('/api/support/conversations/201/messages')
+                .set('Authorization', `Bearer ${testAuthTokenWithToken}`);
+            expect(res.status).toBe(403);
+        });
+
+        it('includes existing Inbox private notes and their author in the thread', async () => {
+            mockMessages = [{ id: 991, content: 'Staff context', private: true, message_type: 1,
+                sender: { id: 42, name: 'Support Agent', type: 'user' }, created_at: Math.floor(Date.now() / 1000) }];
+            const res = await request(app).get('/api/support/conversations/201/messages')
+                .set('Authorization', `Bearer ${testAuthTokenWithToken}`);
+            expect(res.status).toBe(200);
+            expect(res.body.messages).toContainEqual(expect.objectContaining({
+                id: 991, private: true, messageType: 'note', content: 'Staff context',
+                sender: expect.objectContaining({ name: 'Support Agent' })
+            }));
+        });
+
+        it('allows a private note with no customer reply window', async () => {
+            mockMessages = [];
+            const res = await request(app).post('/api/support/conversations/201/messages')
+                .set('Authorization', `Bearer ${testAuthTokenWithToken}`)
+                .send({ content: 'Staff follow-up', isPrivate: true, isTemplate: false });
+            expect(res.status).toBe(201);
+            expect(mockClientRequest).toHaveBeenCalledWith(expect.objectContaining({
+                method: 'post', url: expect.stringContaining('/conversations/201/messages'),
+                data: expect.objectContaining({ content: 'Staff follow-up', private: true })
+            }));
+        });
+
+        it('rejects a private note combined with a public WhatsApp template', async () => {
+            const res = await request(app).post('/api/support/conversations/201/messages')
+                .set('Authorization', `Bearer ${testAuthTokenWithToken}`)
+                .send({ content: 'Staff only', isPrivate: true, isTemplate: true, templateName: 'customer_inquiry_start' });
+            expect(res.status).toBe(400);
+        });
+
         it('4.1 allows free-text reply inside 24h window and attributes with decrypted agent token', async () => {
             const res = await request(app)
                 .post('/api/support/conversations/201/messages')
@@ -637,7 +675,8 @@ describe('Milestone 5: Backend Support Center & Chat Controller Suite', () => {
     describe('10. Real-Time Server-Sent Events (GET /api/support/events)', () => {
         it('10.1 connects to SSE stream and establishes streaming headers and handshake', async () => {
             const res = await request(app)
-                .get(`/api/support/events?token=${testAuthTokenWithToken}&testClose=true`)
+                .get(`/api/support/events?testClose=true`)
+                .set('Authorization', `Bearer ${testAuthTokenWithToken}`)
                 .set('Accept', 'text/event-stream');
 
             expect(res.status).toBe(200);

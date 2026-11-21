@@ -169,3 +169,7 @@ The `otptargetlogin` send payload supplies the same OTP string in `processed_par
 ### Personal Inbox reply availability
 
 Login and `/api/users/me` expose `hasChatwootToken`, a boolean indicating whether the current user has a stored personal Inbox token. The reply composer uses this flag rather than expecting the credential in browser state. Manual sends still validate and decrypt the actual personal token on the server. A configured flag does not prove that the remote credential remains valid.
+
+### Internal Inbox notes
+
+Support threads display private Inbox notes with amber styling, author and timestamp. Staff can save an Internal Note even after the WhatsApp 24-hour window expires; notes use `private: true` and never a public template. Requests combining notes with templates are rejected. Support APIs, including SSE, are limited to admin, staff, manager and accounting roles; organization/client accounts cannot access these internal threads.

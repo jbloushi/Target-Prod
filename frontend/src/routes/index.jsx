@@ -355,22 +355,22 @@ const AppRoutes = () => {
 
           {/* Support Center & Omnichannel Chat */}
           <Route path="support" element={
-            <ProtectedRoute allowedRoles={['admin', 'staff', 'manager', 'accounting', 'org_manager', 'org_agent']}>
+            <ProtectedRoute allowedRoles={['admin', 'staff', 'manager', 'accounting']}>
               <SupportCenterPage />
             </ProtectedRoute>
           } />
           <Route path="support/:conversationId" element={
-            <ProtectedRoute allowedRoles={['admin', 'staff', 'manager', 'accounting', 'org_manager', 'org_agent']}>
+            <ProtectedRoute allowedRoles={['admin', 'staff', 'manager', 'accounting']}>
               <SupportCenterPage />
             </ProtectedRoute>
           } />
           <Route path="support-v2" element={
-            <ProtectedRoute allowedRoles={['admin', 'staff', 'manager', 'accounting', 'org_manager', 'org_agent']}>
+            <ProtectedRoute allowedRoles={['admin', 'staff', 'manager', 'accounting']}>
               <SupportCenterV2Page />
             </ProtectedRoute>
           } />
           <Route path="support-v2/:conversationId" element={
-            <ProtectedRoute allowedRoles={['admin', 'staff', 'manager', 'accounting', 'org_manager', 'org_agent']}>
+            <ProtectedRoute allowedRoles={['admin', 'staff', 'manager', 'accounting']}>
               <SupportCenterV2Page />
             </ProtectedRoute>
           } />

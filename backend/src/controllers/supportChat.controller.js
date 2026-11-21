@@ -302,6 +302,13 @@ exports.sendMessage = async (req, res) => {
         const { id } = req.params;
         const { content, isTemplate, templateName, templateParams, language, isPrivate, clientMessageId } = req.body;
 
+        if (isPrivate !== undefined && typeof isPrivate !== 'boolean') {
+            return res.status(400).json({ success: false, error: 'isPrivate must be a boolean' });
+        }
+        if (isPrivate && (isTemplate || templateName)) {
+            return res.status(400).json({ success: false, error: 'Private notes cannot be sent as WhatsApp templates' });
+        }
+
         // 1. Verify sending user has a configured Chatwoot token
         const user = await prisma.user.findUnique({
             where: { id: req.user.id },
