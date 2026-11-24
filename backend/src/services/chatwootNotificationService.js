@@ -1090,16 +1090,35 @@ class ChatwootNotificationService {
     async findOrCreateContact(target, context = {}) {
         const cw = getChatwootConfig();
         const query = target.phone;
+        const cleanDigits = String(target.phone || '').replace(/\D/g, '');
         let found = null;
 
         try {
             const result = await this.request('get', `/api/v1/accounts/${cw.accountId}/contacts/search`, undefined, { q: query });
             const contacts = result?.payload || result?.data || result || [];
             found = Array.isArray(contacts)
-                ? contacts.find(contact => normalizePhone(contact.phone_number || contact.phoneNumber) === target.phone) || null
+                ? contacts.find(contact => {
+                    const cPhone = normalizePhone(contact.phone_number || contact.phoneNumber);
+                    const cDigits = String(cPhone || contact.phone_number || contact.phoneNumber || '').replace(/\D/g, '');
+                    return cPhone === target.phone || (cleanDigits && cDigits && (cleanDigits === cDigits || cleanDigits.endsWith(cDigits) || cDigits.endsWith(cleanDigits)));
+                }) || null
                 : null;
         } catch (error) {
             logger.debug(`[chatwoot] contact search failed ${maskPhone(target.phone)}: ${error.response?.status || error.message}`);
+        }
+
+        // If not found with original query, search with clean digits
+        if (!found && cleanDigits && cleanDigits !== query) {
+            try {
+                const result = await this.request('get', `/api/v1/accounts/${cw.accountId}/contacts/search`, undefined, { q: cleanDigits });
+                const contacts = result?.payload || result?.data || result || [];
+                found = Array.isArray(contacts)
+                    ? contacts.find(contact => {
+                        const cDigits = String(contact.phone_number || contact.phoneNumber || '').replace(/\D/g, '');
+                        return cDigits && (cleanDigits === cDigits || cleanDigits.endsWith(cDigits) || cDigits.endsWith(cleanDigits));
+                    }) || null
+                    : null;
+            } catch (_) {}
         }
 
         // Resolve Organization mapping if available
@@ -1190,13 +1209,51 @@ class ChatwootNotificationService {
             created = await this.request('post', `/api/v1/accounts/${cw.accountId}/contacts`, payload);
         } catch (createErr) {
             const errMsg = createErr.response?.data?.message || createErr.message || '';
-            if (/email has already been taken/i.test(errMsg) || createErr.response?.status === 422) {
+            const isEmailConflict = /email has already been taken/i.test(errMsg);
+            const isPhoneConflict = /phone number has already been taken/i.test(errMsg) || /phone_number/i.test(JSON.stringify(createErr.response?.data || ''));
+
+            // If phone conflict, resolve the existing contact directly from Chatwoot
+            if (isPhoneConflict) {
+                logger.warn(`[chatwoot] contact phone number already exists for ${maskPhone(target.phone)}: ${errMsg}. Resolving existing contact.`);
+                const searchQueries = [cleanDigits, target.phone].filter(Boolean);
+                for (const q of searchQueries) {
+                    try {
+                        const searchRes = await this.request('get', `/api/v1/accounts/${cw.accountId}/contacts/search`, undefined, { q });
+                        const foundList = searchRes?.payload || searchRes?.data || searchRes || [];
+                        if (Array.isArray(foundList) && foundList.length > 0) {
+                            const matched = foundList.find(c => {
+                                const cDigits = String(c.phone_number || c.phoneNumber || '').replace(/\D/g, '');
+                                return cleanDigits && cDigits && (cleanDigits === cDigits || cleanDigits.endsWith(cDigits) || cDigits.endsWith(cleanDigits));
+                            }) || foundList[0];
+                            if (matched?.id) {
+                                logger.info(`[chatwoot] resolved existing contact on phone conflict: ${matched.id} for ${maskPhone(target.phone)}`);
+                                return matched;
+                            }
+                        }
+                    } catch (_) {}
+                }
+            }
+
+            if (isEmailConflict || createErr.response?.status === 422) {
                 logger.warn(`[chatwoot] contact creation duplicate email conflict for ${target.email}: ${errMsg}. Retrying without email.`);
                 const retryPayload = { ...payload };
                 delete retryPayload.email;
                 try {
                     created = await this.request('post', `/api/v1/accounts/${cw.accountId}/contacts`, retryPayload);
                 } catch (retryErr) {
+                    const retryErrMsg = retryErr.response?.data?.message || retryErr.message || '';
+                    if (/phone number has already been taken/i.test(retryErrMsg)) {
+                        const searchQueries = [cleanDigits, target.phone].filter(Boolean);
+                        for (const q of searchQueries) {
+                            try {
+                                const searchRes = await this.request('get', `/api/v1/accounts/${cw.accountId}/contacts/search`, undefined, { q });
+                                const foundList = searchRes?.payload || searchRes?.data || searchRes || [];
+                                if (Array.isArray(foundList) && foundList.length > 0) {
+                                    return foundList[0];
+                                }
+                            } catch (_) {}
+                        }
+                    }
                     if (target.email) {
                         try {
                             const emailSearch = await this.request('get', `/api/v1/accounts/${cw.accountId}/contacts/search`, undefined, { q: target.email });
@@ -1757,16 +1814,16 @@ class ChatwootNotificationService {
         }
         const cw = getChatwootConfig();
         const rawFallbackProvider = systemSettings.fallbackProvider === undefined || systemSettings.fallbackProvider === null || systemSettings.fallbackProvider === ''
-            ? 'SHIPMENT_WHATSAPP'
+            ? 'META'
             : systemSettings.fallbackProvider;
         const normalizedFallback = String(rawFallbackProvider).trim().toUpperCase();
         const resolvedFallbackProvider = normalizedFallback === 'TARGET_MSG'
             ? 'SHIPMENT_WHATSAPP'
             : normalizedFallback;
-        const SUPPORTED_FALLBACK_PROVIDERS = new Set(['EVOLUTION', 'SHIPMENT_WHATSAPP', 'META']);
+        const SUPPORTED_FALLBACK_PROVIDERS = new Set(['META', 'EVOLUTION', 'SHIPMENT_WHATSAPP']);
         const fallbackProvider = SUPPORTED_FALLBACK_PROVIDERS.has(resolvedFallbackProvider)
             ? resolvedFallbackProvider
-            : null;
+            : 'META';
         const fallbackEnabled = Boolean(fallbackProvider);
 
         if (!cw.enabled) {

@@ -3,7 +3,7 @@ const logger = require('../utils/logger');
 
 const DEFAULT_CONFIG = {
     provider: 'CHATWOOT',
-    fallbackProvider: 'SHIPMENT_WHATSAPP',
+    fallbackProvider: 'META',
     serviceUrl: 'https://msg.target-kw.com',
     apiKey: null,
     phoneId: null,

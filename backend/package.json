@@ -20,6 +20,7 @@
     "seed:demo": "node scripts/seed-demo-users.js",
     "verify:tracking": "node scripts/verify-carrier-scraping.js",
     "sync:carriers": "node scripts/sync-all-carriers.js",
+    "sync:aramex": "node scripts/sync-aramex-history.js",
     "audit:carrier-shipments": "node scripts/audit-carrier-shipments.js",
     "audit:aramex-destinations": "node scripts/audit-carrier-shipments.js --carrier=ARAMEX",
     "dispatch:whatsapp": "node scripts/dispatch-pending-whatsapp.js",

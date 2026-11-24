@@ -275,15 +275,19 @@ function buildExportDeclaration(order, config = {}) {
             ? (totalParcelWeight * (qty / totalItemQty))
             : (item.grossWeight || itemNetWeight) * qty;
 
-        const hsType = order.hsCodeType || 'outbound';
+        const outCommCode = normalizeDigits(item.outboundHsCode || item.exportHsCode || order.outboundHsCode || commCode);
+        const inCommCode = normalizeDigits(item.inboundHsCode || item.importHsCode || order.inboundHsCode || commCode);
+
+        const hsType = order.hsCodeType || 'both';
         let commodityCodes = [];
         if (hsType === 'inbound') {
-            commodityCodes.push({ typeCode: 'inbound', value: commCode });
-        } else if (hsType === 'both') {
-            commodityCodes.push({ typeCode: 'outbound', value: commCode });
-            commodityCodes.push({ typeCode: 'inbound', value: commCode });
+            if (inCommCode) commodityCodes.push({ typeCode: 'inbound', value: inCommCode });
+        } else if (hsType === 'outbound') {
+            if (outCommCode) commodityCodes.push({ typeCode: 'outbound', value: outCommCode });
         } else {
-            commodityCodes.push({ typeCode: 'outbound', value: commCode });
+            // Default to 'both' to ensure both Outbound (OB) and Inbound (IB) codes appear on DHL/DGR customs invoices
+            if (outCommCode) commodityCodes.push({ typeCode: 'outbound', value: outCommCode });
+            if (inCommCode) commodityCodes.push({ typeCode: 'inbound', value: inCommCode });
         }
 
         return {

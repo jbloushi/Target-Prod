@@ -202,7 +202,7 @@ async function sendViaShipmentWhatsappMicroservice({ serviceUrl = 'https://msg.t
             responseType: 'text'
         });
     } catch (httpErr) {
-        const e = new Error('WhatsApp microservice request failed');
+        const e = new Error(httpErr.message || 'WhatsApp microservice request failed');
         e.code = httpErr.code;
         e.status = httpErr.response?.status;
         throw e;
@@ -1896,8 +1896,8 @@ www.target-kw.com | +965 6965 6563`;
             ...(getSystemSettings()?.whatsapp || {}),
             ...(dbConfig || {})
         };
-        const provider = String(settings.provider || 'SHIPMENT_WHATSAPP').trim().toUpperCase();
-        const fallbackProvider = String(settings.fallbackProvider || '').trim().toUpperCase();
+        const provider = String(settings.provider || 'CHATWOOT').trim().toUpperCase();
+        const fallbackProvider = String(settings.fallbackProvider || 'META').trim().toUpperCase();
         const templateName = 'otptargetlogin';
         const langCode = 'en_US';
 
@@ -1917,7 +1917,7 @@ www.target-kw.com | +965 6965 6563`;
         // 1. Direct Meta WhatsApp Business API Cloud Endpoint (Most accurate for Authentication / Custom templates)
         const templateProviderCandidates = [provider, fallbackProvider];
         if (
-            templateProviderCandidates.includes('META') &&
+            (templateProviderCandidates.includes('META') || provider === 'META' || fallbackProvider === 'META') &&
             settings.accessToken &&
             settings.phoneNumberId
         ) {
@@ -2003,7 +2003,7 @@ www.target-kw.com | +965 6965 6563`;
                     return { status: 'SENT', externalMessageId: wamid, provider: 'META' };
                 } catch (metaErr) {
                     const errorDetail = metaErr.response?.data?.error?.message || metaErr.message;
-                    logger.debug(`[WhatsApp Meta API OTP Candidate ${i + 1} Failed] ${errorDetail}`);
+                    logger.warn(`[WhatsApp Meta API OTP Candidate ${i + 1} Failed] ${errorDetail}`);
                 }
             }
         }

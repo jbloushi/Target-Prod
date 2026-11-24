@@ -59,7 +59,8 @@ const DEFAULT_SETTINGS = {
     },
     whatsapp: {
         enabled: true,
-        provider: 'SHIPMENT_WHATSAPP', // 'SHIPMENT_WHATSAPP' | 'META' | 'CHATWOOT' | 'EVOLUTION' | 'MOCK'
+        provider: 'CHATWOOT', // 'CHATWOOT' | 'META' | 'EVOLUTION' | 'MOCK'
+        fallbackProvider: 'META',
         serviceUrl: process.env.WHATSAPP_SERVICE_URL || 'https://msg.target-kw.com',
         phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
         businessAccountId: process.env.WHATSAPP_WABA_ID || '',

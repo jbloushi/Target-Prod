@@ -52,11 +52,13 @@ class WhatsAppQueueDrainerService {
         if (this.isDraining) return;
         this.isDraining = true;
         try {
-            // 1. Clean up any queued receiver records immediately — auto WhatsApp is strictly shipper-only
+            // 1. Clean up any queued receiver lifecycle records — automatic WhatsApp lifecycle is strictly shipper-only, but OTP/pinning requests must NEVER be suppressed
             await prisma.shipmentNotificationLog.updateMany({
                 where: {
                     status: { in: ['QUEUED', 'queued', 'pending', 'PENDING'] },
-                    recipientRole: { notIn: ['sender', 'shipper', 'merchant'] }
+                    recipientRole: { notIn: ['sender', 'shipper', 'merchant'] },
+                    eventType: { notIn: ['location_otp', 'auth_otp', 'location_request', 'payment_link_ready'] },
+                    templateName: { not: 'otptargetlogin' }
                 },
                 data: {
                     status: 'SKIPPED',
